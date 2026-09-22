@@ -1,0 +1,26 @@
+#!/usr/bin/env python3
+# flotilla entry point. This file keeps to syntax any Python 3 can parse (no f-strings, no
+# walrus, no match), so an interpreter older than the floor reaches the message below instead
+# of dying on a SyntaxError that names nothing the user can act on.
+import os
+import sys
+
+MINIMUM = (3, 11)
+
+
+def main():
+    if sys.version_info < MINIMUM:
+        found = "%d.%d.%d" % tuple(sys.version_info[:3])
+        sys.stderr.write(
+            "flotilla needs Python %d.%d or newer; this python3 is %s (%s).\n"
+            "Install one with `brew install python` (macOS) or `uv python install 3.11`, "
+            "and make it the python3 on PATH.\n" % (MINIMUM[0], MINIMUM[1], found, sys.executable))
+        return 3
+    root = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+    sys.path.insert(0, root)
+    from flotilla.cli import main as cli_main
+    return cli_main(sys.argv[1:])
+
+
+if __name__ == "__main__":
+    sys.exit(main())
