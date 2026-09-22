@@ -102,13 +102,19 @@ PROJECT  .flotilla/   (in the repository, committed, shared by the team)
 ├── posts/*.md       the project's posts: template copies plus custom posts
 └── events/          scripts run on ledger moves
 
-MACHINE  ${CLAUDE_PLUGIN_DATA}/   (per person; survives plugin updates)
+MACHINE  ${XDG_STATE_HOME:-~/.local/state}/flotilla/   (per person; survives plugin updates AND uninstall)
 ├── machine.toml     capabilities measured by onboarding
 ├── ledger/          one append-only move log per repository, keyed by origin URL
 ├── lane/            bookings and run records
 ├── receipts/        test-tier receipts per revision
 └── names.json       issued session numbers
 ```
+
+**Durable state does not live in `${CLAUDE_PLUGIN_DATA}`.** That directory is deleted when the plugin is
+uninstalled from its last scope, and the CLI deletes it by default (`--keep-data` preserves it; plugins
+reference, "Persistent data directory"). A reinstall would wipe the fleet's history. `${CLAUDE_PLUGIN_DATA}` is
+used for caches only. The state directory is overridable with `FLOTILLA_STATE_DIR` (tests use this) and is printed
+by `flotilla doctor`; the README says how to delete it.
 
 Post templates live in `templates/`, **not** in the plugin's `agents/`: anything there is registered as a
 subagent for every user of the plugin, onboarded or not. Exposing posts as subagent types (`.claude/agents/`) is
@@ -672,8 +678,10 @@ names per worktree); a bisecting merge queue; a shared ledger across machines (b
 
 ## 17. Open questions (resolved in the foundation spec unless noted)
 
-1. What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
-2. Exact Claude Code version floor.
+1. ~~What happens to `${CLAUDE_PLUGIN_DATA}` on uninstall~~ — **resolved:** it is deleted by default, so durable
+   state moved to `${XDG_STATE_HOME:-~/.local/state}/flotilla/` (section 3.1).
+2. ~~Exact Claude Code version floor~~ — **resolved:** the floor is the lowest version for which a recorded
+   `claude agents --json` sample exists in the test fixtures; today 2.1.280. It is lowered only by adding a sample.
 3. Which `--permission-mode` values a `--bg` session honours, and how a stalled permission prompt is surfaced.
 4. Whether path-scoped deny rules hold for spawned background sessions (judge, section 7.4).
 5. Why probe A ended `state: blocked`.
