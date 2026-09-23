@@ -85,3 +85,16 @@ def test_concurrent_appends_keep_every_line_whole(tmp_path):
     assert len(result.records) == writers * count
     for w in range(writers):
         assert [r["n"] for r in result.records if r["writer"] == w] == list(range(count))
+
+
+def test_torn_tail_inside_a_multibyte_character(tmp_path):
+    # A tear after the first byte of a two-byte character: never committed, so torn, not a crash.
+    (tmp_path / "k.jsonl").write_bytes(b'{"n":1}\n{"t":"caf\xc3')
+    result = LocalLogStore(tmp_path).read("k")
+    assert result.records == [{"n": 1}] and result.torn_tail is True
+
+
+def test_invalid_utf8_middle_line_is_corruption_with_its_line(tmp_path):
+    (tmp_path / "k.jsonl").write_bytes(b'{"n":1}\n{"t":"\xff"}\n{"n":3}\n')
+    with pytest.raises(StorageCorrupt, match=r"k\.jsonl:2"):
+        LocalLogStore(tmp_path).read("k")

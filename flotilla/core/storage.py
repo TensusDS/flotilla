@@ -32,19 +32,23 @@ class ReadResult:
 
 
 def _read(path: Path) -> ReadResult:
+    # Bytes first, decoding per committed line: a tear may cut a multi-byte character, and that
+    # must read as a torn tail, not as a decoding error of the whole file.
     try:
-        text = path.read_text(encoding="utf-8")
+        data = path.read_bytes()
     except FileNotFoundError:
         return ReadResult([], False)
-    lines = text.split("\n")
-    tail = lines.pop()  # "" when the file ends with a newline
+    lines = data.split(b"\n")
+    tail = lines.pop()  # b"" when the file ends with a newline
     records = []
-    for number, line in enumerate(lines, start=1):
+    for number, raw in enumerate(lines, start=1):
         try:
-            records.append(json.loads(line))
+            records.append(json.loads(raw.decode("utf-8")))
+        except UnicodeDecodeError as err:
+            raise StorageCorrupt(f"{path}:{number}: not UTF-8 ({err.reason})") from err
         except json.JSONDecodeError as err:
             raise StorageCorrupt(f"{path}:{number}: {err.msg}") from err
-    return ReadResult(records, tail != "")
+    return ReadResult(records, tail != b"")
 
 
 class LogTransaction:

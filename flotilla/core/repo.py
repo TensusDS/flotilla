@@ -28,16 +28,24 @@ class RepoIdentity:
     key: str
 
 
-def normalize_origin(url: str) -> str:
+def normalize_origin(url: str, base: Path | None = None) -> str:
+    """A stable name for an origin. Local paths are resolved against `base` (the repository),
+    never against the process's working directory, which differs between worktrees."""
     url = url.strip()
-    match = _URL.match(url) or _SCP.match(url)
-    if match and not url.startswith("/"):
-        host, path = match.groups()
-        path = path.rstrip("/")
-        if path.endswith(".git"):
-            path = path[:-4]
-        return f"{host.lower()}/{path}"
-    return f"path:{Path(url).expanduser().resolve()}"
+    if url.lower().startswith("file://"):
+        url = url[len("file://"):]
+    elif not url.startswith(("/", ".", "~")):
+        match = _URL.match(url) or _SCP.match(url)
+        if match:
+            host, path = match.groups()
+            path = path.rstrip("/")
+            if path.endswith(".git"):
+                path = path[:-4]
+            return f"{host.lower()}/{path}"
+    local = Path(url).expanduser()
+    if not local.is_absolute() and base is not None:
+        local = Path(base) / local
+    return f"path:{local.resolve()}"
 
 
 def repo_key(normalized: str) -> str:
@@ -58,6 +66,6 @@ def identify(cwd: Path, run=subprocess.run) -> RepoIdentity:
     origin_done = _git(cwd, "config", "--get", "remote.origin.url", run=run)
     origin = origin_done.stdout.strip() or None
     common_dir = Path(common.stdout.strip()).resolve()
-    normalized = normalize_origin(origin) if origin else f"local:{common_dir}"
+    normalized = normalize_origin(origin, base=common_dir.parent) if origin else f"local:{common_dir}"
     return RepoIdentity(root=Path(top.stdout.strip()).resolve(), common_dir=common_dir,
                         origin=origin, key=repo_key(normalized))

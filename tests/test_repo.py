@@ -71,3 +71,35 @@ def test_repository_without_origin_is_keyed_by_its_common_dir(tmp_path):
 def test_not_a_repository_is_named(tmp_path):
     with pytest.raises(repo.NotARepository):
         repo.identify(tmp_path)
+
+
+def test_file_url_origin_is_its_path():
+    assert repo.normalize_origin("file:///srv/x.git") == "path:/srv/x.git"
+
+
+def test_relative_origin_resolves_against_the_given_base(tmp_path):
+    base = tmp_path / "repo"
+    assert repo.normalize_origin("../up.git", base=base) == f"path:{(tmp_path / 'up.git').resolve()}"
+
+
+@pytest.mark.parametrize("origin", ["file://{tmp}/origin.git", "../origin.git"])
+def test_linked_worktree_key_does_not_depend_on_the_process_directory(checkout, tmp_path, monkeypatch, origin):
+    git("remote", "set-url", "origin", origin.format(tmp=tmp_path), cwd=checkout)
+    # A different depth from the main checkout: from a sibling, "../origin.git" would resolve to
+    # the same place by coincidence and hide the bug.
+    tree = tmp_path / "trees" / "app-review-1"
+    git("worktree", "add", "-q", "-b", "fleet/review-1", str(tree), cwd=checkout)
+    monkeypatch.chdir(checkout)
+    from_main = repo.identify(checkout).key
+    monkeypatch.chdir(tree)
+    assert repo.identify(tree).key == from_main
+
+
+def test_linked_worktree_without_origin_shares_the_key(tmp_path):
+    lone = tmp_path / "lone"
+    lone.mkdir()
+    git("init", "-q", "-b", "main", cwd=lone)
+    git("-c", "user.email=t@example.invalid", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "i", cwd=lone)
+    tree = tmp_path / "lone-w"
+    git("worktree", "add", "-q", "-b", "w", str(tree), cwd=lone)
+    assert repo.identify(tree).key == repo.identify(lone).key

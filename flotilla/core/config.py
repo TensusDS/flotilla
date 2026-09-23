@@ -42,6 +42,8 @@ def load_project(root: Path) -> Project:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
     except tomllib.TOMLDecodeError as err:
         raise ConfigError(f"{path}: {err}") from err
+    except UnicodeDecodeError as err:
+        raise ConfigError(f"{path}: not UTF-8 ({err.reason} at byte {err.start})") from err
     except OSError as err:
         raise ConfigError(f"{path}: cannot be read: {err}") from err
     schema = data.get("schema")

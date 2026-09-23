@@ -74,3 +74,12 @@ def test_project_found_from_a_linked_worktree(tmp_path):
     run("worktree", "add", "-q", "-b", "fleet/review-1", str(tree))
     assert config.find_project(tree) == tree.resolve()
     assert config.load_project(tree).schema == 1
+
+
+def test_non_utf8_project_file_names_the_file(tmp_path):
+    (tmp_path / ".flotilla").mkdir()
+    path = tmp_path / ".flotilla" / "project.toml"
+    path.write_bytes(b"schema = 1\n# \xff\n")
+    with pytest.raises(config.ConfigError, match="not UTF-8") as err:
+        config.load_project(tmp_path)
+    assert str(path) in str(err.value)
