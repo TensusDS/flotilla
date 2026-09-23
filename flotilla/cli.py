@@ -18,6 +18,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("version", help="print the flotilla version")
     doctor = sub.add_parser("doctor", help="check this machine and project")
     doctor.add_argument("--quiet", action="store_true", help="print only what needs attention")
+    hook = sub.add_parser("hook", help="entry point for Claude Code hooks")
+    hook.add_argument("event", choices=["session-start"])
     return parser
 
 
@@ -29,4 +31,8 @@ def main(argv: list[str]) -> int:
     if args.command == "doctor":
         from flotilla.doctor import run_doctor
         return run_doctor(quiet=args.quiet)
+    if args.command == "hook":
+        import sys
+        from flotilla.hooks import run_hook
+        return run_hook(args.event, sys.stdin)
     return 2
