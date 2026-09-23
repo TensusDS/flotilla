@@ -11,9 +11,7 @@ Design: `docs/specs/2026-09-22-flotilla-design.md`.
 
 Linux or macOS, Python 3.11+, git, Claude Code 2.1.280+.
 
-macOS is supported by design but **not yet verified in CI**: continuous integration runs on a self-hosted Linux
-runner. Of the macOS code paths, only process-parent lookup through `ps` is exercised, because the tests run it on
-Linux too.
+Both Linux and macOS run in CI on every commit.
 
 ## Check your machine
 

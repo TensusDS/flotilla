@@ -1,16 +1,8 @@
 name: ci
 
-# Where jobs run. The repository variable CI_RUNNER names the self-hosted runner (our VPS); without it,
-# as in any fork, jobs run on GitHub-hosted Linux.
-#
-# Pushes and pull requests from branches of this repository go to CI_RUNNER; pull requests from forks
-# are routed to a hosted runner. This routing is NOT a security boundary: for `pull_request`, GitHub
-# runs the workflow file from the pull request itself, so a fork can rewrite `runs-on`. The boundary
-# lives outside any file a pull request can edit: the repository requires approval before running
-# workflows from outside contributors, and the self-hosted runner is isolated from other repositories'
-# runners (its own user and directory).
-#
-# Action pins are commit SHAs; the trailing comment names the release.
+# GitHub-hosted runners only: they are free for a public repository, and a pull request from a fork
+# runs its own code on a disposable machine that is not ours. Action pins are commit SHAs; the
+# trailing comment names the release.
 
 on:
   push:
@@ -25,23 +17,33 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, macos-latest]
         python: ["3.11", "3.12", "3.13"]
-    runs-on: ${{ ((github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CI_RUNNER) || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - run: uv run --python ${{ matrix.python }} --with pytest python -m pytest
 
   language:
-    runs-on: ${{ ((github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CI_RUNNER) || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - run: python3 tools/check_no_cyrillic.py
 
   plugin:
-    runs-on: ${{ ((github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CI_RUNNER) || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
