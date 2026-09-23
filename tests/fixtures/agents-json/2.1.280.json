@@ -1,0 +1,10 @@
+[
+  {"cwd": "/home/u/app", "id": null, "kind": "interactive", "name": "operator", "pid": 1001,
+   "sessionId": "0f000000-0000-4000-8000-000000000001", "startedAt": 1785175245929, "state": null, "status": "busy"},
+  {"cwd": "/home/u/app", "id": "1a2b3c4d", "kind": "background", "name": "review session 1", "pid": 2002,
+   "sessionId": "1a2b3c4d-0000-4000-8000-000000000002", "startedAt": 1785175300000, "state": "working", "status": "busy"},
+  {"cwd": "/home/u/app", "id": "5e6f7a8b", "kind": "background", "name": "main session 2", "pid": 3003,
+   "sessionId": "5e6f7a8b-0000-4000-8000-000000000003", "startedAt": 1785175400000, "state": "blocked", "status": "idle"},
+  {"cwd": "/home/u/app", "id": "9c0d1e2f", "kind": "background", "name": "minor session 4", "pid": null,
+   "sessionId": "9c0d1e2f-0000-4000-8000-000000000004", "startedAt": 1785175500000, "state": "done", "status": null}
+]
