@@ -12,6 +12,10 @@ import json
 import sys
 from pathlib import Path
 
+#: Seconds per external call inside a hook. Two calls plus a margin must fit inside the timeout
+#: declared in hooks/hooks.json, or Claude Code kills the hook before it can say "unknown".
+HOOK_CHECK_TIMEOUT = 3
+
 
 def run_hook(event: str, stdin, out=sys.stdout) -> int:
     try:
@@ -28,7 +32,7 @@ def run_hook(event: str, stdin, out=sys.stdout) -> int:
     if event == "session-start":
         try:
             from flotilla import doctor
-            lines = doctor.render(doctor.collect(cwd=root), quiet=True)
+            lines = doctor.render(doctor.collect(cwd=root, timeout=HOOK_CHECK_TIMEOUT), quiet=True)
         except Exception as err:  # noqa: BLE001 - a hook must say what broke, never crash the session
             print(f"flotilla: could not check this project: {err}", file=out)
             return 0

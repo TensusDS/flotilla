@@ -51,3 +51,28 @@ def test_unknown_subcommand_is_a_usage_error():
     assert done.returncode == 2
     # Python also exits 2 when the script is missing; only argparse says "invalid choice".
     assert "invalid choice" in done.stderr
+
+
+def run_old_hook(tmp_path, cwd):
+    source = ENTRY.read_text(encoding="utf-8").replace("MINIMUM = (3, 11)", "MINIMUM = (99, 0)")
+    fake = tmp_path / "fake-flotilla"
+    fake.write_text(source, encoding="utf-8")
+    import json
+    return subprocess.run([sys.executable, str(fake), "hook", "session-start"],
+                          input=json.dumps({"cwd": str(cwd)}), capture_output=True, text=True)
+
+
+def test_old_interpreter_hook_outside_a_project_is_silent(tmp_path):
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    done = run_old_hook(tmp_path, elsewhere)
+    assert done.returncode == 0 and done.stdout == "" and done.stderr == ""
+
+
+def test_old_interpreter_hook_in_a_project_tells_the_session(tmp_path):
+    project = tmp_path / "app"
+    (project / ".flotilla").mkdir(parents=True)
+    (project / ".flotilla" / "project.toml").write_text("schema = 1\n", encoding="utf-8")
+    done = run_old_hook(tmp_path, project / "src")
+    assert done.returncode == 0
+    assert "flotilla needs Python 99.0 or newer" in done.stdout

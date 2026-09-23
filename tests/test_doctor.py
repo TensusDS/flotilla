@@ -92,3 +92,21 @@ def test_run_doctor_exit_code(tmp_path, monkeypatch):
     out = io.StringIO()
     assert doctor.run_doctor(cwd=tmp_path, out=out) == 1
     assert "fail  x: bad" in out.getvalue()
+
+
+def test_timeout_reaches_both_external_calls(tmp_path):
+    seen = []
+    def run(argv, **kwargs):
+        seen.append((argv[1], kwargs.get("timeout")))
+        out = "2.1.280 (Claude Code)" if argv[1] == "--version" else "[]"
+        return subprocess.CompletedProcess(argv, 0, stdout=out, stderr="")
+    doctor.collect(cwd=tmp_path, env={"FLOTILLA_STATE_DIR": str(tmp_path / "s")}, run=run,
+                   which=which_all, os_name="linux", python=(3, 12, 1), timeout=3)
+    assert seen == [("--version", 3), ("agents", 3)]
+
+
+def test_unexecutable_claude_fails_instead_of_crashing(tmp_path):
+    def run(argv, **kwargs):
+        raise PermissionError(13, "Permission denied", argv[0])
+    found = collect(tmp_path, run=run)
+    assert found["claude"].status == "fail"

@@ -66,3 +66,8 @@ def test_nonzero_exit_is_unavailable():
 def test_timeout_is_unavailable():
     with pytest.raises(census.CensusUnavailable, match="did not answer"):
         census.read_census(run=fake_run(exc=subprocess.TimeoutExpired("claude", 30)))
+
+
+def test_unexecutable_cli_is_unavailable():
+    with pytest.raises(census.CensusUnavailable, match="cannot be run"):
+        census.read_census(run=fake_run(exc=PermissionError(13, "Permission denied", "claude")))

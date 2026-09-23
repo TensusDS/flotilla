@@ -8,13 +8,41 @@ import sys
 MINIMUM = (3, 11)
 
 
+def project_found(start):
+    """Whether .flotilla/project.toml exists at or above `start` (activation, old-Python safe)."""
+    current = os.path.realpath(start)
+    while True:
+        if os.path.isfile(os.path.join(current, ".flotilla", "project.toml")):
+            return True
+        parent = os.path.dirname(current)
+        if parent == current:
+            return False
+        current = parent
+
+
 def main():
     if sys.version_info < MINIMUM:
         found = "%d.%d.%d" % tuple(sys.version_info[:3])
-        sys.stderr.write(
+        message = (
             "flotilla needs Python %d.%d or newer; this python3 is %s (%s).\n"
             "Install one with `brew install python` (macOS) or `uv python install 3.11`, "
             "and make it the python3 on PATH.\n" % (MINIMUM[0], MINIMUM[1], found, sys.executable))
+        if sys.argv[1:2] == ["hook"]:
+            # Installed is not active, even on an old interpreter: outside an onboarded project a
+            # hook stays silent; inside one it tells the session on stdout, the channel it reads.
+            cwd = None
+            try:
+                import json
+                payload = json.load(sys.stdin)
+                if isinstance(payload, dict) and isinstance(payload.get("cwd"), str):
+                    cwd = payload["cwd"]
+            except Exception:
+                cwd = None
+            if not project_found(cwd or os.getcwd()):
+                return 0
+            sys.stdout.write("flotilla: " + message)
+            return 0
+        sys.stderr.write(message)
         return 3
     root = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
     sys.path.insert(0, root)

@@ -68,6 +68,8 @@ def read_census(run=subprocess.run, claude: str = "claude", timeout: float = 30)
                    timeout=timeout, check=False)
     except FileNotFoundError as err:
         raise CensusUnavailable(f"`{claude}` is not on PATH") from err
+    except OSError as err:
+        raise CensusUnavailable(f"`{claude}` cannot be run: {err}") from err
     except subprocess.TimeoutExpired as err:
         raise CensusUnavailable(f"`{claude} agents --json` did not answer within {timeout:g}s") from err
     if done.returncode != 0:

@@ -67,3 +67,18 @@ def test_an_internal_error_is_said_not_raised(tmp_path, monkeypatch):
     out = io.StringIO()
     assert hooks.run_hook("session-start", io.StringIO(json.dumps({"cwd": str(tmp_path)})), out=out) == 0
     assert "could not check this project" in out.getvalue() and "disk on fire" in out.getvalue()
+
+
+def test_hook_checks_fit_inside_the_declared_timeout(tmp_path, monkeypatch):
+    from flotilla import doctor, hooks
+    declared = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]["SessionStart"][0]["hooks"][0]["timeout"]
+    (tmp_path / ".flotilla").mkdir()
+    (tmp_path / ".flotilla" / "project.toml").write_text("schema = 1\n", encoding="utf-8")
+    seen = {}
+    def spy(**kw):
+        seen.update(kw)
+        return []
+    monkeypatch.setattr(doctor, "collect", spy)
+    hooks.run_hook("session-start", io.StringIO(json.dumps({"cwd": str(tmp_path)})), out=io.StringIO())
+    # Two external calls (claude --version, the census) plus a margin must finish before the kill.
+    assert "timeout" in seen and seen["timeout"] * 2 + 2 <= declared

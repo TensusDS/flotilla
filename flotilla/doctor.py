@@ -41,8 +41,12 @@ def _dotted(version) -> str:
 
 
 def collect(*, cwd: Path, env=os.environ, run=subprocess.run, which=shutil.which,
-            read=census_mod.read_census, os_name: str = sys.platform,
-            python=tuple(sys.version_info[:3])) -> list[Finding]:
+            read=None, os_name: str = sys.platform,
+            python=tuple(sys.version_info[:3]), timeout: float = 30) -> list[Finding]:
+    """`timeout` bounds each external call; a hook passes a short one so its findings are printed
+    before Claude Code kills it."""
+    if read is None:
+        read = lambda: census_mod.read_census(run=run, timeout=timeout)  # noqa: E731
     findings: list[Finding] = []
 
     if tuple(python[:2]) >= MIN_PYTHON:
@@ -61,7 +65,7 @@ def collect(*, cwd: Path, env=os.environ, run=subprocess.run, which=shutil.which
                     else Finding("fail", "git", "git is not on PATH", "install git"))
 
     try:
-        done = run(["claude", "--version"], capture_output=True, text=True, timeout=30, check=False)
+        done = run(["claude", "--version"], capture_output=True, text=True, timeout=timeout, check=False)
         version = parse_version(done.stdout)
         if version is None:
             findings.append(Finding("warn", "claude", f"version unknown: {done.stdout.strip()[:80]!r}"))
@@ -73,8 +77,10 @@ def collect(*, cwd: Path, env=os.environ, run=subprocess.run, which=shutil.which
             findings.append(Finding("ok", "claude", _dotted(version)))
     except FileNotFoundError:
         findings.append(Finding("fail", "claude", "`claude` is not on PATH", "install Claude Code"))
+    except OSError as err:
+        findings.append(Finding("fail", "claude", f"`claude` cannot be run: {err}"))
     except subprocess.TimeoutExpired:
-        findings.append(Finding("warn", "claude", "`claude --version` did not answer within 30s"))
+        findings.append(Finding("warn", "claude", f"`claude --version` did not answer within {timeout:g}s"))
 
     try:
         sessions = read()
