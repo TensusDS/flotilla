@@ -66,7 +66,9 @@ resources (trunk, version, CI queue), per-session worktrees, and state that surv
 - **Public.** Target listing: the `claude-community` marketplace (third-party submissions land there after
   `claude plugin validate` and automated safety screening). `claude-plugins-official` is curated by Anthropic.
 - **Plugin slug:** `flotilla` (immutable once published). Repository directory: `flotilla`.
-- **Platforms:** Linux and macOS, both in CI. Native Windows is explicitly unsupported and refuses out loud.
+- **Platforms:** Linux and macOS. Native Windows is explicitly unsupported and refuses out loud. CI runs on a
+  self-hosted Linux runner (2026-09-22: GitHub-hosted minutes are exhausted), so macOS is **claimed, not verified
+  in CI** until a Mac runner or hosted minutes exist; the README says so.
 - **Runtime:** Python ≥ 3.11 (stdlib only; `tomllib` for TOML). Onboarding verifies `python3` is a real 3.11+
   (the macOS Command Line Tools python is believed to be 3.9 — unverified on a live Mac).
 - **Claude Code:** a minimum version is enforced by `flotilla doctor` (cross-session messaging needs 2.1.224+ per
@@ -590,7 +592,7 @@ row's reservation is refused; appends always pass); git `pre-push` second barrie
 | layer | how | when |
 |---|---|---|
 | code | pytest (ported suites) | every commit, CI |
-| platforms | CI matrix Ubuntu + macOS × Python 3.11 / 3.12 / 3.13 | every commit — macOS is supported while its runner is green |
+| platforms | CI on the self-hosted Linux runner × Python 3.11 / 3.12 / 3.13 (via `uv`); fork pull requests run on a hosted runner, never on ours | every commit — macOS is claimed, not verified, until a Mac runner exists |
 | seams | `event_schema` golden generated from code, read by docs and example scripts; `claude agents --json` parsing tested on **recorded** outputs of several Claude Code versions | every commit |
 | guards | each seen red by an injected regression of two shapes: removal (is it alive) and a plausible neighbour (is it precise) | when the guard is written |
 | plugin | `claude plugin validate` | every commit |

@@ -1,0 +1,45 @@
+name: ci
+
+# Where jobs run. The repository variable CI_RUNNER names the self-hosted runner (our VPS); without it,
+# as in any fork, jobs run on GitHub-hosted Linux.
+#
+# The self-hosted runner is used ONLY for pushes and for pull requests from branches of this
+# repository. A pull request from a fork runs code its author wrote; on a self-hosted runner that code
+# would run on our machine, so fork pull requests always go to a hosted runner.
+#
+# Action pins are commit SHAs; the trailing comment names the release.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    runs-on: ${{ ((github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CI_RUNNER) || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - run: uv run --python ${{ matrix.python }} --with pytest python -m pytest
+
+  language:
+    runs-on: ${{ ((github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CI_RUNNER) || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: python3 tools/check_no_cyrillic.py
+
+  plugin:
+    runs-on: ${{ ((github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CI_RUNNER) || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+      - run: npx --yes @anthropic-ai/claude-code@2.1.280 plugin validate .
