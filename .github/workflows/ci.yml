@@ -3,9 +3,12 @@ name: ci
 # Where jobs run. The repository variable CI_RUNNER names the self-hosted runner (our VPS); without it,
 # as in any fork, jobs run on GitHub-hosted Linux.
 #
-# The self-hosted runner is used ONLY for pushes and for pull requests from branches of this
-# repository. A pull request from a fork runs code its author wrote; on a self-hosted runner that code
-# would run on our machine, so fork pull requests always go to a hosted runner.
+# Pushes and pull requests from branches of this repository go to CI_RUNNER; pull requests from forks
+# are routed to a hosted runner. This routing is NOT a security boundary: for `pull_request`, GitHub
+# runs the workflow file from the pull request itself, so a fork can rewrite `runs-on`. The boundary
+# lives outside any file a pull request can edit: the repository requires approval before running
+# workflows from outside contributors, and the self-hosted runner is isolated from other repositories'
+# runners (its own user and directory).
 #
 # Action pins are commit SHAs; the trailing comment names the release.
 

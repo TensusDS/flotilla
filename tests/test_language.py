@@ -31,3 +31,9 @@ def test_this_repository_is_clean():
     done = subprocess.run([sys.executable, str(ROOT / "tools" / "check_no_cyrillic.py")],
                           capture_output=True, text=True)
     assert done.returncode == 0, done.stdout + done.stderr
+
+
+def test_repository_tracks_no_bytecode():
+    done = subprocess.run(["git", "-C", str(ROOT), "ls-files"], capture_output=True, text=True, check=True)
+    tracked = [p for p in done.stdout.splitlines() if p.endswith(".pyc") or "__pycache__" in p]
+    assert tracked == []

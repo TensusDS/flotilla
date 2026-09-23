@@ -592,7 +592,7 @@ row's reservation is refused; appends always pass); git `pre-push` second barrie
 | layer | how | when |
 |---|---|---|
 | code | pytest (ported suites) | every commit, CI |
-| platforms | CI on the self-hosted Linux runner × Python 3.11 / 3.12 / 3.13 (via `uv`); fork pull requests run on a hosted runner, never on ours | every commit — macOS is claimed, not verified, until a Mac runner exists |
+| platforms | CI on the self-hosted Linux runner × Python 3.11 / 3.12 / 3.13 (via `uv`); fork pull requests are *routed* to a hosted runner, but routing is not a boundary (a pull request supplies its own workflow file): the boundary is approval for outside contributors plus a runner isolated from other repositories' runners | every commit — macOS is claimed, not verified, until a Mac runner exists |
 | seams | `event_schema` golden generated from code, read by docs and example scripts; `claude agents --json` parsing tested on **recorded** outputs of several Claude Code versions | every commit |
 | guards | each seen red by an injected regression of two shapes: removal (is it alive) and a plausible neighbour (is it precise) | when the guard is written |
 | plugin | `claude plugin validate` | every commit |
