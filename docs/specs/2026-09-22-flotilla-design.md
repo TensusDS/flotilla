@@ -69,7 +69,8 @@ resources (trunk, version, CI queue), per-session worktrees, and state that surv
 - **Platforms:** Linux and macOS, both in CI (GitHub-hosted runners; free for a public repository). Native
   Windows is explicitly unsupported and refuses out loud.
 - **Runtime:** Python ≥ 3.11 (stdlib only; `tomllib` for TOML). Onboarding verifies `python3` is a real 3.11+
-  (the macOS Command Line Tools python is believed to be 3.9 — unverified on a live Mac).
+  (measured 2026-09-23 on GitHub's `macos-latest`: `/usr/bin/python3` is 3.9.6 from Xcode 26.6; a hook found
+  through that interpreter stays silent outside an onboarded project and names the requirement inside one).
 - **Claude Code:** a minimum version is enforced by `flotilla doctor` (cross-session messaging needs 2.1.224+ per
   research; the exact floor is set in the foundation spec).
 - **Language:** English everywhere in the repository (section 12).

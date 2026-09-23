@@ -9,9 +9,12 @@ ENTRY = ROOT / "scripts" / "flotilla"
 
 
 def hook(cwd, env_state):
-    return subprocess.run([str(ENTRY), "hook", "session-start"], input=json.dumps({"cwd": str(cwd)}),
-                          capture_output=True, text=True, env={"PATH": "/usr/bin:/bin",
-                                                               "FLOTILLA_STATE_DIR": str(env_state)})
+    # Run the entry with THIS interpreter. Through the shebang with a bare PATH, macOS finds its
+    # system python3 (3.9.6 on GitHub's macos-latest, 2026-09-23), and the test would measure the
+    # interpreter gate instead of the hook.
+    return subprocess.run([sys.executable, str(ENTRY), "hook", "session-start"],
+                          input=json.dumps({"cwd": str(cwd)}), capture_output=True, text=True,
+                          env={"PATH": "/usr/bin:/bin", "FLOTILLA_STATE_DIR": str(env_state)})
 
 
 def test_inactive_project_is_silent(tmp_path):
