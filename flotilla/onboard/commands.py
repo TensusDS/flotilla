@@ -13,6 +13,7 @@ from flotilla.onboard.detect import detect
 from flotilla.onboard.firstrun import load_measurements, run_tier, save_measurements
 from flotilla.onboard.profile import ProfileExists, ProfileUnsafe, build_profile, write_profile
 from flotilla.onboard.questions import AnswerError, all_questions, next_questions, validate_answer
+from flotilla.posts import PostError, install_templates
 
 
 def _machine() -> int:
@@ -57,8 +58,14 @@ def _write(det: dict, given: dict, args, state: Path) -> int:
     except (ProfileExists, ProfileUnsafe) as err:
         print(err)
         return 2
+    try:
+        installed = install_templates(root)
+    except PostError as err:
+        print(f"profile written, but the posts were not: {err}")
+        return 2
     store.reset(state, det["repo_key"])
     print(f"project profile written: {path}")
+    print(f"posts: {len(installed)} template(s) installed in .flotilla/posts/ (existing posts are kept)")
     return 0
 
 
