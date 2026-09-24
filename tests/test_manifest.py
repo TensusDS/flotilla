@@ -5,10 +5,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def test_manifest_installs_disabled_under_the_immutable_slug():
+def test_manifest_loads_enabled_under_the_immutable_slug():
+    # defaultEnabled false keeps the plugin out of the session entirely, --plugin-dir included (measured
+    # 2026-09-24: no flotilla commands, not in the session's plugin list). "Installed is not active" is
+    # held at the project level instead: hooks stay silent and nothing is written until onboarding.
     manifest = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
     assert manifest["name"] == "flotilla"
-    assert manifest["defaultEnabled"] is False
+    assert manifest.get("defaultEnabled", True) is True
 
 
 def test_manifest_version_matches_the_package():

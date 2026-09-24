@@ -2,7 +2,14 @@
   "name": "flotilla",
   "version": "0.1.0",
   "description": "Coordinate independent peer Claude Code sessions: named posts, per-session worktrees, an evidence-backed work ledger, a machine lane and command guards.",
-  "author": { "name": "TensusDS" },
-  "keywords": ["multi-session", "worktree", "code-review", "orchestration", "ledger"],
-  "defaultEnabled": false
+  "author": {
+    "name": "TensusDS"
+  },
+  "keywords": [
+    "multi-session",
+    "worktree",
+    "code-review",
+    "orchestration",
+    "ledger"
+  ]
 }

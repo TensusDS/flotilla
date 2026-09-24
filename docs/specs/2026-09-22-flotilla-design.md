@@ -47,7 +47,10 @@ resources (trunk, version, CI queue), per-session worktrees, and state that surv
    A watcher that writes a file nobody opens is silent.
 5. **Two answers at every fork:** "works the same" or "refuses out loud, naming the cause and the fix". An
    instrument that could not ask says "unknown", never "no" and never "green".
-6. **Installed ≠ active.** Nothing happens in a project until it is onboarded.
+6. **Installed ≠ active.** Nothing happens in a project until it is onboarded: hooks exit silently without
+   `.flotilla/project.toml`, nothing is written to a project without `onboard write`, and person-only commands stay
+   out of the model's context. The plugin itself loads enabled: `defaultEnabled: false` keeps it out of the
+   session entirely, `--plugin-dir` included (measured 2026-09-24), which hides even `/flotilla:onboard`.
 7. **Supported surfaces first.** `claude agents --json`, hooks input, `claude plugin` commands. Internal files
    (`~/.claude/sessions/`, transcripts) are never parsed.
 
@@ -83,7 +86,7 @@ resources (trunk, version, CI queue), per-session worktrees, and state that surv
 
 ```
 PLUGIN   (ships with the install; identical for everyone; its directory changes on every update)
-├── .claude-plugin/plugin.json         defaultEnabled: false
+├── .claude-plugin/plugin.json         loads enabled; activation is per project (principle 6)
 ├── skills/flotilla/SKILL.md           the arrangement: census, claim, handover, shipping
 │   └── references/                    why.md · macos.md · linux.md · posts.md
 ├── skills/<command>/SKILL.md         one per command of section 3.4 (onboard, doctor, check, ...)
