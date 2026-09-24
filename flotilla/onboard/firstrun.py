@@ -22,6 +22,7 @@ from flotilla.onboard.tomlw import render_toml
 
 _SUMMARY = re.compile(r"\b\d+ passed\b|^test result: |^ok\s|\bTests?:\s+\d+")
 TAIL_LINES = 20
+ESCAPE_GRACE = 3
 
 
 @dataclass(frozen=True)
@@ -44,13 +45,22 @@ def _summary(text: str) -> str | None:
 
 def run_tier(name: str, command: str, cwd: Path, *, timeout: float) -> TierRun:
     started = time.monotonic()
-    proc = subprocess.Popen(["/bin/sh", "-c", command], cwd=cwd, stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT, text=True, start_new_session=True)
+    # stdin is closed so a tier that reads it gets end-of-file instead of waiting out the timeout; output
+    # that is not UTF-8 is replaced, never a crash.
+    proc = subprocess.Popen(["/bin/sh", "-c", command], cwd=cwd, stdin=subprocess.DEVNULL,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                            encoding="utf-8", errors="replace", start_new_session=True)
     try:
         output, _ = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
         os.killpg(proc.pid, signal.SIGKILL)
-        output, _ = proc.communicate()
+        try:
+            output, _ = proc.communicate(timeout=ESCAPE_GRACE)
+        except subprocess.TimeoutExpired:
+            # A descendant left the process group (setsid) and still holds the pipe: stop listening.
+            proc.stdout.close()
+            proc.wait()
+            output = ""
         return TierRun(name, "timed-out", None, None, _tail(output or ""))
     seconds = round(time.monotonic() - started, 2)
     output = output or ""
