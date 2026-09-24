@@ -105,3 +105,40 @@ def test_composition_suggestion():
     assert qs.suggest_composition({"review": "every"}) == {"main": 1, "review": 1}
     assert qs.suggest_composition({"review": "none"}) == {"main": 1}
     assert qs.suggest_composition({"review": "every", "deploy": "web"}) == {"main": 1, "review": 1, "judge": 1}
+
+
+def test_no_guards_is_an_answer():
+    guards = next(q for q in qs.all_questions(detection(), {}) if q["id"] == "guards")
+    assert qs.validate_answer(guards, ["none"]) == ["none"]
+
+
+def test_no_remote_asks_no_ci_question():
+    det = detection(remote=False)
+    assert "ci" not in ids(qs.all_questions(det, {}))
+
+
+def test_an_option_label_is_not_a_typed_value():
+    tracker = next(q for q in qs.all_questions(detection(), {}) if q["id"] == "tracker")
+    with pytest.raises(qs.AnswerError, match="label"):
+        qs.validate_answer(tracker, ["GitHub Issues"])
+    tiers = next(q for q in qs.all_questions(detection(tests=[]), {}) if q["id"] == "tiers")
+    with pytest.raises(qs.AnswerError, match="label"):
+        qs.validate_answer(tiers, ["Add them later"])
+
+
+def test_a_typed_tracker_pattern_must_compile():
+    tracker = next(q for q in qs.all_questions(detection(), {}) if q["id"] == "tracker")
+    with pytest.raises(qs.AnswerError, match="regular expression"):
+        qs.validate_answer(tracker, ["[unclosed"])
+    assert qs.validate_answer(tracker, ["^CURVE-\\d+$"]) == "^CURVE-\\d+$"
+
+
+def test_own_register_needs_a_typed_pattern():
+    tracker = next(q for q in qs.all_questions(detection(), {}) if q["id"] == "tracker")
+    with pytest.raises(qs.AnswerError, match="pattern"):
+        qs.validate_answer(tracker, ["own-register"])
+
+
+def test_stale_answers_are_dropped():
+    answers = {"flow": "local", "merge_auth": "sender", "review": "every"}
+    assert qs.effective_answers(detection(), answers) == {"flow": "local", "review": "every"}

@@ -67,7 +67,8 @@ def test_typed_tracker_pattern_is_kept(tmp_path):
 
 
 def test_deployment_adds_the_judge_and_a_deploy_section(tmp_path):
-    data = build_profile(detection(tmp_path), {**BASE_ANSWERS, "deploy": "web"})
+    det = detection(tmp_path, signals={"multi_repo": [], "deployment": ["deploy"], "shared_files": [], "sequential": []})
+    data = build_profile(det, {**BASE_ANSWERS, "deploy": "web"})
     assert data["fleet"]["default"] == {"main": 1, "review": 1, "judge": 1}
     assert data["deploy"] == {"surface": "web", "revision_command": ""}
     assert data["judge"] == {"required": False}
@@ -84,3 +85,59 @@ def test_force_overwrites(tmp_path):
     write_profile(tmp_path, build_profile(detection(tmp_path), {**BASE_ANSWERS, "review": "none"}), force=True)
     written = tomllib.loads((tmp_path / ".flotilla" / "project.toml").read_text(encoding="utf-8"))
     assert written["review"] == {"depth": "none"}
+
+
+def test_no_guards_turns_every_guard_off(tmp_path):
+    data = build_profile(detection(tmp_path), {**BASE_ANSWERS, "guards": ["none"]})
+    assert data["guards"] == {"revert": False, "line_edit": False, "push_receipt": False}
+
+
+def test_no_remote_writes_no_ci_even_with_workflows(tmp_path):
+    answers = {k: v for k, v in BASE_ANSWERS.items() if k not in ("flow", "merge_auth")}
+    data = build_profile(detection(tmp_path, remote=False), answers)
+    assert data["ci"] == {"provider": "none"} and data["flow"] == {"mode": "local"}
+
+
+def test_a_stale_dependent_answer_does_not_leak(tmp_path):
+    data = build_profile(detection(tmp_path), {**BASE_ANSWERS, "flow": "local", "merge_auth": "sender"})
+    assert data["flow"] == {"mode": "local"} and "pr" not in data
+
+
+def test_sibling_repositories_are_recorded_either_way(tmp_path):
+    det = detection(tmp_path, signals={"multi_repo": ["../core"], "deployment": [], "shared_files": [], "sequential": []})
+    first = build_profile(det, {**BASE_ANSWERS, "repos": "this-first"})["repos"]
+    assert first == [{"name": tmp_path.name, "path": ".", "push_after": []},
+                     {"name": "core", "path": "../core", "push_after": [tmp_path.name]}]
+    after = build_profile(det, {**BASE_ANSWERS, "repos": "siblings-first"})["repos"]
+    assert after == [{"name": tmp_path.name, "path": ".", "push_after": ["core"]},
+                     {"name": "core", "path": "../core", "push_after": []}]
+
+
+def test_unknown_required_jobs_are_left_out_not_empty(tmp_path):
+    det = detection(tmp_path, ci={"provider": "github", "jobs_source": "unknown: no job ids", "fingerprint": "sha256:x"})
+    ci = build_profile(det, BASE_ANSWERS)["ci"]
+    assert "required_jobs" not in ci and ci["jobs_source"].startswith("unknown")
+
+
+def test_a_symlinked_profile_is_refused(tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    root = tmp_path / "repo"
+    (root / ".flotilla").mkdir(parents=True)
+    (root / ".flotilla" / "project.toml").symlink_to(outside / "planted.txt")
+    from flotilla.onboard.profile import ProfileUnsafe
+    with pytest.raises(ProfileUnsafe, match="symlink"):
+        write_profile(root, build_profile(detection(root), BASE_ANSWERS), force=True)
+    assert not (outside / "planted.txt").exists()
+
+
+def test_a_symlinked_flotilla_directory_is_refused(tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / ".flotilla").symlink_to(outside)
+    from flotilla.onboard.profile import ProfileUnsafe
+    with pytest.raises(ProfileUnsafe, match="symlink"):
+        write_profile(root, build_profile(detection(root), BASE_ANSWERS))
+    assert not (outside / "project.toml").exists()

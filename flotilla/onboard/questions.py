@@ -8,6 +8,8 @@ question fits AskUserQuestion: a header of at most 12 characters and 2 to 4 opti
 
 from __future__ import annotations
 
+import re
+
 MAX_PER_ROUND = 4
 
 
@@ -52,14 +54,15 @@ def all_questions(det: dict, answers: dict) -> list[dict]:
         ("rules", "Allow rules exist", "Your settings already allow the commands the fleet needs."),
         ("auto", "Auto mode", "Sessions run in auto mode and the classifier decides."),
     ]))
-    ci_options = []
-    if ci.get("provider") == "github":
-        ci_options.append(("github", "GitHub Actions (detected)", "Required jobs are checked by name after a push."))
-    ci_options += [
-        ("command", "Own gate command", "A command that answers 0 green, 1 red, 2 pending for a revision."),
-        ("none", "No CI", "Only the local push receipt stands behind shipped, and the batch says so."),
-    ]
-    out.append(_q("ci", "CI", "Which CI stands behind shipped?", ci_options))
+    if remote:  # without a remote nothing is ever pushed, so no CI can stand behind shipped (spec 4.6)
+        ci_options = []
+        if ci.get("provider") == "github":
+            ci_options.append(("github", "GitHub Actions (detected)", "Required jobs are checked by name after a push."))
+        ci_options += [
+            ("command", "Own gate command", "A command that answers 0 green, 1 red, 2 pending for a revision."),
+            ("none", "No CI", "Only the local push receipt stands behind shipped, and the batch says so."),
+        ]
+        out.append(_q("ci", "CI", "Which CI stands behind shipped?", ci_options))
     if answers.get("ci") in ("github", "command"):
         out.append(_q("ci_where", "CI runs on", "Where does that CI run?", [
             ("cloud", "Hosted runners", "CI runs elsewhere; it does not compete for this machine."),
@@ -123,6 +126,7 @@ def all_questions(det: dict, answers: dict) -> list[dict]:
         ("revert", "Revert guard", "Refuses a checkout, reset or clean that would destroy uncommitted work."),
         ("line_edit", "Line-number edit", "Refuses in-place edits addressed by line number, which go stale silently."),
         ("push_receipt", "Push receipt", "Refuses a push or merge without a green run over that exact revision."),
+        ("none", "No guards", "Every guard stays off; turn them on later in project.toml."),
     ], multi=True))
     out.append(_q("model", "Models", "Which model runs each post?", [
         ("one", "One for all", "Every session uses the model you launch Claude Code with."),
@@ -135,14 +139,39 @@ def next_questions(det: dict, answers: dict, limit: int = MAX_PER_ROUND) -> list
     return [q for q in all_questions(det, answers) if q["id"] not in answers][:limit]
 
 
+def effective_answers(det: dict, answers: dict) -> dict:
+    """Only the answers whose question still applies. An answer to a question that a later change made
+    irrelevant (merge_auth after flow became local) is dropped, never carried into the profile."""
+    kept = dict(answers)
+    while True:
+        applicable = {q["id"] for q in all_questions(det, kept)}
+        pruned = {key: value for key, value in kept.items() if key in applicable}
+        if pruned == kept:
+            return kept
+        kept = pruned
+
+
 def validate_answer(question: dict, values: list[str]):
     allowed = [o["value"] for o in question["options"]]
+    labels = {o["label"].casefold(): o["value"] for o in question["options"]}
     values = [v.strip() for v in values if v and v.strip()]
     if not values:
         raise AnswerError(f"{question['id']}: an answer is required")
     for value in values:
-        if value not in allowed and not question["free_text"]:
+        if value in allowed:
+            continue
+        if value.casefold() in labels:
+            raise AnswerError(f"{question['id']}: {value!r} is the label of an option; pass its value "
+                              f"`{labels[value.casefold()]}`")
+        if not question["free_text"]:
             raise AnswerError(f"{question['id']}: {value!r} is not one of {', '.join(allowed)}")
+        if question["id"] == "tracker":
+            try:
+                re.compile(value)
+            except re.error as err:
+                raise AnswerError(f"tracker: {value!r} is not a valid regular expression ({err})") from err
+    if question["id"] == "tracker" and values == ["own-register"]:
+        raise AnswerError("tracker: for your own register, type its id pattern (a regular expression) as the answer")
     if question["multi_select"]:
         return values
     if len(values) != 1:
