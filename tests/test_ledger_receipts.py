@@ -63,3 +63,14 @@ def test_a_receipt_describes_one_revision(tmp_path):
     ok, why = receipts.check_receipt(state=tmp_path / "s", repo_key=KEY, sha=later, purpose="handover",
                                      profile=profile(GREEN))
     assert not ok and "no handover receipt" in why
+
+
+def test_a_duplicate_tier_name_cannot_hide_a_red_run(tmp_path):
+    root = repo_with_origin(tmp_path)
+    sha = git(root, "rev-parse", "HEAD")
+    both = {"schema": 1, "tests": {"tier": [
+        {"name": "unit", "command": "exit 1", "required_for": ["handover"]},
+        {"name": "unit", "command": GREEN, "required_for": ["handover"]}]}}
+    receipts.run_receipt(root, state=tmp_path / "s", repo_key=KEY, purpose="handover", profile=both, timeout=60)
+    ok, why = receipts.check_receipt(state=tmp_path / "s", repo_key=KEY, sha=sha, purpose="handover", profile=both)
+    assert not ok and "unit" in why

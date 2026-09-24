@@ -92,3 +92,11 @@ def test_only_the_owner_or_the_reader_waits(world):
     claimed(root, ledger)
     with pytest.raises(MoveRefused, match="owner"):
         handover.wait(ledger, actor(ledger, "minor session 1"), "feat/x", on="Max", why="x")
+
+
+def test_a_state_change_ends_a_recorded_wait(world):
+    root, ledger = world
+    claimed(root, ledger)
+    handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", on="Max", why="needs a decision")
+    row = handover.hand(ledger, actor(ledger, "main session 1"), "feat/x")
+    assert (row.waiting_on, row.note) == ("", "")

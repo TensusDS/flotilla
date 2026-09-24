@@ -50,8 +50,8 @@ def run_receipt(tree: Path, *, state: Path, repo_key: str, purpose: str, profile
     tiers = tiers_for(profile, purpose)
     runs = [run_tier(tier["name"], tier["command"], Path(tree), timeout=timeout) for tier in tiers]
     receipt = {"sha": sha, "purpose": purpose, "at": now_iso(), "tiers_fingerprint": tiers_fingerprint(tiers),
-               "tiers": {r.name: {"status": r.status, "summary": r.summary or "", "seconds": r.seconds}
-                         for r in runs}}
+               "tiers": [{"name": r.name, "status": r.status, "summary": r.summary or "", "seconds": r.seconds}
+                         for r in runs]}
     path = _path(state, repo_key, sha, purpose)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(receipt, indent=2, sort_keys=True), encoding="utf-8")
@@ -71,7 +71,10 @@ def check_receipt(*, state: Path, repo_key: str, sha: str, purpose: str, profile
         return False, f"the {purpose} receipt over {sha[:7]} cannot be read; run it again"
     if receipt.get("tiers_fingerprint") != tiers_fingerprint(tiers):
         return False, f"the {purpose} tiers changed since the receipt over {sha[:7]}; run it again"
-    red = sorted(name for name, tier in (receipt.get("tiers") or {}).items() if tier.get("status") != "green")
+    ran = receipt.get("tiers")
+    if not isinstance(ran, list) or len(ran) != len(tiers):
+        return False, f"the {purpose} receipt over {sha[:7]} does not list every tier; run it again"
+    red = sorted({tier.get("name", "?") for tier in ran if tier.get("status") != "green"})
     if red:
         return False, f"the {purpose} receipt over {sha[:7]} is not green: {', '.join(red)}"
     return True, f"{purpose} receipt green over {sha[:7]}"

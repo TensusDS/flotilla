@@ -28,6 +28,7 @@ def subcommands(parser):
 
 def onboarded(tmp_path, monkeypatch, profile):
     monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setenv("FLOTILLA_NO_CENSUS", "1")
     root = repo_with_origin(tmp_path)
     (root / ".flotilla").mkdir()
     (root / ".flotilla" / "project.toml").write_text(render_toml(profile), encoding="utf-8")
@@ -67,6 +68,7 @@ def test_a_refusal_exits_2_with_the_reason(tmp_path, monkeypatch):
 
 def test_outside_an_onboarded_project(tmp_path, monkeypatch):
     monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setenv("FLOTILLA_NO_CENSUS", "1")
     root = repo_with_origin(tmp_path)
     code, out = run_cli("work", "claim", "feat/x", "--root", str(root), "--as", "main session 1")
     assert code == 2 and "not onboarded" in out
@@ -89,8 +91,11 @@ def test_a_broken_post_file_refuses_by_name(tmp_path, monkeypatch):
     root = onboarded(tmp_path, monkeypatch, PLAIN)
     post = root / ".flotilla" / "posts" / "main.md"
     post.write_text(post.read_text(encoding="utf-8").replace("may: [", "may: [merge, "), encoding="utf-8")
+    git(root, "add", ".flotilla")
+    commit(root, "a broken post")
+    git(root, "push", "-q", "origin", "main")
     code, out = run_cli("work", "claim", "feat/y", "--root", str(root), "--as", "main session 1")
-    assert code == 2 and "main.md" in out and "merge" in out
+    assert code == 2 and "origin/main:.flotilla/posts/main.md" in out and "merge" in out
 
 
 def test_every_cli_call_in_the_post_templates_exists():
@@ -100,3 +105,32 @@ def test_every_cli_call_in_the_post_templates_exists():
             assert command in top, f"{path.name}: `flotilla {command}`"
             if sub and command in ("work", "tree", "receipt", "onboard"):
                 assert sub in subcommands(top[command]), f"{path.name}: `flotilla {command} {sub}`"
+
+
+def test_the_rules_come_from_trunk_not_from_the_callers_tree(tmp_path, monkeypatch):
+    profile = {**PLAIN, "tests": {"tier": [{"name": "unit", "command": GREEN, "required_for": ["handover"]}]}}
+    root = onboarded(tmp_path, monkeypatch, profile)
+    tree = tmp_path / "app-main-1"
+    assert run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")[0] == 0
+    commit(tree, "work", "work.txt")
+    (tree / ".flotilla" / "project.toml").write_text(render_toml(PLAIN), encoding="utf-8")   # drop the tier, uncommitted
+    post = tree / ".flotilla" / "posts" / "main.md"
+    post.write_text(post.read_text(encoding="utf-8").replace("may: [", "may: [accept, "), encoding="utf-8")
+    code, out = run_cli("work", "hand", "feat/x", "--root", str(tree), "--as", "main session 1")
+    assert code == 2 and "receipt" in out
+
+
+def test_the_census_switch_is_recorded_in_the_event(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    assert run_cli("work", "claim", "feat/x", "--root", str(root), "--as", "main session 1")[0] == 0
+    log = next((tmp_path / "state" / "ledger").glob("*.jsonl")).read_text(encoding="utf-8")
+    assert "FLOTILLA_NO_CENSUS" in log
+
+
+def test_a_damaged_log_is_refused_not_a_traceback(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    assert run_cli("work", "claim", "feat/x", "--root", str(root), "--as", "main session 1")[0] == 0
+    log = next((tmp_path / "state" / "ledger").glob("*.jsonl"))
+    log.write_text("not json\n" + log.read_text(encoding="utf-8"), encoding="utf-8")
+    code, out = run_cli("work", "show", "feat/x", "--root", str(root))
+    assert code == 2 and "refused" in out

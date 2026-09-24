@@ -60,4 +60,4 @@ def make_ledger(root, state, profile=None, live=DEFAULT_LIVE, posts=None, census
 
 def actor(ledger, name):
     from flotilla.ledger.actor import resolve_actor
-    return resolve_actor(ledger.posts, as_name=name)
+    return resolve_actor(ledger.posts, as_name=name, census=lambda: [])

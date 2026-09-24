@@ -50,3 +50,14 @@ def test_a_duplicate_ref_is_refused_before_cutting(tmp_path):
     with pytest.raises(MoveRefused, match="LIN-1"):
         tree_mod.cut(ledger, actor(ledger, "minor session 1"), "feat/b", target, ref="LIN-1")
     assert not target.exists() and gitq.branch_tip(root, "feat/b") is None
+
+
+def test_a_failed_worktree_add_leaves_no_branch_behind(tmp_path):
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state")
+    blocker = tmp_path / "a-file"
+    blocker.write_text("x", encoding="utf-8")
+    with pytest.raises(MoveRefused, match="worktree add failed"):
+        tree_mod.cut(ledger, actor(ledger, "main session 1"), "feat/x", blocker / "tree")
+    assert gitq.branch_tip(root, "feat/x") is None
+    assert ledger.rows() == {}

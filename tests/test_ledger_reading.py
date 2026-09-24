@@ -157,3 +157,10 @@ def test_moved_after_a_take_needs_the_readers_agreement(world):
         handover.moved(ledger, actor(ledger, "main session 1"), "feat/x", tip=new)
     row = handover.moved(ledger, actor(ledger, "main session 1"), "feat/x", tip=new, agreed_by="review session 1")
     assert row.tip == new and row.reader == "review session 1"
+
+
+def test_a_return_keeps_its_reason_on_the_row(world):
+    root, ledger = world
+    handed(root, ledger)
+    row = reading.fix(ledger, actor(ledger, "review session 1"), "feat/x", why="no test for an empty file")
+    assert row.why == "no test for an empty file"

@@ -63,7 +63,8 @@ def fix(ledger: Ledger, actor: Actor, branch: str, *, why: str) -> Row:
         _not_the_author(row, actor, "returns")
         _not_assigned_elsewhere(row, actor)
         state = s.next_state(row, "fix")
-        return s.append(actor, row.id, "fix", state, fields={"reader": actor.name, "taken": True, "verdict": ""},
+        return s.append(actor, row.id, "fix", state,
+                        fields={"reader": actor.name, "taken": True, "verdict": "", "why": why.strip()},
                         evidence={"why": why.strip()})
 
 

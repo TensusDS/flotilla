@@ -14,7 +14,7 @@ def session(name, pid):
 
 
 def test_as_name_resolves_its_post():
-    found = resolve_actor(POSTS, as_name="review session 2")
+    found = resolve_actor(POSTS, as_name="review session 2", census=lambda: [])
     assert found.post.name == "reviewer" and found.via == "as"
 
 
@@ -43,13 +43,32 @@ def test_a_project_without_posts_refuses_every_move():
 
 def test_a_name_matching_no_post_is_refused():
     with pytest.raises(MoveRefused, match="matches no post"):
-        require_may(resolve_actor(POSTS, as_name="Max"), "claim", POSTS)
+        require_may(resolve_actor(POSTS, as_name="Max", census=lambda: []), "claim", POSTS)
 
 
 def test_a_move_the_post_may_not_make_names_who_may():
     with pytest.raises(MoveRefused, match=r"may not `accept`.*reviewer"):
-        require_may(resolve_actor(POSTS, as_name="main session 1"), "accept", POSTS)
+        require_may(resolve_actor(POSTS, as_name="main session 1", census=lambda: []), "accept", POSTS)
 
 
 def test_an_allowed_move_passes():
-    require_may(resolve_actor(POSTS, as_name="review session 1"), "accept", POSTS)
+    require_may(resolve_actor(POSTS, as_name="review session 1", census=lambda: []), "accept", POSTS)
+
+
+def test_a_live_session_cannot_act_under_another_name():
+    with pytest.raises(ActorUnknown, match="cannot act as"):
+        resolve_actor(POSTS, as_name="review session 1", census=lambda: [session("main session 1", 20)],
+                      parent_of={40: 20, 20: 1}.get, start_pid=40)
+
+
+def test_as_records_who_really_called():
+    outside = resolve_actor(POSTS, as_name="review session 1", census=lambda: [session("elsewhere", 99)],
+                            parent_of={40: 1}.get, start_pid=40)
+    assert outside.caller.startswith("none")
+
+    def broken():
+        raise CensusUnavailable("`claude` is not on PATH")
+    assert resolve_actor(POSTS, as_name="review session 1", census=broken).caller.startswith("unknown")
+    same = resolve_actor(POSTS, as_name="main session 1", census=lambda: [session("main session 1", 20)],
+                         parent_of={40: 20, 20: 1}.get, start_pid=40)
+    assert same.caller == "main session 1"

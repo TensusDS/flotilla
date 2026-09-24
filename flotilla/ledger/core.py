@@ -22,7 +22,7 @@ from flotilla.posts import PostError, post_for_session
 
 class Ledger:
     def __init__(self, *, store, root, repo_key: str, profile: dict, posts: dict, state_dir, run=subprocess.run,
-                 census=None, clock=None, version: str = __version__):
+                 census=None, clock=None, version: str = __version__, rules: str = ""):
         self.store = store
         self.root = Path(root)
         self.repo_key = repo_key
@@ -33,6 +33,7 @@ class Ledger:
         self.census = census
         self.clock = clock
         self.version = version
+        self.rules = rules
 
     @property
     def trunk(self) -> str:
@@ -84,9 +85,15 @@ class LedgerSession:
 
     def append(self, actor: Actor, row_id: str, move: str, state: str, *, fields: dict | None = None,
                evidence: dict | None = None) -> Row:
+        fields = dict(fields or {})
+        before = self.rows.get(row_id)
+        if before is not None and before.state != state and (before.waiting_on or before.note):
+            fields.setdefault("waiting_on", "")   # a wait belongs to the state it was recorded in
+            fields.setdefault("note", "")
         event = make_event(row=row_id, move=move, state=state, by=actor.name,
-                           post=actor.post.name if actor.post else "", via=actor.via, fields=fields or {},
-                           evidence=evidence or {}, at=self.ledger.now(), plugin=self.ledger.version)
+                           post=actor.post.name if actor.post else "", via=actor.via, fields=fields,
+                           evidence=evidence or {}, at=self.ledger.now(), plugin=self.ledger.version,
+                           caller=actor.caller, rules=self.ledger.rules)
         self.tx.append(event)
         self.rows = fold(self.tx.read().records)
         return self.rows[row_id]
@@ -120,9 +127,14 @@ def claim(ledger: Ledger, actor: Actor, branch: str, *, tree: str = "", ref: str
         ids = check_claim(s.rows, branch, ref=ref, also=also, requires=requires)
         if base is None:
             base = gitq.fork_point(ledger.root, branch, ledger.trunk, run=ledger.run) or ""
-        fields = {"branch": branch, "owner": actor.name, "tree": tree, "base": base, "ref": ref, "requires": ids}
-        return s.append(actor, next_row_id(s.rows), "claim", "claimed", fields=fields,
-                        evidence={"also": also} if also else {})
+        return append_claim(s, actor, branch, tree=tree, base=base, ref=ref, ids=ids, also=also)
+
+
+def append_claim(s: LedgerSession, actor: Actor, branch: str, *, tree: str, base: str, ref: str, ids: list,
+                 also: str) -> Row:
+    fields = {"branch": branch, "owner": actor.name, "tree": tree, "base": base, "ref": ref, "requires": ids}
+    return s.append(actor, next_row_id(s.rows), "claim", "claimed", fields=fields,
+                    evidence={"also": also} if also else {})
 
 
 def reserve(ledger: Ledger, actor: Actor, branch: str, *, tree: str = "") -> Row:
@@ -146,6 +158,6 @@ def release(ledger: Ledger, actor: Actor, branch: str, *, why: str) -> Row:
     with ledger.session() as s:
         row = s.need_open_row(branch)
         state = s.next_state(row, "release")
-        if row.owner != actor.name and current is not None and row.owner != current.owner:
-            raise MoveRefused(f"`{branch}` changed owner while this move was checked; run it again")
+        if row.owner != actor.name and (current is None or row.id != current.id):
+            raise MoveRefused(f"`{branch}` changed while this move was checked; run it again")
         return s.append(actor, row.id, "release", state, evidence={"why": why.strip()})

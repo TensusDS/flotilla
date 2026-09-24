@@ -1,8 +1,8 @@
 """Ledger events and the rows they fold into.
 
-An event is one move: which row, which move, the state it leaves the row in, who made it (name, post, and whether
-the name came from the census or from `--as`), the row fields it sets, its evidence, and the plugin version that
-wrote it. The current state of a row is the fold of its events; nothing else is stored, so history is never lost.
+An event is one move: which row, which move, the state it leaves the row in, who made it (name, post, whether
+the name came from the census or from `--as`, and who really called), the rules it was checked against, the row
+fields it sets, its evidence, and the plugin version that wrote it. The current state of a row is the fold of its events; nothing else is stored, so history is never lost.
 """
 
 from __future__ import annotations
@@ -54,14 +54,15 @@ def now_iso(now: dt.datetime | None = None) -> str:
 
 
 def make_event(*, row: str, move: str, state: str, by: str, post: str, via: str, fields: dict,
-               evidence: dict, at: str, plugin: str) -> dict:
+               evidence: dict, at: str, plugin: str, caller: str = "", rules: str = "") -> dict:
     unknown = sorted(set(fields) - set(ROW_FIELDS))
     if unknown:
         raise ValueError(f"unknown row fields: {', '.join(unknown)}")
     if state not in STATES:
         raise ValueError(f"unknown state: {state}")
     return {"v": EVENT_VERSION, "at": at, "row": row, "move": move, "state": state, "by": by, "post": post,
-            "via": via, "fields": dict(fields), "evidence": dict(evidence), "plugin": plugin}
+            "via": via, "caller": caller, "rules": rules, "fields": dict(fields), "evidence": dict(evidence),
+            "plugin": plugin}
 
 
 def fold(records) -> dict[str, Row]:
@@ -77,6 +78,7 @@ def fold(records) -> dict[str, Row]:
         row.state = event["state"]
         row.updated_at = event["at"]
         row.history.append({"at": event["at"], "move": event["move"], "by": event["by"],
+                            "caller": event.get("caller", ""),
                             "state": event["state"], "evidence": event.get("evidence") or {}})
         rows[row.id] = row
     return rows

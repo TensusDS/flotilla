@@ -142,3 +142,18 @@ def test_two_claims_at_once_one_wins(tmp_path):
     go.touch()
     results = sorted(proc.communicate(timeout=120)[0].strip() for proc in procs)
     assert results == ["refused"] * (len(names) - 1) + ["won"]
+
+
+def test_every_event_records_who_really_called(world):
+    root, ledger = world
+    core.claim(ledger, actor(ledger, "main session 1"), "feat/x")
+    event = ledger.store.read(ledger.repo_key).records[-1]
+    assert event["caller"].startswith("none") and event["via"] == "as"
+
+
+def test_a_release_racing_a_new_claim_does_not_take_a_live_owners_row(world, monkeypatch):
+    root, ledger = world
+    core.claim(ledger, actor(ledger, "main session 1"), "feat/x")
+    monkeypatch.setattr(ledger, "rows", lambda: {})   # the unlocked pre-check saw no row yet
+    with pytest.raises(MoveRefused, match="run it again"):
+        core.release(ledger, actor(ledger, "orchestrator 1"), "feat/x", why="tidy")
