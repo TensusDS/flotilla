@@ -203,8 +203,10 @@ merge methods allowed, OS and tools.
    version and whether `claude agents --json` answers, process-start method (`procfs` or `ps`), `timeout` /
    `gtimeout` / none, memory and cores. Written to `machine.toml` as capabilities.
 2. **Project** (once per repository; re-run with `flotilla onboard --check`): detection, then the questionnaire.
-3. **First run:** every test tier runs once through the lane; `measured_seconds` is recorded. A red tier is **not**
-   recorded as working — onboarding shows the tail and asks whether the command or the project is wrong.
+3. **First run:** every chosen test tier runs once (directly, with a timeout that kills its whole process group;
+   through the lane once the lane exists). Its time is a **machine** fact and is saved in the state directory
+   (`measurements/<repo-key>.toml`), never in `project.toml`. A tier that is not green is **not** recorded as
+   working — onboarding shows the tail and asks whether the command or the project is wrong.
 4. **Composition:** suggested by size — start with main 1 + reviewer 1; add orchestrator 1 + sender 1 once the
    fleet exceeds three sessions; acceptance judge offered when a deployment is detected.
 5. **Guards and git hooks:** each named in one line (what it refuses and why), each enabled by its own "yes".
@@ -259,13 +261,11 @@ push_after = []
 name = "unit"
 command = "uv run pytest -q tests/unit"
 required_for = ["handover", "push"]
-measured_seconds = 212
 
 [[tests.tier]]
 name = "e2e"
 command = "uv run pytest -q tests/e2e"
 required_for = ["push"]
-measured_seconds = 540
 
 [ci]
 provider = "github"                  # or "command" with gate_command, or "none"
@@ -309,8 +309,9 @@ revision_command = ""                # prints the deployed revision; used by the
 
 ### 4.6 CI, and the lack of it
 
-- **Required jobs:** jobs triggered by push or PR to trunk are proposed; schedule-only, manual-only and jobs with
-  an `if:` onboarding cannot evaluate are left out **and named**; matrices expand to per-variant names. The sender
+- **Required jobs** are read from the last completed push run on trunk (`gh run view --json jobs`): those names are
+  already matrix-expanded and include only jobs a push triggers. With no such run yet, or without `gh`, job ids are
+  read from the workflow files and marked unverified. The sender
   checks every required job by name, never the run's overall conclusion alone.
 - **Three cases:**
 
