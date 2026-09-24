@@ -17,7 +17,9 @@ def check_drift(profile: dict, det: dict, measured: dict[str, float]) -> list[st
         else:
             if ci.get("workflow_fingerprint") and now.get("fingerprint") != ci["workflow_fingerprint"]:
                 findings.append("CI: workflow files changed since onboarding; review `required_jobs`")
-            if now.get("jobs_source") == "last-push-run":
+            if now.get("jobs_source") != "last-push-run":
+                findings.append("unknown: CI required jobs not verified (gh unavailable or no push run on trunk yet)")
+            else:
                 required = set(ci.get("required_jobs") or [])
                 ran = set(now.get("jobs") or [])
                 findings += [f"CI: job `{job}` ran on the last push but is not required" for job in sorted(ran - required)]
@@ -29,3 +31,11 @@ def check_drift(profile: dict, det: dict, measured: dict[str, float]) -> list[st
         if tier.get("name") not in measured:
             findings.append(f"tests: tier `{tier.get('name')}` has never run green on this machine")
     return findings
+
+
+def exit_code(findings: list[str]) -> int:
+    """0 nothing drifted, 1 something drifted, 3 nothing drifted that could be checked but something could
+    not be asked. "Could not ask" is never reported as "matches" (spec 1.2, principle 5)."""
+    if any(not finding.startswith("unknown:") for finding in findings):
+        return 1
+    return 3 if findings else 0

@@ -38,3 +38,15 @@ def test_trunk_renamed():
 
 def test_a_tier_never_green_on_this_machine():
     assert check_drift(PROFILE, detection(), {}) == ["tests: tier `unit` has never run green on this machine"]
+
+
+def test_unverifiable_jobs_are_unknown_not_matching():
+    found = check_drift(PROFILE, detection(jobs_source="workflow-files (unverified)"), {"unit": 1})
+    assert found == ["unknown: CI required jobs not verified (gh unavailable or no push run on trunk yet)"]
+
+
+def test_exit_code_separates_drift_from_unknown():
+    from flotilla.onboard.check import exit_code
+    assert exit_code([]) == 0
+    assert exit_code(["unknown: x"]) == 3
+    assert exit_code(["unknown: x", "trunk: y"]) == 1

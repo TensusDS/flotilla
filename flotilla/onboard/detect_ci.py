@@ -14,16 +14,21 @@ import re
 import subprocess
 from pathlib import Path
 
-_TOP_KEY = re.compile(r"^(\S[^:]*):")
-_JOB_KEY = re.compile(r"^  ([A-Za-z0-9_-]+):\s*(#.*)?$")
+_TOP_KEY = re.compile(r"^(\S[^:]*):(.*)$")
+_INDENTED_KEY = re.compile(r"^(\s+)[\"']?([A-Za-z0-9_-]+)[\"']?:\s*(#.*)?$")
 UNVERIFIED = "workflow-files (unverified until a push run on trunk exists)"
+NO_IDS = "unknown: no job ids could be read from the workflow files"
+PUSH_EVENTS = ("push", "pull_request", "pull_request_target")
 
 
 def workflow_files(root: Path) -> list[Path]:
+    """Workflow files that really live inside the repository: a symlink out of it is not read."""
     folder = root / ".github" / "workflows"
     if not folder.is_dir():
         return []
-    return sorted(p for p in folder.iterdir() if p.is_file() and p.suffix in (".yml", ".yaml"))
+    inside = root.resolve()
+    return sorted(p for p in folder.iterdir()
+                  if p.suffix in (".yml", ".yaml") and p.is_file() and p.resolve().is_relative_to(inside))
 
 
 def fingerprint(root: Path, files: list[Path]) -> str | None:
@@ -32,25 +37,52 @@ def fingerprint(root: Path, files: list[Path]) -> str | None:
     digest = hashlib.sha256()
     for path in files:
         digest.update(path.relative_to(root).as_posix().encode("utf-8") + b"\0")
-        digest.update(path.read_bytes() + b"\0")
+        try:
+            digest.update(path.read_bytes() + b"\0")
+        except OSError:
+            digest.update(b"unreadable\0")
     return "sha256:" + digest.hexdigest()
 
 
-def job_ids_from_file(text: str) -> list[str]:
-    """Job ids under the top-level `jobs:` key, assuming the usual two-space indentation."""
-    ids: list[str] = []
-    inside = False
+def _top_level(text: str) -> dict[str, list[str]]:
+    """Top-level keys with their inline value (first element) and the indented lines under them."""
+    blocks: dict[str, list[str]] = {}
+    current = None
     for line in text.splitlines():
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         top = _TOP_KEY.match(line)
         if top:
-            inside = top.group(1).strip().strip("'\"") == "jobs"
-            continue
-        job = _JOB_KEY.match(line) if inside else None
-        if job:
-            ids.append(job.group(1))
+            current = top.group(1).strip().strip("'\"")
+            blocks[current] = [top.group(2).strip()]
+        elif current is not None:
+            blocks[current].append(line)
+    return blocks
+
+
+def job_ids_from_file(text: str) -> list[str]:
+    """Job ids under `jobs:`, at whatever indentation the first job uses; [] when none can be read."""
+    lines = _top_level(text).get("jobs", [""])[1:]
+    ids: list[str] = []
+    level = None
+    for line in lines:
+        key = _INDENTED_KEY.match(line)
+        indent = len(line) - len(line.lstrip())
+        if level is None and key:
+            level = indent
+        if key and indent == level:
+            ids.append(key.group(2))
     return ids
+
+
+def triggered_by_push(text: str) -> bool | None:
+    """Whether a push or pull request runs this workflow; None when `on:` cannot be read."""
+    blocks = _top_level(text)
+    on = blocks.get("on") or blocks.get("true")  # YAML 1.1 reads a bare `on` key as true
+    if on is None:
+        return None
+    body = " ".join([on[0]] + on[1:])
+    return any(re.search(rf"(?<![A-Za-z_]){event}(?![A-Za-z_])", body) for event in PUSH_EVENTS)
 
 
 def github_slug(normalized_origin: str | None) -> str | None:
@@ -103,23 +135,31 @@ def detect_ci(root: Path, normalized_origin: str | None, trunk: str, run=subproc
     if not files:
         return {"provider": "none"}
     file_ids: list[str] = []
+    left_out: list[str] = []
     for path in files:
         try:
-            file_ids.extend(job_ids_from_file(path.read_text(encoding="utf-8")))
+            text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
+        if triggered_by_push(text) is False:
+            left_out.append(path.relative_to(root).as_posix())
+            continue
+        file_ids.extend(job_ids_from_file(text))
     result = {
         "provider": "github",
         "workflow_files": [p.relative_to(root).as_posix() for p in files],
         "fingerprint": fingerprint(root, files),
         "file_job_ids": file_ids,
+        "left_out": left_out,
     }
     slug = github_slug(normalized_origin)
     jobs = jobs_from_last_push_run(slug, trunk, run=run) if slug else None
     if jobs:
         result.update(jobs=jobs, jobs_source="last-push-run")
-    else:
+    elif file_ids:
         result.update(jobs=file_ids, jobs_source=UNVERIFIED)
+    else:
+        result["jobs_source"] = NO_IDS
     if slug:
         methods = merge_methods(slug, run=run)
         if methods is not None:

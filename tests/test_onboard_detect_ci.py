@@ -96,3 +96,32 @@ def test_merge_methods_unknown_when_gh_fails():
     def failing(argv, **kwargs):
         return subprocess.CompletedProcess(argv, 1, stdout="", stderr="HTTP 404")
     assert ci.merge_methods("o/app", run=failing) is None
+
+
+def test_four_space_indentation_and_quoted_keys():
+    text = 'on: [push]\njobs:\n    "build":\n        runs-on: x\n    test:\n        runs-on: x\n'
+    assert ci.job_ids_from_file(text) == ["build", "test"]
+
+
+def test_no_readable_job_ids_is_unknown_not_empty(tmp_path):
+    write_workflow(tmp_path, text="on: push\njobs: {build: {runs-on: x}}\n")
+    got = ci.detect_ci(tmp_path, "gitlab.com/o/app", "main", run=gh(fail=True))
+    assert "jobs" not in got and got["jobs_source"].startswith("unknown")
+
+
+def test_workflows_not_triggered_by_push_are_left_out_and_named(tmp_path):
+    write_workflow(tmp_path)
+    write_workflow(tmp_path, name="nightly.yml",
+                   text="on:\n  schedule:\n    - cron: '0 3 * * *'\njobs:\n  bench:\n    runs-on: x\n")
+    got = ci.detect_ci(tmp_path, "gitlab.com/o/app", "main", run=gh(fail=True))
+    assert got["jobs"] == ["test", "lint"] and got["left_out"] == [".github/workflows/nightly.yml"]
+
+
+def test_a_workflow_symlinked_outside_the_repository_is_ignored(tmp_path):
+    secret = tmp_path / "secret.yml"
+    secret.write_text("on: push\njobs:\n  leak:\n    runs-on: x\n", encoding="utf-8")
+    root = tmp_path / "repo"
+    write_workflow(root)
+    (root / ".github" / "workflows" / "evil.yml").symlink_to(secret)
+    got = ci.detect_ci(root, "gitlab.com/o/app", "main", run=gh(fail=True))
+    assert got["workflow_files"] == [".github/workflows/ci.yml"] and "leak" not in got["jobs"]

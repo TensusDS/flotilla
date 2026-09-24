@@ -8,10 +8,10 @@ from pathlib import Path
 from flotilla.core import config, paths, repo
 from flotilla.onboard import answers as store
 from flotilla.onboard import machine
-from flotilla.onboard.check import check_drift
+from flotilla.onboard.check import check_drift, exit_code
 from flotilla.onboard.detect import detect
 from flotilla.onboard.firstrun import load_measurements, run_tier, save_measurements
-from flotilla.onboard.profile import ProfileExists, build_profile, write_profile
+from flotilla.onboard.profile import ProfileExists, ProfileUnsafe, build_profile, write_profile
 from flotilla.onboard.questions import AnswerError, all_questions, next_questions, validate_answer
 
 
@@ -54,7 +54,7 @@ def _write(det: dict, given: dict, args, state: Path) -> int:
         save_measurements(state, det["repo_key"], runs)
     try:
         path = write_profile(root, data, force=args.force)
-    except ProfileExists as err:
+    except (ProfileExists, ProfileUnsafe) as err:
         print(err)
         return 2
     store.reset(state, det["repo_key"])
@@ -103,7 +103,7 @@ def run_onboard(args) -> int:
         findings = check_drift(profile, det, load_measurements(state, det["repo_key"]))
         for finding in findings:
             print(finding)
-        return 1 if findings else 0
+        return exit_code(findings)
     if args.action == "reset":
         store.reset(state, det["repo_key"])
         print("answers forgotten")
