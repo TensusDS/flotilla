@@ -86,7 +86,7 @@ PLUGIN   (ships with the install; identical for everyone; its directory changes 
 ├── .claude-plugin/plugin.json         defaultEnabled: false
 ├── skills/flotilla/SKILL.md           the arrangement: census, claim, handover, shipping
 │   └── references/                    why.md · macos.md · linux.md · posts.md
-├── skills/flotilla-onboard/SKILL.md   onboarding
+├── skills/<command>/SKILL.md         one per command of section 3.4 (onboard, doctor, check, ...)
 ├── templates/posts/*.md               post templates (agent-definition format)
 ├── hooks/hooks.json                   session hooks → scripts/flotilla <entry>
 ├── scripts/flotilla                   the single entry point
@@ -157,6 +157,35 @@ flotilla work hand feat/export
   7. `post-handed` events (notifications; cannot undo)
   8. print the new state and whose move is next
 ```
+
+
+### 3.4 Command surface
+
+A skill in a plugin is also a slash command: `skills/<name>/SKILL.md` is `/flotilla:<name>` (plugin skills are always
+namespaced; custom commands were merged into skills). Every standard human action gets a command. A command only a
+person should start carries `disable-model-invocation: true`, which also keeps its description out of the model's
+context, so the command set costs nothing against the shared skill-description budget.
+
+| command | does | invoked by | built in |
+|---|---|---|---|
+| `/flotilla:onboard` | onboard the project (section 4) | a person **and** the model ("set up flotilla") | onboarding |
+| `/flotilla:doctor` | check this machine and project | a person | onboarding |
+| `/flotilla:check` | drift between the profile and the repository | a person | onboarding |
+| `/flotilla:status` | who does what, whose move, what stalled | a person | ledger |
+| `/flotilla:brief` | a batch for approval in one block | a person | ledger |
+| `/flotilla:spawn [composition]` | raise sessions, e.g. `/flotilla:spawn -M 1 -r 1` | a person | spawn and posts |
+| `/flotilla:retire <name>` | retire a session | a person | spawn and posts |
+| `/flotilla:lane` | who holds the machine | a person | lane |
+| `/flotilla:guards` | list, enable or disable guards | a person | guards |
+| `flotilla` (skill, not a menu command: `user-invocable: false`) | the arrangement every session follows | the model | spawn and posts |
+
+`spawn` and `retire` are never model-invoked: raising or retiring sessions spends money and occupies worktrees, a
+decision a model must not take from "it would be nice to parallelize". `onboard` stays model-invocable because people
+reach it in words, and it acts only on a person's answers. Ledger moves (`hand`, `accept`, `fix`, ...) are not
+commands: sessions make them through the CLI, and a person does not need them in the menu.
+
+A seam test holds the surface honest: every `flotilla <subcommand>` a skill's text names exists in the CLI, and every
+person-only command carries `disable-model-invocation: true`.
 
 ---
 

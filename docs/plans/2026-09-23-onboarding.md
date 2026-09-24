@@ -4,7 +4,7 @@
 > superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** `flotilla onboard` — measure the machine, detect what the repository already declares (tests, CI, releases,
-signals for conditional questions), drive the questionnaire one round at a time for the `flotilla-onboard` skill, run
+signals for conditional questions), drive the questionnaire one round at a time for the `onboard` skill (`/flotilla:onboard`), run
 every chosen test tier once, and write `.flotilla/project.toml` (schema 1); plus `onboard check` for drift.
 
 **Architecture:** deterministic work lives in code under `flotilla/onboard/`; the skill only asks questions. The CLI
@@ -85,7 +85,7 @@ flotilla/onboard/check.py           drift between the profile and the repository
 flotilla/onboard/answers.py         answers stored per repository in machine state         (Task 11)
 flotilla/onboard/commands.py        `flotilla onboard ...` behaviour                        (Task 11)
 flotilla/cli.py                     `onboard` subcommands                                   (Task 11)
-skills/flotilla-onboard/SKILL.md    the questionnaire, driven by the CLI                    (Task 11)
+skills/onboard/SKILL.md    the questionnaire, driven by the CLI                    (Task 11)
 tests/test_onboard_*.py             one test module per module above
 ```
 
@@ -2279,10 +2279,10 @@ git -C /home/max/workspace/flotilla commit -m "feat(onboard): drift check agains
 
 ---
 
-### Task 11: The `onboard` commands and the `flotilla-onboard` skill
+### Task 11: The `onboard` commands and the `onboard` skill (`/flotilla:onboard`)
 
 **Files:**
-- Create: `flotilla/onboard/answers.py`, `flotilla/onboard/commands.py`, `skills/flotilla-onboard/SKILL.md`
+- Create: `flotilla/onboard/answers.py`, `flotilla/onboard/commands.py`, `skills/onboard/SKILL.md`
 - Modify: `flotilla/cli.py`
 - Test: `tests/test_onboard_cli.py`, `tests/test_onboard_skill.py`
 
@@ -2412,7 +2412,7 @@ from pathlib import Path
 from flotilla import cli
 
 ROOT = Path(__file__).resolve().parent.parent
-SKILL = ROOT / "skills" / "flotilla-onboard" / "SKILL.md"
+SKILL = ROOT / "skills" / "onboard" / "SKILL.md"
 
 
 def frontmatter(text):
@@ -2422,7 +2422,7 @@ def frontmatter(text):
 
 def test_skill_frontmatter():
     meta = frontmatter(SKILL.read_text(encoding="utf-8"))
-    assert meta["name"].strip() == "flotilla-onboard"
+    assert meta["name"].strip() == "onboard"
     assert 0 < len(meta["description"].strip()) <= 1024
 
 
@@ -2628,11 +2628,11 @@ def run_onboard(args) -> int:
 Note on `load_project`: `config.load_project` returns a `Project` whose `data` field is the parsed dict (foundation
 Task 5), which is what `check_drift` takes.
 
-`skills/flotilla-onboard/SKILL.md`:
+`skills/onboard/SKILL.md`:
 
 ````markdown
 ---
-name: flotilla-onboard
+name: onboard
 description: Set up flotilla in a repository — measure this machine, show what the repository already declares (test commands, CI, releases), ask the few questions only a person can answer, run each chosen test tier once, and write .flotilla/project.toml. Use when someone asks to onboard, set up, configure or initialize flotilla, to prepare a repository for a fleet of Claude Code sessions, or to re-check an existing flotilla profile for drift.
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla onboard *)
 ---
@@ -2700,22 +2700,161 @@ Expected: `test_every_onboard_subcommand_the_skill_names_exists` FAILS naming `r
 - [ ] **Step 5: Run everything, then commit**
 
 Run: `uv run --with pytest python -m pytest` and `uv run --python 3.11 --with pytest python -m pytest`
-Expected: all pass on both (`218 passed` = 116 foundation + 102 here, if the per-task counts hold; report the
-printed number).
+Expected: all pass on both (`218 passed` = 116 foundation + 102 so far; report the printed number).
 Run: `python3 tools/check_no_cyrillic.py` → exit 0.
 
 ```bash
 git -C /home/max/workspace/flotilla add flotilla/onboard/answers.py flotilla/onboard/commands.py flotilla/cli.py skills tests/test_onboard_cli.py tests/test_onboard_skill.py
-git -C /home/max/workspace/flotilla commit -m "feat(onboard): onboard commands and the flotilla-onboard skill"
+git -C /home/max/workspace/flotilla commit -m "feat(onboard): onboard commands and the /flotilla:onboard skill"
+```
+
+---
+
+### Task 12: `/flotilla:doctor` and `/flotilla:check`, and the command-surface seam test
+
+**Files:**
+- Create: `skills/doctor/SKILL.md`, `skills/check/SKILL.md`
+- Test: `tests/test_skills.py`
+
+**Interfaces:**
+- Consumes: `cli.build_parser()` (top-level commands `version`, `doctor`, `hook`, `onboard`; `onboard` actions of
+  Task 11); spec section 3.4.
+- Produces: three slash commands in this sub-project — `/flotilla:onboard` (Task 11), `/flotilla:doctor`,
+  `/flotilla:check` — and a test every later command skill must pass.
+
+- [ ] **Step 1: Write the failing tests**
+
+`tests/test_skills.py`:
+
+```python
+"""The command surface (spec, section 3.4): every skill is a well-formed command, every CLI call a skill's text
+names exists, and a command only a person should start is never model-invoked."""
+
+import re
+from pathlib import Path
+
+import pytest
+
+from flotilla import cli
+
+ROOT = Path(__file__).resolve().parent.parent
+SKILLS = sorted((ROOT / "skills").glob("*/SKILL.md"))
+PERSON_ONLY = {"doctor", "check"}
+MODEL_INVOCABLE = {"onboard"}
+CALL = re.compile(r"`(?:\$\{CLAUDE_PLUGIN_ROOT\}/scripts/)?flotilla ([a-z-]+)(?: ([a-z-]+))?")
+
+
+def frontmatter(path):
+    block = path.read_text(encoding="utf-8").split("---", 2)[1]
+    return {k.strip(): v.strip() for k, v in (line.split(":", 1) for line in block.strip().splitlines() if ":" in line)}
+
+
+def subcommands(parser):
+    action = next(a for a in parser._actions if a.__class__.__name__ == "_SubParsersAction")
+    return action.choices
+
+
+def test_the_commands_of_this_sub_project_exist():
+    assert {p.parent.name for p in SKILLS} >= PERSON_ONLY | MODEL_INVOCABLE
+
+
+@pytest.mark.parametrize("path", SKILLS, ids=lambda p: p.parent.name)
+def test_each_skill_is_a_well_formed_command(path):
+    meta = frontmatter(path)
+    assert meta.get("name") == path.parent.name
+    assert 0 < len(meta.get("description", "")) <= 1024
+
+
+def test_every_cli_call_a_skill_names_exists():
+    top = subcommands(cli.build_parser())
+    onboard_actions = subcommands(top["onboard"])
+    for path in SKILLS:
+        for command, sub in CALL.findall(path.read_text(encoding="utf-8")):
+            assert command in top, f"{path.parent.name}: `flotilla {command}` is not a CLI command"
+            if command == "onboard" and sub:
+                assert sub in onboard_actions, f"{path.parent.name}: `flotilla onboard {sub}` does not exist"
+
+
+def test_person_only_commands_are_never_model_invoked():
+    for path in SKILLS:
+        flag = frontmatter(path).get("disable-model-invocation", "false").lower()
+        if path.parent.name in PERSON_ONLY:
+            assert flag == "true", path.parent.name
+        if path.parent.name in MODEL_INVOCABLE:
+            assert flag != "true", path.parent.name
+```
+
+- [ ] **Step 2: Run to see them fail**
+
+Run: `uv run --with pytest python -m pytest tests/test_skills.py`
+Expected: FAIL — `test_the_commands_of_this_sub_project_exist` (no `doctor` or `check` skill yet).
+
+- [ ] **Step 3: Write the two command skills**
+
+`skills/doctor/SKILL.md`:
+
+```markdown
+---
+name: doctor
+description: Check this machine and project for flotilla — Python, platform, git, Claude Code version, the session census, the state directory and the project profile.
+disable-model-invocation: true
+allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla doctor*)
+---
+
+Run `${CLAUDE_PLUGIN_ROOT}/scripts/flotilla doctor` from the repository root and report every line it prints.
+Lines marked `fail` come first, each with the fix the command names. A census marked unknown means the number of
+live sessions could not be asked; never report it as zero sessions.
+```
+
+`skills/check/SKILL.md`:
+
+```markdown
+---
+name: check
+description: Report drift between this repository's flotilla profile and the repository as it is now — CI workflows, required jobs, trunk, and test tiers never run green on this machine.
+disable-model-invocation: true
+allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla onboard check*)
+---
+
+Run `${CLAUDE_PLUGIN_ROOT}/scripts/flotilla onboard check` from the repository root.
+
+- Exit 0 and no output: say the profile matches the repository.
+- Findings: list each one as printed, then suggest the smallest fix for each — usually editing
+  `.flotilla/project.toml` by hand, or re-onboarding with `/flotilla:onboard` when several things moved at once.
+- Exit 2: the project is not onboarded or its profile cannot be read; show the message and suggest
+  `/flotilla:onboard`.
+```
+
+- [ ] **Step 4: Run to see them pass; see the flag guard go red; validate**
+
+Run: `uv run --with pytest python -m pytest tests/test_skills.py`
+Expected: `6 passed` (one well-formedness case per skill: `check`, `doctor`, `onboard`).
+
+Injection (plausible neighbour): in `skills/doctor/SKILL.md` change `disable-model-invocation: true` to
+`disable-model-invocation: false`. Expected: `test_person_only_commands_are_never_model_invoked` FAILS naming
+`doctor`. Undo.
+
+Run: `claude plugin validate /home/max/workspace/flotilla` → passes.
+Run: `uv run --with pytest python -m pytest` and `uv run --python 3.11 --with pytest python -m pytest` → all pass
+on both (`224 passed` = 116 foundation + 108 here, if the counts hold; report the printed number).
+Run: `python3 tools/check_no_cyrillic.py` → exit 0.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git -C /home/max/workspace/flotilla add skills/doctor skills/check tests/test_skills.py
+git -C /home/max/workspace/flotilla commit -m "feat(plugin): /flotilla:doctor and /flotilla:check, with a command-surface seam test"
 ```
 
 ---
 
 ## Done when
 
+- `/flotilla:onboard`, `/flotilla:doctor` and `/flotilla:check` appear in `/help` under the plugin's namespace after
+  `claude --plugin-dir /home/max/workspace/flotilla`; `doctor` and `check` are absent from the model's skill list.
 - A fresh repository can be onboarded end to end through the CLI (`machine`, `next`/`answer` rounds, `write`,
   `check`), and the written profile loads through `config.load_project`.
 - No measured time is written into `project.toml`; the spec says so in 4.2 and 4.4.
-- Each injection named in Tasks 1, 4, 5, 7, 8, 9 and 11 was seen red and undone.
+- Each injection named in Tasks 1, 4, 5, 7, 8, 9, 11 and 12 was seen red and undone.
 - The full suite passes on Python 3.11 and the newest local interpreter; CI is green on Linux and macOS after push.
 - Pushing needs Max's yes, as always.
