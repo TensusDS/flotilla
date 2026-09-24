@@ -24,3 +24,8 @@ def test_every_onboard_subcommand_the_skill_names_exists():
     onboard = next(a for a in parser._subparsers._group_actions[0].choices["onboard"]._actions
                    if a.dest == "action")
     assert named and named <= set(onboard.choices), named - set(onboard.choices)
+
+
+def test_skill_checks_an_existing_profile_before_asking_anything():
+    text = SKILL.read_text(encoding="utf-8")
+    assert text.index("flotilla onboard check") < text.index("flotilla onboard machine")

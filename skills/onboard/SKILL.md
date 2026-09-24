@@ -12,6 +12,12 @@ report what the commands print.
 
 Run every command from the repository root. The CLI is `${CLAUDE_PLUGIN_ROOT}/scripts/flotilla`.
 
+## 0. Is the repository onboarded already?
+
+If `.flotilla/project.toml` exists, do not start the questionnaire. Run `flotilla onboard check` and report what it
+prints (exit 3 means some things could not be verified, not that they match). Then ask the person whether to keep
+the profile or re-onboard; only on a clear request to replace it continue below, and use `write --force` in step 4.
+
 ## 1. Measure the machine
 
 Run `flotilla onboard machine`. If it prints `fail  python3`, stop and tell the person exactly what it printed:
