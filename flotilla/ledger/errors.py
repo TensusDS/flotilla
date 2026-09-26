@@ -7,3 +7,7 @@ class MoveRefused(RuntimeError):
 
 class ActorUnknown(MoveRefused):
     """The caller could not be identified; nothing is recorded under a guessed name."""
+
+
+class NotYet(MoveRefused):
+    """The move cannot be proved yet (a PR still open, CI still running, origin not updated); ask again later."""

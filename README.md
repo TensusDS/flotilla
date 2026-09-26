@@ -4,8 +4,9 @@ Coordinate independent peer Claude Code sessions on one machine: named posts (or
 acceptance judge, main, minor), a worktree per session, a work ledger in which every move costs evidence, a lane
 that books the machine for long runs, and guards on dangerous commands.
 
-**Status: pre-alpha.** The foundation is in place; the ledger, spawning, the lane and the guards are being built.
-Design: `docs/specs/2026-09-22-flotilla-design.md`.
+**Status: pre-alpha.** The foundation, onboarding and the work ledger are in place (claim, hand over, review,
+queue, land, ship asked of the PR or origin, walk, close; `/flotilla:status` and `/flotilla:brief`); spawning, the
+lane and the guards are being built. Design: `docs/specs/2026-09-22-flotilla-design.md`.
 
 ## Requirements
 

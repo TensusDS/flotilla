@@ -48,3 +48,28 @@ def test_row_ids_are_sequential():
 def test_terminal_rows_are_not_open():
     rows = fold([event("r1", "claim", "claimed", {"branch": "b", "owner": "o"}), event("r1", "release", "released")])
     assert rows["r1"].is_open is False
+
+
+def test_part_b_fields_fold_onto_the_row():
+    from flotilla.ledger.model import fold, make_event
+    event = make_event(row="r1", move="claim", state="claimed", by="a", post="main", via="as",
+                       fields={"branch": "b", "held_until": "x", "merge": "abc", "fixes": "r0", "broken": "home"},
+                       evidence={}, at="2026-09-26T10:00:00+00:00", plugin="0")
+    row = fold([event])["r1"]
+    assert (row.held_until, row.merge, row.fixes, row.broken) == ("x", "abc", "r0", "home")
+
+
+def test_delivered_counts_landed_only_without_origin():
+    from flotilla.ledger.model import Row, delivered
+    assert delivered(Row(id="r1", state="landed"), {"flow": {"mode": "local"}})
+    assert not delivered(Row(id="r1", state="landed"), {"flow": {"mode": "direct"}})
+    assert delivered(Row(id="r2", state="offledger"), {})
+    assert delivered(Row(id="r3", state="inbatch"), {})
+    assert not delivered(Row(id="r4", state="released"), {})
+
+
+def test_blocked_by_names_what_is_not_delivered_yet():
+    from flotilla.ledger.model import Row, blocked_by
+    rows = {"r1": Row(id="r1", branch="a", state="claimed"), "r2": Row(id="r2", branch="b", state="shipped"),
+            "r3": Row(id="r3", branch="c", state="handed", requires=["r1", "r2", "r9"])}
+    assert [(r.id, r.state) for r in blocked_by(rows, rows["r3"], {})] == [("r1", "claimed"), ("r9", "")]

@@ -13,17 +13,18 @@ from flotilla.ledger.model import TERMINAL
 
 BASE = {
     "reserved": {"release": "released"},
-    "claimed": {"hand": "handed", "queue": "queued", "release": "released"},
+    "claimed": {"hand": "handed", "queue": "queued", "release": "released", "offledger": "offledger"},
     "handed": {"moved": "handed", "assign": "handed", "recuse": "handed", "take": "handed", "fix": "fixing",
-               "accept": "accepted", "release": "released"},
-    "fixing": {"hand": "handed", "assign": "fixing", "recuse": "fixing", "release": "released"},
-    "accepted": {"queue": "queued", "release": "released"},
-    "queued": {"land": "landed", "ship": "shipped", "release": "released"},
-    "landed": {"ship": "shipped", "close": "closed"},
+               "accept": "accepted", "release": "released", "offledger": "offledger"},
+    "fixing": {"hand": "handed", "assign": "fixing", "recuse": "fixing", "release": "released",
+               "offledger": "offledger"},
+    "accepted": {"queue": "queued", "moved": "handed", "release": "released", "offledger": "offledger"},
+    "queued": {"land": "landed", "ship": "shipped", "release": "released", "offledger": "offledger"},
+    "landed": {"ship": "shipped", "close": "closed", "release": "released", "offledger": "offledger"},
     "shipped": {"walked": "walked", "broke": "shipped", "close": "closed"},
     "walked": {"close": "closed"},
 }
-ANNOTATIONS = ("wait", "hold", "unhold", "adopt")
+ANNOTATIONS = ("wait", "hold", "unhold", "adopt", "urgent")
 
 
 def moves_from(state: str, profile: dict, owner_post: str = "") -> dict[str, str]:

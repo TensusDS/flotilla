@@ -2,7 +2,7 @@ import sys
 
 import pytest
 
-from flotilla.ledger import core, gitq, handover, receipts
+from flotilla.ledger import core, gitq, handover, reading, receipts
 from flotilla.ledger.errors import MoveRefused
 from ledgerkit import PROFILE, actor, branch, commit, git, make_ledger, repo_with_origin
 
@@ -100,3 +100,18 @@ def test_a_state_change_ends_a_recorded_wait(world):
     handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", on="Max", why="needs a decision")
     row = handover.hand(ledger, actor(ledger, "main session 1"), "feat/x")
     assert (row.waiting_on, row.note) == ("", "")
+
+
+def test_moving_an_accepted_tip_needs_the_reader_and_drops_the_verdict(world):
+    root, ledger = world
+    claimed(root, ledger)
+    row = handover.hand(ledger, actor(ledger, "main session 1"), "feat/x")
+    reading.take(ledger, actor(ledger, "review session 1"), "feat/x")
+    reading.accept(ledger, actor(ledger, "review session 1"), "feat/x", reviewed=row.tip)
+    git(root, "checkout", "-q", "feat/x")
+    new = commit(root, "more", "more.txt")
+    git(root, "checkout", "-q", "main")
+    with pytest.raises(MoveRefused, match="agreement"):
+        handover.moved(ledger, actor(ledger, "main session 1"), "feat/x", tip=new)
+    moved = handover.moved(ledger, actor(ledger, "main session 1"), "feat/x", tip=new, agreed_by="review session 1")
+    assert (moved.state, moved.verdict, moved.tip) == ("handed", "", new)

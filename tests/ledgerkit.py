@@ -41,7 +41,10 @@ def branch(root, name, *messages) -> str:
     return tip
 
 
-def make_ledger(root, state, profile=None, live=DEFAULT_LIVE, posts=None, census=None):
+def make_ledger(root, state, profile=None, live=DEFAULT_LIVE, posts=None, census=None, run=None, events=None,
+                skip_events=None):
+    import subprocess as _subprocess
+
     from flotilla.core.census import Session
     from flotilla.core.repo import identify
     from flotilla.core.storage import LocalLogStore
@@ -55,9 +58,67 @@ def make_ledger(root, state, profile=None, live=DEFAULT_LIVE, posts=None, census
     ident = identify(Path(root))
     return Ledger(store=LocalLogStore(Path(state) / "ledger"), root=ident.root, repo_key=ident.key,
                   profile=profile or PROFILE, posts=posts, state_dir=Path(state),
-                  census=census or (lambda: sessions))
+                  census=census or (lambda: sessions), run=run or _subprocess.run, events=events,
+                  skip_events=skip_events)
+
+
+def drive(root, ledger, name="feat/x", *, to="accepted", owner="main session 1", reader="review session 1",
+          requires=()):
+    """Cut `name` with one commit and move its row through claim, hand, take and accept, stopping at `to`."""
+    from flotilla.ledger import core, handover, reading
+
+    branch(root, name, "work")
+    row = core.claim(ledger, actor(ledger, owner), name, requires=requires)
+    if to == "claimed":
+        return row
+    row = handover.hand(ledger, actor(ledger, owner), name)
+    if to == "handed":
+        return row
+    reading.take(ledger, actor(ledger, reader), name)
+    return reading.accept(ledger, actor(ledger, reader), name, reviewed=row.tip)
 
 
 def actor(ledger, name):
     from flotilla.ledger.actor import resolve_actor
     return resolve_actor(ledger.posts, as_name=name, census=lambda: [])
+
+
+IDENTITY = ("-c", "user.email=t@example.invalid", "-c", "user.name=t")
+
+
+def merge(root, name, *, squash=False) -> str:
+    """Merge branch `name` into the checked-out trunk of `root` (a real merge, or a squash) and return the new HEAD."""
+    if squash:
+        git(root, "merge", "-q", "--squash", name)
+        git(root, *IDENTITY, "commit", "-q", "-m", f"squash {name}")
+    else:
+        git(root, *IDENTITY, "merge", "-q", "--no-ff", "-m", f"merge {name}", name)
+    return git(root, "rev-parse", "HEAD")
+
+
+def fake_gh(handler, calls=None):
+    """A subprocess.run stand-in: `gh ...` goes to handler(args) -> (code, stdout); everything else runs for real."""
+    import json as _json
+
+    def run(cmd, **kwargs):
+        if isinstance(cmd, list) and cmd and cmd[0] == "gh":
+            if calls is not None:
+                calls.append(list(cmd[1:]))
+            code, out = handler(list(cmd[1:]))
+            text = out if isinstance(out, str) else _json.dumps(out)
+            return subprocess.CompletedProcess(cmd, code, text, "" if code == 0 else "gh: request failed")
+        return subprocess.run(cmd, **kwargs)
+    return run
+
+
+def shipped_direct(root, ledger, name="feat/x"):
+    """Drive `name` to shipped in a direct-push project without CI: accept, queue, merge, land, push, ship."""
+    from flotilla.ledger import delivery
+
+    drive(root, ledger, name)
+    sender = actor(ledger, "sender 1")
+    delivery.queue(ledger, sender, name)
+    merge(root, name)
+    delivery.land(ledger, sender, name)
+    git(root, "push", "-q", "origin", ledger.trunk)
+    return delivery.ship(ledger, sender, name)

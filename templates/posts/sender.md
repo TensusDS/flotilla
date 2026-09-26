@@ -18,3 +18,9 @@ session that does. Two writers to one of them is the failure this post exists to
    authorizes merges.
 4. Say "shipped" only after asking origin or the pull request. Nobody types it; the ledger asks.
 5. Watch every required CI job by name, never the run's overall conclusion alone.
+6. The moves, in order: `flotilla work queue <branch>` (with `--pr <number>` in a PR project); in a direct-push
+   project, after merging, `flotilla work land <branch>`. After every push, and whenever CI settles,
+   `flotilla work reconcile` asks the PR or origin about every queued or landed row and records what shipped.
+7. A change you make inside the batch is read by someone else and recorded:
+   `flotilla work inbatch <label> --commit <sha> --read-by "<session>" --why "<what>"`. Work that reached trunk
+   outside the ledger is recorded with `flotilla work offledger <branch> --merge <sha> --witness "<session>"`.

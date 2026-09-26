@@ -56,3 +56,21 @@ def test_finished_rows_take_no_moves_not_even_annotations():
     assert moves_from("closed", PR) == {}
     with pytest.raises(MoveRefused, match="finished"):
         next_state("closed", "wait", PR)
+
+
+def test_an_accepted_tip_that_moves_goes_back_to_handed():
+    assert next_state("accepted", "moved", PR) == "handed"
+
+
+def test_offledger_is_legal_from_open_work_before_landing():
+    for state in ("claimed", "handed", "fixing", "accepted", "queued"):
+        assert moves_from(state, PR)["offledger"] == "offledger"
+    assert "offledger" not in moves_from("shipped", PR)
+
+
+def test_urgent_is_an_annotation():
+    assert next_state("handed", "urgent", PR) == "handed"
+
+
+def test_landed_work_can_still_be_released_or_found_offledger():
+    assert {"release", "offledger"} <= set(moves_from("landed", DIRECT))

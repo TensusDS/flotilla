@@ -390,6 +390,9 @@ Legal transitions are **computed from the profile**:
 A refusal names the cause and what is legal from here: "`shipped` is unavailable: the project has no origin.
 Legal from here: `closed`, `released`."
 
+`accepted --moved--> handed`: a tip that moves after acceptance drops the verdict; the reader accepts again.
+`inbatch` is a finished row of its own, recorded before the push (direct push and local only).
+
 ### 6.3 Evidence per move
 
 | move | by (post `may`) | evidence |
@@ -402,7 +405,7 @@ Legal from here: `closed`, `released`."
 | `landed` | sender | merge commit (direct push) |
 | `shipped` | **nobody by hand** | asked of the PR or origin; records **which gate** |
 | `walked` | judge | build revision (= deployed, compared with shipped), steps, observation |
-| `broke` | judge | `--where "<place in the product>"`; refused without it; creates a linked fix row |
+| `broke` | judge | `--where "<place in the product>"`; refused without it; files the fix row `fix/<branch>` for the author, which their `tree cut` picks up |
 | `closed` | author | `[evidence]` fields from the profile |
 | `released` | owner or orchestrator | reason |
 | `offledger` | sender | merge commit + a named witness |
@@ -434,9 +437,11 @@ session, only when the previous owner is absent from the census.
 
 ### 6.8 Events
 
-`.flotilla/events/pre-<move>` and `post-<move>`. Input: JSON on stdin, `event_schema = 1`, generated from code and
-documented. `pre-`: exit 0 allows, exit 2 rejects with the script's text. **A crash or timeout refuses the move and
-names the script.** Such refusals must be rare:
+`.flotilla/events/pre-<move>` and `post-<move>`. Scripts are named by the state the move enters (`pre-handed`), fire
+only on moves that change the state, and are read from trunk. The contract is `docs/events/schema.json`, generated
+from code. Input: JSON on stdin, `event_schema = 1`, generated from code and documented. `pre-`: exit 0 allows, exit 2
+rejects with the script's text. **A crash or timeout refuses the move and names the script.** Such refusals must be
+rare:
 
 - `flotilla events check` (executable bit, shebang interpreter exists, a run on sample input) at onboarding and on
   `SessionStart`, so a broken script is visible before a real move hits it;

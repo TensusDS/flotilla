@@ -61,3 +61,11 @@ def test_a_failed_worktree_add_leaves_no_branch_behind(tmp_path):
         tree_mod.cut(ledger, actor(ledger, "main session 1"), "feat/x", blocker / "tree")
     assert gitq.branch_tip(root, "feat/x") is None
     assert ledger.rows() == {}
+
+
+def test_cut_refuses_to_pick_up_someone_elses_filed_row(tmp_path):
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state")
+    core.claim(ledger, actor(ledger, "main session 1"), "feat/x")
+    with pytest.raises(MoveRefused, match="already claimed by main session 1"):
+        tree_mod.cut(ledger, actor(ledger, "minor session 1"), "feat/x", tmp_path / "tree")

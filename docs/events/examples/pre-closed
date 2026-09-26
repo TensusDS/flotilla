@@ -1,0 +1,14 @@
+#!/usr/bin/env python3
+"""Example flotilla event script: refuse to close a row that names no ticket.
+
+flotilla runs `.flotilla/events/pre-<state>` before a move enters <state>, with the move as JSON on stdin (see
+docs/events/schema.json). Exit 0 allows the move; exit 2 rejects it and shows what this script printed; any other
+exit, a crash or a timeout refuses the move and names the script.
+"""
+import json
+import sys
+
+move = json.load(sys.stdin)
+if not move["row"].get("ref"):
+    print(f"`{move['row']['branch']}` closes against a ticket; pass --ref")
+    sys.exit(2)

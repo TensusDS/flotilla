@@ -15,7 +15,9 @@ STATES = ("reserved", "claimed", "handed", "fixing", "accepted", "queued", "land
           "closed", "released", "offledger", "inbatch")
 TERMINAL = frozenset({"closed", "released", "offledger", "inbatch"})
 ROW_FIELDS = ("branch", "owner", "tree", "base", "ref", "requires", "tip", "reader", "taken", "verdict",
-              "waiting_on", "note", "why", "pr", "gate")
+              "waiting_on", "note", "why", "pr", "gate", "merge", "held_by", "held_until", "held_why",
+              "urgent_at", "urgent_why", "adopted_from", "broken", "fixes")
+DELIVERED = frozenset({"shipped", "walked", "closed", "offledger", "inbatch"})
 
 
 class LedgerVersionError(RuntimeError):
@@ -41,12 +43,38 @@ class Row:
     why: str = ""
     pr: str = ""
     gate: str = ""
+    merge: str = ""
+    held_by: str = ""
+    held_until: str = ""
+    held_why: str = ""
+    urgent_at: str = ""
+    urgent_why: str = ""
+    adopted_from: str = ""
+    broken: str = ""
+    fixes: str = ""
     updated_at: str = ""
     history: list = field(default_factory=list)
 
     @property
     def is_open(self) -> bool:
         return self.state not in TERMINAL
+
+
+def delivered(row: Row, profile: dict) -> bool:
+    """Whether the row's work reached where the project delivers: origin's trunk, or the local trunk without one."""
+    if row.state in DELIVERED:
+        return True
+    return row.state == "landed" and (profile.get("flow") or {}).get("mode") == "local"
+
+
+def blocked_by(rows: dict[str, Row], row: Row, profile: dict) -> list[Row]:
+    """The rows this one requires that are not delivered yet (spec, section 6.4); an unknown id stands as a bare row."""
+    waiting = []
+    for wanted in row.requires or []:
+        other = rows.get(wanted)
+        if other is None or not delivered(other, profile):
+            waiting.append(other or Row(id=wanted))
+    return waiting
 
 
 def now_iso(now: dt.datetime | None = None) -> str:
