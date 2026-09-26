@@ -3,13 +3,16 @@
 `queue` puts reviewed work in the sender's batch: its dependencies must be delivered, the branch must still be at
 the revision read, and in PR mode the named pull request must be open, for this branch, into trunk, at that
 revision. Every fact about a pull request is asked of GitHub through `gh`; none is taken from the caller.
+
+`land` (direct push and local only) records the commit on the local trunk that carries the revision read — a merge
+of it or a squash of the same change — and refuses when the push would also carry a commit no verdict covers.
 """
 
 from __future__ import annotations
 
 import json
 
-from flotilla.ledger import gitq
+from flotilla.ledger import batch, gitq
 from flotilla.ledger.actor import Actor, require_may
 from flotilla.ledger.core import Ledger
 from flotilla.ledger.errors import MoveRefused
@@ -69,3 +72,44 @@ def queue(ledger: Ledger, actor: Actor, branch: str, *, pr: int | None = None) -
         if pr is not None:
             fields["pr"] = str(pr)
         return s.append(actor, row.id, "queue", state, fields=fields, evidence=evidence)
+
+
+def land(ledger: Ledger, actor: Actor, branch: str, *, merge: str | None = None) -> Row:
+    require_may(actor, "land", ledger.posts)
+    trunk_head = gitq.resolve(ledger.root, f"refs/heads/{ledger.trunk}", run=ledger.run)
+    if trunk_head is None:
+        raise MoveRefused(f"git could not resolve the local trunk `{ledger.trunk}`")
+    with ledger.session() as s:
+        row = s.need_open_row(branch)
+        state = s.next_state(row, "land")
+        read = batch.revision_of(row)
+        if not read:
+            raise MoveRefused(f"`{branch}` carries no recorded revision; nothing lands that nobody read")
+        commit = gitq.resolve(ledger.root, merge, run=ledger.run) if merge else trunk_head
+        if commit is None:
+            raise MoveRefused(f"git could not resolve --merge {merge}")
+        if gitq.is_ancestor(ledger.root, commit, trunk_head, run=ledger.run) is not True:
+            raise MoveRefused(f"{commit[:7]} is not on the local `{ledger.trunk}`; land records work merged there")
+        contains = gitq.is_ancestor(ledger.root, read, commit, run=ledger.run) is True
+        if not contains and not _squash_on_trunk(ledger, row, read, commit):
+            raise MoveRefused(f"{commit[:7]} does not contain the revision read ({read[:7]}); merge `{branch}` "
+                              f"into `{ledger.trunk}` first")
+        loose = batch.unaccounted(ledger, s.rows, commit, base=row.base)
+        if loose is None:
+            raise MoveRefused("could not tell what the push would carry: no origin, and no base recorded on the row")
+        if loose:
+            named = "; ".join(f"{sha[:7]} {batch.subject(ledger, sha)}" for sha in loose[:5])
+            more = f" and {len(loose) - 5} more" if len(loose) > 5 else ""
+            raise MoveRefused(f"the batch carries work nobody read: {named}{more}. Hand it over for review, or "
+                              "record work born in the batch with `flotilla work inbatch`")
+        return s.append(actor, row.id, "land", state, fields={"merge": commit}, evidence={"trunk": trunk_head})
+
+
+def _squash_on_trunk(ledger: Ledger, row: Row, read: str, commit: str) -> bool:
+    """Whether some commit between the row's base and `commit` carries exactly the change read."""
+    if not row.base:
+        return False
+    listed = ledger.run(["git", "-C", str(ledger.root), "rev-list", commit, f"^{row.base}"], capture_output=True,
+                        text=True, check=False)
+    candidates = listed.stdout.split() if listed.returncode == 0 else []
+    return any(batch.carries_change(ledger, sha, row.base, read) for sha in candidates)

@@ -2,7 +2,7 @@ import pytest
 
 from flotilla.ledger import delivery
 from flotilla.ledger.errors import MoveRefused
-from ledgerkit import PROFILE, actor, commit, drive, fake_gh, git, make_ledger, repo_with_origin
+from ledgerkit import PROFILE, actor, commit, drive, fake_gh, git, make_ledger, merge, repo_with_origin
 
 SENDER = "sender 1"
 DIRECT = {**PROFILE, "flow": {"mode": "direct"}}
@@ -113,3 +113,64 @@ def test_only_the_sender_queues(tmp_path):
     drive(root, ledger)
     with pytest.raises(MoveRefused, match="may not `queue`"):
         delivery.queue(ledger, actor(ledger, "main session 1"), "feat/x")
+
+
+@pytest.fixture()
+def direct(tmp_path):
+    root = repo_with_origin(tmp_path)
+    return root, make_ledger(root, tmp_path / "state", profile=DIRECT)
+
+
+def queued(root, ledger, name="feat/x"):
+    drive(root, ledger, name)
+    return delivery.queue(ledger, actor(ledger, SENDER), name)
+
+
+def test_land_records_the_merge_on_the_local_trunk(direct):
+    root, ledger = direct
+    queued(root, ledger)
+    head = merge(root, "feat/x")
+    row = delivery.land(ledger, actor(ledger, SENDER), "feat/x")
+    assert (row.state, row.merge) == ("landed", head)
+
+
+def test_land_refuses_work_that_is_not_merged(direct):
+    root, ledger = direct
+    queued(root, ledger)
+    with pytest.raises(MoveRefused, match="does not contain the revision read"):
+        delivery.land(ledger, actor(ledger, SENDER), "feat/x")
+
+
+def test_land_refuses_a_batch_carrying_unread_work(direct):
+    root, ledger = direct
+    queued(root, ledger)
+    merge(root, "feat/x")
+    stray = commit(root, "a quick fix nobody read", "stray.txt")
+    with pytest.raises(MoveRefused, match=rf"nobody read: {stray[:7]} a quick fix nobody read"):
+        delivery.land(ledger, actor(ledger, SENDER), "feat/x", merge=stray)
+
+
+def test_land_accepts_a_squash_of_the_revision_read(direct):
+    root, ledger = direct
+    queued(root, ledger)
+    squashed = merge(root, "feat/x", squash=True)
+    assert delivery.land(ledger, actor(ledger, SENDER), "feat/x").merge == squashed
+
+
+def test_a_merge_that_is_not_on_trunk_is_refused(direct):
+    root, ledger = direct
+    queued(root, ledger)
+    merge(root, "feat/x")
+    drive(root, ledger, "feat/y", to="claimed")
+    side = git(root, "rev-parse", "feat/y")
+    with pytest.raises(MoveRefused, match="not on the local `main`"):
+        delivery.land(ledger, actor(ledger, SENDER), "feat/x", merge=side)
+
+
+def test_pr_mode_never_lands(pr_world):
+    root, ledger, answers = pr_world
+    row = drive(root, ledger)
+    answers["pr"] = open_pr("feat/x", row.tip)
+    delivery.queue(ledger, actor(ledger, SENDER), "feat/x", pr=12)
+    with pytest.raises(MoveRefused, match="not legal from `queued`"):
+        delivery.land(ledger, actor(ledger, SENDER), "feat/x")
