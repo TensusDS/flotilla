@@ -93,3 +93,10 @@ def test_machine_writes_machine_toml(repo, tmp_path):
     code, _ = run_cli("onboard", "machine")
     assert (tmp_path / "state" / "machine.toml").is_file()
     assert code in (0, 1)
+
+
+def test_write_installs_the_post_templates(repo):
+    answer_everything(repo)
+    assert run_cli("onboard", "write", "--root", str(repo))[0] == 0
+    installed = sorted(p.stem for p in (repo / ".flotilla" / "posts").glob("*.md"))
+    assert installed == ["judge", "main", "minor", "orchestrator", "reviewer", "sender"]
