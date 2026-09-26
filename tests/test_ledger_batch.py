@@ -3,7 +3,7 @@ import subprocess
 import pytest
 
 from flotilla.ledger import batch
-from ledgerkit import PROFILE, commit, drive, git, make_ledger, merge, repo_with_origin
+from ledgerkit import IDENTITY, PROFILE, commit, drive, git, make_ledger, merge, repo_with_origin
 
 DIRECT = {**PROFILE, "flow": {"mode": "direct"}, "release": {"version_files": ["pyproject.toml"]}}
 
@@ -90,7 +90,7 @@ def test_without_origin_or_base_the_question_is_unknown(tmp_path):
 def test_a_merge_that_adds_its_own_change_is_not_accounted(world):
     root, ledger = world
     drive(root, ledger, "feat/x")
-    git(root, "merge", "-q", "--no-ff", "--no-commit", "feat/x")
+    git(root, *IDENTITY, "merge", "-q", "--no-ff", "--no-commit", "feat/x")
     write(root, "evil.txt", "slipped into the merge\n")
     evil = commit(root, "merge feat/x")
     assert batch.account(ledger, ledger.rows(), evil) is None

@@ -2,7 +2,7 @@ import pytest
 
 from flotilla.ledger import batch, outside
 from flotilla.ledger.errors import MoveRefused
-from ledgerkit import PROFILE, actor, commit, drive, git, make_ledger, merge, repo_with_origin
+from ledgerkit import IDENTITY, PROFILE, actor, commit, drive, git, make_ledger, merge, repo_with_origin
 
 SENDER = "sender 1"
 DIRECT = {**PROFILE, "flow": {"mode": "direct"}}
@@ -118,7 +118,7 @@ def merge_empty(root):
 def test_a_resolved_merge_is_recorded_as_born_in_the_batch(world):
     root, ledger = world
     drive(root, ledger)
-    git(root, "merge", "-q", "--no-ff", "--no-commit", "feat/x")
+    git(root, *IDENTITY, "merge", "-q", "--no-ff", "--no-commit", "feat/x")
     (root / "resolution.txt").write_text("resolved by hand\n", encoding="utf-8")
     git(root, "add", "resolution.txt")
     resolved = commit(root, "merge feat/x, resolved")
