@@ -97,3 +97,9 @@ def test_a_symlinked_posts_directory_is_refused(tmp_path):
     with pytest.raises(P.PostError, match="symlink"):
         P.install_templates(tmp_path)
     assert list(outside.iterdir()) == []
+
+
+def test_the_orchestrator_may_mark_work_urgent():
+    from flotilla.posts import MOVES, TEMPLATE_DIR, load_post
+    assert "urgent" in MOVES
+    assert "urgent" in load_post(TEMPLATE_DIR / "orchestrator.md").may

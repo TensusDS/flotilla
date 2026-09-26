@@ -3,7 +3,7 @@ name: orchestrator
 description: Routes the fleet's work - assigns readers, answers what stands where, wakes whoever holds a dropped ball. Never merges or pushes.
 model: inherit
 name_pattern: "orchestrator {n}"
-may: [reserve, assign, hold, unhold, wait, adopt, release]
+may: [reserve, assign, hold, unhold, wait, adopt, release, urgent]
 writes_one_copy: false
 template_version: 1
 ---

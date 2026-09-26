@@ -78,7 +78,10 @@ def moved(ledger: Ledger, actor: Actor, branch: str, *, tip: str, agreed_by: str
         if row.reader and row.taken and agreed_by != row.reader:
             raise MoveRefused(f"{row.reader} is reading `{branch}` over {row.tip[:7]}; moving the tip needs their "
                               f"agreement (--agreed-by \"{row.reader}\")")
-        return s.append(actor, row.id, "moved", state, fields={"tip": current},
+        fields = {"tip": current}
+        if row.state == "accepted":
+            fields["verdict"] = ""   # the verdict was over the old tip; the reader accepts again
+        return s.append(actor, row.id, "moved", state, fields=fields,
                         evidence={"from": row.tip, "agreed_by": agreed_by, "receipt": receipt})
 
 
