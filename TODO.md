@@ -2,6 +2,20 @@
 
 Deferred findings, kept here until a plan takes them. Each names where it came from.
 
+## From the ledger part B final review (2026-09-26)
+
+- GitHub unreachable at the PR step exits 2 ("refused"), not 3 ("not yet"): an instrument that could not ask says
+  unknown.
+- `_fetch` ignores its own failure, so "(fetched)" can be untrue; a None from `_on_origin` also reads "does not have".
+- A PR closed without merging advises "queue it again", which is not legal from `queued`; say release and re-claim.
+- The `vanished` finding fires for shipped or walked rows whose branch was cleaned up, and for auto-deleted PR
+  branches, advising moves that are not legal there.
+- `reconcile` always exits 0, and its parser has no `--skip-event` although a `pre-shipped` refusal advises it.
+- A `pre-` script that calls a `flotilla work` move deadlocks on the ledger lock until the 30 s timeout; say so in
+  `docs/events/schema.json`'s documentation.
+- An accepted row the brief holds back still counts as read when its commits ride in with another row's land.
+- In the brief, an accepted row whose branch git cannot resolve reads as ready.
+
 ## From the ledger part A final review (2026-09-24)
 
 - An unknown base is recorded as `""`; record it as unknown, so a reader can tell "not asked" from "git could not say".
