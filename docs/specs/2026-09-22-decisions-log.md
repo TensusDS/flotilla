@@ -234,6 +234,36 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
       `references/why.md` as the evidence base;
     - translation is a separate task per module in the plan, roughly the size of the port itself.
 
+24. **`inbatch` creates its own row, before the push.** Work born inside the sender's batch has no branch and no
+   claim; `flotilla work inbatch <label> --commit <sha> --read-by <name> --why "<what>"` records a finished row
+   whose commit must be on the local trunk and whose reader is not the sender. The land door then accounts that
+   commit. ai-os recorded it after the push, which left the push door unable to see it (its own docstring names the
+   gap); a commit that never reaches origin shows up as a finding instead. Direct push and local only: in PR mode
+   every change reaches trunk through a PR. (executor's decision, ledger part B plan, 2026-09-26)
+25. **`broke` creates the linked fix row at once** (spec 6.3, literally): a `claimed` row on `fix/<branch>` owned by
+   the original owner, with `fixes` pointing at the broken row and no tree yet. `flotilla tree cut fix/<branch>` by
+   that owner picks the row up instead of refusing it. The broken row cannot be walked or closed until a fix row is
+   delivered, and the walk must be over a build containing the fix. (executor's decision, ledger part B plan, 2026-09-26)
+26. **Events are named by the state a move enters** (`pre-handed`, `post-shipped`), as in the spec's examples, and
+   fire only on moves that change the state. Annotations (`wait`, `hold`, `take`, `assign`, `moved` inside
+   `handed`, ...) fire nothing. Scripts are read from trunk, like the profile and posts (part A's I4 fix), so a
+   branch cannot switch a check off for itself. A `pre-` script runs inside the log's lock (bounded by a 30 s
+   timeout), because running it outside would let the row change between the check and the write. (executor's decision, ledger part B plan, 2026-09-26)
+27. **A moved tip after acceptance goes back to `handed`** (new edge `accepted --moved--> handed`, verdict cleared,
+   the reader's agreement required as for any taken branch). Without it an accepted branch that moved could only be
+   released. (executor's decision, ledger part B plan, 2026-09-26)
+28. **Out-of-turn is a move, `urgent`**, an annotation the orchestrator makes (`--why`, `--cancel`). It changes
+   nothing but the order of the sender's brief, oldest request first. Added to the orchestrator's `may`. (executor's decision, ledger part B plan, 2026-09-26)
+29. **"Read after merge" is the `offledger` witness.** Work that reached trunk outside the ledger is recorded only
+   with a named witness who is not its owner; the proof that the named commit carried the work is measured where
+   git can say (the merge brought the tip; or the commit carries the same change, by `git patch-id`) and otherwise
+   recorded as `--attested` text, marked unmeasured. The ai-os "records ride without a reader" bypass stays dropped. (executor's decision, ledger part B plan, 2026-09-26)
+30. **Absent CI never reads as green.** With no CI provider and no push tiers, `shipped` stands on origin alone and
+   its gate says `none: no CI and no push tiers — nothing verified this commit`; `brief` prints it out loud. (executor's decision, ledger part B plan, 2026-09-26)
+31. **No thresholds in deviations; stalled is the only timed view.** Deviations are states from which the expected
+   move is impossible right now (nobody named, the mover is gone, a hold whose condition is met or cannot be asked).
+   "Has not moved for N hours" is `status --stalled N`, asked by a person. (executor's decision, ledger part B plan, 2026-09-26)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
