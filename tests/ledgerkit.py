@@ -41,7 +41,8 @@ def branch(root, name, *messages) -> str:
     return tip
 
 
-def make_ledger(root, state, profile=None, live=DEFAULT_LIVE, posts=None, census=None, run=None):
+def make_ledger(root, state, profile=None, live=DEFAULT_LIVE, posts=None, census=None, run=None, events=None,
+                skip_events=None):
     import subprocess as _subprocess
 
     from flotilla.core.census import Session
@@ -57,7 +58,8 @@ def make_ledger(root, state, profile=None, live=DEFAULT_LIVE, posts=None, census
     ident = identify(Path(root))
     return Ledger(store=LocalLogStore(Path(state) / "ledger"), root=ident.root, repo_key=ident.key,
                   profile=profile or PROFILE, posts=posts, state_dir=Path(state),
-                  census=census or (lambda: sessions), run=run or _subprocess.run)
+                  census=census or (lambda: sessions), run=run or _subprocess.run, events=events,
+                  skip_events=skip_events)
 
 
 def drive(root, ledger, name="feat/x", *, to="accepted", owner="main session 1", reader="review session 1",
