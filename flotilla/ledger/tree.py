@@ -2,7 +2,8 @@
 
 The claim is filed by the act a session performs anyway, because a voluntary journal decays. The check, the
 `worktree add` and the claim run inside one hold of the ledger's lock, and a failure after git has created anything
-removes what it created, so a refusal never leaves an orphan tree or branch behind.
+removes what it created, so a refusal never leaves an orphan tree or branch behind. A fix row filed by
+`broke` is picked up by its owner's cut instead of refused.
 """
 
 from __future__ import annotations
@@ -39,13 +40,24 @@ def cut(ledger: core.Ledger, actor: Actor, branch: str, tree: Path, *, expect: s
     with ledger.session() as s:
         if gitq.branch_tip(ledger.root, branch, run=ledger.run):
             raise MoveRefused(f"branch `{branch}` already exists; nothing was cut")
-        ids = core.check_claim(s.rows, branch, ref=ref, also=also, requires=requires)
+        filed = s.open_row(branch)
+        if filed is not None and filed.fixes and not filed.tree and filed.owner == actor.name:
+            if ref or requires or also:
+                raise MoveRefused(f"`{branch}` was filed by `broke` for {filed.fixes}; cut it without --ref, "
+                                  "--requires or --also")
+            ids = []
+        else:
+            filed = None
+            ids = core.check_claim(s.rows, branch, ref=ref, also=also, requires=requires)
         done = ledger.run(["git", "-C", str(ledger.root), "worktree", "add", "-q", "-b", branch, str(tree),
                            base_ref], capture_output=True, text=True, check=False)
         try:
             if done.returncode != 0:
                 raise MoveRefused(f"git worktree add failed: {done.stderr.strip()}; nothing was cut")
             base = gitq.resolve(ledger.root, base_ref, run=ledger.run) or ""
+            if filed is not None:
+                return s.append(actor, filed.id, "claim", "claimed",
+                                fields={"tree": str(tree.resolve()), "base": base}, evidence={"picked_up": filed.fixes})
             return core.append_claim(s, actor, branch, tree=str(tree.resolve()), base=base, ref=ref, ids=ids,
                                      also=also)
         except BaseException:
