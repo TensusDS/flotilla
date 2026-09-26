@@ -15,6 +15,7 @@ from pathlib import Path
 MOVES = ("reserve", "claim", "hand", "moved", "fix", "assign", "recuse", "take", "accept", "queue", "land",
          "inbatch", "ship", "walked", "broke", "close", "release", "offledger", "wait", "hold", "unhold", "adopt",
          "urgent")
+PERMISSION_MODES = ("acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan")
 TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates" / "posts"
 POSTS_DIR = Path(".flotilla") / "posts"
 
@@ -32,6 +33,8 @@ class Post:
     template_version: int
     path: Path
     body: str
+    model: str = "inherit"
+    permission_mode: str = ""
 
     def matches(self, session_name: str) -> bool:
         regex = "^" + re.escape(self.name_pattern).replace(re.escape("{n}"), r"\d+") + "$"
@@ -90,7 +93,13 @@ def load_post(path: Path) -> Post:
     version = meta.get("template_version", 0)
     if isinstance(version, bool) or not isinstance(version, int):
         raise PostError(f"{path}: `template_version` must be a whole number")
-    return Post(name, pattern, frozenset(may), one_copy, version, path, body)
+    model = meta.get("model", "inherit")
+    if not isinstance(model, str) or not model:
+        raise PostError(f"{path}: `model` must be a model name or `inherit`")
+    mode = meta.get("permission_mode", "")
+    if mode and mode not in PERMISSION_MODES:
+        raise PostError(f"{path}: `permission_mode` must be one of {', '.join(PERMISSION_MODES)}")
+    return Post(name, pattern, frozenset(may), one_copy, version, path, body, model, mode)
 
 
 def _folder(root: Path) -> Path:

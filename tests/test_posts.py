@@ -103,3 +103,29 @@ def test_the_orchestrator_may_mark_work_urgent():
     from flotilla.posts import MOVES, TEMPLATE_DIR, load_post
     assert "urgent" in MOVES
     assert "urgent" in load_post(TEMPLATE_DIR / "orchestrator.md").may
+
+
+def test_a_post_reads_its_model_and_permission_mode(tmp_path):
+    from flotilla.posts import load_post
+    path = tmp_path / "lead.md"
+    path.write_text("---\nname: lead\nname_pattern: \"lead {n}\"\nmay: [assign]\nmodel: opus\n"
+                    "permission_mode: plan\n---\nbody\n", encoding="utf-8")
+    post = load_post(path)
+    assert (post.model, post.permission_mode) == ("opus", "plan")
+
+
+def test_a_post_refuses_an_unknown_permission_mode(tmp_path):
+    import pytest
+    from flotilla.posts import PostError, load_post
+    path = tmp_path / "lead.md"
+    path.write_text("---\nname: lead\nname_pattern: \"lead {n}\"\nmay: [assign]\npermission_mode: yolo\n---\n",
+                    encoding="utf-8")
+    with pytest.raises(PostError, match="permission_mode"):
+        load_post(path)
+
+
+def test_template_posts_inherit_the_model_and_the_permission_mode():
+    from flotilla.posts import TEMPLATE_DIR, load_post
+    for path in TEMPLATE_DIR.glob("*.md"):
+        post = load_post(path)
+        assert (post.model, post.permission_mode) == ("inherit", ""), path.name
