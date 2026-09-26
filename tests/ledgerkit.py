@@ -107,3 +107,16 @@ def fake_gh(handler, calls=None):
             return subprocess.CompletedProcess(cmd, code, text, "" if code == 0 else "gh: request failed")
         return subprocess.run(cmd, **kwargs)
     return run
+
+
+def shipped_direct(root, ledger, name="feat/x"):
+    """Drive `name` to shipped in a direct-push project without CI: accept, queue, merge, land, push, ship."""
+    from flotilla.ledger import delivery
+
+    drive(root, ledger, name)
+    sender = actor(ledger, "sender 1")
+    delivery.queue(ledger, sender, name)
+    merge(root, name)
+    delivery.land(ledger, sender, name)
+    git(root, "push", "-q", "origin", ledger.trunk)
+    return delivery.ship(ledger, sender, name)

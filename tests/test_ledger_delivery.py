@@ -1,8 +1,9 @@
 import pytest
 
 from flotilla.ledger import delivery
-from flotilla.ledger.errors import MoveRefused
-from ledgerkit import PROFILE, actor, commit, drive, fake_gh, git, make_ledger, merge, repo_with_origin
+from flotilla.ledger.errors import MoveRefused, NotYet
+from ledgerkit import (PROFILE, actor, commit, drive, fake_gh, git, make_ledger, merge, repo_with_origin,
+                       shipped_direct)
 
 SENDER = "sender 1"
 DIRECT = {**PROFILE, "flow": {"mode": "direct"}}
@@ -174,3 +175,87 @@ def test_pr_mode_never_lands(pr_world):
     delivery.queue(ledger, actor(ledger, SENDER), "feat/x", pr=12)
     with pytest.raises(MoveRefused, match="not legal from `queued`"):
         delivery.land(ledger, actor(ledger, SENDER), "feat/x")
+
+
+GITHUB = {"provider": "github", "required_jobs": ["test"]}
+
+
+def pr_shipping(tmp_path):
+    root = repo_with_origin(tmp_path)
+    answers = {}
+    ledger = make_ledger(root, tmp_path / "state", profile={**PROFILE, "ci": GITHUB},
+                         run=fake_gh(pr_handler(answers)))
+    row = drive(root, ledger)
+    answers["pr"] = open_pr("feat/x", row.tip)
+    delivery.queue(ledger, actor(ledger, SENDER), "feat/x", pr=7)
+    head = merge(root, "feat/x")
+    git(root, "push", "-q", "origin", "main")
+    answers["pr"] = {"state": "MERGED", "headRefOid": row.tip, "mergeCommit": {"oid": head}}
+    answers["runs"] = [{"databaseId": 5, "event": "push"}]
+    answers["jobs"] = [{"name": "test", "status": "completed", "conclusion": "success"}]
+    return root, ledger, answers, row, head
+
+
+def test_a_merged_pr_with_green_ci_is_shipped(tmp_path):
+    root, ledger, answers, row, head = pr_shipping(tmp_path)
+    shipped = delivery.ship(ledger, actor(ledger, SENDER), "feat/x")
+    assert (shipped.state, shipped.merge, shipped.gate) == ("shipped", head, f"github run 5 over {head[:7]}")
+
+
+def test_an_open_pr_is_not_shipped_yet(tmp_path):
+    root, ledger, answers, row, head = pr_shipping(tmp_path)
+    answers["pr"] = {"state": "OPEN", "headRefOid": row.tip}
+    with pytest.raises(NotYet, match="still open"):
+        delivery.ship(ledger, actor(ledger, SENDER), "feat/x")
+
+
+def test_a_pr_that_merged_another_head_is_not_shipped(tmp_path):
+    root, ledger, answers, row, head = pr_shipping(tmp_path)
+    answers["pr"] = {"state": "MERGED", "headRefOid": "f" * 40, "mergeCommit": {"oid": head}}
+    with pytest.raises(MoveRefused, match="not what was read"):
+        delivery.ship(ledger, actor(ledger, SENDER), "feat/x")
+    assert ledger.rows()["r1"].state == "queued"
+
+
+def test_pending_ci_is_not_shipped(tmp_path):
+    root, ledger, answers, row, head = pr_shipping(tmp_path)
+    answers["jobs"] = [{"name": "test", "status": "queued", "conclusion": ""}]
+    with pytest.raises(NotYet, match="has not finished"):
+        delivery.ship(ledger, actor(ledger, SENDER), "feat/x")
+    assert ledger.rows()["r1"].state == "queued"
+
+
+def test_red_ci_is_refused_and_named(tmp_path):
+    root, ledger, answers, row, head = pr_shipping(tmp_path)
+    answers["jobs"] = [{"name": "test", "status": "completed", "conclusion": "failure"}]
+    with pytest.raises(MoveRefused, match=r"red: test \(failure\)"):
+        delivery.ship(ledger, actor(ledger, SENDER), "feat/x")
+
+
+def test_landed_but_not_pushed_is_not_shipped(direct):
+    root, ledger = direct
+    queued(root, ledger)
+    merge(root, "feat/x")
+    delivery.land(ledger, actor(ledger, SENDER), "feat/x")
+    with pytest.raises(NotYet, match="landed, not pushed"):
+        delivery.ship(ledger, actor(ledger, SENDER), "feat/x")
+
+
+def test_direct_push_without_ci_ships_and_says_nothing_was_verified(direct):
+    root, ledger = direct
+    row = shipped_direct(root, ledger)
+    assert row.state == "shipped" and row.gate.startswith("none:")
+
+
+def test_reconcile_ships_what_is_ready_and_reports_the_rest(direct):
+    root, ledger = direct
+    queued(root, ledger, "feat/a")
+    merge(root, "feat/a")
+    delivery.land(ledger, actor(ledger, SENDER), "feat/a")
+    git(root, "push", "-q", "origin", "main")
+    queued(root, ledger, "feat/b")
+    merge(root, "feat/b")
+    delivery.land(ledger, actor(ledger, SENDER), "feat/b")
+    lines = delivery.reconcile(ledger, actor(ledger, SENDER))
+    assert any(line.startswith("shipped feat/a") for line in lines)
+    assert any(line.startswith("not yet feat/b") and "landed, not pushed" in line for line in lines)

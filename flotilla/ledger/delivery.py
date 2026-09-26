@@ -6,6 +6,11 @@ revision. Every fact about a pull request is asked of GitHub through `gh`; none 
 
 `land` (direct push and local only) records the commit on the local trunk that carries the revision read — a merge
 of it or a squash of the same change — and refuses when the push would also carry a commit no verdict covers.
+
+`ship` is never typed: it asks. In PR mode, GitHub says the PR merged the revision read and names the merge commit,
+which origin's trunk must contain; in direct mode origin's trunk must contain the landed commit. Then the gate:
+required CI jobs, the gate command, or a push receipt. Anything not proved yet raises `NotYet` and records nothing.
+`reconcile` asks for every queued or landed row at once.
 """
 
 from __future__ import annotations
@@ -13,10 +18,12 @@ from __future__ import annotations
 import json
 
 from flotilla.ledger import batch, gitq
+from flotilla.ledger import gate as gates
 from flotilla.ledger.actor import Actor, require_may
 from flotilla.ledger.core import Ledger
-from flotilla.ledger.errors import MoveRefused
+from flotilla.ledger.errors import MoveRefused, NotYet
 from flotilla.ledger.model import Row, blocked_by
+from flotilla.ledger.transitions import next_state
 
 
 def pr_view(ledger: Ledger, pr: int, fields: str) -> dict:
@@ -113,3 +120,89 @@ def _squash_on_trunk(ledger: Ledger, row: Row, read: str, commit: str) -> bool:
                         text=True, check=False)
     candidates = listed.stdout.split() if listed.returncode == 0 else []
     return any(batch.carries_change(ledger, sha, row.base, read) for sha in candidates)
+
+
+def _fetch(ledger: Ledger) -> None:
+    ledger.run(["git", "-C", str(ledger.root), "fetch", "--quiet", "origin", ledger.trunk], capture_output=True,
+               text=True, check=False)
+
+
+def _on_origin(ledger: Ledger, sha: str) -> bool | None:
+    return gitq.is_ancestor(ledger.root, sha, f"refs/remotes/origin/{ledger.trunk}", run=ledger.run)
+
+
+def _shipped_pr(ledger: Ledger, row: Row) -> tuple[str, dict, list[str]]:
+    if not row.pr:
+        raise MoveRefused(f"`{row.branch}` names no PR; queue it with --pr")
+    view = pr_view(ledger, int(row.pr), "state,headRefOid,mergeCommit")
+    status = view.get("state")
+    if status == "OPEN":
+        raise NotYet(f"PR #{row.pr} is still open")
+    if status != "MERGED":
+        raise MoveRefused(f"PR #{row.pr} is {status}; a PR closed without merging did not ship. Release the row, "
+                          "or queue it again with a new PR")
+    read = batch.revision_of(row)
+    head = view.get("headRefOid") or ""
+    if head != read:
+        raise MoveRefused(f"PR #{row.pr} merged {head[:7] or 'an unknown head'}, but the revision read is "
+                          f"{read[:7]}: what shipped is not what was read. Record it with `flotilla work "
+                          "offledger` and a witness")
+    merged = (view.get("mergeCommit") or {}).get("oid") or ""
+    if not merged:
+        raise NotYet(f"GitHub names no merge commit for PR #{row.pr} yet")
+    _fetch(ledger)
+    if _on_origin(ledger, merged) is not True:
+        raise NotYet(f"origin's `{ledger.trunk}` does not have {merged[:7]} yet (fetched)")
+    return merged, {"pr": row.pr, "pr_head": head}, [read]
+
+
+def _shipped_direct(ledger: Ledger, row: Row) -> tuple[str, dict, list[str]]:
+    if not row.merge:
+        raise MoveRefused(f"`{row.branch}` has no landed commit recorded")
+    _fetch(ledger)
+    if _on_origin(ledger, row.merge) is not True:
+        raise NotYet(f"origin's `{ledger.trunk}` does not have {row.merge[:7]}: landed, not pushed")
+    later = ledger.run(["git", "-C", str(ledger.root), "rev-list", "--ancestry-path",
+                        f"{row.merge}..refs/remotes/origin/{ledger.trunk}"], capture_output=True, text=True,
+                       check=False)
+    return row.merge, {}, list(reversed(later.stdout.split())) if later.returncode == 0 else []
+
+
+def ship(ledger: Ledger, actor: Actor, branch: str) -> Row:
+    require_may(actor, "ship", ledger.posts)
+    row = next((r for r in reversed(list(ledger.rows().values())) if r.branch == branch and r.is_open), None)
+    if row is None:
+        raise MoveRefused(f"no open ledger row for `{branch}`")
+    next_state(row.state, "ship", ledger.profile, ledger.owner_post(row))
+    commit, evidence, candidates = (_shipped_pr if ledger.mode == "pr" else _shipped_direct)(ledger, row)
+    found = gates.gate_for(ledger, commit, candidates=candidates)
+    if found.status in (gates.PENDING, gates.UNKNOWN):
+        raise NotYet(f"not shipped yet: {found.text}")
+    if found.status == gates.RED:
+        raise MoveRefused(f"not shipped: {found.text}")
+    with ledger.session() as s:
+        current = s.need_open_row(branch)
+        if current.id != row.id or current.state != row.state:
+            raise MoveRefused(f"`{branch}` changed while origin was asked; run it again")
+        state = s.next_state(current, "ship")
+        return s.append(actor, current.id, "ship", state, fields={"merge": commit, "gate": found.text},
+                        evidence=evidence)
+
+
+def reconcile(ledger: Ledger, actor: Actor) -> list[str]:
+    """Ask origin (or the PR) about every queued or landed row; ship what is proved, report the rest."""
+    require_may(actor, "ship", ledger.posts)
+    lines = []
+    for row in list(ledger.rows().values()):
+        if not row.is_open or row.state not in ("queued", "landed") or ledger.mode == "local":
+            continue
+        if ledger.mode == "direct" and row.state == "queued":
+            continue
+        try:
+            shipped = ship(ledger, actor, row.branch)
+            lines.append(f"shipped {shipped.branch} ({shipped.gate})")
+        except NotYet as err:
+            lines.append(f"not yet {row.branch}: {err}")
+        except MoveRefused as err:
+            lines.append(f"refused {row.branch}: {err}")
+    return lines
