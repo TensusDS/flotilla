@@ -7,13 +7,14 @@ check the transition, the row rule and the evidence, and append one event. Nothi
 from __future__ import annotations
 
 import contextlib
+import os
 import subprocess
 from pathlib import Path
 
 from flotilla import __version__
 from flotilla.core.census import CensusUnavailable, read_census
 from flotilla.ledger import gitq
-from flotilla.ledger.actor import Actor, require_may
+from flotilla.ledger.actor import NO_CENSUS, Actor, require_may
 from flotilla.ledger.errors import MoveRefused
 from flotilla.ledger.model import Row, fold, make_event, next_row_id, now_iso
 from flotilla.ledger.transitions import next_state
@@ -57,6 +58,8 @@ class Ledger:
         return post.name if post else ""
 
     def live_names(self) -> set[str]:
+        if self.census is None and os.environ.get(NO_CENSUS):
+            raise MoveRefused(f"{NO_CENSUS} is set, so the census is not asked and liveness is unknown")
         try:
             sessions = (self.census or read_census)()
         except CensusUnavailable as err:
