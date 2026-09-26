@@ -9,7 +9,7 @@ import pytest
 from flotilla import cli
 from flotilla.onboard.tomlw import render_toml
 from flotilla.posts import TEMPLATE_DIR, install_templates
-from ledgerkit import commit, git, repo_with_origin
+from ledgerkit import commit, git, merge, repo_with_origin
 
 GREEN = f"{sys.executable} -c \"print('1 passed')\""
 CALL = re.compile(r"`flotilla ([a-z-]+)(?: ([a-z-]+))?")
@@ -104,7 +104,7 @@ def test_every_cli_call_in_the_post_templates_exists():
     for path in sorted(TEMPLATE_DIR.glob("*.md")):
         for command, sub in CALL.findall(path.read_text(encoding="utf-8")):
             assert command in top, f"{path.name}: `flotilla {command}`"
-            if sub and command in ("work", "tree", "receipt", "onboard"):
+            if sub and command in ("work", "tree", "receipt", "onboard", "events"):
                 assert sub in subcommands(top[command]), f"{path.name}: `flotilla {command} {sub}`"
 
 
@@ -180,3 +180,71 @@ def test_events_run_replays_a_script_over_a_row(tmp_path, monkeypatch):
     assert run_cli("work", "claim", "feat/x", "--root", str(root), "--as", "main session 1")[0] == 0
     code, out = run_cli("events", "run", "pre-handed", "--row", "feat/x", "--root", str(root))
     assert code == 2 and "rejected: no ticket" in out
+
+
+DIRECT_PLAIN = {**PLAIN, "flow": {"mode": "direct"}}
+
+
+def test_a_direct_push_cycle_through_the_cli(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch, DIRECT_PLAIN)
+    tree = tmp_path / "app-main-1"
+    assert run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")[0] == 0
+    tip = commit(tree, "work", "work.txt")
+    assert run_cli("work", "hand", "feat/x", "--root", str(tree), "--as", "main session 1")[0] == 0
+    assert run_cli("work", "take", "feat/x", "--root", str(root), "--as", "review session 1")[0] == 0
+    assert run_cli("work", "accept", "feat/x", "--reviewed", tip[:8], "--root", str(root),
+                   "--as", "review session 1")[0] == 0
+    code, out = run_cli("brief", "--root", str(root))
+    assert code == 0 and "`feat/x` (accepted)" in out and "Answer yes to ship 1 row." in out
+    assert run_cli("work", "queue", "feat/x", "--root", str(root), "--as", "sender 1")[0] == 0
+    merge(root, "feat/x")
+    assert run_cli("work", "land", "feat/x", "--root", str(root), "--as", "sender 1")[0] == 0
+    code, out = run_cli("work", "ship", "feat/x", "--root", str(root), "--as", "sender 1")
+    assert code == 3 and "landed, not pushed" in out
+    git(root, "push", "-q", "origin", "main")
+    code, out = run_cli("work", "reconcile", "--root", str(root), "--as", "sender 1")
+    assert code == 0 and "shipped feat/x" in out
+    assert run_cli("work", "close", "feat/x", "--root", str(root), "--as", "main session 1")[0] == 0
+    code, out = run_cli("status", "--root", str(root), "--stalled", "4")
+    assert code == 0 and "census: unknown" in out and "no open rows" in out and "findings: none" in out
+    code, out = run_cli("metrics", "--root", str(root))
+    assert code == 0 and "return rate: 0% of handovers came back" in out
+
+
+def test_status_names_whose_move_it_is(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    tree = tmp_path / "app-main-1"
+    assert run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")[0] == 0
+    commit(tree, "work", "work.txt")
+    assert run_cli("work", "hand", "feat/x", "--root", str(tree), "--as", "main session 1")[0] == 0
+    code, out = run_cli("status", "--root", str(root))
+    assert "r1 feat/x: handed -> nobody named" in out
+    assert "feat/x: nobody_named" in out
+
+
+def test_a_skipped_event_must_name_a_real_event_and_say_why(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    code, out = run_cli("work", "claim", "feat/x", "--root", str(root), "--as", "main session 1",
+                        "--skip-event", "pre-nonsense", "--skip-why", "x")
+    assert code == 2 and "not an event name" in out
+    code, out = run_cli("work", "claim", "feat/x", "--root", str(root), "--as", "main session 1",
+                        "--skip-event", "pre-claimed")
+    assert code == 2 and "--skip-why" in out
+
+
+def test_broke_prints_the_fix_row_it_filed(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch, DIRECT_PLAIN)
+    tree = tmp_path / "app-main-1"
+    run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")
+    tip = commit(tree, "work", "work.txt")
+    run_cli("work", "hand", "feat/x", "--root", str(tree), "--as", "main session 1")
+    run_cli("work", "take", "feat/x", "--root", str(root), "--as", "review session 1")
+    run_cli("work", "accept", "feat/x", "--reviewed", tip, "--root", str(root), "--as", "review session 1")
+    run_cli("work", "queue", "feat/x", "--root", str(root), "--as", "sender 1")
+    merge(root, "feat/x")
+    run_cli("work", "land", "feat/x", "--root", str(root), "--as", "sender 1")
+    git(root, "push", "-q", "origin", "main")
+    run_cli("work", "ship", "feat/x", "--root", str(root), "--as", "sender 1")
+    code, out = run_cli("work", "broke", "feat/x", "--where", "Settings > Export", "--saw", "nothing happens",
+                        "--root", str(root), "--as", "acceptance judge 1")
+    assert code == 0 and "fix row r2 `fix/feat/x` filed for main session 1" in out

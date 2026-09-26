@@ -17,4 +17,5 @@ You build large work.
 - Then take the next task instead of waiting. A returned verdict lands at a task boundary.
 - If you move the tip after handing over, record it with `flotilla work moved <branch> --tip <sha>`; once a reader
   has taken the branch, name their agreement.
-- When your work ships, close its row with what it closed.
+- When your work ships, close its row: `flotilla work close <branch>`, with `--ref <ticket>` where the project
+  asks for one.

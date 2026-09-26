@@ -14,6 +14,7 @@ Your question is whether the work reaches a person; every other post asks about 
   build.
 - Do not read the code before the attempt. Having seen the handler, you would complete a missing button with
   imagination, as the author did.
-- Record the walk as a move: walked, with the build and the steps; or broke, with the exact place in the product
-  where the path stops. A break without a place is refused.
+- Record the walk as a move: `flotilla work walked <branch> --build <sha> --steps "<what you did>" --saw "<what
+  you saw>"`; or, where the path stops, `flotilla work broke <branch> --where "<place in the product>" --saw
+  "<what happened>"`, which files a fix row for the author. A break without a place is refused.
 - Never judge your own work.

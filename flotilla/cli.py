@@ -46,6 +46,9 @@ def build_parser() -> argparse.ArgumentParser:
         parser_.add_argument("branch")
         parser_.add_argument("--root", default=".")
         parser_.add_argument("--as", dest="as_name", default=None, help="act as this session (recorded)")
+        parser_.add_argument("--skip-event", dest="skip_event", default=None,
+                             help="skip one event script, on a person's decision (recorded); needs --skip-why")
+        parser_.add_argument("--skip-why", dest="skip_why", default="")
         return parser_
 
     claim = move_parser("claim", "claim work on a branch")
@@ -68,6 +71,39 @@ def build_parser() -> argparse.ArgumentParser:
     wait.add_argument("--why", default="")
     wait.add_argument("--clear", action="store_true")
     move_parser("release", "say the work will not happen").add_argument("--why", required=True)
+    move_parser("queue", "put accepted work in the sender's batch").add_argument("--pr", type=int, default=None)
+    move_parser("land", "record the trunk commit that carries the work").add_argument("--merge", default=None)
+    move_parser("ship", "ask the PR or origin whether the work shipped; record it if it did")
+    inbatch = move_parser("inbatch", "record a change born in the batch (BRANCH is a label)")
+    inbatch.add_argument("--commit", required=True)
+    inbatch.add_argument("--read-by", dest="read_by", required=True)
+    inbatch.add_argument("--why", required=True)
+    offledger = move_parser("offledger", "record work that reached trunk outside the ledger")
+    offledger.add_argument("--merge", required=True)
+    offledger.add_argument("--witness", required=True)
+    offledger.add_argument("--attested", default="")
+    walked = move_parser("walked", "record a walk of shipped work on the deployed build")
+    walked.add_argument("--build", required=True)
+    walked.add_argument("--steps", required=True)
+    walked.add_argument("--saw", required=True)
+    broke = move_parser("broke", "record where shipped work broke; files the fix row")
+    broke.add_argument("--where", required=True)
+    broke.add_argument("--saw", required=True)
+    broke.add_argument("--fix-branch", dest="fix_branch", default="")
+    close = move_parser("close", "close your shipped work")
+    close.add_argument("--ref", default="")
+    close.add_argument("--why", default="")
+    move_parser("adopt", "give work whose owner is gone to a live session").add_argument("--to", required=True)
+    hold = move_parser("hold", "keep a handed branch out of the reading queue, with a condition")
+    hold.add_argument("--until", required=True)
+    hold.add_argument("--why", required=True)
+    move_parser("unhold", "lift a hold")
+    urgent = move_parser("urgent", "ask for a row to ship out of turn")
+    urgent.add_argument("--why", default="")
+    urgent.add_argument("--cancel", action="store_true")
+    reconcile = moves.add_parser("reconcile", help="ask the PR or origin about every queued or landed row")
+    reconcile.add_argument("--root", default=".")
+    reconcile.add_argument("--as", dest="as_name", default=None, help="act as this session (recorded)")
     move_parser("show", "print a row and its history")
 
     tree = sub.add_parser("tree", help="worktrees filed in the ledger")
@@ -102,6 +138,13 @@ def build_parser() -> argparse.ArgumentParser:
     replay.add_argument("--row", required=True)
     replay.add_argument("--root", default=".")
     event_actions.add_parser("schema", help="print the event contract")
+    status = sub.add_parser("status", help="who does what, whose move, deviations, findings, stalled work")
+    status.add_argument("--root", default=".")
+    status.add_argument("--stalled", type=float, default=None, metavar="HOURS",
+                        help="also list open rows that have not moved for this many hours")
+    sub.add_parser("brief", help="the batch ready to ship, for one yes").add_argument("--root", default=".")
+    sub.add_parser("metrics", help="time in state, returns, reader throughput, event failures").add_argument(
+        "--root", default=".")
     return parser
 
 
@@ -120,7 +163,7 @@ def main(argv: list[str]) -> int:
     if args.command == "onboard":
         from flotilla.onboard.commands import run_onboard
         return run_onboard(args)
-    if args.command in ("work", "tree", "receipt", "events"):
+    if args.command in ("work", "tree", "receipt", "events", "status", "brief", "metrics"):
         from flotilla.ledger.commands import run_ledger_command
         return run_ledger_command(args)
     return 2
