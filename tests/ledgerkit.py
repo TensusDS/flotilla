@@ -79,3 +79,16 @@ def drive(root, ledger, name="feat/x", *, to="accepted", owner="main session 1",
 def actor(ledger, name):
     from flotilla.ledger.actor import resolve_actor
     return resolve_actor(ledger.posts, as_name=name, census=lambda: [])
+
+
+IDENTITY = ("-c", "user.email=t@example.invalid", "-c", "user.name=t")
+
+
+def merge(root, name, *, squash=False) -> str:
+    """Merge branch `name` into the checked-out trunk of `root` (a real merge, or a squash) and return the new HEAD."""
+    if squash:
+        git(root, "merge", "-q", "--squash", name)
+        git(root, *IDENTITY, "commit", "-q", "-m", f"squash {name}")
+    else:
+        git(root, *IDENTITY, "merge", "-q", "--no-ff", "-m", f"merge {name}", name)
+    return git(root, "rev-parse", "HEAD")
