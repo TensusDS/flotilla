@@ -20,7 +20,7 @@ BASE = {
                "offledger": "offledger"},
     "accepted": {"queue": "queued", "moved": "handed", "release": "released", "offledger": "offledger"},
     "queued": {"land": "landed", "ship": "shipped", "release": "released", "offledger": "offledger"},
-    "landed": {"ship": "shipped", "close": "closed"},
+    "landed": {"ship": "shipped", "close": "closed", "release": "released", "offledger": "offledger"},
     "shipped": {"walked": "walked", "broke": "shipped", "close": "closed"},
     "walked": {"close": "closed"},
 }

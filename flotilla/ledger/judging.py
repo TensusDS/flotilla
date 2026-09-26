@@ -104,9 +104,9 @@ def broke(ledger: Ledger, actor: Actor, branch: str, *, where: str, saw: str,
         core.check_claim(s.rows, name)
         if gitq.branch_tip(ledger.root, name, run=ledger.run):
             raise MoveRefused(f"branch `{name}` already exists; name the fix branch with --fix-branch")
-        broken = s.append(actor, row.id, "broke", state, fields={"broken": where}, evidence={"saw": saw})
         fields = {"branch": name, "owner": row.owner, "fixes": row.id, "ref": row.ref, "tree": "", "base": ""}
-        fix = s.append(actor, next_row_id(s.rows), "claim", "claimed", fields=fields, evidence={"broke": where})
+        broken, fix = s.append_all([(actor, row.id, "broke", state, {"broken": where}, {"saw": saw}),
+                                    (actor, next_row_id(s.rows), "claim", "claimed", fields, {"broke": where})])
     return broken, fix
 
 

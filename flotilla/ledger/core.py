@@ -134,8 +134,8 @@ class LedgerSession:
     def next_state(self, row: Row, move: str) -> str:
         return next_state(row.state, move, self.ledger.profile, self.ledger.owner_post(row))
 
-    def append(self, actor: Actor, row_id: str, move: str, state: str, *, fields: dict | None = None,
-               evidence: dict | None = None) -> Row:
+    def _prepare(self, actor: Actor, row_id: str, move: str, state: str, fields: dict | None,
+                 evidence: dict | None) -> tuple:
         fields = dict(fields or {})
         evidence = dict(evidence or {})
         before = self.rows.get(row_id)
@@ -150,6 +150,10 @@ class LedgerSession:
                                   post=actor.post.name if actor.post else "",
                                   row=events.row_view(before, row_id, fields), evidence=evidence)
             evidence.update(self.ledger.fire_pre(f"pre-{state}", data))
+        return actor, row_id, move, state, fields, evidence, changes, data
+
+    def _write(self, prepared: tuple) -> Row:
+        actor, row_id, move, state, fields, evidence, changes, data = prepared
         event = make_event(row=row_id, move=move, state=state, by=actor.name,
                            post=actor.post.name if actor.post else "", via=actor.via, fields=fields,
                            evidence=evidence, at=self.ledger.now(), plugin=self.ledger.version,
@@ -159,6 +163,17 @@ class LedgerSession:
         if changes:
             self.post.append((f"post-{state}", {**data, "event": f"post-{state}", "evidence": evidence}))
         return self.rows[row_id]
+
+    def append(self, actor: Actor, row_id: str, move: str, state: str, *, fields: dict | None = None,
+               evidence: dict | None = None) -> Row:
+        return self._write(self._prepare(actor, row_id, move, state, fields, evidence))
+
+    def append_all(self, moves: list[tuple]) -> list[Row]:
+        """Several moves as one: every pre- script runs before the first write, so a refusal leaves nothing behind.
+
+        Each item is (actor, row_id, move, state, fields, evidence)."""
+        prepared = [self._prepare(*item) for item in moves]
+        return [self._write(item) for item in prepared]
 
 
 def check_claim(rows: dict[str, Row], branch: str, *, ref: str = "", also: str = "", requires=()) -> list[str]:

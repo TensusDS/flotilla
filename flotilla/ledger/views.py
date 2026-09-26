@@ -26,6 +26,8 @@ def who_moves(row: Row, profile: dict) -> str:
         return row.owner
     if row.state == "handed":
         return row.reader
+    if row.state == "landed" and (profile.get("flow") or {}).get("mode") == "local":
+        return row.owner   # without origin, landed is delivered: what remains is the owner's close
     if row.state in ("accepted", "queued", "landed"):
         if row.state == "queued" and (profile.get("pr") or {}).get("merged_by") == "human":
             return "the person who merges the PR"
@@ -85,7 +87,7 @@ def hold_lifted(row: Row, rows: dict[str, Row], live: set[str] | None = None) ->
         return None
     target = next((other for other in reversed(list(rows.values())) if other.branch == until and other.is_open), None)
     if target is not None:
-        return target.state not in READING
+        return target.state not in ("reserved", "claimed", "handed", "fixing")   # lifted once that work is read
     if any(other.branch == until for other in rows.values()):
         return True
     if live is not None and until not in live:

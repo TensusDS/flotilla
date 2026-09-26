@@ -259,3 +259,12 @@ def test_reconcile_ships_what_is_ready_and_reports_the_rest(direct):
     lines = delivery.reconcile(ledger, actor(ledger, SENDER))
     assert any(line.startswith("shipped feat/a") for line in lines)
     assert any(line.startswith("not yet feat/b") and "landed, not pushed" in line for line in lines)
+
+
+def test_land_refuses_unread_work_even_when_merge_names_an_older_commit(direct):
+    root, ledger = direct
+    queued(root, ledger)
+    head = merge(root, "feat/x")
+    stray = commit(root, "rides along after the merge", "stray.txt")
+    with pytest.raises(MoveRefused, match=rf"nobody read: {stray[:7]}"):
+        delivery.land(ledger, actor(ledger, SENDER), "feat/x", merge=head)

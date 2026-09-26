@@ -70,3 +70,7 @@ def test_offledger_is_legal_from_open_work_before_landing():
 
 def test_urgent_is_an_annotation():
     assert next_state("handed", "urgent", PR) == "handed"
+
+
+def test_landed_work_can_still_be_released_or_found_offledger():
+    assert {"release", "offledger"} <= set(moves_from("landed", DIRECT))

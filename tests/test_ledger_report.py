@@ -56,3 +56,18 @@ def test_metrics_read_the_history():
 def test_metrics_of_an_empty_ledger_say_there_is_nothing_yet():
     lines = report.format_metrics(report.metrics({}))
     assert "return rate: no handovers yet" in lines
+
+
+def test_without_origin_landed_work_is_delivered_not_ready_to_ship(tmp_path):
+    from flotilla.ledger import delivery
+    from ledgerkit import merge
+    root = tmp_path / "solo"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    commit(root, "init", "a.txt")
+    ledger = make_ledger(root, tmp_path / "state", profile={**PROFILE, "flow": {"mode": "local"}})
+    drive(root, ledger)
+    delivery.queue(ledger, actor(ledger, "sender 1"), "feat/x")
+    merge(root, "feat/x")
+    delivery.land(ledger, actor(ledger, "sender 1"), "feat/x")
+    assert "  nothing is ready to ship" in report.brief(ledger)

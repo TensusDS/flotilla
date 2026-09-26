@@ -67,7 +67,7 @@ def run_event(name: str, script: tuple[bytes, bool], data: dict, *, cwd, run=sub
         path.chmod(0o700)
         try:
             done = run([str(path)], input=json.dumps(data), cwd=str(cwd), capture_output=True, text=True,
-                       check=False, timeout=limit)
+                       errors="replace", check=False, timeout=limit)
         except subprocess.TimeoutExpired:
             return Outcome(BROKEN, f"did not finish within {limit:g} s")
         except OSError as err:

@@ -1,9 +1,10 @@
 """Work that reaches trunk outside the review path (spec, sections 6.2-6.3).
 
 `inbatch`: a change the sender makes inside the batch (a conflict resolution, a one-line fix) has no branch and no
-claim. It is recorded as its own finished row before the push: the commit must be on the local trunk, must not be a
-merge, and must be read by someone other than the sender. The land door then accounts it. PR projects have no
-inbatch: every change there reaches trunk through a pull request.
+claim. It is recorded as its own finished row before the push: the commit must be on the local trunk and not yet on
+origin; a merge qualifies only when it holds something of its own (a resolution); and its reader is a live session
+whose post may accept, never the sender. The land door then accounts it. PR projects have no inbatch: every change
+there reaches trunk through a pull request.
 
 `offledger`: work that reached trunk without the ledger (merged by hand, by another tool, through a PR opened
 outside the fleet). The row ends with the commit that carried it and a named witness who is not its owner. Git
@@ -18,6 +19,7 @@ from flotilla.ledger.actor import Actor, require_may
 from flotilla.ledger.core import Ledger
 from flotilla.ledger.errors import MoveRefused
 from flotilla.ledger.model import Row, next_row_id
+from flotilla.posts import PostError, post_for_session
 
 
 def inbatch(ledger: Ledger, actor: Actor, label: str, *, commit: str, read_by: str, why: str) -> Row:
@@ -32,14 +34,34 @@ def inbatch(ledger: Ledger, actor: Actor, label: str, *, commit: str, read_by: s
         raise MoveRefused("name who read it (--read-by): work born in the batch still has a reader")
     if read_by == actor.name:
         raise MoveRefused(f"{actor.name} wrote it; someone else reads it")
+    try:
+        known = ledger.live_names()
+    except MoveRefused:
+        known = {name for row in ledger.rows().values() for name in (row.owner, row.reader)} - {""}
+    if read_by not in known:
+        raise MoveRefused(f"`{read_by}` is not a live session (or, without the census, one the ledger knows); the "
+                          "reader of batch work is a session that read it")
+    try:
+        post = post_for_session(ledger.posts, read_by)
+    except PostError as err:
+        raise MoveRefused(str(err)) from err
+    if post is None or "accept" not in post.may:
+        raise MoveRefused(f"{read_by} may not accept work; the reader of batch work holds a post that may")
     sha = gitq.resolve(ledger.root, commit, run=ledger.run)
     if sha is None:
         raise MoveRefused(f"git could not resolve --commit {commit}")
     head = gitq.resolve(ledger.root, f"refs/heads/{ledger.trunk}", run=ledger.run)
     if head is None or gitq.is_ancestor(ledger.root, sha, head, run=ledger.run) is not True:
         raise MoveRefused(f"{sha[:7]} is not on the local `{ledger.trunk}`; inbatch records a commit in the batch")
-    if batch.is_merge(ledger, sha) is not False:
-        raise MoveRefused(f"{sha[:7]} is a merge, or git could not say; name the commit that holds the change")
+    origin = f"refs/remotes/origin/{ledger.trunk}"
+    if gitq.resolve(ledger.root, origin, run=ledger.run) and \
+            gitq.is_ancestor(ledger.root, sha, origin, run=ledger.run) is True:
+        raise MoveRefused(f"{sha[:7]} is already on origin; work that reached trunk outside the ledger is recorded "
+                          "with offledger")
+    merge = batch.is_merge(ledger, sha)
+    if merge is None or (merge and batch.clean_merge(ledger, sha) is not False):
+        raise MoveRefused(f"{sha[:7]} is a merge that adds nothing of its own, or git could not say; name the commit "
+                          "that holds the change")
     with ledger.session() as s:
         core.check_claim(s.rows, label)
         fields = {"branch": label, "owner": actor.name, "merge": sha, "reader": read_by}

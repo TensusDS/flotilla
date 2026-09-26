@@ -1,3 +1,5 @@
+import subprocess
+
 import pytest
 
 from flotilla.ledger import batch
@@ -83,3 +85,49 @@ def test_without_origin_or_base_the_question_is_unknown(tmp_path):
     ledger = make_ledger(root, tmp_path / "state", profile={**PROFILE, "flow": {"mode": "local"}})
     assert batch.outgoing(ledger, "main") is None
     assert batch.unaccounted(ledger, ledger.rows(), "main") is None
+
+
+def test_a_merge_that_adds_its_own_change_is_not_accounted(world):
+    root, ledger = world
+    drive(root, ledger, "feat/x")
+    git(root, "merge", "-q", "--no-ff", "--no-commit", "feat/x")
+    write(root, "evil.txt", "slipped into the merge\n")
+    evil = commit(root, "merge feat/x")
+    assert batch.account(ledger, ledger.rows(), evil) is None
+    assert batch.unaccounted(ledger, ledger.rows(), "main") == [evil]
+
+
+def test_a_reviewed_branchs_base_is_not_read_by_its_reader(tmp_path):
+    root = tmp_path / "solo"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    commit(root, "init", "a.txt")
+    ledger = make_ledger(root, tmp_path / "state", profile={**PROFILE, "flow": {"mode": "local"}})
+    drive(root, ledger, "feat/x")
+    base_of_y = commit(root, "on main, read by nobody", "s.txt")
+    drive(root, ledger, "feat/y")
+    assert batch.account(ledger, ledger.rows(), base_of_y) is None
+
+
+def git_calls_to_account(tmp_path, count):
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile=DIRECT)
+    for index in range(count):
+        drive(root, ledger, f"feat/{index}")
+        merge(root, f"feat/{index}", squash=True)
+    calls = []
+
+    def counting(cmd, **kwargs):
+        if cmd and cmd[0] == "git":
+            calls.append(cmd)
+        return subprocess.run(cmd, **kwargs)
+    ledger.run = counting
+    assert batch.unaccounted(ledger, ledger.rows(), "main") == []
+    return len(calls)
+
+
+def test_accounting_costs_grow_with_rows_plus_commits_not_their_product(tmp_path):
+    (tmp_path / "small").mkdir()
+    (tmp_path / "large").mkdir()
+    small, large = git_calls_to_account(tmp_path / "small", 4), git_calls_to_account(tmp_path / "large", 12)
+    assert large <= 4 * small, (small, large)

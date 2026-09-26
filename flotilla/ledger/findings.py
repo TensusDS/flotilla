@@ -73,8 +73,9 @@ def findings(ledger, rows: dict[str, Row] | None = None) -> list[dict]:
     if horizon:
         done = ledger.run(["git", "-C", str(ledger.root), "rev-list", "--no-merges", "--reverse", f"-{SCAN}",
                            trunk, f"^{horizon}"], capture_output=True, text=True, check=False)
+        accounting = batch.Accounting(ledger, rows)
         for sha in (done.stdout.split() if done.returncode == 0 else []):
-            if batch.account(ledger, rows, sha) is None:
+            if accounting.account(sha) is None:
                 row = Row(id="", branch=ledger.trunk)
                 found.append(_item("direct_commit", row, sha, f"{sha[:7]} {batch.subject(ledger, sha)}: on "
                                                               f"`{trunk}`, and no verdict covers it"))

@@ -113,3 +113,34 @@ def merge_empty(root):
     commit(root, "side work", "side.txt")
     git(root, "checkout", "-q", "main")
     return merge(root, "side")
+
+
+def test_a_resolved_merge_is_recorded_as_born_in_the_batch(world):
+    root, ledger = world
+    drive(root, ledger)
+    git(root, "merge", "-q", "--no-ff", "--no-commit", "feat/x")
+    (root / "resolution.txt").write_text("resolved by hand\n", encoding="utf-8")
+    git(root, "add", "resolution.txt")
+    resolved = commit(root, "merge feat/x, resolved")
+    outside.inbatch(ledger, actor(ledger, SENDER), "batch/resolve", commit=resolved, read_by="review session 1",
+                    why="a conflict resolution")
+    assert batch.unaccounted(ledger, ledger.rows(), "main") == []
+
+
+def test_the_reader_of_batch_work_is_a_live_session_that_may_accept(world):
+    root, ledger = world
+    fix = commit(root, "fix", "typo.txt")
+    with pytest.raises(MoveRefused, match="not a live session"):
+        outside.inbatch(ledger, actor(ledger, SENDER), "batch/typo", commit=fix, read_by="anyone", why="typo")
+    with pytest.raises(MoveRefused, match="may not accept"):
+        outside.inbatch(ledger, actor(ledger, SENDER), "batch/typo", commit=fix, read_by="main session 1",
+                        why="typo")
+
+
+def test_a_commit_already_on_origin_is_not_batch_work(world):
+    root, ledger = world
+    fix = commit(root, "pushed already", "typo.txt")
+    push(root)
+    with pytest.raises(MoveRefused, match="already on origin"):
+        outside.inbatch(ledger, actor(ledger, SENDER), "batch/typo", commit=fix, read_by="review session 1",
+                        why="typo")

@@ -101,7 +101,7 @@ def land(ledger: Ledger, actor: Actor, branch: str, *, merge: str | None = None)
         if not contains and not _squash_on_trunk(ledger, row, read, commit):
             raise MoveRefused(f"{commit[:7]} does not contain the revision read ({read[:7]}); merge `{branch}` "
                               f"into `{ledger.trunk}` first")
-        loose = batch.unaccounted(ledger, s.rows, commit, base=row.base)
+        loose = batch.unaccounted(ledger, s.rows, trunk_head, base=row.base)   # what the push carries
         if loose is None:
             raise MoveRefused("could not tell what the push would carry: no origin, and no base recorded on the row")
         if loose:

@@ -48,7 +48,7 @@ def brief(ledger, rows: dict[str, Row] | None = None) -> list[str]:
     rows = ledger.rows() if rows is None else rows
     ready, held = [], []
     for row in rows.values():
-        if row.is_open and row.state in READY:
+        if row.is_open and row.state in READY and not (row.state == "landed" and ledger.mode == "local"):
             reasons = _held_back(ledger, rows, row)
             (held if reasons else ready).append((row, reasons))
     ready.sort(key=lambda item: (0, item[0].urgent_at) if item[0].urgent_at else (1, item[0].updated_at))

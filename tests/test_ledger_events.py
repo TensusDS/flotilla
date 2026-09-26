@@ -136,3 +136,22 @@ def test_check_names_every_broken_script(tmp_path):
     assert {name: status for name, status, _ in found} == {
         "pre-handed": "ok", "pre-nonsense": "unknown name", "post-closed": "broken", "pre-accepted": "broken",
         "pre-queued": "broken"}
+
+
+def test_broke_is_all_or_nothing_when_a_pre_script_refuses_its_fix_row(tmp_path):
+    from flotilla.ledger import judging
+    from ledgerkit import PROFILE, shipped_direct
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile={**PROFILE, "flow": {"mode": "direct"}})
+    shipped_direct(root, ledger)
+    ledger.events = {"pre-claimed": script("import sys; print('no fix rows today'); sys.exit(2)")}
+    with pytest.raises(MoveRefused, match="no fix rows today"):
+        judging.broke(ledger, actor(ledger, "acceptance judge 1"), "feat/x", where="Export", saw="nothing")
+    rows = ledger.rows()
+    assert rows["r1"].broken == "" and len(rows) == 1
+
+
+def test_post_script_output_that_is_not_utf8_does_not_crash_the_move(tmp_path):
+    _, ledger = world_with(tmp_path, {"post-handed": script("import sys; sys.stdout.buffer.write(b'\\xff\\xfe'); sys.exit(1)")})
+    assert hand(ledger).state == "handed"
+    assert any("post-handed" in notice for notice in ledger.notices)

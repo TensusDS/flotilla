@@ -84,3 +84,17 @@ def test_deviations_are_moves_that_cannot_happen_now():
 def test_without_the_census_no_mover_is_called_gone():
     table = rows(row("r1", state="handed", reader="review session 7"))
     assert views.deviations(table, PR, live=None) == []
+
+
+LOCAL = {"flow": {"mode": "local"}, "review": {"depth": "every"}}
+
+
+def test_a_hold_on_a_branch_lifts_only_once_that_branch_is_accepted():
+    held = row("r1", state="handed", held_by="orchestrator 1", held_until="feat/y")
+    still_written = row("r2", branch="feat/y", state="claimed")
+    assert views.hold_lifted(held, rows(held, still_written)) is False
+
+
+def test_without_origin_a_landed_row_is_the_owners_to_close():
+    assert views.who_moves(row(state="landed"), LOCAL) == "main session 1"
+    assert views.who_moves(row(state="landed"), PR) == views.SENDER
