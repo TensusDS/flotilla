@@ -92,3 +92,18 @@ def merge(root, name, *, squash=False) -> str:
     else:
         git(root, *IDENTITY, "merge", "-q", "--no-ff", "-m", f"merge {name}", name)
     return git(root, "rev-parse", "HEAD")
+
+
+def fake_gh(handler, calls=None):
+    """A subprocess.run stand-in: `gh ...` goes to handler(args) -> (code, stdout); everything else runs for real."""
+    import json as _json
+
+    def run(cmd, **kwargs):
+        if isinstance(cmd, list) and cmd and cmd[0] == "gh":
+            if calls is not None:
+                calls.append(list(cmd[1:]))
+            code, out = handler(list(cmd[1:]))
+            text = out if isinstance(out, str) else _json.dumps(out)
+            return subprocess.CompletedProcess(cmd, code, text, "" if code == 0 else "gh: request failed")
+        return subprocess.run(cmd, **kwargs)
+    return run

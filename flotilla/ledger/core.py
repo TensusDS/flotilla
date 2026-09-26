@@ -39,6 +39,10 @@ class Ledger:
     def trunk(self) -> str:
         return (self.profile.get("trunk") or {}).get("branch", "main")
 
+    @property
+    def mode(self) -> str:
+        return (self.profile.get("flow") or {}).get("mode", "local")
+
     def now(self) -> str:
         return now_iso(self.clock() if self.clock else None)
 
