@@ -1,4 +1,5 @@
 import io
+import json
 import re
 import sys
 from contextlib import redirect_stdout
@@ -134,3 +135,48 @@ def test_a_damaged_log_is_refused_not_a_traceback(tmp_path, monkeypatch):
     log.write_text("not json\n" + log.read_text(encoding="utf-8"), encoding="utf-8")
     code, out = run_cli("work", "show", "feat/x", "--root", str(root))
     assert code == 2 and "refused" in out
+
+
+def add_event(root, name, body):
+    folder = root / ".flotilla" / "events"
+    folder.mkdir(exist_ok=True)
+    (folder / name).write_text(body, encoding="utf-8")
+    (folder / name).chmod(0o755)
+
+
+def test_event_scripts_come_from_trunk(tmp_path, monkeypatch):
+    from flotilla.ledger.commands import trunk_rules
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    add_event(root, "pre-handed", "#!/bin/sh\nexit 0\n")
+    assert "pre-handed" not in trunk_rules(root).events
+    git(root, "add", ".flotilla")
+    commit(root, "an event")
+    git(root, "push", "-q", "origin", "main")
+    assert trunk_rules(root).events["pre-handed"] == (b"#!/bin/sh\nexit 0\n", True)
+
+
+def test_events_schema_prints_the_contract(tmp_path, monkeypatch):
+    from flotilla.ledger import events
+    code, out = run_cli("events", "schema")
+    assert code == 0 and json.loads(out) == events.schema()
+
+
+def test_events_check_names_a_broken_script_on_trunk(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    add_event(root, "pre-handed", "#!/bin/sh\nexit 3\n")
+    git(root, "add", ".flotilla")
+    commit(root, "a broken event")
+    git(root, "push", "-q", "origin", "main")
+    code, out = run_cli("events", "check", "--root", str(root))
+    assert code == 1 and "broken" in out and "pre-handed" in out
+
+
+def test_events_run_replays_a_script_over_a_row(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    add_event(root, "pre-handed", "#!/bin/sh\necho no ticket\nexit 2\n")
+    git(root, "add", ".flotilla")
+    commit(root, "a rejecting event")
+    git(root, "push", "-q", "origin", "main")
+    assert run_cli("work", "claim", "feat/x", "--root", str(root), "--as", "main session 1")[0] == 0
+    code, out = run_cli("events", "run", "pre-handed", "--row", "feat/x", "--root", str(root))
+    assert code == 2 and "rejected: no ticket" in out

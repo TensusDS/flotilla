@@ -91,6 +91,17 @@ def build_parser() -> argparse.ArgumentParser:
     show = receipt_actions.add_parser("show", help="which receipts hold over a revision")
     show.add_argument("--tree", default=".")
     show.add_argument("--rev", default="HEAD")
+
+    events_ = sub.add_parser("events", help="the project's event scripts")
+    event_actions = events_.add_subparsers(dest="action", required=True)
+    check_ = event_actions.add_parser("check", help="check every event script on trunk (or in this tree)")
+    check_.add_argument("--root", default=".")
+    check_.add_argument("--tree", action="store_true", help="check this working tree's scripts instead of trunk's")
+    replay = event_actions.add_parser("run", help="run one event script over a row, as a move would")
+    replay.add_argument("name")
+    replay.add_argument("--row", required=True)
+    replay.add_argument("--root", default=".")
+    event_actions.add_parser("schema", help="print the event contract")
     return parser
 
 
@@ -109,7 +120,7 @@ def main(argv: list[str]) -> int:
     if args.command == "onboard":
         from flotilla.onboard.commands import run_onboard
         return run_onboard(args)
-    if args.command in ("work", "tree", "receipt"):
+    if args.command in ("work", "tree", "receipt", "events"):
         from flotilla.ledger.commands import run_ledger_command
         return run_ledger_command(args)
     return 2

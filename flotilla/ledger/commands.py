@@ -7,18 +7,45 @@ event records the trunk revision the rules came from.
 
 from __future__ import annotations
 
+import json
+import os
 import subprocess
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 from flotilla.core import config, paths, repo
 from flotilla.core.storage import LocalLogStore, StorageCorrupt
-from flotilla.ledger import core, gitq, handover, reading, receipts
+from flotilla.ledger import core, events, gitq, handover, reading, receipts
 from flotilla.ledger import tree as tree_mod
 from flotilla.ledger.actor import resolve_actor
 from flotilla.ledger.errors import MoveRefused
 from flotilla.ledger.model import LedgerVersionError, Row
 from flotilla.posts import PostError, load_posts
+
+
+@dataclass(frozen=True)
+class Rules:
+    profile: dict
+    posts: dict
+    events: dict
+    label: str
+
+
+def _show_bytes(root: Path, sha: str, path: str) -> bytes:
+    done = subprocess.run(["git", "-C", str(root), "show", f"{sha}:{path}"], capture_output=True, check=False)
+    if done.returncode != 0:
+        raise config.ConfigError(f"git could not read {path} at {sha[:7]}")
+    return done.stdout
+
+
+def tree_events(root: Path) -> dict:
+    """The event scripts in this working tree (for `events check --tree`), with their executable bit."""
+    folder = Path(root) / events.EVENTS_DIR
+    if not folder.is_dir():
+        return {}
+    return {path.name: (path.read_bytes(), os.access(path, os.X_OK)) for path in sorted(folder.iterdir())
+            if path.is_file()}
 
 
 def _project(root: Path) -> config.Project:
@@ -37,7 +64,7 @@ def _show_file(root: Path, sha: str, path: str) -> str:
     return done.stdout
 
 
-def trunk_rules(root: Path) -> tuple[dict, dict, str]:
+def trunk_rules(root: Path) -> Rules:
     """The profile and posts as trunk carries them, and the label `<ref>@<sha>` they were read at."""
     local = _project(root)
     trunk = (local.data.get("trunk") or {}).get("branch", "main")
@@ -54,6 +81,13 @@ def trunk_rules(root: Path) -> tuple[dict, dict, str]:
     if ".flotilla/project.toml" not in entries:
         raise config.ConfigError(f"`{ref}` carries no .flotilla/project.toml; the ledger reads its rules from "
                                  "trunk, so commit the onboarding and bring it to trunk first")
+    scripts = {}
+    prefix = events.EVENTS_DIR + "/"
+    for path, mode in entries.items():
+        if path.startswith(prefix) and "/" not in path[len(prefix):]:
+            if mode == "120000":
+                raise config.ConfigError(f"{path} is a symlink on `{ref}`; event scripts are real files")
+            scripts[path[len(prefix):]] = (_show_bytes(local.root, sha, path), mode == "100755")
     with tempfile.TemporaryDirectory(prefix="flotilla-rules-") as tmp:
         for path, mode in entries.items():
             if path != ".flotilla/project.toml" and not (path.startswith(".flotilla/posts/") and path.endswith(".md")):
@@ -71,15 +105,16 @@ def trunk_rules(root: Path) -> tuple[dict, dict, str]:
     if (profile.get("trunk") or {}).get("branch", "main") != trunk:
         raise config.ConfigError(f"this tree names trunk `{trunk}`, but `{ref}` names another; the rules on trunk "
                                  "are the ones that count")
-    return profile, posts, f"{ref}@{sha[:12]}"
+    return Rules(profile, posts, scripts, f"{ref}@{sha[:12]}")
 
 
-def open_ledger(root: Path) -> core.Ledger:
-    profile, posts, rules = trunk_rules(Path(root))
+def open_ledger(root: Path, *, skip_events: dict | None = None) -> core.Ledger:
+    rules = trunk_rules(Path(root))
     ident = repo.identify(Path(root))
     state = paths.state_dir()
     return core.Ledger(store=LocalLogStore(state / "ledger"), root=ident.root, repo_key=ident.key,
-                       profile=profile, posts=posts, state_dir=state, rules=rules)
+                       profile=rules.profile, posts=rules.posts, state_dir=state, rules=rules.label,
+                       events=rules.events, skip_events=skip_events)
 
 
 def summary(row: Row) -> str:
@@ -124,7 +159,7 @@ MOVES = {
 
 def _receipt(args) -> int:
     tree = Path(args.tree)
-    profile, _, _ = trunk_rules(tree)
+    profile = trunk_rules(tree).profile
     ident = repo.identify(tree)
     state = paths.state_dir()
     if args.action == "run":
@@ -147,8 +182,43 @@ def _receipt(args) -> int:
     return 0
 
 
+def _events(args) -> int:
+    if args.action == "schema":
+        print(json.dumps(events.schema(), indent=2, sort_keys=True))
+        return 0
+    root = Path(args.root)
+    if args.action == "check":
+        scripts = tree_events(_project(root).root) if args.tree else trunk_rules(root).events
+        where = "this tree" if args.tree else "trunk"
+        if not scripts:
+            print(f"no event scripts in {events.EVENTS_DIR} on {where}")
+            return 0
+        found = events.check(scripts, cwd=repo.identify(root).root)
+        for name, status, text in found:
+            print(f"{status:<12} {name}: {text}")
+        return 0 if all(status == events.OK for _, status, _ in found) else 1
+    ledger = open_ledger(root)
+    script = ledger.events.get(args.name)
+    if script is None:
+        print(f"no `{events.EVENTS_DIR}/{args.name}` on trunk")
+        return 2
+    matches = [row for row in ledger.rows().values() if row.branch == args.row]
+    if not matches:
+        print(f"no ledger row for `{args.row}`")
+        return 2
+    row = matches[-1]
+    data = events.payload(event=args.name, move="manual", state=args.name.split("-", 1)[-1],
+                          repo=ledger.repo_key, trunk=ledger.trunk, by="(flotilla events run)", post="",
+                          row=events.row_view(row, row.id, {}), evidence={})
+    outcome = events.run_event(args.name, script, data, cwd=ledger.root)
+    print(f"{outcome.status}: {outcome.text or '(no output)'}")
+    return {events.OK: 0, events.REJECTED: 2}.get(outcome.status, 1)
+
+
 def run_ledger_command(args) -> int:
     try:
+        if args.command == "events":
+            return _events(args)
         if args.command == "receipt":
             return _receipt(args)
         ledger = open_ledger(Path(args.root))

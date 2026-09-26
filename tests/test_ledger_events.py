@@ -1,5 +1,6 @@
 import json
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -96,3 +97,42 @@ def test_a_new_row_fires_the_event_of_the_state_it_opens_in(tmp_path):
     branch(root, "feat/x", "work")
     core.claim(ledger, actor(ledger, "main session 1"), "feat/x")
     assert json.loads(marker.read_text(encoding="utf-8"))["event"] == "post-claimed"
+
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def test_the_committed_schema_is_the_generated_one():
+    committed = json.loads((ROOT / "docs" / "events" / "schema.json").read_text(encoding="utf-8"))
+    assert committed == events.schema()
+
+
+def test_the_payload_a_move_sends_has_exactly_the_schema_keys(tmp_path):
+    seen = tmp_path / "seen.json"
+    code = f"import sys, pathlib; pathlib.Path({str(seen)!r}).write_text(sys.stdin.read())"
+    _, ledger = world_with(tmp_path, {"pre-handed": script(code)})
+    hand(ledger)
+    data = json.loads(seen.read_text(encoding="utf-8"))
+    stdin = events.schema()["stdin"]
+    assert set(data) == set(stdin) and set(data["row"]) == set(stdin["row"])
+
+
+def test_the_example_script_follows_the_contract(tmp_path):
+    body = (ROOT / "docs" / "events" / "examples" / "pre-closed").read_bytes()
+    sample = events.sample_payload("pre-closed")
+    assert events.run_event("pre-closed", (body, True), sample, cwd=tmp_path).status == events.REJECTED
+    sample["row"]["ref"] = "LIN-12"
+    assert events.run_event("pre-closed", (body, True), sample, cwd=tmp_path).status == events.OK
+
+
+def test_check_names_every_broken_script(tmp_path):
+    found = events.check({
+        "pre-handed": script("pass"),
+        "pre-nonsense": script("pass"),
+        "post-closed": script("import sys; sys.exit(5)"),
+        "pre-accepted": (b"#!/no/such/python\nprint(1)\n", True),
+        "pre-queued": script("pass", executable=False),
+    }, cwd=tmp_path)
+    assert {name: status for name, status, _ in found} == {
+        "pre-handed": "ok", "pre-nonsense": "unknown name", "post-closed": "broken", "pre-accepted": "broken",
+        "pre-queued": "broken"}
