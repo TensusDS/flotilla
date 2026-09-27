@@ -158,7 +158,7 @@ def revisions(d: Door, trunk: str, *, run=subprocess.run) -> list[tuple[str, str
 
 def workflow_at(directory, sha, *, run=subprocess.run) -> str | None:
     """The workflow digest at a revision, computed exactly as onboarding computes it from the working tree."""
-    listing = _git(directory, "ls-tree", sha, "--", ".github/workflows/", run=run)
+    listing = _git(directory, "ls-tree", "--full-tree", sha, "--", ".github/workflows/", run=run)
     files = []
     for line in (listing or "").splitlines():
         meta, _, path = line.partition("\t")

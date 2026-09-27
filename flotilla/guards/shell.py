@@ -4,7 +4,8 @@ This is a matcher, not a shell parser, and its ceiling is named (`flotilla.guard
 read as "nothing to see". A command is recognised at the start of a segment, behind leading assignments, `env`, a
 short list of wrappers and shell keywords. Heredoc bodies are data and are dropped. The line is split twice,
 plainly and respecting quotes, and a segment either split finds counts: missing a door costs more than asking once
-too often. `cd <literal>` is followed; a directory named through a variable is unknown (None).
+too often. A plain fragment whose quotes do not balance is a piece of a quoted string and is not read as a
+command. `cd <literal>` is followed; a directory named through a variable is unknown (None).
 """
 
 from __future__ import annotations
@@ -101,14 +102,20 @@ def _split_outside_quotes(command: str) -> list[str]:
     return parts
 
 
-def _words(text: str) -> list[str]:
+def _words(text: str) -> tuple[list[str], bool]:
+    """The words, and whether the quotes balanced; an unbalanced fragment is read plainly rather than not at all."""
     lexer = shlex.shlex(text, posix=True)
     lexer.whitespace_split = True
     lexer.commenters = "#"
     try:
-        return list(lexer)
-    except ValueError:   # an unbalanced quote: read the words plainly rather than not at all
-        return text.split()
+        words = list(lexer)
+    except ValueError:
+        return text.split(), False
+    if words and words[0][:1] in "({" and len(words[0]) > 1:
+        words[0] = words[0][1:]             # a subshell or group written without a space: `(git push ...)`
+    if words and words[-1][-1:] in ")}" and len(words[-1]) > 1:
+        words[-1] = words[-1][:-1]
+    return words, True
 
 
 def _peel(words: list[str]) -> tuple[dict, list[str]]:
@@ -127,13 +134,16 @@ def _peel(words: list[str]) -> tuple[dict, list[str]]:
 def segments(command: str, cwd) -> list[Segment]:
     command = without_heredoc_bodies(command)
     found: list[Segment] = []
-    for parts in (SEPARATORS.split(command), _split_outside_quotes(command)):
+    for plain, parts in ((True, SEPARATORS.split(command)), (False, _split_outside_quotes(command))):
         here = Path(cwd).resolve() if cwd is not None else None
         for part in parts:
             text = part.strip()
             if not text:
                 continue
-            assignments, words = _peel(_words(text))
+            words, balanced = _words(text)
+            if plain and not balanced:
+                continue   # a piece cut out of a quoted string: the quote-aware split reads that string whole
+            assignments, words = _peel(words)
             if words and os.path.basename(words[0]) == "cd":
                 target = next((word for word in words[1:] if not word.startswith("-")), None)
                 here = into(here, target) if target is not None else Path.home()

@@ -47,7 +47,15 @@ def script(name: str) -> str:
             'if [ ! -x "$cli" ]; then\n'
             f'  echo "flotilla {name}: $cli is missing; start a Claude Code session with flotilla to restore it" >&2\n'
             f"{missing}fi\n"
-            f'exec "$cli" guard githook {name} "$@"\n')
+            + (f'exec "$cli" guard githook {name} "$@"\n' if name == "pre-push" else
+               # A refusal is exit 1. Any other failure (no python3 >= 3.11 under git, a crash) is a check that
+               # could not run, and a commit can be amended: it passes, and says so.
+               f'"$cli" guard githook {name} "$@"\n'
+               'code=$?\n'
+               '[ "$code" -eq 1 ] && exit 1\n'
+               f'[ "$code" -ne 0 ] && echo "flotilla {name}: could not check (exit $code); '
+               'the commit goes through" >&2\n'
+               "exit 0\n"))
 
 
 def _git(root, *args, run):

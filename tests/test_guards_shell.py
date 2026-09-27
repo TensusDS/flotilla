@@ -55,3 +55,20 @@ def test_an_unbalanced_quote_is_read_plainly_not_dropped():
 def test_the_ceiling_is_written_down():
     from flotilla.guards import CEILING
     assert "eval" in CEILING and "sh -c" in CEILING and "pre-push" in CEILING
+
+
+def test_a_quoted_message_describing_a_command_is_not_a_command(tmp_path):
+    for command in ('git commit -am "docs: guard; git push origin main now needs a receipt"',
+                    'git commit -am "docs: a; git checkout -- . loses work"',
+                    'echo "x | sed -i 1d f.txt"'):
+        found = [s.words[:2] for s in shell.segments(command, tmp_path)]
+        assert ("git", "push") not in found and ("git", "checkout") not in found and ("sed", "-i") not in found
+
+
+def test_an_apostrophe_before_a_real_command_does_not_hide_it():
+    assert ("git", "push", "origin", "main") in words_of("echo don't; git push origin main")
+
+
+def test_a_subshell_written_without_spaces_is_read():
+    assert ("git", "push", "origin", "main") in words_of("(git push origin main)")
+    assert ("git", "push", "origin", "main") in words_of("(cd /tmp && git push origin main)")

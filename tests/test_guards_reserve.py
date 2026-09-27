@@ -108,3 +108,20 @@ def test_status_lists_live_reservations(tmp_path, capsys):
     _status(ledger, argparse.Namespace(stalled=None))
     out = capsys.readouterr().out
     assert "reservations:" in out and "TODO.md: main session 1 for feat/a" in out
+
+
+def test_a_merge_bringing_a_rewrite_passes_after_the_holder_moved_on(tmp_path):
+    root, ledger = world(tmp_path)
+    git(root, "checkout", "-q", "feat/a")
+    rewrite(root)
+    check(root, ledger)
+    git(root, *IDENTITY, "commit", "-q", "-m", "a rewrites")
+    git(root, "checkout", "-q", "main")
+    git(root, *IDENTITY, "merge", "-q", "--no-ff", "-m", "land a", "feat/a")
+    git(root, "checkout", "-q", "feat/a")
+    (root / "later.txt").write_text("more\n", encoding="utf-8")
+    git(root, "add", "later.txt")
+    git(root, *IDENTITY, "commit", "-q", "-m", "a moves on")
+    git(root, "checkout", "-q", "feat/b")
+    git(root, *IDENTITY, "merge", "-q", "--no-ff", "--no-commit", "main")
+    assert check(root, ledger)[0] == 0

@@ -84,3 +84,10 @@ def test_an_unknown_tree_warns_and_lets_it_run(tmp_path):
 
 def test_outside_a_repository_there_is_nothing_to_say(tmp_path):
     assert check("git checkout -- f.txt", tmp_path) is None
+
+
+def test_a_quiet_clean_is_still_judged(tmp_path):
+    root = plain_repo(tmp_path)
+    (root / "notes.md").write_text("mine\n", encoding="utf-8")
+    assert check("git clean -fdq", root).refuse
+    assert check("git clean -f -q", root).refuse

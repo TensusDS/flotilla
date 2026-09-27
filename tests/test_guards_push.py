@@ -179,3 +179,26 @@ def test_pre_push_obeys_the_guard_being_off(tmp_path):
     root = onboarded(tmp_path, guards=("revert",))
     head = git(root, "rev-parse", "HEAD")
     assert push.pre_push(root, lines(root, ("refs/heads/main", head, "refs/heads/main")), env=env(tmp_path))[0] == 0
+
+
+def test_a_push_from_a_subdirectory_reads_the_workflow_of_the_whole_tree(tmp_path):
+    from flotilla.onboard.detect_ci import fingerprint, workflow_files
+    root = onboarded(tmp_path)
+    (root / ".github" / "workflows").mkdir(parents=True)
+    (root / ".github" / "workflows" / "ci.yml").write_text("on: push\n", encoding="utf-8")
+    with open(root / ".flotilla" / "project.toml", "a", encoding="utf-8") as profile:
+        profile.write(f'\n[ci]\nworkflow_fingerprint = "{fingerprint(root, workflow_files(root))}"\n')
+    (root / "sub").mkdir()
+    (root / "sub" / "keep.txt").write_text("x\n", encoding="utf-8")
+    git(root, "add", ".")
+    git(root, *IDENTITY, "commit", "-q", "-m", "ci")
+    receipt(root, tmp_path / "state")
+    assert judge("git push origin main", root, tmp_path, cwd=root / "sub") is None
+
+
+def test_the_first_push_after_onboarding_can_get_its_receipt(tmp_path, monkeypatch):
+    from flotilla import cli
+    root = onboarded(tmp_path, push=False)
+    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
+    assert cli.main(["receipt", "run", "--purpose", "push", "--tree", str(root), "--no-lane"]) == 0
+    assert judge("git push origin main", root, tmp_path) is None

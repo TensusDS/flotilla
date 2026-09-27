@@ -4,7 +4,8 @@ The shared files are the profile's `[reservation] files` (patterns). A staged ch
 lines of one is a rewrite; fewer is a line fixed or an append, and never a duplicate, because each writer appends
 their own. The first open row to commit a rewrite holds the file; a later rewrite by another row is refused,
 naming the holder. A reservation lives while its row is open and not yet delivered: no clock ends it. A merge
-carries a rewrite, it does not make one, so a merge neither needs nor takes a reservation for what it brings in.
+carries a rewrite, it does not make one, so a merge neither needs nor takes a reservation for what it brings in
+(judged by content: against an incoming side, the staged file deletes no more than an edit does).
 `FLOTILLA_RESERVE_OVERRIDE="<why>"` lets a refused commit through, recorded.
 
 Not seen: a commit made with `--no-verify` or in a clone without the hook; a rename (read as a deletion); code
@@ -63,11 +64,20 @@ def _merge_heads(root, run) -> list[str]:
     return [line.strip() for line in path.read_text().splitlines() if line.strip()] if path.exists() else []
 
 
-def _brought_in(root, branch, merging, run) -> bool:
-    tip = _git(root, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}", run=run).stdout.strip()
-    if not tip or _git(root, "merge-base", "--is-ancestor", tip, "HEAD", run=run).returncode == 0:
-        return False
-    return any(_git(root, "merge-base", "--is-ancestor", tip, head, run=run).returncode == 0 for head in merging)
+def _brought_in(root, path, merging, run) -> bool:
+    """The merge carries this rewrite: against an incoming side, the staged file deletes no more than an edit does.
+
+    Asked of the content, not of the holder's tip: a holder that moved on after its rewrite reached the incoming
+    side is no longer an ancestor of it, yet the rewrite that arrives is still theirs.
+    """
+    for head in merging:
+        done = _git(root, "diff", "--cached", "--numstat", "--no-renames", head, "--", path, run=run)
+        if done.returncode != 0:
+            continue
+        deleted = [line.split("\t", 2)[1] for line in done.stdout.splitlines() if line.count("\t") >= 2]
+        if all(value != "-" and int(value) <= REWRITE_DELETED for value in deleted):
+            return True
+    return False
 
 
 def check(root, *, env=os.environ, run=subprocess.run, ledger=None) -> tuple[int, str]:
@@ -91,7 +101,7 @@ def check(root, *, env=os.environ, run=subprocess.run, ledger=None) -> tuple[int
         record = held.get(path)
         holder = rows.get(record["row"]) if record else None
         if holder is not None and (mine is None or holder.id != mine.id):
-            if not (merging and _brought_in(root, holder.branch, merging, run)):
+            if not (merging and _brought_in(root, path, merging, run)):
                 conflicts.append((path, deleted, holder, record))
         elif holder is None and mine is not None and not merging:
             grants.append({"at": now_iso(), "path": path, "branch": branch, "row": mine.id, "by": mine.owner})

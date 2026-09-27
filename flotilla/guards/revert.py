@@ -105,10 +105,10 @@ def _plan(verb, args, directory, run):
         return None
     dry = []
     for arg in args:
-        if arg == "--force":
-            continue
+        if arg in ("--force", "--quiet"):
+            continue   # a quiet dry run prints nothing, and nothing would read as nothing to lose
         if arg.startswith("-") and not arg.startswith("--"):
-            rest = arg[1:].replace("f", "")
+            rest = arg[1:].replace("f", "").replace("q", "")
             if rest:
                 dry.append("-" + rest)
             continue

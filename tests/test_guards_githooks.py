@@ -89,3 +89,28 @@ def test_guard_help_names_the_ceiling(capsys):
     except SystemExit:
         pass
     assert "eval" in capsys.readouterr().out
+
+
+def fake_cli(tmp_path, code):
+    path = tmp_path / f"cli-{code}"
+    path.write_text(f"#!/bin/sh\necho 'fake flotilla exits {code}' >&2\nexit {code}\n", encoding="utf-8")
+    path.chmod(0o755)
+    return path
+
+
+def test_a_pre_commit_that_cannot_start_lets_the_commit_through(tmp_path):
+    root = plain_repo(tmp_path)
+    state = tmp_path / "hookstate"
+    githooks.install(root, ["pre-commit"], state_dir=state, cli=fake_cli(tmp_path, 3))
+    env = {**os.environ, "FLOTILLA_STATE_DIR": str(state)}
+    (root / "g.txt").write_text("x\n", encoding="utf-8")
+    git(root, "add", "g.txt")
+    done = subprocess.run(["git", *IDENTITY, "commit", "-q", "-m", "x"], cwd=root, env=env, capture_output=True,
+                          text=True)
+    assert done.returncode == 0 and "could not check" in done.stderr
+    githooks.refresh_link(state, fake_cli(tmp_path, 1))
+    (root / "h.txt").write_text("y\n", encoding="utf-8")
+    git(root, "add", "h.txt")
+    done = subprocess.run(["git", *IDENTITY, "commit", "-q", "-m", "y"], cwd=root, env=env, capture_output=True,
+                          text=True)
+    assert done.returncode != 0

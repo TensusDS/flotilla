@@ -183,7 +183,10 @@ MOVES = {
 
 def _receipt(args) -> int:
     tree = Path(args.tree)
-    profile = trunk_rules(tree).profile
+    from flotilla.guards.rules import rules_for
+    profile, note = rules_for(tree)   # the rules the guards obey, so a receipt answers the guard that asks
+    if note:
+        print(f"rules: {note}")
     ident = repo.identify(tree)
     state = paths.state_dir()
     if args.action == "run":

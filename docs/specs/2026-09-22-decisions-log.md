@@ -374,7 +374,7 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    including when the rules cannot be read or the tree cannot be named. A door in a repository that is not a
    flotilla project is not judged; in another flotilla project it is judged by that project's rules and receipts. (executor's decision, guards plan, 2026-09-27)
 66. **Rules come from trunk, except before onboarding reached trunk**, when the tree's own profile is obeyed and the
-   guard says so (otherwise the push that brings the profile to trunk would be judged by no rules at all). (executor's decision, guards plan, 2026-09-27)
+   guard says so (otherwise the push that brings the profile to trunk would be judged by no rules at all). Receipts obey the same rules, or the first push's receipt could not be run (final review). (executor's decision, guards plan, 2026-09-27)
 67. **Reservations** are a log in `<state>/reservations/<repo key>.jsonl`. A staged change deleting more than three
    lines of a file matching `[reservation] files` is a rewrite; the first open row to commit one holds the file
    until the row closes or is delivered. A merge neither needs nor takes a reservation for what it brings in.
