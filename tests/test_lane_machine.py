@@ -154,3 +154,46 @@ def test_a_profile_that_could_not_be_read_is_a_lasting_unknown(tmp_path):
                            problem="trunk carries no .flotilla/project.toml")
     unknown = [a for a in reading.answers if a.blocks is None]
     assert unknown and unknown[0].lasting and "trunk carries no" in unknown[0].text
+
+
+def queue(code, stdout=""):
+    calls = []
+
+    def run(cmd, **kwargs):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, code, stdout, "")
+    return run, calls
+
+
+COMMAND_HERE = {"ci": {"provider": "command", "runs_on": "this-machine", "queue_command": "ci-busy --here"}}
+
+
+def test_a_queue_command_that_says_idle_does_not_block(tmp_path):
+    run, calls = queue(0, "no job running\n")
+    answer = machine.ci_here(COMMAND_HERE, run=run, root=tmp_path)
+    assert answer.blocks is False and "no job running" in answer.text and calls == [["ci-busy", "--here"]]
+
+
+def test_a_queue_command_that_says_busy_blocks(tmp_path):
+    run, _ = queue(1, "job 42 on this runner\n")
+    answer = machine.ci_here(COMMAND_HERE, run=run, root=tmp_path)
+    assert answer.blocks is True and "job 42" in answer.text
+
+
+def test_a_queue_command_that_fails_is_an_unknown_worth_waiting_on(tmp_path):
+    run, _ = queue(3)
+    answer = machine.ci_here(COMMAND_HERE, run=run, root=tmp_path)
+    assert answer.blocks is None and not answer.lasting and "not asked is not free" in answer.text
+
+
+def test_a_queue_command_that_cannot_run_is_unknown(tmp_path):
+    def missing(cmd, **kwargs):
+        raise FileNotFoundError(cmd[0])
+    answer = machine.ci_here(COMMAND_HERE, run=missing, root=tmp_path)
+    assert answer.blocks is None and not answer.lasting
+
+
+def test_an_empty_queue_command_names_the_key(tmp_path):
+    empty = {"ci": {"provider": "command", "runs_on": "this-machine", "queue_command": ""}}
+    answer = machine.ci_here(empty, run=None, root=tmp_path)
+    assert answer.lasting and "queue_command" in answer.text and "--no-lane" in answer.text

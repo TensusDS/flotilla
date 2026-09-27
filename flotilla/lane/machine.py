@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 import subprocess
 import time
 from dataclasses import dataclass
@@ -121,13 +122,32 @@ def _gh_json(run, root, *args):
         return None
 
 
+def _queue(command: str, root, run) -> Answer:
+    """The project's own answer to "is CI using this machine now": exit 0 no, 1 yes, anything else unknown."""
+    try:
+        done = run(shlex.split(command), cwd=str(root), capture_output=True, text=True, check=False, timeout=25)
+    except (OSError, subprocess.SubprocessError, ValueError) as err:
+        return Answer("ci", None, f"the CI queue command could not be run ({err}): not asked is not free")
+    first = (done.stdout or "").strip().splitlines()[:1]
+    detail = f": {first[0]}" if first else ""
+    if done.returncode == 0:
+        return Answer("ci", False, f"the CI queue command says CI is not using this machine{detail}")
+    if done.returncode == 1:
+        return Answer("ci", True, f"the CI queue command says CI is using this machine{detail}")
+    return Answer("ci", None, f"the CI queue command exited {done.returncode}: not asked is not free")
+
+
 def ci_here(profile: dict, *, run=subprocess.run, root) -> Answer:
     ci = profile.get("ci") or {}
     if ci.get("runs_on") != "this-machine":
         return Answer("ci", False, "CI does not run on this machine")
+    command = (ci.get("queue_command") or "").strip()
+    if command:
+        return _queue(command, root, run)
     if ci.get("provider") != "github":
-        return Answer("ci", None, "CI runs on this machine through a gate command whose queue flotilla cannot ask; "
-                                  "waiting cannot change that. Take the lane knowingly: receipts with --no-lane",
+        return Answer("ci", None, "CI runs on this machine through a gate command, and `[ci] queue_command` is not "
+                                  "set, so its queue cannot be asked; waiting cannot change that. Set queue_command "
+                                  "(exit 0 idle, 1 busy), or take the lane knowingly: receipts with --no-lane",
                       lasting=True)
     rows = _gh_json(run, root, "run", "list", "--limit", "10", "--json", "status,databaseId")
     if not isinstance(rows, list):
