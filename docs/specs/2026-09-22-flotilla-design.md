@@ -582,7 +582,7 @@ All hooks exit silently when the project has no `.flotilla/`. flotilla never wri
 **Git hooks** (`pre-commit` file reservation, `pre-push` second push barrier) are repository hooks; onboarding
 installs them per clone with consent, each named.
 
-**Permission broker (planned, measured first).** A session in `manual` mode stalls on a prompt nobody sees.
+**Permission broker.** A session in `manual` mode stalls on a prompt nobody sees.
 Claude Code's `PermissionRequest` hook fires when a tool call needs a decision and may answer allow or deny
 (command hooks wait up to 600 s by default). The plan: the hook puts the question in a queue in the state
 directory, the orchestrator shows the person one question at a time, oldest first, and writes the answer back;
@@ -592,6 +592,8 @@ deny's `message` reaching the session verbatim; `updatedPermissions` with `desti
 once (an exact `addRules` entry lets the same command through without asking again); while the hook holds its
 answer the census shows `status: waiting`. **A hook that reaches its own timeout does not deny: the session
 hangs on a prompt nobody can see** (four minutes, until stopped), so the broker must answer before its timeout.
+Built: `flotilla hook permission`, `flotilla permit list | next | answer`, `/flotilla:permit`; on when
+`permissions.mode` is `ask`.
 
 **Cron: none in v1.** `flotilla watch --once` exits with a meaningful code for any scheduler. Onboarding-installed
 schedules (crontab on Linux, launchd on macOS, with consent) are the first roadmap item.

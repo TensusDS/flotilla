@@ -2,6 +2,11 @@
 
 Deferred findings, kept here until a plan takes them. Each names where it came from.
 
+## From the broker plan (2026-09-27)
+
+- Measure with a live fleet: an orchestrator woken by `flotilla permit next --wait` finishing in the
+  background, and the AskUserQuestion round trip back to a background session's hook.
+
 ## From the guards final review (2026-09-27)
 
 - `flotilla guard check` with an override in the command writes a bypass record although nothing ran; a real override

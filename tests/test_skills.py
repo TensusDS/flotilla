@@ -11,7 +11,7 @@ from flotilla import cli
 ROOT = Path(__file__).resolve().parent.parent
 SKILLS = sorted((ROOT / "skills").glob("*/SKILL.md"))
 PERSON_ONLY = {"doctor", "check", "status", "brief", "spawn", "retire", "lane", "watch", "guard"}
-MODEL_INVOCABLE = {"onboard"}
+MODEL_INVOCABLE = {"onboard", "permit"}
 MODEL_ONLY = {"flotilla"}
 CALL = re.compile(r"`(?:\$\{CLAUDE_PLUGIN_ROOT\}/scripts/)?flotilla ([a-z-]+)(?: ([a-z-]+))?")
 
@@ -84,3 +84,9 @@ def test_the_arrangement_sends_long_runs_through_the_lane():
 def test_the_arrangement_answers_the_hooks_with_a_move_or_a_wait():
     text = (ROOT / "skills" / "flotilla" / "SKILL.md").read_text(encoding="utf-8")
     assert "flotilla - your move" in text and "work wait" in text and "Stop guard" in text
+
+
+def test_the_orchestrator_post_keeps_the_question_watch():
+    from flotilla.posts import TEMPLATE_DIR
+    text = (TEMPLATE_DIR / "orchestrator.md").read_text(encoding="utf-8")
+    assert "flotilla permit next --wait" in text and "/flotilla:permit" in text
