@@ -130,8 +130,12 @@ def _interpreter_problem(body: bytes) -> str:
     return "" if Path(words[0]).exists() else f"interpreter {words[0]} not found"
 
 
-def check(scripts: dict, *, cwd, run=subprocess.run) -> list[tuple[str, str, str]]:
-    """Each script: a known name, an interpreter that exists, and a clean answer to a sample move."""
+def check(scripts: dict, *, cwd, run=subprocess.run, samples: bool = True) -> list[tuple[str, str, str]]:
+    """Each script: a known name, an interpreter that exists, and a clean answer to a sample move.
+
+    Without samples nothing is run: a hook checks names, the executable bit and the interpreter only, because a
+    sample run can outlast its timeout.
+    """
     names = set(event_names())
     found = []
     for name in sorted(scripts):
@@ -141,6 +145,12 @@ def check(scripts: dict, *, cwd, run=subprocess.run) -> list[tuple[str, str, str
         problem = _interpreter_problem(scripts[name][0])
         if problem:
             found.append((name, BROKEN, problem))
+            continue
+        if not samples:
+            if scripts[name][1]:
+                found.append((name, OK, "an interpreter is found; the sample move was not run"))
+            else:
+                found.append((name, BROKEN, "the file is not executable"))
             continue
         outcome = run_event(name, scripts[name], sample_payload(name), cwd=cwd, run=run)
         if outcome.status == BROKEN:

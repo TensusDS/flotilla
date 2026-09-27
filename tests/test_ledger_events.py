@@ -155,3 +155,13 @@ def test_post_script_output_that_is_not_utf8_does_not_crash_the_move(tmp_path):
     _, ledger = world_with(tmp_path, {"post-handed": script("import sys; sys.stdout.buffer.write(b'\\xff\\xfe'); sys.exit(1)")})
     assert hand(ledger).state == "handed"
     assert any("post-handed" in notice for notice in ledger.notices)
+
+
+def test_a_check_without_samples_runs_no_script(tmp_path):
+    def must_not_run(*args, **kwargs):
+        raise AssertionError("a sample move was run")
+    found = events.check({"pre-handed": script("pass"), "pre-closed": (b"#!/nonexistent/python\n", True),
+                          "post-closed": script("pass", executable=False)},
+                         cwd=tmp_path, run=must_not_run, samples=False)
+    status = {name: state for name, state, _ in found}
+    assert status == {"pre-handed": events.OK, "pre-closed": events.BROKEN, "post-closed": events.BROKEN}

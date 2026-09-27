@@ -1,41 +1,138 @@
 """Entry point for Claude Code hooks.
 
-Installed is not active: until the project holds `.flotilla/project.toml`, every hook exits 0 with
-no output. That path imports only the standard library and `flotilla.core.config`, because a
-project that never onboarded flotilla must not pay for it. A hook never blocks a session start;
-what it cannot check it says, in text the session will read.
+Installed is not active: until the project holds `.flotilla/project.toml`, every hook exits 0 with no output. That
+path imports only the standard library and `flotilla.core.config`, because a project that never onboarded flotilla
+must not pay for it. A hook never crashes or traps a session: what it cannot check it says, and the Stop guard does
+not block on what it could not ask.
 """
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import sys
 from pathlib import Path
 
-#: Seconds per external call inside a hook. Two calls plus a margin must fit inside the timeout
-#: declared in hooks/hooks.json, or Claude Code kills the hook before it can say "unknown".
+#: Seconds per external call inside a hook. The calls plus a margin must fit inside the timeouts declared in
+#: hooks/hooks.json, or Claude Code kills the hook before it can say "unknown".
 HOOK_CHECK_TIMEOUT = 3
+EVENTS = ("session-start", "prompt", "stop")
+CLI = Path(__file__).resolve().parent.parent / "scripts" / "flotilla"
+PEERS_SHOWN = 8
 
 
-def run_hook(event: str, stdin, out=sys.stdout) -> int:
+def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime | None = None) -> int:
     try:
         payload = json.load(stdin)
     except ValueError:
         payload = {}
-    cwd = Path(payload.get("cwd") or ".") if isinstance(payload, dict) else Path(".")
+    if not isinstance(payload, dict):
+        payload = {}
+    cwd = Path(payload.get("cwd") or ".")
 
     from flotilla.core.config import find_project
     root = find_project(cwd)
     if root is None:
         return 0
 
-    if event == "session-start":
-        try:
-            from flotilla import doctor
-            lines = doctor.render(doctor.collect(cwd=root, timeout=HOOK_CHECK_TIMEOUT), quiet=True)
-        except Exception as err:  # noqa: BLE001 - a hook must say what broke, never crash the session
-            print(f"flotilla: could not check this project: {err}", file=out)
-            return 0
-        if lines:
-            print("flotilla: " + "; ".join(lines), file=out)
+    try:
+        if gather is None:
+            from flotilla.watch.context import gather as gather_context
+        else:
+            gather_context = gather
+        ctx = gather_context(root, str(payload.get("session_id") or ""))
+        handler = {"session-start": _session_start, "prompt": _prompt, "stop": _stop}[event]
+        return handler(ctx, payload, out, now or dt.datetime.now(dt.timezone.utc))
+    except Exception as err:  # noqa: BLE001 - a hook must say what broke, never crash the session
+        if event == "stop":
+            print(f"flotilla: the stop guard failed and does not block: {err}", file=sys.stderr)
+        else:
+            print(f"flotilla: the {event} hook failed: {err}", file=out)
+        return 0
+
+
+def _identity(ctx) -> list[str]:
+    said = []
+    if ctx.sessions is None:
+        said.append(f"the census could not be asked ({ctx.census_error}); who you are and who is alive is unknown")
+    elif ctx.me is None:
+        said.append("this session is not in the census; a move from here needs --as <session name>")
+    else:
+        post = ctx.post(ctx.me.name)
+        role = f"post {post.name}" if post else "no post matches this name, so it can make no ledger move"
+        peers = sorted(ctx.live - {ctx.me.name})
+        shown = ", ".join(peers[:PEERS_SHOWN])
+        if len(peers) > PEERS_SHOWN:
+            shown += f", and {len(peers) - PEERS_SHOWN} more"
+        said.append(f"you are {ctx.me.name} ({role}); {len(peers)} live peer(s)" + (f": {shown}" if peers else ""))
+    if ctx.ledger is None:
+        said.append(f"the ledger could not be read: {ctx.ledger_error}")
+    return said
+
+
+def _event_problems(ctx) -> list[str]:
+    if ctx.ledger is None or not ctx.ledger.events:
+        return []
+    from flotilla.ledger import events
+    found = events.check(ctx.ledger.events, cwd=ctx.ledger.root, samples=False)
+    return [f"event script {name}: {status}: {text}; run `flotilla events check`"
+            for name, status, text in found if status != events.OK]
+
+
+def _session_start(ctx, payload, out, now) -> int:
+    from flotilla import doctor
+    from flotilla.watch import render
+    try:
+        checks = doctor.render(doctor.collect(cwd=ctx.root, timeout=HOOK_CHECK_TIMEOUT), quiet=True)
+    except Exception as err:  # noqa: BLE001 - say what could not be checked, go on
+        checks = [f"could not check this project: {err}"]
+    if checks:
+        print("flotilla: " + "; ".join(checks), file=out)
+    for line in _identity(ctx) + _event_problems(ctx):
+        print(f"flotilla: {line}", file=out)
+    mine = ctx.mine()
+    if mine:
+        print("flotilla - inherited, and whose move it is:", file=out)
+        print("\n".join(render.lines(mine, now)), file=out)
+    fleet_items = ctx.fleet() if ctx.is_orchestrator else []
+    if fleet_items:
+        print("flotilla - the fleet (you are the orchestrator):", file=out)
+        print("\n".join(render.lines(fleet_items, now)), file=out)
+    return 0
+
+
+def _prompt(ctx, payload, out, now) -> int:
+    from flotilla.core import paths
+    from flotilla.watch import render, throttle
+    from flotilla.watch.whose import WAITING
+    blocks, keys = [], []
+    if ctx.sessions is None:
+        blocks.append(f"flotilla: could not ask which session this is: {ctx.census_error}")
+    elif ctx.ledger is None:
+        blocks.append(f"flotilla: the ledger could not be read: {ctx.ledger_error}")
+    elif ctx.me is not None:
+        mine = [item for item in ctx.mine() if item.kind != WAITING]
+        fleet_items = ctx.fleet() if ctx.is_orchestrator else []
+        if mine:
+            blocks += ["flotilla - your move:", *render.lines(mine, now)]
+        if fleet_items:
+            blocks += ["flotilla - the fleet (you are the orchestrator):", *render.lines(fleet_items, now)]
+        keys = [f"{item.kind}|{item.branch}|{item.text}" for item in mine + fleet_items]
+    keys = keys or blocks
+    state = ctx.ledger.state_dir if ctx.ledger is not None else paths.state_dir()
+    if not throttle.due(state, ctx.session_id, throttle.digest(keys) if keys else "", now):
+        return 0
+    print("\n".join(blocks), file=out)
+    return 0
+
+
+def _stop(ctx, payload, out, now) -> int:
+    from flotilla.ledger.model import now_iso
+    from flotilla.watch import fleet, guard
+    verdict = guard.stop_verdict(ctx, payload, cli=str(CLI))
+    if verdict.block:
+        print(json.dumps({"decision": "block", "reason": verdict.reason}), file=out)
+    elif verdict.breaks:
+        fleet.record_break(ctx.ledger.state_dir, ctx.ledger.repo_key, ctx.me.name, verdict.breaks,
+                           at=now_iso(now))
     return 0
