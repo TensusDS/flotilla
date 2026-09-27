@@ -10,7 +10,7 @@ from flotilla import cli
 
 ROOT = Path(__file__).resolve().parent.parent
 SKILLS = sorted((ROOT / "skills").glob("*/SKILL.md"))
-PERSON_ONLY = {"doctor", "check", "status", "brief", "spawn", "retire", "lane"}
+PERSON_ONLY = {"doctor", "check", "status", "brief", "spawn", "retire", "lane", "watch"}
 MODEL_INVOCABLE = {"onboard"}
 MODEL_ONLY = {"flotilla"}
 CALL = re.compile(r"`(?:\$\{CLAUDE_PLUGIN_ROOT\}/scripts/)?flotilla ([a-z-]+)(?: ([a-z-]+))?")

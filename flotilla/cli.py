@@ -167,6 +167,9 @@ def build_parser() -> argparse.ArgumentParser:
     retire_.add_argument("name")
     retire_.add_argument("--root", default=".")
     sub.add_parser("fleet", help="the fleet's sessions, their trees and their work").add_argument("--root", default=".")
+    watch = sub.add_parser("watch", help="what the fleet needs attention for (exit 0 none, 1 some, 2 unknown)")
+    watch.add_argument("--once", action="store_true", help="check once and exit (v1 has no schedule of its own)")
+    watch.add_argument("--root", default=".")
     import argparse as _argparse
     lane = sub.add_parser("lane", help="book the machine for long runs (not a lock)")
     lane.add_argument("--root", default=".")
@@ -213,4 +216,7 @@ def main(argv: list[str]) -> int:
     if args.command == "lane":
         from flotilla.lane.commands import run_lane_command
         return run_lane_command(args)
+    if args.command == "watch":
+        from flotilla.watch.commands import run_watch_command
+        return run_watch_command(args)
     return 2
