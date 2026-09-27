@@ -9,11 +9,12 @@ timeout of 600 s, because a hook that is killed at its timeout leaves the sessio
 
 from __future__ import annotations
 
+import os
 import time
 
 from flotilla.broker import queue
 
-DEFAULT_WAIT, LEAST_WAIT, MOST_WAIT = 540, 30, 590
+DEFAULT_WAIT, LEAST_WAIT, MOST_WAIT = 540, 30, 570
 POLL = 0.5
 
 
@@ -30,15 +31,26 @@ def wait_seconds(profile: dict) -> float:
 
 
 def session_rules(tool: str, tool_input: dict, suggestions: list) -> list[dict]:
-    """What "allow for this session" applies: Claude Code's own suggestions kept in memory, else an exact rule."""
-    rules = [dict(item, destination="session") for item in suggestions or [] if isinstance(item, dict)]
-    if rules:
-        return rules
-    command = (tool_input or {}).get("command")
-    if tool == "Bash" and isinstance(command, str) and command:
-        return [{"type": "addRules", "rules": [{"toolName": "Bash", "ruleContent": command}], "behavior": "allow",
-                 "destination": "session"}]
-    return [{"type": "addRules", "rules": [{"toolName": tool}], "behavior": "allow", "destination": "session"}]
+    """What "allow for this session" applies, kept in memory: an exact rule, and the directories it needs.
+
+    Claude Code's suggestions are candidates, not one dialog option (hooks reference), so they are not applied
+    wholesale: rules and directories are kept, a mode switch never is (entry 70 saw `setMode: acceptEdits` offered
+    for a `touch`, which would approve every later edit). A Bash command holding `*` gets no rule at all: in rule
+    syntax `*` is a wildcard, so the "exact" rule would allow more than was asked.
+    """
+    items = [item for item in suggestions or [] if isinstance(item, dict)]
+    rules = [dict(item, destination="session") for item in items if item.get("type") == "addRules"]
+    if not rules:
+        command = (tool_input or {}).get("command")
+        if tool == "Bash":
+            if not isinstance(command, str) or not command or "*" in command:
+                return []
+            rules = [{"type": "addRules", "rules": [{"toolName": "Bash", "ruleContent": command}],
+                      "behavior": "allow", "destination": "session"}]
+        else:
+            rules = [{"type": "addRules", "rules": [{"toolName": tool}], "behavior": "allow",
+                      "destination": "session"}]
+    return rules + [dict(item, destination="session") for item in items if item.get("type") == "addDirectories"]
 
 
 def _deny(text: str) -> dict:
@@ -55,19 +67,28 @@ def _decision(got: dict, asked: queue.Question, wait: float) -> dict:
     if choice == queue.ALLOW:
         return {"behavior": "allow"}
     if choice == queue.SESSION:
-        return {"behavior": "allow",
-                "updatedPermissions": session_rules(asked.tool, asked.tool_input, asked.suggestions)}
+        rules = session_rules(asked.tool, asked.tool_input, asked.suggestions)
+        return {"behavior": "allow", "updatedPermissions": rules} if rules else {"behavior": "allow"}
     if choice == queue.DENY:
         return _deny(f"the person said no: {got.get('why') or 'no reason given'}")
     return _timed_out(wait)
 
 
-def decide(payload: dict, ctx, *, clock=time.time, sleep=time.sleep, poll: float = POLL,
-           pid: int | None = None) -> dict | None:
-    """The decision for this permission request, or None to leave the dialog to decide."""
-    if ctx.ledger is None or not enabled(ctx.profile):
-        return None
+def decide(payload: dict, ctx, *, clock=time.time, sleep=time.sleep, timer=time.monotonic, poll: float = POLL,
+           started: float | None = None, parent=os.getppid, pid: int | None = None) -> dict | None:
+    """The decision for this permission request, or None to leave the dialog to decide.
+
+    The budget counts on `timer` (monotonic) from `started`, the hook's own start, because everything before the
+    question — interpreter start, the census, reading the rules — spends the same timeout. Once the session is known
+    to be a background one, every failure is a deny with its reason: no decision there is the measured hang.
+    """
+    started = timer() if started is None else started
     if ctx.sessions is None or ctx.me is None or ctx.me.kind != "background":
+        return None   # a person may be in front of it, or who asks is unknown: the dialog decides
+    if ctx.ledger is None:
+        return _deny(f"the project's rules could not be read ({ctx.ledger_error}), so this question cannot be put "
+                     "to anyone")
+    if not enabled(ctx.profile):
         return None
     me = ctx.me.name
     if ctx.post_of(me) == "orchestrator":
@@ -77,18 +98,36 @@ def decide(payload: dict, ctx, *, clock=time.time, sleep=time.sleep, poll: float
     if not any(s.name and s.name != me and ctx.post_of(s.name) == "orchestrator" for s in ctx.sessions):
         return _deny("no live orchestrator to put this question to; spawn one (`flotilla spawn -o 1`), or give this "
                      "session a rule that allows the call")
+    try:
+        return _wait(payload, ctx, clock=clock, sleep=sleep, timer=timer, poll=poll, started=started, parent=parent,
+                     pid=pid)
+    except Exception as err:  # noqa: BLE001 - a background session with no decision hangs (entry 70)
+        return _deny(f"the broker failed ({err}), so this call is refused")
+
+
+def _wait(payload, ctx, *, clock, sleep, timer, poll, started, parent, pid) -> dict:
     tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
     suggestions = payload.get("permission_suggestions") if isinstance(payload.get("permission_suggestions"),
                                                                       list) else []
     state, key, wait = ctx.ledger.state_dir, ctx.ledger.repo_key, wait_seconds(ctx.profile)
-    asked = queue.ask(state, key, session=me, session_id=ctx.me.session_id, tool=str(payload.get("tool_name") or ""),
-                      tool_input=tool_input, suggestions=suggestions, wait=wait, now=clock(), pid=pid)
+    ends = started + wait
+    home = parent()
+    asked = queue.ask(state, ctx.ledger.repo_key, session=ctx.me.name, session_id=ctx.me.session_id,
+                      tool=str(payload.get("tool_name") or ""), tool_input=tool_input, suggestions=suggestions,
+                      wait=max(0.0, ends - timer()), now=clock(), pid=pid)
     while True:
         got = queue.answer_of(state, key, asked.id)
         if got is not None:
             return _decision(got, asked, wait)
-        if clock() >= asked.deadline:
+        if parent() != home:
+            queue.withdraw(state, key, asked.id, "the asking session is gone", now=clock())
+            return _deny("the asking session is gone")
+        if timer() >= ends:
             if queue.withdraw(state, key, asked.id, "no answer in time", now=clock()):
                 return _timed_out(wait)
-            continue   # an answer was written in the same moment: read it
+            got = queue.answer_of(state, key, asked.id)   # an answer was written in the same moment: read it
+            if got is not None:
+                return _decision(got, asked, wait)
+            if timer() >= ends + 2:
+                return _timed_out(wait)   # an answer that cannot be read must not keep the hook past its timeout
         sleep(poll)

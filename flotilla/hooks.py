@@ -11,7 +11,11 @@ from __future__ import annotations
 import datetime as dt
 import json
 import sys
+import time
 from pathlib import Path
+
+#: When this process started: the permission hook's budget counts from here, not from its question.
+STARTED = time.monotonic()
 
 #: Seconds per external call inside a hook. The calls plus a margin must fit inside the timeouts declared in
 #: hooks/hooks.json, or Claude Code kills the hook before it can say "unknown".
@@ -153,7 +157,7 @@ def _stop(ctx, payload, out, now) -> int:
 
 def _permission(ctx, payload, out, now) -> int:
     from flotilla.broker.decide import decide
-    decision = decide(payload, ctx)
+    decision = decide(payload, ctx, started=STARTED)
     if decision is not None:
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": decision}}),
               file=out)

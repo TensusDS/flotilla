@@ -419,13 +419,13 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    deadline cannot both count. The id sorts by time, so "oldest first" is the file order. (executor's decision, broker plan, 2026-09-27)
 74. **The hook waits at most `[broker] wait_seconds`** (default 540, clamped to 30–590) and the hook's timeout in
    `hooks.json` is 600: the hook withdraws the question and denies with a reason before Claude Code would kill it,
-   because a killed hook leaves the session hanging (measured). (executor's decision, broker plan, 2026-09-27)
+   because a killed hook leaves the session hanging (measured). Final review: the budget counts on a monotonic clock from the hook's own start, and the ceiling is 570 s. (executor's decision, broker plan, 2026-09-27)
 75. **No live orchestrator is an immediate deny** naming the fix (spawn one, or give the session a rule). The
    orchestrator's own question (a background orchestrator) is denied too, naming `claude attach`: it cannot answer
    a question that blocks it. (executor's decision, broker plan, 2026-09-27)
 76. **Three answers.** `allow` (once), `session` (allow, and apply Claude Code's own `permission_suggestions` with
    `destination: "session"`, or, when it offered none, an exact rule for that Bash command or the tool), `deny`
-   (with the person's reason, which reaches the session verbatim — measured). (executor's decision, broker plan, 2026-09-27)
+   (with the person's reason, which reaches the session verbatim — measured). Final review: "for the session" keeps rules and directories only, never a mode switch, and gives no rule for a Bash command holding `*`. (executor's decision, broker plan, 2026-09-27)
 77. **A question is live while its hook still waits**: the hook's process is alive and its deadline has not passed.
    A closed, withdrawn or abandoned question is never shown, and answering it is refused with the reason, so the
    person never answers a question nobody is waiting for. (executor's decision, broker plan, 2026-09-27)
@@ -438,7 +438,7 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    on a permission prompt nobody answers". (executor's decision, broker plan, 2026-09-27)
 80. **A failing permission hook gives no decision** (stderr only): the dialog then decides, which for a background
    session means the hang the dropped-ball item reports. Denying on the hook's own failure could refuse a person
-   at an interactive dialog. (executor's decision, broker plan, 2026-09-27)
+   at an interactive dialog. Final review: once a session is known to be a background one, a failure is a deny with its reason, and so are rules that cannot be read. (executor's decision, broker plan, 2026-09-27)
 
 ## Open questions (for the foundation spec)
 

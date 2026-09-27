@@ -23,7 +23,8 @@ def ask(state, key, now, session="main session 1", command="touch x.txt"):
 
 def run(root, *argv, clock=None, sleep=None):
     args = cli.build_parser().parse_args(["permit", *argv, "--root", str(root)])
-    return commands.run_permit_command(args, clock=clock or (lambda: 1100.0), sleep=sleep or (lambda s: None))
+    return commands.run_permit_command(args, clock=clock or (lambda: 1100.0), sleep=sleep or (lambda s: None),
+                                      caller=lambda root: (None, ""))
 
 
 def test_next_shows_the_oldest_question_with_its_three_answers(tmp_path, monkeypatch, capsys):
@@ -85,4 +86,26 @@ def test_for_the_session_is_said_in_words():
     asked = queue.Question("1", 0, 540, 1, "m", "s", "Bash", {"command": "touch x"},
                            [{"type": "setMode", "mode": "acceptEdits"},
                             {"type": "addDirectories", "directories": ["/w"]}])
-    assert present.for_the_session(asked) == "switch the session to acceptEdits mode; let it work in /w"
+    assert present.for_the_session(asked) == "allow Bash(touch x); let it work in /w"   # never the mode
+
+
+def test_a_worker_session_cannot_answer(tmp_path, monkeypatch, capsys):
+    root, state, key = world(tmp_path, monkeypatch)
+    asked = ask(state, key, 1000)
+    args = cli.build_parser().parse_args(["permit", "answer", asked.id, "allow", "--root", str(root)])
+    code = commands.run_permit_command(args, clock=lambda: 1100.0, caller=lambda root: ("main session 2", "main"))
+    assert code == 2 and "only the orchestrator" in capsys.readouterr().out
+    assert queue.answer_of(state, key, asked.id) is None
+
+
+def test_the_orchestrator_can_answer(tmp_path, monkeypatch):
+    root, state, key = world(tmp_path, monkeypatch)
+    asked = ask(state, key, 1000)
+    args = cli.build_parser().parse_args(["permit", "answer", asked.id, "allow", "--root", str(root)])
+    assert commands.run_permit_command(args, clock=lambda: 1100.0,
+                                       caller=lambda root: ("orchestrator 1", "orchestrator")) == 0
+
+
+def test_a_wildcard_command_is_offered_once_only(tmp_path):
+    asked = queue.Question("1", 0, 540, 1, "m", "s", "Bash", {"command": "rm -rf build/*"}, [])
+    assert "once only" in present.for_the_session(asked)

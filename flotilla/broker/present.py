@@ -30,7 +30,10 @@ def _rule_text(rule: dict) -> str:
 
 
 def for_the_session(asked) -> str:
-    return "; ".join(_rule_text(rule) for rule in session_rules(asked.tool, asked.tool_input, asked.suggestions))
+    rules = session_rules(asked.tool, asked.tool_input, asked.suggestions)
+    if not rules:
+        return "no exact rule fits (a `*` in the command is a wildcard in rule syntax), so it is allowed once only"
+    return "; ".join(_rule_text(rule) for rule in rules)
 
 
 def describe(asked, now: float) -> list[str]:

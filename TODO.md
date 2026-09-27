@@ -2,6 +2,24 @@
 
 Deferred findings, kept here until a plan takes them. Each names where it came from.
 
+## From the broker final review (2026-09-27)
+
+- A background session the census cannot place (census down) is left to its dialog, which for it is the measured
+  hang; `spawn` could export a marker (`FLOTILLA_SESSION_KIND=background`) so the hook knows without the census.
+- On some mounts (FUSE, SMB, exFAT) `os.link` raises EPERM/ENOTSUP, not FileExistsError: the hook denies with the
+  error, but `permit answer` prints a traceback. Map it to a refusal naming the filesystem.
+- The queue is never pruned: `live()` parses every question on each poll, and a `Write`/`Edit` question keeps the
+  whole file content in the state directory. Prune closed and dead questions older than a day.
+- For `Write`/`Edit` the person sees only the path; show a truncated diff or content.
+- `status: waiting` may also mean prompts other than permissions; a waiting session is reported only when it holds
+  a ledger move.
+- A background orchestrator counts as live: questions then wait the full budget instead of naming `claude attach`.
+- The skill asks the model to read a typed answer as allow or deny; make "Other" always a deny with the words.
+- A reused pid can keep an abandoned question looking alive (bounded by its deadline); `os.kill(0, 0)` on a pid 0.
+- Staged `.q-*.tmp` / `.a-*.tmp` files are left when a write fails.
+- Measure live: whether Claude Code kills a hook's process when its session is stopped (the hook now also withdraws
+  when its parent changes).
+
 ## From the broker plan (2026-09-27)
 
 - Measure with a live fleet: an orchestrator woken by `flotilla permit next --wait` finishing in the

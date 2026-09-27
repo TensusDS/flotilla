@@ -1,4 +1,8 @@
-"""`flotilla permit list | next | answer`: the orchestrator's side of the permission broker."""
+"""`flotilla permit list | next | answer`: the orchestrator's side of the permission broker.
+
+Only the orchestrator, or a person in a terminal outside any session, may answer: the answer command is the
+person's gate, so a worker session that runs it for a peer is refused by the census, not trusted by its word.
+"""
 
 from __future__ import annotations
 
@@ -8,7 +12,30 @@ from pathlib import Path
 POLL = 1.0
 
 
-def run_permit_command(args, *, clock=time.time, sleep=time.sleep) -> int:
+def _caller(root) -> tuple[str | None, str]:
+    """The session running this command and its post; (None, "") outside any session the census lists."""
+    from flotilla.core import platform as plat
+    from flotilla.core.census import read_census
+    from flotilla.core.identity import find_calling_session
+    from flotilla.posts import PostError, load_posts, post_for_session
+    sessions = read_census(timeout=10)
+    source = plat.probe().parent_pid_source
+    found = find_calling_session(sessions, parent_of=lambda pid: plat.parent_pid(pid, source))
+    if found is None or not found.name:
+        return None, ""
+    try:
+        from flotilla.ledger.commands import trunk_rules
+        posts = trunk_rules(Path(root)).posts
+    except Exception:  # noqa: BLE001 - before onboarding reaches trunk the tree's posts are the ones there are
+        posts = load_posts(Path(root))
+    try:
+        post = post_for_session(posts, found.name)
+    except PostError:
+        post = None
+    return found.name, post.name if post else ""
+
+
+def run_permit_command(args, *, clock=time.time, sleep=time.sleep, caller=None) -> int:
     from flotilla.broker import present, queue
     from flotilla.core import config, paths, repo
     root = config.find_project(Path(args.root))
@@ -17,6 +44,16 @@ def run_permit_command(args, *, clock=time.time, sleep=time.sleep) -> int:
         return 2
     state, key = paths.state_dir(), repo.identify(root).key
     if args.action == "answer":
+        try:
+            name, post = (caller or _caller)(root)
+        except Exception as err:  # noqa: BLE001 - who answers is unknown: not the gate's to guess
+            print(f"refused: could not tell who answers ({err}); answer from the orchestrator's session, or from a "
+                  "terminal outside any session")
+            return 2
+        if name and post != "orchestrator":
+            print(f"refused: `{name}` holds {('the ' + post + ' post') if post else 'no post'}; only the "
+                  "orchestrator, or a person outside any session, answers a permission question")
+            return 2
         try:
             asked = queue.answer(state, key, args.id, args.choice, why=args.why or "", now=clock())
         except queue.QueueRefused as err:
