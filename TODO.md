@@ -23,9 +23,9 @@ Deferred findings, kept here until a plan takes them. Each names where it came f
 
 ## From the guards plan (2026-09-27)
 
-- Measure on a live session: that a PreToolUse deny from a plugin hook reaches a background session. The
-  guard's time was measured on this machine: 0.0 ms for a plain command, 24 ms for a read one, 52 ms for a push,
-  plus ~89 ms process start (the test bounds it at 1 s for CI).
+- The guard's time, measured on this machine: 0.0 ms for a plain command, 24 ms for a read one, 52 ms for a push,
+  plus ~89 ms process start (the test bounds it at 1 s for CI). (A PreToolUse deny reaching a background session:
+  measured 2026-09-27, decisions log entry 70.)
 
 ## From the watchers final review (2026-09-27)
 
@@ -44,8 +44,9 @@ Deferred findings, kept here until a plan takes them. Each names where it came f
 
 ## From the watchers plan (2026-09-27)
 
-- Measure on a live background session: that a Stop block reaches the session as a continuation, and that the
-  census sessionId equals the hook's session_id for a background session (measured only for an interactive one).
+- The watchers read a background session's `state` only; the census also gives `status` (`busy`, `idle`,
+  `waiting`), and `waiting` is a session stuck on a permission prompt, not an idle one (entry 70). Say so in the
+  dropped-ball item. (Stop continuation and the session id: measured 2026-09-27, entry 70.)
 
 ## From the lane final review (2026-09-27)
 
@@ -66,8 +67,11 @@ Deferred findings, kept here until a plan takes them. Each names where it came f
 - `git status --porcelain` counts an untracked directory as one entry, so "1 uncommitted file" can undercount.
 - In direct-push mode the sender cannot check out trunk in its home tree (trunk is checked out in the main
   checkout); its land flow needs a design in the guards or lane part.
-- Measure on a live background session (the billed e2e smoke): spawning from inside a session's Bash, what
-  `claude stop` does to `claude agents --json`, and `${CLAUDE_PLUGIN_ROOT}` in `allowed-tools`.
+- Measure on a live background session (the billed e2e smoke): spawning from inside a session's Bash, and
+  `${CLAUDE_PLUGIN_ROOT}` in `allowed-tools`. (`claude stop <id>` removes the session from the census at once; by
+  name it fails: entry 70; `retire` already passes the id.)
+- `claude --bg` refuses a directory whose trust was never accepted, and trust is not inherited from a parent
+  (entry 70): `doctor` and `spawn` should say so before launching, not after.
 
 ## From the ledger part B final review (2026-09-26)
 

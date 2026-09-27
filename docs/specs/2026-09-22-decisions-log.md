@@ -388,6 +388,26 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
 69. **The `pre-push` hook obeys `guards.push_receipt`** like the command guard; `/flotilla:guard` offers `pre-push`
    when that guard is on and `pre-commit` when the profile names reserved files, one yes each. (executor's decision, guards plan, 2026-09-27)
 
+70. **Live probe, 2026-09-27, Claude Code 2.1.283: the permission broker, the hooks, the census** (four `--bg`
+   sessions on haiku, launched with `--settings` carrying logging hooks; removed afterwards).
+   - `PermissionRequest` fires in a background session; `permission_suggestions` offered `addDirectories` and
+     `setMode: acceptEdits`. Allow and deny both arrive; a deny's `message` reaches the session verbatim.
+   - An allow without `updatedPermissions` is one-time: the next `touch` asked again. `updatedPermissions` with
+     `destination: "session"` applies at once: `setMode` switched the session to `acceptEdits`, and an exact `addRules`
+     entry (`Bash`, `touch omega.txt`) let that command run twice without asking.
+   - While the hook holds its answer the census shows `state: blocked, status: waiting`, then `working, busy` again.
+   - **A hook that reaches its timeout does not deny: the session hung on an unanswerable prompt, `blocked, waiting`,
+     for four minutes until stopped.** The broker must answer, deny included, before its own timeout.
+   - Census: a background session reports `status` too — `busy` working, `idle` idle (`state` blocked or done),
+     `waiting` on a prompt. The hook's `session_id` equals the census `sessionId`.
+   - A `Stop` block reaches a background session as a continuation (it ran the command the reason named); the second
+     stop carried `stop_hook_active: true`; `background_tasks` and `session_crons` arrived as empty lists.
+   - A `PreToolUse` deny reaches a background session with its reason.
+   - `claude stop <id>` removes the session from the census at once; `claude stop <name>` answers "No job matching".
+   - `claude --bg` refuses an untrusted directory ("Workspace not trusted"), and trust is not inherited from a trusted
+     parent: a spawn needs a directory the person has accepted once.
+   - In `default` mode `touch` asked for permission and `mkdir` did not.
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

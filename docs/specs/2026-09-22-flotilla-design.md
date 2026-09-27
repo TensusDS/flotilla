@@ -586,9 +586,12 @@ installs them per clone with consent, each named.
 Claude Code's `PermissionRequest` hook fires when a tool call needs a decision and may answer allow or deny
 (command hooks wait up to 600 s by default). The plan: the hook puts the question in a queue in the state
 directory, the orchestrator shows the person one question at a time, oldest first, and writes the answer back;
-no orchestrator or no answer in time → deny with a reason, never a silent hang. Undocumented and to be measured
-on a live background session before it is built: whether the hook fires in `--bg` sessions, what a timeout
-does, and whether an answer can become a rule for the rest of the session.
+no orchestrator or no answer in time → deny with a reason, never a silent hang. Measured on a live background
+session (2026-09-27, Claude Code 2.1.283, decisions log entry 70): the hook fires; allow and deny both arrive, a
+deny's `message` reaching the session verbatim; `updatedPermissions` with `destination: "session"` applies at
+once (an exact `addRules` entry lets the same command through without asking again); while the hook holds its
+answer the census shows `status: waiting`. **A hook that reaches its own timeout does not deny: the session
+hangs on a prompt nobody can see** (four minutes, until stopped), so the broker must answer before its timeout.
 
 **Cron: none in v1.** `flotilla watch --once` exits with a meaningful code for any scheduler. Onboarding-installed
 schedules (crontab on Linux, launchd on macOS, with consent) are the first roadmap item.
@@ -753,6 +756,8 @@ names per worktree); a bisecting merge queue; a shared ledger across machines (b
 2. ~~Exact Claude Code version floor~~ — **resolved:** the floor is the lowest version for which a recorded
    `claude agents --json` sample exists in the test fixtures; today 2.1.280. It is lowered only by adding a sample.
 3. Which `--permission-mode` values a `--bg` session honours, and how a stalled permission prompt is surfaced.
+   **Answered 2026-09-27 (entry 70):** a background session waiting on a prompt reports `status: waiting`; idle is
+   `status: idle` (with `state` blocked or done), working is `status: busy`.
    Measured 2026-09-27 (2.1.283): the census gives `state: blocked` both for a session waiting on a task and for
    one waiting on a prompt; telling them apart is the watchers' job. The watchers read `blocked` as 'idle, or waiting on a permission
    prompt' and say both.
