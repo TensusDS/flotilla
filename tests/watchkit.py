@@ -40,3 +40,20 @@ def onboarded(tmp_path):
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "project.toml").write_text("schema = 1\n", encoding="utf-8")
     return Path(tmp_path)
+
+
+from types import SimpleNamespace
+
+from flotilla.watch.context import Context
+
+
+def context(tmp_path, *, me, sessions=None, rows_=None, profile=PR, census_error="", ledger_error="", events=None):
+    listed = sessions if sessions is not None else ([me] if me is not None else [])
+    ledger = None
+    if not ledger_error:
+        ledger = SimpleNamespace(profile=profile, posts=posts(tmp_path), rows=lambda: rows_ or {},
+                                 state_dir=Path(tmp_path) / "state", repo_key="repo", events=events or {},
+                                 root=Path(tmp_path))
+    return Context(root=Path(tmp_path), session_id=me.session_id if me is not None else "",
+                   sessions=None if census_error else listed, census_error=census_error, me=me, ledger=ledger,
+                   ledger_error=ledger_error, rows=rows_ or {})
