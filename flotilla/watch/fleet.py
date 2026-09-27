@@ -15,7 +15,7 @@ from flotilla.ledger import views
 from flotilla.ledger.model import now_iso
 from flotilla.watch.whose import POST_OF_MOVER, Item, holds_move, since_of
 
-DEVIATION, DROPPED, NOBODY, BREAK = "deviation", "dropped", "nobody", "break"
+DEVIATION, DROPPED, NOBODY, BREAK, QUESTION = "deviation", "dropped", "nobody", "break", "question"
 
 
 def not_working(session) -> bool:
@@ -26,8 +26,13 @@ def not_working(session) -> bool:
 
 
 def _census_word(session) -> str:
-    if session.kind == "background" and session.state == "blocked":
-        return "blocked: idle, or waiting on a permission prompt"
+    if session.kind == "background":
+        if session.status == "waiting":
+            return "waiting on a permission prompt nobody answers"
+        if session.status == "idle":
+            return "idle"
+        if session.state == "blocked":
+            return "blocked: idle, or waiting on a permission prompt"
     return session.state or session.status or "unknown"
 
 
@@ -40,7 +45,7 @@ def movers(row, profile: dict, live: set[str], post_of) -> set[str]:
     return set()
 
 
-def fleet(rows: dict, profile: dict, sessions, *, post_of, breaks=()) -> list[Item]:
+def fleet(rows: dict, profile: dict, sessions, *, post_of, breaks=(), asking=()) -> list[Item]:
     by_name = {session.name: session for session in sessions if session.name}
     live = set(by_name)
     items = [Item(DEVIATION, found["branch"], f"{found['kind']}: {found['why']}", since_of(rows, found["branch"]))
@@ -54,12 +59,21 @@ def fleet(rows: dict, profile: dict, sessions, *, post_of, breaks=()) -> list[It
             items.append(Item(NOBODY, row.branch, f"the move is {mover}'s, and no live session holds the "
                                                   f"`{POST_OF_MOVER[mover]}` post", row.updated_at))
         for name in sorted(named):
+            if name in asking:
+                continue   # its question is in the queue: the move waits on the person, not on the session
             if not_working(by_name[name]):
                 items.append(Item(DROPPED, row.branch, f"{name} holds the move ({row.state}) and is not working "
                                                        f"(census: {_census_word(by_name[name])}); message them",
                                   row.updated_at))
     items.extend(breaks)
     return items
+
+
+def question_items(questions) -> list[Item]:
+    from flotilla.broker.present import summary
+    return [Item(QUESTION, asked.session, f"asks {summary(asked)}; answer with /flotilla:permit",
+                 dt.datetime.fromtimestamp(asked.at, dt.timezone.utc).isoformat(timespec="seconds"))
+            for asked in questions]
 
 
 def _store(state_dir) -> LocalLogStore:

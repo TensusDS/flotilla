@@ -19,7 +19,7 @@ def build_parser() -> argparse.ArgumentParser:
     doctor = sub.add_parser("doctor", help="check this machine and project")
     doctor.add_argument("--quiet", action="store_true", help="print only what needs attention")
     hook = sub.add_parser("hook", help="entry point for Claude Code hooks")
-    hook.add_argument("event", choices=["session-start", "prompt", "stop", "guard"])
+    hook.add_argument("event", choices=["session-start", "prompt", "stop", "guard", "permission"])
     onboard = sub.add_parser("onboard", help="measure, detect, ask and write the project profile")
     actions = onboard.add_subparsers(dest="action", required=True)
     actions.add_parser("machine", help="measure this machine into the state directory")
@@ -186,6 +186,17 @@ def build_parser() -> argparse.ArgumentParser:
     guard_hook = guard_actions.add_parser("githook", help="entry point for the git hooks")
     guard_hook.add_argument("name", choices=["pre-commit", "pre-push"])
     guard_hook.add_argument("hook_args", nargs="*")
+    permit = sub.add_parser("permit", help="permission questions from background sessions, one at a time")
+    permit_actions = permit.add_subparsers(dest="action", required=True)
+    permit_actions.add_parser("list", help="every question that still waits").add_argument("--root", default=".")
+    permit_next = permit_actions.add_parser("next", help="the oldest question and its three answers")
+    permit_next.add_argument("--wait", type=float, default=0.0, help="seconds to wait for one (default 0)")
+    permit_next.add_argument("--root", default=".")
+    permit_answer = permit_actions.add_parser("answer", help="answer a question: allow, session or deny")
+    permit_answer.add_argument("id")
+    permit_answer.add_argument("choice", choices=["allow", "session", "deny"])
+    permit_answer.add_argument("--why", default="")
+    permit_answer.add_argument("--root", default=".")
     import argparse as _argparse
     lane = sub.add_parser("lane", help="book the machine for long runs (not a lock)")
     lane.add_argument("--root", default=".")
@@ -238,4 +249,7 @@ def main(argv: list[str]) -> int:
     if args.command == "guard":
         from flotilla.guards.commands import run_guard_command
         return run_guard_command(args)
+    if args.command == "permit":
+        from flotilla.broker.commands import run_permit_command
+        return run_permit_command(args)
     return 2

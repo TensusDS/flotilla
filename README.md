@@ -6,7 +6,7 @@ that books the machine for long runs, and guards on dangerous commands.
 
 **Status: pre-alpha.** The foundation, onboarding, the work ledger (`/flotilla:status`, `/flotilla:brief`), the
 fleet (`/flotilla:spawn`, `/flotilla:retire`), the lane (`/flotilla:lane`), the watchers (`/flotilla:watch`,
-session hooks) and the guards (`/flotilla:guard`) are in place; the permission broker is being built. Design: `docs/specs/2026-09-22-flotilla-design.md`.
+session hooks), the guards (`/flotilla:guard`) and the permission broker (`/flotilla:permit`) are in place. Design: `docs/specs/2026-09-22-flotilla-design.md`.
 
 ## Requirements
 
@@ -48,6 +48,15 @@ push inside a script is judged too. `/flotilla:guard` shows what is on and insta
 The command guards read the command line, not the shell: a command inside `eval`, `sh -c`, `$( )` or a script is
 not seen (`flotilla guard --help` lists the rest). A revert or line-number guard that cannot tell lets the command
 run and says so; the push guard refuses.
+
+## Permission questions
+
+A background session cannot show a permission prompt. When the project runs its sessions in `ask` mode, the
+question goes to the orchestrator instead: `/flotilla:permit` shows the person one question at a time, oldest
+first, with three answers — allow once, allow for the session (what that adds is said in words), deny with a reason
+the session reads. A question nobody answers in nine minutes (`[broker] wait_seconds`) is refused on its own, before
+Claude Code's own timeout would leave the session hanging. With no orchestrator alive, the question is refused at
+once, naming the fix.
 
 ## Development
 

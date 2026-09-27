@@ -11,12 +11,16 @@ from __future__ import annotations
 import datetime as dt
 import json
 import sys
+import time
 from pathlib import Path
+
+#: When this process started: the permission hook's budget counts from here, not from its question.
+STARTED = time.monotonic()
 
 #: Seconds per external call inside a hook. The calls plus a margin must fit inside the timeouts declared in
 #: hooks/hooks.json, or Claude Code kills the hook before it can say "unknown".
 HOOK_CHECK_TIMEOUT = 3
-EVENTS = ("session-start", "prompt", "stop", "guard")
+EVENTS = ("session-start", "prompt", "stop", "guard", "permission")
 CLI = Path(__file__).resolve().parent.parent / "scripts" / "flotilla"
 PEERS_SHOWN = 8
 #: A Bash command naming none of these reaches no guard, so the hook answers before looking anything up.
@@ -51,11 +55,11 @@ def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime
         else:
             gather_context = gather
         ctx = gather_context(root, str(payload.get("session_id") or ""))
-        handler = {"session-start": _session_start, "prompt": _prompt, "stop": _stop}[event]
+        handler = {"session-start": _session_start, "prompt": _prompt, "stop": _stop, "permission": _permission}[event]
         return handler(ctx, payload, out, now or dt.datetime.now(dt.timezone.utc))
     except Exception as err:  # noqa: BLE001 - a hook must say what broke, never crash the session
-        if event == "stop":
-            print(f"flotilla: the stop guard failed and does not block: {err}", file=sys.stderr)
+        if event in ("stop", "permission"):
+            print(f"flotilla: the {event} hook failed and gives no decision: {err}", file=sys.stderr)
         else:
             print(f"flotilla: the {event} hook failed: {err}", file=out)
         return 0
@@ -148,4 +152,13 @@ def _stop(ctx, payload, out, now) -> int:
     elif verdict.breaks:
         fleet.record_break(ctx.ledger.state_dir, ctx.ledger.repo_key, ctx.me.name, verdict.breaks,
                            at=now_iso(now))
+    return 0
+
+
+def _permission(ctx, payload, out, now) -> int:
+    from flotilla.broker.decide import decide
+    decision = decide(payload, ctx, started=STARTED)
+    if decision is not None:
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": decision}}),
+              file=out)
     return 0

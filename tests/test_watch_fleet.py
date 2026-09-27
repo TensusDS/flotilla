@@ -70,3 +70,33 @@ def test_nothing_recorded_is_no_break(tmp_path):
 def test_an_idle_post_holder_is_not_a_dropped_ball():
     post_row = rows(row(branch="post/sender", owner="sender 1", state="reserved"))
     assert fleet.fleet(post_row, PR, [sess("sender 1")], post_of=post_of) == []
+
+
+def test_a_session_asking_the_person_is_not_a_dropped_ball():
+    found = fleet.fleet(rows(row(state="handed", reader="review session 1")), PR,
+                        [sess("review session 1", status="waiting"), sess("main session 1", state="working")],
+                        post_of=post_of, asking={"review session 1"})
+    assert found == []
+
+
+def test_a_prompt_nobody_answers_is_named_as_such():
+    found = fleet.fleet(rows(row(state="handed", reader="review session 1")), PR,
+                        [sess("review session 1", status="waiting"), sess("main session 1", state="working")],
+                        post_of=post_of)
+    assert "waiting on a permission prompt nobody answers" in found[0].text
+
+
+def test_an_idle_status_reads_as_idle():
+    found = fleet.fleet(rows(row(state="handed", reader="review session 1")), PR,
+                        [sess("review session 1", status="idle"), sess("main session 1", state="working")],
+                        post_of=post_of)
+    assert "census: idle" in found[0].text
+
+
+def test_questions_become_items_named_by_the_asking_session():
+    from flotilla.broker import queue
+    asked = queue.Question("1", 1790500000.0, 1790500540.0, 1, "main session 1", "s", "Bash",
+                           {"command": "touch x"}, [])
+    item = fleet.question_items([asked])[0]
+    assert (item.kind, item.branch) == ("question", "main session 1") and "Bash touch x" in item.text
+    assert "/flotilla:permit" in item.text

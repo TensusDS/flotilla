@@ -60,13 +60,17 @@ class Context:
         return whose.mine(self.rows, self.profile, self.me.name, post=post.name if post else "",
                           may=post.may if post else frozenset(), owner_post=self.post_of, live=self.live)
 
-    def fleet(self) -> list:
+    def fleet(self, now: float | None = None) -> list:
+        from flotilla.broker import queue
         from flotilla.watch import fleet
         if self.sessions is None or self.ledger is None:
             return []
+        questions = queue.live(self.ledger.state_dir, self.ledger.repo_key, now=now)
         breaks = fleet.open_breaks(self.ledger.state_dir, self.ledger.repo_key, self.rows, self.profile,
                                    self.post_of)
-        return fleet.fleet(self.rows, self.profile, self.sessions, post_of=self.post_of, breaks=breaks)
+        return fleet.question_items(questions) + fleet.fleet(
+            self.rows, self.profile, self.sessions, post_of=self.post_of, breaks=breaks,
+            asking={asked.session for asked in questions})
 
 
 def this_session(sessions, session_id: str, *, parent_of=None, start_pid: int | None = None):

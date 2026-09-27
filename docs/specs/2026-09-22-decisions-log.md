@@ -408,6 +408,38 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
      parent: a spawn needs a directory the person has accepted once.
    - In `default` mode `touch` asked for permission and `mkdir` did not.
 
+71. **The broker is on exactly when the profile's `permissions.mode` is `ask`** (sessions spawned in `manual`), unless
+   `[broker] enabled = false`. In `rules` or `auto` mode sessions do not wait on a person, so there is nothing to
+   broker. No new onboarding question. (executor's decision, broker plan, 2026-09-27)
+72. **Only background sessions are brokered.** An interactive session has a person in front of its dialog; a session
+   the census cannot place (census down, not listed) is left to the dialog too: a deny there could refuse a person
+   who was about to answer. (executor's decision, broker plan, 2026-09-27)
+73. **Questions are files, answers are written once.** `<state>/broker/<repo key>/q-<id>.json` per question and at
+   most one `a-<id>.json`, created with `os.link` so that an answer and the hook's own withdrawal racing at the
+   deadline cannot both count. The id sorts by time, so "oldest first" is the file order. (executor's decision, broker plan, 2026-09-27)
+74. **The hook waits at most `[broker] wait_seconds`** (default 540, clamped to 30–590) and the hook's timeout in
+   `hooks.json` is 600: the hook withdraws the question and denies with a reason before Claude Code would kill it,
+   because a killed hook leaves the session hanging (measured). Final review: the budget counts on a monotonic clock from the hook's own start, and the ceiling is 570 s. (executor's decision, broker plan, 2026-09-27)
+75. **No live orchestrator is an immediate deny** naming the fix (spawn one, or give the session a rule). The
+   orchestrator's own question (a background orchestrator) is denied too, naming `claude attach`: it cannot answer
+   a question that blocks it. (executor's decision, broker plan, 2026-09-27)
+76. **Three answers.** `allow` (once), `session` (allow, and apply Claude Code's own `permission_suggestions` with
+   `destination: "session"`, or, when it offered none, an exact rule for that Bash command or the tool), `deny`
+   (with the person's reason, which reaches the session verbatim — measured). Final review: "for the session" keeps rules and directories only, never a mode switch, and gives no rule for a Bash command holding `*`. (executor's decision, broker plan, 2026-09-27)
+77. **A question is live while its hook still waits**: the hook's process is alive and its deadline has not passed.
+   A closed, withdrawn or abandoned question is never shown, and answering it is refused with the reason, so the
+   person never answers a question nobody is waiting for. (executor's decision, broker plan, 2026-09-27)
+78. **The orchestrator watches with a background command**: `flotilla permit next --wait 3600` run in the background
+   returns when a question appears, which wakes the orchestrator; it asks the person with AskUserQuestion, records
+   the answer with `flotilla permit answer`, and runs the wait again. A question that arrives while another is
+   being answered waits its turn (Max, 2026-09-27). (executor's decision, broker plan, 2026-09-27)
+79. **The fleet view lists live questions first**, and a session with a live question is not reported as a dropped
+   ball. A background session the census shows as `status: waiting` with no question queued is reported as "waiting
+   on a permission prompt nobody answers". (executor's decision, broker plan, 2026-09-27)
+80. **A failing permission hook gives no decision** (stderr only): the dialog then decides, which for a background
+   session means the hang the dropped-ball item reports. Denying on the hook's own failure could refuse a person
+   at an interactive dialog. Final review: once a session is known to be a background one, a failure is a deny with its reason, and so are rules that cannot be read. (executor's decision, broker plan, 2026-09-27)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
