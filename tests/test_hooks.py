@@ -107,7 +107,8 @@ def test_every_hook_event_is_declared():
     declared = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
     commands = {h["command"].rsplit(" ", 1)[-1]: name for name, groups in declared.items()
                 for group in groups for h in group["hooks"]}
-    assert commands == {"session-start": "SessionStart", "prompt": "UserPromptSubmit", "stop": "Stop"}
+    assert commands == {"session-start": "SessionStart", "prompt": "UserPromptSubmit", "stop": "Stop",
+                        "guard": "PreToolUse"}
 
 
 def call(event, tmp_path, ctx, payload=None, now=NOW):

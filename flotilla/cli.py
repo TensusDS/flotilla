@@ -19,7 +19,7 @@ def build_parser() -> argparse.ArgumentParser:
     doctor = sub.add_parser("doctor", help="check this machine and project")
     doctor.add_argument("--quiet", action="store_true", help="print only what needs attention")
     hook = sub.add_parser("hook", help="entry point for Claude Code hooks")
-    hook.add_argument("event", choices=["session-start", "prompt", "stop"])
+    hook.add_argument("event", choices=["session-start", "prompt", "stop", "guard"])
     onboard = sub.add_parser("onboard", help="measure, detect, ask and write the project profile")
     actions = onboard.add_subparsers(dest="action", required=True)
     actions.add_parser("machine", help="measure this machine into the state directory")

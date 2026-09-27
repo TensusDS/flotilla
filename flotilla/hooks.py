@@ -16,9 +16,11 @@ from pathlib import Path
 #: Seconds per external call inside a hook. The calls plus a margin must fit inside the timeouts declared in
 #: hooks/hooks.json, or Claude Code kills the hook before it can say "unknown".
 HOOK_CHECK_TIMEOUT = 3
-EVENTS = ("session-start", "prompt", "stop")
+EVENTS = ("session-start", "prompt", "stop", "guard")
 CLI = Path(__file__).resolve().parent.parent / "scripts" / "flotilla"
 PEERS_SHOWN = 8
+#: A Bash command naming none of these reaches no guard, so the hook answers before looking anything up.
+GUARD_TRIGGERS = ("checkout", "restore", "reset", "clean", "sed", "push", "gh")
 
 
 def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime | None = None) -> int:
@@ -29,11 +31,19 @@ def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime
     if not isinstance(payload, dict):
         payload = {}
     cwd = Path(payload.get("cwd") or ".")
+    if event == "guard":
+        tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
+        command = tool_input.get("command") if isinstance(tool_input.get("command"), str) else ""
+        if not any(word in command for word in GUARD_TRIGGERS):
+            return 0
 
     from flotilla.core.config import find_project
     root = find_project(cwd)
     if root is None:
         return 0
+    if event == "guard":
+        from flotilla.guards.run import guard_hook
+        return guard_hook(command, cwd, root, out)
 
     try:
         if gather is None:
