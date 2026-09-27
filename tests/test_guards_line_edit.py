@@ -1,7 +1,7 @@
 import pytest
 
 from flotilla.guards import line_edit
-from guardkit import first
+from flotilla.guards import shell
 
 
 @pytest.mark.parametrize("command", [
@@ -14,8 +14,8 @@ from guardkit import first
     "sed -i '5!d' f.txt",
 ])
 def test_an_in_place_edit_by_line_number_is_refused(command, tmp_path):
-    found = line_edit.check(first(command, tmp_path))
-    assert found.refuse and "by its text" in found.text
+    found = [f for f in (line_edit.check(s) for s in shell.segments(command, tmp_path)) if f]
+    assert found and all(f.refuse and "by its text" in f.text for f in found)
 
 
 @pytest.mark.parametrize("command", [
@@ -27,7 +27,8 @@ def test_an_in_place_edit_by_line_number_is_refused(command, tmp_path):
     "sed -i -f script.sed f.txt",
 ])
 def test_everything_else_passes(command, tmp_path):
-    assert line_edit.check(first(command, tmp_path)) is None
+    # every segment the hook would judge, not only the first: a plain split cuts a quoted script at `;`
+    assert all(line_edit.check(s) is None for s in shell.segments(command, tmp_path))
 
 
 def test_a_digit_is_an_address_only_before_a_command():
