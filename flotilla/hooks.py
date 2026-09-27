@@ -90,6 +90,9 @@ def _event_problems(ctx) -> list[str]:
 
 
 def _session_start(ctx, payload, out, now) -> int:
+    from flotilla.core import paths
+    from flotilla.guards.githooks import refresh_link
+    refresh_link(paths.state_dir(), CLI)
     from flotilla import doctor
     from flotilla.watch import render
     try:
