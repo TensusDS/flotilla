@@ -52,6 +52,7 @@
       "held_until": "string",
       "held_why": "string",
       "id": "string",
+      "last_run": "string",
       "merge": "string",
       "note": "string",
       "owner": "string",

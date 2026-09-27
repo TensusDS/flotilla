@@ -596,7 +596,7 @@ schedules (crontab on Linux, launchd on macOS, with consent) are the first roadm
 
 ```
 flotilla lane run --for feat/export -- uv run pytest
-flotilla lane take --wait --note "measuring a race"
+flotilla lane take --wait 600 --note "measuring a race"
 flotilla lane
 flotilla lane sweep
 ```
@@ -616,6 +616,14 @@ flotilla lane sweep
   and records "killed — no verdict", and writes the summary line ("212 passed") into the row.
 - No clock expiry. `sweep` removes only rows with no process behind them.
 - Capacity (how many long runs fit) comes from `machine.toml`, measured at onboarding.
+- The process table is read from procfs or `ps -A -o pid= -o ppid= -o command=` (never `pgrep`, whose `-a` means
+  different things on Linux and macOS); a reused pid is told apart by the process start mark.
+- A run is known by its program — an interpreter's script or `-m` module — never by a word in its arguments,
+  and counted once per process tree. Patterns (full matches of `program` or `program first-arg`) default to
+  pytest, py.test, playwright, vitest, jest, `cargo test`, `go test`; `[lane] run_patterns` replaces them.
+  Booked runs, holding or waiting, and the caller's ancestors are never foreign runs.
+- `lane run --for <branch>` records `last_run` on the row (verdict, summary, revision, time); `status` prints it.
+  Handover and push receipts take the lane themselves (`--lane-wait`, or `--no-lane`, which the output records).
 
 ---
 

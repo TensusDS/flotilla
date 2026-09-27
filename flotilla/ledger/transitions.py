@@ -24,7 +24,7 @@ BASE = {
     "shipped": {"walked": "walked", "broke": "shipped", "close": "closed"},
     "walked": {"close": "closed"},
 }
-ANNOTATIONS = ("wait", "hold", "unhold", "adopt", "urgent")
+ANNOTATIONS = ("wait", "hold", "unhold", "adopt", "urgent", "run")
 
 
 def moves_from(state: str, profile: dict, owner_post: str = "") -> dict[str, str]:

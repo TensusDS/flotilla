@@ -131,6 +131,9 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--purpose", choices=["handover", "push"], required=True)
     run.add_argument("--tree", default=".")
     run.add_argument("--timeout", type=float, default=1800.0)
+    run.add_argument("--lane-wait", dest="lane_wait", type=float, default=1800.0,
+                     help="seconds to wait for the lane (default 1800)")
+    run.add_argument("--no-lane", dest="no_lane", action="store_true", help="run without booking the lane")
     show = receipt_actions.add_parser("show", help="which receipts hold over a revision")
     show.add_argument("--tree", default=".")
     show.add_argument("--rev", default="HEAD")
@@ -164,6 +167,25 @@ def build_parser() -> argparse.ArgumentParser:
     retire_.add_argument("name")
     retire_.add_argument("--root", default=".")
     sub.add_parser("fleet", help="the fleet's sessions, their trees and their work").add_argument("--root", default=".")
+    import argparse as _argparse
+    lane = sub.add_parser("lane", help="book the machine for long runs (not a lock)")
+    lane.add_argument("--root", default=".")
+    lane_actions = lane.add_subparsers(dest="action")
+    lane_take = lane_actions.add_parser("take", help="book the machine by hand; release it when done")
+    lane_take.add_argument("--note", default="")
+    lane_take.add_argument("--wait", type=float, default=0.0, help="seconds to wait for it (default 0)")
+    lane_release = lane_actions.add_parser("release", help="release a booking taken by hand")
+    lane_release.add_argument("--booking", default=None)
+    lane_run = lane_actions.add_parser("run", help="book, run a command, release; record it on a row with --for")
+    lane_run.add_argument("--for", dest="for_", default=None, metavar="BRANCH")
+    lane_run.add_argument("--note", default="")
+    lane_run.add_argument("--wait", type=float, default=1800.0, help="seconds to wait for the lane (default 1800)")
+    lane_run.add_argument("--tree", default=".")
+    lane_run.add_argument("run_command", nargs=_argparse.REMAINDER, metavar="COMMAND")
+    lane_actions.add_parser("sweep", help="remove bookings whose process is gone")
+    for item in (lane_take, lane_release, lane_run, lane_actions.choices["sweep"]):
+        item.add_argument("--root", default=_argparse.SUPPRESS)
+        item.add_argument("--as", dest="as_name", default=None)
     return parser
 
 
@@ -188,4 +210,7 @@ def main(argv: list[str]) -> int:
     if args.command in ("spawn", "retire", "fleet"):
         from flotilla.fleet.commands import run_fleet_command
         return run_fleet_command(args)
+    if args.command == "lane":
+        from flotilla.lane.commands import run_lane_command
+        return run_lane_command(args)
     return 2
