@@ -63,7 +63,8 @@ def fleet_view(ledger, sessions: list | None) -> list[dict]:
             "tree_exists": bool(row.tree) and Path(row.tree).is_dir(),
             "locked": bool(row.tree) and str(Path(row.tree).resolve()) in locked,
             "live": None if sessions is None else found is not None,
-            "state": found.state if found else "", "short_id": found.short_id if found else "",
+            "state": found.state if found else "", "short_id": (found.short_id or "") if found else "",
+            "dirty": _dirty(row.tree),
             "work": [other for other in rows.values()
                      if other.is_open and other.owner == row.owner and other.state != "reserved"],
         })
@@ -115,8 +116,10 @@ def retire(ledger, name: str, *, caller: str, census, wait: float = 60.0, poll: 
         s.append(Actor(name, post, "retire", caller), row.id, "release", "released", evidence={"why": "retired"})
     lines = [f"retired {name}" + (f" (stopped {found.short_id})" if found else " (it was not running)")]
     dirty = _dirty(row.tree)
-    if dirty is None:
+    if not row.tree or not Path(row.tree).is_dir():
         lines.append(f"its tree {row.tree or '(none)'} is gone")
+    elif dirty is None:
+        lines.append(f"its tree {row.tree} exists; its state is unknown (git could not read it), so it is kept")
     else:
         uncommitted = f", {dirty} uncommitted file{'s' if dirty != 1 else ''}" if dirty else ""
         lines.append(f"its tree is kept at {row.tree}{uncommitted}; remove it with `git worktree remove "

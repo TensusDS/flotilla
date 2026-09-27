@@ -11,7 +11,11 @@ def session(name, short_id, state="blocked"):
 
 
 class FakeClaude:
-    def __init__(self, sessions=(), *, appear=True, fail_launch=False, reachable=True):
+    def __init__(self, sessions=(), *, appear=True, fail_launch=False, reachable=True, fail_on=(),
+                 appear_then_fail=False, timeout=False):
+        self.fail_on = set(fail_on)
+        self.appear_then_fail = appear_then_fail
+        self.timeout = timeout
         self.sessions = list(sessions)
         self.launched: list[list[str]] = []
         self.stopped: list[str] = []
@@ -30,10 +34,14 @@ class FakeClaude:
             return subprocess.run(cmd, **kwargs)
         if cmd[1] == "--bg":
             self.launched.append(list(cmd))
-            if self.fail_launch:
+            name = cmd[cmd.index("-n") + 1]
+            if self.appear_then_fail or self.timeout:
+                self.sessions.append(session(name, f"{len(self.launched):06x}"))
+            if self.timeout:
+                raise subprocess.TimeoutExpired(cmd, 180)
+            if self.fail_launch or self.appear_then_fail or name in self.fail_on:
                 return subprocess.CompletedProcess(cmd, 1, "", "error: not logged in")
             if self.appear:
-                name = cmd[cmd.index("-n") + 1]
                 self.sessions.append(session(name, f"{len(self.launched):06x}"))
             return subprocess.CompletedProcess(cmd, 0, "backgrounded", "")
         if cmd[1] in ("stop", "kill"):

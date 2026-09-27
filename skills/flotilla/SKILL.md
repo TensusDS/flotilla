@@ -24,8 +24,8 @@ A letter is a notification of a move, never its carrier. Before you say "done", 
 "shipped", the move must be in the ledger, made by you through the command line:
 
 - main and minor: claim by cutting a tree (`flotilla tree cut <branch> --tree <path> --ref <task>`), hand over
-  committed and green (`flotilla receipt run --purpose handover`, then `flotilla work hand <branch>`), close what
-  shipped (`flotilla work close <branch>`);
+  committed and green (`flotilla receipt run --purpose handover --tree <task tree>`, then
+  `flotilla work hand <branch>`), close what shipped (`flotilla work close <branch>`);
 - reviewer: `flotilla work take <branch>`, then `flotilla work accept <branch> --reviewed <sha>` or
   `flotilla work fix <branch> --why "<what must change>"`;
 - sender: `flotilla brief` for the person's one yes, then `flotilla work queue`, `land`, and `flotilla work

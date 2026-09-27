@@ -77,3 +77,19 @@ def test_retire_of_a_name_without_a_post_row_is_refused(tmp_path):
     root, ledger, seat = raised_world(tmp_path, fake)
     with pytest.raises(retire.RetireRefused, match="no post row for `review session 9`"):
         do_retire(ledger, fake, "review session 9")
+
+
+def test_the_fleet_view_counts_uncommitted_files(tmp_path):
+    fake = FakeClaude()
+    root, ledger, seat = raised_world(tmp_path, fake)
+    assert retire.fleet_view(ledger, fake.census())[0]["dirty"] == 0
+    (seat.seat.tree / "draft.txt").write_text("unsaved\n", encoding="utf-8")
+    assert retire.fleet_view(ledger, fake.census())[0]["dirty"] == 1
+
+
+def test_retire_says_unknown_when_it_cannot_read_a_tree_that_exists(tmp_path):
+    fake = FakeClaude()
+    root, ledger, seat = raised_world(tmp_path, fake)
+    (seat.seat.tree / ".git").unlink()
+    lines = "\n".join(do_retire(ledger, fake))
+    assert "state is unknown" in lines and "is gone" not in lines

@@ -3,7 +3,7 @@ import pytest
 from flotilla.core.storage import LocalLogStore
 from flotilla.fleet import spawn
 from fleetkit import FakeClaude, session
-from ledgerkit import PROFILE, git, make_ledger, repo_with_origin
+from ledgerkit import PROFILE, commit, git, make_ledger, repo_with_origin
 
 CALLER = "spawn by main-control 1"
 
@@ -110,3 +110,75 @@ def test_a_seat_whose_tree_already_exists_is_refused_before_anything_starts(tmp_
     with pytest.raises(spawn.SpawnRefused, match="app-main-1 already exists"):
         run(ledger, store, fake, {"main": 1})
     assert fake.launched == []
+
+
+def test_a_branch_made_after_the_plan_is_never_deleted(tmp_path):
+    fake = FakeClaude()
+    root, ledger, store = world(tmp_path, fake)
+    seats, _ = spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=True)
+    git(root, "checkout", "-q", "-b", "fleet/main-1")
+    kept = commit(root, "a person's work", "mine.txt")
+    git(root, "checkout", "-q", "main")
+    with pytest.raises(spawn.SpawnRefused, match="fleet/main-1"):
+        spawn.raise_seat(ledger, seats[0], caller=CALLER, census=fake.census, wait=0.1, poll=0.05,
+                         sleep=lambda seconds: None)
+    assert git(root, "rev-parse", "fleet/main-1") == kept
+
+
+def test_a_tree_made_after_the_plan_is_never_removed(tmp_path):
+    fake = FakeClaude()
+    root, ledger, store = world(tmp_path, fake)
+    seats, _ = spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=True)
+    seats[0].tree.mkdir()
+    (seats[0].tree / "draft.txt").write_text("unsaved\n", encoding="utf-8")
+    with pytest.raises(spawn.SpawnRefused, match="already exists"):
+        spawn.raise_seat(ledger, seats[0], caller=CALLER, census=fake.census, wait=0.1, poll=0.05,
+                         sleep=lambda seconds: None)
+    assert (seats[0].tree / "draft.txt").read_text(encoding="utf-8") == "unsaved\n"
+
+
+def test_a_launch_that_times_out_but_started_is_kept(tmp_path):
+    fake = FakeClaude(timeout=True)
+    root, ledger, store = world(tmp_path, fake)
+    raised, _ = run(ledger, store, fake, {"main": 1})
+    assert raised[0].short_id and raised[0].seat.tree.is_dir() and "timed out" in raised[0].note
+    assert [row.state for row in ledger.rows().values()] == ["reserved"]
+
+
+def test_a_launch_that_exits_non_zero_but_started_is_kept(tmp_path):
+    fake = FakeClaude(appear_then_fail=True)
+    root, ledger, store = world(tmp_path, fake)
+    raised, _ = run(ledger, store, fake, {"main": 1})
+    assert raised[0].short_id and "not logged in" in raised[0].note
+    assert [row.state for row in ledger.rows().values()] == ["reserved"]
+
+
+def test_a_refused_post_row_takes_back_the_tree_and_the_branch(tmp_path):
+    import sys
+    fake = FakeClaude()
+    root, ledger, store = world(tmp_path, fake)
+    ledger.events = {"pre-reserved": (f"#!{sys.executable}\nimport sys; print('no posts today'); sys.exit(2)\n"
+                                      .encode(), True)}
+    with pytest.raises(spawn.SpawnRefused, match="no posts today"):
+        run(ledger, store, fake, {"main": 1})
+    assert not (tmp_path / "app-main-1").exists() and git(root, "branch", "--list", "fleet/main-1") == ""
+    assert ledger.rows() == {} and fake.launched == []
+
+
+def test_a_refused_release_still_takes_back_git_and_keeps_the_first_cause(tmp_path):
+    import sys
+    fake = FakeClaude(fail_launch=True)
+    root, ledger, store = world(tmp_path, fake)
+    ledger.events = {"pre-released": (f"#!{sys.executable}\nimport sys; sys.exit(2)\n".encode(), True)}
+    with pytest.raises(spawn.SpawnRefused, match="not logged in.*could not be released"):
+        run(ledger, store, fake, {"main": 1})
+    assert not (tmp_path / "app-main-1").exists() and git(root, "branch", "--list", "fleet/main-1") == ""
+
+
+def test_a_spawn_that_stops_partway_names_the_sessions_already_raised(tmp_path):
+    fake = FakeClaude(fail_on={"main session 1"})
+    root, ledger, store = world(tmp_path, fake)
+    with pytest.raises(spawn.SpawnStopped) as stopped:
+        run(ledger, store, fake, {"main": 1, "review": 1})
+    assert [item.seat.name for item in stopped.value.raised] == ["review session 1"]
+    assert "not logged in" in str(stopped.value)

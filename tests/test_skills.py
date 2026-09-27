@@ -68,3 +68,8 @@ def test_the_arrangement_skill_is_for_the_model_only():
 def test_the_first_prompt_names_the_arrangement_skill():
     from flotilla.fleet.launch import FIRST_PROMPT
     assert "flotilla:flotilla" in FIRST_PROMPT
+
+
+def test_the_arrangement_runs_receipts_in_the_task_tree():
+    text = (ROOT / "skills" / "flotilla" / "SKILL.md").read_text(encoding="utf-8")
+    assert "receipt run --purpose handover --tree" in text

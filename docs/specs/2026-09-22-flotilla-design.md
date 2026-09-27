@@ -553,7 +553,7 @@ question. Tools follow the surface: browser (Playwright or Chrome MCP), terminal
 |---|---|
 | add a post mid-day | `flotilla spawn -r 1` |
 | revive a crashed session | native `claude respawn`; flotilla checks the name and tree are kept |
-| retire a session | `flotilla retire <name>`: waits for the tree lock to clear, frees the post row, leaves unfinished work orphaned for `adopt`; the tree is kept, and retire prints its uncommitted file count |
+| retire a session | `flotilla retire <name>`: stops the session and waits until the census no longer lists it, unlocks the tree, frees the post row, leaves unfinished work orphaned for `adopt`; the tree is kept, and retire prints its uncommitted file count |
 
 ---
 

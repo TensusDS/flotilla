@@ -71,15 +71,25 @@ def _spawn(ledger, args) -> int:
     except CensusUnavailable as err:
         raise spawn.SpawnRefused(f"spawning needs the census to check names, and it could not be asked: "
                                  f"{err}") from err
-    raised, warnings = spawn.spawn(ledger, counts, census=census, store=store,
-                                   caller=f"spawn {caller_line(sessions)}")
+    try:
+        raised, warnings = spawn.spawn(ledger, counts, census=census, store=store,
+                                       caller=f"spawn {caller_line(sessions)}")
+    except spawn.SpawnStopped as err:
+        print("raised before the spawn stopped:")
+        _print_raised(err.raised)
+        raise
     for line in warnings:
         print(f"warning: {line}")
-    for item in raised:
-        address = f"claude attach {item.short_id}" if item.short_id else item.note
-        print(f"{item.seat.name}  {address}  {item.seat.tree}")
+    _print_raised(raised)
     print("a closed terminal tab does not stop a session; `flotilla fleet` lists the fleet")
     return 0
+
+
+def _print_raised(raised) -> None:
+    for item in raised:
+        address = f"claude attach {item.short_id}" if item.short_id else "no id yet"
+        note = f"  ({item.note})" if item.note else ""
+        print(f"{item.seat.name}  {address}  {item.seat.tree}{note}")
 
 
 def _fleet(ledger, args) -> int:
@@ -92,12 +102,14 @@ def _fleet(ledger, args) -> int:
     if not view:
         print("no post rows: nobody was spawned, or everyone was retired")
     for item in view:
-        live = {True: f"alive ({item['state'] or 'no state'}), claude attach {item['short_id']}",
+        attach = f"claude attach {item['short_id']}" if item["short_id"] else "no id in the census"
+        live = {True: f"alive ({item['state'] or 'no state'}), {attach}",
                 False: "not running", None: "liveness unknown"}[item["live"]]
+        dirty = {None: ", its state unknown", 0: ""}.get(item["dirty"], f", {item['dirty']} uncommitted")
         tree = item["tree"] if item["tree_exists"] else f"{item['tree']} (missing)"
         lock = "locked" if item["locked"] else "not locked"
         work = ", ".join(f"{row.branch} ({row.state})" for row in item["work"]) or "no open work"
-        print(f"{item['name']}  ({item['post'] or 'no post'})  {live}\n    tree {tree}, {lock}; {work}")
+        print(f"{item['name']}  ({item['post'] or 'no post'})  {live}\n    tree {tree}{dirty}, {lock}; {work}")
     return 0
 
 
