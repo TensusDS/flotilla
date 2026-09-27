@@ -313,6 +313,12 @@ def _status(ledger: core.Ledger, args) -> int:
         print(f"{title}:" if items else f"{title}: none")
         for item in items:
             print(f"  {item['branch']}: {item['kind']} - {item['why']}")
+    if (ledger.profile.get("reservation") or {}).get("files"):
+        from flotilla.guards import reserve
+        held = reserve.live(ledger.state_dir, ledger.repo_key, rows, ledger.profile)
+        print("reservations:" if held else "reservations: none")
+        for path, record in sorted(held.items()):
+            print(f"  {path}: {record['by']} for {record['branch']} since {record['at']}")
     if args.stalled is not None:
         late = views.stalled(rows, args.stalled, _now(ledger))
         print(f"stalled over {args.stalled:g} h:" if late else f"stalled over {args.stalled:g} h: none")
