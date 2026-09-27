@@ -83,7 +83,7 @@ def test_receipt_then_hand(tmp_path, monkeypatch):
     commit(tree, "work", "work.txt")
     code, out = run_cli("work", "hand", "feat/x", "--root", str(tree), "--as", "main session 1")
     assert code == 2 and "receipt run" in out
-    code, out = run_cli("receipt", "run", "--purpose", "handover", "--tree", str(tree))
+    code, out = run_cli("receipt", "run", "--purpose", "handover", "--tree", str(tree), "--no-lane")
     assert code == 0, out
     assert run_cli("work", "hand", "feat/x", "--root", str(tree), "--as", "main session 1")[0] == 0
 

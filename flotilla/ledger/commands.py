@@ -21,6 +21,7 @@ from flotilla.ledger import (core, delivery, events, findings, gitq, handover, j
                              report, steering, views)
 from flotilla.ledger import tree as tree_mod
 from flotilla.ledger.actor import resolve_actor
+from flotilla.lane.acquire import LaneRefused
 from flotilla.ledger.errors import MoveRefused, NotYet
 from flotilla.ledger.model import LedgerVersionError, Row
 from flotilla.posts import PostError, load_posts
@@ -186,8 +187,15 @@ def _receipt(args) -> int:
     ident = repo.identify(tree)
     state = paths.state_dir()
     if args.action == "run":
-        result = receipts.run_receipt(ident.root, state=state, repo_key=ident.key, purpose=args.purpose,
-                                      profile=profile, timeout=args.timeout)
+        if args.no_lane:
+            print("lane: not booked (--no-lane)")
+            result = receipts.run_receipt(ident.root, state=state, repo_key=ident.key, purpose=args.purpose,
+                                          profile=profile, timeout=args.timeout)
+        else:
+            from flotilla.lane.commands import booked
+            with booked(tree, note=f"{args.purpose} receipt", wait=args.lane_wait):
+                result = receipts.run_receipt(ident.root, state=state, repo_key=ident.key, purpose=args.purpose,
+                                              profile=profile, timeout=args.timeout)
         for tier in result["tiers"]:
             print(f"{tier['status']:<9} {tier['name']}: {tier['summary']}")
         if not result["tiers"]:
@@ -297,7 +305,8 @@ def _status(ledger: core.Ledger, args) -> int:
         mover = views.who_moves(row, ledger.profile) or "nobody named"
         wait = f" (waiting on {row.waiting_on}: {row.note})" if row.waiting_on else ""
         held = f" (held until {row.held_until}: {row.held_why})" if row.held_until else ""
-        print(f"  {row.id} {row.branch}: {row.state} -> {mover}{wait}{held}")
+        ran = f" (last run: {row.last_run})" if row.last_run else ""
+        print(f"  {row.id} {row.branch}: {row.state} -> {mover}{wait}{held}{ran}")
     for title, items in (("deviations", views.deviations(rows, ledger.profile, live,
                                                          finished=lambda row: _finished(ledger, row))),
                          ("findings", findings.findings(ledger, rows))):
@@ -361,7 +370,7 @@ def run_ledger_command(args) -> int:
         print(f"not yet: {err}")
         return 3
     except (MoveRefused, PostError, receipts.ReceiptRefused, config.ConfigError, repo.NotARepository,
-            StorageCorrupt, LedgerVersionError) as err:
+            StorageCorrupt, LedgerVersionError, LaneRefused) as err:
         print(f"refused: {err}")
         if ledger is not None:
             _notices(ledger)
