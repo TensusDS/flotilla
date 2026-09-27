@@ -264,6 +264,35 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    move is impossible right now (nobody named, the mover is gone, a hold whose condition is met or cannot be asked).
    "Has not moved for N hours" is `status --stalled N`, asked by a person. (executor's decision, ledger part B plan, 2026-09-26)
 
+32. **Permission modes from the questionnaire:** "they ask me" → `manual`; "allow rules exist" → `dontAsk` (a call
+   the rules do not allow is refused, visibly, instead of stalling on a prompt nobody sees); "auto mode" → `auto`.
+   A post may override with an optional `permission_mode` key (any value `claude --permission-mode` accepts). (executor's decision, spawn and posts plan, 2026-09-27)
+33. **"Strongest reviewer"** (`fleet.model = "reviewer-strongest"`) gives every post that may `accept` the `opus`
+   alias; otherwise a post's `model` key is passed when it is not `inherit`. (executor's decision, spawn and posts plan, 2026-09-27)
+34. **Names are machine-wide**: the census is machine-wide, so the issued-numbers journal is one per machine
+   (`<state>/fleet/names.jsonl`). A new name is above every number ever issued for that post, above every live
+   session's and every ledger name's number, and never equal to a taken name. (executor's decision, spawn and posts plan, 2026-09-27)
+35. **The spawner records the post row, not the new session.** The reserve row is written with the new session's
+   name as `by`, `via: spawn`, and the real caller in `caller` — part A's rule that a session never acts under
+   another's name stays whole, because the spawner is not a session acting, it is the one who creates it. (executor's decision, spawn and posts plan, 2026-09-27)
+36. **The session is found in the census, not in `claude --bg`'s printed text.** Printed text is not a supported
+   surface; `claude agents --json` is. A session launched but not listed within the wait is reported as "launched,
+   not yet seen — do not launch it again", never as a failure (spec 7.2: "address not read ≠ did not start"). (executor's decision, spawn and posts plan, 2026-09-27)
+37. **Retire stops, never deletes.** It stops the session, waits for the census to agree, unlocks the tree, releases
+   the post row, and prints the tree's uncommitted file count and every open row the session still owns (orphaned,
+   for `adopt`). Removing the tree is a person's step, printed as a command. (executor's decision, spawn and posts plan, 2026-09-27)
+38. **One-copy posts stay single:** a spawn that would leave two live sessions holding a post with
+   `writes_one_copy: true` (the sender) is refused naming the one alive. (executor's decision, spawn and posts plan, 2026-09-27)
+39. **The census cannot tell "waiting for a task" from "waiting on a permission prompt"** (both read
+   `state: blocked`, measured 2026-09-27 on 2.1.283 over eight background sessions). `flotilla fleet` prints the
+   state as the census gives it; telling them apart belongs to the watchers part. (executor's decision, spawn and posts plan, 2026-09-27)
+
+40. **Tasks are taken in the home tree** (Max, 2026-09-27, after the spawn review): a spawned session may edit only
+   the directory it was launched with, so `flotilla tree switch <branch>` moves its clean home tree to a new
+   branch from trunk and claims it; reviewers read a handed tip there detached. A permission broker (the
+   `PermissionRequest` hook queueing questions to the orchestrator, one at a time, oldest first) is planned for
+   the watchers-and-guards part, starting with a live measurement.
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

@@ -2,6 +2,20 @@
 
 Deferred findings, kept here until a plan takes them. Each names where it came from.
 
+## From the spawn and posts final review (2026-09-27)
+
+- The one-copy check is check-then-act: two `flotilla spawn -s 1` at the same moment could raise two senders.
+- A dry run without the census skips the one-copy check, and its warning speaks only of names.
+- The dry-run command is not shell-quoted; print it with `shlex.join`.
+- `fleet.model = "reviewer-strongest"` silently overrides a post's explicit `model`.
+- A post file on trunk can set `permission_mode: bypassPermissions`; consider a profile opt-in for it.
+- Every session announces itself to every peer at start: N·(N−1) letters that carry only state (spec-level).
+- `git status --porcelain` counts an untracked directory as one entry, so "1 uncommitted file" can undercount.
+- In direct-push mode the sender cannot check out trunk in its home tree (trunk is checked out in the main
+  checkout); its land flow needs a design in the guards or lane part.
+- Measure on a live background session (the billed e2e smoke): spawning from inside a session's Bash, what
+  `claude stop` does to `claude agents --json`, and `${CLAUDE_PLUGIN_ROOT}` in `allowed-tools`.
+
 ## From the ledger part B final review (2026-09-26)
 
 - GitHub unreachable at the PR step exits 2 ("refused"), not 3 ("not yet"): an instrument that could not ask says

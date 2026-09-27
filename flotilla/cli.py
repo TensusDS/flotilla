@@ -117,6 +117,13 @@ def build_parser() -> argparse.ArgumentParser:
     cut.add_argument("--also", default="")
     cut.add_argument("--root", default=".")
     cut.add_argument("--as", dest="as_name", default=None)
+    switch = tree_actions.add_parser("switch", help="move your home tree to a new branch from trunk and claim it")
+    switch.add_argument("branch")
+    switch.add_argument("--ref", default="")
+    switch.add_argument("--requires", nargs="*", default=[])
+    switch.add_argument("--also", default="")
+    switch.add_argument("--root", default=".")
+    switch.add_argument("--as", dest="as_name", default=None)
 
     receipt = sub.add_parser("receipt", help="test-tier receipts over one revision")
     receipt_actions = receipt.add_subparsers(dest="action", required=True)
@@ -145,6 +152,18 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("brief", help="the batch ready to ship, for one yes").add_argument("--root", default=".")
     sub.add_parser("metrics", help="time in state, returns, reader throughput, event failures").add_argument(
         "--root", default=".")
+    from flotilla.fleet.compose import FLAGS
+    spawn_ = sub.add_parser("spawn", help="raise background sessions, each with a post and a home worktree")
+    for post, flag in FLAGS.items():
+        spawn_.add_argument(flag, dest=f"count_{post}", type=int, default=0, metavar="N", help=f"{post} sessions")
+    spawn_.add_argument("--post", action="append", default=[], metavar="NAME=N", help="sessions of any post")
+    spawn_.add_argument("--default", action="store_true", help="the profile's fleet.default composition")
+    spawn_.add_argument("--dry-run", action="store_true", help="show names, trees and commands; change nothing")
+    spawn_.add_argument("--root", default=".")
+    retire_ = sub.add_parser("retire", help="stop a session and release its post; its work stays")
+    retire_.add_argument("name")
+    retire_.add_argument("--root", default=".")
+    sub.add_parser("fleet", help="the fleet's sessions, their trees and their work").add_argument("--root", default=".")
     return parser
 
 
@@ -166,4 +185,7 @@ def main(argv: list[str]) -> int:
     if args.command in ("work", "tree", "receipt", "events", "status", "brief", "metrics"):
         from flotilla.ledger.commands import run_ledger_command
         return run_ledger_command(args)
+    if args.command in ("spawn", "retire", "fleet"):
+        from flotilla.fleet.commands import run_fleet_command
+        return run_fleet_command(args)
     return 2

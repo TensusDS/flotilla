@@ -10,8 +10,9 @@ from flotilla import cli
 
 ROOT = Path(__file__).resolve().parent.parent
 SKILLS = sorted((ROOT / "skills").glob("*/SKILL.md"))
-PERSON_ONLY = {"doctor", "check", "status", "brief"}
+PERSON_ONLY = {"doctor", "check", "status", "brief", "spawn", "retire"}
 MODEL_INVOCABLE = {"onboard"}
+MODEL_ONLY = {"flotilla"}
 CALL = re.compile(r"`(?:\$\{CLAUDE_PLUGIN_ROOT\}/scripts/)?flotilla ([a-z-]+)(?: ([a-z-]+))?")
 
 
@@ -53,3 +54,23 @@ def test_person_only_commands_are_never_model_invoked():
             assert flag == "true", path.parent.name
         if path.parent.name in MODEL_INVOCABLE:
             assert flag != "true", path.parent.name
+
+
+def test_the_arrangement_skill_is_for_the_model_only():
+    for path in SKILLS:
+        meta = frontmatter(path)
+        if path.parent.name in MODEL_ONLY:
+            assert meta.get("user-invocable", "true").lower() == "false", path.parent.name
+            assert meta.get("disable-model-invocation", "false").lower() != "true", path.parent.name
+    assert {p.parent.name for p in SKILLS} >= MODEL_ONLY
+
+
+def test_the_first_prompt_names_the_arrangement_skill():
+    from flotilla.fleet.launch import FIRST_PROMPT
+    assert "flotilla:flotilla" in FIRST_PROMPT
+
+
+def test_the_arrangement_runs_receipts_in_the_task_tree():
+    text = (ROOT / "skills" / "flotilla" / "SKILL.md").read_text(encoding="utf-8")
+    assert "receipt run --purpose handover --tree" in text
+    assert "flotilla tree switch" in text and "flotilla tree cut" not in text
