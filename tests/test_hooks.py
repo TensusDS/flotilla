@@ -108,7 +108,7 @@ def test_every_hook_event_is_declared():
     commands = {h["command"].rsplit(" ", 1)[-1]: name for name, groups in declared.items()
                 for group in groups for h in group["hooks"]}
     assert commands == {"session-start": "SessionStart", "prompt": "UserPromptSubmit", "stop": "Stop",
-                        "guard": "PreToolUse"}
+                        "guard": "PreToolUse", "permission": "PermissionRequest"}
 
 
 def call(event, tmp_path, ctx, payload=None, now=NOW):
@@ -245,3 +245,17 @@ def test_a_post_that_may_not_wait_is_not_blocked(tmp_path):
     ctx.ledger.posts["helper"] = Post("helper", "helper {n}", frozenset({"claim", "hand"}), False, 1,
                                       tmp_path / "helper.md", "")
     assert call("stop", tmp_path, ctx, payload=IDLE) == ""
+
+
+def test_the_permission_hook_answers_a_background_session_with_no_orchestrator(tmp_path):
+    me = sess("main session 1")
+    ctx = context(tmp_path, me=me, profile={"permissions": {"mode": "ask"}})
+    said = call("permission", tmp_path, ctx, payload={"tool_name": "Bash", "tool_input": {"command": "touch x"}})
+    decision = json.loads(said)["hookSpecificOutput"]
+    assert decision["hookEventName"] == "PermissionRequest" and decision["decision"]["behavior"] == "deny"
+
+
+def test_the_permission_hook_says_nothing_to_an_interactive_session(tmp_path):
+    me = sess("main session 1", kind="interactive", status="busy")
+    ctx = context(tmp_path, me=me, profile={"permissions": {"mode": "ask"}})
+    assert call("permission", tmp_path, ctx, payload={"tool_name": "Bash", "tool_input": {"command": "x"}}) == ""
