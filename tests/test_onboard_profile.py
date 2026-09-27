@@ -141,3 +141,12 @@ def test_a_symlinked_flotilla_directory_is_refused(tmp_path):
     with pytest.raises(ProfileUnsafe, match="symlink"):
         write_profile(root, build_profile(detection(root), BASE_ANSWERS))
     assert not (outside / "project.toml").exists()
+
+
+def test_a_gate_command_on_this_machine_gets_an_empty_queue_command(tmp_path):
+    here = build_profile(detection(tmp_path), {**BASE_ANSWERS, "ci": "command", "ci_where": "this-machine",
+                                               "gate_command": "ci-status"})
+    assert here["ci"]["queue_command"] == ""
+    hosted = build_profile(detection(tmp_path), {**BASE_ANSWERS, "ci": "command", "ci_where": "cloud",
+                                                 "gate_command": "ci-status"})
+    assert "queue_command" not in hosted["ci"]

@@ -574,6 +574,9 @@ question. Tools follow the surface: browser (Playwright or Chrome MCP), terminal
 | `PreToolUse` Bash | guards (section 10), one process | every session |
 | `Stop` | the ball guard (6.9) | every session |
 
+The Stop guard blocks only background sessions, only when `background_tasks` and `session_crons` are both present
+and empty, and never twice in a row; the second stop is recorded as a break for the orchestrator.
+
 All hooks exit silently when the project has no `.flotilla/`. flotilla never writes the user's `settings.json`.
 
 **Git hooks** (`pre-commit` file reservation, `pre-push` second push barrier) are repository hooks; onboarding
@@ -748,7 +751,8 @@ names per worktree); a bisecting merge queue; a shared ledger across machines (b
    `claude agents --json` sample exists in the test fixtures; today 2.1.280. It is lowered only by adding a sample.
 3. Which `--permission-mode` values a `--bg` session honours, and how a stalled permission prompt is surfaced.
    Measured 2026-09-27 (2.1.283): the census gives `state: blocked` both for a session waiting on a task and for
-   one waiting on a prompt; telling them apart is the watchers' job.
+   one waiting on a prompt; telling them apart is the watchers' job. The watchers read `blocked` as 'idle, or waiting on a permission
+   prompt' and say both.
 4. Whether path-scoped deny rules hold for spawned background sessions (judge, section 7.4).
 5. Why probe A ended `state: blocked`.
 6. License (MIT or Apache-2.0) and GitHub home; name availability on GitHub/PyPI (absent from the official

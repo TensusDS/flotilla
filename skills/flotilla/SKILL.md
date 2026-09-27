@@ -51,6 +51,14 @@ nobody waits for its result.
 `flotilla work wait <branch> --on "<whom>" --why "<why>"`. Falling silent while holding a move is the failure the
 fleet is built against.
 
+## When a hook speaks
+
+A line headed "flotilla - your move" names a move that is yours. Make it, or record whom you wait on:
+`flotilla work wait <branch> --on "<whom>" --why "<why>"`. A wait is a move too: it puts the ball, visibly, with
+someone else. The Stop guard blocks a background session that tries to stop while it holds a move with nothing in
+flight and no wait recorded; answer it the same way, never by stopping again. If you are the orchestrator, a line
+headed "flotilla - the fleet" names dropped balls: message the session it names.
+
 ## Never
 
 - edit anything outside your home tree: it is the one directory you were given, and the main checkout belongs

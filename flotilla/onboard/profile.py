@@ -58,6 +58,8 @@ def _ci(det: dict, answers: dict) -> dict:
     if provider == "command":
         command = answers.get("gate_command", "later")
         section["gate_command"] = "" if command in ("ask-human", "later") else command
+        if section.get("runs_on") == "this-machine":
+            section["queue_command"] = ""   # found in the file; the lane names it until it is filled in
     return section
 
 
