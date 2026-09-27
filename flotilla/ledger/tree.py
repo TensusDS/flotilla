@@ -4,6 +4,11 @@ The claim is filed by the act a session performs anyway, because a voluntary jou
 `worktree add` and the claim run inside one hold of the ledger's lock, and a failure after git has created anything
 removes what it created, so a refusal never leaves an orphan tree or branch behind. A fix row filed by
 `broke` is picked up by its owner's cut instead of refused.
+
+`switch` is the fleet's form of the same claim. A spawned session may edit only its home tree (the one directory
+it was launched with), so it takes each task there: the home tree moves to a new branch from trunk and the claim is
+filed in the same step. Switching back to one's own open branch (to answer a returned verdict) files nothing new.
+The home tree must be clean, because a switch would carry uncommitted work onto another branch.
 """
 
 from __future__ import annotations
@@ -71,3 +76,47 @@ def _undo(ledger: core.Ledger, branch: str, tree: Path) -> None:
         ledger.run([*git, "worktree", "remove", "--force", str(tree)], capture_output=True, text=True, check=False)
     ledger.run([*git, "worktree", "prune"], capture_output=True, text=True, check=False)
     ledger.run([*git, "branch", "-D", branch], capture_output=True, text=True, check=False)
+
+
+def switch(ledger: core.Ledger, actor: Actor, branch: str, *, ref: str = "", requires=(), also: str = "") -> Row:
+    require_may(actor, "claim", ledger.posts)
+    home_row = next((row for row in ledger.rows().values()
+                     if row.is_open and row.state == "reserved" and row.owner == actor.name and row.tree), None)
+    if home_row is None:
+        raise MoveRefused(f"{actor.name} has no home tree (no post row); `flotilla tree cut` claims in a new tree")
+    home = Path(home_row.tree)
+    clean = gitq.is_clean(home, run=ledger.run)
+    if clean is not True:
+        raise MoveRefused(f"{home} has uncommitted work, or git could not say; commit it on its branch first")
+    if gitq.resolve(ledger.root, f"refs/remotes/origin/{ledger.trunk}", run=ledger.run):
+        ledger.run(["git", "-C", str(ledger.root), "fetch", "--quiet", "origin", ledger.trunk],
+                   capture_output=True, text=True, check=False)
+    base_ref = gitq.trunk_ref(ledger.root, ledger.trunk, run=ledger.run)
+    git = ["git", "-C", str(home)]
+    with ledger.session() as s:
+        mine = s.open_row(branch)
+        if mine is not None and mine.owner == actor.name:
+            done = ledger.run([*git, "switch", "-q", branch], capture_output=True, text=True, check=False)
+            if done.returncode != 0:
+                raise MoveRefused(f"git switch {branch} failed in {home}: {done.stderr.strip()}")
+            if mine.tree != str(home.resolve()):
+                return s.append(actor, mine.id, "claim", "claimed", fields={"tree": str(home.resolve())})
+            return mine
+        ids = core.check_claim(s.rows, branch, ref=ref, also=also, requires=requires)
+        if gitq.branch_tip(ledger.root, branch, run=ledger.run):
+            raise MoveRefused(f"branch `{branch}` already exists and holds no open row of yours; nothing was switched")
+        base = gitq.resolve(ledger.root, base_ref, run=ledger.run) or ""
+        done = ledger.run([*git, "switch", "-q", "-c", branch, base_ref], capture_output=True, text=True,
+                          check=False)
+        if done.returncode != 0:
+            made = gitq.branch_tip(ledger.root, branch, run=ledger.run)
+            if made and made == base:
+                ledger.run([*git, "branch", "-D", branch], capture_output=True, text=True, check=False)
+            raise MoveRefused(f"git switch -c {branch} failed in {home}: {done.stderr.strip()}")
+        try:
+            return core.append_claim(s, actor, branch, tree=str(home.resolve()), base=base, ref=ref, ids=ids,
+                                     also=also)
+        except BaseException:
+            ledger.run([*git, "switch", "-q", home_row.branch], capture_output=True, text=True, check=False)
+            ledger.run([*git, "branch", "-D", branch], capture_output=True, text=True, check=False)
+            raise

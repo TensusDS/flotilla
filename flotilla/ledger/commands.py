@@ -343,7 +343,9 @@ def run_ledger_command(args) -> int:
             lines = delivery.reconcile(ledger, caller)
             print("\n".join(lines) if lines else "nothing is queued or landed")
             return 0
-        if args.command == "tree":
+        if args.command == "tree" and args.action == "switch":
+            row = tree_mod.switch(ledger, caller, args.branch, ref=args.ref, requires=args.requires, also=args.also)
+        elif args.command == "tree":
             row = tree_mod.cut(ledger, caller, args.branch, Path(args.tree), expect=args.expect, ref=args.ref,
                                requires=args.requires, also=args.also)
         else:

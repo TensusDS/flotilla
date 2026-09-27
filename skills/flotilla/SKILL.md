@@ -23,10 +23,11 @@ Use that path for every command below. Never infer your name or your post from t
 A letter is a notification of a move, never its carrier. Before you say "done", "handed", "accepted" or
 "shipped", the move must be in the ledger, made by you through the command line:
 
-- main and minor: claim by cutting a tree (`flotilla tree cut <branch> --tree <path> --ref <task>`), hand over
-  committed and green (`flotilla receipt run --purpose handover --tree <task tree>`, then
+- main and minor: take each task in your home tree (`flotilla tree switch <branch> --ref <task>` moves it to a new
+  branch from trunk and files the claim; the same command switches back to a branch returned to you), hand over
+  committed and green (`flotilla receipt run --purpose handover --tree <home tree>`, then
   `flotilla work hand <branch>`), close what shipped (`flotilla work close <branch>`);
-- reviewer: `flotilla work take <branch>`, then `flotilla work accept <branch> --reviewed <sha>` or
+- reviewer: `flotilla work take <branch>`, read the handed tip in your home tree (`git switch --detach <tip>`), then `flotilla work accept <branch> --reviewed <sha>` or
   `flotilla work fix <branch> --why "<what must change>"`;
 - sender: `flotilla brief` for the person's one yes, then `flotilla work queue`, `land`, and `flotilla work
   reconcile` after every push;
@@ -43,7 +44,8 @@ fleet is built against.
 
 ## Never
 
-- edit the main checkout; work happens in linked worktrees;
+- edit anything outside your home tree: it is the one directory you were given, and the main checkout belongs
+  to nobody;
 - act under another session's name (`--as`); the ledger records who really called;
 - read, return or accept your own work;
 - type "shipped": the ledger asks the PR or origin;

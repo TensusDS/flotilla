@@ -73,3 +73,4 @@ def test_the_first_prompt_names_the_arrangement_skill():
 def test_the_arrangement_runs_receipts_in_the_task_tree():
     text = (ROOT / "skills" / "flotilla" / "SKILL.md").read_text(encoding="utf-8")
     assert "receipt run --purpose handover --tree" in text
+    assert "flotilla tree switch" in text and "flotilla tree cut" not in text

@@ -117,6 +117,13 @@ def build_parser() -> argparse.ArgumentParser:
     cut.add_argument("--also", default="")
     cut.add_argument("--root", default=".")
     cut.add_argument("--as", dest="as_name", default=None)
+    switch = tree_actions.add_parser("switch", help="move your home tree to a new branch from trunk and claim it")
+    switch.add_argument("branch")
+    switch.add_argument("--ref", default="")
+    switch.add_argument("--requires", nargs="*", default=[])
+    switch.add_argument("--also", default="")
+    switch.add_argument("--root", default=".")
+    switch.add_argument("--as", dest="as_name", default=None)
 
     receipt = sub.add_parser("receipt", help="test-tier receipts over one revision")
     receipt_actions = receipt.add_subparsers(dest="action", required=True)

@@ -287,6 +287,12 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    `state: blocked`, measured 2026-09-27 on 2.1.283 over eight background sessions). `flotilla fleet` prints the
    state as the census gives it; telling them apart belongs to the watchers part. (executor's decision, spawn and posts plan, 2026-09-27)
 
+40. **Tasks are taken in the home tree** (Max, 2026-09-27, after the spawn review): a spawned session may edit only
+   the directory it was launched with, so `flotilla tree switch <branch>` moves its clean home tree to a new
+   branch from trunk and claims it; reviewers read a handed tip there detached. A permission broker (the
+   `PermissionRequest` hook queueing questions to the orchestrator, one at a time, oldest first) is planned for
+   the watchers-and-guards part, starting with a live measurement.
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

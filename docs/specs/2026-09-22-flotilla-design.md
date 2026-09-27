@@ -475,10 +475,15 @@ going; work stands. One computation — **whose move is it, per row** — read b
 ~/work/app/                  main checkout — belongs to nobody
                                edits from a background session → refused by Claude Code itself
                                reads (git -C …, origin/main) → allowed
-~/work/app-review-1/         branch fleet/review-1   home of "review session 1"
-~/work/app-main-2/           branch feat/export      a task tree of "main session 2"
+~/work/app-reviewer-1/       branch fleet/reviewer-1 home of "review session 1"
+~/work/app-main-2/           branch feat/export      home of "main session 2", now on its task branch
 ~/work/app-sender-1/         branch fleet/sender-1   the sender's intake tree (merges, version, tag)
 ```
+
+**A spawned session edits only its home tree**, the one directory it is launched with (`--add-dir`). It takes each
+task there: `flotilla tree switch <branch>` moves the clean home tree to a new branch from trunk and files the
+claim in the same step, and switches back to a branch returned to it. `flotilla tree cut` stays for a person or a
+session outside the fleet. (Decided 2026-09-27: a tree cut per task sits outside the session's permissions.)
 
 flotilla cuts its own linked worktrees (sibling directories), also in other repositories a task touches. Claude
 Code's background-isolation guard stays on and enforces "the main checkout belongs to nobody" for free: it accepts
@@ -573,6 +578,14 @@ All hooks exit silently when the project has no `.flotilla/`. flotilla never wri
 
 **Git hooks** (`pre-commit` file reservation, `pre-push` second push barrier) are repository hooks; onboarding
 installs them per clone with consent, each named.
+
+**Permission broker (planned, measured first).** A session in `manual` mode stalls on a prompt nobody sees.
+Claude Code's `PermissionRequest` hook fires when a tool call needs a decision and may answer allow or deny
+(command hooks wait up to 600 s by default). The plan: the hook puts the question in a queue in the state
+directory, the orchestrator shows the person one question at a time, oldest first, and writes the answer back;
+no orchestrator or no answer in time → deny with a reason, never a silent hang. Undocumented and to be measured
+on a live background session before it is built: whether the hook fires in `--bg` sessions, what a timeout
+does, and whether an answer can become a rule for the rest of the session.
 
 **Cron: none in v1.** `flotilla watch --once` exits with a meaningful code for any scheduler. Onboarding-installed
 schedules (crontab on Linux, launchd on macOS, with consent) are the first roadmap item.

@@ -3,7 +3,7 @@ import pytest
 from flotilla.ledger import core, gitq
 from flotilla.ledger import tree as tree_mod
 from flotilla.ledger.errors import MoveRefused
-from ledgerkit import actor, branch, git, make_ledger, repo_with_origin
+from ledgerkit import actor, branch, commit, git, make_ledger, repo_with_origin
 
 
 def test_cut_makes_a_tree_from_origin_trunk_and_claims_it(tmp_path):
@@ -69,3 +69,53 @@ def test_cut_refuses_to_pick_up_someone_elses_filed_row(tmp_path):
     core.claim(ledger, actor(ledger, "main session 1"), "feat/x")
     with pytest.raises(MoveRefused, match="already claimed by main session 1"):
         tree_mod.cut(ledger, actor(ledger, "minor session 1"), "feat/x", tmp_path / "tree")
+
+
+def home_world(tmp_path):
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state")
+    home = tmp_path / "app-main-1"
+    git(root, "worktree", "add", "-q", "-b", "fleet/main-1", str(home), "origin/main")
+    core.reserve(ledger, actor(ledger, "main session 1"), "fleet/main-1", tree=str(home))
+    return root, ledger, home
+
+
+def test_switch_moves_the_home_tree_to_a_new_branch_from_trunk_and_claims_it(tmp_path):
+    root, ledger, home = home_world(tmp_path)
+    row = tree_mod.switch(ledger, actor(ledger, "main session 1"), "feat/x", ref="LIN-1")
+    assert (row.state, row.branch, row.tree, row.ref) == ("claimed", "feat/x", str(home.resolve()), "LIN-1")
+    assert git(home, "rev-parse", "--abbrev-ref", "HEAD") == "feat/x"
+    assert row.base == git(root, "rev-parse", "origin/main")
+
+
+def test_switch_back_to_your_own_branch_files_no_new_row(tmp_path):
+    root, ledger, home = home_world(tmp_path)
+    tree_mod.switch(ledger, actor(ledger, "main session 1"), "feat/x")
+    commit(home, "work", "work.txt")
+    tree_mod.switch(ledger, actor(ledger, "main session 1"), "feat/y")
+    again = tree_mod.switch(ledger, actor(ledger, "main session 1"), "feat/x")
+    assert again.branch == "feat/x" and git(home, "rev-parse", "--abbrev-ref", "HEAD") == "feat/x"
+    assert sorted(row.branch for row in ledger.rows().values() if row.state == "claimed") == ["feat/x", "feat/y"]
+
+
+def test_switch_refuses_a_home_tree_with_uncommitted_work(tmp_path):
+    root, ledger, home = home_world(tmp_path)
+    (home / "draft.txt").write_text("unsaved\n", encoding="utf-8")
+    with pytest.raises(MoveRefused, match="uncommitted"):
+        tree_mod.switch(ledger, actor(ledger, "main session 1"), "feat/x")
+    assert git(home, "rev-parse", "--abbrev-ref", "HEAD") == "fleet/main-1" and len(ledger.rows()) == 1
+
+
+def test_switch_needs_a_home_tree(tmp_path):
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state")
+    with pytest.raises(MoveRefused, match="no home tree"):
+        tree_mod.switch(ledger, actor(ledger, "main session 1"), "feat/x")
+
+
+def test_switch_refuses_a_branch_that_is_someone_elses(tmp_path):
+    root, ledger, home = home_world(tmp_path)
+    branch(root, "feat/theirs", "their work")
+    core.claim(ledger, actor(ledger, "minor session 1"), "feat/theirs")
+    with pytest.raises(MoveRefused, match="minor session 1"):
+        tree_mod.switch(ledger, actor(ledger, "main session 1"), "feat/theirs")

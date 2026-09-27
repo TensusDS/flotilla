@@ -248,3 +248,14 @@ def test_broke_prints_the_fix_row_it_filed(tmp_path, monkeypatch):
     code, out = run_cli("work", "broke", "feat/x", "--where", "Settings > Export", "--saw", "nothing happens",
                         "--root", str(root), "--as", "acceptance judge 1")
     assert code == 0 and "fix row r2 `fix/feat/x` filed for main session 1" in out
+
+
+def test_a_session_takes_a_task_in_its_home_tree(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    home = tmp_path / "app-main-1"
+    git(root, "worktree", "add", "-q", "-b", "fleet/main-1", str(home), "origin/main")
+    assert run_cli("work", "reserve", "fleet/main-1", "--tree", str(home), "--root", str(root),
+                   "--as", "main session 1")[0] == 0
+    code, out = run_cli("tree", "switch", "feat/x", "--ref", "LIN-1", "--root", str(home), "--as", "main session 1")
+    assert code == 0 and "feat/x: claimed" in out
+    assert git(home, "rev-parse", "--abbrev-ref", "HEAD") == "feat/x"
