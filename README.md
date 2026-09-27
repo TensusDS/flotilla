@@ -5,8 +5,8 @@ acceptance judge, main, minor), a worktree per session, a work ledger in which e
 that books the machine for long runs, and guards on dangerous commands.
 
 **Status: pre-alpha.** The foundation, onboarding, the work ledger (`/flotilla:status`, `/flotilla:brief`), the
-fleet (`/flotilla:spawn`, `/flotilla:retire`), the lane (`/flotilla:lane`) and the watchers (`/flotilla:watch`,
-session hooks) are in place; the guards are being built. Design: `docs/specs/2026-09-22-flotilla-design.md`.
+fleet (`/flotilla:spawn`, `/flotilla:retire`), the lane (`/flotilla:lane`), the watchers (`/flotilla:watch`,
+session hooks) and the guards (`/flotilla:guard`) are in place; the permission broker is being built. Design: `docs/specs/2026-09-22-flotilla-design.md`.
 
 ## Requirements
 
@@ -34,6 +34,20 @@ nothing in flight and no wait recorded, the Stop guard asks it to move or record
 through and the orchestrator hears of it. `[watch] stop_guard = false` in `.flotilla/project.toml` turns the guard
 off. For a scheduler: `flotilla watch --once` exits 0 when nothing needs attention, 1 when something does, 2 when it
 could not ask.
+
+## Guards
+
+Before a Bash command runs, flotilla refuses three that do silent damage: a checkout, restore, reset or clean that
+would destroy uncommitted work (it names the fix that works for that form); an in-place `sed` edit addressed by
+line number; and a push to trunk or a tag, `gh pr create`, `gh pr merge` or `gh workflow run` without a green push
+receipt over exactly what is pushed. A push to another branch needs none. `FLOTILLA_GATE_OVERRIDE="<why>"` at the
+head of the push lets it through and records the reason. Two git hooks back them: `pre-commit` refuses a rewrite
+of a shared file another open row has reserved (appends always pass), and `pre-push` asks git what is pushed, so a
+push inside a script is judged too. `/flotilla:guard` shows what is on and installs the hooks, one yes each.
+
+The command guards read the command line, not the shell: a command inside `eval`, `sh -c`, `$( )` or a script is
+not seen (`flotilla guard --help` lists the rest). A revert or line-number guard that cannot tell lets the command
+run and says so; the push guard refuses.
 
 ## Development
 

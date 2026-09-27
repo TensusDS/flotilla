@@ -344,6 +344,50 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    answer later. When set it is asked for any provider; unset with a gate command on this machine stays the lasting
    unknown, now naming the key. Onboarding writes it empty for a gate command on this machine, so the key is found. It runs through the shell, like the gate command (final review, 2026-09-27). (executor's decision, watchers plan, 2026-09-27)
 
+58. **One process, cheap common path.** `PreToolUse` on `Bash` runs `flotilla hook guard` for every Bash call. A
+   command that names none of `checkout restore reset clean sed push gh` exits before a project is looked up or a
+   guard module imported; only a command that names one reads the rules. (executor's decision, guards plan, 2026-09-27)
+59. **The command line is matched, not parsed** (as in ai-os, where a real parser was measured to buy one command in
+   1,941). Segments split at `&& || ; | &` and newlines, twice (plainly and respecting quotes), the union counting;
+   heredoc bodies dropped; leading `NAME=value`, `env`, `sudo command nice nohup time exec` and shell keywords
+   (`if then else elif do while until ! { (`) peeled; `cd <literal>` followed. A directory named through a variable
+   is unknown. The ceiling is written in the module, in `flotilla guard --help` and in the README. (executor's decision, guards plan, 2026-09-27)
+60. **The revert guard refuses only when git says there is something to lose**, and names the fix that works for
+   that form: `git add` where the index is the source (`checkout -- f`, `restore f`); commit or stash where the
+   command overwrites the index too (a named source, `restore --staged --worktree`, `reset --hard`, `checkout -f`);
+   move or stash untracked files before `clean -f` (the list comes from `git clean -n` with the same flags). It never
+   makes the save point itself. (executor's decision, guards plan, 2026-09-27)
+61. **The line-number guard refuses `sed`/`gsed` in place (`-i`, `-i.bak`, `-i ''`, `--in-place`, clusters) when a
+   script command starts with a line number** (`12d`, `3,5s…`, `1~2p`, `10i…`, `5!d`, `7{`). `$`, `/regex/` and a
+   digit inside a substitution pass. A script read with `-f` is not opened. (executor's decision, guards plan, 2026-09-27)
+62. **A push to a branch other than trunk needs no receipt** (ai-os, Max's decision of 2026-09-06): it lands nowhere,
+   and the receipt is asked where it lands — a push to trunk or a tag, `gh pr create` (the PR head), `gh pr merge`
+   (the head `gh pr view` names), `gh workflow run` (HEAD). A push the text cannot pin (`--all`, `--mirror`,
+   `--tags`, `--follow-tags`) asks for HEAD, and the `pre-push` hook asks git for each ref. (executor's decision, guards plan, 2026-09-27)
+63. **A receipt is valid only if the CI workflow at that revision is the one the profile at that revision records**
+   (`ci.workflow_fingerprint`, same digest as onboarding's). Reading the profile at the revision, not on trunk, lets
+   a branch that changes the workflow update the fingerprint in the same commit instead of being locked out. (executor's decision, guards plan, 2026-09-27)
+64. **`FLOTILLA_GATE_OVERRIDE="<why>"` is read from the door's own leading assignment or the environment**, never from
+   anywhere else in the line (a comment or a neighbouring segment must not open a push), and is recorded in
+   `<state>/guards/<repo key>.jsonl`. Revert and line-number have no override: their fix always exists. (executor's decision, guards plan, 2026-09-27)
+65. **Failure is decided by reversibility.** Revert and line-number allow with a warning; the push receipt refuses,
+   including when the rules cannot be read or the tree cannot be named. A door in a repository that is not a
+   flotilla project is not judged; in another flotilla project it is judged by that project's rules and receipts. (executor's decision, guards plan, 2026-09-27)
+66. **Rules come from trunk, except before onboarding reached trunk**, when the tree's own profile is obeyed and the
+   guard says so (otherwise the push that brings the profile to trunk would be judged by no rules at all). (executor's decision, guards plan, 2026-09-27)
+67. **Reservations** are a log in `<state>/reservations/<repo key>.jsonl`. A staged change deleting more than three
+   lines of a file matching `[reservation] files` is a rewrite; the first open row to commit one holds the file
+   until the row closes or is delivered. A merge neither needs nor takes a reservation for what it brings in.
+   `FLOTILLA_RESERVE_OVERRIDE="<why>"` lets a refused commit through, recorded. `flotilla status` lists live
+   reservations when the profile names reserved files. (executor's decision, guards plan, 2026-09-27)
+68. **Git hooks call a stable link**, `<state>/bin/flotilla`, which every session start (and every install) points at
+   the running plugin's entry: the plugin's path moves with each update, a hook file does not. Install never
+   overwrites a hook flotilla did not write and never writes into `core.hooksPath`; it prints the line to add
+   instead. Hooks go to the common git directory, so one install covers every worktree. A `pre-push` that finds no
+   link refuses (an override passes, unrecorded, and says so); a `pre-commit` that finds none passes. (executor's decision, guards plan, 2026-09-27)
+69. **The `pre-push` hook obeys `guards.push_receipt`** like the command guard; `/flotilla:guard` offers `pre-push`
+   when that guard is on and `pre-commit` when the profile names reserved files, one yes each. (executor's decision, guards plan, 2026-09-27)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

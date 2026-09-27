@@ -2,6 +2,12 @@
 
 Deferred findings, kept here until a plan takes them. Each names where it came from.
 
+## From the guards plan (2026-09-27)
+
+- Measure on a live session: that a PreToolUse deny from a plugin hook reaches a background session. The
+  guard's time was measured on this machine: 0.0 ms for a plain command, 24 ms for a read one, 52 ms for a push,
+  plus ~89 ms process start (the test bounds it at 1 s for CI).
+
 ## From the watchers final review (2026-09-27)
 
 - The hook-level throttle test does not guard the digest's age exclusion: both renders read "(2 h)"; cross an hour.
