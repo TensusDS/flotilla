@@ -506,6 +506,9 @@ cd <main checkout> && claude --bg \
 - "address not read" ≠ "did not start": the census is asked before failure is declared, or a second process with
   the same name follows;
 - `--dry-run` shows names, trees and branches and changes nothing.
+- the post row is recorded by the spawner in the new session's name (`via: spawn`, the real caller kept); the
+  session is found in `claude agents --json`, not in printed text; questionnaire answers map to
+  `--permission-mode`: ask → `manual`, rules → `dontAsk`, auto → `auto`; a post may set its own `permission_mode`.
 
 ### 7.3 A post is an agent definition
 
@@ -550,7 +553,7 @@ question. Tools follow the surface: browser (Playwright or Chrome MCP), terminal
 |---|---|
 | add a post mid-day | `flotilla spawn -r 1` |
 | revive a crashed session | native `claude respawn`; flotilla checks the name and tree are kept |
-| retire a session | `flotilla retire <name>`: waits for the tree lock to clear, frees the post row, leaves unfinished work orphaned for `adopt` |
+| retire a session | `flotilla retire <name>`: waits for the tree lock to clear, frees the post row, leaves unfinished work orphaned for `adopt`; the tree is kept, and retire prints its uncommitted file count |
 
 ---
 
@@ -723,8 +726,12 @@ names per worktree); a bisecting merge queue; a shared ledger across machines (b
 2. ~~Exact Claude Code version floor~~ — **resolved:** the floor is the lowest version for which a recorded
    `claude agents --json` sample exists in the test fixtures; today 2.1.280. It is lowered only by adding a sample.
 3. Which `--permission-mode` values a `--bg` session honours, and how a stalled permission prompt is surfaced.
+   Measured 2026-09-27 (2.1.283): the census gives `state: blocked` both for a session waiting on a task and for
+   one waiting on a prompt; telling them apart is the watchers' job.
 4. Whether path-scoped deny rules hold for spawned background sessions (judge, section 7.4).
 5. Why probe A ended `state: blocked`.
 6. License (MIT or Apache-2.0) and GitHub home; name availability on GitHub/PyPI (absent from the official
    marketplace catalogue, local copy).
-7. Read Gas Town and multiclaude before the posts sub-project.
+7. ~~Read Gas Town and multiclaude before the posts sub-project.~~ - **read 2026-09-27**: collisions are prevented
+   at spawn (multiclaude does not), a post may carry its own permission mode (Gas Town), and retire names what it
+   leaves.
