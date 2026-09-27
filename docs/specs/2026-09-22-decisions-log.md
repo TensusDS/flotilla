@@ -314,6 +314,36 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
 48. **No clock expiry.** `--wait` bounds only the caller's own waiting; `sweep` removes only bookings whose process
    is gone; a booking taken by hand has no process and stays until released by hand. (executor's decision, lane plan, 2026-09-27)
 
+49. **A hook finds its session by the `session_id` Claude Code passes it**, matched to the census `sessionId`
+   (measured 2026-09-27: this session's census `sessionId` is its conversation id); failing that, by the parent-pid
+   walk the ledger already uses. A session the census does not list is told so, and no move is computed for it. (executor's decision, watchers plan, 2026-09-27)
+50. **The prompt hook speaks when what it would say changed, or 30 minutes after it last spoke**; with nothing to say
+   it is silent and forgets its stamp, so the next thing is said at once. Ages are printed but are not part of
+   "changed". A recorded wait is not repeated at every prompt (it is said at session start). (executor's decision, watchers plan, 2026-09-27)
+51. **The Stop guard blocks only when it knows all of it:** a background session (an interactive one has a person in
+   front of it); a move it holds (a ball, or claimed work) with no recorded wait and no hold; `background_tasks`
+   and `session_crons` both present and both empty (absent means the task registry was unreachable, and then
+   nothing says the session will not be woken). Anything it could not ask lets the session stop: a guard that
+   cannot ask must not trap a session. `[watch] stop_guard = false` in the profile turns it off. (executor's decision, watchers plan, 2026-09-27)
+52. **A second stop in a row (`stop_hook_active`) is let through and recorded as a break**, in
+   `<state>/watch/breaks/<repo key>.jsonl`. A break stays open while the row is still that session's move, has no
+   recorded wait, and has not moved since the break; no clock closes it. (executor's decision, watchers plan, 2026-09-27)
+53. **A dropped ball** = the move is a live session's, it recorded no wait, the row is not held, and the census says
+   the session is not working (background `state` blocked or done; interactive `status` idle). `blocked` also means
+   "waiting on a permission prompt" (measured 2026-09-27), so the item says both. A move named for a post ("the
+   sender", "the judge") belongs to the live sessions of that post; none alive is its own item. (executor's decision, watchers plan, 2026-09-27)
+54. **Only the orchestrator hears the fleet** (deviations, dropped balls, a post nobody holds, breaks), at session
+   start and in its prompt hook; every session hears its own moves. (executor's decision, watchers plan, 2026-09-27)
+55. **`flotilla watch --once` exits 0 when nothing needs attention, 1 when something does, 2 when the census or the
+   ledger could not be asked** (printed, never "none"). Without `--once` it refuses: v1 has no schedule of its own. (executor's decision, watchers plan, 2026-09-27)
+56. **The session-start hook checks event scripts without running them** (a known name, an executable file, an
+   interpreter that exists): a sample run can outlast the hook's timeout. `flotilla events check` stays the full
+   check and is named in the line. (executor's decision, watchers plan, 2026-09-27)
+57. **`[ci] queue_command`** answers "is CI using this machine right now": exit 0 no, exit 1 yes, anything else (or
+   not runnable, or 25 s) could not ask — an unknown the lane waits on, not a lasting one, since the queue may
+   answer later. When set it is asked for any provider; unset with a gate command on this machine stays the lasting
+   unknown, now naming the key. Onboarding writes it empty for a gate command on this machine, so the key is found. (executor's decision, watchers plan, 2026-09-27)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

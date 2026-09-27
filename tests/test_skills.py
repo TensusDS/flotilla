@@ -79,3 +79,8 @@ def test_the_arrangement_runs_receipts_in_the_task_tree():
 def test_the_arrangement_sends_long_runs_through_the_lane():
     text = (ROOT / "skills" / "flotilla" / "SKILL.md").read_text(encoding="utf-8")
     assert "flotilla lane run --for" in text and "killed" in text
+
+
+def test_the_arrangement_answers_the_hooks_with_a_move_or_a_wait():
+    text = (ROOT / "skills" / "flotilla" / "SKILL.md").read_text(encoding="utf-8")
+    assert "flotilla - your move" in text and "work wait" in text and "Stop guard" in text

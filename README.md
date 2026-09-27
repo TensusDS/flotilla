@@ -5,8 +5,8 @@ acceptance judge, main, minor), a worktree per session, a work ledger in which e
 that books the machine for long runs, and guards on dangerous commands.
 
 **Status: pre-alpha.** The foundation, onboarding, the work ledger (`/flotilla:status`, `/flotilla:brief`), the
-fleet (`/flotilla:spawn`, `/flotilla:retire`) and the lane (`/flotilla:lane`) are in place; the watchers and guards
-are being built. Design: `docs/specs/2026-09-22-flotilla-design.md`.
+fleet (`/flotilla:spawn`, `/flotilla:retire`), the lane (`/flotilla:lane`) and the watchers (`/flotilla:watch`,
+session hooks) are in place; the guards are being built. Design: `docs/specs/2026-09-22-flotilla-design.md`.
 
 ## Requirements
 
@@ -24,6 +24,16 @@ scripts/flotilla doctor
 
 `${FLOTILLA_STATE_DIR}` if set, else `${XDG_STATE_HOME:-~/.local/state}/flotilla/`. It survives plugin updates and
 uninstall on purpose. To erase the fleet's history, delete that directory; `flotilla doctor` prints its path.
+
+## What the hooks say
+
+At session start flotilla names the session, its post, its live peers and what it inherited. Before a prompt it
+says what waits for this session's move — at once when that changed, otherwise at most every 30 minutes — and tells
+the orchestrator what the fleet dropped. When a background session tries to stop while it holds a move, with
+nothing in flight and no wait recorded, the Stop guard asks it to move or record the wait; a second stop goes
+through and the orchestrator hears of it. `[watch] stop_guard = false` in `.flotilla/project.toml` turns the guard
+off. For a scheduler: `flotilla watch --once` exits 0 when nothing needs attention, 1 when something does, 2 when it
+could not ask.
 
 ## Development
 

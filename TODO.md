@@ -2,6 +2,11 @@
 
 Deferred findings, kept here until a plan takes them. Each names where it came from.
 
+## From the watchers plan (2026-09-27)
+
+- Measure on a live background session: that a Stop block reaches the session as a continuation, and that the
+  census sessionId equals the hook's session_id for a background session (measured only for an interactive one).
+
 ## From the lane final review (2026-09-27)
 
 - On the `ps` path a failed second CPU sample reads as "the run ended".
@@ -9,8 +14,6 @@ Deferred findings, kept here until a plan takes them. Each names where it came f
 - A `run` annotation resets `updated_at`, so `status --stalled` never shows a row whose owner keeps re-running tests.
 - A hand holder's own `pytest` counts twice (the booking and a foreign run) when `lane_capacity` is 2 or more.
 - An invalid `lane_capacity` in `machine.toml` falls back to 1 silently.
-- A project whose CI is self-hosted here through a gate command: the lane cannot ask that queue and refuses at once
-  (Max's call pending: a queue command in the profile, or onboarding stops offering the combination).
 
 ## From the spawn and posts final review (2026-09-27)
 
