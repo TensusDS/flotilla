@@ -2,6 +2,21 @@
 
 Deferred findings, kept here until a plan takes them. Each names where it came from.
 
+## From the watchers final review (2026-09-27)
+
+- The hook-level throttle test does not guard the digest's age exclusion: both renders read "(2 h)"; cross an hour.
+- Every Stop and prompt pays for the census and the ledger before deciding; check the Stop payload before gathering,
+  and read the census once at session start (the doctor reads it too).
+- A census error whose text varies (stderr) re-prints on every prompt; hook exceptions are not throttled at all.
+- `HOOK_CHECK_TIMEOUT` is defined in both `hooks.py` and `watch/context.py`; no test pins the 10 s prompt/stop budget.
+- The README says `[watch] stop_guard = false` in `.flotilla/project.toml`; the profile is read from trunk, say so.
+- `queue_command`: a command that is not found (shell exit 127) or not a string is an unknown the lane waits on;
+  a lasting unknown would refuse at once.
+- The claimed-work summary line is appended last and is the first cut past 20 items.
+- The breaks log is never pruned; `stop_hook_active` set by another plugin's Stop hook is recorded as a flotilla break.
+- `watch --once` has no test for the ledger-could-not-be-read exit 2; an exception in its gather exits 1, not 2.
+- `flotilla/ledger/events.py` lacks a final newline.
+
 ## From the watchers plan (2026-09-27)
 
 - Measure on a live background session: that a Stop block reaches the session as a continuation, and that the

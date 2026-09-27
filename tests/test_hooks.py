@@ -224,3 +224,23 @@ def test_a_second_stop_is_recorded_not_blocked(tmp_path):
     assert call("stop", tmp_path, ctx, payload={**IDLE, "stop_hook_active": True}) == ""
     found = fleet.open_breaks(tmp_path / "state", "repo", HANDED, PR, ctx.post_of)
     assert [(item.kind, item.branch) for item in found] == [("break", "feat/x")]
+
+
+def test_a_post_row_is_not_a_move_the_guard_holds(tmp_path):
+    post_row = rows(row(branch="post/sender", owner="sender 1", state="reserved"))
+    me = sess("sender 1")
+    assert call("stop", tmp_path, context(tmp_path, me=me, rows_=post_row), payload=IDLE) == ""
+    assert call("prompt", tmp_path, context(tmp_path, me=me, rows_=post_row)) == ""
+
+
+def test_a_session_with_no_post_is_not_asked_for_a_move_it_may_not_make(tmp_path):
+    claimed = rows(row(owner="helper 1"))
+    assert call("stop", tmp_path, context(tmp_path, me=sess("helper 1"), rows_=claimed), payload=IDLE) == ""
+
+
+def test_a_post_that_may_not_wait_is_not_blocked(tmp_path):
+    from flotilla.posts import Post
+    ctx = context(tmp_path, me=sess("helper 1"), rows_=rows(row(owner="helper 1")))
+    ctx.ledger.posts["helper"] = Post("helper", "helper {n}", frozenset({"claim", "hand"}), False, 1,
+                                      tmp_path / "helper.md", "")
+    assert call("stop", tmp_path, ctx, payload=IDLE) == ""

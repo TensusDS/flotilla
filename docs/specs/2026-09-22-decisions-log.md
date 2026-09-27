@@ -342,7 +342,7 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
 57. **`[ci] queue_command`** answers "is CI using this machine right now": exit 0 no, exit 1 yes, anything else (or
    not runnable, or 25 s) could not ask — an unknown the lane waits on, not a lasting one, since the queue may
    answer later. When set it is asked for any provider; unset with a gate command on this machine stays the lasting
-   unknown, now naming the key. Onboarding writes it empty for a gate command on this machine, so the key is found. (executor's decision, watchers plan, 2026-09-27)
+   unknown, now naming the key. Onboarding writes it empty for a gate command on this machine, so the key is found. It runs through the shell, like the gate command (final review, 2026-09-27). (executor's decision, watchers plan, 2026-09-27)
 
 ## Open questions (for the foundation spec)
 

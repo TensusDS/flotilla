@@ -58,7 +58,7 @@ class Context:
             return []
         post = self.post(self.me.name)
         return whose.mine(self.rows, self.profile, self.me.name, post=post.name if post else "",
-                          may=post.may if post else None, owner_post=self.post_of, live=self.live)
+                          may=post.may if post else frozenset(), owner_post=self.post_of, live=self.live)
 
     def fleet(self) -> list:
         from flotilla.watch import fleet

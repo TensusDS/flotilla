@@ -171,7 +171,7 @@ COMMAND_HERE = {"ci": {"provider": "command", "runs_on": "this-machine", "queue_
 def test_a_queue_command_that_says_idle_does_not_block(tmp_path):
     run, calls = queue(0, "no job running\n")
     answer = machine.ci_here(COMMAND_HERE, run=run, root=tmp_path)
-    assert answer.blocks is False and "no job running" in answer.text and calls == [["ci-busy", "--here"]]
+    assert answer.blocks is False and "no job running" in answer.text and calls == ["ci-busy --here"]
 
 
 def test_a_queue_command_that_says_busy_blocks(tmp_path):
@@ -197,3 +197,8 @@ def test_an_empty_queue_command_names_the_key(tmp_path):
     empty = {"ci": {"provider": "command", "runs_on": "this-machine", "queue_command": ""}}
     answer = machine.ci_here(empty, run=None, root=tmp_path)
     assert answer.lasting and "queue_command" in answer.text and "--no-lane" in answer.text
+
+
+def test_a_queue_command_runs_through_the_shell_like_the_other_project_commands(tmp_path):
+    piped = {"ci": {"provider": "command", "runs_on": "this-machine", "queue_command": "false | true"}}
+    assert machine.ci_here(piped, root=tmp_path).blocks is False

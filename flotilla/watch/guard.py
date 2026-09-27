@@ -1,10 +1,11 @@
 """The Stop guard: a background session does not fall silent while it holds a move (spec, section 6.9 layer 2).
 
-It blocks only when it knows all of it: a background session (an interactive one has a person in front of it), a
-move it holds with no recorded wait, and nothing in flight that will wake it (`background_tasks` and
-`session_crons` both present and empty; absent means the registry was unreachable). Anything it could not ask lets
-the session stop: a guard that cannot ask must not trap a session. A second stop in a row is let through and
-returned as a break, so the orchestrator hears of it.
+It blocks only when it knows all of it: a background session (an interactive one has a person in front of it)
+whose post may record a wait, a move it holds with no recorded wait, and nothing in flight that will wake it
+(`background_tasks` and `session_crons` both present and empty; absent means the registry was unreachable).
+Anything it could not ask lets the session stop: a guard that cannot ask must not trap a session. A post row
+(`reserved`) is the post held, not a move. A second stop in a row is let through and returned as a break, so the
+orchestrator hears of it.
 """
 
 from __future__ import annotations
@@ -26,6 +27,9 @@ def stop_verdict(ctx, payload: dict, cli: str = "flotilla") -> Verdict:
         return Verdict()
     if (ctx.profile.get("watch") or {}).get("stop_guard") is False:
         return Verdict()
+    post = ctx.post(ctx.me.name)
+    if post is None or "wait" not in post.may:
+        return Verdict()   # it could make neither the move nor the wait the block would ask for
     tasks, crons = payload.get("background_tasks"), payload.get("session_crons")
     if not isinstance(tasks, list) or not isinstance(crons, list) or tasks or crons:
         return Verdict()

@@ -46,8 +46,8 @@ def fleet(rows: dict, profile: dict, sessions, *, post_of, breaks=()) -> list[It
     items = [Item(DEVIATION, found["branch"], f"{found['kind']}: {found['why']}", since_of(rows, found["branch"]))
              for found in views.deviations(rows, profile, live)]
     for row in rows.values():
-        if not row.is_open or row.waiting_on or row.held_until:
-            continue
+        if not row.is_open or row.state == "reserved" or row.waiting_on or row.held_until:
+            continue   # a post row is the post held, not a move anyone owes
         mover = views.who_moves(row, profile)
         named = movers(row, profile, live, post_of) & live
         if mover in POST_OF_MOVER and not named:

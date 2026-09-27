@@ -58,3 +58,8 @@ def test_the_moves_offered_are_legal_and_allowed_to_the_post():
     fixing = row(state="fixing")
     assert whose.next_moves(fixing, PR, frozenset({"hand", "wait", "close"})) == ["hand", "wait"]
     assert "run" not in whose.next_moves(fixing, PR)
+
+
+def test_without_a_post_no_move_is_promised():
+    found = whose.mine(rows(row(state="fixing")), PR, "main session 1", may=frozenset())
+    assert found[0].text.endswith("your moves: none your post may make")

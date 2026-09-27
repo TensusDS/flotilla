@@ -61,7 +61,7 @@ def mine(rows: dict[str, Row], profile: dict, name: str, *, post: str = "", may=
          owner_post=lambda owner: "", live: set[str] | None = None) -> list[Item]:
     items = []
     for row in rows.values():
-        if not row.is_open:
+        if not row.is_open or row.state == "reserved":   # a post row is the post held, not a move
             continue
         if row.owner == name and row.state == "handed" and not row.reader and not row.held_until:
             items.append(Item(UNREAD, row.branch, "handed, and no reader is named; the orchestrator assigns one",

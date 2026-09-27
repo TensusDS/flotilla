@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import re
-import shlex
 import subprocess
 import time
 from dataclasses import dataclass
@@ -124,9 +123,9 @@ def _gh_json(run, root, *args):
 
 def _queue(command: str, root, run) -> Answer:
     """The project's own answer to "is CI using this machine now": exit 0 no, 1 yes, anything else unknown."""
-    try:
-        done = run(shlex.split(command), cwd=str(root), capture_output=True, text=True, check=False, timeout=25)
-    except (OSError, subprocess.SubprocessError, ValueError) as err:
+    try:   # through the shell, as the gate and revision commands are run
+        done = run(command, shell=True, cwd=str(root), capture_output=True, text=True, check=False, timeout=25)
+    except (OSError, subprocess.SubprocessError) as err:
         return Answer("ci", None, f"the CI queue command could not be run ({err}): not asked is not free")
     first = (done.stdout or "").strip().splitlines()[:1]
     detail = f": {first[0]}" if first else ""

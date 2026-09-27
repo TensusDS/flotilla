@@ -65,3 +65,8 @@ def test_a_break_closes_when_a_wait_is_recorded(tmp_path):
 
 def test_nothing_recorded_is_no_break(tmp_path):
     assert fleet.open_breaks(tmp_path, "repo", {}, PR, post_of) == []
+
+
+def test_an_idle_post_holder_is_not_a_dropped_ball():
+    post_row = rows(row(branch="post/sender", owner="sender 1", state="reserved"))
+    assert fleet.fleet(post_row, PR, [sess("sender 1")], post_of=post_of) == []
