@@ -616,6 +616,12 @@ flotilla lane sweep
   and records "killed — no verdict", and writes the summary line ("212 passed") into the row.
 - No clock expiry. `sweep` removes only rows with no process behind them.
 - Capacity (how many long runs fit) comes from `machine.toml`, measured at onboarding.
+- The process table is read from procfs or `ps -A -o pid= -o ppid= -o command=` (never `pgrep`, whose `-a` means
+  different things on Linux and macOS); a reused pid is told apart by the process start mark.
+- Run patterns default to pytest, playwright, vitest, jest, `cargo test` and `go test`; `[lane] run_patterns` in
+  the profile replaces them. A booked run's own processes and the caller's ancestors are never foreign runs.
+- `lane run --for <branch>` records `last_run` on the row (verdict, summary, revision, time); `status` prints it.
+  Handover and push receipts take the lane themselves (`--lane-wait`, or `--no-lane`, which the output records).
 
 ---
 

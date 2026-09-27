@@ -10,7 +10,7 @@ from flotilla import cli
 
 ROOT = Path(__file__).resolve().parent.parent
 SKILLS = sorted((ROOT / "skills").glob("*/SKILL.md"))
-PERSON_ONLY = {"doctor", "check", "status", "brief", "spawn", "retire"}
+PERSON_ONLY = {"doctor", "check", "status", "brief", "spawn", "retire", "lane"}
 MODEL_INVOCABLE = {"onboard"}
 MODEL_ONLY = {"flotilla"}
 CALL = re.compile(r"`(?:\$\{CLAUDE_PLUGIN_ROOT\}/scripts/)?flotilla ([a-z-]+)(?: ([a-z-]+))?")
@@ -74,3 +74,8 @@ def test_the_arrangement_runs_receipts_in_the_task_tree():
     text = (ROOT / "skills" / "flotilla" / "SKILL.md").read_text(encoding="utf-8")
     assert "receipt run --purpose handover --tree" in text
     assert "flotilla tree switch" in text and "flotilla tree cut" not in text
+
+
+def test_the_arrangement_sends_long_runs_through_the_lane():
+    text = (ROOT / "skills" / "flotilla" / "SKILL.md").read_text(encoding="utf-8")
+    assert "flotilla lane run --for" in text and "killed" in text

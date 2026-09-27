@@ -36,6 +36,14 @@ A letter is a notification of a move, never its carrier. Before you say "done", 
 
 Your post's text in the system prompt says which of these are yours; a move your post may not make is refused.
 
+## Long runs go through the lane
+
+A full suite, a browser run or anything that takes the machine goes through the lane:
+`flotilla lane run --for <branch> -- <command>` waits its turn, runs the command, releases the lane and records
+the result on the row, where `flotilla status` shows it. Receipts take the lane themselves. A run killed by a
+signal is recorded as killed, with no verdict: never report it as passed, and never read a run's success from the
+exit code of a pipeline. The lane is not a lock: a run started without it is invisible to everyone else.
+
 ## Whose move it is
 
 `flotilla status` names, for every open row, whose move it is. If it is yours, make it or record why you wait:

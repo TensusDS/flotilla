@@ -293,6 +293,27 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    `PermissionRequest` hook queueing questions to the orchestrator, one at a time, oldest first) is planned for
    the watchers-and-guards part, starting with a live measurement.
 
+41. **One booking log per machine**, in the state directory (`<state>/lane/lane.jsonl`), event-sourced like the
+   ledger: the machine is the resource, and a record kept in a repository would be invisible to a branch next to it. (executor's decision, lane plan, 2026-09-27)
+42. **The process table is read from procfs or from `ps -A -o pid= -o ppid= -o command=`**, never `pgrep`: macOS
+   `pgrep -a` means "include ancestors", not "print the command", so a pgrep-based reader would silently mean two
+   things. A reused pid is told apart by the process start mark (procfs start time, or `ps -o lstart=`). (executor's decision, lane plan, 2026-09-27)
+43. **Run patterns** are a default list (pytest, playwright, vitest, jest, `cargo test`, `go test`) that a profile
+   replaces with `[lane] run_patterns`. Processes whose argv0 is a shell are skipped (the run they wrap is its own
+   process and is seen), as are the caller's own ancestors and the processes of live bookings. (executor's decision, lane plan, 2026-09-27)
+44. **"Computing"** = CPU time grew over a two-second sample, or the process is younger than 30 minutes (a suite
+   pausing on I/O is not idle). An older process that did not compute is reported and does not block: ai-os found
+   three stray runs alive for nine days on ten seconds of CPU. (executor's decision, lane plan, 2026-09-27)
+45. **Capacity** comes from `machine.toml` `lane_capacity` (default 1); computing foreign runs use slots; CI on this
+   machine blocks outright, and a CI queue that could not be asked blocks too ("not asked is not free"). (executor's decision, lane plan, 2026-09-27)
+46. **`lane run --for <branch>` records the result on that branch's open ledger row** as an annotation (`run`,
+   field `last_run`: verdict, summary, revision, time). It is a fact about the machine, not a decision, so no post
+   check applies; the caller is identified as for any move. (executor's decision, lane plan, 2026-09-27)
+47. **Receipts take the lane themselves** (`flotilla receipt run` waits up to 30 minutes, `--lane-wait`, or
+   `--no-lane` recorded in its output), because a receipt's tiers are exactly the long runs the lane exists for. (executor's decision, lane plan, 2026-09-27)
+48. **No clock expiry.** `--wait` bounds only the caller's own waiting; `sweep` removes only bookings whose process
+   is gone; a booking taken by hand has no process and stays until released by hand. (executor's decision, lane plan, 2026-09-27)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
