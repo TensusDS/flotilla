@@ -47,3 +47,15 @@ def test_the_sessions_own_moves_use_its_post(tmp_path):
 def test_only_a_session_in_the_orchestrator_post_is_the_orchestrator(tmp_path):
     ctx = make_context(tmp_path, me=sess("orchestrator 1", state="working"))
     assert ctx.is_orchestrator
+
+
+def test_the_orchestrator_sees_live_questions_first(tmp_path):
+    from flotilla.broker import queue
+    from watchkit import NOW
+    me = sess("orchestrator 1", state="working")
+    ctx = make_context(tmp_path, me=me, sessions=[me, sess("main session 1", status="waiting")])
+    queue.ask(ctx.ledger.state_dir, "repo", session="main session 1", session_id="s", tool="Bash",
+              tool_input={"command": "touch x"}, suggestions=[], wait=540, now=NOW.timestamp())
+    from flotilla.watch import render
+    lines = render.lines(ctx.fleet(now=NOW.timestamp()), NOW)
+    assert lines[0].startswith("  main session 1: asks Bash touch x")
