@@ -37,7 +37,7 @@ class Table:
         return True
 
 
-PROCS = [Proc(1, 0, "init"), Proc(10, 1, "bash -c uv run pytest"), Proc(11, 10, "uv run pytest -q"),
+PROCS = [Proc(1, 0, "init"), Proc(10, 1, "bash -c uv run pytest"), Proc(11, 10, "/venv/bin/python /venv/bin/pytest -q"),
          Proc(20, 1, "python -m pytest tests"), Proc(30, 1, "vim notes.txt")]
 
 
@@ -47,7 +47,7 @@ def test_foreign_runs_match_patterns_and_skip_shells_and_the_caller():
 
 
 def test_a_profile_replaces_the_patterns():
-    assert machine.patterns_for({"lane": {"run_patterns": [r"\bmake check\b"]}}) == [r"\bmake check\b"]
+    assert machine.patterns_for({"lane": {"run_patterns": [r"make check"]}}) == [r"make check"]
     assert machine.patterns_for({}) == list(machine.DEFAULT_PATTERNS)
 
 
@@ -115,3 +115,42 @@ def test_self_hosted_ci_with_unknown_labels_blocks(tmp_path):
 def test_an_idle_ci_queue_does_not_block(tmp_path):
     run = gh_answers([{"status": "completed", "databaseId": 7}], [])
     assert machine.ci_here(HERE, run=run, root=tmp_path).blocks is False
+
+
+def test_a_run_is_known_by_its_program_not_by_a_word_in_its_arguments():
+    table = Table([Proc(1, 0, "init"), Proc(2, 1, "vim pytest.ini"), Proc(3, 1, "tail -f pytest.log"),
+                   Proc(4, 1, "claude -p run pytest please"), Proc(5, 1, "cargo test --all"),
+                   Proc(6, 1, "node /app/node_modules/.bin/jest --ci"), Proc(7, 1, "pytest -q")])
+    runs = machine.foreign_runs(table, machine.DEFAULT_PATTERNS, exclude=set())
+    assert sorted(p.pid for p in runs) == [5, 6, 7]
+
+
+def test_one_run_is_counted_once_however_many_processes_it_has():
+    table = Table([Proc(1, 0, "init"), Proc(2, 1, "pytest -n 2"), Proc(3, 2, "python -m pytest --worker 1"),
+                   Proc(4, 2, "python -m pytest --worker 2")])
+    assert [p.pid for p in machine.foreign_runs(table, machine.DEFAULT_PATTERNS, exclude=set())] == [2]
+
+
+def test_waiting_runs_are_not_foreign_runs_to_each_other(tmp_path):
+    procs = [Proc(1, 0, "init"), Proc(40, 1, "python3 /p/scripts/flotilla lane run -- pytest -q"),
+             Proc(41, 1, "python3 /p/scripts/flotilla lane run -- pytest -q"), Proc(42, 40, "pytest -q")]
+    table = Table(procs, growing={40, 41, 42})
+    lanes = book.Book(LocalLogStore(tmp_path), table)
+    lanes.enqueue("a", "", pid=40, mark="m")
+    lanes.enqueue("b", "", pid=41, mark="m")
+    reading = machine.read(lanes, table, {}, own_pid=999, root=tmp_path, sleep=lambda s: None)
+    assert reading.computing == []
+
+
+def test_a_gate_command_on_this_machine_is_a_lasting_unknown(tmp_path):
+    answer = machine.ci_here({"ci": {"provider": "command", "runs_on": "this-machine"}}, run=None, root=tmp_path)
+    assert answer.blocks is None and answer.lasting and "--no-lane" in answer.text
+
+
+def test_a_profile_that_could_not_be_read_is_a_lasting_unknown(tmp_path):
+    table = Table(PROCS)
+    lanes = book.Book(LocalLogStore(tmp_path), table)
+    reading = machine.read(lanes, table, {}, own_pid=999, root=tmp_path, sleep=lambda s: None,
+                           problem="trunk carries no .flotilla/project.toml")
+    unknown = [a for a in reading.answers if a.blocks is None]
+    assert unknown and unknown[0].lasting and "trunk carries no" in unknown[0].text

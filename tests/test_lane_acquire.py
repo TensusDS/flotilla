@@ -108,3 +108,49 @@ def test_held_releases_on_exit_even_after_an_error(lanes):
         with acquire.held(lanes, lambda: QUIET, who="main session 1", note="suite", capacity=1, wait=0,
                           table=Procs()):
             pass
+
+
+def test_a_hand_take_waits_as_its_process_and_holds_without_one(lanes):
+    grant = acquire.acquire(lanes, lambda: QUIET, who="main session 1", note="race", capacity=1, wait=0, pid=77,
+                            mark="m", by_hand=True, clock=Clock(), sleep=Clock().sleep)
+    assert grant.booking.state == book.HELD and grant.booking.pid is None and grant.booking.mark == ""
+
+
+def test_a_refusal_names_who_waits_ahead(lanes):
+    take(lanes, who="review session 1")
+    ahead = lanes.enqueue("main session 2", "tiers", pid=5, mark="m")
+    lanes.release(next(iter(lanes.holders())).id)
+    grant = take(lanes)
+    assert grant.booking is None and f"waiting ahead: {ahead.id} main session 2 (tiers)" in grant.why
+
+
+def test_waiting_is_said_out_loud_and_ends_at_the_deadline(lanes):
+    take(lanes, who="review session 1")
+    clock, said = Clock(), []
+    grant = acquire.acquire(lanes, lambda: QUIET, who="main session 1", note="suite", capacity=1, wait=4,
+                            clock=clock, sleep=clock.sleep, say=said.append)
+    assert grant.booking is None and clock.now == 4
+    assert said and said[0].startswith("waiting for the lane: held by review session 1")
+
+
+def test_a_lasting_unknown_refuses_at_once(lanes):
+    lasting = Reading([Answer("ci", None, "a gate command's queue cannot be asked; pass --no-lane", lasting=True)],
+                      [], [])
+    clock = Clock()
+    grant = take(lanes, lasting, wait=1800, clock=clock)
+    assert grant.booking is None and clock.now == 0 and "--no-lane" in grant.why
+
+
+def test_a_booking_inside_a_booking_is_reused(lanes, monkeypatch):
+    import os
+    monkeypatch.delenv(acquire.ENV, raising=False)
+
+    class Mine(Procs):
+        def ancestors(self, pid):
+            return [os.getpid()]
+    with acquire.held(lanes, lambda: QUIET, who="main session 1", note="outer", capacity=1, wait=0, table=Mine()):
+        with acquire.held(lanes, lambda: QUIET, who="main session 1", note="inner", capacity=1, wait=0,
+                          table=Mine()) as inner:
+            assert inner.why.startswith("inside booking")
+            assert len(lanes.holders()) == 1
+    assert lanes.holders() == [] and acquire.ENV not in os.environ

@@ -14,9 +14,10 @@ from flotilla.ledger.model import Row
 
 
 def record_run(ledger: Ledger, actor: Actor, branch: str, *, verdict: str, summary: str, revision: str,
-               evidence: dict) -> Row:
+               evidence: dict, dirty: bool = False) -> Row:
     with ledger.session() as s:
         row = s.need_open_row(branch)
         state = s.next_state(row, "run")
-        text = f"{verdict}: {summary} over {revision[:7] or 'unknown'} at {ledger.now()}"
+        extra = " plus uncommitted changes" if dirty else ""
+        text = f"{verdict}: {summary} over {revision[:7] or 'unknown'}{extra} at {ledger.now()}"
         return s.append(actor, row.id, "run", state, fields={"last_run": text}, evidence=evidence)

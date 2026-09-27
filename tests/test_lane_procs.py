@@ -71,3 +71,13 @@ def test_the_real_ps_answers_about_this_process():
     assert table.parent(os.getpid()) == os.getppid()
     assert table.start_mark(os.getpid())
     assert table.cpu_seconds(os.getpid()) is not None
+
+
+def test_ps_is_asked_in_a_fixed_locale_and_time_zone():
+    seen = {}
+
+    def run(cmd, **kwargs):
+        seen["env"] = kwargs.get("env") or {}
+        return subprocess.CompletedProcess(cmd, 0, "Sat Sep 27 13:00:00 2026\n", "")
+    procs.ProcessTable("ps", run=run).start_mark(123)
+    assert seen["env"].get("LC_ALL") == "C" and seen["env"].get("TZ") == "UTC"

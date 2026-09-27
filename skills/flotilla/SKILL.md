@@ -42,7 +42,8 @@ A full suite, a browser run or anything that takes the machine goes through the 
 `flotilla lane run --for <branch> -- <command>` waits its turn, runs the command, releases the lane and records
 the result on the row, where `flotilla status` shows it. Receipts take the lane themselves. A run killed by a
 signal is recorded as killed, with no verdict: never report it as passed, and never read a run's success from the
-exit code of a pipeline. The lane is not a lock: a run started without it is invisible to everyone else.
+exit code of a pipeline. The lane is not a lock: a run started without it is seen only as an unbooked run, and
+nobody waits for its result.
 
 ## Whose move it is
 

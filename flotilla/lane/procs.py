@@ -19,6 +19,9 @@ except (AttributeError, ValueError, OSError):
     CLK_TCK = 100
 
 
+FIXED = {**os.environ, "LC_ALL": "C", "TZ": "UTC"}   # `lstart` is printed in the locale and zone of the asker
+
+
 @dataclass(frozen=True)
 class Proc:
     pid: int
@@ -70,7 +73,8 @@ class ProcessTable:
         return text[text.rindex(")") + 2:].split()
 
     def _ps(self, pid, field: str) -> str | None:
-        done = self.run(["ps", "-o", f"{field}=", "-p", str(pid)], capture_output=True, text=True, check=False)
+        done = self.run(["ps", "-o", f"{field}=", "-p", str(pid)], capture_output=True, text=True, check=False,
+                        env=FIXED)
         value = (done.stdout or "").strip()
         return value if done.returncode == 0 and value else None
 
@@ -91,8 +95,8 @@ class ProcessTable:
                 if fields and len(fields) > 1 and command:
                     found.append(Proc(int(entry.name), int(fields[1]), command))
             return found
-        done = self.run(["ps", "-A", "-o", "pid=", "-o", "ppid=", "-o", "command="], capture_output=True,
-                        text=True, check=False)
+        done = self.run(["ps", "-A", "-ww", "-o", "pid=", "-o", "ppid=", "-o", "command="], capture_output=True,
+                        text=True, check=False, env=FIXED)
         if done.returncode != 0:
             return None
         found = []

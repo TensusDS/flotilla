@@ -17,8 +17,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-DEFAULT_PATTERNS = (r"\bpytest\b", r"\bplaywright\b", r"\bvitest\b", r"\bjest\b", r"\bcargo\s+test\b",
-                    r"\bgo\s+test\b")
+DEFAULT_PATTERNS = ("pytest", "py.test", "playwright", "vitest", "jest", "cargo test", "go test")
+INTERPRETER = re.compile(r"^(python[0-9.]*|node|nodejs|ruby|perl|bun|deno)$")
 SHELLS = frozenset({"sh", "bash", "zsh", "dash", "fish", "ksh"})
 YOUNG = 1800.0
 SAMPLE = 2.0
@@ -30,6 +30,7 @@ class Answer:
     question: str
     blocks: bool | None
     text: str
+    lasting: bool = False   # an unknown that waiting cannot change: refuse at once
 
 
 @dataclass(frozen=True)
@@ -44,19 +45,49 @@ def patterns_for(profile: dict) -> list[str]:
     return list(own) if own else list(DEFAULT_PATTERNS)
 
 
+def program_of(command: str) -> list[str]:
+    """The names a process runs under: its program (an interpreter's script or `-m` module), and "program first-arg"."""
+    words = command.split()
+    if not words:
+        return []
+    program, rest = Path(words[0]).name, words[1:]
+    if INTERPRETER.match(program):
+        if "-m" in rest and rest.index("-m") + 1 < len(rest):
+            at = rest.index("-m") + 1
+            program, rest = rest[at], rest[at + 1:]
+        else:
+            script = next((word for word in rest if not word.startswith("-")), None)
+            if script is None:
+                return [program]
+            at = rest.index(script)
+            program, rest = Path(script).name, rest[at + 1:]
+    return [program, f"{program} {rest[0]}"] if rest else [program]
+
+
 def foreign_runs(table, patterns, exclude: set[int]) -> list | None:
+    """Unbooked runs, known by their program (never by a word in their arguments), counted once per process tree."""
     listed = table.list()
     if listed is None:
         return None
-    regex = re.compile("|".join(f"(?:{pattern})" for pattern in patterns))
-    found = []
+    regexes = [re.compile(pattern) for pattern in patterns]
+    matched = {}
     for proc in listed:
         words = proc.command.split()
         if proc.pid in exclude or not words or Path(words[0]).name in SHELLS:
             continue
-        if regex.search(proc.command):
-            found.append(proc)
-    return found
+        if any(regex.fullmatch(name) for regex in regexes for name in program_of(proc.command)):
+            matched[proc.pid] = proc
+    parents = {proc.pid: proc.ppid for proc in listed}
+
+    def under_a_match(pid: int) -> bool:
+        seen, pid = set(), parents.get(pid)
+        while pid and pid not in seen:
+            if pid in matched:
+                return True
+            seen.add(pid)
+            pid = parents.get(pid)
+        return False
+    return [proc for proc in matched.values() if not under_a_match(proc.pid)]
 
 
 def split_computing(table, runs, *, sleep, sample: float = SAMPLE, young: float = YOUNG) -> tuple[list, list]:
@@ -95,7 +126,9 @@ def ci_here(profile: dict, *, run=subprocess.run, root) -> Answer:
     if ci.get("runs_on") != "this-machine":
         return Answer("ci", False, "CI does not run on this machine")
     if ci.get("provider") != "github":
-        return Answer("ci", None, "CI runs on this machine and only GitHub's queue can be asked: not asked is not free")
+        return Answer("ci", None, "CI runs on this machine through a gate command whose queue flotilla cannot ask; "
+                                  "waiting cannot change that. Take the lane knowingly: receipts with --no-lane",
+                      lasting=True)
     rows = _gh_json(run, root, "run", "list", "--limit", "10", "--json", "status,databaseId")
     if not isinstance(rows, list):
         return Answer("ci", None, "GitHub's CI queue could not be asked: not asked is not free")
@@ -131,11 +164,12 @@ def _descendants(listed, roots: set[int]) -> set[int]:
     return found
 
 
-def read(lanes, table, profile: dict, *, own_pid: int, root, sleep=time.sleep, run=subprocess.run) -> Reading:
+def read(lanes, table, profile: dict, *, own_pid: int, root, sleep=time.sleep, run=subprocess.run,
+         problem: str = "") -> Reading:
     exclude = set(table.ancestors(own_pid))
-    holders = {item.pid for item in lanes.holders() if item.pid and lanes.live(item)}
+    booked = {item.pid for item in [*lanes.holders(), *lanes.waiters()] if item.pid and lanes.live(item)}
     listed = table.list() or []
-    exclude |= holders | _descendants(listed, holders)
+    exclude |= booked | _descendants(listed, booked)   # booked runs, waiting or holding, are nobody's foreign run
     runs = foreign_runs(table, patterns_for(profile), exclude)
     answers = []
     if runs is None:
@@ -152,5 +186,9 @@ def read(lanes, table, profile: dict, *, own_pid: int, root, sleep=time.sleep, r
                                                         f"block: {resting}"))
         else:
             answers.append(Answer("foreign run", False, "no unbooked run"))
-    answers.append(ci_here(profile, run=run, root=root))
+    if problem:
+        answers.append(Answer("ci", None, f"the project profile could not be read, so CI on this machine could not be "
+                                          f"asked: {problem}", lasting=True))
+    else:
+        answers.append(ci_here(profile, run=run, root=root))
     return Reading(answers, busy, idle)

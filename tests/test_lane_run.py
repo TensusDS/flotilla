@@ -39,3 +39,22 @@ def test_a_command_that_cannot_start_is_red():
 def test_without_a_summary_line_the_last_line_stands():
     result, _ = execute("print('building'); print('done')")
     assert result.summary == "done"
+
+
+def test_a_run_interrupted_on_our_side_stops_its_command():
+    import subprocess
+    import pytest
+    started = []
+
+    def popen(*args, **kwargs):
+        process = subprocess.Popen(*args, **kwargs)
+        started.append(process)
+        return process
+
+    class Broken(io.StringIO):
+        def write(self, text):
+            raise BrokenPipeError("the reader went away")
+    with pytest.raises(BrokenPipeError):
+        run.execute([sys.executable, "-c", "import time\nwhile True:\n    print('tick', flush=True); time.sleep(0.05)"],
+                    popen=popen, out=Broken())
+    assert started[0].poll() is not None

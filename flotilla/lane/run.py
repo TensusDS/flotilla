@@ -42,6 +42,15 @@ def verdict_of(returncode: int) -> tuple[str, int | None, int]:
     return ("green" if returncode == 0 else "red"), None, returncode
 
 
+def _stop(process) -> None:
+    process.terminate()
+    try:
+        process.wait(5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+
+
 def execute(command: list[str], *, cwd=None, popen=subprocess.Popen, out=None) -> RunResult:
     out = out if out is not None else sys.stdout   # chosen at call time, so a redirected stdout is honoured
     try:
@@ -50,10 +59,14 @@ def execute(command: list[str], *, cwd=None, popen=subprocess.Popen, out=None) -
     except OSError as err:
         return RunResult(127, "red", f"could not start: {err}", None)
     tail: deque = deque(maxlen=200)
-    for line in process.stdout:
-        out.write(line)
-        out.flush()
-        tail.append(line.rstrip("\n"))
+    try:
+        for line in process.stdout:
+            out.write(line)
+            out.flush()
+            tail.append(line.rstrip("\n"))
+    except BaseException:
+        _stop(process)   # the booking is about to be released; the command must not go on computing under it
+        raise
     verdict, signal_number, code = verdict_of(process.wait())
     summary = summarize(tail)
     if verdict == "killed":

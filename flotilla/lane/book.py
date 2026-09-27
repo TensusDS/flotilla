@@ -88,7 +88,7 @@ class Book:
             return self._write(tx, f"b{len(found) + 1}", WAITING, who=who, note=note, pid=pid, mark=mark,
                                run_for=run_for)
 
-    def grant(self, booking_id: str, *, slots: int) -> Booking | None:
+    def grant(self, booking_id: str, *, slots: int, by_hand: bool = False) -> Booking | None:
         with self.store.transaction(KEY) as tx:
             found = fold(tx.read().records)
             mine = found.get(booking_id)
@@ -99,6 +99,8 @@ class Book:
             ahead = [item for item in self.waiters(found) if _order(item) < _order(mine) and self.live(item)]
             if ahead:
                 return None
+            if by_hand:   # it waited as its process; it holds as nobody's, until released by hand
+                return self._write(tx, booking_id, HELD, pid=None, mark="")
             return self._write(tx, booking_id, HELD)
 
     def _end(self, booking_id: str, state: str, why: str = "") -> Booking:
