@@ -649,6 +649,9 @@ row's reservation is refused; appends always pass); git `pre-push` second barrie
 - **Every guard documents its ceiling** — what it cannot see (e.g. commands inside `eval`), in the docs and `--help`.
 - A receipt is valid only over the exact revision; a moved HEAD, a changed tier command or a changed CI workflow
   fingerprint voids it.
+- A push to a branch other than trunk needs no receipt; the receipt is asked where the work lands. Rules come
+  from trunk, or from the tree before onboarding reaches it. Git hooks call `<state>/bin/flotilla`, which each session
+  start points at the running plugin.
 
 ---
 

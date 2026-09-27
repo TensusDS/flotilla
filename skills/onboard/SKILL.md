@@ -56,4 +56,4 @@ Run `flotilla onboard write`. It runs each chosen test tier once, then writes th
 ## 5. Confirm
 
 Run `flotilla onboard check` and report its findings, if any. Tell the person that the file is theirs to edit and
-commit, and that guards and git hooks they chose are recorded but installed later by flotilla's guard setup.
+commit, and that guards and git hooks they chose are switched on from trunk; the git hooks are installed with `/flotilla:guard`, one yes each.

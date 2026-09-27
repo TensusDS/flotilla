@@ -19,7 +19,7 @@ def build_parser() -> argparse.ArgumentParser:
     doctor = sub.add_parser("doctor", help="check this machine and project")
     doctor.add_argument("--quiet", action="store_true", help="print only what needs attention")
     hook = sub.add_parser("hook", help="entry point for Claude Code hooks")
-    hook.add_argument("event", choices=["session-start", "prompt", "stop"])
+    hook.add_argument("event", choices=["session-start", "prompt", "stop", "guard"])
     onboard = sub.add_parser("onboard", help="measure, detect, ask and write the project profile")
     actions = onboard.add_subparsers(dest="action", required=True)
     actions.add_parser("machine", help="measure this machine into the state directory")
@@ -170,6 +170,22 @@ def build_parser() -> argparse.ArgumentParser:
     watch = sub.add_parser("watch", help="what the fleet needs attention for (exit 0 none, 1 some, 2 unknown)")
     watch.add_argument("--once", action="store_true", help="check once and exit (v1 has no schedule of its own)")
     watch.add_argument("--root", default=".")
+    from flotilla.guards import CEILING
+    guard = sub.add_parser("guard", help="the command guards and their git hooks", epilog=CEILING,
+                           formatter_class=argparse.RawDescriptionHelpFormatter)
+    guard_actions = guard.add_subparsers(dest="action", required=True)
+    guard_check = guard_actions.add_parser("check", help="what the guards would say about a command, without it")
+    guard_check.add_argument("guarded_command", metavar="COMMAND")
+    guard_check.add_argument("--cwd", default=".")
+    guard_actions.add_parser("status", help="which guards are on, which git hooks are installed").add_argument(
+        "--root", default=".")
+    guard_install = guard_actions.add_parser("install", help="install the git hooks named, one flag each")
+    guard_install.add_argument("--pre-commit", action="store_true", help="file reservation")
+    guard_install.add_argument("--pre-push", action="store_true", help="the second push barrier")
+    guard_install.add_argument("--root", default=".")
+    guard_hook = guard_actions.add_parser("githook", help="entry point for the git hooks")
+    guard_hook.add_argument("name", choices=["pre-commit", "pre-push"])
+    guard_hook.add_argument("hook_args", nargs="*")
     import argparse as _argparse
     lane = sub.add_parser("lane", help="book the machine for long runs (not a lock)")
     lane.add_argument("--root", default=".")
@@ -219,4 +235,7 @@ def main(argv: list[str]) -> int:
     if args.command == "watch":
         from flotilla.watch.commands import run_watch_command
         return run_watch_command(args)
+    if args.command == "guard":
+        from flotilla.guards.commands import run_guard_command
+        return run_guard_command(args)
     return 2

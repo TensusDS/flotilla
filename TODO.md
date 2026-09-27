@@ -2,6 +2,31 @@
 
 Deferred findings, kept here until a plan takes them. Each names where it came from.
 
+## From the guards final review (2026-09-27)
+
+- `flotilla guard check` with an override in the command writes a bypass record although nothing ran; a real override
+  push is recorded twice (command guard and pre-push). Record only when the command runs.
+- A session whose working directory is not onboarded does not judge `git -C <onboarded> push` (spec 8: hooks are
+  silent outside a project); the pre-push hook covers it. Plan decision 8's "another flotilla project" holds only
+  from inside one.
+- The line-number guard refuses addresses that cannot go stale: GNU `0,/re/`, `1,/re/`, `1i\`, and a digit after `;`
+  inside a substitution with spaces (`s/foo; 2 items/bar/`).
+- `git checkout -- $(git diff --name-only)` passes silently; paths from a substitution are unknown and should warn.
+- `git switch -f` / `--discard-changes` are not guarded and not named in the ceiling.
+- `diff --numstat` without `-z`: a quoted non-ASCII path never matches a reservation pattern.
+- The line printed for `core.hooksPath` has no missing-link branch, so a pre-commit added there fails closed.
+- The budget test asserts 1 s, not ~200 ms (measured: 0.0 / 24 / 52 ms in process, ~89 ms process start).
+- `find_project` and the `guard_hook` import sit outside any try in `run_hook`: a crash there lets a push through.
+- `guard install` ignores a failed `refresh_link`.
+- A symlinked workflow file is counted by onboarding and skipped by `workflow_at`: permanent drift.
+- `gh pr merge --disable-auto`, and merges into a base other than trunk, ask for a receipt though nothing lands.
+
+## From the guards plan (2026-09-27)
+
+- Measure on a live session: that a PreToolUse deny from a plugin hook reaches a background session. The
+  guard's time was measured on this machine: 0.0 ms for a plain command, 24 ms for a read one, 52 ms for a push,
+  plus ~89 ms process start (the test bounds it at 1 s for CI).
+
 ## From the watchers final review (2026-09-27)
 
 - The hook-level throttle test does not guard the digest's age exclusion: both renders read "(2 h)"; cross an hour.
