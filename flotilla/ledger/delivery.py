@@ -241,10 +241,18 @@ def reconcile(ledger: Ledger, actor: Actor) -> list[str]:
     """Ask origin (or the PR) about every queued or landed row; ship what is proved, report the rest."""
     require_may(actor, "ship", ledger.posts)
     lines = []
+    fetched = False
     for row in list(ledger.rows().values()):
         if not row.is_open or row.state not in ("queued", "landed") or ledger.mode == "local":
             continue
         if ledger.mode == "direct" and row.state == "queued":
+            if not fetched:
+                _fetch(ledger)
+                fetched = True
+            read = batch.revision_of(row)
+            if read and _on_origin(ledger, read) is True:   # pushed from the sender's tree, never recorded
+                lines.append(f"pushed, not landed {row.branch}: origin's `{ledger.trunk}` carries {read[:7]}; "
+                             f"record it with `flotilla work land {row.branch} --merge <the commit>`")
             continue
         try:
             shipped = ship(ledger, actor, row.branch)

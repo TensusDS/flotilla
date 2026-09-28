@@ -366,3 +366,17 @@ def test_land_without_merge_takes_the_commit_that_carries_the_row_not_a_later_on
     queued(root, ledger, "feat/y")
     pushed_from_a_side_tree(root, "feat/y")
     assert delivery.land(ledger, actor(ledger, SENDER), "feat/x").merge == first
+
+
+def test_reconcile_names_land_for_a_queued_row_already_on_origin(direct):
+    root, ledger = direct
+    queued(root, ledger)
+    pushed_from_a_side_tree(root)
+    lines = delivery.reconcile(ledger, actor(ledger, SENDER))
+    assert any("feat/x" in line and "flotilla work land feat/x" in line for line in lines)
+
+
+def test_reconcile_stays_quiet_about_a_queued_row_not_on_origin(direct):
+    root, ledger = direct
+    queued(root, ledger)
+    assert delivery.reconcile(ledger, actor(ledger, SENDER)) == []
