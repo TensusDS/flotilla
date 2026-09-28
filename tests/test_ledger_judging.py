@@ -190,3 +190,19 @@ def test_the_judge_records_no_wait_on_a_part_it_does_not_walk_yet(tmp_path):
     root, ledger, part = part_and_whole(tmp_path)
     with pytest.raises(MoveRefused, match="records a wait"):
         handover.wait(ledger, actor(ledger, JUDGE), "feat/x", on="the person", why="no build")
+
+
+def test_a_walkable_mark_is_taken_back_and_the_part_waits_again(tmp_path):
+    from flotilla.ledger import steering
+    root, ledger, part = part_and_whole(tmp_path)
+    steering.walkable(ledger, actor(ledger, "orchestrator 1"), "feat/x", why="the logic has its own CLI")
+    cleared = steering.walkable(ledger, actor(ledger, "orchestrator 1"), "feat/x", clear=True)
+    assert cleared.walkable == ""
+    with pytest.raises(MoveRefused, match="feat/whole"):
+        judging.walked(ledger, actor(ledger, JUDGE), "feat/x", build="main", steps="s", saw="w")
+
+
+def test_the_walkable_cli_takes_the_mark_back(tmp_path):
+    from flotilla import cli
+    parsed = cli.build_parser().parse_args(["work", "walkable", "feat/x", "--clear"])
+    assert parsed.clear and not parsed.why

@@ -178,7 +178,7 @@ MOVES = {
     "hold": lambda l, a, x: steering.hold(l, a, x.branch, until=x.until, why=x.why),
     "unhold": lambda l, a, x: steering.unhold(l, a, x.branch),
     "urgent": lambda l, a, x: steering.urgent(l, a, x.branch, why=x.why, cancel=x.cancel),
-    "walkable": lambda l, a, x: steering.walkable(l, a, x.branch, why=x.why),
+    "walkable": lambda l, a, x: steering.walkable(l, a, x.branch, why=x.why, clear=x.clear),
 }
 
 

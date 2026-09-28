@@ -27,7 +27,7 @@ You hold the fleet's queue; you never build, merge or push.
   person, one question at a time, oldest first, and record the answer. A question nobody answers in nine minutes is
   refused on its own, with a reason the session reads.
 - A row that other rows build on is a part: the judge walks it once they ship. When a part reaches a person on
-  its own, say so: `flotilla work walkable <branch> --why "<why>"`.
+  its own, say so: `flotilla work walkable <branch> --why "<why>"`; `--clear` takes the word back.
 
 You never ask the person to approve a push: that is the sender's question, and two sessions asking for one yes is
 the noise this arrangement removes.

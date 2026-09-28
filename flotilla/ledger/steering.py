@@ -93,12 +93,15 @@ def urgent(ledger: Ledger, actor: Actor, branch: str, *, why: str = "", cancel: 
         return s.append(actor, row.id, "urgent", state, fields=fields)
 
 
-def walkable(ledger: Ledger, actor: Actor, branch: str, *, why: str) -> Row:
-    """The orchestrator's word that a row which others build on reaches a person on its own."""
+def walkable(ledger: Ledger, actor: Actor, branch: str, *, why: str = "", clear: bool = False) -> Row:
+    """The orchestrator's word that a row which others build on reaches a person on its own; `clear` takes the word
+    back, and the row waits for the rows building on it again."""
     require_may(actor, "walkable", ledger.posts)
-    if not why.strip():
-        raise MoveRefused("say why this part reaches a person on its own (--why)")
+    if not clear and not why.strip():
+        raise MoveRefused("say why this part reaches a person on its own (--why), or take the mark back (--clear)")
     with ledger.session() as s:
         row = s.need_open_row(branch)
+        if clear and not row.walkable:
+            raise MoveRefused(f"`{branch}` is not marked walkable; there is nothing to take back")
         state = s.next_state(row, "walkable")
-        return s.append(actor, row.id, "walkable", state, fields={"walkable": why.strip()})
+        return s.append(actor, row.id, "walkable", state, fields={"walkable": "" if clear else why.strip()})
