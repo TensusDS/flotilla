@@ -132,3 +132,12 @@ def test_a_session_that_does_not_move_the_row_cannot_record_its_wait(tmp_path):
     drive(root, ledger)
     with pytest.raises(MoveRefused, match="records a wait"):
         handover.wait(ledger, actor(ledger, "review session 2"), "feat/x", on="x", why="y")
+
+
+def test_a_branch_with_no_commits_of_its_own_is_not_handed_over(tmp_path):
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state")
+    git(root, "branch", "fix/empty", "main")
+    core.claim(ledger, actor(ledger, "main session 1"), "fix/empty")
+    with pytest.raises(MoveRefused, match="no commits of its own.*--settled-by"):
+        handover.hand(ledger, actor(ledger, "main session 1"), "fix/empty")

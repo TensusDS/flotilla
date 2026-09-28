@@ -37,6 +37,15 @@ def _current_tip(ledger: Ledger, branch: str, named: str | None = None) -> str:
     return current
 
 
+def has_own_commits(ledger: Ledger, tip: str) -> bool | None:
+    """Whether `tip` carries anything trunk does not: a tip already on trunk has nothing to hand over."""
+    trunk_head = gitq.resolve(ledger.root, gitq.trunk_ref(ledger.root, ledger.trunk, run=ledger.run), run=ledger.run)
+    if trunk_head is None:
+        return None
+    on_trunk = gitq.is_ancestor(ledger.root, tip, trunk_head, run=ledger.run)
+    return None if on_trunk is None else not on_trunk
+
+
 def _receipt(ledger: Ledger, tip: str) -> str:
     ok, why = receipts.check_receipt(state=ledger.state_dir, repo_key=ledger.repo_key, sha=tip, purpose="handover",
                                      profile=ledger.profile)
@@ -63,6 +72,10 @@ def _stacked_on(ledger: Ledger, rows: dict, row: Row, tip: str) -> list[str]:
 def hand(ledger: Ledger, actor: Actor, branch: str, *, tip: str | None = None) -> Row:
     require_may(actor, "hand", ledger.posts)
     current = _current_tip(ledger, branch, tip)
+    if has_own_commits(ledger, current) is False:
+        raise MoveRefused(f"`{branch}` has no commits of its own: its tip {current[:7]} is already on trunk. If "
+                          "another row delivered what it was for, close it with `flotilla work release "
+                          f"{branch} --settled-by <that branch>`")
     receipt = _receipt(ledger, current)
     with ledger.session() as s:
         row = s.need_open_row(branch)

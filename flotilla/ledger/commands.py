@@ -278,6 +278,8 @@ def _finished(ledger: core.Ledger, row: Row) -> bool:
     tip = gitq.branch_tip(ledger.root, row.branch, run=ledger.run)
     if tip is None:
         return False
+    if handover.has_own_commits(ledger, tip) is not True:
+        return False
     ok, _ = receipts.check_receipt(state=ledger.state_dir, repo_key=ledger.repo_key, sha=tip, purpose="handover",
                                    profile=ledger.profile)
     return ok

@@ -259,3 +259,17 @@ def test_a_session_takes_a_task_in_its_home_tree(tmp_path, monkeypatch):
     code, out = run_cli("tree", "switch", "feat/x", "--ref", "LIN-1", "--root", str(home), "--as", "main session 1")
     assert code == 0 and "feat/x: claimed" in out
     assert git(home, "rev-parse", "--abbrev-ref", "HEAD") == "feat/x"
+
+
+def test_an_empty_branch_is_never_called_finished(tmp_path):
+    from flotilla.ledger import commands, core, receipts
+    from ledgerkit import actor, git, make_ledger, repo_with_origin
+    root = repo_with_origin(tmp_path)
+    profile = {"schema": 1, "trunk": {"branch": "main"}, "flow": {"mode": "direct"},
+               "tests": {"tier": [{"name": "t", "command": "true", "required_for": ["handover"]}]}}
+    ledger = make_ledger(root, tmp_path / "state", profile=profile)
+    git(root, "branch", "fix/empty", "main")
+    row = core.claim(ledger, actor(ledger, "main session 1"), "fix/empty")
+    receipts.run_receipt(root, state=tmp_path / "state", repo_key=ledger.repo_key, purpose="handover",
+                         profile=profile, timeout=60)
+    assert commands._finished(ledger, row) is False
