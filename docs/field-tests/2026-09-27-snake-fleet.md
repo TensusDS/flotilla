@@ -234,3 +234,13 @@ Grouped by what stalled the fleet most; fixed in this order, in several small pl
 7. **Setup** — F1–F7, F11.
 
 Part 1 (the ledger) fixes F14, F15, F18, F21, F24, F26 — plan `docs/plans/2026-09-28-field-fixes-ledger.md`.
+
+Left open by the part-1 branch review (minor, for a later plan):
+
+- **R1 — the design spec lags the decisions log.** Sections 6.2–6.4 and 7.4 still describe `land` on the local
+  trunk only and say nothing about the part/path rule; decisions 81–88 carry them. Fold them in with the next spec
+  pass.
+- **R2 — `walkable` cannot be revoked.** Once the orchestrator marks a part walkable it stays so; there is no move
+  to take it back.
+- **R3 — `reconcile` is silent about a row pushed but never landed.** It skips direct-mode `queued` rows, so a row
+  whose revision is already on origin shows nothing; it should say so and name `land`.
