@@ -14,14 +14,13 @@ from flotilla.ledger.errors import MoveRefused
 from flotilla.ledger.model import Row
 
 UNACCEPTED = ("claimed", "handed", "fixing")
-POST_OF_MOVER = {views.SENDER: "sender", views.JUDGE: "judge"}
 
 
-def moves_it(row: Row, profile: dict, actor: Actor) -> bool:
+def moves_it(row: Row, profile: dict, actor: Actor, rows: dict | None = None) -> bool:
     """Whether `actor` is the row's mover: named, or a session of the post a post-named mover stands for."""
-    mover = views.who_moves(row, profile)
+    mover = views.who_moves(row, profile, rows)
     post = actor.post.name if actor.post is not None else ""
-    return bool(mover) and (mover == actor.name or POST_OF_MOVER.get(mover) == post)
+    return bool(mover) and (mover == actor.name or views.POST_OF_MOVER.get(mover) == post)
 
 
 def _current_tip(ledger: Ledger, branch: str, named: str | None = None) -> str:
@@ -110,7 +109,7 @@ def wait(ledger: Ledger, actor: Actor, branch: str, *, on: str = "", why: str = 
     require_may(actor, "wait", ledger.posts)
     with ledger.session() as s:
         row = s.need_open_row(branch)
-        if actor.name not in (row.owner, row.reader) and not moves_it(row, ledger.profile, actor):
+        if actor.name not in (row.owner, row.reader) and not moves_it(row, ledger.profile, actor, s.rows):
             raise MoveRefused(f"only the owner ({row.owner}), the reader, or the session whose move it is records a "
                               f"wait on `{branch}`")
         state = s.next_state(row, "wait")

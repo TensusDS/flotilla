@@ -168,3 +168,25 @@ def test_a_lone_shipped_row_is_the_judges_to_walk(tmp_path):
 def test_a_row_nothing_requires_is_walked_as_before(tmp_path):
     root, ledger, row = world(tmp_path, JUDGED)
     assert judging.walked(ledger, actor(ledger, JUDGE), "feat/x", build="main", steps="s", saw="w").state == "walked"
+
+
+def test_a_part_waits_for_the_whole_chain_building_on_it_not_only_the_next_link(tmp_path):
+    import dataclasses
+
+    from flotilla.ledger import core, views
+    from ledgerkit import branch
+    root, ledger, part = world(tmp_path, JUDGED)
+    branch(root, "feat/mid", "builds on the part")
+    mid = core.claim(ledger, actor(ledger, OWNER), "feat/mid", requires=[part.id])
+    branch(root, "feat/top", "builds on the middle, holds the entry point")
+    core.claim(ledger, actor(ledger, OWNER), "feat/top", requires=[mid.id])
+    rows = ledger.rows()
+    rows[mid.id] = dataclasses.replace(rows[mid.id], state="shipped")   # the middle link already shipped
+    assert [row.branch for row in views.pending_dependents(rows, rows[part.id], JUDGED)] == ["feat/top"]
+    assert views.who_moves(rows[part.id], JUDGED, rows) == ""
+
+
+def test_the_judge_records_no_wait_on_a_part_it_does_not_walk_yet(tmp_path):
+    root, ledger, part = part_and_whole(tmp_path)
+    with pytest.raises(MoveRefused, match="records a wait"):
+        handover.wait(ledger, actor(ledger, JUDGE), "feat/x", on="the person", why="no build")

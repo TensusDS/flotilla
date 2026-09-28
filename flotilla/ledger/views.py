@@ -14,6 +14,7 @@ import datetime as dt
 from flotilla.ledger.model import Row, blocked_by, delivered
 
 SENDER, JUDGE = "the sender", "the judge"
+POST_OF_MOVER = {SENDER: "sender", JUDGE: "judge"}   # a post-named mover and the post it stands for
 READING = ("handed", "fixing")
 WORKING = ("claimed", "fixing")
 WAITING = ("handed", "accepted", "queued", "landed", "shipped", "walked")
@@ -21,9 +22,17 @@ BEFORE_QUEUE = ("claimed", "handed", "fixing", "accepted")
 
 
 def pending_dependents(rows: dict[str, Row], row: Row, profile: dict) -> list[Row]:
-    """Open rows that require this one and are not delivered: the path this row is part of is not whole yet."""
-    return [other for other in rows.values()
-            if other.is_open and row.id in (other.requires or []) and not delivered(other, profile)]
+    """Open rows that build on this one, directly or through other rows, and are not delivered: the path this row
+    is part of is not whole yet. The link in between may have shipped while the row holding the entry point has
+    not."""
+    building, frontier = {}, [row.id]
+    while frontier:
+        below = frontier.pop()
+        for other in rows.values():
+            if below in (other.requires or []) and other.id not in building and other.id != row.id:
+                building[other.id] = other
+                frontier.append(other.id)
+    return [other for other in building.values() if other.is_open and not delivered(other, profile)]
 
 
 def who_moves(row: Row, profile: dict, rows: dict | None = None) -> str:

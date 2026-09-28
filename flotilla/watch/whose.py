@@ -18,7 +18,7 @@ WAITING = "waiting"    # the move is yours, and you recorded whom you wait on (o
 HOLD = "hold"          # a hold you placed whose condition is met, or cannot be asked
 UNREAD = "unread"      # your handed work names no reader
 HELD_BY_ME = (BALL, WORKING)
-POST_OF_MOVER = {views.SENDER: "sender", views.JUDGE: "judge"}
+POST_OF_MOVER = views.POST_OF_MOVER
 HIDDEN_MOVES = ("run",)   # recorded by the lane, never made by a person
 
 
