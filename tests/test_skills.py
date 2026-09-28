@@ -86,10 +86,10 @@ def test_the_arrangement_answers_the_hooks_with_a_move_or_a_wait():
     assert "flotilla - your move" in text and "work wait" in text and "Stop guard" in text
 
 
-def test_the_orchestrator_post_keeps_the_question_watch():
+def test_the_orchestrator_post_keeps_one_watch_running():
     from flotilla.posts import TEMPLATE_DIR
     text = (TEMPLATE_DIR / "orchestrator.md").read_text(encoding="utf-8")
-    assert "flotilla permit next --wait" in text and "/flotilla:permit" in text
+    assert "flotilla watch --wait 3600" in text and "/flotilla:permit" in text
 
 
 def test_the_sender_post_carries_the_direct_push_sequence():
