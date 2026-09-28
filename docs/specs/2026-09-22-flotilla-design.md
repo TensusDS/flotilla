@@ -393,29 +393,40 @@ Legal from here: `closed`, `released`."
 `accepted --moved--> handed`: a tip that moves after acceptance drops the verdict; the reader accepts again.
 `inbatch` is a finished row of its own, recorded before the push (direct push and local only).
 
+In direct push the sender never moves the local trunk, which is checked out in the main checkout that belongs to
+nobody: it merges in its own tree on a branch from `origin/<trunk>`, takes the push receipt, pushes `HEAD:<trunk>`,
+and only then records `landed` and `shipped`. `landed` therefore accepts a merge already on `origin/<trunk>`
+(decisions 81, 82, 87).
+
 ### 6.3 Evidence per move
 
 | move | by (post `may`) | evidence |
 |---|---|---|
 | `claimed` | the worktree cut, itself | base from `origin/<trunk>` |
-| `handed` | author | tip = branch HEAD; **`handover` tiers green over that tip** (receipt) |
+| `handed` | author | tip = branch HEAD; **`handover` tiers green over that tip** (receipt); a tip already on trunk has no commits of its own and is refused, naming `released --settled-by` |
 | `fixing` | reader | `--why`, stored in the row |
 | `accepted` | reader | `--reviewed` = handed tip; **reader ≠ owner** |
 | `queued` | sender | PR number (PR mode) |
-| `landed` | sender | merge commit (direct push) |
+| `landed` | sender | merge commit on the local trunk or on `origin/<trunk>` (direct push); without `--merge`, the earliest commit on origin's first-parent line carrying the revision read; refused while what the push carried — from what origin held at the merge up to its head — holds work nobody read |
 | `shipped` | **nobody by hand** | asked of the PR or origin; records **which gate** |
 | `walked` | judge | build revision (= deployed, compared with shipped), steps, observation |
 | `broke` | judge | `--where "<place in the product>"`; refused without it; files the fix row `fix/<branch>` for the author, which their `tree cut` picks up |
 | `closed` | author | `[evidence]` fields from the profile |
-| `released` | owner or orchestrator | reason |
+| `released` | owner or orchestrator (a live owner's row: the owner only) | reason, or `--settled-by <row>`: a delivered row that fulfilled its purpose |
 | `offledger` | sender | merge commit + a named witness |
-| `wait` | holder of the move | `--on <whom>` `--why` — the ball visibly lies elsewhere |
+| `wait` | owner, reader, or the row's mover | `--on <whom>` `--why` — the ball visibly lies elsewhere |
+| `walkable` | orchestrator | `--why` the part reaches a person on its own; `--clear` takes it back |
 
 ### 6.4 Dependencies
 
 `flotilla tree cut feat/export-ui --requires feat/export`. Default: work may start at once (stacking is allowed),
 but the dependent row cannot be `queued` until its dependency is `shipped`. The roster shows "blocked on
 feat/export"; the owner is told when it unblocks.
+
+The judge walks a **path, not a part**: while an open row that requires this one, directly or through other rows,
+is not delivered, the shipped row is nobody's move, and `walked` / `broke` refuse, naming those rows. A part walked
+alone reports a missing entry point that the next row was always going to add — a false `broke` and a duplicate fix
+row (field test F21). The orchestrator marks a part that reaches a person on its own `walkable` (decision 86).
 
 ### 6.5 Duplicates
 
@@ -550,7 +561,8 @@ The only post asking "does it reach a human". Before walking it compares `deploy
 revision; a verdict names the build it walked; a walk spanning a restart measured two builds and is not recorded.
 It must not read the code before the attempt (otherwise it completes a missing button with imagination, as the
 author did); whether path-scoped deny rules (`Read(src/**)`) hold for a spawned background session is an open
-question. Tools follow the surface: browser (Playwright or Chrome MCP), terminal, `curl`.
+question. Tools follow the surface: browser (Playwright or Chrome MCP), terminal, `curl`. It walks a path, not a
+part (section 6.4).
 
 ### 7.5 Life of the fleet
 
