@@ -108,7 +108,7 @@ def test_every_hook_event_is_declared():
     commands = {h["command"].rsplit(" ", 1)[-1]: name for name, groups in declared.items()
                 for group in groups for h in group["hooks"]}
     assert commands == {"session-start": "SessionStart", "prompt": "UserPromptSubmit", "stop": "Stop",
-                        "guard": "PreToolUse", "permission": "PermissionRequest"}
+                        "guard": "PreToolUse", "permission": "PermissionRequest", "ask": "PreToolUse"}
 
 
 def call(event, tmp_path, ctx, payload=None, now=NOW):
@@ -259,3 +259,54 @@ def test_the_permission_hook_says_nothing_to_an_interactive_session(tmp_path):
     me = sess("main session 1", kind="interactive", status="busy")
     ctx = context(tmp_path, me=me, profile={"permissions": {"mode": "ask"}})
     assert call("permission", tmp_path, ctx, payload={"tool_name": "Bash", "tool_input": {"command": "x"}}) == ""
+
+
+def asked(tmp_path, ctx):
+    said = call("ask", tmp_path, ctx, payload={"tool_name": "AskUserQuestion"})
+    return json.loads(said)["hookSpecificOutput"] if said else {}
+
+
+def test_a_background_producer_is_refused_and_told_the_route(tmp_path):
+    me = sess("minor session 1")
+    body = asked(tmp_path, context(tmp_path, me=me, sessions=[me, sess("orchestrator 1")]))
+    reason = body["permissionDecisionReason"]
+    assert body["permissionDecision"] == "deny"
+    assert "orchestrator 1" in reason and "SendMessage" in reason and '--on "the person"' in reason
+
+
+def test_with_no_orchestrator_alive_the_question_is_still_refused_and_said_how(tmp_path):
+    me = sess("sender 1")
+    body = asked(tmp_path, context(tmp_path, me=me, sessions=[me]))
+    assert body["permissionDecision"] == "deny" and "No orchestrator is alive" in body["permissionDecisionReason"]
+
+
+def test_the_orchestrator_asks_freely(tmp_path):
+    me = sess("orchestrator 1")
+    assert asked(tmp_path, context(tmp_path, me=me)) == {}
+
+
+def test_an_interactive_session_asks_freely(tmp_path):
+    me = sess("minor session 1", kind="interactive")
+    assert asked(tmp_path, context(tmp_path, me=me)) == {}
+
+
+def test_a_session_with_no_post_asks_freely(tmp_path):
+    me = sess("somebody else")
+    assert asked(tmp_path, context(tmp_path, me=me)) == {}
+
+
+def test_ask_goes_through_with_a_note_when_the_census_is_down(tmp_path):
+    body = asked(tmp_path, context(tmp_path, me=None, census_error="`claude` is not on PATH"))
+    assert "permissionDecision" not in body and "could not ask the census" in body["additionalContext"]
+
+
+def test_ask_goes_through_with_a_note_when_the_ledger_is_unreadable(tmp_path):
+    me = sess("minor session 1")
+    body = asked(tmp_path, context(tmp_path, me=me, ledger_error="trunk carries no .flotilla"))
+    assert "permissionDecision" not in body and "could not read the ledger" in body["additionalContext"]
+
+
+def test_the_ask_hook_is_declared_with_a_budget():
+    declared = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]["PreToolUse"]
+    group = next(group for group in declared if group.get("matcher") == "AskUserQuestion")
+    assert group["hooks"][0]["command"].endswith("hook ask") and group["hooks"][0]["timeout"] >= 3 * 3 + 2

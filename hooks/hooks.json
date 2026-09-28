@@ -43,6 +43,16 @@
             "timeout": 30
           }
         ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/flotilla\" hook ask",
+            "timeout": 20
+          }
+        ]
       }
     ],
     "PermissionRequest": [
