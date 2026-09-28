@@ -156,7 +156,7 @@ def _show(ledger: core.Ledger, branch: str) -> int:
 MOVES = {
     "claim": lambda l, a, x: core.claim(l, a, x.branch, tree=x.tree, ref=x.ref, requires=x.requires, also=x.also),
     "reserve": lambda l, a, x: core.reserve(l, a, x.branch, tree=x.tree),
-    "release": lambda l, a, x: core.release(l, a, x.branch, why=x.why),
+    "release": lambda l, a, x: core.release(l, a, x.branch, why=x.why, settled_by=x.settled_by),
     "hand": lambda l, a, x: handover.hand(l, a, x.branch, tip=x.tip),
     "moved": lambda l, a, x: handover.moved(l, a, x.branch, tip=x.tip, agreed_by=x.agreed_by),
     "wait": lambda l, a, x: handover.wait(l, a, x.branch, on=x.on, why=x.why, clear=x.clear),
@@ -178,6 +178,7 @@ MOVES = {
     "hold": lambda l, a, x: steering.hold(l, a, x.branch, until=x.until, why=x.why),
     "unhold": lambda l, a, x: steering.unhold(l, a, x.branch),
     "urgent": lambda l, a, x: steering.urgent(l, a, x.branch, why=x.why, cancel=x.cancel),
+    "walkable": lambda l, a, x: steering.walkable(l, a, x.branch, why=x.why, clear=x.clear),
 }
 
 
@@ -278,6 +279,8 @@ def _finished(ledger: core.Ledger, row: Row) -> bool:
     tip = gitq.branch_tip(ledger.root, row.branch, run=ledger.run)
     if tip is None:
         return False
+    if handover.has_own_commits(ledger, tip) is not True:
+        return False
     ok, _ = receipts.check_receipt(state=ledger.state_dir, repo_key=ledger.repo_key, sha=tip, purpose="handover",
                                    profile=ledger.profile)
     return ok
@@ -305,7 +308,12 @@ def _status(ledger: core.Ledger, args) -> int:
     if not open_rows:
         print("  no open rows")
     for row in open_rows:
-        mover = views.who_moves(row, ledger.profile) or "nobody named"
+        mover = views.who_moves(row, ledger.profile, rows) or "nobody named"
+        pending = views.pending_dependents(rows, row, ledger.profile) \
+            if row.state == "shipped" and (ledger.profile.get("judge") or {}).get("required") and not row.walkable \
+            else []
+        if pending:
+            mover += f" (the judge walks it after {', '.join(o.branch or o.id for o in pending)} ship)"
         wait = f" (waiting on {row.waiting_on}: {row.note})" if row.waiting_on else ""
         held = f" (held until {row.held_until}: {row.held_why})" if row.held_until else ""
         ran = f" (last run: {row.last_run})" if row.last_run else ""

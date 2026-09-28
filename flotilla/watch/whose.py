@@ -18,7 +18,7 @@ WAITING = "waiting"    # the move is yours, and you recorded whom you wait on (o
 HOLD = "hold"          # a hold you placed whose condition is met, or cannot be asked
 UNREAD = "unread"      # your handed work names no reader
 HELD_BY_ME = (BALL, WORKING)
-POST_OF_MOVER = {views.SENDER: "sender", views.JUDGE: "judge"}
+POST_OF_MOVER = views.POST_OF_MOVER
 HIDDEN_MOVES = ("run",)   # recorded by the lane, never made by a person
 
 
@@ -30,8 +30,8 @@ class Item:
     since: str
 
 
-def holds_move(row: Row, profile: dict, name: str, post: str = "") -> bool:
-    mover = views.who_moves(row, profile)
+def holds_move(row: Row, profile: dict, name: str, post: str = "", rows: dict | None = None) -> bool:
+    mover = views.who_moves(row, profile, rows)
     if not mover:
         return False
     return mover == name or (bool(post) and POST_OF_MOVER.get(mover) == post)
@@ -67,7 +67,7 @@ def mine(rows: dict[str, Row], profile: dict, name: str, *, post: str = "", may=
             items.append(Item(UNREAD, row.branch, "handed, and no reader is named; the orchestrator assigns one",
                               row.updated_at))
             continue
-        if not holds_move(row, profile, name, post):
+        if not holds_move(row, profile, name, post, rows):
             continue
         if row.waiting_on:
             items.append(Item(WAITING, row.branch, f"you wait on {row.waiting_on}: {row.note}", row.updated_at))

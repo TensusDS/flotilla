@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 import subprocess
 
-from flotilla.ledger import core, gitq
+from flotilla.ledger import core, gitq, views
 from flotilla.ledger.actor import Actor, require_may
 from flotilla.ledger.core import Ledger
 from flotilla.ledger.errors import MoveRefused
@@ -44,6 +44,15 @@ def _fixed(ledger: Ledger, rows: dict[str, Row], row: Row) -> list[Row]:
     return [other for other in fixes_of(rows, row) if delivered(other, ledger.profile)]
 
 
+def _whole_or_walkable(ledger: Ledger, rows: dict[str, Row], row: Row) -> None:
+    waiting = [] if row.walkable else views.pending_dependents(rows, row, ledger.profile)
+    if waiting:
+        names = ", ".join(f"`{other.branch or other.id}` ({other.state})" for other in waiting)
+        raise MoveRefused(f"`{row.branch}` is a part: {names} build on it and are not shipped yet. Walk the path "
+                          "once they ship; the orchestrator may mark this row walkable on its own "
+                          f"(`flotilla work walkable {row.branch} --why \"<why>\"`)")
+
+
 def walked(ledger: Ledger, actor: Actor, branch: str, *, build: str, steps: str, saw: str) -> Row:
     require_may(actor, "walked", ledger.posts)
     if not steps.strip() or not saw.strip():
@@ -61,6 +70,7 @@ def walked(ledger: Ledger, actor: Actor, branch: str, *, build: str, steps: str,
                               "deployed")
     with ledger.session() as s:
         row = s.need_open_row(branch)
+        _whole_or_walkable(ledger, s.rows, row)
         state = s.next_state(row, "walked")
         if not row.merge:
             raise MoveRefused(f"`{branch}` has no shipped commit recorded")
@@ -99,6 +109,7 @@ def broke(ledger: Ledger, actor: Actor, branch: str, *, where: str, saw: str,
         raise MoveRefused("say what you saw (--saw)")
     with ledger.session() as s:
         row = s.need_open_row(branch)
+        _whole_or_walkable(ledger, s.rows, row)
         state = s.next_state(row, "broke")
         name = fix_branch.strip() or _free_branch(s.rows, f"fix/{branch}")
         core.check_claim(s.rows, name)

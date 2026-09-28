@@ -7,13 +7,20 @@ reader's agreement, because otherwise they finish reading a revision that is gon
 
 from __future__ import annotations
 
-from flotilla.ledger import gitq, receipts
+from flotilla.ledger import gitq, receipts, views
 from flotilla.ledger.actor import Actor, require_may
 from flotilla.ledger.core import Ledger
 from flotilla.ledger.errors import MoveRefused
 from flotilla.ledger.model import Row
 
 UNACCEPTED = ("claimed", "handed", "fixing")
+
+
+def moves_it(row: Row, profile: dict, actor: Actor, rows: dict | None = None) -> bool:
+    """Whether `actor` is the row's mover: named, or a session of the post a post-named mover stands for."""
+    mover = views.who_moves(row, profile, rows)
+    post = actor.post.name if actor.post is not None else ""
+    return bool(mover) and (mover == actor.name or views.POST_OF_MOVER.get(mover) == post)
 
 
 def _current_tip(ledger: Ledger, branch: str, named: str | None = None) -> str:
@@ -27,6 +34,15 @@ def _current_tip(ledger: Ledger, branch: str, named: str | None = None) -> str:
         if not same:
             raise MoveRefused(f"--tip {named} is not the branch tip {current[:7]}; hand over what is there")
     return current
+
+
+def has_own_commits(ledger: Ledger, tip: str) -> bool | None:
+    """Whether `tip` carries anything trunk does not: a tip already on trunk has nothing to hand over."""
+    trunk_head = gitq.resolve(ledger.root, gitq.trunk_ref(ledger.root, ledger.trunk, run=ledger.run), run=ledger.run)
+    if trunk_head is None:
+        return None
+    on_trunk = gitq.is_ancestor(ledger.root, tip, trunk_head, run=ledger.run)
+    return None if on_trunk is None else not on_trunk
 
 
 def _receipt(ledger: Ledger, tip: str) -> str:
@@ -55,6 +71,10 @@ def _stacked_on(ledger: Ledger, rows: dict, row: Row, tip: str) -> list[str]:
 def hand(ledger: Ledger, actor: Actor, branch: str, *, tip: str | None = None) -> Row:
     require_may(actor, "hand", ledger.posts)
     current = _current_tip(ledger, branch, tip)
+    if has_own_commits(ledger, current) is False:
+        raise MoveRefused(f"`{branch}` has no commits of its own: its tip {current[:7]} is already on trunk. If "
+                          "another row delivered what it was for, close it with `flotilla work release "
+                          f"{branch} --settled-by <that branch>`")
     receipt = _receipt(ledger, current)
     with ledger.session() as s:
         row = s.need_open_row(branch)
@@ -89,8 +109,9 @@ def wait(ledger: Ledger, actor: Actor, branch: str, *, on: str = "", why: str = 
     require_may(actor, "wait", ledger.posts)
     with ledger.session() as s:
         row = s.need_open_row(branch)
-        if actor.name not in (row.owner, row.reader):
-            raise MoveRefused(f"only the owner ({row.owner}) or the reader of `{branch}` records a wait on it")
+        if actor.name not in (row.owner, row.reader) and not moves_it(row, ledger.profile, actor, s.rows):
+            raise MoveRefused(f"only the owner ({row.owner}), the reader, or the session whose move it is records a "
+                              f"wait on `{branch}`")
         state = s.next_state(row, "wait")
         if clear:
             fields = {"waiting_on": "", "note": ""}

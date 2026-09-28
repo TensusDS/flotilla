@@ -14,13 +14,28 @@ import datetime as dt
 from flotilla.ledger.model import Row, blocked_by, delivered
 
 SENDER, JUDGE = "the sender", "the judge"
+POST_OF_MOVER = {SENDER: "sender", JUDGE: "judge"}   # a post-named mover and the post it stands for
 READING = ("handed", "fixing")
 WORKING = ("claimed", "fixing")
 WAITING = ("handed", "accepted", "queued", "landed", "shipped", "walked")
 BEFORE_QUEUE = ("claimed", "handed", "fixing", "accepted")
 
 
-def who_moves(row: Row, profile: dict) -> str:
+def pending_dependents(rows: dict[str, Row], row: Row, profile: dict) -> list[Row]:
+    """Open rows that build on this one, directly or through other rows, and are not delivered: the path this row
+    is part of is not whole yet. The link in between may have shipped while the row holding the entry point has
+    not."""
+    building, frontier = {}, [row.id]
+    while frontier:
+        below = frontier.pop()
+        for other in rows.values():
+            if below in (other.requires or []) and other.id not in building and other.id != row.id:
+                building[other.id] = other
+                frontier.append(other.id)
+    return [other for other in building.values() if other.is_open and not delivered(other, profile)]
+
+
+def who_moves(row: Row, profile: dict, rows: dict | None = None) -> str:
     """Who can move this row right now: a session name, a post in words, or '' (nobody named, or finished)."""
     if row.state in ("reserved", "claimed", "fixing", "walked"):
         return row.owner
@@ -33,7 +48,11 @@ def who_moves(row: Row, profile: dict) -> str:
             return "the person who merges the PR"
         return SENDER
     if row.state == "shipped":
-        return JUDGE if (profile.get("judge") or {}).get("required") else row.owner
+        if (profile.get("judge") or {}).get("required"):
+            if rows is not None and not row.walkable and pending_dependents(rows, row, profile):
+                return ""   # a part: the judge walks the path once the rows building on it ship
+            return JUDGE
+        return row.owner
     return ""
 
 
@@ -121,7 +140,7 @@ def deviations(rows: dict[str, Row], profile: dict, live: set[str] | None = None
         if finished is not None and row.state == "claimed" and finished(row):
             add("finished_not_handed", row.owner, "handover tiers are green over the branch tip, and it is not "
                                                   "handed: the author's move")
-        mover = who_moves(row, profile)
+        mover = who_moves(row, profile, rows)
         if live is not None and mover and not mover.startswith("the ") and mover not in live:
             add("mover_gone", mover, f"the move is {mover}'s, and that session is not alive")
     return found

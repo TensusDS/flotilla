@@ -19,7 +19,7 @@ from flotilla.core.storage import LocalLogStore
 from flotilla.ledger import events, gitq
 from flotilla.ledger.actor import NO_CENSUS, Actor, require_may
 from flotilla.ledger.errors import MoveRefused
-from flotilla.ledger.model import Row, fold, make_event, next_row_id, now_iso
+from flotilla.ledger.model import Row, delivered, fold, make_event, next_row_id, now_iso
 from flotilla.ledger.transitions import next_state
 from flotilla.posts import PostError, post_for_session
 
@@ -225,11 +225,14 @@ def reserve(ledger: Ledger, actor: Actor, branch: str, *, tree: str = "") -> Row
                         fields={"branch": branch, "owner": actor.name, "tree": tree})
 
 
-def release(ledger: Ledger, actor: Actor, branch: str, *, why: str) -> Row:
+def release(ledger: Ledger, actor: Actor, branch: str, *, why: str = "", settled_by: str = "") -> Row:
+    """Say the work will not happen — or, with `settled_by`, that another delivered row fulfilled it."""
     require_may(actor, "release", ledger.posts)
-    if not why.strip():
-        raise MoveRefused("a release says why the work will not happen (--why)")
-    current = next((row for row in reversed(list(ledger.rows().values())) if row.branch == branch and row.is_open), None)
+    if not why.strip() and not settled_by.strip():
+        raise MoveRefused("a release says why the work will not happen (--why), or names the delivered row that "
+                          "fulfilled it (--settled-by <branch>)")
+    current = next((row for row in reversed(list(ledger.rows().values()))
+                    if row.branch == branch and row.is_open), None)
     if current is not None and current.owner != actor.name and current.owner in ledger.live_names():
         raise MoveRefused(f"{current.owner} is alive; only they release their own work")
     with ledger.session() as s:
@@ -237,4 +240,19 @@ def release(ledger: Ledger, actor: Actor, branch: str, *, why: str) -> Row:
         state = s.next_state(row, "release")
         if row.owner != actor.name and (current is None or row.id != current.id):
             raise MoveRefused(f"`{branch}` changed while this move was checked; run it again")
-        return s.append(actor, row.id, "release", state, evidence={"why": why.strip()})
+        evidence = {}
+        if settled_by.strip():
+            wanted = settled_by.strip()
+            named = [r for r in reversed(list(s.rows.values())) if r.branch == wanted]
+            # a branch name may be used again: the delivered row is the one that could have settled this
+            other = s.rows.get(wanted) or next((r for r in named if delivered(r, ledger.profile)),
+                                                named[0] if named else None)
+            if other is None:
+                raise MoveRefused(f"no ledger row `{wanted}` to settle `{branch}` by")
+            if not delivered(other, ledger.profile):
+                raise MoveRefused(f"`{other.branch or other.id}` is {other.state}, not delivered; a row is settled "
+                                  "by delivered work only — wait for it, or release with --why")
+            evidence["settled_by"] = other.id
+            why = why.strip() or f"settled by {other.branch or other.id}"
+        evidence["why"] = why.strip()
+        return s.append(actor, row.id, "release", state, evidence=evidence)

@@ -4,8 +4,10 @@
 the revision read, and in PR mode the named pull request must be open, for this branch, into trunk, at that
 revision. Every fact about a pull request is asked of GitHub through `gh`; none is taken from the caller.
 
-`land` (direct push and local only) records the commit on the local trunk that carries the revision read — a merge
-of it or a squash of the same change — and refuses when the push would also carry a commit no verdict covers.
+`land` (direct push and local only) records the commit that carries the revision read — a merge of it or a squash
+of the same change — on the local trunk or, in direct-push mode, already on origin's trunk, because the local trunk
+is checked out in the main checkout, which belongs to nobody. It refuses when the push carries a commit no verdict
+covers.
 
 `ship` is never typed: it asks. In PR mode, GitHub says the PR merged the revision read and names the merge commit,
 which origin's trunk must contain; in direct mode origin's trunk must contain the landed commit. Then the gate:
@@ -81,35 +83,81 @@ def queue(ledger: Ledger, actor: Actor, branch: str, *, pr: int | None = None) -
         return s.append(actor, row.id, "queue", state, fields=fields, evidence=evidence)
 
 
+SEQUENCE = ("merge `{branch}` in your own tree on a branch from `origin/{trunk}`, run `flotilla receipt run "
+            "--purpose push` there, push HEAD:{trunk}, then `flotilla work land {branch} --merge <that commit>`")
+
+
 def land(ledger: Ledger, actor: Actor, branch: str, *, merge: str | None = None) -> Row:
+    """Record the commit that carries the revision read: on the local trunk, or, in direct-push mode, already on
+    origin's trunk (the local trunk is checked out in the main checkout, which belongs to nobody)."""
     require_may(actor, "land", ledger.posts)
     trunk_head = gitq.resolve(ledger.root, f"refs/heads/{ledger.trunk}", run=ledger.run)
-    if trunk_head is None:
-        raise MoveRefused(f"git could not resolve the local trunk `{ledger.trunk}`")
+    origin_head = None
+    if ledger.mode == "direct":
+        _fetch(ledger)
+        origin_head = gitq.resolve(ledger.root, f"refs/remotes/origin/{ledger.trunk}", run=ledger.run)
+    if trunk_head is None and origin_head is None:
+        raise MoveRefused(f"git could not resolve the local trunk `{ledger.trunk}` or origin's")
     with ledger.session() as s:
         row = s.need_open_row(branch)
         state = s.next_state(row, "land")
         read = batch.revision_of(row)
         if not read:
             raise MoveRefused(f"`{branch}` carries no recorded revision; nothing lands that nobody read")
-        commit = gitq.resolve(ledger.root, merge, run=ledger.run) if merge else trunk_head
-        if commit is None:
-            raise MoveRefused(f"git could not resolve --merge {merge}")
-        if gitq.is_ancestor(ledger.root, commit, trunk_head, run=ledger.run) is not True:
-            raise MoveRefused(f"{commit[:7]} is not on the local `{ledger.trunk}`; land records work merged there")
+        if merge:
+            commit = gitq.resolve(ledger.root, merge, run=ledger.run)
+            if commit is None:
+                raise MoveRefused(f"git could not resolve --merge {merge}")
+        elif origin_head and not (trunk_head and gitq.is_ancestor(ledger.root, read, trunk_head, run=ledger.run))\
+                and gitq.is_ancestor(ledger.root, read, origin_head, run=ledger.run):
+            commit = _carrying(ledger, read, origin_head)   # pushed from the sender's own tree
+        else:
+            commit = trunk_head or origin_head
+        on_local = bool(trunk_head) and gitq.is_ancestor(ledger.root, commit, trunk_head, run=ledger.run) is True
+        on_origin = (not on_local and bool(origin_head)
+                     and gitq.is_ancestor(ledger.root, commit, origin_head, run=ledger.run) is True)
+        if not on_local and not on_origin:
+            where = f"the local `{ledger.trunk}`" + (f" or origin's" if ledger.mode == "direct" else "")
+            raise MoveRefused(f"{commit[:7]} is not on {where}; "
+                              + (SEQUENCE.format(branch=branch, trunk=ledger.trunk) if ledger.mode == "direct"
+                                 else f"merge `{branch}` into `{ledger.trunk}` first"))
         contains = gitq.is_ancestor(ledger.root, read, commit, run=ledger.run) is True
         if not contains and not _squash_on_trunk(ledger, row, read, commit):
-            raise MoveRefused(f"{commit[:7]} does not contain the revision read ({read[:7]}); merge `{branch}` "
-                              f"into `{ledger.trunk}` first")
-        loose = batch.unaccounted(ledger, s.rows, trunk_head, base=row.base)   # what the push carries
+            raise MoveRefused(f"{commit[:7]} does not contain the revision read ({read[:7]}); "
+                              + (SEQUENCE.format(branch=branch, trunk=ledger.trunk) if ledger.mode == "direct"
+                                 else f"merge `{branch}` into `{ledger.trunk}` first"))
+        if on_local:
+            loose = batch.unaccounted(ledger, s.rows, trunk_head, base=row.base)   # what the push will carry
+            unknown = "could not tell what the push carries: no origin, and no base recorded on the row"
+        else:
+            # what origin gained from the moment the sender merged: everything above what origin already held
+            before = gitq.resolve(ledger.root, f"{commit}^1", run=ledger.run) or row.base
+            loose = batch.unaccounted(ledger, s.rows, origin_head, since=before) if before else None
+            unknown = (f"could not tell what origin's `{ledger.trunk}` gained with {commit[:7]}: it has no parent "
+                       "and the row records no base")
         if loose is None:
-            raise MoveRefused("could not tell what the push would carry: no origin, and no base recorded on the row")
+            raise MoveRefused(unknown)
         if loose:
             named = "; ".join(f"{sha[:7]} {batch.subject(ledger, sha)}" for sha in loose[:5])
             more = f" and {len(loose) - 5} more" if len(loose) > 5 else ""
             raise MoveRefused(f"the batch carries work nobody read: {named}{more}. Hand it over for review, or "
                               "record work born in the batch with `flotilla work inbatch`")
-        return s.append(actor, row.id, "land", state, fields={"merge": commit}, evidence={"trunk": trunk_head})
+        where = "trunk" if on_local else f"origin/{ledger.trunk}"
+        return s.append(actor, row.id, "land", state, fields={"merge": commit},
+                        evidence={"trunk": trunk_head if on_local else origin_head, "on": where})
+
+
+def _carrying(ledger: Ledger, read: str, head: str) -> str:
+    """The earliest commit on `head`'s first-parent line that carries `read`: the one this row landed in, not a
+    later one that also carries other rows' work."""
+    listed = ledger.run(["git", "-C", str(ledger.root), "rev-list", "--first-parent", head, f"^{read}^@"],
+                        capture_output=True, text=True, check=False)
+    found = None
+    for sha in listed.stdout.split() if listed.returncode == 0 else []:
+        if gitq.is_ancestor(ledger.root, read, sha, run=ledger.run) is not True:
+            break
+        found = sha
+    return found or head
 
 
 def _squash_on_trunk(ledger: Ledger, row: Row, read: str, commit: str) -> bool:
@@ -193,10 +241,18 @@ def reconcile(ledger: Ledger, actor: Actor) -> list[str]:
     """Ask origin (or the PR) about every queued or landed row; ship what is proved, report the rest."""
     require_may(actor, "ship", ledger.posts)
     lines = []
+    fetched = False
     for row in list(ledger.rows().values()):
         if not row.is_open or row.state not in ("queued", "landed") or ledger.mode == "local":
             continue
         if ledger.mode == "direct" and row.state == "queued":
+            if not fetched:
+                _fetch(ledger)
+                fetched = True
+            read = batch.revision_of(row)
+            if read and _on_origin(ledger, read) is True:   # pushed from the sender's tree, never recorded
+                lines.append(f"pushed, not landed {row.branch}: origin's `{ledger.trunk}` carries {read[:7]}; "
+                             f"record it with `flotilla work land {row.branch} --merge <the commit>`")
             continue
         try:
             shipped = ship(ledger, actor, row.branch)

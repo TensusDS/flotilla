@@ -440,6 +440,37 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    session means the hang the dropped-ball item reports. Denying on the hook's own failure could refuse a person
    at an interactive dialog. Final review: once a session is known to be a background one, a failure is a deny with its reason, and so are rules that cannot be read. (executor's decision, broker plan, 2026-09-27)
 
+81. **`land` in direct-push mode accepts a merge reachable from `origin/<trunk>`** (Max). The local trunk, checked
+   out in the main checkout that belongs to nobody, is not needed and is never moved. The sender merges in its own
+   tree on a branch from `origin/<trunk>`, takes the push receipt, pushes `HEAD:<trunk>`, then records `land` and
+   `ship`. Pushing before `land` is therefore the sequence, not a fault (F15). (field test 2026-09-27; Max's triage 2026-09-28)
+82. **The unread-work check still runs for a merge already on origin**, counted from what origin held when the sender
+   merged (the landed commit's first parent; the row's base only when it has none) up to origin's head: a push that
+   carried work nobody read, below or above the merge it names, is refused at `land` with the `inbatch` fix, even
+   though it is already on origin — the ledger must not record it as read. Work origin already had before the merge
+   (the person's own push) is not this batch's. Known limit: a commit somebody else pushes between the sender's push
+   and its `land` is counted too, and refused; the refusal names it. (executor's decision, field fixes part 1,
+   2026-09-28; range corrected after the branch review)
+83. **`wait` is allowed to the row's mover** as well as its owner and reader (F24): the session `who_moves` names, or
+   a session of the post a post-named mover ("the sender", "the judge") stands for. (executor's decision, field fixes part 1, 2026-09-28)
+84. **A tip already on trunk has no commits of its own**: `hand` refuses it, naming `release --settled-by`, and the
+   "finished_not_handed" deviation never fires for it (F18). (executor's decision, field fixes part 1, 2026-09-28)
+85. **`release --settled-by <branch|row>`** closes a row whose purpose another delivered row fulfilled (F26); the
+   other row must be delivered; the reason defaults to "settled by <branch>". (executor's decision, field fixes part 1, 2026-09-28)
+86. **The judge waits for the rows that build on a row** (Max): while an open row that `requires` this one, directly
+   or through other rows, is not delivered, `who_moves` names nobody for the judge's move, and `walked` / `broke` refuse, naming those rows.
+   **`flotilla work walkable <branch> --why`**, an annotation the orchestrator may make, lets that row be walked on
+   its own. (field test 2026-09-27; Max's triage 2026-09-28)
+87. **`land` without `--merge` in direct-push mode records the earliest commit on origin's first-parent line that
+   carries the revision read**, not origin's head: a row landed after another row was pushed on top names its own
+   merge, not a commit carrying both. (executor's decision after the branch review, field fixes part 1, 2026-09-28)
+88. **A fix row settled by another delivered row is its owner's to close**: `release` still refuses a live owner's
+   row to anyone else, so the sender tells the orchestrator instead of releasing it; `--settled-by` given a branch
+   name used more than once takes the delivered row. (executor's decision after the branch review, field fixes
+   part 1, 2026-09-28)
+89. **`walkable --clear` takes the orchestrator's word back**: the part waits for the rows building on it again;
+   clearing a row that is not marked is refused. (executor's decision, R2 of the part-1 review, 2026-09-28)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

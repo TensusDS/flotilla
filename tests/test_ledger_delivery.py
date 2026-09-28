@@ -1,9 +1,11 @@
+from pathlib import Path
+
 import pytest
 
 from flotilla.ledger import delivery
 from flotilla.ledger.errors import MoveRefused, NotYet
-from ledgerkit import (PROFILE, actor, commit, drive, fake_gh, git, make_ledger, merge, repo_with_origin,
-                       shipped_direct)
+from ledgerkit import (IDENTITY, PROFILE, actor, branch, commit, drive, fake_gh, git, make_ledger, merge,
+                       repo_with_origin, shipped_direct)
 
 SENDER = "sender 1"
 DIRECT = {**PROFILE, "flow": {"mode": "direct"}}
@@ -268,3 +270,113 @@ def test_land_refuses_unread_work_even_when_merge_names_an_older_commit(direct):
     stray = commit(root, "rides along after the merge", "stray.txt")
     with pytest.raises(MoveRefused, match=rf"nobody read: {stray[:7]}"):
         delivery.land(ledger, actor(ledger, SENDER), "feat/x", merge=head)
+
+
+def pushed_from_a_side_tree(root, name="feat/x", *, extra=None):
+    """The sender's direct-push sequence without touching the local trunk: merge on a branch from origin's trunk,
+    push HEAD:main, come back. Returns the pushed commit."""
+    git(root, "fetch", "-q", "origin")
+    git(root, "checkout", "-q", "-b", f"integrate-{name.replace('/', '-')}", "origin/main")
+    git(root, *IDENTITY, "merge", "-q", "--no-ff", "-m", f"merge {name}", name)
+    if extra:
+        commit(root, extra, "extra.txt")
+    pushed = git(root, "rev-parse", "HEAD")
+    git(root, "push", "-q", "origin", "HEAD:main")
+    git(root, "checkout", "-q", "main")
+    return pushed
+
+
+def test_land_accepts_a_merge_already_pushed_to_origin(direct):
+    root, ledger = direct
+    queued(root, ledger)
+    pushed = pushed_from_a_side_tree(root)
+    assert git(root, "rev-parse", "main") != pushed   # the local trunk never moved
+    row = delivery.land(ledger, actor(ledger, SENDER), "feat/x", merge=pushed)
+    assert (row.state, row.merge) == ("landed", pushed)
+    assert delivery.ship(ledger, actor(ledger, SENDER), "feat/x").state == "shipped"
+
+
+def test_land_without_merge_takes_origins_trunk_when_the_local_one_lacks_the_work(direct):
+    root, ledger = direct
+    queued(root, ledger)
+    pushed = pushed_from_a_side_tree(root)
+    assert delivery.land(ledger, actor(ledger, SENDER), "feat/x").merge == pushed
+
+
+def test_a_merge_on_neither_trunk_is_refused_with_the_sequence(direct):
+    root, ledger = direct
+    queued(root, ledger)
+    with pytest.raises(MoveRefused, match="push HEAD:main"):
+        delivery.land(ledger, actor(ledger, SENDER), "feat/x", merge="feat/x")
+
+
+def test_unread_work_already_on_origin_is_refused_at_land(direct):
+    root, ledger = direct
+    queued(root, ledger)
+    pushed = pushed_from_a_side_tree(root, extra="a quick fix nobody read")
+    with pytest.raises(MoveRefused, match="nobody read: .* a quick fix nobody read"):
+        delivery.land(ledger, actor(ledger, SENDER), "feat/x", merge=pushed)
+
+
+def test_unread_work_above_the_named_merge_is_refused_at_land(direct):
+    root, ledger = direct
+    queued(root, ledger)
+    pushed = pushed_from_a_side_tree(root, extra="a stray commit nobody read")
+    merged = git(root, "rev-parse", f"{pushed}~1")
+    with pytest.raises(MoveRefused, match="nobody read: .* a stray commit nobody read"):
+        delivery.land(ledger, actor(ledger, SENDER), "feat/x", merge=merged)
+
+
+def pushed_by_the_person(root, tmp_path, message):
+    """Somebody else pushes straight to origin's trunk from their own clone."""
+    other = Path(tmp_path) / "person"
+    git(tmp_path, "clone", "-q", str(Path(tmp_path) / "origin.git"), str(other))
+    commit(other, message, "person.txt")
+    git(other, "push", "-q", "origin", "HEAD:main")
+
+
+def test_work_origin_already_had_before_the_merge_does_not_block_land(direct, tmp_path):
+    root, ledger = direct
+    queued(root, ledger)
+    pushed_by_the_person(root, tmp_path, "the person's own README tweak")
+    pushed = pushed_from_a_side_tree(root)
+    row = delivery.land(ledger, actor(ledger, SENDER), "feat/x", merge=pushed)
+    assert (row.state, row.merge) == ("landed", pushed)
+
+
+def test_a_row_claimed_before_its_branch_existed_lands_from_origin(direct):
+    from flotilla.ledger import core, handover, reading
+
+    root, ledger = direct
+    claimed = core.claim(ledger, actor(ledger, "main session 1"), "feat/x")
+    assert claimed.base == ""
+    branch(root, "feat/x", "work")
+    handed = handover.hand(ledger, actor(ledger, "main session 1"), "feat/x")
+    reading.take(ledger, actor(ledger, "review session 1"), "feat/x")
+    reading.accept(ledger, actor(ledger, "review session 1"), "feat/x", reviewed=handed.tip)
+    delivery.queue(ledger, actor(ledger, SENDER), "feat/x")
+    pushed = pushed_from_a_side_tree(root)
+    assert delivery.land(ledger, actor(ledger, SENDER), "feat/x", merge=pushed).merge == pushed
+
+
+def test_land_without_merge_takes_the_commit_that_carries_the_row_not_a_later_one(direct):
+    root, ledger = direct
+    queued(root, ledger)
+    first = pushed_from_a_side_tree(root)
+    queued(root, ledger, "feat/y")
+    pushed_from_a_side_tree(root, "feat/y")
+    assert delivery.land(ledger, actor(ledger, SENDER), "feat/x").merge == first
+
+
+def test_reconcile_names_land_for_a_queued_row_already_on_origin(direct):
+    root, ledger = direct
+    queued(root, ledger)
+    pushed_from_a_side_tree(root)
+    lines = delivery.reconcile(ledger, actor(ledger, SENDER))
+    assert any("feat/x" in line and "flotilla work land feat/x" in line for line in lines)
+
+
+def test_reconcile_stays_quiet_about_a_queued_row_not_on_origin(direct):
+    root, ledger = direct
+    queued(root, ledger)
+    assert delivery.reconcile(ledger, actor(ledger, SENDER)) == []
