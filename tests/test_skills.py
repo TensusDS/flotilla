@@ -96,3 +96,4 @@ def test_the_sender_post_carries_the_direct_push_sequence():
     from flotilla.posts import TEMPLATE_DIR
     text = (TEMPLATE_DIR / "sender.md").read_text(encoding="utf-8")
     assert "push HEAD:<trunk>" in text and "land <branch> --merge" in text and "--settled-by" in text
+    assert "its owner's to close" in text   # release refuses a live owner's row to anyone else

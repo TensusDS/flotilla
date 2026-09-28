@@ -243,8 +243,10 @@ def release(ledger: Ledger, actor: Actor, branch: str, *, why: str = "", settled
         evidence = {}
         if settled_by.strip():
             wanted = settled_by.strip()
-            other = s.rows.get(wanted) or next((r for r in reversed(list(s.rows.values())) if r.branch == wanted),
-                                                None)
+            named = [r for r in reversed(list(s.rows.values())) if r.branch == wanted]
+            # a branch name may be used again: the delivered row is the one that could have settled this
+            other = s.rows.get(wanted) or next((r for r in named if delivered(r, ledger.profile)),
+                                                named[0] if named else None)
             if other is None:
                 raise MoveRefused(f"no ledger row `{wanted}` to settle `{branch}` by")
             if not delivered(other, ledger.profile):

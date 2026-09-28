@@ -175,6 +175,20 @@ def test_a_row_another_row_fulfilled_is_settled_by_it(tmp_path):
     assert evidence["settled_by"] == done.id and "settled by feat/x" in evidence["why"]
 
 
+def test_settled_by_a_reused_branch_name_finds_the_delivered_row(tmp_path):
+    from flotilla.ledger import judging
+    from ledgerkit import git, repo_with_origin, shipped_direct
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile={**PROFILE, **DIRECT_FLOW})
+    done = shipped_direct(root, ledger, "feat/x")
+    judging.close(ledger, actor(ledger, "main session 1"), "feat/x")
+    core.claim(ledger, actor(ledger, "main session 2"), "feat/x")   # the name is used again, for new work
+    git(root, "branch", "fix/y", "main")
+    core.claim(ledger, actor(ledger, "main session 1"), "fix/y")
+    row = core.release(ledger, actor(ledger, "main session 1"), "fix/y", settled_by="feat/x")
+    assert row.history[-1]["evidence"]["settled_by"] == done.id
+
+
 def test_settled_by_an_undelivered_row_is_refused(tmp_path):
     from ledgerkit import drive, git, repo_with_origin
     root = repo_with_origin(tmp_path)

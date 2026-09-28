@@ -23,8 +23,9 @@ session that does. Two writers to one of them is the failure this post exists to
    run `flotilla receipt run --purpose push`, push HEAD:<trunk> to origin, then `flotilla work land <branch> --merge
    <that commit>` and `flotilla work ship <branch>`. After every push, and whenever CI settles,
    `flotilla work reconcile` asks the PR or origin about every queued or landed row and records what shipped.
-   A fix row whose purpose another delivered row fulfilled closes with `flotilla work release <branch>
-   --settled-by <that branch>`, never with `offledger`.
+   A fix row whose purpose another delivered row fulfilled is its owner's to close, with `flotilla work release
+   <branch> --settled-by <that branch>`: tell the orchestrator, which reaches the owner. Never record it with
+   `offledger`, and never release a live owner's row yourself.
 7. A change you make inside the batch is read by someone else and recorded:
    `flotilla work inbatch <label> --commit <sha> --read-by "<session>" --why "<what>"`. Work that reached trunk
    outside the ledger is recorded with `flotilla work offledger <branch> --merge <sha> --witness "<session>"`.
