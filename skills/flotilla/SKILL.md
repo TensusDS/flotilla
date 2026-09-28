@@ -31,10 +31,14 @@ A letter is a notification of a move, never its carrier. Before you say "done", 
   `flotilla work fix <branch> --why "<what must change>"`;
 - sender: `flotilla brief` for the person's one yes, then `flotilla work queue`, `land`, and `flotilla work
   reconcile` after every push;
-- orchestrator: `flotilla work assign <branch> --reader "<session>"` and send the letter it prints;
+- orchestrator: `flotilla work assign <branch> --reader "<session>"`, then send the letter it prints;
 - judge: `flotilla work walked` or `flotilla work broke` over the deployed build.
 
 Your post's text in the system prompt says which of these are yours; a move your post may not make is refused.
+
+A move that passes work to another session prints `letter for <session> - send it with SendMessage`. The move is
+not finished until you sent that letter: an idle background session is woken only by a message, and nothing else
+tells it the move is now its own. A printed `note: ... no live session can make it` goes to the orchestrator.
 
 ## Long runs go through the lane
 

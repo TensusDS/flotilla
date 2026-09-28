@@ -17,8 +17,8 @@ from pathlib import Path
 
 from flotilla.core import config, paths, repo
 from flotilla.core.storage import LocalLogStore, StorageCorrupt
-from flotilla.ledger import (core, delivery, events, findings, gitq, handover, judging, outside, reading, receipts,
-                             report, steering, views)
+from flotilla.ledger import (core, delivery, events, findings, gitq, handover, judging, letters, outside, reading,
+                             receipts, report, steering, views)
 from flotilla.ledger import tree as tree_mod
 from flotilla.ledger.actor import resolve_actor
 from flotilla.lane.acquire import LaneRefused
@@ -168,7 +168,7 @@ MOVES = {
     "take": lambda l, a, x: reading.take(l, a, x.branch),
     "recuse": lambda l, a, x: reading.recuse(l, a, x.branch),
     "fix": lambda l, a, x: reading.fix(l, a, x.branch, why=x.why),
-    "assign": lambda l, a, x: reading.assign(l, a, x.branch, reader=x.reader),
+    "assign": lambda l, a, x: reading.assign(l, a, x.branch, reader=x.reader)[0],   # letters prints its letter
     "accept": lambda l, a, x: reading.accept(l, a, x.branch, reviewed=x.reviewed),
     "queue": lambda l, a, x: delivery.queue(l, a, x.branch, pr=x.pr),
     "land": lambda l, a, x: delivery.land(l, a, x.branch, merge=x.merge),
@@ -370,9 +370,11 @@ def run_ledger_command(args) -> int:
         if args.command == "work" and args.move == "show":
             return _show(ledger, args.branch)
         caller = resolve_actor(ledger.posts, as_name=args.as_name)
+        before = ledger.rows()
         if args.command == "work" and args.move == "reconcile":
             lines = delivery.reconcile(ledger, caller)
             print("\n".join(lines) if lines else "nothing is queued or landed")
+            _letters(ledger, caller, before)
             return 0
         if args.command == "tree" and args.action == "switch":
             row = tree_mod.switch(ledger, caller, args.branch, ref=args.ref, requires=args.requires, also=args.also)
@@ -385,6 +387,7 @@ def run_ledger_command(args) -> int:
                 row, text = result
                 print(summary(row))
                 print(text)
+                _letters(ledger, caller, before)
                 _notices(ledger)
                 return 0
             row = result
@@ -401,8 +404,19 @@ def run_ledger_command(args) -> int:
     print(summary(row))
     for other in (row.history[-1].get("evidence") or {}).get("stacked_on") or []:
         print(f"note: stacked on `{other}`, which is not accepted yet")
+    _letters(ledger, caller, before)
     _notices(ledger)
     return 0
+
+
+def _letters(ledger: core.Ledger, caller, before: dict) -> None:
+    def live():
+        try:
+            return ledger.live_names()
+        except MoveRefused:
+            return None
+    for letter in letters.changed(before, ledger.rows(), ledger.profile, ledger.posts, caller.name, live):
+        print("\n".join(letters.render(letter)))
 
 
 def _notices(ledger: core.Ledger) -> None:

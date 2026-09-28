@@ -288,3 +288,29 @@ def test_every_refusal_names_a_way_forward(tmp_path, monkeypatch):
 def test_the_way_forward_is_one_fixed_line():
     from flotilla.ledger import commands
     assert commands.STUCK.startswith("next: ")
+
+
+def test_accept_prints_the_letter_for_the_sender(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    tree = tmp_path / "app-main-1"
+    run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")
+    tip = commit(tree, "work", "work.txt")
+    run_cli("work", "hand", "feat/x", "--root", str(tree), "--as", "main session 1")
+    run_cli("work", "take", "feat/x", "--root", str(root), "--as", "review session 1")
+    code, out = run_cli("work", "accept", "feat/x", "--reviewed", tip, "--root", str(root),
+                        "--as", "review session 1")
+    assert code == 0
+    assert "letter for the session holding the sender post - send it with SendMessage" in out
+
+
+def test_assign_prints_one_letter_for_the_reader(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    tree = tmp_path / "app-main-1"
+    run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")
+    commit(tree, "work", "work.txt")
+    run_cli("work", "hand", "feat/x", "--root", str(tree), "--as", "main session 1")
+    monkeypatch.setattr("flotilla.ledger.core.Ledger.live_names", lambda self: {"review session 1"})
+    code, out = run_cli("work", "assign", "feat/x", "--reader", "review session 1", "--root", str(root),
+                        "--as", "orchestrator 1")
+    assert code == 0 and out.count("flotilla work take feat/x") == 1
+    assert "letter for review session 1" in out

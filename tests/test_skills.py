@@ -97,3 +97,8 @@ def test_the_sender_post_carries_the_direct_push_sequence():
     text = (TEMPLATE_DIR / "sender.md").read_text(encoding="utf-8")
     assert "push HEAD:<trunk>" in text and "land <branch> --merge" in text and "--settled-by" in text
     assert "its owner's to close" in text   # release refuses a live owner's row to anyone else
+
+
+def test_the_arrangement_says_a_printed_letter_is_sent():
+    text = (ROOT / "skills" / "flotilla" / "SKILL.md").read_text(encoding="utf-8")
+    assert "letter for <session> - send it with SendMessage" in text and "not finished until you sent" in text
