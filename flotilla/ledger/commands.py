@@ -153,6 +153,11 @@ def _show(ledger: core.Ledger, branch: str) -> int:
     return 0
 
 
+#: Printed after every refusal, so no refusal leaves a session without a way forward (field test F17).
+STUCK = ("next: if no move named above is yours to make, record whom you wait on (`flotilla work wait <branch> "
+         "--on \"<whom>\" --why \"<why>\"`) and tell the orchestrator. A refusal that names no way forward is a "
+         "flotilla defect: send it to the orchestrator verbatim, and never work around flotilla with git plumbing.")
+
 MOVES = {
     "claim": lambda l, a, x: core.claim(l, a, x.branch, tree=x.tree, ref=x.ref, requires=x.requires, also=x.also),
     "reserve": lambda l, a, x: core.reserve(l, a, x.branch, tree=x.tree),
@@ -391,6 +396,7 @@ def run_ledger_command(args) -> int:
         print(f"refused: {err}")
         if ledger is not None:
             _notices(ledger)
+        print(STUCK)
         return 2
     print(summary(row))
     for other in (row.history[-1].get("evidence") or {}).get("stacked_on") or []:

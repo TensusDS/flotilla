@@ -273,3 +273,18 @@ def test_an_empty_branch_is_never_called_finished(tmp_path):
     receipts.run_receipt(root, state=tmp_path / "state", repo_key=ledger.repo_key, purpose="handover",
                          profile=profile, timeout=60)
     assert commands._finished(ledger, row) is False
+
+
+def test_every_refusal_names_a_way_forward(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    assert run_cli("work", "claim", "feat/x", "--root", str(root), "--as", "main session 1")[0] == 0
+    code, out = run_cli("work", "accept", "feat/x", "--reviewed", "HEAD", "--root", str(root),
+                        "--as", "main session 1")
+    last = out.rstrip().splitlines()[-1]
+    assert code == 2 and last.startswith("next: ")
+    assert "work wait" in last and "tell the orchestrator" in last and "git plumbing" in last
+
+
+def test_the_way_forward_is_one_fixed_line():
+    from flotilla.ledger import commands
+    assert commands.STUCK.startswith("next: ")
