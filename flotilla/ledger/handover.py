@@ -7,13 +7,21 @@ reader's agreement, because otherwise they finish reading a revision that is gon
 
 from __future__ import annotations
 
-from flotilla.ledger import gitq, receipts
+from flotilla.ledger import gitq, receipts, views
 from flotilla.ledger.actor import Actor, require_may
 from flotilla.ledger.core import Ledger
 from flotilla.ledger.errors import MoveRefused
 from flotilla.ledger.model import Row
 
 UNACCEPTED = ("claimed", "handed", "fixing")
+POST_OF_MOVER = {views.SENDER: "sender", views.JUDGE: "judge"}
+
+
+def moves_it(row: Row, profile: dict, actor: Actor) -> bool:
+    """Whether `actor` is the row's mover: named, or a session of the post a post-named mover stands for."""
+    mover = views.who_moves(row, profile)
+    post = actor.post.name if actor.post is not None else ""
+    return bool(mover) and (mover == actor.name or POST_OF_MOVER.get(mover) == post)
 
 
 def _current_tip(ledger: Ledger, branch: str, named: str | None = None) -> str:
@@ -89,8 +97,9 @@ def wait(ledger: Ledger, actor: Actor, branch: str, *, on: str = "", why: str = 
     require_may(actor, "wait", ledger.posts)
     with ledger.session() as s:
         row = s.need_open_row(branch)
-        if actor.name not in (row.owner, row.reader):
-            raise MoveRefused(f"only the owner ({row.owner}) or the reader of `{branch}` records a wait on it")
+        if actor.name not in (row.owner, row.reader) and not moves_it(row, ledger.profile, actor):
+            raise MoveRefused(f"only the owner ({row.owner}), the reader, or the session whose move it is records a "
+                              f"wait on `{branch}`")
         state = s.next_state(row, "wait")
         if clear:
             fields = {"waiting_on": "", "note": ""}

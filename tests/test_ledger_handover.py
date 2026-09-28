@@ -2,9 +2,9 @@ import sys
 
 import pytest
 
-from flotilla.ledger import core, gitq, handover, reading, receipts
+from flotilla.ledger import core, delivery, gitq, handover, reading, receipts
 from flotilla.ledger.errors import MoveRefused
-from ledgerkit import PROFILE, actor, branch, commit, git, make_ledger, repo_with_origin
+from ledgerkit import PROFILE, actor, branch, commit, drive, git, make_ledger, repo_with_origin
 
 GREEN = f"{sys.executable} -c \"print('1 passed')\""
 
@@ -115,3 +115,20 @@ def test_moving_an_accepted_tip_needs_the_reader_and_drops_the_verdict(world):
         handover.moved(ledger, actor(ledger, "main session 1"), "feat/x", tip=new)
     moved = handover.moved(ledger, actor(ledger, "main session 1"), "feat/x", tip=new, agreed_by="review session 1")
     assert (moved.state, moved.verdict, moved.tip) == ("handed", "", new)
+
+
+def test_the_sender_records_a_wait_on_the_row_it_must_move(tmp_path):
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile={**PROFILE, "flow": {"mode": "direct"}})
+    drive(root, ledger)
+    delivery.queue(ledger, actor(ledger, "sender 1"), "feat/x")
+    row = handover.wait(ledger, actor(ledger, "sender 1"), "feat/x", on="the person", why="asked about the batch")
+    assert row.waiting_on == "the person"
+
+
+def test_a_session_that_does_not_move_the_row_cannot_record_its_wait(tmp_path):
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile={**PROFILE, "flow": {"mode": "direct"}})
+    drive(root, ledger)
+    with pytest.raises(MoveRefused, match="records a wait"):
+        handover.wait(ledger, actor(ledger, "review session 2"), "feat/x", on="x", why="y")
