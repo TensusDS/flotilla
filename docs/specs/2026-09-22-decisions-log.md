@@ -440,6 +440,24 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    session means the hang the dropped-ball item reports. Denying on the hook's own failure could refuse a person
    at an interactive dialog. Final review: once a session is known to be a background one, a failure is a deny with its reason, and so are rules that cannot be read. (executor's decision, broker plan, 2026-09-27)
 
+81. **`land` in direct-push mode accepts a merge reachable from `origin/<trunk>`** (Max). The local trunk, checked
+   out in the main checkout that belongs to nobody, is not needed and is never moved. The sender merges in its own
+   tree on a branch from `origin/<trunk>`, takes the push receipt, pushes `HEAD:<trunk>`, then records `land` and
+   `ship`. Pushing before `land` is therefore the sequence, not a fault (F15). (field test 2026-09-27; Max's triage 2026-09-28)
+82. **The unread-work check still runs for a merge already on origin**, counted from the row's base: a push that
+   carried work nobody read is refused at `land` with the `inbatch` fix, even though it is already on origin — the
+   ledger must not record it as read. (executor's decision, field fixes part 1, 2026-09-28)
+83. **`wait` is allowed to the row's mover** as well as its owner and reader (F24): the session `who_moves` names, or
+   a session of the post a post-named mover ("the sender", "the judge") stands for. (executor's decision, field fixes part 1, 2026-09-28)
+84. **A tip already on trunk has no commits of its own**: `hand` refuses it, naming `release --settled-by`, and the
+   "finished_not_handed" deviation never fires for it (F18). (executor's decision, field fixes part 1, 2026-09-28)
+85. **`release --settled-by <branch|row>`** closes a row whose purpose another delivered row fulfilled (F26); the
+   other row must be delivered; the reason defaults to "settled by <branch>". (executor's decision, field fixes part 1, 2026-09-28)
+86. **The judge waits for the rows that build on a row** (Max): while an open row that `requires` this one is not
+   delivered, `who_moves` names nobody for the judge's move, and `walked` / `broke` refuse, naming those rows.
+   **`flotilla work walkable <branch> --why`**, an annotation the orchestrator may make, lets that row be walked on
+   its own. (field test 2026-09-27; Max's triage 2026-09-28)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

@@ -90,3 +90,9 @@ def test_the_orchestrator_post_keeps_the_question_watch():
     from flotilla.posts import TEMPLATE_DIR
     text = (TEMPLATE_DIR / "orchestrator.md").read_text(encoding="utf-8")
     assert "flotilla permit next --wait" in text and "/flotilla:permit" in text
+
+
+def test_the_sender_post_carries_the_direct_push_sequence():
+    from flotilla.posts import TEMPLATE_DIR
+    text = (TEMPLATE_DIR / "sender.md").read_text(encoding="utf-8")
+    assert "push HEAD:<trunk>" in text and "land <branch> --merge" in text and "--settled-by" in text

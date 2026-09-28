@@ -232,3 +232,5 @@ Grouped by what stalled the fleet most; fixed in this order, in several small pl
    the holders of this ledger's post rows, not every name matching a pattern.
 6. **Fleet lifecycle** — F27: `flotilla fleet down`; a gone seat is one quiet line, not a mover alarm.
 7. **Setup** — F1–F7, F11.
+
+Part 1 (the ledger) fixes F14, F15, F18, F21, F24, F26 — plan `docs/plans/2026-09-28-field-fixes-ledger.md`.
