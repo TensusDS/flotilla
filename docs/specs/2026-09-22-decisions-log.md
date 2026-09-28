@@ -468,6 +468,8 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    row to anyone else, so the sender tells the orchestrator instead of releasing it; `--settled-by` given a branch
    name used more than once takes the delivered row. (executor's decision after the branch review, field fixes
    part 1, 2026-09-28)
+89. **`walkable --clear` takes the orchestrator's word back**: the part waits for the rows building on it again;
+   clearing a row that is not marked is refused. (executor's decision, R2 of the part-1 review, 2026-09-28)
 
 ## Open questions (for the foundation spec)
 
