@@ -91,3 +91,14 @@ def urgent(ledger: Ledger, actor: Actor, branch: str, *, why: str = "", cancel: 
         fields = ({"urgent_at": "", "urgent_why": ""} if cancel else
                   {"urgent_at": ledger.now(), "urgent_why": why.strip()})
         return s.append(actor, row.id, "urgent", state, fields=fields)
+
+
+def walkable(ledger: Ledger, actor: Actor, branch: str, *, why: str) -> Row:
+    """The orchestrator's word that a row which others build on reaches a person on its own."""
+    require_may(actor, "walkable", ledger.posts)
+    if not why.strip():
+        raise MoveRefused("say why this part reaches a person on its own (--why)")
+    with ledger.session() as s:
+        row = s.need_open_row(branch)
+        state = s.next_state(row, "walkable")
+        return s.append(actor, row.id, "walkable", state, fields={"walkable": why.strip()})

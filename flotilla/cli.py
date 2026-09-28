@@ -100,6 +100,7 @@ def build_parser() -> argparse.ArgumentParser:
     hold.add_argument("--until", required=True)
     hold.add_argument("--why", required=True)
     move_parser("unhold", "lift a hold")
+    move_parser("walkable", "mark a part walkable on its own (orchestrator)").add_argument("--why", required=True)
     urgent = move_parser("urgent", "ask for a row to ship out of turn")
     urgent.add_argument("--why", default="")
     urgent.add_argument("--cancel", action="store_true")

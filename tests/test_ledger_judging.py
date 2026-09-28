@@ -119,3 +119,52 @@ def test_the_fix_row_is_cut_shipped_and_then_the_walk_clears_the_break(tmp_path)
     walked = judging.walked(ledger, actor(ledger, JUDGE), "feat/x", build="main", steps="s", saw="works now")
     assert (walked.state, walked.broken) == ("walked", "")
     assert judging.close(ledger, actor(ledger, OWNER), "feat/x").state == "closed"
+
+
+JUDGED = {**DIRECT, "judge": {"required": True}}
+
+
+def part_and_whole(tmp_path):
+    from flotilla.ledger import core
+    from ledgerkit import branch
+    root, ledger, part = world(tmp_path, JUDGED)
+    branch(root, "feat/whole", "builds on the part")
+    core.claim(ledger, actor(ledger, OWNER), "feat/whole", requires=[part.id])
+    return root, ledger, part
+
+
+def test_a_part_is_not_walked_while_the_row_building_on_it_is_not_shipped(tmp_path):
+    root, ledger, part = part_and_whole(tmp_path)
+    with pytest.raises(MoveRefused, match="feat/whole.*walkable"):
+        judging.walked(ledger, actor(ledger, JUDGE), "feat/x", build="main", steps="s", saw="w")
+    with pytest.raises(MoveRefused, match="feat/whole"):
+        judging.broke(ledger, actor(ledger, JUDGE), "feat/x", where="start", saw="no entry point")
+
+
+def test_the_judge_holds_no_move_on_a_part_yet(tmp_path):
+    from flotilla.ledger import views
+    root, ledger, part = part_and_whole(tmp_path)
+    rows = ledger.rows()
+    shipped = next(row for row in rows.values() if row.branch == "feat/x")
+    assert views.who_moves(shipped, JUDGED, rows) == ""
+    assert views.who_moves(shipped, JUDGED) == views.JUDGE   # without rows, as before
+
+
+def test_the_orchestrator_marks_a_part_walkable_on_its_own(tmp_path):
+    from flotilla.ledger import steering
+    root, ledger, part = part_and_whole(tmp_path)
+    steering.walkable(ledger, actor(ledger, "orchestrator 1"), "feat/x", why="the logic has its own CLI")
+    walked = judging.walked(ledger, actor(ledger, JUDGE), "feat/x", build="main", steps="s", saw="w")
+    assert walked.state == "walked"
+
+
+def test_a_lone_shipped_row_is_the_judges_to_walk(tmp_path):
+    from flotilla.ledger import views
+    root, ledger, row = world(tmp_path, JUDGED)
+    rows = ledger.rows()
+    assert views.who_moves(rows[row.id], JUDGED, rows) == views.JUDGE
+
+
+def test_a_row_nothing_requires_is_walked_as_before(tmp_path):
+    root, ledger, row = world(tmp_path, JUDGED)
+    assert judging.walked(ledger, actor(ledger, JUDGE), "feat/x", build="main", steps="s", saw="w").state == "walked"

@@ -20,7 +20,13 @@ WAITING = ("handed", "accepted", "queued", "landed", "shipped", "walked")
 BEFORE_QUEUE = ("claimed", "handed", "fixing", "accepted")
 
 
-def who_moves(row: Row, profile: dict) -> str:
+def pending_dependents(rows: dict[str, Row], row: Row, profile: dict) -> list[Row]:
+    """Open rows that require this one and are not delivered: the path this row is part of is not whole yet."""
+    return [other for other in rows.values()
+            if other.is_open and row.id in (other.requires or []) and not delivered(other, profile)]
+
+
+def who_moves(row: Row, profile: dict, rows: dict | None = None) -> str:
     """Who can move this row right now: a session name, a post in words, or '' (nobody named, or finished)."""
     if row.state in ("reserved", "claimed", "fixing", "walked"):
         return row.owner
@@ -33,7 +39,11 @@ def who_moves(row: Row, profile: dict) -> str:
             return "the person who merges the PR"
         return SENDER
     if row.state == "shipped":
-        return JUDGE if (profile.get("judge") or {}).get("required") else row.owner
+        if (profile.get("judge") or {}).get("required"):
+            if rows is not None and not row.walkable and pending_dependents(rows, row, profile):
+                return ""   # a part: the judge walks the path once the rows building on it ship
+            return JUDGE
+        return row.owner
     return ""
 
 
@@ -121,7 +131,7 @@ def deviations(rows: dict[str, Row], profile: dict, live: set[str] | None = None
         if finished is not None and row.state == "claimed" and finished(row):
             add("finished_not_handed", row.owner, "handover tiers are green over the branch tip, and it is not "
                                                   "handed: the author's move")
-        mover = who_moves(row, profile)
+        mover = who_moves(row, profile, rows)
         if live is not None and mover and not mover.startswith("the ") and mover not in live:
             add("mover_gone", mover, f"the move is {mover}'s, and that session is not alive")
     return found

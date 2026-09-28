@@ -67,6 +67,7 @@
       "urgent_why": "string",
       "verdict": "string",
       "waiting_on": "string",
+      "walkable": "string",
       "why": "string"
     },
     "state": "string: the state the move enters",

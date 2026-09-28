@@ -36,8 +36,8 @@ def _census_word(session) -> str:
     return session.state or session.status or "unknown"
 
 
-def movers(row, profile: dict, live: set[str], post_of) -> set[str]:
-    mover = views.who_moves(row, profile)
+def movers(row, profile: dict, live: set[str], post_of, rows: dict | None = None) -> set[str]:
+    mover = views.who_moves(row, profile, rows)
     if mover in POST_OF_MOVER:
         return {name for name in live if post_of(name) == POST_OF_MOVER[mover]}
     if mover and not mover.startswith("the "):
@@ -53,8 +53,8 @@ def fleet(rows: dict, profile: dict, sessions, *, post_of, breaks=(), asking=())
     for row in rows.values():
         if not row.is_open or row.state == "reserved" or row.waiting_on or row.held_until:
             continue   # a post row is the post held, not a move anyone owes
-        mover = views.who_moves(row, profile)
-        named = movers(row, profile, live, post_of) & live
+        mover = views.who_moves(row, profile, rows)
+        named = movers(row, profile, live, post_of, rows) & live
         if mover in POST_OF_MOVER and not named:
             items.append(Item(NOBODY, row.branch, f"the move is {mover}'s, and no live session holds the "
                                                   f"`{POST_OF_MOVER[mover]}` post", row.updated_at))
@@ -102,7 +102,7 @@ def open_breaks(state_dir, repo_key: str, rows: dict, profile: dict, post_of) ->
         stopped, moved = _moment(at), _moment(row.updated_at) if row is not None else None
         if row is None or stopped is None or moved is None or moved > stopped:
             continue
-        if row.waiting_on or row.held_until or not holds_move(row, profile, name, post_of(name)):
+        if row.waiting_on or row.held_until or not holds_move(row, profile, name, post_of(name), rows):
             continue
         items.append(Item(BREAK, branch, f"{name} stopped twice while holding this move ({row.state}), and "
                                          "nothing has moved since", at))

@@ -16,7 +16,7 @@ STATES = ("reserved", "claimed", "handed", "fixing", "accepted", "queued", "land
 TERMINAL = frozenset({"closed", "released", "offledger", "inbatch"})
 ROW_FIELDS = ("branch", "owner", "tree", "base", "ref", "requires", "tip", "reader", "taken", "verdict",
               "waiting_on", "note", "why", "pr", "gate", "merge", "held_by", "held_until", "held_why",
-              "urgent_at", "urgent_why", "adopted_from", "broken", "fixes", "last_run")
+              "urgent_at", "urgent_why", "adopted_from", "broken", "fixes", "last_run", "walkable")
 DELIVERED = frozenset({"shipped", "walked", "closed", "offledger", "inbatch"})
 
 
@@ -53,6 +53,7 @@ class Row:
     broken: str = ""
     fixes: str = ""
     last_run: str = ""
+    walkable: str = ""
     updated_at: str = ""
     history: list = field(default_factory=list)
 

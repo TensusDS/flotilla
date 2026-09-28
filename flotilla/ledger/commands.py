@@ -178,6 +178,7 @@ MOVES = {
     "hold": lambda l, a, x: steering.hold(l, a, x.branch, until=x.until, why=x.why),
     "unhold": lambda l, a, x: steering.unhold(l, a, x.branch),
     "urgent": lambda l, a, x: steering.urgent(l, a, x.branch, why=x.why, cancel=x.cancel),
+    "walkable": lambda l, a, x: steering.walkable(l, a, x.branch, why=x.why),
 }
 
 
@@ -307,7 +308,12 @@ def _status(ledger: core.Ledger, args) -> int:
     if not open_rows:
         print("  no open rows")
     for row in open_rows:
-        mover = views.who_moves(row, ledger.profile) or "nobody named"
+        mover = views.who_moves(row, ledger.profile, rows) or "nobody named"
+        pending = views.pending_dependents(rows, row, ledger.profile) \
+            if row.state == "shipped" and (ledger.profile.get("judge") or {}).get("required") and not row.walkable \
+            else []
+        if pending:
+            mover += f" (the judge walks it after {', '.join(o.branch or o.id for o in pending)} ship)"
         wait = f" (waiting on {row.waiting_on}: {row.note})" if row.waiting_on else ""
         held = f" (held until {row.held_until}: {row.held_why})" if row.held_until else ""
         ran = f" (last run: {row.last_run})" if row.last_run else ""
