@@ -476,6 +476,10 @@ going; work stands. One computation — **whose move is it, per row** — read b
 3. **Dropped-ball watcher.** Ledger says "your move" + `claude agents --json` says `idle` + no `wait` → delivered by
    hook to the orchestrator, who messages the holder. Holder absent from the census → orphaned → `adopt`.
 
+Hooks speak only when a session is prompted, and an idle background session is not. So the move that passes the
+ball prints the letter its caller sends (SendMessage), and the orchestrator's background `flotilla watch --wait`
+delivers layer 3 without waiting for a prompt (field test F23; decisions 94, 95).
+
 ---
 
 ## 7. Spawn and posts
@@ -584,10 +588,16 @@ part (section 6.4).
 | `UserPromptSubmit` (throttled, no thresholds, age printed) | what waits for your move | every session |
 | same | fleet-wide deviations: branch without a reader, dropped balls, orphaned work | orchestrator only |
 | `PreToolUse` Bash | guards (section 10), one process | every session |
+| `PreToolUse` AskUserQuestion | refuses the question in a background session whose post is not the orchestrator's, naming the route | every session |
 | `Stop` | the ball guard (6.9) | every session |
 
 The Stop guard blocks only background sessions, only when `background_tasks` and `session_crons` are both present
 and empty, and never twice in a row; the second stop is recorded as a break for the orchestrator.
+
+**Only the orchestrator talks to the person.** Every other post sends its question to the orchestrator and records
+the wait; the sender's batch too. `flotilla watch --wait 3600`, kept running by the orchestrator, returns when
+something new needs it. A move that passes work to another session prints the letter the caller sends
+(SendMessage): an idle background session is woken only by a message.
 
 All hooks exit silently when the project has no `.flotilla/`. flotilla never writes the user's `settings.json`.
 

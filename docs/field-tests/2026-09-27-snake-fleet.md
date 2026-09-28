@@ -235,6 +235,9 @@ Grouped by what stalled the fleet most; fixed in this order, in several small pl
 
 Part 1 (the ledger) fixes F14, F15, F18, F21, F24, F26 — plan `docs/plans/2026-09-28-field-fixes-ledger.md`.
 
+Part 2 (who talks to the person, who wakes the next mover) fixes F12, F16, F17, F23 — plan
+`docs/plans/2026-09-28-field-fixes-voice-and-wake.md`.
+
 Left open by the part-1 branch review (minor) — all three closed on the same branch before it merged:
 
 - **R1 — the design spec lags the decisions log.** Sections 6.2–6.4 and 7.4 still describe `land` on the local
