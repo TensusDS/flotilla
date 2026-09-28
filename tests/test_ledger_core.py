@@ -8,7 +8,7 @@ import pytest
 from flotilla.core.census import CensusUnavailable
 from flotilla.ledger import core
 from flotilla.ledger.errors import MoveRefused
-from ledgerkit import actor, branch, git, make_ledger, repo_with_origin
+from ledgerkit import PROFILE, actor, branch, git, make_ledger, repo_with_origin
 
 ROOT = Path(__file__).resolve().parent.parent
 TESTS = Path(__file__).resolve().parent
@@ -157,3 +157,40 @@ def test_a_release_racing_a_new_claim_does_not_take_a_live_owners_row(world, mon
     monkeypatch.setattr(ledger, "rows", lambda: {})   # the unlocked pre-check saw no row yet
     with pytest.raises(MoveRefused, match="run it again"):
         core.release(ledger, actor(ledger, "orchestrator 1"), "feat/x", why="tidy")
+
+
+DIRECT_FLOW = {"schema": 1, "trunk": {"branch": "main"}, "flow": {"mode": "direct"}}
+
+
+def test_a_row_another_row_fulfilled_is_settled_by_it(tmp_path):
+    from ledgerkit import git, repo_with_origin, shipped_direct
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile={**PROFILE, **DIRECT_FLOW})
+    done = shipped_direct(root, ledger, "feat/x")
+    git(root, "branch", "fix/y", "main")
+    core.claim(ledger, actor(ledger, "main session 1"), "fix/y")
+    row = core.release(ledger, actor(ledger, "main session 1"), "fix/y", settled_by="feat/x")
+    assert row.state == "released"
+    evidence = row.history[-1]["evidence"]
+    assert evidence["settled_by"] == done.id and "settled by feat/x" in evidence["why"]
+
+
+def test_settled_by_an_undelivered_row_is_refused(tmp_path):
+    from ledgerkit import drive, git, repo_with_origin
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile={**PROFILE, **DIRECT_FLOW})
+    drive(root, ledger, "feat/x", to="claimed")
+    git(root, "branch", "fix/y", "main")
+    core.claim(ledger, actor(ledger, "main session 1"), "fix/y")
+    with pytest.raises(MoveRefused, match="not delivered"):
+        core.release(ledger, actor(ledger, "main session 1"), "fix/y", settled_by="feat/x")
+
+
+def test_a_release_names_a_reason_or_the_row_that_settled_it(tmp_path):
+    from ledgerkit import git, repo_with_origin
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state")
+    git(root, "branch", "fix/y", "main")
+    core.claim(ledger, actor(ledger, "main session 1"), "fix/y")
+    with pytest.raises(MoveRefused, match="--why.*--settled-by"):
+        core.release(ledger, actor(ledger, "main session 1"), "fix/y")

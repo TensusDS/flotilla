@@ -156,7 +156,7 @@ def _show(ledger: core.Ledger, branch: str) -> int:
 MOVES = {
     "claim": lambda l, a, x: core.claim(l, a, x.branch, tree=x.tree, ref=x.ref, requires=x.requires, also=x.also),
     "reserve": lambda l, a, x: core.reserve(l, a, x.branch, tree=x.tree),
-    "release": lambda l, a, x: core.release(l, a, x.branch, why=x.why),
+    "release": lambda l, a, x: core.release(l, a, x.branch, why=x.why, settled_by=x.settled_by),
     "hand": lambda l, a, x: handover.hand(l, a, x.branch, tip=x.tip),
     "moved": lambda l, a, x: handover.moved(l, a, x.branch, tip=x.tip, agreed_by=x.agreed_by),
     "wait": lambda l, a, x: handover.wait(l, a, x.branch, on=x.on, why=x.why, clear=x.clear),
