@@ -38,10 +38,11 @@ def subject(ledger, sha: str) -> str:
     return (_git(ledger, "log", "-1", "--format=%s", sha) or "").strip()
 
 
-def outgoing(ledger, upto: str, *, base: str = "") -> list[str] | None:
-    """Commits `upto` carries that origin's trunk lacks (or past `base` without an origin), oldest first."""
+def outgoing(ledger, upto: str, *, base: str = "", since: str = "") -> list[str] | None:
+    """Commits `upto` carries that origin's trunk lacks (or past `base` without an origin), oldest first; with
+    `since`, the commits past that revision instead — for a push that already reached origin."""
     remote = f"refs/remotes/origin/{ledger.trunk}"
-    stop = remote if gitq.resolve(ledger.root, remote, run=ledger.run) else base
+    stop = since or (remote if gitq.resolve(ledger.root, remote, run=ledger.run) else base)
     if not stop:
         return None
     listed = _git(ledger, "rev-list", "--reverse", upto, f"^{stop}")
@@ -178,9 +179,9 @@ def account(ledger, rows: dict[str, Row], sha: str) -> str | None:
     return Accounting(ledger, rows).account(sha)
 
 
-def unaccounted(ledger, rows: dict[str, Row], upto: str, *, base: str = "") -> list[str] | None:
+def unaccounted(ledger, rows: dict[str, Row], upto: str, *, base: str = "", since: str = "") -> list[str] | None:
     """The commits `upto` would carry that no verdict covers; None when what it carries cannot be told."""
-    commits = outgoing(ledger, upto, base=base)
+    commits = outgoing(ledger, upto, base=base, since=since)
     if commits is None:
         return None
     accounting = Accounting(ledger, rows)
