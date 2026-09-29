@@ -26,7 +26,7 @@ def ask_verdict(ctx, cli: str = "flotilla") -> tuple[str, str]:
     post = ctx.post(ctx.me.name)
     if post is None or post.name in PERSON_FACING:
         return "", ""
-    orchestrators = sorted(name for name in ctx.live if ctx.post_of(name) in PERSON_FACING)
+    orchestrators = sorted(name for name in ctx.project_live or set() if ctx.post_of(name) in PERSON_FACING)
     lines = [f"flotilla: you are {ctx.me.name} ({post.name} post), a background session nobody is attached to: a "
              "question here waits for ever. Only the orchestrator talks to the person."]
     if orchestrators:

@@ -238,6 +238,25 @@ Part 1 (the ledger) fixes F14, F15, F18, F21, F24, F26 — plan `docs/plans/2026
 Part 2 (who talks to the person, who wakes the next mover) fixes F12, F16, F17, F23 — plan
 `docs/plans/2026-09-28-field-fixes-voice-and-wake.md`.
 
+Part 3 (what the views say, standing the fleet down) fixes F8, F9, F10, F13, F19, F20, F22, F27 — plan
+`docs/plans/2026-09-29-field-fixes-views-and-fleet-down.md`.
+
+Left open by the part-3 branch review (minor):
+
+- **R12 — seats run without an orchestrator while spawn raises it last**; the broker's "no live orchestrator"
+  deny then tells a seat to spawn one. Say it is being raised when an open orchestrator post row exists.
+- **R13 — `strip_ansi` misses `ESC ( B`** (what `tput sgr0` emits), `ESC 7`/`ESC 8` and 8-bit CSI; stored event
+  output (`ledger/events.py`) is not stripped and the session-start hook prints it.
+- **R14 — the empty-seats item wakes `watch --wait` as seats are retired one by one** (its key is the joined name
+  list), and its age is the reservation time, not when the seat emptied.
+- **R15 — machine-wide counts remain** in `watch`'s census line and in `status`; `status` still prints
+  `seat_empty` once per seat.
+- **R16 — `watch --once` drops the other items when the confirming sample fails**; print them and mark the ball
+  unconfirmed.
+- **R17 — `show` says "no branch yet" when git fails or the branch exists only on origin.**
+- **R18 — `project.roots` runs `git worktree list` in hooks without a timeout** (measured 0.01 s over 86
+  worktrees).
+
 Measured 2026-09-28 23:56–23:59 (UTC), branch `feat/field-fixes-voice-and-wake` at `39906f4` installed in the snake
 project: one background session, `minor session 91` (Sonnet, `auto`), was told to ask the person the snake's colour
 with AskUserQuestion. The PreToolUse hook on AskUserQuestion fired in the background session and its `deny` held: the

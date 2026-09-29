@@ -129,3 +129,27 @@ def retire(ledger, name: str, *, caller: str, census, wait: float = 60.0, poll: 
             lines.append(f"orphaned: `{other.branch}` ({other.state}); hand it on with `flotilla work adopt "
                          f"{other.branch} --to \"<session>\"`")
     return lines
+
+
+def down(ledger, *, caller: str, me: str, census, wait: float = 60.0, poll: float = 1.0,
+         sleep=time.sleep) -> tuple[list[str], int]:
+    """Retire every seat of this ledger but the caller's own (field test F27). The census is asked first: a
+    fleet that cannot be counted is not stood down at all."""
+    try:
+        census()
+    except CensusUnavailable as err:
+        raise RetireRefused(f"the census could not be asked ({err}); nothing was stopped or released") from err
+    lines, refused = [], 0
+    for row in post_rows(ledger):
+        if row.owner == me:
+            lines.append(f"kept {me}: it runs this command; retire it last, from elsewhere: "
+                         f"`flotilla retire \"{me}\"`")
+            continue
+        try:
+            lines += retire(ledger, row.owner, caller=caller, census=census, wait=wait, poll=poll, sleep=sleep)
+        except (MoveRefused, OSError) as err:   # an event script, a failed `claude`: the other seats still go
+            refused += 1
+            lines.append(f"refused {row.owner}: {err}")
+    if not lines:
+        lines.append("no post rows: nobody was spawned, or everyone was retired")
+    return lines, refused

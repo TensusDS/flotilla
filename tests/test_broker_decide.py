@@ -165,3 +165,13 @@ def test_for_the_session_never_switches_the_mode():
 
 def test_a_command_with_a_wildcard_gets_no_rule():
     assert decide.session_rules("Bash", {"command": "rm -rf build/*"}, []) == []
+
+
+def test_an_orchestrator_of_another_project_does_not_count(tmp_path):
+    import dataclasses
+    ctx = fleet(tmp_path)   # the orchestrator here is live, but not of this project
+    ctx = dataclasses.replace(ctx, project=[ctx.me])
+    clock = Clock()   # a question queued for an orchestrator that never reads it would wait: decide, never hang
+    decision = decide.decide(TOUCH, ctx, clock=clock, sleep=clock.sleep, timer=clock)
+    assert decision["behavior"] == "deny" and "no live orchestrator" in decision["message"]
+    assert clock.now == 1000.0   # at once, not after the wait ran out

@@ -93,3 +93,68 @@ def test_retire_says_unknown_when_it_cannot_read_a_tree_that_exists(tmp_path):
     (seat.seat.tree / ".git").unlink()
     lines = "\n".join(do_retire(ledger, fake))
     assert "state is unknown" in lines and "is gone" not in lines
+
+
+def fleet_world(tmp_path, fake, counts):
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile={**PROFILE, "permissions": {"mode": "auto"}},
+                         run=fake, census=fake.census)
+    store = LocalLogStore(tmp_path / "state" / "fleet")
+    spawn.spawn(ledger, counts, census=fake.census, store=store, caller=CALLER, wait=0.1, poll=0.05,
+                sleep=lambda seconds: None)
+    return ledger
+
+
+def do_down(ledger, fake, me=""):
+    return retire.down(ledger, caller="fleet down by the person", me=me, census=fake.census, wait=0.2, poll=0.05,
+                       sleep=lambda seconds: None)
+
+
+def test_fleet_down_retires_every_seat(tmp_path):
+    fake = FakeClaude()
+    ledger = fleet_world(tmp_path, fake, {"reviewer": 1, "sender": 1})
+    lines, refused = do_down(ledger, fake)
+    assert refused == 0 and retire.post_rows(ledger) == []
+    assert any("retired review session 1" in line for line in lines)
+    assert any("retired sender 1" in line for line in lines)
+
+
+def test_fleet_down_keeps_the_callers_own_seat(tmp_path):
+    fake = FakeClaude()
+    ledger = fleet_world(tmp_path, fake, {"orchestrator": 1, "sender": 1})
+    lines, refused = do_down(ledger, fake, me="orchestrator 1")
+    assert [row.owner for row in retire.post_rows(ledger)] == ["orchestrator 1"]
+    assert any("kept orchestrator 1" in line and "flotilla retire" in line for line in lines)
+
+
+def test_fleet_down_refuses_whole_when_the_census_is_down(tmp_path):
+    fake = FakeClaude()
+    ledger = fleet_world(tmp_path, fake, {"reviewer": 1})
+    fake.reachable = False
+    with pytest.raises(retire.RetireRefused, match="nothing was stopped"):
+        do_down(ledger, fake)
+    assert fake.stopped == [] and [row.owner for row in retire.post_rows(ledger)] == ["review session 1"]
+
+
+def test_fleet_down_goes_on_past_a_seat_it_cannot_retire(tmp_path):
+    fake = FakeClaude()
+    ledger = fleet_world(tmp_path, fake, {"reviewer": 1, "sender": 1})
+    fake.stop_fails = {"review session 1"}
+    lines, refused = do_down(ledger, fake)
+    assert refused == 1 and [row.owner for row in retire.post_rows(ledger)] == ["review session 1"]
+    assert any(line.startswith("refused review session 1:") for line in lines)
+
+
+def test_fleet_down_goes_on_past_any_refused_move(tmp_path, monkeypatch):
+    from flotilla.ledger.errors import MoveRefused
+    fake = FakeClaude()
+    ledger = fleet_world(tmp_path, fake, {"reviewer": 1, "sender": 1})
+    real = retire.retire
+    def refusing(ledger, name, **kwargs):
+        if name == "review session 1":
+            raise MoveRefused("the pre-released event script refused")
+        return real(ledger, name, **kwargs)
+    monkeypatch.setattr(retire, "retire", refusing)
+    lines, refused = do_down(ledger, fake)
+    assert refused == 1 and any("retired sender 1" in line for line in lines)
+    assert any(line.startswith("refused review session 1:") and "event script" in line for line in lines)

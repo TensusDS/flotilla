@@ -12,7 +12,7 @@ from flotilla.watch.whose import WORKING, Item
 MAX_LINES = 20
 LINE_CHARS = 200
 ORDER = {"question": -1, "person": -1, "ball": 0, "hold": 1, "unread": 2,
-         "dropped": 3, "nobody": 4, "break": 5, "deviation": 6, "waiting": 8}
+         "dropped": 3, "nobody": 4, "break": 5, "deviation": 6, "waiting": 8, "seats": 9}
 
 
 def age(since: str, now: dt.datetime) -> str:
@@ -36,7 +36,8 @@ def lines(items: list[Item], now: dt.datetime, *, limit: int = MAX_LINES) -> lis
     working = [item for item in items if item.kind == WORKING]
     rest = sorted((item for item in items if item.kind != WORKING), key=lambda item: (ORDER.get(item.kind, 7),
                                                                                      item.since))
-    out = [_cut(f"  {item.branch}: {item.text} ({age(item.since, now)})") for item in rest]
+    out = [_cut(f"  {item.branch + ': ' if item.branch else ''}{item.text} ({age(item.since, now)})")
+           for item in rest]
     if working:
         oldest = min(working, key=lambda item: item.since)
         out.append(_cut(f"  {len(working)} claimed branch(es) in your hands; oldest {oldest.branch} "

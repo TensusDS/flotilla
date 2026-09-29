@@ -17,6 +17,7 @@ from pathlib import Path
 
 from flotilla.core import config, paths, repo
 from flotilla.core.storage import LocalLogStore, StorageCorrupt
+from flotilla.core.text import strip_ansi
 from flotilla.ledger import (core, delivery, events, findings, gitq, handover, judging, letters, outside, reading,
                              receipts, report, steering, views)
 from flotilla.ledger import tree as tree_mod
@@ -121,8 +122,18 @@ def open_ledger(root: Path, *, skip_events: dict | None = None) -> core.Ledger:
 
 
 def summary(row: Row) -> str:
-    reader = f", reader {row.reader}{' (reading)' if row.taken else ''}" if row.reader else ""
+    reading = " (reading)" if row.taken and row.state == "handed" else ""   # `taken` outlives the verdict (F13)
+    reader = f", reader {row.reader}{reading}" if row.reader else ""
     return f"{row.id} {row.branch}: {row.state} (owner {row.owner}{reader})"
+
+
+def _base(ledger: core.Ledger, row: Row) -> str:
+    """A row filed before its branch exists has no base yet; "unknown" would read as a git failure (F22)."""
+    if row.base:
+        return f"base {row.base}"
+    if gitq.branch_tip(ledger.root, row.branch, run=ledger.run) is None:
+        return "base: no branch yet"
+    return "base unknown"
 
 
 def _show(ledger: core.Ledger, branch: str) -> int:
@@ -132,7 +143,7 @@ def _show(ledger: core.Ledger, branch: str) -> int:
         return 2
     row = matches[-1]
     print(summary(row))
-    print(f"  base {row.base or 'unknown'} | tip {row.tip or '-'} | verdict {row.verdict or '-'} | ref {row.ref or '-'}")
+    print(f"  {_base(ledger, row)} | tip {row.tip or '-'} | verdict {row.verdict or '-'} | ref {row.ref or '-'}")
     if row.waiting_on:
         print(f"  waiting on {row.waiting_on}: {row.note}")
     if row.why:
@@ -324,7 +335,7 @@ def _status(ledger: core.Ledger, args) -> int:
             mover += f" (the judge walks it after {', '.join(o.branch or o.id for o in pending)} ship)"
         wait = f" (waiting on {row.waiting_on}: {row.note})" if row.waiting_on else ""
         held = f" (held until {row.held_until}: {row.held_why})" if row.held_until else ""
-        ran = f" (last run: {row.last_run})" if row.last_run else ""
+        ran = f" (last run: {strip_ansi(row.last_run)})" if row.last_run else ""
         print(f"  {row.id} {row.branch}: {row.state} -> {mover}{wait}{held}{ran}")
     for title, items in (("deviations", views.deviations(rows, ledger.profile, live,
                                                          finished=lambda row: _finished(ledger, row))),
@@ -419,11 +430,14 @@ def run_ledger_command(args) -> int:
 def _letters(ledger: core.Ledger, caller, before: dict) -> None:
     """Print the letters a recorded move owes. The move is already in the ledger, so a failure here is a note,
     never a refusal: a session that read "refused" would make the move again."""
-    def live():
+    def live():   # this project's sessions: a sender of another repository is no recipient (F20)
         try:
-            return ledger.live_names()
+            sessions = ledger.live_sessions()
         except MoveRefused:
             return None
+        from flotilla.ledger import project
+        roots = project.roots(ledger.root, ledger.run)
+        return {session.name for session in project.members(sessions, ledger.rows(), roots) if session.name}
     try:
         due = letters.changed(before, ledger.rows(), ledger.profile, ledger.posts, caller.name, live)
     except Exception as err:  # noqa: BLE001 - the move stands; say what could not be done

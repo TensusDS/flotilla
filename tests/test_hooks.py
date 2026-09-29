@@ -132,7 +132,7 @@ IDLE = {"background_tasks": [], "session_crons": []}
 def test_session_start_names_the_session_its_post_and_peers(tmp_path, healthy):
     me = sess("review session 1")
     said = call("session-start", tmp_path, context(tmp_path, me=me, sessions=[me, sess("main session 1")]))
-    assert "you are review session 1 (post reviewer); 1 live peer(s): main session 1" in said
+    assert "you are review session 1 (post reviewer); 1 live peer(s) in this project: main session 1" in said
     assert "python" not in said   # a healthy doctor adds no line
 
 
@@ -316,3 +316,22 @@ def test_the_route_says_what_to_do_without_a_row_and_how_to_find_one(tmp_path):
     me = sess("minor session 1")
     reason = asked(tmp_path, context(tmp_path, me=me, sessions=[me]))["permissionDecisionReason"]
     assert "flotilla status" in reason and "hold no row" in reason and "last message" in reason
+
+
+def test_the_greeting_names_this_projects_peers_and_counts_the_rest(tmp_path, healthy):
+    import dataclasses
+    me = sess("orchestrator 1")
+    here = sess("main session 1")
+    there = sess("acceptance judge 1")
+    ctx = dataclasses.replace(context(tmp_path, me=me, sessions=[me, here, there]), project=[me, here])
+    said = call("session-start", tmp_path, ctx)
+    assert "1 live peer(s) in this project: main session 1" in said and "1 more elsewhere on this machine" in said
+
+
+def test_the_ask_guard_names_only_this_projects_orchestrator(tmp_path):
+    import dataclasses
+    me = sess("minor session 1")
+    ctx = context(tmp_path, me=me, sessions=[me, sess("orchestrator 1"), sess("orchestrator 2")])
+    ctx = dataclasses.replace(ctx, project=[me, sess("orchestrator 2")])
+    reason = asked(tmp_path, ctx)["permissionDecisionReason"]
+    assert "orchestrator 2" in reason and "orchestrator 1" not in reason

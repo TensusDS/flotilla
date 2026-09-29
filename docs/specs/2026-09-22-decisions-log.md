@@ -507,6 +507,31 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    onboarded, a damaged log, a ledger version) says flotilla cannot run here. A letter that cannot be computed
    after a recorded move is a note, never a refusal. (executor's decision after the branch review, field fixes
    part 2, 2026-09-29)
+99. **The sessions of this project** (Max: "live sessions of this project are the holders of this ledger's post
+   rows"): a live session named in this ledger's open rows — owner or reader, post rows included — or working in
+   this repository's main checkout or a worktree of it. A post-named mover resolves among them only; the greeting,
+   `watch`, the ask guard and the letters use them (F9, F20). (Max's triage 2026-09-28; the working-directory and
+   row-owner widening, executor's decision, field fixes part 3, 2026-09-29)
+100. **A gone seat is one quiet line, not a mover alarm** (Max): a `reserved` row whose session is not alive is the
+   deviation `seat_empty`, and the fleet view gathers every empty seat into one item naming them and
+   `flotilla fleet down` (F8, F27). (Max's triage 2026-09-28)
+101. **Spawn raises the orchestrator last**, so its session-start report sees every seat already raised (F8).
+   (executor's decision, field fixes part 3, 2026-09-29)
+102. **`watch` confirms a dropped ball with a second census sample** a few seconds on before it reports or wakes;
+   the hooks do not sample twice (F10). (executor's decision, field fixes part 3, 2026-09-29)
+103. **`flotilla fleet down` retires every seat of this ledger but the caller's own** (Max), as `retire` does; a
+   census that cannot be asked refuses the whole command; `/flotilla:down` is the person's command and asks first
+   (F27). (Max's triage 2026-09-28; skipping the caller's seat, executor's decision, field fixes part 3, 2026-09-29)
+104. **Run summaries carry no terminal escapes**: stripped when recorded and again when shown (F19). (executor's
+   decision, field fixes part 3, 2026-09-29)
+105. **A session is of this project by the repository it works in, not by a path prefix**: the nearest directory
+   holding `.git` above its working directory must be the main checkout or a worktree of this repository, so a
+   repository nested inside the checkout is not this one; a relative working directory is not inside. The permission
+   broker's "a live orchestrator exists" is asked of this project's sessions too. (executor's decision after the
+   branch review, field fixes part 3, 2026-09-29)
+106. **`fleet down` refuses inside a Claude Code session it cannot identify**, since stopping the session that
+   runs it would cut the command short; a refused seat of any kind never stops the others. (executor's decision
+   after the branch review, field fixes part 3, 2026-09-29)
 
 ## Open questions (for the foundation spec)
 

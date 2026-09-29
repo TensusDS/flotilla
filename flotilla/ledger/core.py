@@ -64,14 +64,16 @@ class Ledger:
             return ""
         return post.name if post else ""
 
-    def live_names(self) -> set[str]:
+    def live_sessions(self) -> list:
         if self.census is None and os.environ.get(NO_CENSUS):
             raise MoveRefused(f"{NO_CENSUS} is set, so the census is not asked and liveness is unknown")
         try:
-            sessions = (self.census or read_census)()
+            return (self.census or read_census)()
         except CensusUnavailable as err:
             raise MoveRefused(f"could not ask which sessions are alive: {err}") from err
-        return {session.name for session in sessions if session.name}
+
+    def live_names(self) -> set[str]:
+        return {session.name for session in self.live_sessions() if session.name}
 
     @contextlib.contextmanager
     def session(self):

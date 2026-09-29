@@ -10,7 +10,7 @@ from flotilla import cli
 
 ROOT = Path(__file__).resolve().parent.parent
 SKILLS = sorted((ROOT / "skills").glob("*/SKILL.md"))
-PERSON_ONLY = {"doctor", "check", "status", "brief", "spawn", "retire", "lane", "watch", "guard"}
+PERSON_ONLY = {"doctor", "check", "status", "brief", "spawn", "retire", "lane", "watch", "guard", "down"}
 MODEL_INVOCABLE = {"onboard", "permit"}
 MODEL_ONLY = {"flotilla"}
 CALL = re.compile(r"`(?:\$\{CLAUDE_PLUGIN_ROOT\}/scripts/)?flotilla ([a-z-]+)(?: ([a-z-]+))?")
@@ -142,3 +142,8 @@ def test_the_permit_skill_leaves_the_orchestrator_one_wait():
 def test_producers_make_the_move_a_flotilla_letter_names():
     for name in ("main", "minor"):
         assert "A letter flotilla printed names a move the ledger already gives you" in template(name)
+
+
+def test_the_down_command_shows_the_fleet_and_asks_first():
+    text = (ROOT / "skills" / "down" / "SKILL.md").read_text(encoding="utf-8")
+    assert "flotilla fleet`" in text and "flotilla fleet down" in text and "confirm" in text

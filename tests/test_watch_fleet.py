@@ -106,3 +106,12 @@ def test_questions_become_items_named_by_the_asking_session():
     item = fleet.question_items([asked])[0]
     assert (item.kind, item.branch) == ("question", "main session 1") and "Bash touch x" in item.text
     assert "/flotilla:permit" in item.text
+
+
+def test_empty_seats_are_one_quiet_line():
+    seats = rows(row(id="r1", branch="fleet/reviewer-1", owner="review session 1", state="reserved"),
+                 row(id="r2", branch="fleet/judge-1", owner="acceptance judge 1", state="reserved"))
+    found = fleet.fleet(seats, PR, [sess("main session 1")], post_of=post_of)
+    assert [(item.kind, item.branch) for item in found] == [(fleet.SEATS, "")]
+    assert "2 post seat(s) with no live session: acceptance judge 1, review session 1" in found[0].text
+    assert "flotilla fleet down" in found[0].text

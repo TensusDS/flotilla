@@ -446,6 +446,12 @@ in one block: every branch, whose, accepted by whom over which revision, which g
 `metrics` (time in state, return rate, reviewer throughput, event failures). `adopt` hands orphaned work to a live
 session, only when the previous owner is absent from the census.
 
+The views speak of **the sessions of this project**, not of the machine: a live session named in this ledger's
+open rows (post rows included), or working in this repository's main checkout or one of its worktrees. A post-named
+mover resolves among them only; the greeting names them and counts the rest (F9, F20; decision 99). A post seat
+whose session is gone is an **empty seat**, not a gone mover: the views gather every empty seat into one line that
+names them and `flotilla fleet down` (F8, F27; decision 100).
+
 ### 6.8 Events
 
 `.flotilla/events/pre-<move>` and `post-<move>`. Scripts are named by the state the move enters (`pre-handed`), fire
@@ -575,6 +581,9 @@ part (section 6.4).
 | add a post mid-day | `flotilla spawn -r 1` |
 | revive a crashed session | native `claude respawn`; flotilla checks the name and tree are kept |
 | retire a session | `flotilla retire <name>`: stops the session and waits until the census no longer lists it, unlocks the tree, frees the post row, leaves unfinished work orphaned for `adopt`; the tree is kept, and retire prints its uncommitted file count |
+| stand the fleet down | `flotilla fleet down` (the person's `/flotilla:down` shows the fleet and asks first): retires every seat of this ledger as `retire` does, but the caller's own, which it names; refused whole when the census cannot be asked |
+
+Spawn raises the orchestrator last, so its first report sees every seat already raised (decision 101).
 
 ---
 
@@ -593,6 +602,9 @@ part (section 6.4).
 
 The Stop guard blocks only background sessions, only when `background_tasks` and `session_crons` are both present
 and empty, and never twice in a row; the second stop is recorded as a break for the orchestrator.
+
+`watch` reports or wakes for a dropped ball only when a second census sample, a few seconds on, agrees: a session
+caught once at `waiting` is often busy a moment later (F10; decision 102). The hooks do not sample twice.
 
 **Only the orchestrator talks to the person.** Every other post sends its question to the orchestrator and records
 the wait; the sender's batch too. `flotilla watch --wait 3600`, kept running by the orchestrator, returns when

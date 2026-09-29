@@ -58,3 +58,8 @@ def test_a_run_interrupted_on_our_side_stops_its_command():
         run.execute([sys.executable, "-c", "import time\nwhile True:\n    print('tick', flush=True); time.sleep(0.05)"],
                     popen=popen, out=Broken())
     assert started[0].poll() is not None
+
+
+def test_a_coloured_summary_is_recorded_plain():
+    from flotilla.lane.run import summarize
+    assert summarize(["noise", "\x1b[32m12 passed\x1b[0m in 0.02s"]) == "12 passed in 0.02s"

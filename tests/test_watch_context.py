@@ -59,3 +59,15 @@ def test_the_orchestrator_sees_live_questions_first(tmp_path):
     from flotilla.watch import render
     lines = render.lines(ctx.fleet(now=NOW.timestamp()), NOW)
     assert lines[0].startswith("  main session 1: asks Bash touch x")
+
+
+def test_gather_narrows_the_fleet_to_this_projects_sessions(tmp_path):
+    import dataclasses
+    from ledgerkit import repo_with_origin
+    root = repo_with_origin(tmp_path)
+    here = dataclasses.replace(sess("main session 1", sid="aaa"), cwd=str(root))
+    there = dataclasses.replace(sess("acceptance judge 1", sid="bbb"), cwd=str(tmp_path / "elsewhere"))
+    ledger = SimpleNamespace(rows=lambda: {}, root=root)
+    ctx = context.gather(root, "aaa", census=lambda: [here, there], open_ledger=lambda r: ledger,
+                         parent_of=no_parent)
+    assert [s.name for s in ctx.project] == ["main session 1"] and ctx.project_live == {"main session 1"}

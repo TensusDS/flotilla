@@ -72,3 +72,17 @@ def test_a_custom_count_is_given_by_post_name(tmp_path, monkeypatch):
     assert code == 0 and "minor session 1" in out and "minor session 2" in out
     code, out = run_cli("spawn", "--post", "minor", "--dry-run", "--root", str(root))
     assert code == 2 and "NAME=N" in out
+
+
+def test_fleet_down_without_the_census_refuses_and_stops_nothing(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    code, out = run_cli("fleet", "down", "--root", str(root))
+    assert code == 2 and "nothing was stopped or released" in out
+
+
+def test_fleet_down_inside_an_unidentified_claude_session_refuses(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [])
+    code, out = run_cli("fleet", "down", "--root", str(root))
+    assert code == 2 and "cannot tell which session runs this" in out

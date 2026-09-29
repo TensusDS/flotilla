@@ -171,13 +171,16 @@ def build_parser() -> argparse.ArgumentParser:
     retire_ = sub.add_parser("retire", help="stop a session and release its post; its work stays")
     retire_.add_argument("name")
     retire_.add_argument("--root", default=".")
-    sub.add_parser("fleet", help="the fleet's sessions, their trees and their work").add_argument("--root", default=".")
+    fleet_ = sub.add_parser("fleet", help="the fleet's sessions, their trees and their work; `down` retires them")
+    fleet_.add_argument("action", nargs="?", choices=["down"], help="retire every seat but your own")
+    fleet_.add_argument("--root", default=".")
     watch = sub.add_parser("watch", help="what the fleet needs attention for (exit 0 none, 1 some, 2 unknown)")
     watch.add_argument("--once", action="store_true", help="check once and exit (v1 has no schedule of its own)")
     watch.add_argument("--wait", type=float, default=0.0,
                        help="block up to this many seconds until something new needs attention (exit 1), or "
                             "nothing new (exit 0)")
     watch.add_argument("--interval", type=float, default=20.0, help=argparse.SUPPRESS)
+    watch.add_argument("--confirm", type=float, default=5.0, help=argparse.SUPPRESS)
     watch.add_argument("--root", default=".")
     from flotilla.guards import CEILING
     guard = sub.add_parser("guard", help="the command guards and their git hooks", epilog=CEILING,

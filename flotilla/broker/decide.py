@@ -95,7 +95,8 @@ def decide(payload: dict, ctx, *, clock=time.time, sleep=time.sleep, timer=time.
         handle = ctx.me.short_id or ctx.me.session_id[:8]
         return _deny(f"the orchestrator's own question cannot be put to itself; the person answers it with "
                      f"`claude attach {handle}`")
-    if not any(s.name and s.name != me and ctx.post_of(s.name) == "orchestrator" for s in ctx.sessions):
+    mine = ctx.project if ctx.project is not None else ctx.sessions   # an orchestrator of another project never reads
+    if not any(s.name and s.name != me and ctx.post_of(s.name) == "orchestrator" for s in mine):
         return _deny("no live orchestrator to put this question to; spawn one (`flotilla spawn -o 1`), or give this "
                      "session a rule that allows the call")
     try:
