@@ -151,3 +151,7 @@ def test_stale_answers_are_dropped():
 def test_the_model_question_offers_model_names_and_takes_one_typed():
     q = next(q for q in qs.all_questions(detection(), {}) if q["id"] == "model")
     assert {"sonnet", "opus"} <= {option["value"] for option in q["options"]} and q["free_text"]
+
+
+def test_a_local_project_is_not_asked_about_a_judge():
+    assert "deploy" not in ids(qs.all_questions(detection(remote=False, ci={"provider": "none"}), {}))

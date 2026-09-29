@@ -8,6 +8,7 @@ other module uses, so a profile this module cannot load is never left behind sil
 from __future__ import annotations
 
 import os
+import shlex
 from pathlib import Path
 
 from flotilla.core import config
@@ -120,10 +121,10 @@ def build_profile(det: dict, answers: dict) -> dict:
         if pattern:
             close = {"field": "ref", "pattern": pattern, "required": False}
         data["evidence"] = {"close": close}
-    if answers.get("deploy") in ("web", "cli", "api"):
+    if answers.get("deploy") in ("web", "cli", "api") and data["flow"]["mode"] != "local":
         # no deployment found: the build a person runs is trunk on origin, whose first word `walked` compares (F4)
         trunk = data["trunk"]["branch"]
-        revision = "" if signals.get("deployment") else f"git ls-remote origin refs/heads/{trunk}"
+        revision = "" if signals.get("deployment") else f"git ls-remote origin {shlex.quote('refs/heads/' + trunk)}"
         data["deploy"] = {"surface": answers["deploy"], "revision_command": revision}
         data["judge"] = {"required": True}
     if answers.get("shared") == "reserve":

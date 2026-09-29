@@ -88,7 +88,11 @@ def plan(ledger, counts: dict, *, census, store, reserve: bool,
                 if gitq.branch_tip(ledger.root, seat.branch, run=ledger.run)]
     if clashes:
         raise SpawnRefused("; ".join(clashes) + "; nothing was raised")
-    return seats, compose.warnings(wanted, ledger.posts, held) + refusals + setup_warnings
+    unwalked = []
+    if (ledger.profile.get("judge") or {}).get("required") and not wanted.get("judge") and not held.get("judge"):
+        unwalked.append("the profile requires a judge and the fleet will hold none: shipped rows wait for a walk "
+                        "nobody makes; add one (`--post judge=1`)")
+    return seats, compose.warnings(wanted, ledger.posts, held) + unwalked + refusals + setup_warnings
 
 
 def _git(ledger, *args: str) -> subprocess.CompletedProcess:

@@ -99,14 +99,15 @@ def all_questions(det: dict, answers: dict) -> list[dict]:
             ("sender-semver", "Sender, semver", "The sender bumps the version files and writes an annotated tag."),
             ("none", "Nobody", "flotilla leaves versions alone."),
         ]))
-    found = bool(signals.get("deployment"))   # asked of every project: a CLI has a person's path too (F4)
-    out.append(_q("deploy", "Judge", ("A deployment was found. " if found else "")
-                  + "What surface does a person use? An acceptance judge walks it once work ships.", [
-        ("web", "Web", "The judge walks the human path in a browser."),
-        ("cli", "Command line", "The judge walks the human path in a terminal."),
-        ("api", "API", "The judge walks the human path with HTTP calls."),
-        ("none", "No judge", "No acceptance judge in the fleet."),
-    ]))
+    found = bool(signals.get("deployment"))   # asked of every project with a trunk to ship to (F4)
+    if flow != "local":   # a local flow never ships, so a judge would never walk
+        out.append(_q("deploy", "Judge", ("A deployment was found. " if found else "")
+                      + "What surface does a person use? An acceptance judge walks it once work ships.", [
+            ("web", "Web", "The judge walks the human path in a browser."),
+            ("cli", "Command line", "The judge walks the human path in a terminal."),
+            ("api", "API", "The judge walks the human path with HTTP calls."),
+            ("none", "No judge", "No acceptance judge in the fleet."),
+        ]))
     if signals.get("shared_files"):
         out.append(_q("shared", "Shared files", f"Files everyone appends to: {', '.join(signals['shared_files'])}. "
                       "Reserve rewrites?", [

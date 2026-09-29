@@ -185,3 +185,15 @@ def test_a_command_with_no_known_runner_is_named_by_its_first_word():
 def test_a_typed_tier_does_not_take_a_detected_tiers_name():
     det = {"tests": [{"name": "pytest", "command": "pytest"}]}
     assert tier_names(det, ["pytest", "python -m pytest -x"]) == ["pytest", "pytest-2"]
+
+
+def test_a_local_flow_writes_no_judge_even_if_answered(tmp_path):
+    answers = {k: v for k, v in BASE_ANSWERS.items() if k not in ("flow", "merge_auth")}
+    data = build_profile(detection(tmp_path, remote=False, ci={"provider": "none"}),
+                         {**answers, "ci": "none", "deploy": "cli"})
+    assert "judge" not in data and "deploy" not in data
+
+
+def test_the_trunk_name_is_quoted_in_the_revision_command(tmp_path):
+    data = build_profile(detection(tmp_path, trunk="main;touch x"), {**BASE_ANSWERS, "deploy": "cli"})
+    assert data["deploy"]["revision_command"] == "git ls-remote origin 'refs/heads/main;touch x'"

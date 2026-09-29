@@ -210,3 +210,13 @@ def test_a_dry_run_lists_what_spawn_would_refuse_as_warnings(tmp_path, monkeypat
     root, ledger, store = world(tmp_path, fake)
     seats, warnings = spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False, strict=False)
     assert len(seats) == 1 and "not trusted" in warnings and "unknown plugin" in warnings
+
+
+def test_a_required_judge_with_no_judge_in_the_fleet_is_warned(tmp_path):
+    fake = FakeClaude()
+    root, ledger, store = world(tmp_path, fake, profile={**PROFILE, "permissions": {"mode": "auto"},
+                                                          "judge": {"required": True}})
+    seats, warnings = spawn.plan(ledger, {"main": 1, "review": 1}, census=fake.census, store=store, reserve=False)
+    assert any("judge" in line and "shipped rows" in line for line in warnings)
+    seats, warnings = spawn.plan(ledger, {"main": 1, "judge": 1}, census=fake.census, store=store, reserve=False)
+    assert not any("shipped rows" in line for line in warnings)
