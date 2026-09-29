@@ -119,3 +119,14 @@ def test_switch_refuses_a_branch_that_is_someone_elses(tmp_path):
     core.claim(ledger, actor(ledger, "minor session 1"), "feat/theirs")
     with pytest.raises(MoveRefused, match="minor session 1"):
         tree_mod.switch(ledger, actor(ledger, "main session 1"), "feat/theirs")
+
+
+def test_switch_takes_a_row_of_yours_that_has_no_branch_yet(tmp_path):
+    root, ledger, home = home_world(tmp_path)
+    filed = core.claim(ledger, actor(ledger, "main session 1"), "fix/feat/x")   # as `broke` files a fix row
+    assert filed.base == "" and gitq.branch_tip(root, "fix/feat/x") is None
+    row = tree_mod.switch(ledger, actor(ledger, "main session 1"), "fix/feat/x")
+    assert row.id == filed.id and row.tree == str(home.resolve())
+    assert git(home, "rev-parse", "--abbrev-ref", "HEAD") == "fix/feat/x"
+    assert row.base == git(root, "rev-parse", "origin/main")
+    assert len([r for r in ledger.rows().values() if r.branch == "fix/feat/x"]) == 1
