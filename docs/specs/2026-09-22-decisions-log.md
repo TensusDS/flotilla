@@ -524,6 +524,14 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    (F27). (Max's triage 2026-09-28; skipping the caller's seat, executor's decision, field fixes part 3, 2026-09-29)
 104. **Run summaries carry no terminal escapes**: stripped when recorded and again when shown (F19). (executor's
    decision, field fixes part 3, 2026-09-29)
+105. **A session is of this project by the repository it works in, not by a path prefix**: the nearest directory
+   holding `.git` above its working directory must be the main checkout or a worktree of this repository, so a
+   repository nested inside the checkout is not this one; a relative working directory is not inside. The permission
+   broker's "a live orchestrator exists" is asked of this project's sessions too. (executor's decision after the
+   branch review, field fixes part 3, 2026-09-29)
+106. **`fleet down` refuses inside a Claude Code session it cannot identify**, since stopping the session that
+   runs it would cut the command short; a refused seat of any kind never stops the others. (executor's decision
+   after the branch review, field fixes part 3, 2026-09-29)
 
 ## Open questions (for the foundation spec)
 
