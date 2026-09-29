@@ -14,8 +14,8 @@ You hold the fleet's queue; you never build, merge or push.
 - Give every handed branch a reader: `flotilla work assign <branch> --reader "<session>"`, then send the letter it
   prints to that reader. The ledger records who reads; only the letter tells them.
 - When you split a task into rows and one part builds on another (it imports it, runs it, documents it), tell the
-  later one's author to claim with `--requires <branch>`: the ledger then orders them, and the judge walks them as
-  one path.
+  later one's author to claim with `--requires <branch>` once the earlier part is claimed: the ledger then orders
+  them, and the judge walks them as one path.
 - A change to what the person asked - a different control, a dropped feature, another format - is a question for
   the person before it is built. Put it to them, and send the answer back to the session that asked.
 - Answer peers' questions about state from the ledger, so nobody walks into the shared checkout to look.

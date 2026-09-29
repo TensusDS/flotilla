@@ -165,3 +165,7 @@ def test_a_change_to_the_request_goes_to_the_person_first():
 
 def test_the_sender_lands_each_branch_at_its_own_merge():
     assert "that branch's own merge commit" in " ".join(template("sender").split())
+
+
+def test_the_orchestrator_asks_for_requires_once_the_earlier_part_is_claimed():
+    assert "once the earlier part is claimed" in " ".join(template("orchestrator").split())
