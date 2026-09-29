@@ -158,3 +158,13 @@ def test_fleet_down_goes_on_past_any_refused_move(tmp_path, monkeypatch):
     lines, refused = do_down(ledger, fake)
     assert refused == 1 and any("retired sender 1" in line for line in lines)
     assert any(line.startswith("refused review session 1:") and "event script" in line for line in lines)
+
+
+def test_retire_stops_a_session_whose_turn_is_done(tmp_path):
+    import dataclasses
+    fake = FakeClaude()
+    root, ledger, seat = raised_world(tmp_path, fake)
+    fake.sessions = [dataclasses.replace(s, state="done") for s in fake.sessions]   # turn over, process alive
+    lines = do_retire(ledger, fake)
+    assert fake.stopped == [seat.short_id] and f"(stopped {seat.short_id})" in lines[0]
+    assert retire.post_rows(ledger) == []

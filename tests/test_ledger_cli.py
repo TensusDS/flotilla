@@ -248,6 +248,7 @@ def test_broke_prints_the_fix_row_it_filed(tmp_path, monkeypatch):
     code, out = run_cli("work", "broke", "feat/x", "--where", "Settings > Export", "--saw", "nothing happens",
                         "--root", str(root), "--as", "acceptance judge 1")
     assert code == 0 and "fix row r2 `fix/feat/x` filed for main session 1" in out
+    assert "flotilla tree switch fix/feat/x" in out and "tree cut" not in out
 
 
 def test_a_session_takes_a_task_in_its_home_tree(tmp_path, monkeypatch):

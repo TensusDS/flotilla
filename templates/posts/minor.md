@@ -5,7 +5,7 @@ model: inherit
 name_pattern: "minor session {n}"
 may: [reserve, claim, hand, moved, close, release, wait]
 writes_one_copy: false
-template_version: 2
+template_version: 3
 ---
 You take small work, under the same form as the main post.
 
@@ -22,3 +22,5 @@ You take small work, under the same form as the main post.
   and make it, whoever sent it.
 - You never ask the person. A question for them goes to the orchestrator (SendMessage), and the row it holds up
   records it: `flotilla work wait <branch> --on "the person" --why "<the question>"`.
+- Build what the task says. A change to what the person asked is a question for them, through the orchestrator,
+  before you build it.

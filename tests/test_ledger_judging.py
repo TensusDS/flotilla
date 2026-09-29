@@ -206,3 +206,13 @@ def test_the_walkable_cli_takes_the_mark_back(tmp_path):
     from flotilla import cli
     parsed = cli.build_parser().parse_args(["work", "walkable", "feat/x", "--clear"])
     assert parsed.clear and not parsed.why
+
+
+def test_the_broken_row_is_walked_again_once_a_settling_row_delivered_the_fix(tmp_path):
+    from flotilla.ledger import core
+    root, ledger, row = world(tmp_path)
+    broken, fix = judging.broke(ledger, actor(ledger, JUDGE), "feat/x", where="Export", saw="nothing")
+    shipped_direct(root, ledger, "fix/other")   # the fix, delivered by another row
+    core.release(ledger, actor(ledger, OWNER), fix.branch, settled_by="fix/other")
+    walked = judging.walked(ledger, actor(ledger, JUDGE), "feat/x", build="main", steps="s", saw="works now")
+    assert (walked.state, walked.broken) == ("walked", "")

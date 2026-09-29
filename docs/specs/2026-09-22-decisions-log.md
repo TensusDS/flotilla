@@ -557,6 +557,24 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
 115. **A hook's trace is one file per session and event**, replaced whole, so hooks of one session firing at once
    never overwrite each other's record. (executor's decision after the branch review, field fixes part 4,
    2026-09-29)
+116. **`tree switch` takes an open row of yours that has no branch** (a fix row a judge filed): it cuts the branch
+   from trunk in the home tree and records the base, making no new row (G6). (executor's decision, field fixes
+   part 5, 2026-09-29)
+117. **A fix settled by a delivered row is delivered**: a fix row `released` with `settled_by` naming a delivered
+   row stands, for its broken row, as that row — the walked build must carry its merge, and `broken_unfixed` does
+   not fire (G9, G10). (executor's decision, field fixes part 5, 2026-09-29)
+118. **A session the census lists is running, whatever its state**: a background session whose turn is done is
+   still a process, and `retire` / `fleet down` stop it (G12). (executor's decision, field fixes part 5,
+   2026-09-29)
+119. **The posts say four more things**: announce to the fleet's seats, not to every session on the machine (G1);
+   an orchestrator splitting dependent work has the later row claimed with `--requires` (G3); a change to what the
+   person asked is put to the person before it is built (G11); the sender lands each branch at its own merge commit
+   (G5). The README says what `--scope project` commits (S7). (executor's decision, field fixes part 5,
+   2026-09-29)
+120. **A broken row is nobody's move until a fix for it is delivered** (directly or by settlement): then the mover
+   becomes the judge and the letter wakes it to walk again; `tree switch` never moves a row past its claim back to
+   `claimed`; a seat whose turn is done holds its post at spawn as it does at retire. (executor's decision after the
+   branch review, field fixes part 5, 2026-09-29)
 
 ## Open questions (for the foundation spec)
 

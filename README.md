@@ -22,7 +22,9 @@ flotilla is its own marketplace. In the project a fleet will work on:
     claude plugin install flotilla@flotilla --scope project
 
 `--scope project` records it in the project's `.claude/settings.json`, so every session started in the main
-checkout — the ones `flotilla spawn` raises included — loads flotilla. Then run `flotilla doctor` there.
+checkout — the ones `flotilla spawn` raises included — loads flotilla. Then run `flotilla doctor` there. That file
+enables flotilla and commits a marketplace entry that points at this repository, so everyone who opens the project
+and trusts it installs flotilla from here.
 
 ## Check your machine
 

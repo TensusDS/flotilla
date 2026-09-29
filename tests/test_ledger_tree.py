@@ -119,3 +119,39 @@ def test_switch_refuses_a_branch_that_is_someone_elses(tmp_path):
     core.claim(ledger, actor(ledger, "minor session 1"), "feat/theirs")
     with pytest.raises(MoveRefused, match="minor session 1"):
         tree_mod.switch(ledger, actor(ledger, "main session 1"), "feat/theirs")
+
+
+def test_switch_takes_a_row_of_yours_that_has_no_branch_yet(tmp_path):
+    root, ledger, home = home_world(tmp_path)
+    filed = core.claim(ledger, actor(ledger, "main session 1"), "fix/feat/x")   # as `broke` files a fix row
+    assert filed.base == "" and gitq.branch_tip(root, "fix/feat/x") is None
+    row = tree_mod.switch(ledger, actor(ledger, "main session 1"), "fix/feat/x")
+    assert row.id == filed.id and row.tree == str(home.resolve())
+    assert git(home, "rev-parse", "--abbrev-ref", "HEAD") == "fix/feat/x"
+    assert row.base == git(root, "rev-parse", "origin/main")
+    assert len([r for r in ledger.rows().values() if r.branch == "fix/feat/x"]) == 1
+
+
+def test_switch_never_turns_a_delivered_row_back_into_a_claim(tmp_path):
+    from ledgerkit import PROFILE, shipped_direct
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile={**PROFILE, "flow": {"mode": "direct"}})
+    home = tmp_path / "app-main-1"
+    git(root, "worktree", "add", "-q", "-b", "fleet/main-1", str(home), "origin/main")
+    core.reserve(ledger, actor(ledger, "main session 1"), "fleet/main-1", tree=str(home))
+    shipped = shipped_direct(root, ledger, "feat/done")
+    git(root, "branch", "-D", "feat/done")   # the merged local branch cleaned up
+    with pytest.raises(MoveRefused, match="shipped"):
+        tree_mod.switch(ledger, actor(ledger, shipped.owner), "feat/done")
+    assert ledger.rows()[shipped.id].state == "shipped"
+
+
+def test_switching_back_to_a_handed_branch_keeps_it_handed(tmp_path):
+    from flotilla.ledger import handover
+    root, ledger, home = home_world(tmp_path)
+    tree_mod.switch(ledger, actor(ledger, "main session 1"), "feat/x")
+    commit(home, "work", "work.txt")
+    handover.hand(ledger, actor(ledger, "main session 1"), "feat/x")
+    tree_mod.switch(ledger, actor(ledger, "main session 1"), "feat/y")
+    again = tree_mod.switch(ledger, actor(ledger, "main session 1"), "feat/x")
+    assert again.state == "handed" and git(home, "rev-parse", "--abbrev-ref", "HEAD") == "feat/x"

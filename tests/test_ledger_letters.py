@@ -86,3 +86,16 @@ def test_render_names_the_recipients_and_how_to_send():
     rendered = letters.render(found)
     assert rendered[0].startswith("letter for sender 1") and "SendMessage" in rendered[0]
     assert rendered[1:] == ["  line one", "  line two"]
+
+
+def test_a_fix_settled_by_another_row_wakes_the_judge(tmp_path):
+    broken = row(id="r1", branch="feat/x", state="shipped", broken="Settings", merge="abc")
+    waiting_fix = row(id="r2", branch="fix/feat/x", state="claimed", fixes="r1")
+    settled_fix = row(id="r2", branch="fix/feat/x", state="released", fixes="r1",
+                      history=[{"move": "release", "state": "released", "evidence": {"settled_by": "r3"}}])
+    other = row(id="r3", branch="fix/other", state="shipped")
+    before = rows(broken, waiting_fix, other)
+    after = rows(broken, settled_fix, other)
+    found = letters.changed(before, after, JUDGED, posts(tmp_path), "main session 1", live("acceptance judge 1"))
+    assert [(item.branch, item.to) for item in found if item.branch == "feat/x"] == [("feat/x",
+                                                                                    ("acceptance judge 1",))]

@@ -104,3 +104,39 @@ def test_a_post_seat_whose_session_is_gone_is_an_empty_seat_not_a_gone_mover():
     seat = row("r1", branch="fleet/reviewer-1", owner="review session 1", state="reserved")
     found = views.deviations(rows(seat), PR, live=set())
     assert [item["kind"] for item in found] == ["seat_empty"]
+
+
+def settled(fix_id, by):
+    return row(fix_id, branch="fix/feat/x", state="released", fixes="r1",
+               history=[{"move": "release", "state": "released", "evidence": {"settled_by": by}}])
+
+
+def test_a_fix_settled_by_a_delivered_row_leaves_the_broken_row_fixed():
+    table = rows(row("r1", branch="feat/x", state="shipped", broken="Settings"), settled("r2", "r3"),
+                 row("r3", branch="fix/other", state="shipped"))
+    assert "broken_unfixed" not in {item["kind"] for item in views.deviations(table, PR)}
+    assert views.fix_delivery(table, table["r2"], PR).id == "r3"
+
+
+def test_a_fix_settled_by_an_undelivered_row_is_not_a_delivery():
+    table = rows(row("r1", branch="feat/x", state="shipped", broken="Settings"), settled("r2", "r3"),
+                 row("r3", branch="fix/other", state="handed"))
+    assert views.fix_delivery(table, table["r2"], PR) is None
+    assert "broken_unfixed" in {item["kind"] for item in views.deviations(table, PR)}
+    missing = rows(row("r1", branch="feat/x", state="shipped", broken="Settings"), settled("r2", "r9"))
+    assert views.fix_delivery(missing, missing["r2"], PR) is None
+
+
+def test_a_fix_released_without_settlement_leaves_the_row_unfixed():
+    gone = row("r2", branch="fix/feat/x", state="released", fixes="r1",
+               history=[{"move": "release", "state": "released", "evidence": {"why": "will not happen"}}])
+    table = rows(row("r1", branch="feat/x", state="shipped", broken="Settings"), gone)
+    assert "broken_unfixed" in {item["kind"] for item in views.deviations(table, PR)}
+
+
+def test_a_broken_row_is_nobodys_move_until_its_fix_arrives():
+    table = rows(row("r1", branch="feat/x", state="shipped", broken="Settings"),
+                 row("r2", branch="fix/feat/x", state="claimed", fixes="r1"))
+    assert views.who_moves(table["r1"], JUDGED, table) == ""
+    table["r2"] = row("r2", branch="fix/feat/x", state="shipped", fixes="r1")
+    assert views.who_moves(table["r1"], JUDGED, table) == views.JUDGE

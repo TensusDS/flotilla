@@ -96,6 +96,24 @@ def switch(ledger: core.Ledger, actor: Actor, branch: str, *, ref: str = "", req
     with ledger.session() as s:
         mine = s.open_row(branch)
         if mine is not None and mine.owner == actor.name:
+            missing = gitq.branch_tip(ledger.root, branch, run=ledger.run) is None
+            if mine.state != "claimed":   # switching trees never moves work back to a claim
+                if missing:
+                    raise MoveRefused(f"`{branch}` is {mine.state} and its branch is gone here; tree switch cuts a "
+                                      "branch only for a claimed row")
+                done = ledger.run([*git, "switch", "-q", branch], capture_output=True, text=True, check=False)
+                if done.returncode != 0:
+                    raise MoveRefused(f"git switch {branch} failed in {home}: {done.stderr.strip()}")
+                return mine
+            if missing:
+                # a row filed before its branch (a judge's fix row): cut the branch from trunk here (G6)
+                base = gitq.resolve(ledger.root, base_ref, run=ledger.run) or ""
+                done = ledger.run([*git, "switch", "-q", "-c", branch, base_ref], capture_output=True, text=True,
+                                  check=False)
+                if done.returncode != 0:
+                    raise MoveRefused(f"git switch -c {branch} failed in {home}: {done.stderr.strip()}")
+                return s.append(actor, mine.id, "claim", "claimed", fields={"tree": str(home.resolve()),
+                                                                           "base": base})
             done = ledger.run([*git, "switch", "-q", branch], capture_output=True, text=True, check=False)
             if done.returncode != 0:
                 raise MoveRefused(f"git switch {branch} failed in {home}: {done.stderr.strip()}")
