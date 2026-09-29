@@ -335,3 +335,23 @@ def test_the_ask_guard_names_only_this_projects_orchestrator(tmp_path):
     ctx = dataclasses.replace(ctx, project=[me, sess("orchestrator 2")])
     reason = asked(tmp_path, ctx)["permissionDecisionReason"]
     assert "orchestrator 2" in reason and "orchestrator 1" not in reason
+
+
+def test_session_start_leaves_a_trace(tmp_path, healthy, monkeypatch):
+    from flotilla.watch import fired
+    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
+    me = sess("review session 1")
+    call("session-start", tmp_path, context(tmp_path, me=me))
+    assert "session-start" in fired.read(tmp_path / "state", me.session_id)
+
+
+def test_the_bash_guard_leaves_a_trace_only_when_it_looked(tmp_path, monkeypatch):
+    from flotilla.watch import fired
+    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
+    onboarded(tmp_path)
+    payload = {"cwd": str(tmp_path), "session_id": "sid-g", "tool_input": {"command": "ls -la"}}
+    hooks.run_hook("guard", io.StringIO(json.dumps(payload)), out=io.StringIO())
+    assert fired.read(tmp_path / "state", "sid-g") == {}
+    payload["tool_input"]["command"] = "git push origin main"
+    hooks.run_hook("guard", io.StringIO(json.dumps(payload)), out=io.StringIO())
+    assert "guard" in fired.read(tmp_path / "state", "sid-g")

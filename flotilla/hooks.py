@@ -45,6 +45,7 @@ def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime
     root = find_project(cwd)
     if root is None:
         return 0
+    _trace(event, payload, root, now)
     if event == "guard":
         from flotilla.guards.run import guard_hook
         return guard_hook(command, cwd, root, out)
@@ -64,6 +65,18 @@ def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime
         else:
             print(f"flotilla: the {event} hook failed: {err}", file=out)
         return 0
+
+
+def _trace(event: str, payload: dict, root: Path, now: dt.datetime | None) -> None:
+    """Record that this hook ran for the session (F11); the guard reaches here only when a command named a guarded
+    program, so its fast path stays free of writes."""
+    try:
+        from flotilla.core import paths
+        from flotilla.watch import fired
+        at = (now or dt.datetime.now(dt.timezone.utc)).isoformat(timespec="seconds")
+        fired.record(paths.state_dir(), str(payload.get("session_id") or ""), event, root=root, at=at)
+    except Exception:  # noqa: BLE001 - bookkeeping never costs a session its hook
+        return
 
 
 def _identity(ctx) -> list[str]:
