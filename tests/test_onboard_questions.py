@@ -60,8 +60,12 @@ def test_conditional_questions_follow_their_signals():
     loud = ids(qs.all_questions(detection(signals={"multi_repo": ["../core"], "deployment": ["deploy"],
                                                    "shared_files": ["TODO.md"], "sequential": ["migrations"]},
                                           release={"version_files": ["pyproject.toml"]}), {}))
-    for conditional in ("repos", "release", "deploy", "shared", "sequential"):
+    for conditional in ("repos", "release", "shared", "sequential"):
         assert conditional not in quiet and conditional in loud
+
+
+def test_the_judge_question_is_asked_without_a_deployment():
+    assert "deploy" in ids(qs.all_questions(detection(), {}))
 
 
 def test_merge_method_only_when_several_are_allowed_and_a_pr_flow():

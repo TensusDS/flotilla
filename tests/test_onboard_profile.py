@@ -71,7 +71,19 @@ def test_deployment_adds_the_judge_and_a_deploy_section(tmp_path):
     data = build_profile(det, {**BASE_ANSWERS, "deploy": "web"})
     assert data["fleet"]["default"] == {"main": 1, "review": 1, "judge": 1}
     assert data["deploy"] == {"surface": "web", "revision_command": ""}
-    assert data["judge"] == {"required": False}
+    assert data["judge"] == {"required": True}
+
+
+def test_a_console_project_gets_a_judge_and_trunk_on_origin_as_its_build(tmp_path):
+    data = build_profile(detection(tmp_path), {**BASE_ANSWERS, "deploy": "cli"})
+    assert data["judge"] == {"required": True}
+    assert data["deploy"] == {"surface": "cli", "revision_command": "git ls-remote origin refs/heads/main"}
+    assert data["fleet"]["default"]["judge"] == 1
+
+
+def test_no_judge_writes_neither_section(tmp_path):
+    data = build_profile(detection(tmp_path), {**BASE_ANSWERS, "deploy": "none"})
+    assert "judge" not in data and "deploy" not in data
 
 
 def test_existing_profile_is_refused(tmp_path):

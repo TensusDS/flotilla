@@ -105,8 +105,11 @@ def build_profile(det: dict, answers: dict) -> dict:
             close = {"field": "ref", "pattern": pattern, "required": False}
         data["evidence"] = {"close": close}
     if answers.get("deploy") in ("web", "cli", "api"):
-        data["deploy"] = {"surface": answers["deploy"], "revision_command": ""}
-        data["judge"] = {"required": False}
+        # no deployment found: the build a person runs is trunk on origin, whose first word `walked` compares (F4)
+        trunk = data["trunk"]["branch"]
+        revision = "" if signals.get("deployment") else f"git ls-remote origin refs/heads/{trunk}"
+        data["deploy"] = {"surface": answers["deploy"], "revision_command": revision}
+        data["judge"] = {"required": True}
     if answers.get("shared") == "reserve":
         data["reservation"] = {"files": list(signals.get("shared_files") or [])}
     if answers.get("sequential") == "claim":
