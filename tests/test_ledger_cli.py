@@ -345,3 +345,24 @@ def test_status_prints_a_run_recorded_with_colour_codes_plain(tmp_path, monkeypa
                     summary="\x1b[32m12 passed\x1b[0m in 0.02s", revision="0" * 40, evidence={})
     code, out = run_cli("status", "--root", str(root))
     assert "12 passed in 0.02s" in out and "\x1b" not in out
+
+
+def test_an_accepted_row_does_not_say_its_reader_is_reading(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    tree = tmp_path / "app-main-1"
+    run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")
+    tip = commit(tree, "work", "work.txt")
+    run_cli("work", "hand", "feat/x", "--root", str(tree), "--as", "main session 1")
+    code, out = run_cli("work", "take", "feat/x", "--root", str(root), "--as", "review session 1")
+    assert "(reading)" in out
+    run_cli("work", "accept", "feat/x", "--reviewed", tip, "--root", str(root), "--as", "review session 1")
+    code, out = run_cli("work", "show", "feat/x", "--root", str(root))
+    assert "(reading)" not in out and "reader review session 1" in out
+
+
+def test_show_says_a_row_has_no_branch_yet(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    code, out = run_cli("work", "claim", "feat/later", "--root", str(root), "--as", "main session 1")
+    assert code == 0, out
+    code, out = run_cli("work", "show", "feat/later", "--root", str(root))
+    assert "base: no branch yet" in out and "base unknown" not in out

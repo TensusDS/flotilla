@@ -122,8 +122,18 @@ def open_ledger(root: Path, *, skip_events: dict | None = None) -> core.Ledger:
 
 
 def summary(row: Row) -> str:
-    reader = f", reader {row.reader}{' (reading)' if row.taken else ''}" if row.reader else ""
+    reading = " (reading)" if row.taken and row.state == "handed" else ""   # `taken` outlives the verdict (F13)
+    reader = f", reader {row.reader}{reading}" if row.reader else ""
     return f"{row.id} {row.branch}: {row.state} (owner {row.owner}{reader})"
+
+
+def _base(ledger: core.Ledger, row: Row) -> str:
+    """A row filed before its branch exists has no base yet; "unknown" would read as a git failure (F22)."""
+    if row.base:
+        return f"base {row.base}"
+    if gitq.branch_tip(ledger.root, row.branch, run=ledger.run) is None:
+        return "base: no branch yet"
+    return "base unknown"
 
 
 def _show(ledger: core.Ledger, branch: str) -> int:
@@ -133,7 +143,7 @@ def _show(ledger: core.Ledger, branch: str) -> int:
         return 2
     row = matches[-1]
     print(summary(row))
-    print(f"  base {row.base or 'unknown'} | tip {row.tip or '-'} | verdict {row.verdict or '-'} | ref {row.ref or '-'}")
+    print(f"  {_base(ledger, row)} | tip {row.tip or '-'} | verdict {row.verdict or '-'} | ref {row.ref or '-'}")
     if row.waiting_on:
         print(f"  waiting on {row.waiting_on}: {row.note}")
     if row.why:
