@@ -8,6 +8,14 @@ from ledgerkit import PROFILE, commit, git, make_ledger, repo_with_origin
 CALLER = "spawn by main-control 1"
 
 
+@pytest.fixture(autouse=True)
+def ready_checkout(monkeypatch):
+    """The fake world has no `claude plugin list` and no ~/.claude.json of its own; setup checks are tested in
+    test_claude_state.py and by the tests below that replace this answer."""
+    from flotilla.core import claude_state
+    monkeypatch.setattr(claude_state, "setup_problems", lambda main, **kw: ([], []))
+
+
 def world(tmp_path, fake, profile=None):
     root = repo_with_origin(tmp_path)
     ledger = make_ledger(root, tmp_path / "state", profile=profile or {**PROFILE, "permissions": {"mode": "auto"}},
@@ -182,3 +190,23 @@ def test_a_spawn_that_stops_partway_names_the_sessions_already_raised(tmp_path):
         run(ledger, store, fake, {"main": 1, "review": 1})
     assert [item.seat.name for item in stopped.value.raised] == ["review session 1"]
     assert "not logged in" in str(stopped.value)
+
+
+def test_spawn_refuses_when_the_main_checkout_is_not_ready(tmp_path, monkeypatch):
+    from flotilla.core import claude_state
+    monkeypatch.setattr(claude_state, "setup_problems",
+                        lambda main, **kw: ([f"flotilla is not enabled in {main}: run ..."], []))
+    fake = FakeClaude()
+    root, ledger, store = world(tmp_path, fake)
+    with pytest.raises(spawn.SpawnRefused, match="not enabled"):
+        spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False)
+    assert fake.launched == []
+
+
+def test_a_dry_run_lists_what_spawn_would_refuse_as_warnings(tmp_path, monkeypatch):
+    from flotilla.core import claude_state
+    monkeypatch.setattr(claude_state, "setup_problems", lambda main, **kw: (["not trusted"], ["unknown plugin"]))
+    fake = FakeClaude()
+    root, ledger, store = world(tmp_path, fake)
+    seats, warnings = spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False, strict=False)
+    assert len(seats) == 1 and "not trusted" in warnings and "unknown plugin" in warnings

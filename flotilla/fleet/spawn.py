@@ -55,7 +55,8 @@ def _live_posts(ledger, sessions) -> Counter:
     return held
 
 
-def plan(ledger, counts: dict, *, census, store, reserve: bool) -> tuple[list[launch.Seat], list[str]]:
+def plan(ledger, counts: dict, *, census, store, reserve: bool,
+         strict: bool = True) -> tuple[list[launch.Seat], list[str]]:
     try:
         wanted = compose.normalise(counts, ledger.posts)
     except compose.CompositionError as err:
@@ -71,6 +72,10 @@ def plan(ledger, counts: dict, *, census, store, reserve: bool) -> tuple[list[la
     taken = {item.name for item in sessions if item.name}
     taken |= {name for row in ledger.rows().values() for name in (row.owner, row.reader) if name}
     main = launch.main_checkout(ledger.root, run=ledger.run)
+    from flotilla.core import claude_state
+    refusals, setup_warnings = claude_state.setup_problems(main, run=ledger.run)   # F2, F3
+    if refusals and strict:
+        raise SpawnRefused("; ".join(refusals) + "; nothing was raised")
     seats: list[launch.Seat] = []
     for post_name in compose.raise_order(wanted):
         post = ledger.posts[post_name]
@@ -83,7 +88,7 @@ def plan(ledger, counts: dict, *, census, store, reserve: bool) -> tuple[list[la
                 if gitq.branch_tip(ledger.root, seat.branch, run=ledger.run)]
     if clashes:
         raise SpawnRefused("; ".join(clashes) + "; nothing was raised")
-    return seats, compose.warnings(wanted, ledger.posts, held)
+    return seats, compose.warnings(wanted, ledger.posts, held) + refusals + setup_warnings
 
 
 def _git(ledger, *args: str) -> subprocess.CompletedProcess:

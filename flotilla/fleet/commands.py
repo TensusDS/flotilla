@@ -53,7 +53,7 @@ def _spawn(ledger, args) -> int:
         except CensusUnavailable as err:
             print(f"census: unknown ({err}); names may collide with live sessions")
             probe = lambda: []  # noqa: E731
-        seats, warnings = spawn.plan(ledger, counts, census=probe, store=store, reserve=False)
+        seats, warnings = spawn.plan(ledger, counts, census=probe, store=store, reserve=False, strict=False)
         for line in warnings:
             print(f"warning: {line}")
         main = launch.main_checkout(ledger.root, run=ledger.run)

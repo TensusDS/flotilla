@@ -110,3 +110,40 @@ def test_unexecutable_claude_fails_instead_of_crashing(tmp_path):
         raise PermissionError(13, "Permission denied", argv[0])
     found = collect(tmp_path, run=run)
     assert found["claude"].status == "fail"
+
+
+def plugin_run(enabled):
+    import json as _json
+    def run(argv, **kwargs):
+        if argv[:3] == ["claude", "plugin", "list"]:
+            return subprocess.CompletedProcess(argv, 0, _json.dumps([{"id": "flotilla@flotilla", "enabled": enabled}]),
+                                               "")
+        return subprocess.CompletedProcess(argv, 0, "2.1.280 (Claude Code)\n", "")
+    return run
+
+
+def onboard_here(tmp_path):
+    (tmp_path / ".flotilla").mkdir()
+    (tmp_path / ".flotilla" / "project.toml").write_text("schema = 1\n", encoding="utf-8")
+
+
+def test_doctor_names_a_plugin_not_enabled_here(tmp_path):
+    onboard_here(tmp_path)
+    found = collect(tmp_path, run=plugin_run(False), home=tmp_path)
+    assert found["plugin"].status == "fail" and "claude plugin install flotilla@flotilla" in found["plugin"].fix
+    assert found["trust"].status == "warn"
+
+
+def test_doctor_is_green_when_enabled_and_trusted(tmp_path):
+    import json as _json
+    onboard_here(tmp_path)
+    (tmp_path / ".claude.json").write_text(_json.dumps({"projects": {str(tmp_path.resolve()): {
+        "hasTrustDialogAccepted": True}}}), encoding="utf-8")
+    found = collect(tmp_path, run=plugin_run(True), home=tmp_path)
+    assert found["plugin"].status == "ok" and found["trust"].status == "ok"
+
+
+def test_a_hook_skips_the_setup_checks(tmp_path):
+    onboard_here(tmp_path)
+    found = collect(tmp_path, run=plugin_run(False), home=tmp_path, setup=False)
+    assert "plugin" not in found and "trust" not in found
