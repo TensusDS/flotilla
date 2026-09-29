@@ -13,9 +13,10 @@ import subprocess
 from pathlib import Path
 
 INSTALL = "claude plugin install flotilla@flotilla --scope project"
+MARKETPLACE = "claude plugin marketplace add TensusDS/flotilla"
 
 
-def plugin_enabled(cwd: Path, *, run=subprocess.run, timeout: float = 30) -> bool | None:
+def _flotilla_entries(cwd: Path, run, timeout: float) -> list[dict] | None:
     try:
         done = run(["claude", "plugin", "list", "--json"], cwd=str(cwd), capture_output=True, text=True,
                    check=False, timeout=timeout)
@@ -24,8 +25,21 @@ def plugin_enabled(cwd: Path, *, run=subprocess.run, timeout: float = 30) -> boo
         return None
     if not isinstance(entries, list):
         return None
-    return any(isinstance(entry, dict) and str(entry.get("id", "")).startswith("flotilla@")
-               and entry.get("enabled") is True for entry in entries)
+    return [entry for entry in entries if isinstance(entry, dict) and str(entry.get("id", "")).startswith("flotilla@")]
+
+
+def plugin_enabled(cwd: Path, *, run=subprocess.run, timeout: float = 30) -> bool | None:
+    entries = _flotilla_entries(cwd, run, timeout)
+    return None if entries is None else any(entry.get("enabled") is True for entry in entries)
+
+
+def install_hint(cwd: Path, *, run=subprocess.run, timeout: float = 30) -> str:
+    """The command that enables flotilla here: from the marketplace it is already listed from, or, when none lists
+    it, adding flotilla's own marketplace first."""
+    entries = _flotilla_entries(cwd, run, timeout) or []
+    if entries:
+        return f"claude plugin install {entries[0]['id']} --scope project"
+    return f"{MARKETPLACE}, then {INSTALL}"
 
 
 def trusted(path: Path, *, home: Path | None = None) -> bool | None:
@@ -33,7 +47,8 @@ def trusted(path: Path, *, home: Path | None = None) -> bool | None:
         data = json.loads(((home or Path.home()) / ".claude.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-    entry = (data.get("projects") or {}).get(str(Path(path).resolve())) if isinstance(data, dict) else None
+    projects = data.get("projects") if isinstance(data, dict) else None
+    entry = projects.get(str(Path(path).resolve())) if isinstance(projects, dict) else None
     value = entry.get("hasTrustDialogAccepted") if isinstance(entry, dict) else None
     return value if isinstance(value, bool) else None
 
@@ -44,7 +59,7 @@ def setup_problems(main: Path, *, run=subprocess.run, home: Path | None = None) 
     enabled = plugin_enabled(main, run=run)
     if enabled is False:
         refusals.append(f"flotilla is not enabled in {main}, so the sessions spawn raises there would have no "
-                        f"flotilla skills or hooks: run `{INSTALL}` there")
+                        f"flotilla skills or hooks: run `{install_hint(main, run=run)}` there")
     elif enabled is None:
         warnings.append(f"could not tell whether flotilla is enabled in {main} (`claude plugin list` did not "
                         "answer)")

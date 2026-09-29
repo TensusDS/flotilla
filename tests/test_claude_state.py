@@ -52,5 +52,22 @@ def test_trust_is_unknown_without_the_file_or_the_entry(tmp_path):
 def test_setup_problems_refuse_what_is_known_missing_and_warn_on_unknown(tmp_path):
     refusals, warnings = claude_state.setup_problems(tmp_path, run=answering(listing(("flotilla@x", False))),
                                                      home=tmp_path)
-    assert any("claude plugin install flotilla@flotilla --scope project" in line for line in refusals)
+    assert any("claude plugin install flotilla@x --scope project" in line for line in refusals)
     assert any("could not tell whether" in line and "trusted" in line for line in warnings)
+
+
+def test_a_malformed_projects_section_is_unknown(tmp_path):
+    (tmp_path / ".claude.json").write_text(json.dumps({"projects": ["not", "a", "dict"]}), encoding="utf-8")
+    assert claude_state.trusted(tmp_path / "repo", home=tmp_path) is None
+
+
+def test_the_fix_names_the_marketplace_flotilla_is_listed_from(tmp_path):
+    refusals, _ = claude_state.setup_problems(tmp_path, run=answering(listing(("flotilla@flotilla-local", False))),
+                                              home=tmp_path)
+    assert any("claude plugin install flotilla@flotilla-local --scope project" in line for line in refusals)
+
+
+def test_with_no_flotilla_listed_the_fix_adds_the_marketplace_first(tmp_path):
+    refusals, _ = claude_state.setup_problems(tmp_path, run=answering(listing(("other@x", True))), home=tmp_path)
+    assert any("claude plugin marketplace add TensusDS/flotilla" in line
+               and "claude plugin install flotilla@flotilla --scope project" in line for line in refusals)

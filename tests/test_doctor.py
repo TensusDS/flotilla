@@ -115,6 +115,8 @@ def test_unexecutable_claude_fails_instead_of_crashing(tmp_path):
 def plugin_run(enabled):
     import json as _json
     def run(argv, **kwargs):
+        if argv[0] == "git":   # the main checkout is asked of git itself
+            return subprocess.run(argv, **kwargs)
         if argv[:3] == ["claude", "plugin", "list"]:
             return subprocess.CompletedProcess(argv, 0, _json.dumps([{"id": "flotilla@flotilla", "enabled": enabled}]),
                                                "")
@@ -147,3 +149,17 @@ def test_a_hook_skips_the_setup_checks(tmp_path):
     onboard_here(tmp_path)
     found = collect(tmp_path, run=plugin_run(False), home=tmp_path, setup=False)
     assert "plugin" not in found and "trust" not in found
+
+
+def test_doctor_in_a_fleet_worktree_checks_the_main_checkout(tmp_path):
+    import json as _json
+    from ledgerkit import git, repo_with_origin
+    root = repo_with_origin(tmp_path)
+    onboard_here(root)
+    tree = tmp_path / "app-main-1"
+    git(root, "worktree", "add", "-q", "-b", "fleet/main-1", str(tree))
+    onboard_here(tree)
+    (tmp_path / ".claude.json").write_text(_json.dumps({"projects": {str(root.resolve()): {
+        "hasTrustDialogAccepted": True}}}), encoding="utf-8")
+    found = collect(tree, run=plugin_run(True), home=tmp_path)
+    assert found["trust"].status == "ok" and str(root.resolve()) in found["trust"].detail

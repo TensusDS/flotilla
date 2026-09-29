@@ -116,13 +116,19 @@ def collect(*, cwd: Path, env=os.environ, run=subprocess.run, which=shutil.which
 def _setup(root: Path, *, run, timeout: float, home: Path | None) -> list[Finding]:
     """What a background session raised here depends on: the plugin enabled, the directory trusted (F2, F3)."""
     from flotilla.core import claude_state
+    from flotilla.fleet import launch
+    try:   # spawn launches from the main checkout; a fleet worktree is never trusted itself
+        root = launch.main_checkout(root, run=run)
+    except launch.LaunchError:
+        pass
     found = []
     enabled = claude_state.plugin_enabled(root, run=run, timeout=timeout)
     if enabled:
         found.append(Finding("ok", "plugin", f"flotilla is enabled in {root}"))
     elif enabled is False:
         found.append(Finding("fail", "plugin", f"flotilla is not enabled in {root}: sessions raised here would have "
-                                               "no flotilla skills or hooks", f"run `{claude_state.INSTALL}` here"))
+                                               "no flotilla skills or hooks",
+                             f"run `{claude_state.install_hint(root, run=run, timeout=timeout)}` in {root}"))
     else:
         found.append(Finding("warn", "plugin", "could not tell whether flotilla is enabled here "
                                                "(`claude plugin list` did not answer)"))
