@@ -124,6 +124,9 @@ def _down(ledger) -> int:
     source = plat.probe().parent_pid_source
     found = find_calling_session(sessions, parent_of=lambda pid: plat.parent_pid(pid, source))
     me = found.name if found is not None and found.name else ""
+    if not me and os.environ.get("CLAUDECODE"):
+        raise retire.RetireRefused("cannot tell which session runs this, and stopping it mid-command would cut the "
+                                   "command short; nothing was stopped: run `flotilla fleet down` from a terminal")
     lines, refused = retire.down(ledger, caller=f"fleet down {caller_line(sessions)}", me=me, census=census)
     print("\n".join(lines))
     return 1 if refused else 0

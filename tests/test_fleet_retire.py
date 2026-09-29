@@ -143,3 +143,18 @@ def test_fleet_down_goes_on_past_a_seat_it_cannot_retire(tmp_path):
     lines, refused = do_down(ledger, fake)
     assert refused == 1 and [row.owner for row in retire.post_rows(ledger)] == ["review session 1"]
     assert any(line.startswith("refused review session 1:") for line in lines)
+
+
+def test_fleet_down_goes_on_past_any_refused_move(tmp_path, monkeypatch):
+    from flotilla.ledger.errors import MoveRefused
+    fake = FakeClaude()
+    ledger = fleet_world(tmp_path, fake, {"reviewer": 1, "sender": 1})
+    real = retire.retire
+    def refusing(ledger, name, **kwargs):
+        if name == "review session 1":
+            raise MoveRefused("the pre-released event script refused")
+        return real(ledger, name, **kwargs)
+    monkeypatch.setattr(retire, "retire", refusing)
+    lines, refused = do_down(ledger, fake)
+    assert refused == 1 and any("retired sender 1" in line for line in lines)
+    assert any(line.startswith("refused review session 1:") and "event script" in line for line in lines)

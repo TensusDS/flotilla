@@ -78,3 +78,11 @@ def test_fleet_down_without_the_census_refuses_and_stops_nothing(tmp_path, monke
     root = onboarded(tmp_path, monkeypatch)
     code, out = run_cli("fleet", "down", "--root", str(root))
     assert code == 2 and "nothing was stopped or released" in out
+
+
+def test_fleet_down_inside_an_unidentified_claude_session_refuses(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [])
+    code, out = run_cli("fleet", "down", "--root", str(root))
+    assert code == 2 and "cannot tell which session runs this" in out

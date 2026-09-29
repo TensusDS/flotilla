@@ -147,7 +147,7 @@ def down(ledger, *, caller: str, me: str, census, wait: float = 60.0, poll: floa
             continue
         try:
             lines += retire(ledger, row.owner, caller=caller, census=census, wait=wait, poll=poll, sleep=sleep)
-        except RetireRefused as err:
+        except (MoveRefused, OSError) as err:   # an event script, a failed `claude`: the other seats still go
             refused += 1
             lines.append(f"refused {row.owner}: {err}")
     if not lines:
