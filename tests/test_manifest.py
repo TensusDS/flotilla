@@ -40,3 +40,8 @@ def test_the_readme_says_how_to_install():
     text = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "claude plugin marketplace add TensusDS/flotilla" in text
     assert "claude plugin install flotilla@flotilla --scope project" in text
+
+
+def test_the_readme_says_what_project_scope_commits():
+    text = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
+    assert "commits a marketplace entry that points at this repository" in text

@@ -13,8 +13,8 @@ Use that path for every command below. Never infer your name or your post from t
 
 1. Take the census: `flotilla status`. Read deviations and findings first; they are moves that cannot happen now,
    or work git sees and the ledger does not.
-2. Announce yourself to the live peers: list them (ListAgents) and send each one line - your name, your post,
-   your home worktree.
+2. Announce yourself to the fleet: `flotilla fleet` names its seats; send each live one one line - your name,
+   your post, your home worktree. Other sessions on the machine are not the fleet.
 3. Tell the orchestrator, in one short paragraph, what you inherited: rows in your name, broken chains, open
    findings. If you are the orchestrator, tell the person.
 4. Wait for a task from the orchestrator (the orchestrator waits for the person). Do not start work nobody gave
