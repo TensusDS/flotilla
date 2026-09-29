@@ -571,6 +571,10 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    person asked is put to the person before it is built (G11); the sender lands each branch at its own merge commit
    (G5). The README says what `--scope project` commits (S7). (executor's decision, field fixes part 5,
    2026-09-29)
+120. **A broken row is nobody's move until a fix for it is delivered** (directly or by settlement): then the mover
+   becomes the judge and the letter wakes it to walk again; `tree switch` never moves a row past its claim back to
+   `claimed`; a seat whose turn is done holds its post at spawn as it does at retire. (executor's decision after the
+   branch review, field fixes part 5, 2026-09-29)
 
 ## Open questions (for the foundation spec)
 
