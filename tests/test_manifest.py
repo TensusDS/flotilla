@@ -27,3 +27,16 @@ def test_every_hook_command_points_at_the_executable_entry():
     for command in commands:
         assert command.startswith('"${CLAUDE_PLUGIN_ROOT}/scripts/flotilla" hook ')
     assert os.access(ROOT / "scripts" / "flotilla", os.X_OK)
+
+
+def test_the_repository_is_its_own_marketplace():
+    market = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
+    plugin = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    assert market["name"] == "flotilla" and market["owner"]["name"]
+    assert [(p["name"], p["source"]) for p in market["plugins"]] == [(plugin["name"], "./")]
+
+
+def test_the_readme_says_how_to_install():
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "claude plugin marketplace add TensusDS/flotilla" in text
+    assert "claude plugin install flotilla@flotilla --scope project" in text

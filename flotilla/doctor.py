@@ -42,7 +42,8 @@ def _dotted(version) -> str:
 
 def collect(*, cwd: Path, env=os.environ, run=subprocess.run, which=shutil.which,
             read=None, os_name: str = sys.platform,
-            python=tuple(sys.version_info[:3]), timeout: float = 30) -> list[Finding]:
+            python=tuple(sys.version_info[:3]), timeout: float = 30, setup: bool = True,
+            home: Path | None = None) -> list[Finding]:
     """`timeout` bounds each external call; a hook passes a short one so its findings are printed
     before Claude Code kills it."""
     if read is None:
@@ -106,8 +107,41 @@ def collect(*, cwd: Path, env=os.environ, run=subprocess.run, which=shutil.which
             findings.append(Finding("ok", "project", f"{project.path} (schema {project.schema})"))
         except config.ConfigError as err:
             findings.append(Finding("fail", "project", str(err), "fix the file, then run `flotilla doctor`"))
+        if setup:   # a hook skips them: its firing proves the plugin runs, and its budget is seconds
+            findings += _setup(root, run=run, timeout=timeout, home=home)
 
     return findings
+
+
+def _setup(root: Path, *, run, timeout: float, home: Path | None) -> list[Finding]:
+    """What a background session raised here depends on: the plugin enabled, the directory trusted (F2, F3)."""
+    from flotilla.core import claude_state
+    from flotilla.fleet import launch
+    try:   # spawn launches from the main checkout; a fleet worktree is never trusted itself
+        root = launch.main_checkout(root, run=run)
+    except launch.LaunchError:
+        pass
+    found = []
+    enabled = claude_state.plugin_enabled(root, run=run, timeout=timeout)
+    if enabled:
+        found.append(Finding("ok", "plugin", f"flotilla is enabled in {root}"))
+    elif enabled is False:
+        found.append(Finding("fail", "plugin", f"flotilla is not enabled in {root}: sessions raised here would have "
+                                               "no flotilla skills or hooks",
+                             f"run `{claude_state.install_hint(root, run=run, timeout=timeout)}` in {root}"))
+    else:
+        found.append(Finding("warn", "plugin", "could not tell whether flotilla is enabled here "
+                                               "(`claude plugin list` did not answer)"))
+    trust = claude_state.trusted(root, home=home)
+    if trust:
+        found.append(Finding("ok", "trust", f"{root} is trusted"))
+    elif trust is False:
+        found.append(Finding("fail", "trust", f"{root} is not trusted, and `claude --bg` refuses it",
+                             "run `claude` here once and accept the trust dialog"))
+    else:
+        found.append(Finding("warn", "trust", f"could not tell whether {root} is trusted (no entry in "
+                                              "~/.claude.json)", "run `claude` here once and accept the trust dialog"))
+    return found
 
 
 def render(findings: list[Finding], quiet: bool) -> list[str]:

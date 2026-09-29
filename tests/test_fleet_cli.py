@@ -1,6 +1,8 @@
 import io
 from contextlib import redirect_stdout
 
+import pytest
+
 from flotilla import cli
 from flotilla.onboard.tomlw import render_toml
 from flotilla.posts import install_templates
@@ -8,6 +10,14 @@ from ledgerkit import commit, git, repo_with_origin
 
 PROFILE = {"schema": 1, "trunk": {"branch": "main"}, "flow": {"mode": "pr"}, "review": {"depth": "every"},
            "permissions": {"mode": "auto"}, "fleet": {"default": {"main": 1, "review": 1}, "model": "one"}}
+
+
+@pytest.fixture(autouse=True)
+def ready_checkout(monkeypatch):
+    """Never ask the real `claude plugin list` or read ~/.claude.json here: on a machine where claude never ran,
+    that call creates Claude Code's own files. The setup checks are tested in test_claude_state.py."""
+    from flotilla.core import claude_state
+    monkeypatch.setattr(claude_state, "setup_problems", lambda main, **kw: ([], []))
 
 
 def run_cli(*args):
@@ -86,3 +96,14 @@ def test_fleet_down_inside_an_unidentified_claude_session_refuses(tmp_path, monk
     monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [])
     code, out = run_cli("fleet", "down", "--root", str(root))
     assert code == 2 and "cannot tell which session runs this" in out
+
+
+def test_a_dry_run_says_where_the_numbering_continues_from(tmp_path, monkeypatch):
+    from flotilla.core import claude_state
+    from fleetkit import session
+    root = onboarded(tmp_path, monkeypatch)
+    monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [session("review session 37", "abc123")])
+    monkeypatch.setattr(claude_state, "setup_problems", lambda main, **kw: ([], []))
+    code, out = run_cli("spawn", "--dry-run", "--post", "reviewer=1", "--root", str(root))
+    assert code == 0 and "review session 38" in out
+    assert "note: reviewer numbering continues after review session 37 (alive on this machine" in out

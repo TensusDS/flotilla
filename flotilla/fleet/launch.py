@@ -60,10 +60,18 @@ def permission_mode(profile: dict, post) -> str:
     return PERMISSION[answer]
 
 
+#: `fleet.model` values that name no model: the session inherits the one Claude Code was launched with.
+FLEET_MODEL_WORDS = ("one", "reviewer-strongest", "")
+
+
 def model_for(profile: dict, post) -> str:
-    if (profile.get("fleet") or {}).get("model") == "reviewer-strongest" and "accept" in post.may:
+    """A post's own model wins; else a model the fleet names runs every post (F5); else inherit."""
+    fleet_model = str((profile.get("fleet") or {}).get("model") or "")
+    if fleet_model == "reviewer-strongest" and "accept" in post.may:
         return STRONGEST
-    return "" if post.model == "inherit" else post.model
+    if post.model != "inherit":
+        return post.model
+    return "" if fleet_model in FLEET_MODEL_WORDS else fleet_model
 
 
 def system_prompt(seat: Seat, post, *, main: Path) -> str:

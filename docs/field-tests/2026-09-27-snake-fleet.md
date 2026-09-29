@@ -241,6 +241,18 @@ Part 2 (who talks to the person, who wakes the next mover) fixes F12, F16, F17, 
 Part 3 (what the views say, standing the fleet down) fixes F8, F9, F10, F13, F19, F20, F22, F27 — plan
 `docs/plans/2026-09-29-field-fixes-views-and-fleet-down.md`.
 
+Part 4 (setting up a fleet) fixes F1–F7, F11 — plan `docs/plans/2026-09-29-field-fixes-setup.md`.
+
+Left open by the part-4 branch review (minor):
+
+- **R19 — hook traces are never pruned**: one directory per session id, kept for ever.
+- **R20 — a typed model name is not checked**: a typo reaches `claude --bg --model` for every post.
+- **R21 — `reviewer-strongest` beats a post's own `model`**, while the question says a post's own model wins.
+- **R22 — two tier names read badly**: `FOO=1 ./run.sh` is named `FOO=1`; `./test.sh go` is named `go`.
+- **R23 — spawn waits up to 30 s for `claude plugin list`**; `setup_problems` takes no timeout.
+- **R24 — the README's GitHub install path is untested**: the live check added the marketplace from a local
+  directory, and the command works only once `marketplace.json` reaches `origin/main`.
+
 Left open by the part-3 branch review (minor):
 
 - **R12 — seats run without an orchestrator while spawn raises it last**; the broker's "no live orchestrator"

@@ -211,7 +211,7 @@ merge methods allowed, OS and tools.
    (`measurements/<repo-key>.toml`), never in `project.toml`. A tier that is not green is **not** recorded as
    working — onboarding shows the tail and asks whether the command or the project is wrong.
 4. **Composition:** suggested by size — start with main 1 + reviewer 1; add orchestrator 1 + sender 1 once the
-   fleet exceeds three sessions; acceptance judge offered when a deployment is detected.
+   fleet exceeds three sessions; an acceptance judge when the person names a surface (every project is asked).
 5. **Guards and git hooks:** each named in one line (what it refuses and why), each enabled by its own "yes".
    Onboarding states that Claude Code's background-isolation guard (`worktree.bgIsolation`) stays on.
 
@@ -231,6 +231,7 @@ AskUserQuestion takes up to four questions per call; the core fits two rounds.
 | 6 | Where does CI run? | cloud · self-hosted **on this machine** | lane also asks the CI queue |
 | 7 | Test tiers required before shipping (multi-select) | detected tiers | `required_for` per tier |
 | 8 | Where are tasks tracked? | nowhere · GitHub Issues · Jira/Linear (id pattern) · own register | `[evidence]`, events |
+| 9 | What surface does a person use? | web · command line · API · no judge | a required acceptance judge in the fleet; with no deployment found, the deployed build is trunk on origin (`git ls-remote origin refs/heads/<trunk>`) (F4; decision 109) |
 
 **Conditional — asked only when detection finds a reason**
 
@@ -238,14 +239,14 @@ AskUserQuestion takes up to four questions per call; the core fits two rounds.
 |---|---|
 | Several repositories — push order? | a path dependency on a sibling repo in a lockfile |
 | Versions and tags — who bumps, which scale? | `vX.Y.Z` tags in history or version files found |
-| A deployment the fleet touches? what surface (web / CLI / API)? | `deploy/`, systemd units, compose files, a dev-server script → offers the acceptance judge |
 | Shared append-only files? | `CHANGELOG.md`, `TODO.md` and the like → file reservation |
 | Sequential numbers in files? | migration or ADR directories → number claims (two branches both computing "max + 1" collide) |
 | Can two full runs fit at once? | slow first run or little memory |
 | Merge method? | more than one allowed by the repository settings |
-| Model per post | always offered, default "one model for all" |
+| Model for the fleet | always offered: one model for all · strongest reviewer · a model name (`sonnet`, `opus`, or typed), which every post without its own `model` runs on (F5; decision 110) |
 
-A simple project answers the eight core questions and sees no conditionals.
+A simple project answers the nine core questions and sees no conditionals. A test command typed as Other is named
+after the runner it calls (`pytest`, `make`, …) or its first word, never `custom-N` (F6; decision 111).
 
 ### 4.4 `project.toml`
 
@@ -531,7 +532,13 @@ cd <main checkout> && claude --bg \
 - acceptors (orchestrator, sender, readers, judge) start before producers;
 - "address not read" ≠ "did not start": the census is asked before failure is declared, or a second process with
   the same name follows;
-- `--dry-run` shows names, trees and branches and changes nothing.
+- `--dry-run` shows names, trees and branches and changes nothing, and says where each post's numbering continues
+  from — a session alive on this machine, or a number an earlier spawn issued (F7; decision 112);
+- spawn refuses when the plugin is known not to be enabled in the main checkout, or the checkout is known not to be
+  trusted (`claude --bg` refuses it), naming the one command that fixes it; it warns when it could not tell.
+  `flotilla doctor` reports both (F2, F3; decision 108). flotilla installs from its own marketplace
+  (`claude plugin marketplace add TensusDS/flotilla`, then `claude plugin install flotilla@flotilla --scope
+  project`) (F1; decision 107).
 - the post row is recorded by the spawner in the new session's name (`via: spawn`, the real caller kept); the
   session is found in `claude agents --json`, not in printed text; questionnaire answers map to
   `--permission-mode`: ask → `manual`, rules → `dontAsk`, auto → `auto`; a post may set its own `permission_mode`.
@@ -605,6 +612,10 @@ and empty, and never twice in a row; the second stop is recorded as a break for 
 
 `watch` reports or wakes for a dropped ball only when a second census sample, a few seconds on, agrees: a session
 caught once at `waiting` is often busy a moment later (F10; decision 102). The hooks do not sample twice.
+
+Every hook records, per session, when it last ran (the Bash guard only when a command reached the guards);
+`flotilla guard status` lists it for each live session of this project, since a guard that lets a command through
+prints nothing (F11; decision 113).
 
 **Only the orchestrator talks to the person.** Every other post sends its question to the orchestrator and records
 the wait; the sender's batch too. `flotilla watch --wait 3600`, kept running by the orchestrator, returns when

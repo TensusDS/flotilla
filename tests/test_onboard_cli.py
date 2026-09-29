@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tomllib
 from contextlib import redirect_stdout
+from pathlib import Path
 
 import pytest
 
@@ -46,7 +47,8 @@ def test_full_onboarding_writes_a_loadable_profile(repo, tmp_path):
     code, out = run_cli("onboard", "write", "--root", str(repo))
     assert code == 0, out
     profile = tomllib.loads((repo / ".flotilla" / "project.toml").read_text(encoding="utf-8"))
-    assert profile["schema"] == 1 and profile["tests"]["tier"][0]["name"] == "custom-1"
+    named = Path(sys.executable).name   # a typed tier is named after its command's first word (F6)
+    assert profile["schema"] == 1 and profile["tests"]["tier"][0]["name"] == named
     assert "measured_seconds" not in json.dumps(profile)
     assert list((tmp_path / "state" / "measurements").glob("*.toml"))
     assert run_cli("onboard", "check", "--root", str(repo))[0] == 0

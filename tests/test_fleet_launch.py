@@ -53,3 +53,16 @@ def test_the_argv_names_the_session_its_tree_and_its_post():
     assert POSTS["reviewer"].body.strip()[:40] in prompt
     assert argv[-1] == launch.FIRST_PROMPT
     assert launch.CLI.is_file()
+
+
+def test_a_named_fleet_model_runs_every_post_without_its_own():
+    import dataclasses
+    own = dataclasses.replace(POSTS["main"], model="opus")
+    assert launch.model_for({"fleet": {"model": "sonnet"}}, POSTS["main"]) == "sonnet"
+    assert launch.model_for({"fleet": {"model": "sonnet"}}, POSTS["reviewer"]) == "sonnet"
+    assert launch.model_for({"fleet": {"model": "sonnet"}}, own) == "opus"
+
+
+def test_one_for_all_still_inherits():
+    assert launch.model_for({"fleet": {"model": "one"}}, POSTS["main"]) == ""
+    assert launch.model_for({}, POSTS["main"]) == ""

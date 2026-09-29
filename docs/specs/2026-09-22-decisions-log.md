@@ -532,6 +532,31 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
 106. **`fleet down` refuses inside a Claude Code session it cannot identify**, since stopping the session that
    runs it would cut the command short; a refused seat of any kind never stops the others. (executor's decision
    after the branch review, field fixes part 3, 2026-09-29)
+107. **The flotilla repository is its own marketplace** (`.claude-plugin/marketplace.json`, one plugin sourced from
+   the root); the README gives the two install commands. With a marketplace manifest present,
+   `claude plugin validate .` checks only the marketplace, so CI validates `plugin.json` separately (F1).
+   (Max's triage 2026-09-28; the CI step, executor's decision, field fixes part 4, 2026-09-29)
+108. **`doctor` and `spawn` check the plugin is enabled and the main checkout trusted** — asked of
+   `claude plugin list --json` run there and of `~/.claude.json`; spawn refuses on a known gap and warns on an
+   unknown; hooks skip both checks (F2, F3). (Max's triage 2026-09-28)
+109. **Every project is asked about the judge**; a surface chosen means `judge.required = true`, and a project with
+   no deployment found gets trunk on origin as its deployed build (F4). (Max's triage 2026-09-28; judge required,
+   executor's decision, field fixes part 4, 2026-09-29)
+110. **`fleet.model` may name a model** that every post without its own runs on (F5). (Max's triage 2026-09-28)
+111. **A typed tier is named after its command** — the runner it calls, else its first word; clashes get `-2`
+   (F6). (Max's triage 2026-09-28)
+112. **`spawn --dry-run` says where each post's numbering continues from** (F7). (Max's triage 2026-09-28)
+113. **Every hook records when it last ran for the session**, and `flotilla guard status` shows it per live session
+   of this project; the Bash guard records only when a command reached the guards (F11). (Max's triage
+   2026-09-28; the per-session trace, executor's decision, field fixes part 4, 2026-09-29)
+114. **`doctor` checks the main checkout spawn launches from**, not the directory it runs in (a fleet worktree is
+   never trusted itself); the fix it names installs from the marketplace flotilla is already listed from, or adds
+   flotilla's own first. A local flow is not asked about a judge (it never ships, so a required judge would leave
+   every row unclosable), and spawn warns when the profile requires a judge the fleet will not hold. (executor's
+   decision after the branch review, field fixes part 4, 2026-09-29)
+115. **A hook's trace is one file per session and event**, replaced whole, so hooks of one session firing at once
+   never overwrite each other's record. (executor's decision after the branch review, field fixes part 4,
+   2026-09-29)
 
 ## Open questions (for the foundation spec)
 

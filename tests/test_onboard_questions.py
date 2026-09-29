@@ -60,8 +60,12 @@ def test_conditional_questions_follow_their_signals():
     loud = ids(qs.all_questions(detection(signals={"multi_repo": ["../core"], "deployment": ["deploy"],
                                                    "shared_files": ["TODO.md"], "sequential": ["migrations"]},
                                           release={"version_files": ["pyproject.toml"]}), {}))
-    for conditional in ("repos", "release", "deploy", "shared", "sequential"):
+    for conditional in ("repos", "release", "shared", "sequential"):
         assert conditional not in quiet and conditional in loud
+
+
+def test_the_judge_question_is_asked_without_a_deployment():
+    assert "deploy" in ids(qs.all_questions(detection(), {}))
 
 
 def test_merge_method_only_when_several_are_allowed_and_a_pr_flow():
@@ -142,3 +146,12 @@ def test_own_register_needs_a_typed_pattern():
 def test_stale_answers_are_dropped():
     answers = {"flow": "local", "merge_auth": "sender", "review": "every"}
     assert qs.effective_answers(detection(), answers) == {"flow": "local", "review": "every"}
+
+
+def test_the_model_question_offers_model_names_and_takes_one_typed():
+    q = next(q for q in qs.all_questions(detection(), {}) if q["id"] == "model")
+    assert {"sonnet", "opus"} <= {option["value"] for option in q["options"]} and q["free_text"]
+
+
+def test_a_local_project_is_not_asked_about_a_judge():
+    assert "deploy" not in ids(qs.all_questions(detection(remote=False, ci={"provider": "none"}), {}))

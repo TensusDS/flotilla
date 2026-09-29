@@ -10,7 +10,7 @@ from flotilla.core import platform as plat
 from flotilla.core.census import CensusUnavailable, read_census
 from flotilla.core.identity import find_calling_session
 from flotilla.core.storage import LocalLogStore, StorageCorrupt
-from flotilla.fleet import compose, launch, retire, spawn
+from flotilla.fleet import compose, launch, names, retire, spawn
 from flotilla.ledger.actor import NO_CENSUS
 from flotilla.ledger.commands import open_ledger
 from flotilla.ledger.errors import MoveRefused
@@ -48,14 +48,19 @@ def _spawn(ledger, args) -> int:
     store = LocalLogStore(paths.state_dir() / "fleet")
     if args.dry_run:
         try:
-            census()
+            live = {item.name for item in census() if item.name}
             probe = census
         except CensusUnavailable as err:
             print(f"census: unknown ({err}); names may collide with live sessions")
-            probe = lambda: []  # noqa: E731
-        seats, warnings = spawn.plan(ledger, counts, census=probe, store=store, reserve=False)
+            live, probe = set(), (lambda: [])  # noqa: E731
+        seats, warnings = spawn.plan(ledger, counts, census=probe, store=store, reserve=False, strict=False)
         for line in warnings:
             print(f"warning: {line}")
+        taken = live | {name for row in ledger.rows().values() for name in (row.owner, row.reader) if name}
+        for post_name in dict.fromkeys(seat.post for seat in seats):   # why a number is not 1 (F7)
+            said = names.numbered_after(ledger.posts[post_name], taken=taken, live=live, store=store)
+            if said:
+                print(f"note: {said}")
         main = launch.main_checkout(ledger.root, run=ledger.run)
         for seat in seats:
             post = ledger.posts[seat.post]

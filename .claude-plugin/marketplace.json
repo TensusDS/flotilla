@@ -1,0 +1,12 @@
+{
+  "name": "flotilla",
+  "owner": {"name": "TensusDS"},
+  "description": "flotilla: coordinate independent peer Claude Code sessions.",
+  "plugins": [
+    {
+      "name": "flotilla",
+      "source": "./",
+      "description": "Named posts, per-session worktrees, an evidence-backed work ledger, a machine lane and command guards."
+    }
+  ]
+}

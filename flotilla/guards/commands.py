@@ -10,6 +10,42 @@ from pathlib import Path
 from flotilla.core import config, paths
 
 
+HOOK_EVENTS = ("session-start", "prompt", "guard", "ask", "permission", "stop")
+
+
+def census():
+    from flotilla.core.census import CensusUnavailable, read_census
+    from flotilla.ledger.actor import NO_CENSUS
+    if os.environ.get(NO_CENSUS):
+        raise CensusUnavailable(f"{NO_CENSUS} is set")
+    return read_census()
+
+
+def _hooks_fired(root: Path) -> list[str]:
+    """When each hook last ran, for each live session of this project (F11)."""
+    from flotilla.core.census import CensusUnavailable
+    from flotilla.ledger import project
+    from flotilla.watch import fired
+    try:
+        sessions = census()
+    except CensusUnavailable as err:
+        return [f"hooks: the census could not be asked ({err}); no session listed"]
+    try:
+        from flotilla.ledger.commands import open_ledger
+        rows = open_ledger(root).rows()
+    except Exception:  # noqa: BLE001 - without the ledger, sessions are found by where they work
+        rows = {}
+    members = project.members(sessions, rows, project.roots(root))
+    if not members:
+        return ["hooks: no live session of this project"]
+    lines = []
+    for session in sorted(members, key=lambda item: item.name):
+        seen = fired.read(paths.state_dir(), session.session_id)
+        lines.append(f"session {session.name}: " + ", ".join(f"{event} {seen.get(event, 'never')}"
+                                                             for event in HOOK_EVENTS))
+    return lines
+
+
 def run_githook(name: str, root, stdin_text: str, *, env=os.environ, run=subprocess.run) -> int:
     if name == "pre-commit":
         from flotilla.guards import reserve
@@ -76,4 +112,5 @@ def run_guard_command(args) -> int:
         print(f"git hook {name}: {state}{' (the profile asks for it)' if name in asked else ''}")
     link = githooks.link_path(paths.state_dir())
     print(f"link {link}: {'-> ' + os.readlink(link) if link.is_symlink() else 'missing (made at session start)'}")
+    print("\n".join(_hooks_fired(root)))
     return 0

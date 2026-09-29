@@ -8,6 +8,7 @@ other module uses, so a profile this module cannot load is never left behind sil
 from __future__ import annotations
 
 import os
+import shlex
 from pathlib import Path
 
 from flotilla.core import config
@@ -29,17 +30,33 @@ class ProfileUnsafe(RuntimeError):
     """The profile path leads outside the repository (a symlink); nothing is written through it."""
 
 
+RUNNERS = ("pytest", "vitest", "jest", "playwright", "cargo", "go", "npm", "pnpm", "yarn", "make", "tox", "nox",
+           "ruff", "mypy")
+
+
+def _tier_name(command: str, taken: set[str]) -> str:
+    """A name a person reads in every receipt: the runner the command calls, else its first word (F6)."""
+    words = [word.rsplit("/", 1)[-1] for word in command.split()]
+    base = next((word for word in words if word in RUNNERS), words[0] if words else "") or "tier"
+    name, number = base, 1
+    while name in taken:
+        number += 1
+        name = f"{base}-{number}"
+    return name
+
+
 def _tiers(det: dict, chosen: list[str]) -> list[dict]:
     detected = {t["name"]: t for t in det.get("tests") or []}
-    tiers, custom = [], 0
+    tiers, taken = [], {value for value in chosen if value in detected}
     for value in chosen:
         if value in ("none", "later"):
             continue
         if value in detected:
             tiers.append({"name": value, "command": detected[value]["command"], "required_for": ["handover", "push"]})
         else:
-            custom += 1
-            tiers.append({"name": f"custom-{custom}", "command": value, "required_for": ["handover", "push"]})
+            name = _tier_name(value, taken)
+            taken.add(name)
+            tiers.append({"name": name, "command": value, "required_for": ["handover", "push"]})
     return tiers
 
 
@@ -104,9 +121,12 @@ def build_profile(det: dict, answers: dict) -> dict:
         if pattern:
             close = {"field": "ref", "pattern": pattern, "required": False}
         data["evidence"] = {"close": close}
-    if answers.get("deploy") in ("web", "cli", "api"):
-        data["deploy"] = {"surface": answers["deploy"], "revision_command": ""}
-        data["judge"] = {"required": False}
+    if answers.get("deploy") in ("web", "cli", "api") and data["flow"]["mode"] != "local":
+        # no deployment found: the build a person runs is trunk on origin, whose first word `walked` compares (F4)
+        trunk = data["trunk"]["branch"]
+        revision = "" if signals.get("deployment") else f"git ls-remote origin {shlex.quote('refs/heads/' + trunk)}"
+        data["deploy"] = {"surface": answers["deploy"], "revision_command": revision}
+        data["judge"] = {"required": True}
     if answers.get("shared") == "reserve":
         data["reservation"] = {"files": list(signals.get("shared_files") or [])}
     if answers.get("sequential") == "claim":
