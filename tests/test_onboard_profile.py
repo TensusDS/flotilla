@@ -39,7 +39,7 @@ def test_tiers_from_detection_and_typed_commands(tmp_path):
     data = build_profile(detection(tmp_path), {**BASE_ANSWERS, "tiers": ["python", "make e2e"]})
     assert data["tests"]["tier"] == [
         {"name": "python", "command": "uv run pytest", "required_for": ["handover", "push"]},
-        {"name": "custom-1", "command": "make e2e", "required_for": ["handover", "push"]},
+        {"name": "make", "command": "make e2e", "required_for": ["handover", "push"]},
     ]
 
 
@@ -162,3 +162,26 @@ def test_a_gate_command_on_this_machine_gets_an_empty_queue_command(tmp_path):
     hosted = build_profile(detection(tmp_path), {**BASE_ANSWERS, "ci": "command", "ci_where": "cloud",
                                                  "gate_command": "ci-status"})
     assert "queue_command" not in hosted["ci"]
+
+
+def tier_names(det, chosen):
+    from flotilla.onboard.profile import _tiers
+    return [tier["name"] for tier in _tiers(det, chosen)]
+
+
+def test_a_typed_tier_is_named_after_its_runner():
+    assert tier_names({"tests": []}, ["uv run --with pytest python -m pytest -q"]) == ["pytest"]
+
+
+def test_two_pytest_tiers_get_distinct_names():
+    assert tier_names({"tests": []}, ["python -m pytest tests/unit", "python -m pytest tests/e2e"]) == \
+        ["pytest", "pytest-2"]
+
+
+def test_a_command_with_no_known_runner_is_named_by_its_first_word():
+    assert tier_names({"tests": []}, ["./check.sh --all"]) == ["check.sh"]
+
+
+def test_a_typed_tier_does_not_take_a_detected_tiers_name():
+    det = {"tests": [{"name": "pytest", "command": "pytest"}]}
+    assert tier_names(det, ["pytest", "python -m pytest -x"]) == ["pytest", "pytest-2"]
