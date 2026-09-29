@@ -146,3 +146,8 @@ def test_own_register_needs_a_typed_pattern():
 def test_stale_answers_are_dropped():
     answers = {"flow": "local", "merge_auth": "sender", "review": "every"}
     assert qs.effective_answers(detection(), answers) == {"flow": "local", "review": "every"}
+
+
+def test_the_model_question_offers_model_names_and_takes_one_typed():
+    q = next(q for q in qs.all_questions(detection(), {}) if q["id"] == "model")
+    assert {"sonnet", "opus"} <= {option["value"] for option in q["options"]} and q["free_text"]

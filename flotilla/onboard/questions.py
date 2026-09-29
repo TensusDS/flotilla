@@ -129,10 +129,12 @@ def all_questions(det: dict, answers: dict) -> list[dict]:
         ("push_receipt", "Push receipt", "Refuses a push or merge without a green run over that exact revision."),
         ("none", "No guards", "Every guard stays off; turn them on later in project.toml."),
     ], multi=True))
-    out.append(_q("model", "Models", "Which model runs each post?", [
+    out.append(_q("model", "Models", "Which model runs the fleet? A post's own `model` still wins.", [
         ("one", "One for all", "Every session uses the model you launch Claude Code with."),
         ("reviewer-strongest", "Strongest reviewer", "Reviewers run on the most capable model; others on yours."),
-    ]))
+        ("sonnet", "Sonnet", "Every post runs on Sonnet."),
+        ("opus", "Opus", "Every post runs on Opus."),
+    ], free_text=True))
     return out
 
 
