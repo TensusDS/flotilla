@@ -114,6 +114,17 @@ def hold_lifted(row: Row, rows: dict[str, Row], live: set[str] | None = None) ->
     return not any(other.reader == until and other.state in READING and other.is_open for other in rows.values())
 
 
+def fix_delivery(rows: dict[str, Row], fix: Row, profile: dict) -> Row | None:
+    """The delivered row that carries a fix: the fix row itself, or the delivered row it was settled by (G9)."""
+    if delivered(fix, profile):
+        return fix
+    if fix.state != "released" or not fix.history:
+        return None
+    wanted = (fix.history[-1].get("evidence") or {}).get("settled_by") or ""
+    other = rows.get(wanted)
+    return other if other is not None and delivered(other, profile) else None
+
+
 def deviations(rows: dict[str, Row], profile: dict, live: set[str] | None = None, finished=None) -> list[dict]:
     found = []
     for row in rows.values():
@@ -134,7 +145,7 @@ def deviations(rows: dict[str, Row], profile: dict, live: set[str] | None = None
             elif lifted is None:
                 add("hold_unknown", row.held_by, f"the hold waits on `{row.held_until}`, which cannot be asked: "
                                                  "gone, or unknown to the ledger")
-        if row.broken and not any(other.fixes == row.id and (other.is_open or delivered(other, profile))
+        if row.broken and not any(other.fixes == row.id and (other.is_open or fix_delivery(rows, other, profile))
                                   for other in rows.values()):
             add("broken_unfixed", row.owner, f"broke at {row.broken}, and no fix row is open")
         if finished is not None and row.state == "claimed" and finished(row):

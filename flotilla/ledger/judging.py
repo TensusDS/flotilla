@@ -41,7 +41,9 @@ def fixes_of(rows: dict[str, Row], row: Row) -> list[Row]:
 
 
 def _fixed(ledger: Ledger, rows: dict[str, Row], row: Row) -> list[Row]:
-    return [other for other in fixes_of(rows, row) if delivered(other, ledger.profile)]
+    """The delivered rows carrying this row's fixes; a fix settled by another row counts as that row (G10)."""
+    found = [views.fix_delivery(rows, other, ledger.profile) for other in fixes_of(rows, row)]
+    return [other for other in found if other is not None]
 
 
 def _whole_or_walkable(ledger: Ledger, rows: dict[str, Row], row: Row) -> None:
