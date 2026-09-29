@@ -19,5 +19,7 @@ You are the orchestrator, or the person asked you to answer questions. One quest
 If AskUserQuestion is not available to you (a background session), print the question and the three commands so the
 person can answer by attaching, and never answer on the person's behalf.
 
-To keep watching, run `${CLAUDE_PLUGIN_ROOT}/scripts/flotilla permit next --wait 3600` in the background; when it
-returns, run this routine, then start the wait again.
+If you are the orchestrator, your `flotilla watch --wait` covers this: it returns on a new question too, so do not
+start a second wait. A person watching by hand runs
+`${CLAUDE_PLUGIN_ROOT}/scripts/flotilla permit next --wait 3600` in the background; when it returns, run this
+routine, then start the wait again.

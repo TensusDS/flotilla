@@ -132,3 +132,13 @@ def test_the_orchestrator_relays_the_senders_batch():
     text = template("orchestrator")
     assert "You are the one session that talks to the person" in text
     assert "You never ask the person to approve a push" not in text
+
+
+def test_the_permit_skill_leaves_the_orchestrator_one_wait():
+    text = (ROOT / "skills" / "permit" / "SKILL.md").read_text(encoding="utf-8")
+    assert "your `flotilla watch --wait` covers this" in text
+
+
+def test_producers_make_the_move_a_flotilla_letter_names():
+    for name in ("main", "minor"):
+        assert "A letter flotilla printed names a move the ledger already gives you" in template(name)
