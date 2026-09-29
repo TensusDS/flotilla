@@ -33,8 +33,9 @@ def ask_verdict(ctx, cli: str = "flotilla") -> tuple[str, str]:
         lines.append(f"Send the question to {', '.join(orchestrators)} with SendMessage; the answer comes back the "
                      "same way.")
     else:
-        lines.append("No orchestrator is alive: the wait below carries the question, and `flotilla watch` shows it "
-                     "to the person.")
-    lines.append(f'Record the wait on the row the question holds up: {cli} work wait <branch> --on "the person" '
-                 '--why "<the question>".')
+        lines.append("No orchestrator is alive: the wait below carries the question to `flotilla watch` and "
+                     "`flotilla status`, where the person reads it. If you hold no row, write the question as your "
+                     "last message and stop.")
+    lines.append(f"If the question holds up a row you hold (`{cli} status` lists them), record the wait on it: "
+                 f'{cli} work wait <branch> --on "the person" --why "<the question>".')
     return "deny", "\n".join(lines)

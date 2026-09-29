@@ -49,7 +49,9 @@ def run_watch_command(args, *, gather=None, now: dt.datetime | None = None, slee
 
 
 def _key(item) -> tuple:
-    return (item.kind, item.branch, item.text)
+    """The same item across polls. The text is not it: a dropped ball's text carries the census word, which
+    flickers between polls (field test F10)."""
+    return (item.kind, item.branch, item.who or item.text)
 
 
 def _problems(ctx) -> list[str]:
@@ -77,7 +79,9 @@ def _wait(root, gather, ctx, seconds, interval, now, sleep, clock) -> int:
         if problems:
             print("\n".join(problems))
             return 2
-        new = [item for item in ctx.fleet() if _key(item) not in seen]
+        items = ctx.fleet()
+        new = [item for item in items if _key(item) not in seen]
+        seen = {_key(item) for item in items}   # what went away and came back is news again
         if new:
             print(f"census: {len(ctx.live)} live session(s)")
             print("attention (new):")

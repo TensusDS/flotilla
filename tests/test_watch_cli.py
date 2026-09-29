@@ -90,3 +90,28 @@ def test_a_census_lost_mid_wait_exits_2(tmp_path, capsys):
 def test_the_cli_parses_watch_wait():
     parsed = cli.build_parser().parse_args(["watch", "--wait", "3600"])
     assert parsed.wait == 3600 and parsed.interval == 20 and not parsed.once
+
+
+def dropping(tmp_path, state, status=None):
+    return context(tmp_path, me=None, rows_=HANDED,
+                   sessions=[sess("review session 1", state=state, status=status),
+                             sess("main session 1", state="working")])
+
+
+def test_a_ball_dropped_again_after_work_resumed_wakes_it(tmp_path, capsys):
+    code, out = run_wait(tmp_path, capsys, [dropping(tmp_path, "blocked"), dropping(tmp_path, "working"),
+                                            dropping(tmp_path, "blocked")])
+    assert code == 1 and "review session 1 holds the move" in out
+
+
+def test_a_census_word_that_flickers_is_not_news(tmp_path, capsys):
+    code, out = run_wait(tmp_path, capsys, [dropping(tmp_path, "blocked"), dropping(tmp_path, "done", "idle"),
+                                            dropping(tmp_path, "blocked")])
+    assert code == 0 and "nothing new" in out
+
+
+def test_a_question_waiting_on_the_person_needs_attention(tmp_path, capsys):
+    asking = rows(row(state="handed", reader="review session 1", waiting_on="the person",
+                      note="which colour should the snake be?"))
+    code, out = run(tmp_path, context(tmp_path, me=None, sessions=[sess("review session 1")], rows_=asking), capsys)
+    assert code == 1 and "waits on the person: which colour should the snake be?" in out

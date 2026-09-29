@@ -310,3 +310,9 @@ def test_the_ask_hook_is_declared_with_a_budget():
     declared = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]["PreToolUse"]
     group = next(group for group in declared if group.get("matcher") == "AskUserQuestion")
     assert group["hooks"][0]["command"].endswith("hook ask") and group["hooks"][0]["timeout"] >= 3 * 3 + 2
+
+
+def test_the_route_says_what_to_do_without_a_row_and_how_to_find_one(tmp_path):
+    me = sess("minor session 1")
+    reason = asked(tmp_path, context(tmp_path, me=me, sessions=[me]))["permissionDecisionReason"]
+    assert "flotilla status" in reason and "hold no row" in reason and "last message" in reason

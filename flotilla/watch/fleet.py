@@ -15,7 +15,9 @@ from flotilla.ledger import views
 from flotilla.ledger.model import now_iso
 from flotilla.watch.whose import POST_OF_MOVER, Item, holds_move, since_of
 
-DEVIATION, DROPPED, NOBODY, BREAK, QUESTION = "deviation", "dropped", "nobody", "break", "question"
+DEVIATION, DROPPED, NOBODY, BREAK, QUESTION, PERSON = ("deviation", "dropped", "nobody", "break", "question",
+                                                     "person")
+THE_PERSON = "the person"
 
 
 def not_working(session) -> bool:
@@ -48,23 +50,27 @@ def movers(row, profile: dict, live: set[str], post_of, rows: dict | None = None
 def fleet(rows: dict, profile: dict, sessions, *, post_of, breaks=(), asking=()) -> list[Item]:
     by_name = {session.name: session for session in sessions if session.name}
     live = set(by_name)
-    items = [Item(DEVIATION, found["branch"], f"{found['kind']}: {found['why']}", since_of(rows, found["branch"]))
+    items = [Item(DEVIATION, found["branch"], f"{found['kind']}: {found['why']}", since_of(rows, found["branch"]),
+                  who=found["kind"])
              for found in views.deviations(rows, profile, live)]
     for row in rows.values():
+        if row.is_open and row.waiting_on.strip().lower() == THE_PERSON:
+            items.append(Item(PERSON, row.branch, f"waits on the person: {row.note or 'no question recorded'}",
+                              row.updated_at, who=row.note))
         if not row.is_open or row.state == "reserved" or row.waiting_on or row.held_until:
             continue   # a post row is the post held, not a move anyone owes
         mover = views.who_moves(row, profile, rows)
         named = movers(row, profile, live, post_of, rows) & live
         if mover in POST_OF_MOVER and not named:
             items.append(Item(NOBODY, row.branch, f"the move is {mover}'s, and no live session holds the "
-                                                  f"`{POST_OF_MOVER[mover]}` post", row.updated_at))
+                                                  f"`{POST_OF_MOVER[mover]}` post", row.updated_at, who=mover))
         for name in sorted(named):
             if name in asking:
                 continue   # its question is in the queue: the move waits on the person, not on the session
             if not_working(by_name[name]):
                 items.append(Item(DROPPED, row.branch, f"{name} holds the move ({row.state}) and is not working "
                                                        f"(census: {_census_word(by_name[name])}); message them",
-                                  row.updated_at))
+                                  row.updated_at, who=name))
     items.extend(breaks)
     return items
 
@@ -72,7 +78,7 @@ def fleet(rows: dict, profile: dict, sessions, *, post_of, breaks=(), asking=())
 def question_items(questions) -> list[Item]:
     from flotilla.broker.present import summary
     return [Item(QUESTION, asked.session, f"asks {summary(asked)}; answer with /flotilla:permit",
-                 dt.datetime.fromtimestamp(asked.at, dt.timezone.utc).isoformat(timespec="seconds"))
+                 dt.datetime.fromtimestamp(asked.at, dt.timezone.utc).isoformat(timespec="seconds"), who=str(asked.at))
             for asked in questions]
 
 
@@ -105,5 +111,5 @@ def open_breaks(state_dir, repo_key: str, rows: dict, profile: dict, post_of) ->
         if row.waiting_on or row.held_until or not holds_move(row, profile, name, post_of(name), rows):
             continue
         items.append(Item(BREAK, branch, f"{name} stopped twice while holding this move ({row.state}), and "
-                                         "nothing has moved since", at))
+                                         "nothing has moved since", at, who=f"{name} {at}"))
     return items

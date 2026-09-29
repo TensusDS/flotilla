@@ -23,9 +23,15 @@ def test_a_working_holder_is_not_dropped():
 
 
 def test_a_recorded_wait_is_not_dropped():
-    waiting = row(state="handed", reader="review session 1", waiting_on="the person", note="asked")
+    waiting = row(state="handed", reader="review session 1", waiting_on="main session 1", note="asked")
     found = fleet.fleet(rows(waiting), PR, [sess("review session 1"), sess("main session 1")], post_of=post_of)
     assert found == []
+
+
+def test_a_wait_on_the_person_is_the_orchestrators_to_carry_not_a_dropped_ball():
+    waiting = row(state="handed", reader="review session 1", waiting_on="the person", note="asked")
+    found = fleet.fleet(rows(waiting), PR, [sess("review session 1"), sess("main session 1")], post_of=post_of)
+    assert [(item.kind, item.text) for item in found] == [(fleet.PERSON, "waits on the person: asked")]
 
 
 def test_an_interactive_session_is_read_by_its_status():
