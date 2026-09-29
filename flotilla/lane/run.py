@@ -14,6 +14,8 @@ import sys
 from collections import deque
 from dataclasses import dataclass
 
+from flotilla.core.text import strip_ansi
+
 SUMMARY = re.compile(r"\b\d+ (?:passed|failed|errors?|skipped|xfailed|xpassed|deselected)\b")
 SHELL_KILLS = {137: 9, 143: 15}
 
@@ -27,7 +29,7 @@ class RunResult:
 
 
 def summarize(lines) -> str:
-    lines = [line.strip() for line in lines if line.strip()]
+    lines = [strip_ansi(line).strip() for line in lines if strip_ansi(line).strip()]
     for line in reversed(lines):
         if SUMMARY.search(line):
             return line.strip("= ").strip()[:200]

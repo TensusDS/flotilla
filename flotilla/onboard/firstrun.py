@@ -18,6 +18,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
+from flotilla.core.text import strip_ansi
 from flotilla.onboard.tomlw import render_toml
 
 _SUMMARY = re.compile(r"\b\d+ passed\b|^test result: |^ok\s|\bTests?:\s+\d+")
@@ -35,11 +36,11 @@ class TierRun:
 
 
 def _tail(text: str) -> str:
-    return "\n".join(text.rstrip().splitlines()[-TAIL_LINES:])
+    return strip_ansi("\n".join(text.rstrip().splitlines()[-TAIL_LINES:]))
 
 
 def _summary(text: str) -> str | None:
-    lines = [line.strip() for line in text.splitlines() if _SUMMARY.search(line.strip())]
+    lines = [line.strip() for line in strip_ansi(text).splitlines() if _SUMMARY.search(line.strip())]
     return lines[-1] if lines else None
 
 

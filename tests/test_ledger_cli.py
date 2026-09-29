@@ -332,3 +332,16 @@ def test_a_recorded_move_survives_a_letter_that_cannot_be_computed(tmp_path, mon
     monkeypatch.setattr(letters, "changed", boom)
     code, out = run_cli("work", "claim", "feat/x", "--root", str(root), "--as", "main session 1")
     assert code == 0 and "the move is recorded; its letters could not be computed: disk on fire" in out
+
+
+def test_status_prints_a_run_recorded_with_colour_codes_plain(tmp_path, monkeypatch):
+    from flotilla.ledger import runs
+    from flotilla.ledger.actor import resolve_actor
+    from flotilla.ledger.commands import open_ledger
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    run_cli("work", "claim", "feat/x", "--root", str(root), "--as", "main session 1")
+    ledger = open_ledger(root)
+    runs.record_run(ledger, resolve_actor(ledger.posts, as_name="main session 1"), "feat/x", verdict="green",
+                    summary="\x1b[32m12 passed\x1b[0m in 0.02s", revision="0" * 40, evidence={})
+    code, out = run_cli("status", "--root", str(root))
+    assert "12 passed in 0.02s" in out and "\x1b" not in out

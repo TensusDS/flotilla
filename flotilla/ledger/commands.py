@@ -17,6 +17,7 @@ from pathlib import Path
 
 from flotilla.core import config, paths, repo
 from flotilla.core.storage import LocalLogStore, StorageCorrupt
+from flotilla.core.text import strip_ansi
 from flotilla.ledger import (core, delivery, events, findings, gitq, handover, judging, letters, outside, reading,
                              receipts, report, steering, views)
 from flotilla.ledger import tree as tree_mod
@@ -324,7 +325,7 @@ def _status(ledger: core.Ledger, args) -> int:
             mover += f" (the judge walks it after {', '.join(o.branch or o.id for o in pending)} ship)"
         wait = f" (waiting on {row.waiting_on}: {row.note})" if row.waiting_on else ""
         held = f" (held until {row.held_until}: {row.held_why})" if row.held_until else ""
-        ran = f" (last run: {row.last_run})" if row.last_run else ""
+        ran = f" (last run: {strip_ansi(row.last_run)})" if row.last_run else ""
         print(f"  {row.id} {row.branch}: {row.state} -> {mover}{wait}{held}{ran}")
     for title, items in (("deviations", views.deviations(rows, ledger.profile, live,
                                                          finished=lambda row: _finished(ledger, row))),
