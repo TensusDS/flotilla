@@ -49,7 +49,8 @@ def _locked(ledger) -> set[str]:
 
 
 def _running(sessions, name: str):
-    return next((item for item in sessions if item.name == name and item.state != "done"), None)
+    """Listed in the census at all: a background session whose turn is done is still a process (G12)."""
+    return next((item for item in sessions if item.name == name), None)
 
 
 def fleet_view(ledger, sessions: list | None) -> list[dict]:
