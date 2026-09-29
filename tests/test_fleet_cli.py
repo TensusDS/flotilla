@@ -1,6 +1,8 @@
 import io
 from contextlib import redirect_stdout
 
+import pytest
+
 from flotilla import cli
 from flotilla.onboard.tomlw import render_toml
 from flotilla.posts import install_templates
@@ -8,6 +10,14 @@ from ledgerkit import commit, git, repo_with_origin
 
 PROFILE = {"schema": 1, "trunk": {"branch": "main"}, "flow": {"mode": "pr"}, "review": {"depth": "every"},
            "permissions": {"mode": "auto"}, "fleet": {"default": {"main": 1, "review": 1}, "model": "one"}}
+
+
+@pytest.fixture(autouse=True)
+def ready_checkout(monkeypatch):
+    """Never ask the real `claude plugin list` or read ~/.claude.json here: on a machine where claude never ran,
+    that call creates Claude Code's own files. The setup checks are tested in test_claude_state.py."""
+    from flotilla.core import claude_state
+    monkeypatch.setattr(claude_state, "setup_problems", lambda main, **kw: ([], []))
 
 
 def run_cli(*args):
