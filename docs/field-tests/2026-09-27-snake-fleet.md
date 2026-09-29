@@ -241,6 +241,8 @@ Part 2 (who talks to the person, who wakes the next mover) fixes F12, F16, F17, 
 Part 3 (what the views say, standing the fleet down) fixes F8, F9, F10, F13, F19, F20, F22, F27 — plan
 `docs/plans/2026-09-29-field-fixes-views-and-fleet-down.md`.
 
+Part 4 (setting up a fleet) fixes F1–F7, F11 — plan `docs/plans/2026-09-29-field-fixes-setup.md`.
+
 Left open by the part-3 branch review (minor):
 
 - **R12 — seats run without an orchestrator while spawn raises it last**; the broker's "no live orchestrator"
