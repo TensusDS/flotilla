@@ -100,10 +100,13 @@ def _wait(root, gather, ctx, seconds, interval, now, sleep, clock, confirm=5.0) 
         items = ctx.fleet()
         new = [item for item in items if _key(item) not in seen]
         seen = {_key(item) for item in items}   # what went away and came back is news again
-        new = _confirmed(new, root, gather, confirm, sleep) if new else new
-        if new is None:
+        confirmed = _confirmed(new, root, gather, confirm, sleep) if new else new
+        if confirmed is None:
             print("census: could not be asked for the second sample")
             return 2
+        # a ball the second sample cleared was not seen: when it really drops at the next poll, it is news
+        seen -= {_key(item) for item in new} - {_key(item) for item in confirmed}
+        new = confirmed
         if new:
             print(f"census: {len(ctx.live)} live session(s)")
             print("attention (new):")

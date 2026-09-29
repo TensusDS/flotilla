@@ -148,3 +148,10 @@ def test_once_says_when_the_confirming_sample_could_not_be_taken(tmp_path, capsy
     ns = argparse.Namespace(once=True, wait=0.0, interval=20.0, confirm=5.0, root=str(tmp_path))
     code = run_watch_command(ns, gather=lambda root, sid: next(given), now=NOW, sleep=lambda s: None)
     assert code == 2 and "second sample" in capsys.readouterr().out
+
+
+def test_a_real_drop_after_a_flicker_wakes_it(tmp_path, capsys):
+    busy = dropping(tmp_path, "working")
+    idle = dropping(tmp_path, "blocked")
+    code, out = run_wait(tmp_path, capsys, [busy, idle, busy, idle, idle, idle], seconds=100.0)
+    assert code == 1 and "review session 1 holds the move" in out
