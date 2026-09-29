@@ -549,6 +549,14 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
 113. **Every hook records when it last ran for the session**, and `flotilla guard status` shows it per live session
    of this project; the Bash guard records only when a command reached the guards (F11). (Max's triage
    2026-09-28; the per-session trace, executor's decision, field fixes part 4, 2026-09-29)
+114. **`doctor` checks the main checkout spawn launches from**, not the directory it runs in (a fleet worktree is
+   never trusted itself); the fix it names installs from the marketplace flotilla is already listed from, or adds
+   flotilla's own first. A local flow is not asked about a judge (it never ships, so a required judge would leave
+   every row unclosable), and spawn warns when the profile requires a judge the fleet will not hold. (executor's
+   decision after the branch review, field fixes part 4, 2026-09-29)
+115. **A hook's trace is one file per session and event**, replaced whole, so hooks of one session firing at once
+   never overwrite each other's record. (executor's decision after the branch review, field fixes part 4,
+   2026-09-29)
 
 ## Open questions (for the foundation spec)
 
