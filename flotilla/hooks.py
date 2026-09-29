@@ -75,11 +75,15 @@ def _identity(ctx) -> list[str]:
     else:
         post = ctx.post(ctx.me.name)
         role = f"post {post.name}" if post else "no post matches this name, so it can make no ledger move"
-        peers = sorted(ctx.live - {ctx.me.name})
+        mine = ctx.project_live or set()
+        peers = sorted(mine - {ctx.me.name})
+        elsewhere = len((ctx.live or set()) - mine - {ctx.me.name})
         shown = ", ".join(peers[:PEERS_SHOWN])
         if len(peers) > PEERS_SHOWN:
             shown += f", and {len(peers) - PEERS_SHOWN} more"
-        said.append(f"you are {ctx.me.name} ({role}); {len(peers)} live peer(s)" + (f": {shown}" if peers else ""))
+        said.append(f"you are {ctx.me.name} ({role}); {len(peers)} live peer(s) in this project"
+                    + (f": {shown}" if peers else "")
+                    + (f"; {elsewhere} more elsewhere on this machine" if elsewhere else ""))
     if ctx.ledger is None:
         said.append(f"the ledger could not be read: {ctx.ledger_error}")
     return said

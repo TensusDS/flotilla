@@ -430,11 +430,14 @@ def run_ledger_command(args) -> int:
 def _letters(ledger: core.Ledger, caller, before: dict) -> None:
     """Print the letters a recorded move owes. The move is already in the ledger, so a failure here is a note,
     never a refusal: a session that read "refused" would make the move again."""
-    def live():
+    def live():   # this project's sessions: a sender of another repository is no recipient (F20)
         try:
-            return ledger.live_names()
+            sessions = ledger.live_sessions()
         except MoveRefused:
             return None
+        from flotilla.ledger import project
+        roots = project.roots(ledger.root, ledger.run)
+        return {session.name for session in project.members(sessions, ledger.rows(), roots) if session.name}
     try:
         due = letters.changed(before, ledger.rows(), ledger.profile, ledger.posts, caller.name, live)
     except Exception as err:  # noqa: BLE001 - the move stands; say what could not be done

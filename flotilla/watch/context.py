@@ -24,10 +24,16 @@ class Context:
     ledger: object | None = None
     ledger_error: str = ""
     rows: dict = field(default_factory=dict)
+    project: list | None = None   # the sessions of this project; None: not narrowed, every session counts
 
     @property
     def live(self) -> set[str] | None:
         return None if self.sessions is None else {session.name for session in self.sessions if session.name}
+
+    @property
+    def project_live(self) -> set[str] | None:
+        chosen = self.project if self.project is not None else self.sessions
+        return None if chosen is None else {session.name for session in chosen if session.name}
 
     @property
     def profile(self) -> dict:
@@ -69,7 +75,8 @@ class Context:
         breaks = fleet.open_breaks(self.ledger.state_dir, self.ledger.repo_key, self.rows, self.profile,
                                    self.post_of)
         return fleet.question_items(questions) + fleet.fleet(
-            self.rows, self.profile, self.sessions, post_of=self.post_of, breaks=breaks,
+            self.rows, self.profile, self.project if self.project is not None else self.sessions,
+            post_of=self.post_of, breaks=breaks,
             asking={asked.session for asked in questions})
 
 
@@ -103,4 +110,7 @@ def gather(root, session_id: str, *, census=None, open_ledger=None, parent_of=No
         ctx.rows = ctx.ledger.rows()
     except Exception as err:  # noqa: BLE001 - a hook says what it could not read and goes on
         ctx.ledger, ctx.rows, ctx.ledger_error = None, {}, str(err) or type(err).__name__
+    if ctx.sessions is not None and ctx.ledger is not None:
+        from flotilla.ledger import project
+        ctx.project = project.members(ctx.sessions, ctx.rows, project.roots(ctx.ledger.root))
     return ctx

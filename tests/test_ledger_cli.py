@@ -366,3 +366,20 @@ def test_show_says_a_row_has_no_branch_yet(tmp_path, monkeypatch):
     assert code == 0, out
     code, out = run_cli("work", "show", "feat/later", "--root", str(root))
     assert "base: no branch yet" in out and "base unknown" not in out
+
+
+def test_a_letter_goes_to_this_projects_sender_only(tmp_path, monkeypatch):
+    import dataclasses
+    from watchkit import sess
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    tree = tmp_path / "app-main-1"
+    run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")
+    tip = commit(tree, "work", "work.txt")
+    run_cli("work", "hand", "feat/x", "--root", str(tree), "--as", "main session 1")
+    run_cli("work", "take", "feat/x", "--root", str(root), "--as", "review session 1")
+    ours = dataclasses.replace(sess("sender 1"), cwd=str(root))
+    theirs = dataclasses.replace(sess("sender 2"), cwd=str(tmp_path / "another-repo"))
+    monkeypatch.setattr("flotilla.ledger.core.Ledger.live_sessions", lambda self: [ours, theirs])
+    code, out = run_cli("work", "accept", "feat/x", "--reviewed", tip, "--root", str(root),
+                        "--as", "review session 1")
+    assert code == 0 and "letter for sender 1 - send" in out and "sender 2" not in out
