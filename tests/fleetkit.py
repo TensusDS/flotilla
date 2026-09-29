@@ -23,6 +23,7 @@ class FakeClaude:
         self.fail_launch = fail_launch
         self.reachable = reachable
         self.stops = True
+        self.stop_fails: set[str] = set()   # session names whose `claude stop` exits 1
 
     def census(self):
         if not self.reachable:
@@ -45,6 +46,8 @@ class FakeClaude:
                 self.sessions.append(session(name, f"{len(self.launched):06x}"))
             return subprocess.CompletedProcess(cmd, 0, "backgrounded", "")
         if cmd[1] in ("stop", "kill"):
+            if any(s.short_id == cmd[2] and s.name in self.stop_fails for s in self.sessions):
+                return subprocess.CompletedProcess(cmd, 1, "", "fake claude: stop failed")
             self.stopped.append(cmd[2])
             if self.stops:
                 self.sessions = [s for s in self.sessions if s.short_id != cmd[2]]

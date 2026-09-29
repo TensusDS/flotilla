@@ -93,6 +93,8 @@ def _print_raised(raised) -> None:
 
 
 def _fleet(ledger, args) -> int:
+    if getattr(args, "action", None) == "down":
+        return _down(ledger)
     try:
         sessions = census()
     except CensusUnavailable as err:
@@ -111,6 +113,20 @@ def _fleet(ledger, args) -> int:
         work = ", ".join(f"{row.branch} ({row.state})" for row in item["work"]) or "no open work"
         print(f"{item['name']}  ({item['post'] or 'no post'})  {live}\n    tree {tree}{dirty}, {lock}; {work}")
     return 0
+
+
+def _down(ledger) -> int:
+    try:
+        sessions = census()
+    except CensusUnavailable as err:
+        raise retire.RetireRefused(f"the census could not be asked ({err}); nothing was stopped or "
+                                   "released") from err
+    source = plat.probe().parent_pid_source
+    found = find_calling_session(sessions, parent_of=lambda pid: plat.parent_pid(pid, source))
+    me = found.name if found is not None and found.name else ""
+    lines, refused = retire.down(ledger, caller=f"fleet down {caller_line(sessions)}", me=me, census=census)
+    print("\n".join(lines))
+    return 1 if refused else 0
 
 
 def _retire(ledger, args) -> int:
