@@ -16,7 +16,7 @@ from flotilla.ledger import core, gitq, views
 from flotilla.ledger.actor import Actor, require_may
 from flotilla.ledger.core import Ledger
 from flotilla.ledger.errors import MoveRefused
-from flotilla.ledger.model import Row, delivered, next_row_id
+from flotilla.ledger.model import Row, next_row_id
 
 
 def _deployed(ledger: Ledger) -> str:
