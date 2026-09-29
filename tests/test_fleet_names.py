@@ -45,3 +45,19 @@ def test_two_callers_never_get_the_same_name(tmp_path):
         worker.join(30)
     issued = [queue.get(timeout=5) for _ in workers]
     assert len(set(issued)) == 6
+
+
+def test_numbering_after_a_live_session_elsewhere_says_so(tmp_path):
+    said = names.numbered_after(REVIEWER, taken={"review session 37"}, live={"review session 37"},
+                                store=LocalLogStore(tmp_path))
+    assert "review session 37" in said and "alive on this machine" in said and "machine-wide" in said
+
+
+def test_numbering_after_a_name_spawn_issued_says_so(tmp_path):
+    store = LocalLogStore(tmp_path)
+    names.next_names(REVIEWER, 1, taken=set(), store=store, reserve=True)
+    assert "issued by an earlier spawn" in names.numbered_after(REVIEWER, taken=set(), live=set(), store=store)
+
+
+def test_a_fresh_post_says_nothing(tmp_path):
+    assert names.numbered_after(REVIEWER, taken={"main session 9"}, live=set(), store=LocalLogStore(tmp_path)) == ""

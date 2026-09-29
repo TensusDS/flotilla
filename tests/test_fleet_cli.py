@@ -86,3 +86,14 @@ def test_fleet_down_inside_an_unidentified_claude_session_refuses(tmp_path, monk
     monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [])
     code, out = run_cli("fleet", "down", "--root", str(root))
     assert code == 2 and "cannot tell which session runs this" in out
+
+
+def test_a_dry_run_says_where_the_numbering_continues_from(tmp_path, monkeypatch):
+    from flotilla.core import claude_state
+    from fleetkit import session
+    root = onboarded(tmp_path, monkeypatch)
+    monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [session("review session 37", "abc123")])
+    monkeypatch.setattr(claude_state, "setup_problems", lambda main, **kw: ([], []))
+    code, out = run_cli("spawn", "--dry-run", "--post", "reviewer=1", "--root", str(root))
+    assert code == 0 and "review session 38" in out
+    assert "note: reviewer numbering continues after review session 37 (alive on this machine" in out

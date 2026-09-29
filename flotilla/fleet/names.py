@@ -35,3 +35,21 @@ def next_names(post, count: int, *, taken: set[str], store, reserve: bool, now: 
             if reserve:
                 tx.append({"post": post.name, "n": number, "name": name, "at": now})
     return found
+
+
+def numbered_after(post, *, taken: set[str], live: set[str], store) -> str:
+    """Why a post's next number is not 1 (field test F7): names are machine-wide addresses, so another project's
+    live session holds its number here too. "" when numbering starts at 1."""
+    issued = max((record.get("n", 0) for record in store.read(KEY).records if record.get("post") == post.name),
+                 default=0)
+    known = {name: number_of(post, name) or 0 for name in taken}
+    top_known = max(known.values(), default=0)
+    if top_known == 0 and issued == 0:
+        return ""
+    if top_known >= issued:
+        name = max(known, key=known.get)
+        where = ("alive on this machine; names are machine-wide addresses" if name in live
+                 else "named in this ledger")
+        return f"{post.name} numbering continues after {name} ({where})"
+    return (f"{post.name} numbering continues after number {issued}, issued by an earlier spawn "
+            "(an issued number is never reused)")
