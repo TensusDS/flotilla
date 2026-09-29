@@ -8,12 +8,12 @@ HANDED = rows(row(state="handed", reader="review session 1"))
 
 
 def args(tmp_path, once=True):
-    return argparse.Namespace(once=once, wait=0.0, interval=20.0, root=str(tmp_path))
+    return argparse.Namespace(once=once, wait=0.0, interval=20.0, confirm=5.0, root=str(tmp_path))
 
 
 def run(tmp_path, ctx, capsys, once=True):
     onboarded(tmp_path)
-    code = run_watch_command(args(tmp_path, once), gather=lambda root, sid: ctx, now=NOW)
+    code = run_watch_command(args(tmp_path, once), gather=lambda root, sid: ctx, now=NOW, sleep=lambda s: None)
     return code, capsys.readouterr().out
 
 
@@ -49,7 +49,7 @@ def test_the_cli_parses_watch():
 
 
 def waiting(seconds=60.0, interval=20.0):
-    return argparse.Namespace(once=False, wait=seconds, interval=interval, root=None)
+    return argparse.Namespace(once=False, wait=seconds, interval=interval, confirm=5.0, root=None)
 
 
 def run_wait(tmp_path, capsys, contexts, seconds=60.0):
@@ -70,7 +70,7 @@ DROPPED = [sess("review session 1"), sess("main session 1", state="working")]
 def test_wait_returns_when_something_new_needs_attention(tmp_path, capsys):
     calm = context(tmp_path, me=None, sessions=QUIET)
     news = context(tmp_path, me=None, sessions=DROPPED, rows_=HANDED)
-    code, out = run_wait(tmp_path, capsys, [calm, calm, news])
+    code, out = run_wait(tmp_path, capsys, [calm, calm, news, news])   # the last: the confirming sample
     assert code == 1 and "attention (new):" in out and "review session 1 holds the move" in out
 
 
@@ -100,7 +100,7 @@ def dropping(tmp_path, state, status=None):
 
 def test_a_ball_dropped_again_after_work_resumed_wakes_it(tmp_path, capsys):
     code, out = run_wait(tmp_path, capsys, [dropping(tmp_path, "blocked"), dropping(tmp_path, "working"),
-                                            dropping(tmp_path, "blocked")])
+                                            dropping(tmp_path, "blocked"), dropping(tmp_path, "blocked")])
     assert code == 1 and "review session 1 holds the move" in out
 
 
@@ -115,3 +115,36 @@ def test_a_question_waiting_on_the_person_needs_attention(tmp_path, capsys):
                       note="which colour should the snake be?"))
     code, out = run(tmp_path, context(tmp_path, me=None, sessions=[sess("review session 1")], rows_=asking), capsys)
     assert code == 1 and "waits on the person: which colour should the snake be?" in out
+
+
+def test_once_does_not_report_a_ball_the_second_sample_clears(tmp_path, capsys):
+    onboarded(tmp_path)
+    given = iter([dropping(tmp_path, "blocked"), dropping(tmp_path, "working")])
+    ns = argparse.Namespace(once=True, wait=0.0, interval=20.0, confirm=5.0, root=str(tmp_path))
+    code = run_watch_command(ns, gather=lambda root, sid: next(given), now=NOW, sleep=lambda s: None)
+    out = capsys.readouterr().out
+    assert code == 0 and "attention: none" in out
+
+
+def test_once_reports_a_ball_both_samples_agree_on(tmp_path, capsys):
+    onboarded(tmp_path)
+    given = iter([dropping(tmp_path, "blocked"), dropping(tmp_path, "blocked")])
+    ns = argparse.Namespace(once=True, wait=0.0, interval=20.0, confirm=5.0, root=str(tmp_path))
+    code = run_watch_command(ns, gather=lambda root, sid: next(given), now=NOW, sleep=lambda s: None)
+    assert code == 1 and "review session 1 holds the move" in capsys.readouterr().out
+
+
+def test_wait_does_not_wake_for_a_ball_the_second_sample_clears(tmp_path, capsys):
+    calm = context(tmp_path, me=None, sessions=QUIET)
+    code, out = run_wait(tmp_path, capsys, [calm, dropping(tmp_path, "blocked"), dropping(tmp_path, "working"),
+                                            calm, calm])
+    assert code == 0 and "nothing new" in out
+
+
+def test_once_says_when_the_confirming_sample_could_not_be_taken(tmp_path, capsys):
+    onboarded(tmp_path)
+    lost = context(tmp_path, me=None, census_error="`claude` is not on PATH")
+    given = iter([dropping(tmp_path, "blocked"), lost])
+    ns = argparse.Namespace(once=True, wait=0.0, interval=20.0, confirm=5.0, root=str(tmp_path))
+    code = run_watch_command(ns, gather=lambda root, sid: next(given), now=NOW, sleep=lambda s: None)
+    assert code == 2 and "second sample" in capsys.readouterr().out

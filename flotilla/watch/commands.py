@@ -36,10 +36,14 @@ def run_watch_command(args, *, gather=None, now: dt.datetime | None = None, slee
     if problems:
         print("\n".join(problems))
         return 2
+    confirm = getattr(args, "confirm", 5.0)
     if wait:
-        return _wait(root, gather, ctx, wait, getattr(args, "interval", 20.0) or 20.0, now, sleep, clock)
+        return _wait(root, gather, ctx, wait, getattr(args, "interval", 20.0) or 20.0, now, sleep, clock, confirm)
+    items = _confirmed(ctx.fleet(), root, gather, confirm, sleep)
+    if items is None:
+        print("census: could not be asked for the second sample")
+        return 2
     print(f"census: {len(ctx.live)} live session(s)")
-    items = ctx.fleet()
     if not items:
         print("attention: none")
         return 0
@@ -63,7 +67,21 @@ def _problems(ctx) -> list[str]:
     return problems
 
 
-def _wait(root, gather, ctx, seconds, interval, now, sleep, clock) -> int:
+def _confirmed(items, root, gather, confirm, sleep):
+    """Keep a dropped ball only if a second census sample, `confirm` seconds on, still shows it: a session caught
+    once at `waiting` is often busy a moment later (field test F10). None when the second sample failed."""
+    from flotilla.watch.fleet import DROPPED
+    if not any(item.kind == DROPPED for item in items):
+        return items
+    sleep(confirm)
+    again = gather(root, "")
+    if _problems(again):
+        return None
+    still = {_key(item) for item in again.fleet()}
+    return [item for item in items if item.kind != DROPPED or _key(item) in still]
+
+
+def _wait(root, gather, ctx, seconds, interval, now, sleep, clock, confirm=5.0) -> int:
     """Block until an attention item appears that was not there at the start. What was there does not wake it,
     so a standing item cannot turn the wait into a loop."""
     from flotilla.watch import render
@@ -82,6 +100,10 @@ def _wait(root, gather, ctx, seconds, interval, now, sleep, clock) -> int:
         items = ctx.fleet()
         new = [item for item in items if _key(item) not in seen]
         seen = {_key(item) for item in items}   # what went away and came back is news again
+        new = _confirmed(new, root, gather, confirm, sleep) if new else new
+        if new is None:
+            print("census: could not be asked for the second sample")
+            return 2
         if new:
             print(f"census: {len(ctx.live)} live session(s)")
             print("attention (new):")

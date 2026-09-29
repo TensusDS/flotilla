@@ -178,6 +178,7 @@ def build_parser() -> argparse.ArgumentParser:
                        help="block up to this many seconds until something new needs attention (exit 1), or "
                             "nothing new (exit 0)")
     watch.add_argument("--interval", type=float, default=20.0, help=argparse.SUPPRESS)
+    watch.add_argument("--confirm", type=float, default=5.0, help=argparse.SUPPRESS)
     watch.add_argument("--root", default=".")
     from flotilla.guards import CEILING
     guard = sub.add_parser("guard", help="the command guards and their git hooks", epilog=CEILING,
