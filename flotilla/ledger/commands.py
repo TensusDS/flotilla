@@ -157,6 +157,9 @@ def _show(ledger: core.Ledger, branch: str) -> int:
 STUCK = ("next: if no move named above is yours to make, record whom you wait on (`flotilla work wait <branch> "
          "--on \"<whom>\" --why \"<why>\"`) and tell the orchestrator. A refusal that names no way forward is a "
          "flotilla defect: send it to the orchestrator verbatim, and never work around flotilla with git plumbing.")
+#: Printed after an error that is not a move refused: no ledger move helps, so none is suggested.
+CANNOT_RUN = ("next: flotilla cannot run here as things stand; send this text to the orchestrator verbatim, and never "
+              "work around flotilla with git plumbing.")
 
 MOVES = {
     "claim": lambda l, a, x: core.claim(l, a, x.branch, tree=x.tree, ref=x.ref, requires=x.requires, also=x.also),
@@ -357,6 +360,10 @@ def _metrics(ledger: core.Ledger, args) -> int:
 VIEWS = {"status": _status, "brief": _brief, "metrics": _metrics}
 
 
+#: Refusals of a move: the ledger stands and another move may be legal, so STUCK names the way forward.
+MOVE_REFUSALS = (MoveRefused, PostError, receipts.ReceiptRefused, LaneRefused)
+
+
 def run_ledger_command(args) -> int:
     ledger = None
     try:
@@ -399,7 +406,7 @@ def run_ledger_command(args) -> int:
         print(f"refused: {err}")
         if ledger is not None:
             _notices(ledger)
-        print(STUCK)
+        print(STUCK if isinstance(err, MOVE_REFUSALS) else CANNOT_RUN)
         return 2
     print(summary(row))
     for other in (row.history[-1].get("evidence") or {}).get("stacked_on") or []:
@@ -410,12 +417,19 @@ def run_ledger_command(args) -> int:
 
 
 def _letters(ledger: core.Ledger, caller, before: dict) -> None:
+    """Print the letters a recorded move owes. The move is already in the ledger, so a failure here is a note,
+    never a refusal: a session that read "refused" would make the move again."""
     def live():
         try:
             return ledger.live_names()
         except MoveRefused:
             return None
-    for letter in letters.changed(before, ledger.rows(), ledger.profile, ledger.posts, caller.name, live):
+    try:
+        due = letters.changed(before, ledger.rows(), ledger.profile, ledger.posts, caller.name, live)
+    except Exception as err:  # noqa: BLE001 - the move stands; say what could not be done
+        print(f"note: the move is recorded; its letters could not be computed: {err}")
+        return
+    for letter in due:
         print("\n".join(letters.render(letter)))
 
 

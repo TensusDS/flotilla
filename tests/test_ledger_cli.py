@@ -314,3 +314,21 @@ def test_assign_prints_one_letter_for_the_reader(tmp_path, monkeypatch):
                         "--as", "orchestrator 1")
     assert code == 0 and out.count("flotilla work take feat/x") == 1
     assert "letter for review session 1" in out
+
+
+def test_a_project_error_is_not_dressed_as_a_move_refusal(tmp_path, monkeypatch):
+    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setenv("FLOTILLA_NO_CENSUS", "1")
+    root = repo_with_origin(tmp_path)
+    code, out = run_cli("work", "claim", "feat/x", "--root", str(root), "--as", "main session 1")
+    assert code == 2 and "next: if no move" not in out and "send this text to the orchestrator" in out
+
+
+def test_a_recorded_move_survives_a_letter_that_cannot_be_computed(tmp_path, monkeypatch):
+    from flotilla.ledger import letters
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    def boom(*args, **kwargs):
+        raise RuntimeError("disk on fire")
+    monkeypatch.setattr(letters, "changed", boom)
+    code, out = run_cli("work", "claim", "feat/x", "--root", str(root), "--as", "main session 1")
+    assert code == 0 and "the move is recorded; its letters could not be computed: disk on fire" in out
