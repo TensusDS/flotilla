@@ -98,3 +98,9 @@ def test_a_hold_on_a_branch_lifts_only_once_that_branch_is_accepted():
 def test_without_origin_a_landed_row_is_the_owners_to_close():
     assert views.who_moves(row(state="landed"), LOCAL) == "main session 1"
     assert views.who_moves(row(state="landed"), PR) == views.SENDER
+
+
+def test_a_post_seat_whose_session_is_gone_is_an_empty_seat_not_a_gone_mover():
+    seat = row("r1", branch="fleet/reviewer-1", owner="review session 1", state="reserved")
+    found = views.deviations(rows(seat), PR, live=set())
+    assert [item["kind"] for item in found] == ["seat_empty"]

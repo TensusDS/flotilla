@@ -142,5 +142,8 @@ def deviations(rows: dict[str, Row], profile: dict, live: set[str] | None = None
                                                   "handed: the author's move")
         mover = who_moves(row, profile, rows)
         if live is not None and mover and not mover.startswith("the ") and mover not in live:
-            add("mover_gone", mover, f"the move is {mover}'s, and that session is not alive")
+            if row.state == "reserved":   # a post seat, not a move anyone owes (F8, F27)
+                add("seat_empty", mover, f"the post seat is held for {mover}, and that session is not alive")
+            else:
+                add("mover_gone", mover, f"the move is {mover}'s, and that session is not alive")
     return found

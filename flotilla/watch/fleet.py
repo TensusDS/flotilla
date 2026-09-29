@@ -17,6 +17,7 @@ from flotilla.watch.whose import POST_OF_MOVER, Item, holds_move, since_of
 
 DEVIATION, DROPPED, NOBODY, BREAK, QUESTION, PERSON = ("deviation", "dropped", "nobody", "break", "question",
                                                      "person")
+SEATS = "seats"
 THE_PERSON = "the person"
 
 
@@ -50,9 +51,16 @@ def movers(row, profile: dict, live: set[str], post_of, rows: dict | None = None
 def fleet(rows: dict, profile: dict, sessions, *, post_of, breaks=(), asking=()) -> list[Item]:
     by_name = {session.name: session for session in sessions if session.name}
     live = set(by_name)
+    found_all = views.deviations(rows, profile, live)
     items = [Item(DEVIATION, found["branch"], f"{found['kind']}: {found['why']}", since_of(rows, found["branch"]),
                   who=found["kind"])
-             for found in views.deviations(rows, profile, live)]
+             for found in found_all if found["kind"] != "seat_empty"]
+    empty = sorted(found["on"] for found in found_all if found["kind"] == "seat_empty")
+    if empty:   # one quiet line for every seat whose session is gone, not an alarm per seat (F27)
+        items.append(Item(SEATS, "", f"{len(empty)} post seat(s) with no live session: {', '.join(empty)}; "
+                                     "`flotilla fleet` lists them, `flotilla fleet down` stands the fleet down",
+                          min((row.updated_at for row in rows.values() if row.owner in empty
+                               and row.state == "reserved"), default=""), who=",".join(empty)))
     for row in rows.values():
         if row.is_open and row.waiting_on.strip().lower() == THE_PERSON:
             items.append(Item(PERSON, row.branch, f"waits on the person: {row.note or 'no question recorded'}",

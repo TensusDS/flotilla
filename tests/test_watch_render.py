@@ -54,3 +54,9 @@ def test_sessions_are_throttled_apart(tmp_path):
     said = throttle.digest(["a"])
     assert throttle.due(tmp_path, "s1", said, NOW)
     assert throttle.due(tmp_path, "s2", said, NOW)
+
+
+def test_an_item_about_no_branch_prints_without_a_branch_prefix():
+    from flotilla.watch import render
+    line = render.lines([Item("seats", "", "2 post seat(s) with no live session: a, b", AT)], NOW)[0]
+    assert line.startswith("  2 post seat(s)") and not line.startswith("  : ")

@@ -33,7 +33,10 @@ def normalise(counts: dict, posts: dict) -> dict[str, int]:
 
 
 def raise_order(counts: dict[str, int]) -> list[str]:
-    return [name for name in ORDER if name in counts] + sorted(name for name in counts if name not in ORDER)
+    """The orchestrator last: its first report then sees every seat already raised (field test F8)."""
+    first = [name for name in ORDER if name in counts and name != "orchestrator"]
+    last = ["orchestrator"] if "orchestrator" in counts else []
+    return first + sorted(name for name in counts if name not in ORDER) + last
 
 
 def one_copy_problems(counts: dict[str, int], posts: dict, live_posts: dict[str, int]) -> list[str]:

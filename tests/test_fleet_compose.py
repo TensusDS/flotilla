@@ -32,3 +32,8 @@ def test_a_fleet_above_three_without_orchestrator_or_sender_is_warned():
     found = compose.warnings({"main": 2, "reviewer": 2}, POSTS, {})
     assert any("orchestrator" in line for line in found) and any("sender" in line for line in found)
     assert compose.warnings({"main": 1, "reviewer": 1}, POSTS, {}) == []
+
+
+def test_the_orchestrator_is_raised_last():
+    order = compose.raise_order({"orchestrator": 1, "reviewer": 2, "minor": 1, "alpha": 1})
+    assert order[-1] == "orchestrator" and order[:3] == ["reviewer", "minor", "alpha"]
