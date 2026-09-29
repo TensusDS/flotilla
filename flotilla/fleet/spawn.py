@@ -50,7 +50,7 @@ def _live_posts(ledger, sessions) -> Counter:
             post = post_for_session(ledger.posts, item.name) if item.name else None
         except PostError:
             post = None
-        if post is not None and item.state != "done":
+        if post is not None:   # a seat whose turn is done still holds its post (decision 118)
             held[post.name] += 1
     return held
 

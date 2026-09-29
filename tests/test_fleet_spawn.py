@@ -220,3 +220,10 @@ def test_a_required_judge_with_no_judge_in_the_fleet_is_warned(tmp_path):
     assert any("judge" in line and "shipped rows" in line for line in warnings)
     seats, warnings = spawn.plan(ledger, {"main": 1, "judge": 1}, census=fake.census, store=store, reserve=False)
     assert not any("shipped rows" in line for line in warnings)
+
+
+def test_a_seat_whose_turn_is_done_still_holds_its_one_copy_post(tmp_path):
+    fake = FakeClaude([session("sender 1", "aaa111", state="done")])
+    root, ledger, store = world(tmp_path, fake)
+    with pytest.raises(spawn.SpawnRefused, match="one-copy"):
+        spawn.plan(ledger, {"sender": 1}, census=fake.census, store=store, reserve=False)
