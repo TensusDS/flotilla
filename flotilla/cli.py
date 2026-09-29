@@ -19,7 +19,7 @@ def build_parser() -> argparse.ArgumentParser:
     doctor = sub.add_parser("doctor", help="check this machine and project")
     doctor.add_argument("--quiet", action="store_true", help="print only what needs attention")
     hook = sub.add_parser("hook", help="entry point for Claude Code hooks")
-    hook.add_argument("event", choices=["session-start", "prompt", "stop", "guard", "permission"])
+    hook.add_argument("event", choices=["session-start", "prompt", "stop", "guard", "permission", "ask"])
     onboard = sub.add_parser("onboard", help="measure, detect, ask and write the project profile")
     actions = onboard.add_subparsers(dest="action", required=True)
     actions.add_parser("machine", help="measure this machine into the state directory")
@@ -174,6 +174,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("fleet", help="the fleet's sessions, their trees and their work").add_argument("--root", default=".")
     watch = sub.add_parser("watch", help="what the fleet needs attention for (exit 0 none, 1 some, 2 unknown)")
     watch.add_argument("--once", action="store_true", help="check once and exit (v1 has no schedule of its own)")
+    watch.add_argument("--wait", type=float, default=0.0,
+                       help="block up to this many seconds until something new needs attention (exit 1), or "
+                            "nothing new (exit 0)")
+    watch.add_argument("--interval", type=float, default=20.0, help=argparse.SUPPRESS)
     watch.add_argument("--root", default=".")
     from flotilla.guards import CEILING
     guard = sub.add_parser("guard", help="the command guards and their git hooks", epilog=CEILING,

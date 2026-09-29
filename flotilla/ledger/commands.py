@@ -17,8 +17,8 @@ from pathlib import Path
 
 from flotilla.core import config, paths, repo
 from flotilla.core.storage import LocalLogStore, StorageCorrupt
-from flotilla.ledger import (core, delivery, events, findings, gitq, handover, judging, outside, reading, receipts,
-                             report, steering, views)
+from flotilla.ledger import (core, delivery, events, findings, gitq, handover, judging, letters, outside, reading,
+                             receipts, report, steering, views)
 from flotilla.ledger import tree as tree_mod
 from flotilla.ledger.actor import resolve_actor
 from flotilla.lane.acquire import LaneRefused
@@ -153,6 +153,14 @@ def _show(ledger: core.Ledger, branch: str) -> int:
     return 0
 
 
+#: Printed after every refusal, so no refusal leaves a session without a way forward (field test F17).
+STUCK = ("next: if no move named above is yours to make, record whom you wait on (`flotilla work wait <branch> "
+         "--on \"<whom>\" --why \"<why>\"`) and tell the orchestrator. A refusal that names no way forward is a "
+         "flotilla defect: send it to the orchestrator verbatim, and never work around flotilla with git plumbing.")
+#: Printed after an error that is not a move refused: no ledger move helps, so none is suggested.
+CANNOT_RUN = ("next: flotilla cannot run here as things stand; send this text to the orchestrator verbatim, and never "
+              "work around flotilla with git plumbing.")
+
 MOVES = {
     "claim": lambda l, a, x: core.claim(l, a, x.branch, tree=x.tree, ref=x.ref, requires=x.requires, also=x.also),
     "reserve": lambda l, a, x: core.reserve(l, a, x.branch, tree=x.tree),
@@ -163,7 +171,7 @@ MOVES = {
     "take": lambda l, a, x: reading.take(l, a, x.branch),
     "recuse": lambda l, a, x: reading.recuse(l, a, x.branch),
     "fix": lambda l, a, x: reading.fix(l, a, x.branch, why=x.why),
-    "assign": lambda l, a, x: reading.assign(l, a, x.branch, reader=x.reader),
+    "assign": lambda l, a, x: reading.assign(l, a, x.branch, reader=x.reader)[0],   # letters prints its letter
     "accept": lambda l, a, x: reading.accept(l, a, x.branch, reviewed=x.reviewed),
     "queue": lambda l, a, x: delivery.queue(l, a, x.branch, pr=x.pr),
     "land": lambda l, a, x: delivery.land(l, a, x.branch, merge=x.merge),
@@ -352,6 +360,10 @@ def _metrics(ledger: core.Ledger, args) -> int:
 VIEWS = {"status": _status, "brief": _brief, "metrics": _metrics}
 
 
+#: Refusals of a move: the ledger stands and another move may be legal, so STUCK names the way forward.
+MOVE_REFUSALS = (MoveRefused, PostError, receipts.ReceiptRefused, LaneRefused)
+
+
 def run_ledger_command(args) -> int:
     ledger = None
     try:
@@ -365,9 +377,11 @@ def run_ledger_command(args) -> int:
         if args.command == "work" and args.move == "show":
             return _show(ledger, args.branch)
         caller = resolve_actor(ledger.posts, as_name=args.as_name)
+        before = ledger.rows()
         if args.command == "work" and args.move == "reconcile":
             lines = delivery.reconcile(ledger, caller)
             print("\n".join(lines) if lines else "nothing is queued or landed")
+            _letters(ledger, caller, before)
             return 0
         if args.command == "tree" and args.action == "switch":
             row = tree_mod.switch(ledger, caller, args.branch, ref=args.ref, requires=args.requires, also=args.also)
@@ -380,6 +394,7 @@ def run_ledger_command(args) -> int:
                 row, text = result
                 print(summary(row))
                 print(text)
+                _letters(ledger, caller, before)
                 _notices(ledger)
                 return 0
             row = result
@@ -391,12 +406,31 @@ def run_ledger_command(args) -> int:
         print(f"refused: {err}")
         if ledger is not None:
             _notices(ledger)
+        print(STUCK if isinstance(err, MOVE_REFUSALS) else CANNOT_RUN)
         return 2
     print(summary(row))
     for other in (row.history[-1].get("evidence") or {}).get("stacked_on") or []:
         print(f"note: stacked on `{other}`, which is not accepted yet")
+    _letters(ledger, caller, before)
     _notices(ledger)
     return 0
+
+
+def _letters(ledger: core.Ledger, caller, before: dict) -> None:
+    """Print the letters a recorded move owes. The move is already in the ledger, so a failure here is a note,
+    never a refusal: a session that read "refused" would make the move again."""
+    def live():
+        try:
+            return ledger.live_names()
+        except MoveRefused:
+            return None
+    try:
+        due = letters.changed(before, ledger.rows(), ledger.profile, ledger.posts, caller.name, live)
+    except Exception as err:  # noqa: BLE001 - the move stands; say what could not be done
+        print(f"note: the move is recorded; its letters could not be computed: {err}")
+        return
+    for letter in due:
+        print("\n".join(letters.render(letter)))
 
 
 def _notices(ledger: core.Ledger) -> None:

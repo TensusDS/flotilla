@@ -28,6 +28,7 @@ class Item:
     branch: str
     text: str
     since: str
+    who: str = ""   # what makes it the same item across polls: the session, never a census word that flickers
 
 
 def holds_move(row: Row, profile: dict, name: str, post: str = "", rows: dict | None = None) -> bool:

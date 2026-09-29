@@ -235,6 +235,41 @@ Grouped by what stalled the fleet most; fixed in this order, in several small pl
 
 Part 1 (the ledger) fixes F14, F15, F18, F21, F24, F26 — plan `docs/plans/2026-09-28-field-fixes-ledger.md`.
 
+Part 2 (who talks to the person, who wakes the next mover) fixes F12, F16, F17, F23 — plan
+`docs/plans/2026-09-28-field-fixes-voice-and-wake.md`.
+
+Measured 2026-09-28 23:56–23:59 (UTC), branch `feat/field-fixes-voice-and-wake` at `39906f4` installed in the snake
+project: one background session, `minor session 91` (Sonnet, `auto`), was told to ask the person the snake's colour
+with AskUserQuestion. The PreToolUse hook on AskUserQuestion fired in the background session and its `deny` held: the
+session read the reason ("…Only the orchestrator talks to the person. No orchestrator is alive…"), did not ask, and
+ended its turn. Census samples every 30 s for 3 min: `background idle`, never `waiting` (the hung minor of F12 stood
+at `waiting`). Stopped with `claude stop 7feb3225` — the census `id`; the full `sessionId` is refused ("No job
+matching"), which corrects entry 70's note. Two gaps the probe showed:
+
+- **P1 — the route assumed a row.** The reason said "record the wait on the row the question holds up"; the
+  session held no row (a question before a claim — the shape of F12 itself), could not record a wait, and wrote the
+  question as its last message instead. The reason must say what to do with no row.
+- **P2 — it looked for its rows with `flotilla work list`, which does not exist.** The reason should name
+  `flotilla status`.
+
+P1 and P2 were closed on the same branch (decision 96). Left open by the part-2 branch review (minor):
+
+- **R4 — `watch --wait` restarts in a spin when the census stays down**: exit 2 on the first poll, and the
+  orchestrator is told to start it again each time it returns. Say: on exit 2, tell the person, do not restart.
+- **R5 — letters race with other sessions' moves**: before and after are two reads of the log, so a move another
+  session made in between prints a letter here too. Consider only rows this command appended, and the rows that
+  require them.
+- **R6 — some wakes are missed because the mover did not change**: re-assigning the same reader, `unhold`, and
+  `moved` (a new tip the reader must read) print no letter.
+- **R7 — a letter addressed "the session holding the sender post"** does not say `flotilla fleet` names it.
+- **R8 — the orchestrator is pointed at "the letter the last move printed"**, output another session saw; say
+  `flotilla work show <branch>`.
+- **R9 — an unidentified background session asks with no note** (census up, session not found in it).
+- **R10 — the posts' `flotilla fleet` check fails for an orchestrator not raised by spawn**, or when liveness is
+  unknown; the posts do not say what to do then.
+- **R11 — `watch` edge cases**: `--wait -5` exits 0 with "nothing new in -5 s"; `--once --wait N` waits silently;
+  Ctrl-C prints a traceback.
+
 Left open by the part-1 branch review (minor) — all three closed on the same branch before it merged:
 
 - **R1 — the design spec lags the decisions log.** Sections 6.2–6.4 and 7.4 still describe `land` on the local

@@ -86,10 +86,10 @@ def test_the_arrangement_answers_the_hooks_with_a_move_or_a_wait():
     assert "flotilla - your move" in text and "work wait" in text and "Stop guard" in text
 
 
-def test_the_orchestrator_post_keeps_the_question_watch():
+def test_the_orchestrator_post_keeps_one_watch_running():
     from flotilla.posts import TEMPLATE_DIR
     text = (TEMPLATE_DIR / "orchestrator.md").read_text(encoding="utf-8")
-    assert "flotilla permit next --wait" in text and "/flotilla:permit" in text
+    assert "flotilla watch --wait 3600" in text and "/flotilla:permit" in text
 
 
 def test_the_sender_post_carries_the_direct_push_sequence():
@@ -97,3 +97,48 @@ def test_the_sender_post_carries_the_direct_push_sequence():
     text = (TEMPLATE_DIR / "sender.md").read_text(encoding="utf-8")
     assert "push HEAD:<trunk>" in text and "land <branch> --merge" in text and "--settled-by" in text
     assert "its owner's to close" in text   # release refuses a live owner's row to anyone else
+
+
+def test_the_arrangement_says_a_printed_letter_is_sent():
+    text = (ROOT / "skills" / "flotilla" / "SKILL.md").read_text(encoding="utf-8")
+    assert "letter for <session> - send it with SendMessage" in text and "not finished until you sent" in text
+
+
+def template(name):
+    from flotilla.posts import TEMPLATE_DIR
+    return (TEMPLATE_DIR / f"{name}.md").read_text(encoding="utf-8")
+
+
+def test_producers_take_work_routed_by_the_orchestrator():
+    for name in ("main", "minor"):
+        text = template(name)
+        assert "A task from the orchestrator is a work order" in text and "flotilla fleet" in text
+        assert "Only the person assigns work" not in text
+
+
+def test_no_post_but_the_orchestrator_tells_the_person():
+    for name in ("main", "minor", "reviewer", "judge", "sender"):
+        assert "tell the person" not in template(name).lower(), name
+    skill = (ROOT / "skills" / "flotilla" / "SKILL.md").read_text(encoding="utf-8")
+    assert "## Who talks to the person" in skill and "Tell the person, in one short paragraph" not in skill
+
+
+def test_the_sender_asks_for_its_yes_through_the_orchestrator():
+    text = template("sender")
+    assert "to the orchestrator" in text and "flotilla brief" in text
+
+
+def test_the_orchestrator_relays_the_senders_batch():
+    text = template("orchestrator")
+    assert "You are the one session that talks to the person" in text
+    assert "You never ask the person to approve a push" not in text
+
+
+def test_the_permit_skill_leaves_the_orchestrator_one_wait():
+    text = (ROOT / "skills" / "permit" / "SKILL.md").read_text(encoding="utf-8")
+    assert "your `flotilla watch --wait` covers this" in text
+
+
+def test_producers_make_the_move_a_flotilla_letter_names():
+    for name in ("main", "minor"):
+        assert "A letter flotilla printed names a move the ledger already gives you" in template(name)

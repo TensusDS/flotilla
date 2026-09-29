@@ -470,6 +470,43 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    part 1, 2026-09-28)
 89. **`walkable --clear` takes the orchestrator's word back**: the part waits for the rows building on it again;
    clearing a row that is not marked is refused. (executor's decision, R2 of the part-1 review, 2026-09-28)
+90. **Only the orchestrator talks to the person** (Max): every other post sends its question to the orchestrator
+   (SendMessage) and records `flotilla work wait <branch> --on "the person" --why "<the question>"` on the row it
+   holds up; the sender's batch goes to the orchestrator too, which relays the person's yes (F12, F16, F17).
+   (Max's triage 2026-09-28)
+91. **A guard on AskUserQuestion** (Max): a PreToolUse hook, matcher `AskUserQuestion`, denies the question in a
+   background session whose post is not `orchestrator`, naming the live orchestrators and the wait to record. An
+   interactive session, a session with no post, and the orchestrator ask freely; a census or ledger it could not
+   ask lets the question through with a note. (Max's triage 2026-09-28; the pass-through, executor's decision,
+   field fixes part 2, 2026-09-28)
+92. **Posts accept a task routed by the orchestrator** (Max), after checking that `flotilla fleet` lists the sender
+   of the message as the live holder of the orchestrator post; any other peer's message stays information.
+   (Max's triage 2026-09-28)
+93. **Every ledger refusal ends with the way forward** (Max): one fixed line after every `refused:` — record the
+   wait and tell the orchestrator; a refusal with no way forward is a flotilla defect, sent to the orchestrator
+   verbatim; never git plumbing. Printed at the one print site, so no future refusal can miss it. (Max's triage
+   2026-09-28; the single print site, executor's decision, field fixes part 2, 2026-09-28)
+94. **A move that passes work on prints the letter; the post obliges sending it** (Max): the command line compares
+   whose move every row was before and after the command and prints a letter for each session a row passed to,
+   addressed from the census or, when it cannot be asked, by post. flotilla never sends it: `claude` has no command
+   line to message a session. (Max's triage 2026-09-28; comparing every row, executor's decision, field fixes
+   part 2, 2026-09-28)
+95. **The orchestrator keeps one background `flotilla watch --wait 3600`** (Max): it returns when an attention item
+   appears that was not there at its start — a question, a dropped ball, a break, orphaned work — and replaces the
+   orchestrator's `permit next --wait`. (Max's triage 2026-09-28; one wait for all, executor's decision, field
+   fixes part 2, 2026-09-28)
+96. **A row waiting on "the person" is an attention item** for `flotilla watch` and the orchestrator's `watch --wait`,
+   so a question a guarded session could not ask is carried even when its SendMessage was lost or no orchestrator
+   lived; the ask route says what to do with no row (write the question as the last message) and names
+   `flotilla status`. (executor's decision after the branch review and the live probe, field fixes part 2,
+   2026-09-29)
+97. **An attention item is the same item across polls by whom it is about, not by its text**: the text carries the
+   census word, which flickers (F10). `watch --wait` forgets what went away, so a ball dropped again is news.
+   (executor's decision after the branch review, field fixes part 2, 2026-09-29)
+98. **The way forward (decision 93) follows move refusals only**; an error that is not a move refused (not
+   onboarded, a damaged log, a ledger version) says flotilla cannot run here. A letter that cannot be computed
+   after a recorded move is a note, never a refusal. (executor's decision after the branch review, field fixes
+   part 2, 2026-09-29)
 
 ## Open questions (for the foundation spec)
 

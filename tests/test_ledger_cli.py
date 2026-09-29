@@ -273,3 +273,62 @@ def test_an_empty_branch_is_never_called_finished(tmp_path):
     receipts.run_receipt(root, state=tmp_path / "state", repo_key=ledger.repo_key, purpose="handover",
                          profile=profile, timeout=60)
     assert commands._finished(ledger, row) is False
+
+
+def test_every_refusal_names_a_way_forward(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    assert run_cli("work", "claim", "feat/x", "--root", str(root), "--as", "main session 1")[0] == 0
+    code, out = run_cli("work", "accept", "feat/x", "--reviewed", "HEAD", "--root", str(root),
+                        "--as", "main session 1")
+    last = out.rstrip().splitlines()[-1]
+    assert code == 2 and last.startswith("next: ")
+    assert "work wait" in last and "tell the orchestrator" in last and "git plumbing" in last
+
+
+def test_the_way_forward_is_one_fixed_line():
+    from flotilla.ledger import commands
+    assert commands.STUCK.startswith("next: ")
+
+
+def test_accept_prints_the_letter_for_the_sender(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    tree = tmp_path / "app-main-1"
+    run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")
+    tip = commit(tree, "work", "work.txt")
+    run_cli("work", "hand", "feat/x", "--root", str(tree), "--as", "main session 1")
+    run_cli("work", "take", "feat/x", "--root", str(root), "--as", "review session 1")
+    code, out = run_cli("work", "accept", "feat/x", "--reviewed", tip, "--root", str(root),
+                        "--as", "review session 1")
+    assert code == 0
+    assert "letter for the session holding the sender post - send it with SendMessage" in out
+
+
+def test_assign_prints_one_letter_for_the_reader(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    tree = tmp_path / "app-main-1"
+    run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")
+    commit(tree, "work", "work.txt")
+    run_cli("work", "hand", "feat/x", "--root", str(tree), "--as", "main session 1")
+    monkeypatch.setattr("flotilla.ledger.core.Ledger.live_names", lambda self: {"review session 1"})
+    code, out = run_cli("work", "assign", "feat/x", "--reader", "review session 1", "--root", str(root),
+                        "--as", "orchestrator 1")
+    assert code == 0 and out.count("flotilla work take feat/x") == 1
+    assert "letter for review session 1" in out
+
+
+def test_a_project_error_is_not_dressed_as_a_move_refusal(tmp_path, monkeypatch):
+    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setenv("FLOTILLA_NO_CENSUS", "1")
+    root = repo_with_origin(tmp_path)
+    code, out = run_cli("work", "claim", "feat/x", "--root", str(root), "--as", "main session 1")
+    assert code == 2 and "next: if no move" not in out and "send this text to the orchestrator" in out
+
+
+def test_a_recorded_move_survives_a_letter_that_cannot_be_computed(tmp_path, monkeypatch):
+    from flotilla.ledger import letters
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    def boom(*args, **kwargs):
+        raise RuntimeError("disk on fire")
+    monkeypatch.setattr(letters, "changed", boom)
+    code, out = run_cli("work", "claim", "feat/x", "--root", str(root), "--as", "main session 1")
+    assert code == 0 and "the move is recorded; its letters could not be computed: disk on fire" in out

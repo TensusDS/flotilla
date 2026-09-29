@@ -20,7 +20,7 @@ STARTED = time.monotonic()
 #: Seconds per external call inside a hook. The calls plus a margin must fit inside the timeouts declared in
 #: hooks/hooks.json, or Claude Code kills the hook before it can say "unknown".
 HOOK_CHECK_TIMEOUT = 3
-EVENTS = ("session-start", "prompt", "stop", "guard", "permission")
+EVENTS = ("session-start", "prompt", "stop", "guard", "permission", "ask")
 CLI = Path(__file__).resolve().parent.parent / "scripts" / "flotilla"
 PEERS_SHOWN = 8
 #: A Bash command naming none of these reaches no guard, so the hook answers before looking anything up.
@@ -55,10 +55,11 @@ def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime
         else:
             gather_context = gather
         ctx = gather_context(root, str(payload.get("session_id") or ""))
-        handler = {"session-start": _session_start, "prompt": _prompt, "stop": _stop, "permission": _permission}[event]
+        handler = {"session-start": _session_start, "prompt": _prompt, "stop": _stop, "permission": _permission,
+                   "ask": _ask}[event]
         return handler(ctx, payload, out, now or dt.datetime.now(dt.timezone.utc))
     except Exception as err:  # noqa: BLE001 - a hook must say what broke, never crash the session
-        if event in ("stop", "permission"):
+        if event in ("stop", "permission", "ask"):   # their stdout is a decision in JSON, or nothing
             print(f"flotilla: the {event} hook failed and gives no decision: {err}", file=sys.stderr)
         else:
             print(f"flotilla: the {event} hook failed: {err}", file=out)
@@ -161,4 +162,17 @@ def _permission(ctx, payload, out, now) -> int:
     if decision is not None:
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": decision}}),
               file=out)
+    return 0
+
+
+def _ask(ctx, payload, out, now) -> int:
+    from flotilla.watch.ask import ask_verdict
+    kind, text = ask_verdict(ctx, cli=str(CLI))
+    if kind == "deny":
+        body = {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": text}
+    elif kind == "note":
+        body = {"hookEventName": "PreToolUse", "additionalContext": text}
+    else:
+        return 0
+    print(json.dumps({"hookSpecificOutput": body}), file=out)
     return 0
