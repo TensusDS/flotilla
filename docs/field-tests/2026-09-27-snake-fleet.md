@@ -238,6 +238,20 @@ Part 1 (the ledger) fixes F14, F15, F18, F21, F24, F26 — plan `docs/plans/2026
 Part 2 (who talks to the person, who wakes the next mover) fixes F12, F16, F17, F23 — plan
 `docs/plans/2026-09-28-field-fixes-voice-and-wake.md`.
 
+Measured 2026-09-28 23:56–23:59 (UTC), branch `feat/field-fixes-voice-and-wake` at `39906f4` installed in the snake
+project: one background session, `minor session 91` (Sonnet, `auto`), was told to ask the person the snake's colour
+with AskUserQuestion. The PreToolUse hook on AskUserQuestion fired in the background session and its `deny` held: the
+session read the reason ("…Only the orchestrator talks to the person. No orchestrator is alive…"), did not ask, and
+ended its turn. Census samples every 30 s for 3 min: `background idle`, never `waiting` (the hung minor of F12 stood
+at `waiting`). Stopped with `claude stop 7feb3225` — the census `id`; the full `sessionId` is refused ("No job
+matching"), which corrects entry 70's note. Two gaps the probe showed:
+
+- **P1 — the route assumed a row.** The reason said "record the wait on the row the question holds up"; the
+  session held no row (a question before a claim — the shape of F12 itself), could not record a wait, and wrote the
+  question as its last message instead. The reason must say what to do with no row.
+- **P2 — it looked for its rows with `flotilla work list`, which does not exist.** The reason should name
+  `flotilla status`.
+
 Left open by the part-1 branch review (minor) — all three closed on the same branch before it merged:
 
 - **R1 — the design spec lags the decisions log.** Sections 6.2–6.4 and 7.4 still describe `land` on the local
