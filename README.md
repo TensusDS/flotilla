@@ -14,6 +14,16 @@ Linux or macOS, Python 3.11+, git, Claude Code 2.1.280+.
 
 Both Linux and macOS run in CI on every commit.
 
+## Install
+
+flotilla is its own marketplace. In the project a fleet will work on:
+
+    claude plugin marketplace add TensusDS/flotilla
+    claude plugin install flotilla@flotilla --scope project
+
+`--scope project` records it in the project's `.claude/settings.json`, so every session started in the main
+checkout — the ones `flotilla spawn` raises included — loads flotilla. Then run `flotilla doctor` there.
+
 ## Check your machine
 
 ```bash
