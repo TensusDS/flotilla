@@ -272,8 +272,8 @@ def _events(args) -> int:
 def _broke(ledger, caller, args) -> tuple[Row, str]:
     broken, fix = judging.broke(ledger, caller, args.branch, where=args.where, saw=args.saw,
                                 fix_branch=args.fix_branch)
-    return broken, (f"fix row {fix.id} `{fix.branch}` filed for {fix.owner}: cut it with "
-                    f"`flotilla tree cut {fix.branch} --tree <path>`")
+    return broken, (f"fix row {fix.id} `{fix.branch}` filed for {fix.owner}: take it in the home tree with "
+                    f"`flotilla tree switch {fix.branch}`")
 
 
 def _skips(args) -> dict:

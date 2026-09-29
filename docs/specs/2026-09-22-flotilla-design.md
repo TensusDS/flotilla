@@ -411,7 +411,7 @@ and only then records `landed` and `shipped`. `landed` therefore accepts a merge
 | `landed` | sender | merge commit on the local trunk or on `origin/<trunk>` (direct push); without `--merge`, the earliest commit on origin's first-parent line carrying the revision read; refused while what the push carried — from what origin held at the merge up to its head — holds work nobody read |
 | `shipped` | **nobody by hand** | asked of the PR or origin; records **which gate** |
 | `walked` | judge | build revision (= deployed, compared with shipped), steps, observation |
-| `broke` | judge | `--where "<place in the product>"`; refused without it; files the fix row `fix/<branch>` for the author, which their `tree cut` picks up |
+| `broke` | judge | `--where "<place in the product>"`; refused without it; files the fix row `fix/<branch>` for the author, which the author takes in their home tree with `tree switch` (decision 116) |
 | `closed` | author | `[evidence]` fields from the profile |
 | `released` | owner or orchestrator (a live owner's row: the owner only) | reason, or `--settled-by <row>`: a delivered row that fulfilled its purpose; a fix row settled so counts, for its broken row, as that row's delivery (decision 117) |
 | `offledger` | sender | merge commit + a named witness |

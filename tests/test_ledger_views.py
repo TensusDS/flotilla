@@ -132,3 +132,11 @@ def test_a_fix_released_without_settlement_leaves_the_row_unfixed():
                history=[{"move": "release", "state": "released", "evidence": {"why": "will not happen"}}])
     table = rows(row("r1", branch="feat/x", state="shipped", broken="Settings"), gone)
     assert "broken_unfixed" in {item["kind"] for item in views.deviations(table, PR)}
+
+
+def test_a_broken_row_is_nobodys_move_until_its_fix_arrives():
+    table = rows(row("r1", branch="feat/x", state="shipped", broken="Settings"),
+                 row("r2", branch="fix/feat/x", state="claimed", fixes="r1"))
+    assert views.who_moves(table["r1"], JUDGED, table) == ""
+    table["r2"] = row("r2", branch="fix/feat/x", state="shipped", fixes="r1")
+    assert views.who_moves(table["r1"], JUDGED, table) == views.JUDGE

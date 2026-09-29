@@ -48,6 +48,8 @@ def who_moves(row: Row, profile: dict, rows: dict | None = None) -> str:
             return "the person who merges the PR"
         return SENDER
     if row.state == "shipped":
+        if row.broken and rows is not None and not fix_arrived(rows, row, profile):
+            return ""   # broken: the fix row's owner moves; the walk is the judge's once a fix is delivered
         if (profile.get("judge") or {}).get("required"):
             if rows is not None and not row.walkable and pending_dependents(rows, row, profile):
                 return ""   # a part: the judge walks the path once the rows building on it ship
@@ -123,6 +125,11 @@ def fix_delivery(rows: dict[str, Row], fix: Row, profile: dict) -> Row | None:
     wanted = (fix.history[-1].get("evidence") or {}).get("settled_by") or ""
     other = rows.get(wanted)
     return other if other is not None and delivered(other, profile) else None
+
+
+def fix_arrived(rows: dict[str, Row], row: Row, profile: dict) -> bool:
+    """Whether a fix for this broken row has been delivered, directly or by settlement."""
+    return any(other.fixes == row.id and fix_delivery(rows, other, profile) for other in rows.values())
 
 
 def deviations(rows: dict[str, Row], profile: dict, live: set[str] | None = None, finished=None) -> list[dict]:
