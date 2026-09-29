@@ -495,6 +495,18 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    appears that was not there at its start — a question, a dropped ball, a break, orphaned work — and replaces the
    orchestrator's `permit next --wait`. (Max's triage 2026-09-28; one wait for all, executor's decision, field
    fixes part 2, 2026-09-28)
+96. **A row waiting on "the person" is an attention item** for `flotilla watch` and the orchestrator's `watch --wait`,
+   so a question a guarded session could not ask is carried even when its SendMessage was lost or no orchestrator
+   lived; the ask route says what to do with no row (write the question as the last message) and names
+   `flotilla status`. (executor's decision after the branch review and the live probe, field fixes part 2,
+   2026-09-29)
+97. **An attention item is the same item across polls by whom it is about, not by its text**: the text carries the
+   census word, which flickers (F10). `watch --wait` forgets what went away, so a ball dropped again is news.
+   (executor's decision after the branch review, field fixes part 2, 2026-09-29)
+98. **The way forward (decision 93) follows move refusals only**; an error that is not a move refused (not
+   onboarded, a damaged log, a ledger version) says flotilla cannot run here. A letter that cannot be computed
+   after a recorded move is a note, never a refusal. (executor's decision after the branch review, field fixes
+   part 2, 2026-09-29)
 
 ## Open questions (for the foundation spec)
 

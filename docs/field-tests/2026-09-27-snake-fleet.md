@@ -252,6 +252,24 @@ matching"), which corrects entry 70's note. Two gaps the probe showed:
 - **P2 — it looked for its rows with `flotilla work list`, which does not exist.** The reason should name
   `flotilla status`.
 
+P1 and P2 were closed on the same branch (decision 96). Left open by the part-2 branch review (minor):
+
+- **R4 — `watch --wait` restarts in a spin when the census stays down**: exit 2 on the first poll, and the
+  orchestrator is told to start it again each time it returns. Say: on exit 2, tell the person, do not restart.
+- **R5 — letters race with other sessions' moves**: before and after are two reads of the log, so a move another
+  session made in between prints a letter here too. Consider only rows this command appended, and the rows that
+  require them.
+- **R6 — some wakes are missed because the mover did not change**: re-assigning the same reader, `unhold`, and
+  `moved` (a new tip the reader must read) print no letter.
+- **R7 — a letter addressed "the session holding the sender post"** does not say `flotilla fleet` names it.
+- **R8 — the orchestrator is pointed at "the letter the last move printed"**, output another session saw; say
+  `flotilla work show <branch>`.
+- **R9 — an unidentified background session asks with no note** (census up, session not found in it).
+- **R10 — the posts' `flotilla fleet` check fails for an orchestrator not raised by spawn**, or when liveness is
+  unknown; the posts do not say what to do then.
+- **R11 — `watch` edge cases**: `--wait -5` exits 0 with "nothing new in -5 s"; `--once --wait N` waits silently;
+  Ctrl-C prints a traceback.
+
 Left open by the part-1 branch review (minor) — all three closed on the same branch before it merged:
 
 - **R1 — the design spec lags the decisions log.** Sections 6.2–6.4 and 7.4 still describe `land` on the local
