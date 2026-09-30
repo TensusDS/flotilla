@@ -154,6 +154,9 @@ class Accounting:
         if born is not None:
             return f"born in the batch, read by {born.reader}"
         if merge:
+            row = self.read.get(full)
+            if row is not None:   # read in the range, a conflict resolved by hand included (H20)
+                return f"read in `{row.branch}` ({row.id})"
             return "a merge that adds nothing of its own" if clean_merge(ledger, full) is True else None
         own = _commit_patch(ledger, full)
         if own == "empty":

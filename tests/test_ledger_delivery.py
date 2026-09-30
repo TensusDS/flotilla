@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -380,3 +381,75 @@ def test_reconcile_stays_quiet_about_a_queued_row_not_on_origin(direct):
     root, ledger = direct
     queued(root, ledger)
     assert delivery.reconcile(ledger, actor(ledger, SENDER)) == []
+
+
+def conflicting_branch_merged_with_trunk(root, name="feat/x"):
+    """A branch and trunk change one file differently; the author merges trunk into the branch and resolves the
+    conflict by hand, the way the twosuns fleet did before handing over. Returns the hand-made merge commit."""
+    git(root, "checkout", "-q", "-b", name)
+    commit(root, "the branch's side", "shared.txt", "branch\n")
+    git(root, "checkout", "-q", "main")
+    commit(root, "trunk's side", "shared.txt", "trunk\n")
+    git(root, "push", "-q", "origin", "main")
+    git(root, "checkout", "-q", name)
+    done = subprocess.run(["git", *IDENTITY, "merge", "-q", "main"], cwd=root, capture_output=True, text=True)
+    assert done.returncode != 0   # a real conflict
+    (root / "shared.txt").write_text("both\n", encoding="utf-8")
+    git(root, "add", "shared.txt")
+    git(root, *IDENTITY, "commit", "-q", "--no-edit", "-m", f"merge main into {name}")
+    resolved = git(root, "rev-parse", "HEAD")
+    git(root, "checkout", "-q", "main")
+    return resolved
+
+
+def accepted_over(ledger, name, tip):
+    from flotilla.ledger import core, handover, reading
+    core.claim(ledger, actor(ledger, "main session 1"), name)
+    handover.hand(ledger, actor(ledger, "main session 1"), name)
+    reading.take(ledger, actor(ledger, "review session 1"), name)
+    return reading.accept(ledger, actor(ledger, "review session 1"), name, reviewed=tip)
+
+
+def test_a_hand_resolved_merge_the_reader_read_lands(direct):
+    root, ledger = direct
+    resolved = conflicting_branch_merged_with_trunk(root)
+    accepted_over(ledger, "feat/x", resolved)
+    delivery.queue(ledger, actor(ledger, SENDER), "feat/x")
+    pushed = pushed_from_a_side_tree(root)
+    row = delivery.land(ledger, actor(ledger, SENDER), "feat/x", merge=pushed)
+    assert (row.state, row.merge) == ("landed", pushed)
+
+
+def test_a_hand_resolved_merge_inside_the_read_range_lands(direct):
+    root, ledger = direct
+    conflicting_branch_merged_with_trunk(root)
+    git(root, "checkout", "-q", "feat/x")
+    tip = commit(root, "after the merge", "after.txt")
+    git(root, "checkout", "-q", "main")
+    accepted_over(ledger, "feat/x", tip)
+    delivery.queue(ledger, actor(ledger, SENDER), "feat/x")
+    pushed = pushed_from_a_side_tree(root)
+    assert delivery.land(ledger, actor(ledger, SENDER), "feat/x", merge=pushed).state == "landed"
+
+
+def test_the_senders_own_hand_resolved_merge_is_still_unread(direct):
+    root, ledger = direct
+    git(root, "checkout", "-q", "-b", "feat/x")
+    commit(root, "the branch's side", "shared.txt", "branch\n")
+    git(root, "checkout", "-q", "main")
+    accepted_over(ledger, "feat/x", git(root, "rev-parse", "feat/x"))
+    delivery.queue(ledger, actor(ledger, SENDER), "feat/x")
+    commit(root, "trunk's side", "shared.txt", "trunk\n")
+    git(root, "push", "-q", "origin", "main")
+    git(root, "checkout", "-q", "-b", "integrate", "origin/main")
+    done = subprocess.run(["git", *IDENTITY, "merge", "-q", "--no-ff", "-m", "merge feat/x", "feat/x"], cwd=root,
+                          capture_output=True, text=True)
+    assert done.returncode != 0
+    (root / "shared.txt").write_text("the sender's guess\n", encoding="utf-8")
+    git(root, "add", "shared.txt")
+    git(root, *IDENTITY, "commit", "-q", "--no-edit", "-m", "merge feat/x")
+    pushed = git(root, "rev-parse", "HEAD")
+    git(root, "push", "-q", "origin", "HEAD:main")
+    git(root, "checkout", "-q", "main")
+    with pytest.raises(MoveRefused, match=rf"nobody read: {pushed[:7]}"):
+        delivery.land(ledger, actor(ledger, SENDER), "feat/x", merge=pushed)
