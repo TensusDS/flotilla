@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 
 from flotilla.ledger import gitq
-from flotilla.ledger.model import Row
+from flotilla.ledger.model import Row, delivered
 
 REVIEWED = frozenset({"accepted", "queued", "landed", "shipped", "walked", "closed"})
 LOCK_COMPANIONS = frozenset({"uv.lock", "package-lock.json", "Cargo.lock", "poetry.lock"})
@@ -126,9 +126,11 @@ class Accounting:
         self.picks: dict[str, Row] = {}
         self.born: dict[str, Row] = {}
         self.vouched: dict[str, Row] = {}
+        profile = ledger.profile
         for row in rows.values():
-            for sha in row.vouched or []:
-                self.vouched.setdefault(sha, row)
+            if row.is_open or delivered(row, profile):   # a released row's vouch accounts for nothing
+                for sha in row.vouched or []:
+                    self.vouched.setdefault(sha, row)
             if row.state == "inbatch" and row.merge:
                 full = gitq.resolve(ledger.root, row.merge, run=ledger.run)
                 if full:

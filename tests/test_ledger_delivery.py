@@ -599,3 +599,48 @@ def test_the_unread_refusal_names_vouch_as_a_way_out(direct):
     pushed = senders_own_resolution(root, ledger)
     with pytest.raises(MoveRefused, match="flotilla work vouch"):
         delivery.land(ledger, actor(ledger, SENDER), "feat/x", merge=pushed)
+
+
+def test_a_vouch_on_a_row_later_released_accounts_no_commit(direct):
+    from flotilla.ledger import batch, core, outside
+    root, ledger = direct
+    pushed = senders_own_resolution(root, ledger)
+    outside.vouch(ledger, actor(ledger, "review session 1"), "feat/x", commit=pushed)
+    assert batch.Accounting(ledger, ledger.rows()).account(pushed) is not None
+    core.release(ledger, actor(ledger, "main session 1"), "feat/x", why="dropped")
+    assert batch.Accounting(ledger, ledger.rows()).account(pushed) is None
+
+
+def test_a_vouch_on_a_row_that_later_ships_still_counts(direct):
+    from flotilla.ledger import batch, judging, outside
+    root, ledger = direct
+    pushed = senders_own_resolution(root, ledger)
+    outside.vouch(ledger, actor(ledger, "review session 1"), "feat/x", commit=pushed)
+    delivery.land(ledger, actor(ledger, SENDER), "feat/x", merge=pushed)
+    assert delivery.ship(ledger, actor(ledger, SENDER), "feat/x").state == "shipped"
+    assert "vouched for in `feat/x`" in batch.Accounting(ledger, ledger.rows()).account(pushed)
+    judging.close(ledger, actor(ledger, "main session 1"), "feat/x")   # closed is terminal, and still delivered
+    assert "vouched for in `feat/x`" in batch.Accounting(ledger, ledger.rows()).account(pushed)
+
+
+def test_return_clears_the_vouch(direct):
+    from flotilla.ledger import batch, outside
+    root, ledger = direct
+    pushed = senders_own_resolution(root, ledger)
+    outside.vouch(ledger, actor(ledger, "review session 1"), "feat/x", commit=pushed)
+    row = delivery.send_back(ledger, actor(ledger, SENDER), "feat/x", why="the resolution was wrong")
+    assert (row.state, row.vouched) == ("fixing", [])
+    assert batch.Accounting(ledger, ledger.rows()).account(pushed) is None
+
+
+def test_return_of_a_row_with_a_pr_says_the_pr_stays_open(pr_world):
+    from flotilla.ledger import letters
+    root, ledger, answers = pr_world
+    row = drive(root, ledger)
+    answers["pr"] = open_pr("feat/x", row.tip)
+    delivery.queue(ledger, actor(ledger, SENDER), "feat/x", pr=12)
+    before = ledger.rows()
+    back = delivery.send_back(ledger, actor(ledger, SENDER), "feat/x", why="conflicts with main")
+    assert "PR #12 stays open" in back.history[-1]["evidence"]["pr"]
+    found = letters.changed(before, ledger.rows(), ledger.profile, ledger.posts, SENDER, lambda: None)
+    assert any("PR #12 stays open" in letter.text for letter in found)

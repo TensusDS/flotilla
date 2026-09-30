@@ -44,6 +44,8 @@ def _body(row: Row) -> str:
     said = f"`{row.branch}` (row {row.id}) is {WHAT.get(row.state, row.state)}; the next move is yours."
     if row.state == "fixing" and row.why:
         said += f" What must change: {row.why}"
+    if row.state == "fixing" and row.pr:
+        said += f" PR #{row.pr} stays open: push the fix to `{row.branch}` and it updates."
     return said + f" `flotilla work show {row.branch}` has the rest."
 
 

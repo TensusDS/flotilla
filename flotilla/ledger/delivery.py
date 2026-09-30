@@ -98,8 +98,11 @@ def send_back(ledger: Ledger, actor: Actor, branch: str, *, why: str) -> Row:
     with ledger.session() as s:
         row = s.need_open_row(branch)
         state = s.next_state(row, "return")
-        return s.append(actor, row.id, "return", state, fields={"verdict": "", "why": why.strip()},
-                        evidence={"why": why.strip()})
+        evidence = {"why": why.strip()}
+        if row.pr:   # the author pushes the fix to the same branch; the sender queues it again with the same --pr
+            evidence["pr"] = f"PR #{row.pr} stays open: push the fix to `{branch}` and it updates"
+        return s.append(actor, row.id, "return", state, fields={"verdict": "", "vouched": [], "why": why.strip()},
+                        evidence=evidence)
 
 SEQUENCE = ("merge `{branch}` in your own tree on a branch from `origin/{trunk}`, run `flotilla receipt run "
             "--purpose push` there, push HEAD:{trunk}, then `flotilla work land {branch} --merge <that commit>`")

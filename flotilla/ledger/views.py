@@ -64,7 +64,10 @@ def waits_on(row: Row, rows: dict, profile: dict) -> str:
     if who_moves(row, profile, rows):
         return ""
     if row.state == "shipped" and row.broken:
-        fixes = [other for other in rows.values() if other.fixes == row.id and other.is_open]
+        fixes = [other for other in rows.values() if other.fixes == row.id and other.is_open
+                 and fix_delivery(rows, other, profile) is None]   # an arrived fix is waited on by nobody
+        if not fixes and fix_arrived(rows, row, profile):
+            return ""
         if fixes:
             return ", ".join(f"the fix `{other.branch}` ({other.owner or 'no owner'})" for other in fixes)
         return "nobody: it broke and no fix row is open"

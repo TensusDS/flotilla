@@ -193,3 +193,16 @@ def test_a_stale_wait_matches_whole_row_ids_only():
     for note in ("r33 error", "the error", "r3x is next", "br3 is next"):
         waiting = row("r1", state="handed", waiting_on="the person", note=note, updated_at=NOW.isoformat())
         assert views.moved_since(rows(waiting, moved), waiting) == [], note
+
+
+def test_a_broken_row_whose_fix_arrived_names_no_fix():
+    table = broken_table("shipped")
+    assert views.who_moves(table["r1"], JUDGED, table) == views.JUDGE
+    assert views.waits_on(table["r1"], table, JUDGED) == ""
+
+
+def test_a_broken_part_whose_fix_arrived_does_not_wait_on_that_fix():
+    table = broken_table("shipped")
+    table["r3"] = row("r3", branch="feat/whole", state="claimed", requires=["r1"])   # the part gate holds r1
+    assert views.who_moves(table["r1"], JUDGED, table) == ""
+    assert "fix/x" not in views.waits_on(table["r1"], table, JUDGED)
