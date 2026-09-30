@@ -668,7 +668,7 @@ flotilla lane sweep
 | does a peer hold the lane | the booking log |
 | does a foreign run exist | `pgrep` |
 | is it computing | two CPU-time samples (procfs or `ps -o time=`, per machine capability) |
-| is memory under the floor | `MemAvailable` in `/proc/meminfo` against `[lane] memory_floor_mb` (default 1500; 0 turns it off); where it cannot be read (macOS) the answer is "not asked" and does not block |
+| is memory under the floor | `MemAvailable` in `/proc/meminfo` against `[lane] memory_floor_mb` (default 1500, or a quarter of `MemTotal` where that is less; 0 turns it off); where it cannot be read (macOS) the answer is "not asked" and does not block |
 | has CI on this machine taken it | `gh run list`, only when the profile says CI is self-hosted here |
 
 - `lane run` takes the command's own exit code (never a pipeline's), tells a signal kill (137 / -9) from a failure

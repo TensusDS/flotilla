@@ -116,3 +116,21 @@ def test_a_booked_run_or_a_mention_is_not_warned_about(tmp_path, monkeypatch, co
 def test_the_lane_guard_is_off_when_the_profile_says_so(tmp_path, monkeypatch):
     root = onboarded(tmp_path, extra=NPM_TIER, off=("lane",))
     assert ask(root, "npm test", monkeypatch, tmp_path) is None
+
+
+@pytest.mark.parametrize("command, booked", [
+    ("npm test", ["npm", "test"]),
+    ("CI=1 npm test", ["env", "CI=1", "npm", "test"]),
+    ("uv run pytest -q 2>&1 | tail -5", ["sh", "-c", "uv run pytest -q 2>&1 | tail -5"]),
+    ("cd sub && npm test", ["sh", "-c", "cd sub && npm test"]),
+    ("pytest -q > out.txt", ["sh", "-c", "pytest -q > out.txt"]),
+])
+def test_the_suggested_lane_run_starts_the_same_run(tmp_path, monkeypatch, command, booked):
+    import shlex
+    root = onboarded(tmp_path, extra=NPM_TIER)
+    (root / "sub").mkdir()
+    context = ask(root, command, monkeypatch, tmp_path)["additionalContext"]
+    suggested = context.split("book it: `", 1)[1].rsplit("`", 1)[0]
+    words = shlex.split(suggested)
+    assert words[:4] == ["flotilla", "lane", "run", "--for"]
+    assert words[words.index("--") + 1:] == booked

@@ -65,7 +65,7 @@ def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run) -> 
             if found is not None:
                 findings.append(found)
         if lane.is_on(profile):
-            findings += _safely(lane.GUARD, lambda: lane.check(segment, profile))
+            findings += _safely(lane.GUARD, lambda: lane.check(segment, profile, command))
     return findings
 
 

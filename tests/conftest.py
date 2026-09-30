@@ -11,3 +11,4 @@ def state_dir_per_test(tmp_path, monkeypatch):
 def memory_is_not_this_machines(monkeypatch):
     """The lane asks memory; a test's lane must not close because the machine running the suite is short of it."""
     monkeypatch.setattr("flotilla.lane.machine._meminfo", lambda: None)
+    monkeypatch.setattr("flotilla.lane.machine._memtotal", lambda: None)

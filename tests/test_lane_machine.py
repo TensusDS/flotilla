@@ -263,3 +263,25 @@ def test_meminfo_reads_mem_available_and_nothing_else(tmp_path):
     assert machine.read_meminfo(garbled) is None
     assert machine.read_meminfo(tmp_path / "absent") is None
     assert machine.read_meminfo(tmp_path) is None   # a directory: present but unreadable as a file
+
+
+def test_the_default_floor_scales_down_on_a_small_machine(tmp_path):
+    table = Table([Proc(1, 0, "init")])
+    lanes = book.Book(LocalLogStore(tmp_path), table)
+
+    def answer(available_kb, total_kb, profile=None):
+        reading = machine.read(lanes, table, profile or {}, own_pid=999, root=tmp_path, sleep=lambda s: None,
+                               meminfo=lambda: available_kb, memtotal=lambda: total_kb)
+        return next(a for a in reading.answers if a.question == "memory")
+    two_gb = 2 * 1024 * 1024
+    assert answer(900000, two_gb).blocks is False                    # floor 512 MB: a quarter of 2 GB
+    assert answer(400000, two_gb).blocks is True and "512 MB" in answer(400000, two_gb).text
+    assert answer(900000, 16 * 1024 * 1024).blocks is True           # a large machine keeps 1500 MB
+    assert answer(900000, None).blocks is True                       # total unknown: 1500 MB
+    assert answer(900000, two_gb, {"lane": {"memory_floor_mb": 1000}}).blocks is True   # a set floor wins
+
+
+def test_meminfo_reads_mem_total_too(tmp_path):
+    good = tmp_path / "good"
+    good.write_text("MemTotal:       16000000 kB\nMemAvailable:    9650000 kB\n", encoding="utf-8")
+    assert machine.read_meminfo(good, "MemTotal") == 16000000

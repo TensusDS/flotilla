@@ -646,10 +646,10 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    the wait (H19). (planner's decision, field fixes part 7 track B, 2026-09-30)
 138. **A headless browser is a run**: `chrome-headless-shell` and `headless_shell` join the lane's default run
    patterns; a full `chrome` does not, because a browser tool server keeps one alive for hours (H22). (planner's decision, field fixes part 7 track B, 2026-09-30)
-139. **The lane asks memory**: `MemAvailable` in `/proc/meminfo` under `[lane] memory_floor_mb` (default 1500; 0
-   turns it off) holds the lane outright, like CI on this machine. Where it cannot be read (macOS) the answer is
-   "not asked" and does not block, because an unknown that waiting cannot change would close the lane for ever
-   (H41). (planner's decision, field fixes part 7 track B, 2026-09-30)
+139. **The lane asks memory**: `MemAvailable` in `/proc/meminfo` under `[lane] memory_floor_mb` (default 1500, or a
+   quarter of `MemTotal` where that is less, so a small machine's ordinary state does not close it; 0 turns it
+   off) holds the lane outright, like CI on this machine. Where it cannot be read (macOS) the answer is "not
+   asked" and does not block, because an unknown that waiting cannot change would close the lane for ever (H41). (planner's decision, field fixes part 7 track B, 2026-09-30)
 140. **`--after` is an ordering-only link**: `claim`, `tree cut` and `tree switch` take `--after <row or branch>`,
    stored in the row field `after`; `queue` waits for it as for `requires`, an unknown name is refused at claim, and
    the part gate reads `requires` only, so a measurement or tool row never holds the walk of the row it records

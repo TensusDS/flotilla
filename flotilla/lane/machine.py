@@ -71,15 +71,16 @@ def program_of(command: str) -> list[str]:
     return [program, f"{program} {rest[0]}"] if rest else [program]
 
 
-def read_meminfo(path: Path = MEMINFO) -> int | None:
-    """`MemAvailable` in kB, or None when the file is missing, unreadable or does not carry it (macOS has none)."""
+def read_meminfo(path: Path = MEMINFO, field: str = "MemAvailable") -> int | None:
+    """One field of meminfo in kB, or None when the file is missing, unreadable or does not carry it (macOS has
+    none)."""
     try:
         text = Path(path).read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
     for line in text.splitlines():
         name, _, value = line.partition(":")
-        if name.strip() == "MemAvailable":
+        if name.strip() == field:
             words = value.split()
             return int(words[0]) if words and words[0].isdigit() else None
     return None
@@ -89,15 +90,23 @@ def _meminfo() -> int | None:
     return read_meminfo(MEMINFO)
 
 
-def memory_floor_mb(profile: dict) -> int:
-    value = (profile.get("lane") or {}).get("memory_floor_mb", MEMORY_FLOOR_MB)
-    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else MEMORY_FLOOR_MB
+def _memtotal() -> int | None:
+    return read_meminfo(MEMINFO, "MemTotal")
 
 
-def memory(profile: dict, meminfo) -> Answer:
+def memory_floor_mb(profile: dict, total_kb: int | None = None) -> int:
+    """The profile's floor; without one, 1500 MB, or a quarter of the machine where that is less, so a small
+    machine's lane is not closed by its ordinary state."""
+    value = (profile.get("lane") or {}).get("memory_floor_mb")
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return min(MEMORY_FLOOR_MB, total_kb // 1024 // 4) if total_kb else MEMORY_FLOOR_MB
+
+
+def memory(profile: dict, meminfo, memtotal=None) -> Answer:
     """Low memory holds the lane: a run started under pressure is killed, booked or not (field test H41). Memory
     that cannot be asked opens it, because an unknown that waiting cannot change would close the lane for ever."""
-    floor = memory_floor_mb(profile)
+    floor = memory_floor_mb(profile, (memtotal or _memtotal)())
     if floor == 0:
         return Answer("memory", False, "memory not asked: `[lane] memory_floor_mb = 0`")
     available = meminfo()
@@ -230,7 +239,7 @@ def _descendants(listed, roots: set[int]) -> set[int]:
 
 
 def read(lanes, table, profile: dict, *, own_pid: int, root, sleep=time.sleep, run=subprocess.run,
-         problem: str = "", meminfo=None) -> Reading:
+         problem: str = "", meminfo=None, memtotal=None) -> Reading:
     exclude = set(table.ancestors(own_pid))
     booked = {item.pid for item in [*lanes.holders(), *lanes.waiters()] if item.pid and lanes.live(item)}
     listed = table.list() or []
@@ -251,7 +260,7 @@ def read(lanes, table, profile: dict, *, own_pid: int, root, sleep=time.sleep, r
                                                         f"block: {resting}"))
         else:
             answers.append(Answer("foreign run", False, "no unbooked run"))
-    answers.append(memory(profile, meminfo or _meminfo))
+    answers.append(memory(profile, meminfo or _meminfo, memtotal or _memtotal))
     if problem:
         answers.append(Answer("ci", None, f"the project profile could not be read, so CI on this machine could not be "
                                           f"asked: {problem}", lasting=True))

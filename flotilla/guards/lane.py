@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 
 from flotilla.guards import Finding
 
@@ -76,7 +77,26 @@ def _tier_keys(profile: dict) -> set[str]:
     return keys
 
 
-def check(segment, profile: dict) -> Finding | None:
+#: Anything the shell would do around the run: `lane run` starts its command without a shell, so a line holding
+#: one of these is booked whole, through `sh -c`.
+SHELL_SYNTAX = re.compile(r"[<>|&;$`()\n]")
+
+
+def booking(segment, command: str) -> str:
+    """The `lane run` line that starts the same run: the segment's words when the line is that one plain command,
+    its assignments through `env`; otherwise the whole line through `sh -c` (a `cd`, a pipe, a redirection)."""
+    line = (command or segment.text).strip()
+    plain = line == segment.text.strip() and not SHELL_SYNTAX.search(line)
+    if plain:
+        env = ["env", *(f"{name}={value}" for name, value in segment.assignments.items())] if segment.assignments \
+            else []
+        run = shlex.join([*env, *segment.words])
+    else:
+        run = shlex.join(["sh", "-c", line])
+    return f"flotilla lane run --for <branch> -- {run}"
+
+
+def check(segment, profile: dict, command: str = "") -> Finding | None:
     from flotilla.lane.machine import patterns_for
     names = run_names(segment.words)
     if not names or os.path.basename(segment.words[0]) == "flotilla":
@@ -86,4 +106,4 @@ def check(segment, profile: dict) -> Finding | None:
         return None
     return Finding(GUARD, False, f"flotilla lane: `{segment.text}` is a long run, and nothing booked the machine for "
                                  f"it, so a session waiting in the lane waits behind it; book it: "
-                                 f"`flotilla lane run --for <branch> -- {segment.text}`")
+                                 f"`{booking(segment, command)}`")
