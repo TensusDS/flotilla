@@ -155,3 +155,21 @@ def test_switching_back_to_a_handed_branch_keeps_it_handed(tmp_path):
     tree_mod.switch(ledger, actor(ledger, "main session 1"), "feat/y")
     again = tree_mod.switch(ledger, actor(ledger, "main session 1"), "feat/x")
     assert again.state == "handed" and git(home, "rev-parse", "--abbrev-ref", "HEAD") == "feat/x"
+
+
+def test_cut_records_an_after_link_and_refuses_an_unknown_one_before_cutting(tmp_path):
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state")
+    first = core.claim(ledger, actor(ledger, "main session 1"), "feat/x")
+    with pytest.raises(MoveRefused, match="--after `feat/none`"):
+        tree_mod.cut(ledger, actor(ledger, "minor session 1"), "tool/y", tmp_path / "t0", after=["feat/none"])
+    assert not (tmp_path / "t0").exists() and gitq.branch_tip(root, "tool/y") is None
+    row = tree_mod.cut(ledger, actor(ledger, "minor session 1"), "tool/y", tmp_path / "t1", after=["feat/x"])
+    assert (row.after, row.requires) == ([first.id], [])
+
+
+def test_switch_records_an_after_link(tmp_path):
+    root, ledger, home = home_world(tmp_path)
+    first = core.claim(ledger, actor(ledger, "minor session 1"), "feat/a")
+    row = tree_mod.switch(ledger, actor(ledger, "main session 1"), "tool/b", after=["feat/a"])
+    assert (row.after, row.requires) == ([first.id], [])

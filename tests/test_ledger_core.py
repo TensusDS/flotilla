@@ -62,6 +62,27 @@ def test_an_unknown_requirement_is_refused(world):
         core.claim(ledger, actor(ledger, "main session 1"), "feat/y", requires=["feat/none"])
 
 
+def test_after_resolves_branches_to_rows_apart_from_requires(world):
+    root, ledger = world
+    core.claim(ledger, actor(ledger, "main session 1"), "feat/x")
+    row = core.claim(ledger, actor(ledger, "minor session 1"), "tool/measure-x", after=["feat/x"])
+    assert (row.after, row.requires) == (["r1"], [])
+
+
+def test_an_unknown_after_is_refused_like_an_unknown_requirement(world):
+    root, ledger = world
+    with pytest.raises(MoveRefused, match=r"--after `feat/none`: no such row or open branch"):
+        core.claim(ledger, actor(ledger, "main session 1"), "feat/y", after=["feat/none"])
+    assert ledger.rows() == {}
+
+
+def test_a_claim_without_after_writes_no_after_field(world):
+    root, ledger = world
+    row = core.claim(ledger, actor(ledger, "main session 1"), "feat/x")
+    events = ledger.store.read(ledger.repo_key).records
+    assert "after" not in events[-1]["fields"] and row.after == []
+
+
 def test_a_post_that_may_not_claim_is_refused(world):
     root, ledger = world
     with pytest.raises(MoveRefused, match="may not `claim`"):

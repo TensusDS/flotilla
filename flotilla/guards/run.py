@@ -33,7 +33,7 @@ def _override(segment, env) -> str:
 
 
 def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run) -> list[Finding]:
-    from flotilla.guards import line_edit, push, revert, shell
+    from flotilla.guards import lane, line_edit, push, revert, shell
     from flotilla.guards.rules import rules_for
     segments = shell.segments(command, Path(cwd) if cwd else None)
     try:
@@ -64,6 +64,8 @@ def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run) -> 
             found = push.guard(segment, root=Path(root), profile=profile, env=env, run=run)
             if found is not None:
                 findings.append(found)
+        if lane.is_on(profile):
+            findings += _safely(lane.GUARD, lambda: lane.check(segment, profile, command))
     return findings
 
 

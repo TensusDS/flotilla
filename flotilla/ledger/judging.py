@@ -16,7 +16,7 @@ from flotilla.ledger import core, gitq, views
 from flotilla.ledger.actor import Actor, require_may
 from flotilla.ledger.core import Ledger
 from flotilla.ledger.errors import MoveRefused
-from flotilla.ledger.model import Row, next_row_id
+from flotilla.ledger.model import Row, delivered, next_row_id
 
 
 def _deployed(ledger: Ledger) -> str:
@@ -143,9 +143,12 @@ def unbroke(ledger: Ledger, actor: Actor, branch: str, *, why: str) -> Row:
         if not row.broken:
             raise MoveRefused(f"`{branch}` is not broken")
         state = s.next_state(row, "unbroke")
-        open_fixes = [other.branch for other in fixes_of(s.rows, row) if other.is_open]
+        open_fixes = [other for other in fixes_of(s.rows, row) if other.is_open]
         if open_fixes:
-            raise MoveRefused(f"`{branch}` has an open fix row ({', '.join(open_fixes)}); release it first")
+            names = ", ".join(other.branch for other in open_fixes)
+            done = any(delivered(other, ledger.profile) for other in open_fixes)
+            raise MoveRefused(f"`{branch}` has an open fix row ({names}); "
+                              + ("release or close it first" if done else "release it first"))
         return s.append(actor, row.id, "unbroke", state, fields={"broken": ""}, evidence={"why": why.strip()})
 
 

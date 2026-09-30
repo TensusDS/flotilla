@@ -173,7 +173,8 @@ CANNOT_RUN = ("next: flotilla cannot run here as things stand; send this text to
               "work around flotilla with git plumbing.")
 
 MOVES = {
-    "claim": lambda l, a, x: core.claim(l, a, x.branch, tree=x.tree, ref=x.ref, requires=x.requires, also=x.also),
+    "claim": lambda l, a, x: core.claim(l, a, x.branch, tree=x.tree, ref=x.ref, requires=x.requires, after=x.after,
+                                        also=x.also),
     "reserve": lambda l, a, x: core.reserve(l, a, x.branch, tree=x.tree),
     "release": lambda l, a, x: core.release(l, a, x.branch, why=x.why, settled_by=x.settled_by),
     "hand": lambda l, a, x: handover.hand(l, a, x.branch, tip=x.tip),
@@ -419,10 +420,11 @@ def run_ledger_command(args) -> int:
             _letters(ledger, caller, before)
             return 0
         if args.command == "tree" and args.action == "switch":
-            row = tree_mod.switch(ledger, caller, args.branch, ref=args.ref, requires=args.requires, also=args.also)
+            row = tree_mod.switch(ledger, caller, args.branch, ref=args.ref, requires=args.requires,
+                                  after=args.after, also=args.also)
         elif args.command == "tree":
             row = tree_mod.cut(ledger, caller, args.branch, Path(args.tree), expect=args.expect, ref=args.ref,
-                               requires=args.requires, also=args.also)
+                               requires=args.requires, after=args.after, also=args.also)
         else:
             result = MOVES[args.move](ledger, caller, args)
             if isinstance(result, tuple):

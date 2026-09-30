@@ -43,6 +43,7 @@
     "repo": "string: the repository key",
     "row": {
       "adopted_from": "string",
+      "after": "array",
       "base": "string",
       "branch": "string",
       "broken": "string",

@@ -189,29 +189,37 @@ def check_claim(rows: dict[str, Row], branch: str, *, ref: str = "", also: str =
             if row.is_open and row.ref == ref:
                 raise MoveRefused(f"`{ref}` is already being worked on by {row.owner} in `{row.branch}` "
                                   f"(row {row.id}); pass --also \"<why>\" to work on it too")
+    return link_ids(rows, requires, "--requires")
+
+
+def link_ids(rows: dict[str, Row], wanted_rows, flag: str) -> list[str]:
+    """Row ids for `--requires` or `--after`: a row id, or an open branch; an unknown name is refused."""
     ids = []
-    for wanted in requires:
+    for wanted in wanted_rows:
         target = rows.get(wanted) or next((row for row in reversed(list(rows.values()))
                                            if row.branch == wanted and row.is_open), None)
         if target is None:
-            raise MoveRefused(f"--requires `{wanted}`: no such row or open branch")
+            raise MoveRefused(f"{flag} `{wanted}`: no such row or open branch")
         ids.append(target.id)
     return ids
 
 
-def claim(ledger: Ledger, actor: Actor, branch: str, *, tree: str = "", ref: str = "", requires=(),
+def claim(ledger: Ledger, actor: Actor, branch: str, *, tree: str = "", ref: str = "", requires=(), after=(),
           also: str = "", base: str | None = None) -> Row:
     require_may(actor, "claim", ledger.posts)
     with ledger.session() as s:
         ids = check_claim(s.rows, branch, ref=ref, also=also, requires=requires)
+        later = link_ids(s.rows, after, "--after")
         if base is None:
             base = gitq.fork_point(ledger.root, branch, ledger.trunk, run=ledger.run) or ""
-        return append_claim(s, actor, branch, tree=tree, base=base, ref=ref, ids=ids, also=also)
+        return append_claim(s, actor, branch, tree=tree, base=base, ref=ref, ids=ids, also=also, after=later)
 
 
 def append_claim(s: LedgerSession, actor: Actor, branch: str, *, tree: str, base: str, ref: str, ids: list,
-                 also: str) -> Row:
+                 also: str, after=()) -> Row:
     fields = {"branch": branch, "owner": actor.name, "tree": tree, "base": base, "ref": ref, "requires": ids}
+    if after:
+        fields["after"] = list(after)   # written only when given: a claim without it carries no new field
     return s.append(actor, next_row_id(s.rows), "claim", "claimed", fields=fields,
                     evidence={"also": also} if also else {})
 

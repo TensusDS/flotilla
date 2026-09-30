@@ -107,6 +107,8 @@ def run_guard_command(args) -> int:
     on = profile.get("guards") or {}
     for name in ("revert", "line_edit", "push_receipt"):
         print(f"guard {name}: {'on' if on.get(name) else 'off'}")
+    from flotilla.guards import lane
+    print(f"guard lane: {'on' if lane.is_on(profile) else 'off'} (warns; on unless the profile says lane = false)")
     asked = githooks.wanted(profile)
     for name, state in githooks.status(root):
         print(f"git hook {name}: {state}{' (the profile asks for it)' if name in asked else ''}")

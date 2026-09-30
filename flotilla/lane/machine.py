@@ -1,11 +1,13 @@
-"""The lane's other three questions: a foreign run exists, it is computing, CI on this machine took it (spec, 9).
+"""The lane's other four questions: a foreign run exists, it is computing, memory is under the floor, CI on this
+machine took it (spec, 9).
 
 The booking log answers "does a peer hold the lane". A peer may also run a suite without asking, so the process
 table is asked for runs matching the project's run patterns - skipping shells (the run they wrap is its own
 process), the caller's own ancestors and the processes of live bookings. A run that exists may not be computing:
 two CPU samples tell, and a young process counts as computing even when it paused (a suite waits on I/O), while an
-old one that did not compute is named and does not block. When the profile says CI runs on this machine, GitHub's
-queue is asked too. Anything that could not be asked blocks, because not asked is not free.
+old one that did not compute is named and does not block. Memory is asked because a run started under pressure is
+killed, booked or not; where it cannot be asked it does not block. When the profile says CI runs on this machine,
+GitHub's queue is asked too. Anything else that could not be asked blocks, because not asked is not free.
 """
 
 from __future__ import annotations
@@ -17,7 +19,12 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-DEFAULT_PATTERNS = ("pytest", "py.test", "playwright", "vitest", "jest", "cargo test", "go test")
+#: A headless browser is a run (a capture or an audit takes gigabytes); a full `chrome` is not, because a browser
+#: tool server keeps one alive for hours.
+DEFAULT_PATTERNS = ("pytest", "py.test", "playwright", "vitest", "jest", "cargo test", "go test",
+                    "chrome-headless-shell", "headless_shell")
+MEMORY_FLOOR_MB = 1500
+MEMINFO = Path("/proc/meminfo")
 INTERPRETER = re.compile(r"^(python[0-9.]*|node|nodejs|ruby|perl|bun|deno)$")
 SHELLS = frozenset({"sh", "bash", "zsh", "dash", "fish", "ksh"})
 YOUNG = 1800.0
@@ -62,6 +69,54 @@ def program_of(command: str) -> list[str]:
             at = rest.index(script)
             program, rest = Path(script).name, rest[at + 1:]
     return [program, f"{program} {rest[0]}"] if rest else [program]
+
+
+def read_meminfo(path: Path = MEMINFO, field: str = "MemAvailable") -> int | None:
+    """One field of meminfo in kB, or None when the file is missing, unreadable or does not carry it (macOS has
+    none)."""
+    try:
+        text = Path(path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        name, _, value = line.partition(":")
+        if name.strip() == field:
+            words = value.split()
+            return int(words[0]) if words and words[0].isdigit() else None
+    return None
+
+
+def _meminfo() -> int | None:
+    return read_meminfo(MEMINFO)
+
+
+def _memtotal() -> int | None:
+    return read_meminfo(MEMINFO, "MemTotal")
+
+
+def memory_floor_mb(profile: dict, total_kb: int | None = None) -> int:
+    """The profile's floor; without one, 1500 MB, or a quarter of the machine where that is less, so a small
+    machine's lane is not closed by its ordinary state."""
+    value = (profile.get("lane") or {}).get("memory_floor_mb")
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return min(MEMORY_FLOOR_MB, total_kb // 1024 // 4) if total_kb else MEMORY_FLOOR_MB
+
+
+def memory(profile: dict, meminfo, memtotal=None) -> Answer:
+    """Low memory holds the lane: a run started under pressure is killed, booked or not (field test H41). Memory
+    that cannot be asked opens it, because an unknown that waiting cannot change would close the lane for ever."""
+    floor = memory_floor_mb(profile, (memtotal or _memtotal)())
+    if floor == 0:
+        return Answer("memory", False, "memory not asked: `[lane] memory_floor_mb = 0`")
+    available = meminfo()
+    if available is None:
+        return Answer("memory", False, "memory not asked on this platform (no MemAvailable in /proc/meminfo)")
+    megabytes = available // 1024
+    if available < floor * 1024:
+        return Answer("memory", True, f"{megabytes} MB available, under the floor of {floor} MB "
+                                      f"(`[lane] memory_floor_mb`); a run started now may be killed")
+    return Answer("memory", False, f"{megabytes} MB available (floor {floor} MB)")
 
 
 def foreign_runs(table, patterns, exclude: set[int]) -> list | None:
@@ -184,7 +239,7 @@ def _descendants(listed, roots: set[int]) -> set[int]:
 
 
 def read(lanes, table, profile: dict, *, own_pid: int, root, sleep=time.sleep, run=subprocess.run,
-         problem: str = "") -> Reading:
+         problem: str = "", meminfo=None, memtotal=None) -> Reading:
     exclude = set(table.ancestors(own_pid))
     booked = {item.pid for item in [*lanes.holders(), *lanes.waiters()] if item.pid and lanes.live(item)}
     listed = table.list() or []
@@ -205,6 +260,7 @@ def read(lanes, table, profile: dict, *, own_pid: int, root, sleep=time.sleep, r
                                                         f"block: {resting}"))
         else:
             answers.append(Answer("foreign run", False, "no unbooked run"))
+    answers.append(memory(profile, meminfo or _meminfo, memtotal or _memtotal))
     if problem:
         answers.append(Answer("ci", None, f"the project profile could not be read, so CI on this machine could not be "
                                           f"asked: {problem}", lasting=True))
