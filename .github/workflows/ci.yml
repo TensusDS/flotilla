@@ -37,6 +37,19 @@ jobs:
           persist-credentials: false
       - run: python3 tools/check_no_cyrillic.py
 
+  # Claude Code caches a plugin by its version: code that changed under an unmoved version reaches
+  # nobody who already installed it. Trunk only; a missing tag v<version> is a failure too.
+  version:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - run: python3 tools/check_version.py
+
   plugin:
     runs-on: ubuntu-latest
     timeout-minutes: 10
