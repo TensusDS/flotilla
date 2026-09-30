@@ -47,6 +47,8 @@ def _fixed(ledger: Ledger, rows: dict[str, Row], row: Row) -> list[Row]:
 
 
 def _whole_or_walkable(ledger: Ledger, rows: dict[str, Row], row: Row) -> None:
+    """The part gate, for `walked` only: a part is not accepted as the whole. A defect seen on a part is a defect
+    whatever ships later, so `broke` does not pass through here."""
     waiting = [] if row.walkable else views.pending_dependents(rows, row, ledger.profile)
     if waiting:
         names = ", ".join(f"`{other.branch or other.id}` ({other.state})" for other in waiting)
@@ -101,6 +103,12 @@ def _free_branch(rows: dict[str, Row], wanted: str) -> str:
     return name
 
 
+def fix_branch_name(rows: dict[str, Row], branch: str) -> str:
+    """`fix/` and the broken branch's name without its type prefix (feat/x -> fix/x), numbered when taken."""
+    bare = branch.split("/", 1)[1] if "/" in branch else branch
+    return _free_branch(rows, f"fix/{bare}")
+
+
 def broke(ledger: Ledger, actor: Actor, branch: str, *, where: str, saw: str,
           fix_branch: str = "") -> tuple[Row, Row]:
     require_may(actor, "broke", ledger.posts)
@@ -111,9 +119,8 @@ def broke(ledger: Ledger, actor: Actor, branch: str, *, where: str, saw: str,
         raise MoveRefused("say what you saw (--saw)")
     with ledger.session() as s:
         row = s.need_open_row(branch)
-        _whole_or_walkable(ledger, s.rows, row)
         state = s.next_state(row, "broke")
-        name = fix_branch.strip() or _free_branch(s.rows, f"fix/{branch}")
+        name = fix_branch.strip() or fix_branch_name(s.rows, branch)
         core.check_claim(s.rows, name)
         if gitq.branch_tip(ledger.root, name, run=ledger.run):
             raise MoveRefused(f"branch `{name}` already exists; name the fix branch with --fix-branch")

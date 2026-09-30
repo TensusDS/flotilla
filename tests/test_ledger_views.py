@@ -107,7 +107,7 @@ def test_a_post_seat_whose_session_is_gone_is_an_empty_seat_not_a_gone_mover():
 
 
 def settled(fix_id, by):
-    return row(fix_id, branch="fix/feat/x", state="released", fixes="r1",
+    return row(fix_id, branch="fix/x", state="released", fixes="r1",
                history=[{"move": "release", "state": "released", "evidence": {"settled_by": by}}])
 
 
@@ -128,7 +128,7 @@ def test_a_fix_settled_by_an_undelivered_row_is_not_a_delivery():
 
 
 def test_a_fix_released_without_settlement_leaves_the_row_unfixed():
-    gone = row("r2", branch="fix/feat/x", state="released", fixes="r1",
+    gone = row("r2", branch="fix/x", state="released", fixes="r1",
                history=[{"move": "release", "state": "released", "evidence": {"why": "will not happen"}}])
     table = rows(row("r1", branch="feat/x", state="shipped", broken="Settings"), gone)
     assert "broken_unfixed" in {item["kind"] for item in views.deviations(table, PR)}
@@ -136,7 +136,7 @@ def test_a_fix_released_without_settlement_leaves_the_row_unfixed():
 
 def test_a_broken_row_is_nobodys_move_until_its_fix_arrives():
     table = rows(row("r1", branch="feat/x", state="shipped", broken="Settings"),
-                 row("r2", branch="fix/feat/x", state="claimed", fixes="r1"))
+                 row("r2", branch="fix/x", state="claimed", fixes="r1"))
     assert views.who_moves(table["r1"], JUDGED, table) == ""
-    table["r2"] = row("r2", branch="fix/feat/x", state="shipped", fixes="r1")
+    table["r2"] = row("r2", branch="fix/x", state="shipped", fixes="r1")
     assert views.who_moves(table["r1"], JUDGED, table) == views.JUDGE
