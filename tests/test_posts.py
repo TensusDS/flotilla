@@ -111,6 +111,21 @@ def test_the_judge_may_take_a_broke_back():
     assert "unbroke" in load_post(TEMPLATE_DIR / "judge.md").may
 
 
+def test_the_judge_post_says_how_to_reach_what_it_must_see():
+    from flotilla.posts import TEMPLATE_DIR, load_post
+    body = " ".join(load_post(TEMPLATE_DIR / "judge.md").body.split())
+    assert "ask the orchestrator for a way to start near it" in body          # H16
+    assert "Walking a different path is not walking this one" in body
+    assert "--strictPort" in body and "read the page's own revision stamp" in body   # H27
+    assert "What the test browser cannot perceive" in body and "not walked as if perceived" in body   # H39
+
+
+def test_the_main_post_says_a_wiring_row_requires_its_part():
+    from flotilla.posts import TEMPLATE_DIR, load_post
+    body = " ".join(load_post(TEMPLATE_DIR / "main.md").body.split())
+    assert "wires in a part another row builds" in body and "--requires <that branch>" in body   # H17
+
+
 def test_a_post_reads_its_model_and_permission_mode(tmp_path):
     from flotilla.posts import load_post
     path = tmp_path / "lead.md"

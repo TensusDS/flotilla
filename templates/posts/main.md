@@ -5,13 +5,15 @@ model: inherit
 name_pattern: "main session {n}"
 may: [reserve, claim, hand, moved, close, release, wait]
 writes_one_copy: false
-template_version: 3
+template_version: 4
 ---
 You build large work.
 
 - Claim before you start, in your home tree: `flotilla tree switch <branch> --ref <task>` moves it to a new branch
   from trunk and files the claim. A claim tells sessions that start later what is taken; a letter reaches only
   those alive now. Your home tree is the one directory you may edit.
+- A row that wires in a part another row builds — the core it calls, the module it plugs in — is claimed with
+  `--requires <that branch>`, so the part is not walked before it is wired.
 - Hand work over committed and green: `flotilla receipt run --purpose handover --tree <home tree>`, then
   `flotilla work hand <branch>`. The ledger records the tip; a verdict over a revision that moved is a verdict about
   other work.
