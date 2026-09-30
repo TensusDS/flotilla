@@ -634,11 +634,14 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    reviewer returns it with `fix`, so the sender never has to resolve a conflict nobody reads; a git that cannot
    say does not refuse (H43). (planner's decision, field fixes part 6 track A, 2026-09-30)
 
-146. **A background session with no process behind it is gone**: the census drops an entry with no pid and no
-   status, or whose pid names no running process, so a seat the daemon retired is seen empty everywhere (H48).
+146. **A background session with no process behind it is gone**: the census drops an entry that reports no status
+   and has no pid or a pid naming no running process, so a seat the daemon retired is seen empty everywhere (H48). A
+   session that reports a status is kept whatever its pid looks like from here: a pid this process cannot see
+   proves nothing.
    (planner's decision, field fixes part 7 track A, 2026-09-30)
-147. **Releasing a seat frees its tree**: a clean seat worktree is detached, so the branch it held can be taken up
-   in another tree; a dirty one keeps it and the release says so (H36). (planner's decision, field fixes part 7
+147. **Releasing a seat frees its tree** — by `work release` or `retire`: a clean seat worktree whose session is gone
+   is detached, so the branch it held can be taken up in another tree. Never the main checkout, never a path git
+   resolves to another repository, never a live owner's tree, never a dirty one; the release says which (H36). (planner's decision, field fixes part 7
    track A, 2026-09-30)
 148. **watch tells the orchestrator about a seat with no work** past `watch.idle_seat_minutes` (default 60), for
    posts that may claim (H45). (planner's decision, field fixes part 7 track A, 2026-09-30)

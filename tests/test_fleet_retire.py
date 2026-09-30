@@ -187,3 +187,14 @@ def test_fleet_down_names_the_sessions_that_stay_alive(tmp_path):
     assert any("person's own" in line for line in alive)
     assert not any("elsewhere" in line for line in alive)
     assert not any("review session 1" in line for line in alive)
+
+
+def test_retire_frees_the_branch_the_dead_seats_tree_held(tmp_path):
+    from flotilla.ledger import core
+    fake = FakeClaude()
+    root, ledger, seat = raised_world(tmp_path, fake)
+    tree = seat.seat.tree
+    git(tree, "switch", "-q", "-c", "feat/x")
+    core.claim(ledger, actor(ledger, "main session 1"), "feat/x", tree=str(tree))
+    do_retire(ledger, fake)
+    assert git(tree, "rev-parse", "--abbrev-ref", "HEAD") == "HEAD"   # H36 through retire

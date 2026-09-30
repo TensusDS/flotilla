@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 
 from flotilla.core.census import CensusUnavailable
+from flotilla.ledger import core
 from flotilla.ledger.actor import Actor
 from flotilla.ledger.errors import MoveRefused
 from flotilla.ledger.model import Row
@@ -113,8 +114,10 @@ def retire(ledger, name: str, *, caller: str, census, wait: float = 60.0, poll: 
         post = post_for_session(ledger.posts, name)
     except PostError:
         post = None
+    freed = core.free_seat_tree(ledger, name, row.tree) if row.tree else ""
     with ledger.session() as s:
-        s.append(Actor(name, post, "retire", caller), row.id, "release", "released", evidence={"why": "retired"})
+        s.append(Actor(name, post, "retire", caller), row.id, "release", "released",
+                 evidence={"why": "retired", **({"tree": freed} if freed else {})})
     lines = [f"retired {name}" + (f" (stopped {found.short_id})" if found else " (it was not running)")]
     dirty = _dirty(row.tree)
     if not row.tree or not Path(row.tree).is_dir():

@@ -195,3 +195,13 @@ def test_a_drained_queue_asks_the_orchestrator_to_close_the_task():
 def test_open_work_means_the_queue_is_not_drained():
     found = fleet.fleet(rows(row(state="claimed")), PR, [sess("main session 1", state="working")], post_of=post_of)
     assert [item for item in found if item.kind == fleet.DONE] == []
+
+
+def test_a_fresh_fleet_on_a_ledger_with_yesterdays_work_is_not_told_to_stand_down():
+    old = row(id="r1", branch="feat/yesterday", owner="main session 1", state="closed",
+              updated_at="2026-09-29T10:00:00+00:00")
+    seat = row(id="r2", branch="fleet/main-2", owner="main session 2", state="reserved",
+               updated_at="2026-09-30T09:00:00+00:00")
+    seat.history = [{"move": "reserve", "at": "2026-09-30T09:00:00+00:00"}]
+    found = fleet.fleet(rows(old, seat), PR, [sess("main session 2"), sess("orchestrator 1")], post_of=post_of)
+    assert [item for item in found if item.kind == fleet.DONE] == []

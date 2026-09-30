@@ -79,10 +79,10 @@ def test_a_background_session_with_no_process_is_gone():
     assert [s.name for s in kept] == ["operator", "review session 1", "main session 2"]
 
 
-def test_a_background_session_whose_pid_died_is_gone_and_an_interactive_one_is_kept():
+def test_only_a_session_with_no_status_is_judged_by_its_pid():
     sessions = census.parse_census(sample())
-    kept = census.drop_gone(sessions, pid_alive=lambda pid: pid == 2002)
-    assert [s.name for s in kept] == ["operator", "review session 1"]
+    kept = census.drop_gone(sessions, pid_alive=lambda pid: False)   # a pid this process cannot see
+    assert [s.name for s in kept] == ["operator", "review session 1", "main session 2"]
 
 
 def test_a_background_session_with_a_status_but_no_pid_yet_is_kept():
@@ -97,3 +97,10 @@ def test_read_census_drops_what_is_gone():
         return subprocess.CompletedProcess(cmd, 0, sample(), "")
     kept = census.read_census(run=run, pid_alive=lambda pid: pid in (1001, 2002, 3003))
     assert "minor session 4" not in [s.name for s in kept]
+
+
+def test_a_session_reporting_a_status_is_kept_even_when_its_pid_looks_dead():
+    text = ('[{"sessionId": "s", "name": "main session 9", "kind": "background", "cwd": "/", "pid": 4242,'
+            ' "status": "busy", "state": "working"}]')
+    assert [s.name for s in census.drop_gone(census.parse_census(text), pid_alive=lambda pid: False)] == \
+        ["main session 9"]

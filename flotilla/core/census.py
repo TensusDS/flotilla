@@ -75,13 +75,13 @@ def _pid_alive(pid: int) -> bool:
 
 def drop_gone(sessions: list[Session], pid_alive=_pid_alive) -> list[Session]:
     """A background session the daemon retired can stay listed for minutes with no process behind it; it is gone.
-    Gone: no pid and no status, or a pid that names no running process. Interactive sessions are kept as listed (H48)."""
+    Gone: no status, and no pid or a pid that names no running process. Interactive sessions are kept as listed (H48)."""
     def gone(session: Session) -> bool:
         if session.kind != "background":
             return False
-        if session.pid is None:
-            return session.status is None
-        return not pid_alive(session.pid)
+        if session.status is not None:
+            return False   # a session that reports a status is running; a pid this process cannot see proves nothing
+        return session.pid is None or not pid_alive(session.pid)
     return [session for session in sessions if not gone(session)]
 
 

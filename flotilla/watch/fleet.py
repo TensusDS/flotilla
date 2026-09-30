@@ -121,10 +121,16 @@ def idle_seats(rows: dict, profile: dict, live: set[str], post_of, claimers, now
 
 def drained(rows: dict, live: set[str]) -> list[Item]:
     """No open work left: the task is done unless the person says otherwise, and the fleet still holds memory (H12)."""
+    seats = [row for row in rows.values() if row.is_open and row.state == "reserved" and row.owner in live]
+    since = min((_moment(row.history[0].get("at", "")) if row.history else _moment(row.updated_at) for row in seats),
+                default=None, key=lambda moment: moment or dt.datetime.max.replace(tzinfo=dt.timezone.utc))
     work = [row for row in rows.values()
             if row.state != "reserved" and not (row.history and row.history[0].get("move") == "reserve")]
-    if not live or not work or any(row.is_open for row in work):
-        return []   # nothing done yet is a fleet starting, not a task finished
+    if any(row.is_open for row in work):
+        return []
+    done_here = [row for row in work if since is None or ((_moment(row.updated_at) or since) >= since)]
+    if not live or not done_here:
+        return []   # nothing done by this fleet yet is a fleet starting, not a task finished
     return [Item(DONE, "", f"the queue is empty: ask the person to check the result, then offer `flotilla fleet down` "
                            f"({len(live)} session(s) stay alive until then)", "", who="done")]
 

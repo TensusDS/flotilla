@@ -258,13 +258,25 @@ def release(ledger: Ledger, actor: Actor, branch: str, *, why: str = "", settled
             why = why.strip() or f"settled by {other.branch or other.id}"
         evidence["why"] = why.strip()
         if row.state == "reserved" and row.tree:
-            evidence["tree"] = _free_seat_tree(ledger, row.tree)
+            evidence["tree"] = free_seat_tree(ledger, row.owner, row.tree)
         return s.append(actor, row.id, "release", state, evidence=evidence)
 
 
-def _free_seat_tree(ledger: Ledger, tree: str) -> str:
+def free_seat_tree(ledger: Ledger, owner: str, tree: str) -> str:
     """A released seat's tree lets go of the branch it had checked out, so the work can be taken up in another tree
-    (H36); a tree with uncommitted work keeps it, and the release says so."""
+    (H36). Never the main checkout, never a path git resolves to another repository, never a live owner's tree, and
+    never a tree with uncommitted work: each of those keeps its branch, and the release says why."""
+    top = ledger.run(["git", "-C", tree, "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False)
+    if top.returncode != 0 or Path(top.stdout.strip()).resolve() != Path(tree).resolve():
+        return f"not freed: {tree} is not a worktree git can name"
+    if Path(tree).resolve() == Path(ledger.root).resolve():
+        return "not freed: it is the main checkout"
+    try:
+        alive = owner in ledger.live_names()
+    except MoveRefused:
+        return "not freed: whether its session is alive could not be asked"
+    if alive:
+        return f"not freed: {owner} is alive and works in it"
     listed = ledger.run(["git", "-C", tree, "status", "--porcelain"], capture_output=True, text=True, check=False)
     if listed.returncode != 0:
         return f"not freed: git could not read {tree}"
