@@ -153,4 +153,34 @@ def down(ledger, *, caller: str, me: str, census, wait: float = 60.0, poll: floa
             lines.append(f"refused {row.owner}: {err}")
     if not lines:
         lines.append("no post rows: nobody was spawned, or everyone was retired")
+    lines += still_alive(ledger, census, me)
     return lines, refused
+
+
+def _trees(ledger) -> list[Path]:
+    """The project's main checkout and every worktree of it: where a session of this project runs."""
+    done = ledger.run(["git", "-C", str(ledger.root), "worktree", "list", "--porcelain"], capture_output=True,
+                      text=True, check=False)
+    found = [Path(line.split(" ", 1)[1]) for line in done.stdout.splitlines() if line.startswith("worktree ")] \
+        if done.returncode == 0 else []
+    return found or [Path(ledger.root)]
+
+
+def still_alive(ledger, census, me: str) -> list[str]:
+    """What stays alive once the fleet is down: sessions working in this project that are not its seats — seats of
+    past fleets, sessions started by hand (H12). Each with the command that stops it."""
+    try:
+        sessions = census()
+    except CensusUnavailable:
+        return ["still alive: unknown, the census could not be asked after standing down"]
+    trees = [tree.resolve() for tree in _trees(ledger)]
+    lines = []
+    for item in sessions:
+        if not item.name or item.name == me or not item.cwd:
+            continue
+        where = Path(item.cwd).resolve()
+        if not any(where == tree or tree in where.parents for tree in trees):
+            continue
+        stop = f"`claude stop {item.short_id}`" if item.short_id else "an interactive session: close it there"
+        lines.append(f"still alive: {item.name} in {item.cwd}; {stop}")
+    return lines

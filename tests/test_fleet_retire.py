@@ -168,3 +168,22 @@ def test_retire_stops_a_session_whose_turn_is_done(tmp_path):
     lines = do_retire(ledger, fake)
     assert fake.stopped == [seat.short_id] and f"(stopped {seat.short_id})" in lines[0]
     assert retire.post_rows(ledger) == []
+
+
+def test_fleet_down_names_the_sessions_that_stay_alive(tmp_path):
+    import dataclasses
+
+    from fleetkit import session
+    fake = FakeClaude()
+    ledger = fleet_world(tmp_path, fake, {"reviewer": 1})
+    old_tree = tmp_path / "app-main-3"
+    git(ledger.root, "worktree", "add", "-q", "-b", "fleet/main-3", str(old_tree))
+    fake.sessions += [dataclasses.replace(session("main session 3", "0ld000"), cwd=str(old_tree)),
+                      dataclasses.replace(session("elsewhere", "e15e00"), cwd=str(tmp_path / "other-repo")),
+                      dataclasses.replace(session("person's own", "0ma000"), cwd=str(ledger.root / "src"))]
+    lines, refused = do_down(ledger, fake)
+    alive = [line for line in lines if line.startswith("still alive")]
+    assert any("main session 3" in line and "claude stop 0ld000" in line for line in alive)
+    assert any("person's own" in line for line in alive)
+    assert not any("elsewhere" in line for line in alive)
+    assert not any("review session 1" in line for line in alive)
