@@ -432,8 +432,9 @@ def test_a_hand_resolved_merge_inside_the_read_range_lands(direct):
     assert delivery.land(ledger, actor(ledger, SENDER), "feat/x", merge=pushed).state == "landed"
 
 
-def test_the_senders_own_hand_resolved_merge_is_still_unread(direct):
-    root, ledger = direct
+def senders_own_resolution(root, ledger):
+    """The sender merges an accepted branch into a trunk that moved, resolves the conflict itself and pushes:
+    the resolution is work nobody read (twosuns H21, b7513e3). Returns the pushed merge."""
     git(root, "checkout", "-q", "-b", "feat/x")
     commit(root, "the branch's side", "shared.txt", "branch\n")
     git(root, "checkout", "-q", "main")
@@ -451,6 +452,12 @@ def test_the_senders_own_hand_resolved_merge_is_still_unread(direct):
     pushed = git(root, "rev-parse", "HEAD")
     git(root, "push", "-q", "origin", "HEAD:main")
     git(root, "checkout", "-q", "main")
+    return pushed
+
+
+def test_the_senders_own_hand_resolved_merge_is_still_unread(direct):
+    root, ledger = direct
+    pushed = senders_own_resolution(root, ledger)
     with pytest.raises(MoveRefused, match=rf"nobody read: {pushed[:7]}"):
         delivery.land(ledger, actor(ledger, SENDER), "feat/x", merge=pushed)
 
@@ -479,3 +486,35 @@ def test_a_reviewed_merge_lands_from_a_pulled_main_checkout(direct):
     pushed = pushed_from_a_side_tree(root)
     pull(root)
     assert delivery.land(ledger, actor(ledger, SENDER), "feat/x").merge == pushed
+
+
+def test_a_reader_vouches_for_the_senders_resolution_and_it_lands(direct):
+    from flotilla.ledger import outside
+    root, ledger = direct
+    pushed = senders_own_resolution(root, ledger)
+    row = outside.vouch(ledger, actor(ledger, "review session 1"), "feat/x", commit=pushed)
+    assert (row.state, row.vouched) == ("queued", [pushed])
+    assert delivery.land(ledger, actor(ledger, SENDER), "feat/x", merge=pushed).state == "landed"
+
+
+def test_a_vouch_counts_from_a_pulled_main_checkout_too(direct):
+    from flotilla.ledger import outside
+    root, ledger = direct
+    pushed = senders_own_resolution(root, ledger)
+    pull(root)
+    outside.vouch(ledger, actor(ledger, "review session 1"), "feat/x", commit=pushed)
+    assert delivery.land(ledger, actor(ledger, SENDER), "feat/x").merge == pushed
+
+
+def test_only_a_reader_vouches_and_only_for_delivery_rows(direct):
+    from flotilla.ledger import outside
+    root, ledger = direct
+    pushed = senders_own_resolution(root, ledger)
+    for name in (SENDER, "main session 1"):
+        with pytest.raises(MoveRefused):
+            outside.vouch(ledger, actor(ledger, name), "feat/x", commit=pushed)
+    with pytest.raises(MoveRefused, match="could not resolve"):
+        outside.vouch(ledger, actor(ledger, "review session 1"), "feat/x", commit="no-such-commit")
+    drive(root, ledger, "feat/y", to="claimed")
+    with pytest.raises(MoveRefused, match="accepted, queued or landed"):
+        outside.vouch(ledger, actor(ledger, "review session 1"), "feat/y", commit=pushed)

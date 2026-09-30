@@ -187,6 +187,7 @@ MOVES = {
     "queue": lambda l, a, x: delivery.queue(l, a, x.branch, pr=x.pr),
     "land": lambda l, a, x: delivery.land(l, a, x.branch, merge=x.merge),
     "ship": lambda l, a, x: delivery.ship(l, a, x.branch),
+    "vouch": lambda l, a, x: outside.vouch(l, a, x.branch, commit=x.commit),
     "inbatch": lambda l, a, x: outside.inbatch(l, a, x.branch, commit=x.commit, read_by=x.read_by, why=x.why),
     "offledger": lambda l, a, x: outside.offledger(l, a, x.branch, merge=x.merge, witness=x.witness,
                                                    attested=x.attested),

@@ -113,3 +113,25 @@ def offledger(ledger: Ledger, actor: Actor, branch: str, *, merge: str, witness:
         if attested.strip():
             evidence["attested"] = attested.strip()
         return s.append(actor, row.id, "offledger", state, fields={"merge": sha}, evidence=evidence)
+
+
+VOUCHABLE = ("accepted", "queued", "landed")
+
+
+def vouch(ledger: Ledger, actor: Actor, branch: str, *, commit: str) -> Row:
+    """A reader vouches for a commit the batch carries that no verdict covers: the sender's conflict resolution,
+    read by someone who did not write it. The sender asks for it; it never writes a reader's name itself (H21)."""
+    require_may(actor, "vouch", ledger.posts)
+    sha = gitq.resolve(ledger.root, commit, run=ledger.run)
+    if sha is None:
+        raise MoveRefused(f"git could not resolve --commit {commit}")
+    with ledger.session() as s:
+        row = s.need_open_row(branch)
+        if row.state not in VOUCHABLE:
+            raise MoveRefused(f"`{branch}` is {row.state}; a vouch is for work on its way to trunk (accepted, "
+                              "queued or landed)")
+        if row.owner == actor.name:
+            raise MoveRefused(f"{actor.name} owns `{branch}`; someone else vouches for it")
+        state = s.next_state(row, "vouch")
+        vouched = list(row.vouched) + ([sha] if sha not in row.vouched else [])
+        return s.append(actor, row.id, "vouch", state, fields={"vouched": vouched}, evidence={"commit": sha})

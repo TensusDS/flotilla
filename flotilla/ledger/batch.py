@@ -125,7 +125,10 @@ class Accounting:
         self.squashes: dict[str, Row] = {}
         self.picks: dict[str, Row] = {}
         self.born: dict[str, Row] = {}
+        self.vouched: dict[str, Row] = {}
         for row in rows.values():
+            for sha in row.vouched or []:
+                self.vouched.setdefault(sha, row)
             if row.state == "inbatch" and row.merge:
                 full = gitq.resolve(ledger.root, row.merge, run=ledger.run)
                 if full:
@@ -153,6 +156,9 @@ class Accounting:
         born = self.born.get(full)
         if born is not None:
             return f"born in the batch, read by {born.reader}"
+        vouched = self.vouched.get(full)
+        if vouched is not None:
+            return f"vouched for in `{vouched.branch}` ({vouched.id})"
         if merge:
             row = self.read.get(full)
             if row is not None:   # read in the range, a conflict resolved by hand included (H20)
