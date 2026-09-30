@@ -622,3 +622,16 @@ It ended by itself: r60 was re-handed at 17:23:55 and review session 17 took it 
 17:27. So its `blocked` covered exactly the wait for the owner's fix — the session's own reading of its state, not a
 prompt. Still worth surfacing: in the census "blocked" looks the same whether a session waits on a peer (harmless)
 or on the person (not), and only the ledger can tell which.
+
+H44. **gap — a tooling row that will never ship holds the part gate of the row it measures.** Minor session 43's audio
+capture rows are "tooling only, not for trunk" (H39 follow-up), yet each is claimed with `--requires` the row it
+records: r61 and r64 require r59 (footsteps), r65 `feat/audio-capture-atmo` requires r60 (sound atmosphere). By the
+part gate, r60 is then a part whose dependent has not shipped: at 17:47:46 acceptance judge 10 recorded "walked
+refused: a part of the path (feat/audio-capture-atmo not shipped); the sound measurements on cda688b are made and
+sent, waiting for walkable". The orchestrator marked r60 walkable (17:47:40, crossing), and the judge walked it at
+17:54:32. `--requires` carries two meanings the gate cannot tell apart: "I build on it" (the whole is not whole
+without me) and "I need it to exist first" (a measurement, a tool, a test harness). Fix direction: only rows that
+are going to ship count as dependents — a claim can say so (`--requires` for building, a separate `--after` for
+ordering only), or the part gate ignores dependents whose owner declared them not for trunk. Same tick: sound
+atmosphere 2 (r67) accepted 17:51:43, shipped 17:55:03, walked and closed by 18:00:42; H20 did not recur on it
+(no author merge in its range).
