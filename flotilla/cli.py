@@ -96,6 +96,8 @@ def build_parser() -> argparse.ArgumentParser:
     broke.add_argument("--where", required=True)
     broke.add_argument("--saw", required=True)
     broke.add_argument("--fix-branch", dest="fix_branch", default="")
+    move_parser("unbroke", "take a broke back: it was the judge's mistake (judge)").add_argument("--why",
+                                                                                                required=True)
     close = move_parser("close", "close your shipped work")
     close.add_argument("--ref", default="")
     close.add_argument("--why", default="")

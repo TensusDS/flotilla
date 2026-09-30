@@ -107,7 +107,7 @@ def test_a_post_seat_whose_session_is_gone_is_an_empty_seat_not_a_gone_mover():
 
 
 def settled(fix_id, by):
-    return row(fix_id, branch="fix/feat/x", state="released", fixes="r1",
+    return row(fix_id, branch="fix/x", state="released", fixes="r1",
                history=[{"move": "release", "state": "released", "evidence": {"settled_by": by}}])
 
 
@@ -128,7 +128,7 @@ def test_a_fix_settled_by_an_undelivered_row_is_not_a_delivery():
 
 
 def test_a_fix_released_without_settlement_leaves_the_row_unfixed():
-    gone = row("r2", branch="fix/feat/x", state="released", fixes="r1",
+    gone = row("r2", branch="fix/x", state="released", fixes="r1",
                history=[{"move": "release", "state": "released", "evidence": {"why": "will not happen"}}])
     table = rows(row("r1", branch="feat/x", state="shipped", broken="Settings"), gone)
     assert "broken_unfixed" in {item["kind"] for item in views.deviations(table, PR)}
@@ -136,7 +136,60 @@ def test_a_fix_released_without_settlement_leaves_the_row_unfixed():
 
 def test_a_broken_row_is_nobodys_move_until_its_fix_arrives():
     table = rows(row("r1", branch="feat/x", state="shipped", broken="Settings"),
-                 row("r2", branch="fix/feat/x", state="claimed", fixes="r1"))
+                 row("r2", branch="fix/x", state="claimed", fixes="r1"))
     assert views.who_moves(table["r1"], JUDGED, table) == ""
-    table["r2"] = row("r2", branch="fix/feat/x", state="shipped", fixes="r1")
+    table["r2"] = row("r2", branch="fix/x", state="shipped", fixes="r1")
     assert views.who_moves(table["r1"], JUDGED, table) == views.JUDGE
+
+
+def broken_table(fix_state="claimed"):
+    return rows(row("r1", state="shipped", broken="the storm wall"),
+                row("r2", branch="fix/x", state=fix_state, fixes="r1"))
+
+
+def test_a_broken_row_names_its_open_fix():
+    table = broken_table()
+    assert views.who_moves(table["r1"], JUDGED, table) == ""
+    assert views.waits_on(table["r1"], table, JUDGED) == "the fix `fix/x` (main session 1)"
+
+
+def test_a_broken_row_with_no_fix_says_so():
+    table = broken_table("released")
+    assert views.waits_on(table["r1"], table, JUDGED) == "nobody: it broke and no fix row is open"
+
+
+def test_a_row_with_a_mover_waits_on_nothing():
+    table = broken_table()
+    assert views.waits_on(table["r2"], table, JUDGED) == ""
+    assert views.waits_on(row(state="handed"), rows(row(state="handed")), JUDGED) == ""
+
+
+LATER = "2026-09-26T12:30:00+00:00"
+
+
+def test_a_wait_naming_a_row_that_moved_on_is_marked():
+    waiting = row("r1", state="handed", waiting_on="the person", note="r2 is blocked on inbatch permission",
+                  updated_at=NOW.isoformat())
+    table = rows(waiting, row("r2", branch="feat/y", state="shipped", updated_at=LATER))
+    assert views.moved_since(table, waiting) == ["r2 shipped"]
+
+
+def test_a_wait_naming_a_branch_that_moved_on_is_marked():
+    waiting = row("r1", state="handed", waiting_on="the person", note="goes after feat/y, then r2.",
+                  updated_at=NOW.isoformat())
+    table = rows(waiting, row("r2", branch="feat/y", state="handed", updated_at=LATER),
+                 row("r3", branch="feat/y-2", state="shipped", updated_at=LATER))
+    assert views.moved_since(table, waiting) == ["r2 handed"]
+
+
+def test_a_wait_whose_named_row_has_not_moved_is_not_marked():
+    waiting = row("r1", state="handed", waiting_on="the person", note="after r2", updated_at=LATER)
+    table = rows(waiting, row("r2", branch="feat/y", state="shipped", updated_at=NOW.isoformat()))
+    assert views.moved_since(table, waiting) == []
+
+
+def test_a_stale_wait_matches_whole_row_ids_only():
+    moved = row("r3", branch="feat/y", state="shipped", updated_at=LATER)
+    for note in ("r33 error", "the error", "r3x is next", "br3 is next"):
+        waiting = row("r1", state="handed", waiting_on="the person", note=note, updated_at=NOW.isoformat())
+        assert views.moved_since(rows(waiting, moved), waiting) == [], note

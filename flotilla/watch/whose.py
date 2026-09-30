@@ -71,7 +71,8 @@ def mine(rows: dict[str, Row], profile: dict, name: str, *, post: str = "", may=
         if not holds_move(row, profile, name, post, rows):
             continue
         if row.waiting_on:
-            items.append(Item(WAITING, row.branch, f"you wait on {row.waiting_on}: {row.note}", row.updated_at))
+            items.append(Item(WAITING, row.branch, f"you wait on {row.waiting_on}: {row.note}"
+                                                   f"{views.since_then(rows, row)}", row.updated_at))
         elif row.held_until:
             items.append(Item(WAITING, row.branch, f"held by {row.held_by} until {row.held_until}: {row.held_why}",
                               row.updated_at))

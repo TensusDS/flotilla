@@ -247,8 +247,10 @@ def test_broke_prints_the_fix_row_it_filed(tmp_path, monkeypatch):
     run_cli("work", "ship", "feat/x", "--root", str(root), "--as", "sender 1")
     code, out = run_cli("work", "broke", "feat/x", "--where", "Settings > Export", "--saw", "nothing happens",
                         "--root", str(root), "--as", "acceptance judge 1")
-    assert code == 0 and "fix row r2 `fix/feat/x` filed for main session 1" in out
-    assert "flotilla tree switch fix/feat/x" in out and "tree cut" not in out
+    assert code == 0 and "fix row r2 `fix/x` filed for main session 1" in out
+    assert "flotilla tree switch fix/x" in out and "tree cut" not in out
+    code, out = run_cli("status", "--root", str(root))
+    assert "r1 feat/x: shipped -> the fix `fix/x` (main session 1)" in out   # not "nobody named" (H26b)
 
 
 def test_a_session_takes_a_task_in_its_home_tree(tmp_path, monkeypatch):
@@ -274,6 +276,45 @@ def test_an_empty_branch_is_never_called_finished(tmp_path):
     receipts.run_receipt(root, state=tmp_path / "state", repo_key=ledger.repo_key, purpose="handover",
                          profile=profile, timeout=60)
     assert commands._finished(ledger, row) is False
+
+
+def test_a_stacked_branch_with_no_commit_of_its_own_is_not_finished(tmp_path):
+    from flotilla.ledger import commands, core, receipts
+    from ledgerkit import actor, branch, git, make_ledger, repo_with_origin
+    root = repo_with_origin(tmp_path)
+    profile = {"schema": 1, "trunk": {"branch": "main"}, "flow": {"mode": "direct"},
+               "tests": {"tier": [{"name": "t", "command": "true", "required_for": ["handover"]}]}}
+    ledger = make_ledger(root, tmp_path / "state", profile=profile)
+    branch(root, "feat/a", "the part")
+    first = core.claim(ledger, actor(ledger, "main session 1"), "feat/a")
+    git(root, "branch", "feat/b", "feat/a")             # stacked on feat/a, nothing of its own yet
+    second = core.claim(ledger, actor(ledger, "main session 1"), "feat/b")
+    git(root, "checkout", "-q", "feat/a")
+    receipts.run_receipt(root, state=tmp_path / "state", repo_key=ledger.repo_key, purpose="handover",
+                         profile=profile, timeout=60)
+    git(root, "checkout", "-q", "main")
+    assert commands._finished(ledger, second) is False
+    assert commands._finished(ledger, first) is True
+
+
+def test_a_stacked_branch_stays_unfinished_when_the_part_under_it_moves_on(tmp_path):
+    from flotilla.ledger import commands, core, receipts
+    from ledgerkit import actor, branch, commit, git, make_ledger, repo_with_origin
+    root = repo_with_origin(tmp_path)
+    profile = {"schema": 1, "trunk": {"branch": "main"}, "flow": {"mode": "direct"},
+               "tests": {"tier": [{"name": "t", "command": "true", "required_for": ["handover"]}]}}
+    ledger = make_ledger(root, tmp_path / "state", profile=profile)
+    branch(root, "feat/a", "the part")
+    core.claim(ledger, actor(ledger, "main session 1"), "feat/a")
+    git(root, "branch", "feat/b", "feat/a")
+    second = core.claim(ledger, actor(ledger, "main session 2"), "feat/b")
+    git(root, "checkout", "-q", "feat/b")
+    receipts.run_receipt(root, state=tmp_path / "state", repo_key=ledger.repo_key, purpose="handover",
+                         profile=profile, timeout=60)
+    git(root, "checkout", "-q", "feat/a")
+    commit(root, "the part's author keeps working", "more.txt")
+    git(root, "checkout", "-q", "main")
+    assert commands._finished(ledger, second) is False
 
 
 def test_every_refusal_names_a_way_forward(tmp_path, monkeypatch):

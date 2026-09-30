@@ -575,6 +575,44 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    becomes the judge and the letter wakes it to walk again; `tree switch` never moves a row past its claim back to
    `claimed`; a seat whose turn is done holds its post at spawn as it does at retire. (executor's decision after the
    branch review, field fixes part 5, 2026-09-29)
+121. **`broke` on a part is legal** (H38): the part gate ("walk a path, not a part") exists so a part is not
+   accepted as the whole; a defect seen on a part is a defect whatever ships later. `walked` keeps the gate.
+   (planner's decision, field fixes part 6 track B, 2026-09-30)
+122. **A fix branch drops the broken branch's type prefix** (H26a): `feat/stage-2-two-suns` becomes
+   `fix/stage-2-two-suns`, not `fix/feat/stage-2-two-suns`; a branch with no `/` gets `fix/<branch>` as before, and a
+   name already taken by a row is numbered. (planner's decision, field fixes part 6 track B, 2026-09-30)
+123. **The judge may take a `broke` back** with `flotilla work unbroke <branch> --why "<why>"` (H27): legal on a
+   shipped, broken row with no open fix row; it clears `broken`, keeps the history, and the row is the judge's to
+   walk again. An open fix row must be released first, and the move says so. (planner's decision, field fixes part 6 track B, 2026-09-30)
+124. **`whose move` names what a broken row waits on** (H26b): "the fix `fix/x` (main session 6)" when a fix row is
+   open, "nobody: it broke and no fix row is open" when none is. (planner's decision, field fixes part 6 track B, 2026-09-30)
+125. **Three findings stop firing falsely** (H5, H4, H32a): `unread_in_trunk` is not raised for a branch whose tip is
+   on trunk's first-parent line (a fresh branch moved to trunk, not work that reached trunk unread; a commit made
+   there is `direct_commit`'s); `finished_not_handed` needs a commit of the row's own, so a tip reachable from trunk
+   or from another open row's branch carries nothing to hand; `after_close` is not raised when another open row's
+   branch contains the moved tip, because the work went on in that row. (planner's decision, field fixes part 6 track B, 2026-09-30)
+126. **`watch` says when a wait's reason has moved on, and raises a session waiting on the person** (H30, H42, H25b):
+   a wait whose note names a row (`r32`, a whole token) or a branch that moved since the wait was recorded reads
+   "(since then: r32 shipped)"; a live fleet session whose census status is `waiting` and whose question is not in
+   the broker queue is a person item, "<name> waits on the person (census: waiting); answer it in its session";
+   the empty-seat line prints no age, because the ledger knows when a seat was reserved, not when its session left.
+   (planner's decision, field fixes part 6 track B, 2026-09-30)
+127. **The lane summary skips a wrapper's error line** (H32b): when no line counts tests, the summary is the last
+   line that is not a shell's own error (`bash: ...`, `sh: ...`, `zsh: ...`, `kill: ...`); a run whose only lines are
+   such errors keeps its last line. (planner's decision, field fixes part 6 track B, 2026-09-30)
+128. **The judge and main posts say four more things** (H16, H27, H39, H17): the judge asks for a way to start near
+   what it must see (a position, a time, a weather by URL) rather than walking a different path; starts its own
+   preview on a port of its own (`--port <free> --strictPort`) and reads the page's revision stamp before walking;
+   and records what the test browser cannot perceive (sound, frame rate) for the person through the orchestrator,
+   never walked as if heard. The main post claims a row that wires in a part another row builds with
+   `--requires <that branch>`. (planner's decision, field fixes part 6 track B, 2026-09-30)
+129. **"A commit of the row's own" is measured against the rows claimed before it** (narrows decision 125's "another
+   open row's branch"): for `finished_not_handed`, a row's tip is compared with trunk, with the current tips of
+   every open row claimed before it (wherever the part's author has moved them since), and with the tip of a row
+   claimed after it only when that tip lies strictly under this one. Subtracting every other open row's tip would
+   call the row that made the commit unfinished as soon as a branch is stacked on it; subtracting only the tips
+   under this one would call the stacked row finished as soon as the part's author commits again. (executor's
+   decision after the branch review, field fixes part 6 track B, 2026-09-30)
 
 130. **A merge inside a reviewed row's read range is read**: batch accounting asks the read ranges before judging
    a merge by whether it is clean, so a conflict the author resolved by hand and the reader read lands (H20).

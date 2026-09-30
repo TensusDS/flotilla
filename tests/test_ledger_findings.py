@@ -73,3 +73,30 @@ def test_work_born_in_a_batch_that_never_left(world):
     assert kinds(ledger) == [("inbatch_not_pushed", "batch/fix")]
     git(root, "push", "-q", "origin", "main")
     assert kinds(ledger) == []
+
+
+def test_a_fresh_branch_at_trunk_is_not_unread_work(world):
+    root, ledger = world
+    shipped_direct(root, ledger)                        # trunk moves on by a merge commit
+    git(root, "branch", "feat/b", "main~1")
+    core.claim(ledger, actor(ledger, "main session 1"), "feat/b")
+    git(root, "branch", "-f", "feat/b", "main")         # the author moves the fresh branch to the new trunk
+    assert kinds(ledger) == []
+    stray = commit(root, "pushed straight to trunk", "stray.txt")
+    git(root, "push", "-q", "origin", "main")
+    git(root, "branch", "-f", "feat/b", "main")         # fast-forwarded over a commit nobody read
+    found = [(item["kind"], item["branch"], item["sha"]) for item in findings.findings(ledger)]
+    assert found == [("direct_commit", "main", stray)]
+
+
+def test_after_close_is_quiet_when_another_open_row_carries_the_moved_tip(world):
+    root, ledger = world
+    drive(root, ledger, "feat/a", to="handed")
+    core.release(ledger, actor(ledger, "main session 1"), "feat/a", why="goes on in another row")
+    git(root, "checkout", "-q", "feat/a")
+    moved = commit(root, "the work went on", "on.txt")
+    git(root, "checkout", "-q", "main")
+    assert [(item["kind"], item["sha"]) for item in findings.findings(ledger)] == [("after_close", moved)]
+    git(root, "branch", "feat/b", "feat/a")
+    core.claim(ledger, actor(ledger, "main session 1"), "feat/b")
+    assert kinds(ledger) == []

@@ -90,8 +90,8 @@ def test_render_names_the_recipients_and_how_to_send():
 
 def test_a_fix_settled_by_another_row_wakes_the_judge(tmp_path):
     broken = row(id="r1", branch="feat/x", state="shipped", broken="Settings", merge="abc")
-    waiting_fix = row(id="r2", branch="fix/feat/x", state="claimed", fixes="r1")
-    settled_fix = row(id="r2", branch="fix/feat/x", state="released", fixes="r1",
+    waiting_fix = row(id="r2", branch="fix/x", state="claimed", fixes="r1")
+    settled_fix = row(id="r2", branch="fix/x", state="released", fixes="r1",
                       history=[{"move": "release", "state": "released", "evidence": {"settled_by": "r3"}}])
     other = row(id="r3", branch="fix/other", state="shipped")
     before = rows(broken, waiting_fix, other)

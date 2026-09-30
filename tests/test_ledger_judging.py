@@ -90,7 +90,7 @@ def test_broke_files_the_fix_row_for_the_author(tmp_path):
     broken, fix = judging.broke(ledger, actor(ledger, JUDGE), "feat/x", where="Settings > Export",
                                 saw="the button does nothing")
     assert (broken.state, broken.broken) == ("shipped", "Settings > Export")
-    assert (fix.state, fix.branch, fix.owner, fix.fixes, fix.tree) == ("claimed", "fix/feat/x", OWNER, broken.id, "")
+    assert (fix.state, fix.branch, fix.owner, fix.fixes, fix.tree) == ("claimed", "fix/x", OWNER, broken.id, "")
 
 
 def test_a_broken_row_is_neither_walked_nor_closed_until_its_fix_ships(tmp_path):
@@ -105,17 +105,17 @@ def test_a_broken_row_is_neither_walked_nor_closed_until_its_fix_ships(tmp_path)
 def test_the_fix_row_is_cut_shipped_and_then_the_walk_clears_the_break(tmp_path):
     root, ledger, row = world(tmp_path)
     broken, fix = judging.broke(ledger, actor(ledger, JUDGE), "feat/x", where="Export", saw="nothing")
-    cut = tree_mod.cut(ledger, actor(ledger, OWNER), "fix/feat/x", tmp_path / "fix-tree")
+    cut = tree_mod.cut(ledger, actor(ledger, OWNER), "fix/x", tmp_path / "fix-tree")
     assert cut.id == fix.id and cut.tree
     tip = commit(tmp_path / "fix-tree", "fix the export", "fix.txt")
-    handover.hand(ledger, actor(ledger, OWNER), "fix/feat/x")
-    reading.take(ledger, actor(ledger, "review session 1"), "fix/feat/x")
-    reading.accept(ledger, actor(ledger, "review session 1"), "fix/feat/x", reviewed=tip)
-    delivery.queue(ledger, actor(ledger, SENDER), "fix/feat/x")
-    merge(root, "fix/feat/x")
-    delivery.land(ledger, actor(ledger, SENDER), "fix/feat/x")
+    handover.hand(ledger, actor(ledger, OWNER), "fix/x")
+    reading.take(ledger, actor(ledger, "review session 1"), "fix/x")
+    reading.accept(ledger, actor(ledger, "review session 1"), "fix/x", reviewed=tip)
+    delivery.queue(ledger, actor(ledger, SENDER), "fix/x")
+    merge(root, "fix/x")
+    delivery.land(ledger, actor(ledger, SENDER), "fix/x")
     git(root, "push", "-q", "origin", "main")
-    delivery.ship(ledger, actor(ledger, SENDER), "fix/feat/x")
+    delivery.ship(ledger, actor(ledger, SENDER), "fix/x")
     walked = judging.walked(ledger, actor(ledger, JUDGE), "feat/x", build="main", steps="s", saw="works now")
     assert (walked.state, walked.broken) == ("walked", "")
     assert judging.close(ledger, actor(ledger, OWNER), "feat/x").state == "closed"
@@ -137,8 +137,6 @@ def test_a_part_is_not_walked_while_the_row_building_on_it_is_not_shipped(tmp_pa
     root, ledger, part = part_and_whole(tmp_path)
     with pytest.raises(MoveRefused, match="feat/whole.*walkable"):
         judging.walked(ledger, actor(ledger, JUDGE), "feat/x", build="main", steps="s", saw="w")
-    with pytest.raises(MoveRefused, match="feat/whole"):
-        judging.broke(ledger, actor(ledger, JUDGE), "feat/x", where="start", saw="no entry point")
 
 
 def test_the_judge_holds_no_move_on_a_part_yet(tmp_path):
@@ -216,3 +214,71 @@ def test_the_broken_row_is_walked_again_once_a_settling_row_delivered_the_fix(tm
     core.release(ledger, actor(ledger, OWNER), fix.branch, settled_by="fix/other")
     walked = judging.walked(ledger, actor(ledger, JUDGE), "feat/x", build="main", steps="s", saw="works now")
     assert (walked.state, walked.broken) == ("walked", "")
+
+
+def test_a_part_may_be_broken_while_the_whole_is_not_shipped(tmp_path):
+    root, ledger, part = part_and_whole(tmp_path)
+    broken, fix = judging.broke(ledger, actor(ledger, JUDGE), "feat/x", where="the storm wall", saw="a seam")
+    assert broken.broken == "the storm wall" and fix.fixes == broken.id
+
+
+def test_a_fix_branch_drops_the_type_prefix(tmp_path):
+    root, ledger, row = world(tmp_path)
+    _, fix = judging.broke(ledger, actor(ledger, JUDGE), "feat/x", where="start", saw="nothing")
+    assert fix.branch == "fix/x"
+
+
+def test_a_fix_branch_name_is_numbered_when_taken(tmp_path):
+    from ledgerkit import branch
+    root, ledger, row = world(tmp_path)
+    branch(root, "fix/x", "someone else's fix")
+    rows = ledger.rows()
+    assert judging.fix_branch_name(rows, "feat/x") == "fix/x"          # the row table does not know the branch
+    with pytest.raises(MoveRefused, match="already exists"):
+        judging.broke(ledger, actor(ledger, JUDGE), "feat/x", where="start", saw="nothing")
+
+
+def broken_world(tmp_path):
+    root, ledger, row = world(tmp_path, JUDGED)
+    judging.broke(ledger, actor(ledger, JUDGE), "feat/x", where="start", saw="stale preview")
+    return root, ledger
+
+
+def test_the_judge_takes_a_false_broke_back_once_the_fix_row_is_released(tmp_path):
+    from flotilla.ledger import core
+    root, ledger = broken_world(tmp_path)
+    core.release(ledger, actor(ledger, OWNER), "fix/x", why="false broke: a stale preview")
+    row = judging.unbroke(ledger, actor(ledger, JUDGE), "feat/x", why="walked a foreign preview on port 4173")
+    assert (row.state, row.broken) == ("shipped", "")
+    assert row.history[-1]["evidence"]["why"].startswith("walked a foreign")
+    walked = judging.walked(ledger, actor(ledger, JUDGE), "feat/x", build="main", steps="s", saw="the eclipse")
+    assert walked.state == "walked"
+
+
+def test_unbroke_refuses_while_a_fix_row_is_open(tmp_path):
+    root, ledger = broken_world(tmp_path)
+    with pytest.raises(MoveRefused, match="fix/x.*release it first"):
+        judging.unbroke(ledger, actor(ledger, JUDGE), "feat/x", why="false")
+    assert next(r for r in ledger.rows().values() if r.branch == "feat/x").broken == "start"
+
+
+def test_unbroke_needs_a_reason_and_a_broken_row(tmp_path):
+    root, ledger, row = world(tmp_path, JUDGED)
+    with pytest.raises(MoveRefused, match="is not broken"):
+        judging.unbroke(ledger, actor(ledger, JUDGE), "feat/x", why="x")
+    with pytest.raises(MoveRefused, match="--why"):
+        judging.unbroke(ledger, actor(ledger, JUDGE), "feat/x", why=" ")
+
+
+def test_only_a_post_that_may_unbroke_makes_the_move(tmp_path):
+    root, ledger = broken_world(tmp_path)
+    with pytest.raises(MoveRefused):
+        judging.unbroke(ledger, actor(ledger, OWNER), "feat/x", why="x")
+
+
+def test_the_unbroke_cli_needs_a_reason(tmp_path):
+    from flotilla import cli
+    parsed = cli.build_parser().parse_args(["work", "unbroke", "feat/x", "--why", "a foreign preview"])
+    assert (parsed.branch, parsed.why) == ("feat/x", "a foreign preview")
+    with pytest.raises(SystemExit):
+        cli.build_parser().parse_args(["work", "unbroke", "feat/x"])

@@ -63,3 +63,18 @@ def test_a_run_interrupted_on_our_side_stops_its_command():
 def test_a_coloured_summary_is_recorded_plain():
     from flotilla.lane.run import summarize
     assert summarize(["noise", "\x1b[32m12 passed\x1b[0m in 0.02s"]) == "12 passed in 0.02s"
+
+
+def test_a_wrapper_error_after_the_output_is_not_the_summary():
+    lines = ['{"tag":"storm","programs":16}', "bash: line 1: kill: (3500188) - No such process"]
+    assert run.summarize(lines) == '{"tag":"storm","programs":16}'
+    assert run.summarize(["done", "kill: (12) - No such process", "/bin/sh: 1: x: not found"]) == "done"
+
+
+def test_a_summary_of_only_wrapper_errors_keeps_the_last_line():
+    assert run.summarize(["sh: 1: foo: not found"]) == "sh: 1: foo: not found"
+    assert run.summarize(["zsh: x", "bash: y"]) == "bash: y"
+
+
+def test_a_counting_line_still_wins():
+    assert run.summarize(["212 passed in 3.1s", "bash: kill: no such process"]) == "212 passed in 3.1s"

@@ -36,8 +36,8 @@ def lines(items: list[Item], now: dt.datetime, *, limit: int = MAX_LINES) -> lis
     working = [item for item in items if item.kind == WORKING]
     rest = sorted((item for item in items if item.kind != WORKING), key=lambda item: (ORDER.get(item.kind, 7),
                                                                                      item.since))
-    out = [_cut(f"  {item.branch + ': ' if item.branch else ''}{item.text} ({age(item.since, now)})")
-           for item in rest]
+    out = [_cut(f"  {item.branch + ': ' if item.branch else ''}{item.text}"
+                f"{f' ({age(item.since, now)})' if item.since else ''}") for item in rest]
     if working:
         oldest = min(working, key=lambda item: item.since)
         out.append(_cut(f"  {len(working)} claimed branch(es) in your hands; oldest {oldest.branch} "

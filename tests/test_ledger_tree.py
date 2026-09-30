@@ -123,13 +123,13 @@ def test_switch_refuses_a_branch_that_is_someone_elses(tmp_path):
 
 def test_switch_takes_a_row_of_yours_that_has_no_branch_yet(tmp_path):
     root, ledger, home = home_world(tmp_path)
-    filed = core.claim(ledger, actor(ledger, "main session 1"), "fix/feat/x")   # as `broke` files a fix row
-    assert filed.base == "" and gitq.branch_tip(root, "fix/feat/x") is None
-    row = tree_mod.switch(ledger, actor(ledger, "main session 1"), "fix/feat/x")
+    filed = core.claim(ledger, actor(ledger, "main session 1"), "fix/x")   # as `broke` files a fix row
+    assert filed.base == "" and gitq.branch_tip(root, "fix/x") is None
+    row = tree_mod.switch(ledger, actor(ledger, "main session 1"), "fix/x")
     assert row.id == filed.id and row.tree == str(home.resolve())
-    assert git(home, "rev-parse", "--abbrev-ref", "HEAD") == "fix/feat/x"
+    assert git(home, "rev-parse", "--abbrev-ref", "HEAD") == "fix/x"
     assert row.base == git(root, "rev-parse", "origin/main")
-    assert len([r for r in ledger.rows().values() if r.branch == "fix/feat/x"]) == 1
+    assert len([r for r in ledger.rows().values() if r.branch == "fix/x"]) == 1
 
 
 def test_switch_never_turns_a_delivered_row_back_into_a_claim(tmp_path):
