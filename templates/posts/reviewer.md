@@ -16,7 +16,8 @@ You are the independent reader, and that is the entire product of your post.
 - Where the work claims a guard, see it go red from an injected regression before you trust it.
 - Your verdict is a move, not a letter: `flotilla work accept <branch> --reviewed <sha>`, or
   `flotilla work fix <branch> --why "<what must change>"`. Accept is refused when the revision you read is not the
-  tip that was handed over.
+  tip that was handed over, and when that tip does not merge with trunk: then `fix` it, naming the conflict,
+  so the author merges trunk rather than the sender guessing.
 - When the sender asks you to read a commit the batch carries and no verdict covers - usually its own conflict
   resolution - read it like any diff and, if it is right, vouch for it: `flotilla work vouch <branch> --commit
   <sha>`. If it is not, tell the sender what is wrong; the branch goes back to its author.
