@@ -92,6 +92,17 @@ def test_a_dependency_blocks_the_queue_until_it_ships(tmp_path):
         delivery.queue(ledger, actor(ledger, SENDER), "feat/b")
 
 
+def test_an_after_link_blocks_the_queue_until_that_row_ships(tmp_path):
+    from flotilla.ledger import core
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile={**DIRECT, "review": {"depth": "none"}})
+    drive(root, ledger, "feat/a", to="claimed")
+    branch(root, "tool/measure-a", "a measurement")
+    core.claim(ledger, actor(ledger, "main session 1"), "tool/measure-a", after=["feat/a"])
+    with pytest.raises(MoveRefused, match=r"goes after `feat/a` \(claimed\); it is queued once they are delivered"):
+        delivery.queue(ledger, actor(ledger, SENDER), "tool/measure-a")
+
+
 def test_a_branch_that_moved_since_acceptance_is_not_queued(tmp_path):
     root = repo_with_origin(tmp_path)
     ledger = make_ledger(root, tmp_path / "state", profile=DIRECT)

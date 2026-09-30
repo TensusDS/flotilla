@@ -429,6 +429,11 @@ is not delivered, the shipped row is nobody's move, and `walked` / `broke` refus
 alone reports a missing entry point that the next row was always going to add — a false `broke` and a duplicate fix
 row (field test F21). The orchestrator marks a part that reaches a person on its own `walkable` (decision 86).
 
+`--after <row or branch>` (on `claim`, `tree cut` and `tree switch`) is an ordering-only link: the row cannot be
+`queued` until that one is delivered, exactly as with `--requires`, but it never makes the other row a part. A
+measurement, a tool or a follow-up that will not ship is claimed `--after` the row it records, so it never holds
+that row's walk (field test H44).
+
 ### 6.5 Duplicates
 
 A second claim with the same `--ref` while a row is open is **refused**, naming the holder. `--also "<why>"`

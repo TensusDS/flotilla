@@ -71,8 +71,13 @@ def queue(ledger: Ledger, actor: Actor, branch: str, *, pr: int | None = None) -
         state = s.next_state(row, "queue")
         waiting = blocked_by(s.rows, row, ledger.profile)
         if waiting:
-            names = ", ".join(f"`{other.branch or other.id}` ({other.state or 'unknown'})" for other in waiting)
-            raise MoveRefused(f"`{branch}` requires {names}; it is queued once they are delivered")
+            def named(links):
+                return ", ".join(f"`{other.branch or other.id}` ({other.state or 'unknown'})" for other in links)
+            builds = [other for other in waiting if other.id in (row.requires or [])]
+            orders = [other for other in waiting if other.id not in (row.requires or [])]
+            said = ([f"requires {named(builds)}"] if builds else []) + ([f"goes after {named(orders)}"] if orders
+                                                                        else [])
+            raise MoveRefused(f"`{branch}` {' and '.join(said)}; it is queued once they are delivered")
         if row.verdict and current != row.verdict:
             raise MoveRefused(f"`{branch}` moved since it was accepted ({row.verdict[:7]} -> {current[:7]}); the "
                               "owner records it with `flotilla work moved` and the reader accepts again")

@@ -31,7 +31,7 @@ def _names(ledger: core.Ledger) -> set[str]:
 
 
 def cut(ledger: core.Ledger, actor: Actor, branch: str, tree: Path, *, expect: str | None = None, ref: str = "",
-        requires=(), also: str = "") -> Row:
+        requires=(), after=(), also: str = "") -> Row:
     require_may(actor, "claim", ledger.posts)
     tree = Path(tree)
     if tree.exists() or tree.is_symlink():
@@ -47,13 +47,14 @@ def cut(ledger: core.Ledger, actor: Actor, branch: str, tree: Path, *, expect: s
             raise MoveRefused(f"branch `{branch}` already exists; nothing was cut")
         filed = s.open_row(branch)
         if filed is not None and filed.fixes and not filed.tree and filed.owner == actor.name:
-            if ref or requires or also:
+            if ref or requires or after or also:
                 raise MoveRefused(f"`{branch}` was filed by `broke` for {filed.fixes}; cut it without --ref, "
-                                  "--requires or --also")
-            ids = []
+                                  "--requires, --after or --also")
+            ids, later = [], []
         else:
             filed = None
             ids = core.check_claim(s.rows, branch, ref=ref, also=also, requires=requires)
+            later = core.link_ids(s.rows, after, "--after")
         done = ledger.run(["git", "-C", str(ledger.root), "worktree", "add", "-q", "-b", branch, str(tree),
                            base_ref], capture_output=True, text=True, check=False)
         try:
@@ -64,7 +65,7 @@ def cut(ledger: core.Ledger, actor: Actor, branch: str, tree: Path, *, expect: s
                 return s.append(actor, filed.id, "claim", "claimed",
                                 fields={"tree": str(tree.resolve()), "base": base}, evidence={"picked_up": filed.fixes})
             return core.append_claim(s, actor, branch, tree=str(tree.resolve()), base=base, ref=ref, ids=ids,
-                                     also=also)
+                                     also=also, after=later)
         except BaseException:
             _undo(ledger, branch, tree)
             raise
@@ -78,7 +79,8 @@ def _undo(ledger: core.Ledger, branch: str, tree: Path) -> None:
     ledger.run([*git, "branch", "-D", branch], capture_output=True, text=True, check=False)
 
 
-def switch(ledger: core.Ledger, actor: Actor, branch: str, *, ref: str = "", requires=(), also: str = "") -> Row:
+def switch(ledger: core.Ledger, actor: Actor, branch: str, *, ref: str = "", requires=(), after=(),
+           also: str = "") -> Row:
     require_may(actor, "claim", ledger.posts)
     home_row = next((row for row in ledger.rows().values()
                      if row.is_open and row.state == "reserved" and row.owner == actor.name and row.tree), None)
@@ -121,6 +123,7 @@ def switch(ledger: core.Ledger, actor: Actor, branch: str, *, ref: str = "", req
                 return s.append(actor, mine.id, "claim", "claimed", fields={"tree": str(home.resolve())})
             return mine
         ids = core.check_claim(s.rows, branch, ref=ref, also=also, requires=requires)
+        later = core.link_ids(s.rows, after, "--after")
         if gitq.branch_tip(ledger.root, branch, run=ledger.run):
             raise MoveRefused(f"branch `{branch}` already exists and holds no open row of yours; nothing was switched")
         base = gitq.resolve(ledger.root, base_ref, run=ledger.run) or ""
@@ -133,7 +136,7 @@ def switch(ledger: core.Ledger, actor: Actor, branch: str, *, ref: str = "", req
             raise MoveRefused(f"git switch -c {branch} failed in {home}: {done.stderr.strip()}")
         try:
             return core.append_claim(s, actor, branch, tree=str(home.resolve()), base=base, ref=ref, ids=ids,
-                                     also=also)
+                                     also=also, after=later)
         except BaseException:
             ledger.run([*git, "switch", "-q", home_row.branch], capture_output=True, text=True, check=False)
             ledger.run([*git, "branch", "-D", branch], capture_output=True, text=True, check=False)

@@ -14,7 +14,7 @@ EVENT_VERSION = 1
 STATES = ("reserved", "claimed", "handed", "fixing", "accepted", "queued", "landed", "shipped", "walked",
           "closed", "released", "offledger", "inbatch")
 TERMINAL = frozenset({"closed", "released", "offledger", "inbatch"})
-ROW_FIELDS = ("branch", "owner", "tree", "base", "ref", "requires", "tip", "reader", "taken", "verdict",
+ROW_FIELDS = ("branch", "owner", "tree", "base", "ref", "requires", "after", "tip", "reader", "taken", "verdict",
               "waiting_on", "note", "why", "pr", "gate", "merge", "held_by", "held_until", "held_why",
               "urgent_at", "urgent_why", "adopted_from", "broken", "fixes", "last_run", "walkable",
               "vouched")
@@ -35,6 +35,7 @@ class Row:
     base: str = ""
     ref: str = ""
     requires: list = field(default_factory=list)
+    after: list = field(default_factory=list)   # ordering only: queued after these, never a part of them
     tip: str = ""
     reader: str = ""
     taken: bool = False
@@ -72,9 +73,10 @@ def delivered(row: Row, profile: dict) -> bool:
 
 
 def blocked_by(rows: dict[str, Row], row: Row, profile: dict) -> list[Row]:
-    """The rows this one requires that are not delivered yet (spec, section 6.4); an unknown id stands as a bare row."""
+    """The rows this one requires, or goes after, that are not delivered yet (spec, section 6.4); an unknown id
+    stands as a bare row. Only `requires` makes a part (`views.pending_dependents`); `after` only orders."""
     waiting = []
-    for wanted in row.requires or []:
+    for wanted in dict.fromkeys([*(row.requires or []), *(row.after or [])]):
         other = rows.get(wanted)
         if other is None or not delivered(other, profile):
             waiting.append(other or Row(id=wanted))
