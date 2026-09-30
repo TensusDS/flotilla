@@ -59,12 +59,11 @@ def fleet(rows: dict, profile: dict, sessions, *, post_of, breaks=(), asking=())
     if empty:   # one quiet line for every seat whose session is gone, not an alarm per seat (F27)
         items.append(Item(SEATS, "", f"{len(empty)} post seat(s) with no live session: {', '.join(empty)}; "
                                      "`flotilla fleet` lists them, `flotilla fleet down` stands the fleet down",
-                          min((row.updated_at for row in rows.values() if row.owner in empty
-                               and row.state == "reserved"), default=""), who=",".join(empty)))
+                          "", who=",".join(empty)))   # the ledger knows when a seat was reserved, not when it emptied
     for row in rows.values():
         if row.is_open and row.waiting_on.strip().lower() == THE_PERSON:
-            items.append(Item(PERSON, row.branch, f"waits on the person: {row.note or 'no question recorded'}",
-                              row.updated_at, who=row.note))
+            items.append(Item(PERSON, row.branch, f"waits on the person: {row.note or 'no question recorded'}"
+                                                  f"{views.since_then(rows, row)}", row.updated_at, who=row.note))
         if not row.is_open or row.state == "reserved" or row.waiting_on or row.held_until:
             continue   # a post row is the post held, not a move anyone owes
         mover = views.who_moves(row, profile, rows)
@@ -79,6 +78,12 @@ def fleet(rows: dict, profile: dict, sessions, *, post_of, breaks=(), asking=())
                 items.append(Item(DROPPED, row.branch, f"{name} holds the move ({row.state}) and is not working "
                                                        f"(census: {_census_word(by_name[name])}); message them",
                                   row.updated_at, who=name))
+    for name in sorted(live):
+        session = by_name[name]
+        if session.status == "waiting" and name not in asking and post_of(name):
+            # a question open in its own session that no row records (H42); one in the queue is a QUESTION item
+            items.append(Item(PERSON, "", f"{name} waits on the person (census: waiting); answer it in its session",
+                              "", who=name))
     items.extend(breaks)
     return items
 

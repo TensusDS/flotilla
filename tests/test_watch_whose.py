@@ -63,3 +63,11 @@ def test_the_moves_offered_are_legal_and_allowed_to_the_post():
 def test_without_a_post_no_move_is_promised():
     found = whose.mine(rows(row(state="fixing")), PR, "main session 1", may=frozenset())
     assert found[0].text.endswith("your moves: none your post may make")
+
+
+def test_a_recorded_wait_says_what_moved_since():
+    waiting = row(state="fixing", waiting_on="the person", note="r2 goes first")
+    shipped = row(id="r2", branch="feat/y", state="shipped", updated_at="2026-09-27T11:00:00+00:00")
+    found = whose.mine(rows(waiting, shipped), PR, "main session 1")
+    assert [item.text for item in found if item.kind == "waiting"] == [
+        "you wait on the person: r2 goes first (since then: r2 shipped)"]

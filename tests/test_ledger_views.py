@@ -162,3 +162,34 @@ def test_a_row_with_a_mover_waits_on_nothing():
     table = broken_table()
     assert views.waits_on(table["r2"], table, JUDGED) == ""
     assert views.waits_on(row(state="handed"), rows(row(state="handed")), JUDGED) == ""
+
+
+LATER = "2026-09-26T12:30:00+00:00"
+
+
+def test_a_wait_naming_a_row_that_moved_on_is_marked():
+    waiting = row("r1", state="handed", waiting_on="the person", note="r2 is blocked on inbatch permission",
+                  updated_at=NOW.isoformat())
+    table = rows(waiting, row("r2", branch="feat/y", state="shipped", updated_at=LATER))
+    assert views.moved_since(table, waiting) == ["r2 shipped"]
+
+
+def test_a_wait_naming_a_branch_that_moved_on_is_marked():
+    waiting = row("r1", state="handed", waiting_on="the person", note="goes after feat/y, then r2.",
+                  updated_at=NOW.isoformat())
+    table = rows(waiting, row("r2", branch="feat/y", state="handed", updated_at=LATER),
+                 row("r3", branch="feat/y-2", state="shipped", updated_at=LATER))
+    assert views.moved_since(table, waiting) == ["r2 handed"]
+
+
+def test_a_wait_whose_named_row_has_not_moved_is_not_marked():
+    waiting = row("r1", state="handed", waiting_on="the person", note="after r2", updated_at=LATER)
+    table = rows(waiting, row("r2", branch="feat/y", state="shipped", updated_at=NOW.isoformat()))
+    assert views.moved_since(table, waiting) == []
+
+
+def test_a_stale_wait_matches_whole_row_ids_only():
+    moved = row("r3", branch="feat/y", state="shipped", updated_at=LATER)
+    for note in ("r33 error", "the error", "r3x is next", "br3 is next"):
+        waiting = row("r1", state="handed", waiting_on="the person", note=note, updated_at=NOW.isoformat())
+        assert views.moved_since(rows(waiting, moved), waiting) == [], note

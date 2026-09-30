@@ -10,6 +10,7 @@ every row at once. Deviations need no threshold: each is a row from which the ex
 from __future__ import annotations
 
 import datetime as dt
+import re
 
 from flotilla.ledger.model import Row, blocked_by, delivered
 
@@ -68,6 +69,40 @@ def waits_on(row: Row, rows: dict, profile: dict) -> str:
             return ", ".join(f"the fix `{other.branch}` ({other.owner or 'no owner'})" for other in fixes)
         return "nobody: it broke and no fix row is open"
     return ""
+
+
+def _moment(value: str) -> dt.datetime | None:
+    try:
+        return dt.datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def moved_since(rows: dict[str, Row], row: Row) -> list[str]:
+    """The rows a wait's note names that moved after the wait was recorded, as "r32 shipped" (H30).
+
+    A note names a row by its id as a whole token (`r32`, never the `r3` inside `r33`) or by its branch as a whole
+    word. A wait's note is free text, so this is a pointer for the person, never a move made for them."""
+    note, since = row.note or "", _moment(row.updated_at)
+    if not note or since is None:
+        return []
+    named = [f"r{number}" for number in re.findall(r"(?<![\w/-])r(\d+)(?![\w/-])", note)]
+    named += [other.id for other in rows.values() if other.branch and
+              re.search(rf"(?<![\w/-]){re.escape(other.branch)}(?![\w/-])", note)]
+    found: list[str] = []
+    for name in dict.fromkeys(named):
+        other = rows.get(name)
+        moment = _moment(other.updated_at) if other is not None else None
+        if other is None or other.id == row.id or moment is None or moment <= since:
+            continue
+        found.append(f"{other.id} {other.state}")
+    return found
+
+
+def since_then(rows: dict[str, Row], row: Row) -> str:
+    """" (since then: r32 shipped)" for a wait whose named rows moved on, else ""."""
+    moved = moved_since(rows, row)
+    return f" (since then: {', '.join(moved)})" if moved else ""
 
 
 def roster(rows: dict[str, Row], profile: dict, live: set[str] | None = None) -> list[dict]:
