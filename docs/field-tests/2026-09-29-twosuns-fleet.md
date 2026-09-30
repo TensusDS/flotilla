@@ -635,3 +635,74 @@ are going to ship count as dependents — a claim can say so (`--requires` for b
 ordering only), or the part gate ignores dependents whose owner declared them not for trunk. Same tick: sound
 atmosphere 2 (r67) accepted 17:51:43, shipped 17:55:03, walked and closed by 18:00:42; H20 did not recur on it
 (no author merge in its range).
+
+H44 recurred at 19:46–19:47 (r68 `fix/wind-strong-shape`, dependent `feat/sound-spatial` not shipped): the judge's
+walk was refused as a part, the orchestrator marked it walkable at 19:46:54, the judge recorded its wait at 19:47:00
+and walked at 19:47:06. Second time the same crossing: the orchestrator now marks sound rows walkable pre-emptively,
+which is the workaround the part-6 fix direction (`--after` for ordering-only links) would make unnecessary.
+
+H45. **gap — a seat with no work goes unnoticed for hours; and the late-day slowdown is mostly heavier work.** Asked
+by the person at 20:21 whether the fleet idles more as the run goes on. Measured from the ledger (09-30):
+- **Shipped per half-hour**: 2–3 from 14:00 to 17:30, then 0–1 (18:00–18:30 and 20:00 none), 2 at 19:30.
+- **Work per row grew**: rows claimed 14:25–17:37 took 2–66 min from claim to hand (median ~26); the ones claimed
+  after 17:00 took 53–88 min (r66 hitch audit 53, r68 wind shape 87, r69 quality switch 78), with 8–9 lane runs
+  each — measurement-heavy tasks (perf, sound levels), and the last ones are end-of-task work (README conformance,
+  release package). Reading grew too: r66 32 min, r71 reading since 19:44 (37 min at 20:21).
+- **An idle seat**: main session 7's last move was `close r59` at 17:05:43; at 20:21 it holds only its seat
+  (`roster: main session 7: idle - fleet/main-7 (reserved)`) — 3 h 15 min with no work, while main 6 and main 8
+  each hold one to two rows and the two reviewers are the queue. `watch` says nothing: a seat with no row is not a
+  dropped ball, and the SEATS item covers only seats whose session is gone. It costs memory (each seat ~0.4 GB, the
+  machine retired seats three times under pressure) and throughput.
+Fix direction: `watch` for the orchestrator raises "main session 7 has had no work for 3 h: give it a row or
+retire it" past a threshold, and the orchestrator post says to size the fleet to the queue — a spare implementer
+while reading is the bottleneck is better retired or turned into a reader.
+
+H46. **obs — the queue drained at 21:10, and nothing tells the person.** With r76 closed at 21:10:08 the only open
+rows are r11 (stage 2, the false broke of H27 that no move on plugin 0.1.0 can take back) and two of minor session
+43's audio-capture tooling rows (r64, r65) waiting on the orchestrator. Eleven seats are live and idle. `watch` still
+exits 1 on the stale `broken_unfixed` alone, so a person polling it sees "attention" on a finished fleet and no
+line saying the work is done. This is exactly the moment H12 designs for (the orchestrator asks the person to check
+the result and offers `fleet down`, listing what stays alive); until then it rests on the orchestrator noticing.
+
+H47. **H9 again, caused by the fleet's own sizing: five implementers raised under low memory, and the retire wave
+took every reader.** After the person gave a new batch (~21:40), the orchestrator raised main sessions 9, 10 and 11
+(seats r78, r85, r86 at 21:42–21:51) next to mains 6, 7 and 8 — six implementers claimed rows r79–r88 within ten
+minutes. At 21:55:03 the daemon retired, `[low memory]`, minor session 43 (idle 3m), review session 17 (idle 3m)
+and a spare; review session 18 is gone from the census as well. At 21:58 the census holds six mains, the judge and
+the sender `blocked`, the orchestrator `blocked`, and no reviewer: every handover now waits for a reader to be
+raised into the same memory. The retire rule takes the idle, and readers are idle exactly while implementers work,
+so adding implementers retires readers first. `watch` names the three empty seats and the two `mover_gone` rows of
+minor 43. Fix direction (with H9/H45): the orchestrator sizes the fleet to memory and to the queue — implementers
+no more than readers can follow — and `flotilla spawn` refuses or warns when free memory is under a floor.
+Correction, same minute, from the full daemon log: the 21:55:03 wave also retired a0b1c29b (sender 6, idle 3m) and
+669e61f3 (acceptance judge 10, idle 3m). The census at 21:58 still listed both, `state=blocked status=None` — a
+retired session lingering in the census (the H25 disagreement, now for three minutes rather than seconds). So the
+wave took the sender and the judge as well as the readers: nobody is left to read, land or walk.
+
+H48. **bug — a retired session stays in the census and flotilla counts it alive, so its empty seat is never
+raised.** `~/.claude/daemon.log`: `bg retire a0b1c29b` (sender 6) and `bg retire 669e61f3` (acceptance judge 10) at
+21:55:03, then `bg settled a0b1c29b (done)` / `bg settled 669e61f3 (done)`; `ps` shows no process for either id at
+22:04. Yet the census still lists both with `state=blocked status=None`, and `flotilla fleet` at 22:04 prints
+"sender 6 (sender) alive (blocked), claude attach a0b1c29b" and the same for the judge. So `watch` names no empty
+seat for them (its SEATS line lists only minor 43 and reviewers 17/18, whose census entries did disappear), and the
+orchestrator, re-seating at 22:02 (review sessions 19 and 20, minor session 44), raised no sender and no judge.
+Every row that gets accepted will now queue on a sender that does not exist, with `whose move` naming "the sender"
+and the dropped-ball check seeing `blocked` — reported as "not working, message them", a message to nobody. The
+signal to tell them apart is in the census itself: a live background session reports a `status`; a retired one
+lingering in the list reports `status=None`. Fix direction: treat a background entry with no status (or a daemon
+`settled … (done)` record) as gone, everywhere liveness is asked (`live_names`, `fleet`, `retire._running`, the
+SEATS item). G12's fix (retire counts any listed session as running) is the same question from the other side and
+must keep stopping such entries.
+H48 follow-up: after the person's message reached orchestrator 3 (relayed 22:11), it released the dead seats (r24
+sender 6 22:11:42, r46 judge 10 22:11:43) and reserved sender 7 and acceptance judge 11 (22:11:44–45); the stale
+census entries for a0b1c29b and 669e61f3 were gone by 22:12:31. In the same minute it also reserved main session 12
+(r94, 22:11:33; claimed r97 at 22:12:26) — a seventh implementer, against the sizing note in the message (H47).
+Also: main session 6 recorded on r11 that stage 2 "was walked on 9f851b9 but the ledger could not record it" and
+asked judge 11 to re-walk — the H27 false broke still standing, one day later, for want of `unbroke` on 0.1.0.
+
+## The person's verdict (2026-09-30, ~22:15)
+
+The person walked the build and called it "very cool". Liked: the atmosphere and the sound. Missing: the visual side
+reads a little sterile, and there are too few points of interest — the ruins are there, but there is nothing to do in
+them. The person carries the fleet to the end and stands it down themselves; monitoring stopped at 22:15 (last
+recorded finding H48).
