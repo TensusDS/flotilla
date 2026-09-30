@@ -680,11 +680,14 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    seats it retired, each with the command that stops it (H12). (planner's decision, field fixes part 7 track A,
    2026-09-30)
 
+152. **flotilla is MIT-licensed**, so anyone may use it as they like; the repository home is `TensusDS/flotilla`.
+   (the person's decision, 2026-09-30)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
 - Does a `--bg` session auto-create its own worktree before editing (per research) on top of the one flotilla cut?
   Verify with a live spawn.
-- License (MIT / Apache-2.0) and repo home (e.g. `TensusDS/flotilla`); name availability on PyPI/GitHub unchecked
+- Name availability on PyPI/GitHub unchecked
   (not present in `claude-plugins-official` marketplace.json, 540 names, local copy).
 - Read Gas Town and multiclaude (role-based prior art) before the posts spec.

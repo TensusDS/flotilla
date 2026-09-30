@@ -78,3 +78,7 @@ uv run --python 3.11 --with pytest python -m pytest     # on the lowest supporte
 python3 tools/check_no_cyrillic.py                      # the English-only gate
 claude plugin validate .                                # the manifest
 ```
+
+## License
+
+MIT - see `LICENSE`.
