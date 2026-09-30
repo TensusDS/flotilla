@@ -294,20 +294,22 @@ def _now(ledger: core.Ledger) -> dt.datetime:
 
 
 def _stacked_under(ledger: core.Ledger, row: Row, tip: str) -> list[str]:
-    """Tips of other open rows this row's tip stands on: their commits are theirs, not this row's (H4). A tip equal
-    to this one belongs to the row claimed first."""
+    """Tips of other open rows whose commits are theirs, not this row's (H4): every open row claimed before this one,
+    wherever its branch has moved since (the part's author keeps working), and a row claimed after it only when its
+    tip lies strictly under this one. A row stacked on this one never takes this row's commits away."""
     rows = ledger.rows()
     order = list(rows)
+    mine = order.index(row.id) if row.id in order else len(order)
     under = []
     for other in rows.values():
         if not other.is_open or other.branch == row.branch or not other.branch:
             continue
         theirs = gitq.branch_tip(ledger.root, other.branch, run=ledger.run)
-        if not theirs or gitq.is_ancestor(ledger.root, theirs, tip, run=ledger.run) is not True:
+        if not theirs:
             continue
-        if theirs == tip and row.id in order and other.id in order and order.index(other.id) > order.index(row.id):
-            continue
-        under.append(theirs)
+        earlier = order.index(other.id) < mine
+        if earlier or (theirs != tip and gitq.is_ancestor(ledger.root, theirs, tip, run=ledger.run) is True):
+            under.append(theirs)
     return under
 
 

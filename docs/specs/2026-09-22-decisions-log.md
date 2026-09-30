@@ -606,11 +606,13 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    and records what the test browser cannot perceive (sound, frame rate) for the person through the orchestrator,
    never walked as if heard. The main post claims a row that wires in a part another row builds with
    `--requires <that branch>`. (planner's decision, field fixes part 6 track B, 2026-09-30)
-129. **"A commit of the row's own" is measured against the rows under it, not beside it**: for
-   `finished_not_handed`, a row's tip is compared with trunk and with the tips of other open rows that are
-   ancestors of it; a tip equal to another open row's belongs to the row claimed first. Subtracting every other
-   open row's tip would call the row that made the commit unfinished as soon as a branch is stacked on it.
-   (executor's decision, field fixes part 6 track B, 2026-09-30)
+129. **"A commit of the row's own" is measured against the rows claimed before it** (narrows decision 125's "another
+   open row's branch"): for `finished_not_handed`, a row's tip is compared with trunk, with the current tips of
+   every open row claimed before it (wherever the part's author has moved them since), and with the tip of a row
+   claimed after it only when that tip lies strictly under this one. Subtracting every other open row's tip would
+   call the row that made the commit unfinished as soon as a branch is stacked on it; subtracting only the tips
+   under this one would call the stacked row finished as soon as the part's author commits again. (executor's
+   decision after the branch review, field fixes part 6 track B, 2026-09-30)
 
 ## Open questions (for the foundation spec)
 

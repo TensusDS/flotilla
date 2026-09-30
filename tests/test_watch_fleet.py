@@ -143,3 +143,10 @@ def test_the_empty_seat_item_carries_no_age():
     seats = rows(row(id="r1", branch="fleet/reviewer-1", owner="review session 1", state="reserved"))
     found = fleet.fleet(seats, PR, [sess("main session 1")], post_of=post_of)
     assert [(item.kind, item.since) for item in found] == [(fleet.SEATS, "")]
+
+
+def test_a_holder_waiting_on_a_prompt_is_one_item_not_two():
+    found = fleet.fleet(rows(row(state="handed", reader="review session 1")), PR,
+                        [sess("review session 1", status="waiting"), sess("main session 1", state="working")],
+                        post_of=post_of)
+    assert [item.kind for item in found] == [fleet.DROPPED]

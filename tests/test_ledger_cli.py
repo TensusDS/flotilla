@@ -297,6 +297,26 @@ def test_a_stacked_branch_with_no_commit_of_its_own_is_not_finished(tmp_path):
     assert commands._finished(ledger, first) is True
 
 
+def test_a_stacked_branch_stays_unfinished_when_the_part_under_it_moves_on(tmp_path):
+    from flotilla.ledger import commands, core, receipts
+    from ledgerkit import actor, branch, commit, git, make_ledger, repo_with_origin
+    root = repo_with_origin(tmp_path)
+    profile = {"schema": 1, "trunk": {"branch": "main"}, "flow": {"mode": "direct"},
+               "tests": {"tier": [{"name": "t", "command": "true", "required_for": ["handover"]}]}}
+    ledger = make_ledger(root, tmp_path / "state", profile=profile)
+    branch(root, "feat/a", "the part")
+    core.claim(ledger, actor(ledger, "main session 1"), "feat/a")
+    git(root, "branch", "feat/b", "feat/a")
+    second = core.claim(ledger, actor(ledger, "main session 2"), "feat/b")
+    git(root, "checkout", "-q", "feat/b")
+    receipts.run_receipt(root, state=tmp_path / "state", repo_key=ledger.repo_key, purpose="handover",
+                         profile=profile, timeout=60)
+    git(root, "checkout", "-q", "feat/a")
+    commit(root, "the part's author keeps working", "more.txt")
+    git(root, "checkout", "-q", "main")
+    assert commands._finished(ledger, second) is False
+
+
 def test_every_refusal_names_a_way_forward(tmp_path, monkeypatch):
     root = onboarded(tmp_path, monkeypatch, PLAIN)
     assert run_cli("work", "claim", "feat/x", "--root", str(root), "--as", "main session 1")[0] == 0
