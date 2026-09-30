@@ -328,7 +328,8 @@ def _status(ledger: core.Ledger, args) -> int:
     if not open_rows:
         print("  no open rows")
     for row in open_rows:
-        mover = views.who_moves(row, ledger.profile, rows) or "nobody named"
+        mover = views.who_moves(row, ledger.profile, rows) or views.waits_on(row, rows, ledger.profile) \
+            or "nobody named"
         pending = views.pending_dependents(rows, row, ledger.profile) \
             if row.state == "shipped" and (ledger.profile.get("judge") or {}).get("required") and not row.walkable \
             else []

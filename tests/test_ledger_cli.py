@@ -249,6 +249,8 @@ def test_broke_prints_the_fix_row_it_filed(tmp_path, monkeypatch):
                         "--root", str(root), "--as", "acceptance judge 1")
     assert code == 0 and "fix row r2 `fix/x` filed for main session 1" in out
     assert "flotilla tree switch fix/x" in out and "tree cut" not in out
+    code, out = run_cli("status", "--root", str(root))
+    assert "r1 feat/x: shipped -> the fix `fix/x` (main session 1)" in out   # not "nobody named" (H26b)
 
 
 def test_a_session_takes_a_task_in_its_home_tree(tmp_path, monkeypatch):

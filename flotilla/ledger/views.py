@@ -58,6 +58,18 @@ def who_moves(row: Row, profile: dict, rows: dict | None = None) -> str:
     return ""
 
 
+def waits_on(row: Row, rows: dict, profile: dict) -> str:
+    """Why nobody is named for this row's move, in words a person can act on; "" when someone is named."""
+    if who_moves(row, profile, rows):
+        return ""
+    if row.state == "shipped" and row.broken:
+        fixes = [other for other in rows.values() if other.fixes == row.id and other.is_open]
+        if fixes:
+            return ", ".join(f"the fix `{other.branch}` ({other.owner or 'no owner'})" for other in fixes)
+        return "nobody: it broke and no fix row is open"
+    return ""
+
+
 def roster(rows: dict[str, Row], profile: dict, live: set[str] | None = None) -> list[dict]:
     open_rows = [row for row in rows.values() if row.is_open]
     names = {row.owner for row in open_rows} | {row.reader for row in open_rows if row.state in READING}

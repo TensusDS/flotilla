@@ -140,3 +140,25 @@ def test_a_broken_row_is_nobodys_move_until_its_fix_arrives():
     assert views.who_moves(table["r1"], JUDGED, table) == ""
     table["r2"] = row("r2", branch="fix/x", state="shipped", fixes="r1")
     assert views.who_moves(table["r1"], JUDGED, table) == views.JUDGE
+
+
+def broken_table(fix_state="claimed"):
+    return rows(row("r1", state="shipped", broken="the storm wall"),
+                row("r2", branch="fix/x", state=fix_state, fixes="r1"))
+
+
+def test_a_broken_row_names_its_open_fix():
+    table = broken_table()
+    assert views.who_moves(table["r1"], JUDGED, table) == ""
+    assert views.waits_on(table["r1"], table, JUDGED) == "the fix `fix/x` (main session 1)"
+
+
+def test_a_broken_row_with_no_fix_says_so():
+    table = broken_table("released")
+    assert views.waits_on(table["r1"], table, JUDGED) == "nobody: it broke and no fix row is open"
+
+
+def test_a_row_with_a_mover_waits_on_nothing():
+    table = broken_table()
+    assert views.waits_on(table["r2"], table, JUDGED) == ""
+    assert views.waits_on(row(state="handed"), rows(row(state="handed")), JUDGED) == ""
