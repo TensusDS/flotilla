@@ -78,7 +78,7 @@ def _spawn(ledger, args) -> int:
                                  f"{err}") from err
     try:
         raised, warnings = spawn.spawn(ledger, counts, census=census, store=store,
-                                       caller=f"spawn {caller_line(sessions)}")
+                                       caller=f"spawn {caller_line(sessions)}", anyway=args.anyway)
     except spawn.SpawnStopped as err:
         print("raised before the spawn stopped:")
         _print_raised(err.raised)

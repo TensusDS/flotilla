@@ -227,3 +227,42 @@ def test_a_seat_whose_turn_is_done_still_holds_its_one_copy_post(tmp_path):
     root, ledger, store = world(tmp_path, fake)
     with pytest.raises(spawn.SpawnRefused, match="one-copy"):
         spawn.plan(ledger, {"sender": 1}, census=fake.census, store=store, reserve=False)
+
+
+def test_spawn_refuses_under_the_memory_floor_and_names_the_numbers(tmp_path, monkeypatch):
+    fake = FakeClaude()
+    root, ledger, store = world(tmp_path, fake)
+    monkeypatch.setattr(spawn, "available_mb", lambda: 700)
+    with pytest.raises(spawn.SpawnRefused, match=r"700 MB.*2000 MB.*retire an idle seat.*--anyway"):
+        run(ledger, store, fake, {"main": 1})
+    assert fake.launched == []
+
+
+def test_anyway_raises_under_the_floor_and_a_dry_run_only_warns(tmp_path, monkeypatch):
+    fake = FakeClaude()
+    root, ledger, store = world(tmp_path, fake)
+    monkeypatch.setattr(spawn, "available_mb", lambda: 700)
+    seats, warnings = spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False, strict=False)
+    assert seats and any("700 MB" in line for line in warnings)
+    seats, _ = spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False, anyway=True)
+    assert seats
+
+
+def test_the_floor_comes_from_the_profile_and_unknown_memory_does_not_refuse(tmp_path, monkeypatch):
+    fake = FakeClaude()
+    root, ledger, store = world(tmp_path, fake)
+    ledger.profile = {**ledger.profile, "fleet": {**(ledger.profile.get("fleet") or {}), "memory_floor_mb": 500}}
+    monkeypatch.setattr(spawn, "available_mb", lambda: 700)
+    assert spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False)[0]
+    monkeypatch.setattr(spawn, "available_mb", lambda: None)
+    ledger.profile = {**ledger.profile, "fleet": {"memory_floor_mb": 99999}}
+    assert spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False)[0]
+
+
+def test_available_mb_reads_meminfo(tmp_path):
+    meminfo = tmp_path / "meminfo"
+    meminfo.write_text("MemTotal:       15978000 kB\nMemAvailable:    1024000 kB\n", encoding="utf-8")
+    assert spawn.read_available_mb(meminfo) == 1000
+    assert spawn.read_available_mb(tmp_path / "absent") is None
+    (tmp_path / "odd").write_text("MemTotal: 1 kB\n", encoding="utf-8")
+    assert spawn.read_available_mb(tmp_path / "odd") is None

@@ -173,6 +173,7 @@ def build_parser() -> argparse.ArgumentParser:
     spawn_.add_argument("--post", action="append", default=[], metavar="NAME=N", help="sessions of any post")
     spawn_.add_argument("--default", action="store_true", help="the profile's fleet.default composition")
     spawn_.add_argument("--dry-run", action="store_true", help="show names, trees and commands; change nothing")
+    spawn_.add_argument("--anyway", action="store_true", help="raise even under the memory floor")
     spawn_.add_argument("--root", default=".")
     retire_ = sub.add_parser("retire", help="stop a session and release its post; its work stays")
     retire_.add_argument("name")

@@ -15,6 +15,7 @@ import tempfile
 import time
 from collections import Counter
 from dataclasses import dataclass
+from pathlib import Path
 
 from flotilla.core.census import CensusUnavailable
 from flotilla.fleet import compose, launch, names
@@ -34,6 +35,39 @@ class Raised:
     seat: launch.Seat
     short_id: str | None
     note: str = ""
+
+
+MEMORY_FLOOR_MB = 2000
+MEMINFO = Path("/proc/meminfo")
+
+
+def read_available_mb(meminfo: Path = MEMINFO) -> int | None:
+    """MemAvailable in MB, or None where it cannot be read (no /proc, as on macOS)."""
+    try:
+        text = meminfo.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        if line.startswith("MemAvailable:"):
+            words = line.split()
+            return int(words[1]) // 1024 if len(words) > 1 and words[1].isdigit() else None
+    return None
+
+
+def available_mb() -> int | None:
+    return read_available_mb()
+
+
+def memory_short(ledger) -> str:
+    """Why a new seat should not be raised into this machine now, or "" (H47, H9: the daemon retires idle seats
+    under low memory, and a new seat takes the readers' place)."""
+    floor = int((ledger.profile.get("fleet") or {}).get("memory_floor_mb", MEMORY_FLOOR_MB))
+    free = available_mb()
+    if free is None or not floor or free >= floor:
+        return ""
+    return (f"{free} MB of memory is available, under the {floor} MB floor (fleet.memory_floor_mb): a new seat "
+            "here makes the daemon retire idle ones, readers first; retire an idle seat first, or raise it with "
+            "--anyway")
 
 
 def _live(census) -> list:
@@ -56,13 +90,16 @@ def _live_posts(ledger, sessions) -> Counter:
 
 
 def plan(ledger, counts: dict, *, census, store, reserve: bool,
-         strict: bool = True) -> tuple[list[launch.Seat], list[str]]:
+         strict: bool = True, anyway: bool = False) -> tuple[list[launch.Seat], list[str]]:
     try:
         wanted = compose.normalise(counts, ledger.posts)
     except compose.CompositionError as err:
         raise SpawnRefused(str(err)) from err
     if not wanted:
         raise SpawnRefused("name a composition, for example -r 1 -M 1, or use --default")
+    short = "" if anyway else memory_short(ledger)
+    if short and strict:
+        raise SpawnRefused(short + "; nothing was raised")
     sessions = _live(census)
     held = _live_posts(ledger, sessions)
     problems = compose.one_copy_problems(wanted, ledger.posts, held)
@@ -92,7 +129,8 @@ def plan(ledger, counts: dict, *, census, store, reserve: bool,
     if (ledger.profile.get("judge") or {}).get("required") and not wanted.get("judge") and not held.get("judge"):
         unwalked.append("the profile requires a judge and the fleet will hold none: shipped rows wait for a walk "
                         "nobody makes; add one (`--post judge=1`)")
-    return seats, compose.warnings(wanted, ledger.posts, held) + unwalked + refusals + setup_warnings
+    return seats, ([short] if short else []) + compose.warnings(wanted, ledger.posts, held) + unwalked + \
+        refusals + setup_warnings
 
 
 def _git(ledger, *args: str) -> subprocess.CompletedProcess:
@@ -196,8 +234,8 @@ def raise_seat(ledger, seat: launch.Seat, *, caller: str, census, wait: float = 
 
 
 def spawn(ledger, counts: dict, *, census, store, caller: str, wait: float = 30.0, poll: float = 1.0,
-          sleep=time.sleep) -> tuple[list[Raised], list[str]]:
-    seats, warnings = plan(ledger, counts, census=census, store=store, reserve=True)
+          sleep=time.sleep, anyway: bool = False) -> tuple[list[Raised], list[str]]:
+    seats, warnings = plan(ledger, counts, census=census, store=store, reserve=True, anyway=anyway)
     raised: list[Raised] = []
     for seat in seats:
         try:
