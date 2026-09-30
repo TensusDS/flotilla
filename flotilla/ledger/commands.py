@@ -293,13 +293,31 @@ def _now(ledger: core.Ledger) -> dt.datetime:
     return ledger.clock() if ledger.clock else dt.datetime.now(dt.timezone.utc)
 
 
+def _stacked_under(ledger: core.Ledger, row: Row, tip: str) -> list[str]:
+    """Tips of other open rows this row's tip stands on: their commits are theirs, not this row's (H4). A tip equal
+    to this one belongs to the row claimed first."""
+    rows = ledger.rows()
+    order = list(rows)
+    under = []
+    for other in rows.values():
+        if not other.is_open or other.branch == row.branch or not other.branch:
+            continue
+        theirs = gitq.branch_tip(ledger.root, other.branch, run=ledger.run)
+        if not theirs or gitq.is_ancestor(ledger.root, theirs, tip, run=ledger.run) is not True:
+            continue
+        if theirs == tip and row.id in order and other.id in order and order.index(other.id) > order.index(row.id):
+            continue
+        under.append(theirs)
+    return under
+
+
 def _finished(ledger: core.Ledger, row: Row) -> bool:
     if not receipts.tiers_for(ledger.profile, "handover"):
         return False
     tip = gitq.branch_tip(ledger.root, row.branch, run=ledger.run)
     if tip is None:
         return False
-    if handover.has_own_commits(ledger, tip) is not True:
+    if handover.has_own_commits(ledger, tip, beside=_stacked_under(ledger, row, tip)) is not True:
         return False
     ok, _ = receipts.check_receipt(state=ledger.state_dir, repo_key=ledger.repo_key, sha=tip, purpose="handover",
                                    profile=ledger.profile)

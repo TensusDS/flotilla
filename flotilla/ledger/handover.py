@@ -36,11 +36,17 @@ def _current_tip(ledger: Ledger, branch: str, named: str | None = None) -> str:
     return current
 
 
-def has_own_commits(ledger: Ledger, tip: str) -> bool | None:
-    """Whether `tip` carries anything trunk does not: a tip already on trunk has nothing to hand over."""
+def has_own_commits(ledger: Ledger, tip: str, *, beside=()) -> bool | None:
+    """Whether `tip` carries anything trunk does not: a tip already on trunk has nothing to hand over.
+
+    With `beside` (tips of other rows' branches), whether it carries anything neither trunk nor those tips do."""
     trunk_head = gitq.resolve(ledger.root, gitq.trunk_ref(ledger.root, ledger.trunk, run=ledger.run), run=ledger.run)
     if trunk_head is None:
         return None
+    if beside:
+        done = ledger.run(["git", "-C", str(ledger.root), "rev-list", tip, f"^{trunk_head}",
+                           *(f"^{other}" for other in beside)], capture_output=True, text=True, check=False)
+        return None if done.returncode != 0 else bool(done.stdout.split())
     on_trunk = gitq.is_ancestor(ledger.root, tip, trunk_head, run=ledger.run)
     return None if on_trunk is None else not on_trunk
 

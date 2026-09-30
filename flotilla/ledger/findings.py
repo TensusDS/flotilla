@@ -3,8 +3,10 @@
 Five findings, each a question to git the ledger alone cannot answer:
 - vanished: an open row whose branch is gone, locally and on origin. Merged-and-deleted and abandoned look the
   same, so it is a person's decision, never a move made for them;
-- after_close: a finished row whose branch moved on and did not ship: work done after the row ended, seen by no one;
-- unread_in_trunk: open work, not accepted, already in trunk;
+- after_close: a finished row whose branch moved on and did not ship: work done after the row ended, seen by no one
+  (quiet when another open row's branch carries the new tip: the work went on in that row);
+- unread_in_trunk: open work, not accepted, already in trunk; a tip on trunk's own first-parent line is a fresh
+  branch moved to trunk, not work merged in, and a commit made there is direct_commit's business;
 - direct_commit: a commit on trunk since the oldest recorded base that no verdict covers (not a merge, not a
   release, not the same change as reviewed work);
 - inbatch_not_pushed: work born in a batch that origin does not have.
@@ -37,6 +39,13 @@ def _horizon(ledger, rows: dict[str, Row], trunk: str) -> str:
     return oldest
 
 
+def _open_tips(ledger, rows: dict[str, Row], *, besides: str) -> list[str]:
+    """The branch tips of open rows on branches other than `besides`."""
+    branches = {row.branch for row in rows.values() if row.is_open and row.branch and row.branch != besides}
+    tips = (gitq.branch_tip(ledger.root, name, run=ledger.run) for name in sorted(branches))
+    return [tip for tip in tips if tip]
+
+
 def findings(ledger, rows: dict[str, Row] | None = None) -> list[dict]:
     rows = ledger.rows() if rows is None else rows
     found: list[dict] = []
@@ -54,7 +63,8 @@ def findings(ledger, rows: dict[str, Row] | None = None) -> list[dict]:
             found.append(_item("vanished", row, "", f"row {row.id} is {row.state}, and its branch is gone locally "
                                                     "and on origin; release it, or record it with offledger"))
         if row.state in UNACCEPTED and local and local != row.base and \
-                gitq.is_ancestor(ledger.root, local, trunk, run=ledger.run) is True:
+                gitq.is_ancestor(ledger.root, local, trunk, run=ledger.run) is True and \
+                gitq.on_first_parent(ledger.root, local, trunk, run=ledger.run) is not True:
             found.append(_item("unread_in_trunk", row, local, f"row {row.id} is {row.state}, and its tip "
                                                               f"{local[:7]} is already in `{trunk}`: it reached trunk "
                                                               "without a verdict; record it with offledger and a "
@@ -66,6 +76,9 @@ def findings(ledger, rows: dict[str, Row] | None = None) -> list[dict]:
         if current is None or current == row.tip:
             continue
         if origin and gitq.is_ancestor(ledger.root, current, origin, run=ledger.run) is True:
+            continue
+        if any(gitq.is_ancestor(ledger.root, current, tip, run=ledger.run) is True
+               for tip in _open_tips(ledger, rows, besides=branch)):
             continue
         found.append(_item("after_close", row, current, f"`{branch}` moved to {current[:7]} after row {row.id} "
                                                         f"ended ({row.state} at {row.tip[:7]}); claim the new work"))
