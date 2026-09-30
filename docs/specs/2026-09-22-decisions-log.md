@@ -634,6 +634,24 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    reviewer returns it with `fix`, so the sender never has to resolve a conflict nobody reads; a git that cannot
    say does not refuse (H43). (planner's decision, field fixes part 6 track A, 2026-09-30)
 
+146. **A background session with no process behind it is gone**: the census drops an entry with no pid and no
+   status, or whose pid names no running process, so a seat the daemon retired is seen empty everywhere (H48).
+   (planner's decision, field fixes part 7 track A, 2026-09-30)
+147. **Releasing a seat frees its tree**: a clean seat worktree is detached, so the branch it held can be taken up
+   in another tree; a dirty one keeps it and the release says so (H36). (planner's decision, field fixes part 7
+   track A, 2026-09-30)
+148. **watch tells the orchestrator about a seat with no work** past `watch.idle_seat_minutes` (default 60), for
+   posts that may claim (H45). (planner's decision, field fixes part 7 track A, 2026-09-30)
+149. **watch tells the orchestrator when the queue has drained** — no open work once some has been done — and the
+   orchestrator closes the task: the person checks the result, then is offered `fleet down` (H12, H46). (planner's
+   decision, field fixes part 7 track A, 2026-09-30)
+150. **spawn refuses to raise a seat under a memory floor** (`fleet.memory_floor_mb`, default 2000; `--anyway`
+   overrides; skipped where memory cannot be read), and the orchestrator post says to raise readers, the sender and
+   the judge before another implementer (H47, H9). (planner's decision, field fixes part 7 track A, 2026-09-30)
+151. **fleet down names what stays alive**: census sessions working in the project or its worktrees that are not
+   seats it retired, each with the command that stops it (H12). (planner's decision, field fixes part 7 track A,
+   2026-09-30)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
