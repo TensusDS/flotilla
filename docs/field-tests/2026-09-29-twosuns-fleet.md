@@ -706,3 +706,19 @@ The person walked the build and called it "very cool". Liked: the atmosphere and
 reads a little sterile, and there are too few points of interest — the ruins are there, but there is nothing to do in
 them. The person carries the fleet to the end and stands it down themselves; monitoring stopped at 22:15 (last
 recorded finding H48).
+
+H49. **gap — every seat brings the person's whole MCP and plugin set, and that costs as much memory as the sessions
+themselves.** Measured at 22:40 on 09-30 at the person's request ("the fleet complains about memory again"): 1.4 GB
+available, swap 3958/4095. By process group: Claude sessions 6.5 GB in 29 processes; **MCP servers 6.1 GB in 167
+processes** — per server type chrome-devtools-mcp 2.0 GB (58 processes), serena 1.1 GB (28), mcp-pdf-server 1.0 GB
+(28), playwright-mcp 1.3 GB (39); Chrome 1.2 GB. Each background seat starts every MCP server the person's user
+scope enables, whatever its post needs: a reviewer or a sender needs none of a PDF server, a devtools bridge or a
+code index, and only the judge needs a browser. On top, the `security-guidance` plugin's edit hook starts a headless
+`claude` per edit in a seat's tree (seen: pid 1754421, 225 MB, parent `security_reminder_hook.py`, cwd
+`twosuns-main-12`). No dead session was found: every large Claude process maps to a live census entry except the
+daemon's pre-warmed spare (136 MB) and one interactive `claude` on pts/4 in `/home/max/workspace/twosuns` started
+09-29 20:03 with its own four MCP servers, which the census does not list. The fleet itself had grown back to seven
+implementers (main sessions 8–14; 13 and 14 raised at ~22:36). Fix direction: `flotilla spawn` launches seats with
+an MCP configuration per post (`--strict-mcp-config` with the servers the post declares, e.g. the judge's browser),
+and onboarding names the user-scope plugins whose hooks run in every seat; the sizing rule of H47 counts a seat at
+its real cost (~0.8 GB with its servers), not the session's.
