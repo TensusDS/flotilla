@@ -36,11 +36,17 @@ def _current_tip(ledger: Ledger, branch: str, named: str | None = None) -> str:
     return current
 
 
-def has_own_commits(ledger: Ledger, tip: str) -> bool | None:
-    """Whether `tip` carries anything trunk does not: a tip already on trunk has nothing to hand over."""
+def has_own_commits(ledger: Ledger, tip: str, *, beside=()) -> bool | None:
+    """Whether `tip` carries anything trunk does not: a tip already on trunk has nothing to hand over.
+
+    With `beside` (tips of other rows' branches), whether it carries anything neither trunk nor those tips do."""
     trunk_head = gitq.resolve(ledger.root, gitq.trunk_ref(ledger.root, ledger.trunk, run=ledger.run), run=ledger.run)
     if trunk_head is None:
         return None
+    if beside:
+        done = ledger.run(["git", "-C", str(ledger.root), "rev-list", tip, f"^{trunk_head}",
+                           *(f"^{other}" for other in beside)], capture_output=True, text=True, check=False)
+        return None if done.returncode != 0 else bool(done.stdout.split())
     on_trunk = gitq.is_ancestor(ledger.root, tip, trunk_head, run=ledger.run)
     return None if on_trunk is None else not on_trunk
 
@@ -95,14 +101,26 @@ def moved(ledger: Ledger, actor: Actor, branch: str, *, tip: str, agreed_by: str
         if row.owner != actor.name:
             raise MoveRefused(f"`{branch}` belongs to {row.owner}; only the owner records a moved tip")
         state = s.next_state(row, "moved")
-        if row.reader and row.taken and agreed_by != row.reader:
-            raise MoveRefused(f"{row.reader} is reading `{branch}` over {row.tip[:7]}; moving the tip needs their "
-                              f"agreement (--agreed-by \"{row.reader}\")")
         fields = {"tip": current}
+        evidence = {"from": row.tip, "agreed_by": agreed_by, "receipt": receipt}
+        if row.reader and row.taken and agreed_by != row.reader:
+            if not _gone(ledger, row.reader):
+                raise MoveRefused(f"{row.reader} is reading `{branch}` over {row.tip[:7]}; moving the tip needs "
+                                  f"their agreement (--agreed-by \"{row.reader}\")")
+            # nobody can agree for a reader who is gone: the new tip goes back to be read by whoever is assigned
+            fields.update({"reader": "", "taken": False})
+            evidence["reader_gone"] = row.reader
         if row.state == "accepted":
             fields["verdict"] = ""   # the verdict was over the old tip; the reader accepts again
-        return s.append(actor, row.id, "moved", state, fields=fields,
-                        evidence={"from": row.tip, "agreed_by": agreed_by, "receipt": receipt})
+        return s.append(actor, row.id, "moved", state, fields=fields, evidence=evidence)
+
+
+def _gone(ledger: Ledger, name: str) -> bool:
+    """Whether the census says `name` is not alive; a census that cannot be asked says nothing (H28)."""
+    try:
+        return name not in ledger.live_names()
+    except MoveRefused:
+        return False
 
 
 def wait(ledger: Ledger, actor: Actor, branch: str, *, on: str = "", why: str = "", clear: bool = False) -> Row:

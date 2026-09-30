@@ -3,7 +3,8 @@
 The command runs as its own process - never through a pipeline, whose exit code belongs to the last command in
 it - and its output is shown as it comes. A process killed by a signal (a negative return code, or 137/143 from a
 shell that saw the kill) has no verdict: a suite killed at 8 % prints no failure, and reading it as green records
-evidence over code nobody checked. The summary is the last line that counts tests ("212 passed"), or the last line.
+evidence over code nobody checked. The summary is the last line that counts tests ("212 passed"), or the last line that is not a shell's own error
+(`bash: kill: ... No such process` from a teardown), or the last line.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from dataclasses import dataclass
 from flotilla.core.text import strip_ansi
 
 SUMMARY = re.compile(r"\b\d+ (?:passed|failed|errors?|skipped|xfailed|xpassed|deselected)\b")
+WRAPPER = re.compile(r"^(?:ba|z|)sh: |^kill: |^/bin/(?:ba)?sh: ")   # a shell's own error, not the command's
 SHELL_KILLS = {137: 9, 143: 15}
 
 
@@ -33,7 +35,8 @@ def summarize(lines) -> str:
     for line in reversed(lines):
         if SUMMARY.search(line):
             return line.strip("= ").strip()[:200]
-    return lines[-1][:200] if lines else "(no output)"
+    said = [line for line in lines if not WRAPPER.search(line)]
+    return (said or lines)[-1][:200] if lines else "(no output)"
 
 
 def verdict_of(returncode: int) -> tuple[str, int | None, int]:

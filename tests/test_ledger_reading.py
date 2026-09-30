@@ -164,3 +164,35 @@ def test_a_return_keeps_its_reason_on_the_row(world):
     handed(root, ledger)
     row = reading.fix(ledger, actor(ledger, "review session 1"), "feat/x", why="no test for an empty file")
     assert row.why == "no test for an empty file"
+
+
+def handed_against_a_moved_trunk(root, ledger):
+    git(root, "checkout", "-q", "-b", "feat/x")
+    commit(root, "the branch's side", "shared.txt", "branch\n")
+    git(root, "checkout", "-q", "main")
+    core.claim(ledger, actor(ledger, "main session 1"), "feat/x")
+    row = handover.hand(ledger, actor(ledger, "main session 1"), "feat/x")
+    commit(root, "trunk's side", "shared.txt", "trunk\n")
+    git(root, "push", "-q", "origin", "main")
+    reading.take(ledger, actor(ledger, "review session 1"), "feat/x")
+    return row
+
+
+def test_accept_refuses_a_tip_that_does_not_merge_with_trunk(world):
+    root, ledger = world
+    row = handed_against_a_moved_trunk(root, ledger)
+    with pytest.raises(MoveRefused, match="does not merge with trunk .*return it with `fix`"):
+        reading.accept(ledger, actor(ledger, "review session 1"), "feat/x", reviewed=row.tip)
+
+
+def test_accept_does_not_refuse_when_git_cannot_say(tmp_path):
+    import subprocess
+
+    def run(cmd, **kwargs):
+        if isinstance(cmd, list) and "merge-tree" in cmd:
+            return subprocess.CompletedProcess(cmd, 129, "", "unknown option `write-tree'")
+        return subprocess.run(cmd, **kwargs)
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", run=run)
+    row = handed_against_a_moved_trunk(root, ledger)
+    assert reading.accept(ledger, actor(ledger, "review session 1"), "feat/x", reviewed=row.tip).state == "accepted"

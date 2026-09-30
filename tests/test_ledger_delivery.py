@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -380,3 +381,210 @@ def test_reconcile_stays_quiet_about_a_queued_row_not_on_origin(direct):
     root, ledger = direct
     queued(root, ledger)
     assert delivery.reconcile(ledger, actor(ledger, SENDER)) == []
+
+
+def conflicting_branch_merged_with_trunk(root, name="feat/x"):
+    """A branch and trunk change one file differently; the author merges trunk into the branch and resolves the
+    conflict by hand, the way the twosuns fleet did before handing over. Returns the hand-made merge commit."""
+    git(root, "checkout", "-q", "-b", name)
+    commit(root, "the branch's side", "shared.txt", "branch\n")
+    git(root, "checkout", "-q", "main")
+    commit(root, "trunk's side", "shared.txt", "trunk\n")
+    git(root, "push", "-q", "origin", "main")
+    git(root, "checkout", "-q", name)
+    done = subprocess.run(["git", *IDENTITY, "merge", "-q", "main"], cwd=root, capture_output=True, text=True)
+    assert done.returncode != 0   # a real conflict
+    (root / "shared.txt").write_text("both\n", encoding="utf-8")
+    git(root, "add", "shared.txt")
+    git(root, *IDENTITY, "commit", "-q", "--no-edit", "-m", f"merge main into {name}")
+    resolved = git(root, "rev-parse", "HEAD")
+    git(root, "checkout", "-q", "main")
+    return resolved
+
+
+def accepted_over(ledger, name, tip):
+    from flotilla.ledger import core, handover, reading
+    core.claim(ledger, actor(ledger, "main session 1"), name)
+    handover.hand(ledger, actor(ledger, "main session 1"), name)
+    reading.take(ledger, actor(ledger, "review session 1"), name)
+    return reading.accept(ledger, actor(ledger, "review session 1"), name, reviewed=tip)
+
+
+def test_a_hand_resolved_merge_the_reader_read_lands(direct):
+    root, ledger = direct
+    resolved = conflicting_branch_merged_with_trunk(root)
+    accepted_over(ledger, "feat/x", resolved)
+    delivery.queue(ledger, actor(ledger, SENDER), "feat/x")
+    pushed = pushed_from_a_side_tree(root)
+    row = delivery.land(ledger, actor(ledger, SENDER), "feat/x", merge=pushed)
+    assert (row.state, row.merge) == ("landed", pushed)
+
+
+def test_a_hand_resolved_merge_inside_the_read_range_lands(direct):
+    root, ledger = direct
+    conflicting_branch_merged_with_trunk(root)
+    git(root, "checkout", "-q", "feat/x")
+    tip = commit(root, "after the merge", "after.txt")
+    git(root, "checkout", "-q", "main")
+    accepted_over(ledger, "feat/x", tip)
+    delivery.queue(ledger, actor(ledger, SENDER), "feat/x")
+    pushed = pushed_from_a_side_tree(root)
+    assert delivery.land(ledger, actor(ledger, SENDER), "feat/x", merge=pushed).state == "landed"
+
+
+def senders_own_resolution(root, ledger):
+    """The sender merges an accepted branch into a trunk that moved, resolves the conflict itself and pushes:
+    the resolution is work nobody read (twosuns H21, b7513e3). Returns the pushed merge."""
+    git(root, "checkout", "-q", "-b", "feat/x")
+    commit(root, "the branch's side", "shared.txt", "branch\n")
+    git(root, "checkout", "-q", "main")
+    accepted_over(ledger, "feat/x", git(root, "rev-parse", "feat/x"))
+    delivery.queue(ledger, actor(ledger, SENDER), "feat/x")
+    commit(root, "trunk's side", "shared.txt", "trunk\n")
+    git(root, "push", "-q", "origin", "main")
+    git(root, "checkout", "-q", "-b", "integrate", "origin/main")
+    done = subprocess.run(["git", *IDENTITY, "merge", "-q", "--no-ff", "-m", "merge feat/x", "feat/x"], cwd=root,
+                          capture_output=True, text=True)
+    assert done.returncode != 0
+    (root / "shared.txt").write_text("the sender's guess\n", encoding="utf-8")
+    git(root, "add", "shared.txt")
+    git(root, *IDENTITY, "commit", "-q", "--no-edit", "-m", "merge feat/x")
+    pushed = git(root, "rev-parse", "HEAD")
+    git(root, "push", "-q", "origin", "HEAD:main")
+    git(root, "checkout", "-q", "main")
+    return pushed
+
+
+def test_the_senders_own_hand_resolved_merge_is_still_unread(direct):
+    root, ledger = direct
+    pushed = senders_own_resolution(root, ledger)
+    with pytest.raises(MoveRefused, match=rf"nobody read: {pushed[:7]}"):
+        delivery.land(ledger, actor(ledger, SENDER), "feat/x", merge=pushed)
+
+
+def pull(root):
+    """The person pulls the main checkout, as the twosuns sessions kept asking them to."""
+    git(root, "fetch", "-q", "origin")
+    git(root, "merge", "-q", "--ff-only", "origin/main")
+
+
+def test_a_pulled_main_checkout_does_not_turn_the_unread_check_off(direct):
+    root, ledger = direct
+    queued(root, ledger)
+    pushed = pushed_from_a_side_tree(root, extra="unread work rides along")
+    pull(root)
+    assert git(root, "rev-parse", "main") == pushed   # the local trunk now carries the push
+    with pytest.raises(MoveRefused, match="nobody read: .* unread work rides along"):
+        delivery.land(ledger, actor(ledger, SENDER), "feat/x", merge=pushed)
+    with pytest.raises(MoveRefused, match="nobody read: .* unread work rides along"):
+        delivery.land(ledger, actor(ledger, SENDER), "feat/x")
+
+
+def test_a_reviewed_merge_lands_from_a_pulled_main_checkout(direct):
+    root, ledger = direct
+    queued(root, ledger)
+    pushed = pushed_from_a_side_tree(root)
+    pull(root)
+    assert delivery.land(ledger, actor(ledger, SENDER), "feat/x").merge == pushed
+
+
+def test_a_reader_vouches_for_the_senders_resolution_and_it_lands(direct):
+    from flotilla.ledger import outside
+    root, ledger = direct
+    pushed = senders_own_resolution(root, ledger)
+    row = outside.vouch(ledger, actor(ledger, "review session 1"), "feat/x", commit=pushed)
+    assert (row.state, row.vouched) == ("queued", [pushed])
+    assert delivery.land(ledger, actor(ledger, SENDER), "feat/x", merge=pushed).state == "landed"
+
+
+def test_a_vouch_counts_from_a_pulled_main_checkout_too(direct):
+    from flotilla.ledger import outside
+    root, ledger = direct
+    pushed = senders_own_resolution(root, ledger)
+    pull(root)
+    outside.vouch(ledger, actor(ledger, "review session 1"), "feat/x", commit=pushed)
+    assert delivery.land(ledger, actor(ledger, SENDER), "feat/x").merge == pushed
+
+
+def test_only_a_reader_vouches_and_only_for_delivery_rows(direct):
+    from flotilla.ledger import outside
+    root, ledger = direct
+    pushed = senders_own_resolution(root, ledger)
+    for name in (SENDER, "main session 1"):
+        with pytest.raises(MoveRefused):
+            outside.vouch(ledger, actor(ledger, name), "feat/x", commit=pushed)
+    with pytest.raises(MoveRefused, match="could not resolve"):
+        outside.vouch(ledger, actor(ledger, "review session 1"), "feat/x", commit="no-such-commit")
+    drive(root, ledger, "feat/y", to="claimed")
+    with pytest.raises(MoveRefused, match="accepted, queued or landed"):
+        outside.vouch(ledger, actor(ledger, "review session 1"), "feat/y", commit=pushed)
+
+
+def test_the_sender_returns_a_queued_row_that_no_longer_merges(direct):
+    from flotilla.ledger import handover, views
+    root, ledger = direct
+    queued(root, ledger)
+    row = delivery.send_back(ledger, actor(ledger, SENDER), "feat/x", why="conflicts with main in shared.txt")
+    assert (row.state, row.verdict) == ("fixing", "")
+    assert row.history[-1]["evidence"]["why"].startswith("conflicts")
+    assert views.who_moves(row, DIRECT, ledger.rows()) == "main session 1"
+    git(root, "checkout", "-q", "feat/x")
+    commit(root, "merged main, resolved", "resolved.txt")
+    git(root, "checkout", "-q", "main")
+    assert handover.hand(ledger, actor(ledger, "main session 1"), "feat/x").state == "handed"
+
+
+def test_an_accepted_row_may_be_returned_too(direct):
+    root, ledger = direct
+    drive(root, ledger)
+    assert delivery.send_back(ledger, actor(ledger, SENDER), "feat/x", why="trunk moved").state == "fixing"
+
+
+def test_return_needs_a_reason_the_sender_and_a_row_past_its_read(direct):
+    root, ledger = direct
+    queued(root, ledger)
+    with pytest.raises(MoveRefused, match="--why"):
+        delivery.send_back(ledger, actor(ledger, SENDER), "feat/x", why=" ")
+    with pytest.raises(MoveRefused):
+        delivery.send_back(ledger, actor(ledger, "review session 1"), "feat/x", why="x")
+    drive(root, ledger, "feat/y", to="handed")
+    with pytest.raises(MoveRefused, match="not legal from `handed`"):
+        delivery.send_back(ledger, actor(ledger, SENDER), "feat/y", why="x")
+
+
+def test_a_returned_row_carries_the_new_reason_not_an_old_fix(direct):
+    from flotilla.ledger import handover, letters, reading
+    root, ledger = direct
+    drive(root, ledger, to="handed")
+    reading.fix(ledger, actor(ledger, "review session 1"), "feat/x", why="OLD: no test for an empty file")
+    git(root, "checkout", "-q", "feat/x")
+    tip = commit(root, "a test for an empty file", "empty.txt")
+    git(root, "checkout", "-q", "main")
+    handover.hand(ledger, actor(ledger, "main session 1"), "feat/x")
+    reading.take(ledger, actor(ledger, "review session 1"), "feat/x")
+    reading.accept(ledger, actor(ledger, "review session 1"), "feat/x", reviewed=tip)
+    delivery.queue(ledger, actor(ledger, SENDER), "feat/x")
+    row = delivery.send_back(ledger, actor(ledger, SENDER), "feat/x", why="NEW: conflicts with main in shared.txt")
+    assert row.why == "NEW: conflicts with main in shared.txt"
+    assert "NEW: conflicts" in letters._body(row) and "OLD" not in letters._body(row)
+
+
+def test_a_post_that_may_land_never_vouches_whatever_the_project_gives_it(tmp_path):
+    import dataclasses
+
+    from flotilla.ledger import outside
+    from flotilla.posts import TEMPLATE_DIR, load_post
+    posts = {p.name: p for p in (load_post(path) for path in sorted(TEMPLATE_DIR.glob("*.md")))}
+    posts["sender"] = dataclasses.replace(posts["sender"], may=posts["sender"].may | {"vouch"})
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile=DIRECT, posts=posts)
+    pushed = senders_own_resolution(root, ledger)
+    with pytest.raises(MoveRefused, match="may land"):
+        outside.vouch(ledger, actor(ledger, SENDER), "feat/x", commit=pushed)
+
+
+def test_the_unread_refusal_names_vouch_as_a_way_out(direct):
+    root, ledger = direct
+    pushed = senders_own_resolution(root, ledger)
+    with pytest.raises(MoveRefused, match="flotilla work vouch"):
+        delivery.land(ledger, actor(ledger, SENDER), "feat/x", merge=pushed)

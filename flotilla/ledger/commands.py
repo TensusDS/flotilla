@@ -187,11 +187,14 @@ MOVES = {
     "queue": lambda l, a, x: delivery.queue(l, a, x.branch, pr=x.pr),
     "land": lambda l, a, x: delivery.land(l, a, x.branch, merge=x.merge),
     "ship": lambda l, a, x: delivery.ship(l, a, x.branch),
+    "return": lambda l, a, x: delivery.send_back(l, a, x.branch, why=x.why),
+    "vouch": lambda l, a, x: outside.vouch(l, a, x.branch, commit=x.commit),
     "inbatch": lambda l, a, x: outside.inbatch(l, a, x.branch, commit=x.commit, read_by=x.read_by, why=x.why),
     "offledger": lambda l, a, x: outside.offledger(l, a, x.branch, merge=x.merge, witness=x.witness,
                                                    attested=x.attested),
     "walked": lambda l, a, x: judging.walked(l, a, x.branch, build=x.build, steps=x.steps, saw=x.saw),
     "broke": lambda l, a, x: _broke(l, a, x),
+    "unbroke": lambda l, a, x: judging.unbroke(l, a, x.branch, why=x.why),
     "close": lambda l, a, x: judging.close(l, a, x.branch, ref=x.ref, why=x.why),
     "adopt": lambda l, a, x: steering.adopt(l, a, x.branch, to=x.to),
     "hold": lambda l, a, x: steering.hold(l, a, x.branch, until=x.until, why=x.why),
@@ -292,13 +295,33 @@ def _now(ledger: core.Ledger) -> dt.datetime:
     return ledger.clock() if ledger.clock else dt.datetime.now(dt.timezone.utc)
 
 
+def _stacked_under(ledger: core.Ledger, row: Row, tip: str) -> list[str]:
+    """Tips of other open rows whose commits are theirs, not this row's (H4): every open row claimed before this one,
+    wherever its branch has moved since (the part's author keeps working), and a row claimed after it only when its
+    tip lies strictly under this one. A row stacked on this one never takes this row's commits away."""
+    rows = ledger.rows()
+    order = list(rows)
+    mine = order.index(row.id) if row.id in order else len(order)
+    under = []
+    for other in rows.values():
+        if not other.is_open or other.branch == row.branch or not other.branch:
+            continue
+        theirs = gitq.branch_tip(ledger.root, other.branch, run=ledger.run)
+        if not theirs:
+            continue
+        earlier = order.index(other.id) < mine
+        if earlier or (theirs != tip and gitq.is_ancestor(ledger.root, theirs, tip, run=ledger.run) is True):
+            under.append(theirs)
+    return under
+
+
 def _finished(ledger: core.Ledger, row: Row) -> bool:
     if not receipts.tiers_for(ledger.profile, "handover"):
         return False
     tip = gitq.branch_tip(ledger.root, row.branch, run=ledger.run)
     if tip is None:
         return False
-    if handover.has_own_commits(ledger, tip) is not True:
+    if handover.has_own_commits(ledger, tip, beside=_stacked_under(ledger, row, tip)) is not True:
         return False
     ok, _ = receipts.check_receipt(state=ledger.state_dir, repo_key=ledger.repo_key, sha=tip, purpose="handover",
                                    profile=ledger.profile)
@@ -327,7 +350,8 @@ def _status(ledger: core.Ledger, args) -> int:
     if not open_rows:
         print("  no open rows")
     for row in open_rows:
-        mover = views.who_moves(row, ledger.profile, rows) or "nobody named"
+        mover = views.who_moves(row, ledger.profile, rows) or views.waits_on(row, rows, ledger.profile) \
+            or "nobody named"
         pending = views.pending_dependents(rows, row, ledger.profile) \
             if row.state == "shipped" and (ledger.profile.get("judge") or {}).get("required") and not row.walkable \
             else []

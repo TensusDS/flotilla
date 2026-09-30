@@ -109,6 +109,12 @@ def accept(ledger: Ledger, actor: Actor, branch: str, *, reviewed: str) -> Row:
         if current != row.tip:
             raise MoveRefused(f"`{branch}` moved since handover ({row.tip[:7]} -> {current[:7]}); the owner records "
                               "it with `moved` first")
+        trunk = gitq.trunk_ref(ledger.root, ledger.trunk, run=ledger.run)
+        if gitq.merges_cleanly(ledger.root, trunk, row.tip, run=ledger.run) is False:
+            head = gitq.resolve(ledger.root, trunk, run=ledger.run) or trunk
+            raise MoveRefused(f"{row.tip[:7]} does not merge with trunk {head[:7]}: the sender could land it only "
+                              "by resolving the conflict itself, which nobody would read. return it with `fix` "
+                              "(the author merges trunk and hands it over again)")
         return s.append(actor, row.id, "accept", state,
                         fields={"verdict": row.tip, "reader": actor.name, "taken": True},
                         evidence={"reviewed": reviewed})

@@ -38,6 +38,12 @@ def trunk_ref(root: Path, trunk: str, run=subprocess.run) -> str:
     return f"origin/{trunk}" if resolve(root, f"refs/remotes/origin/{trunk}", run=run) else trunk
 
 
+
+def merges_cleanly(root: Path, a: str, b: str, run=subprocess.run) -> bool | None:
+    """Whether git merges `a` and `b` without a conflict; None when git cannot say (an old git, an unknown ref)."""
+    done = _git(root, "merge-tree", "--write-tree", a, b, run=run)
+    return {0: True, 1: False}.get(done.returncode)
+
 def fork_point(root: Path, branch: str, trunk: str, run=subprocess.run) -> str | None:
     done = _git(root, "merge-base", trunk_ref(root, trunk, run=run), f"refs/heads/{branch}", run=run)
     return (done.stdout.strip() or None) if done.returncode == 0 else None
@@ -46,6 +52,15 @@ def fork_point(root: Path, branch: str, trunk: str, run=subprocess.run) -> str |
 def is_ancestor(root: Path, a: str, b: str, run=subprocess.run) -> bool | None:
     done = _git(root, "merge-base", "--is-ancestor", a, b, run=run)
     return {0: True, 1: False}.get(done.returncode)
+
+
+def on_first_parent(root: Path, sha: str, ref: str, *, run=subprocess.run, depth: int = 500) -> bool | None:
+    """Whether `sha` is one of the last `depth` commits on `ref`'s first-parent line (trunk itself, not a merged-in
+    side). A branch pointing there was moved to trunk, not merged into it."""
+    done = _git(root, "rev-list", "--first-parent", f"--max-count={depth}", ref, run=run)
+    if done.returncode != 0:
+        return None
+    return sha in done.stdout.split()
 
 
 def patch_fingerprint(root: Path, base: str, tip: str, run=subprocess.run) -> str | None:

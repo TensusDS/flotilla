@@ -18,13 +18,15 @@ BASE = {
                "accept": "accepted", "release": "released", "offledger": "offledger"},
     "fixing": {"hand": "handed", "assign": "fixing", "recuse": "fixing", "release": "released",
                "offledger": "offledger"},
-    "accepted": {"queue": "queued", "moved": "handed", "release": "released", "offledger": "offledger"},
-    "queued": {"land": "landed", "ship": "shipped", "release": "released", "offledger": "offledger"},
+    "accepted": {"queue": "queued", "moved": "handed", "return": "fixing", "release": "released",
+                 "offledger": "offledger"},
+    "queued": {"land": "landed", "ship": "shipped", "return": "fixing", "release": "released",
+               "offledger": "offledger"},
     "landed": {"ship": "shipped", "close": "closed", "release": "released", "offledger": "offledger"},
-    "shipped": {"walked": "walked", "broke": "shipped", "close": "closed"},
+    "shipped": {"walked": "walked", "broke": "shipped", "unbroke": "shipped", "close": "closed"},
     "walked": {"close": "closed"},
 }
-ANNOTATIONS = ("wait", "hold", "unhold", "adopt", "urgent", "run", "walkable")
+ANNOTATIONS = ("wait", "hold", "unhold", "adopt", "urgent", "run", "walkable", "vouch")
 
 
 def moves_from(state: str, profile: dict, owner_post: str = "") -> dict[str, str]:

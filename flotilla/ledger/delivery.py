@@ -83,6 +83,19 @@ def queue(ledger: Ledger, actor: Actor, branch: str, *, pr: int | None = None) -
         return s.append(actor, row.id, "queue", state, fields=fields, evidence=evidence)
 
 
+
+def send_back(ledger: Ledger, actor: Actor, branch: str, *, why: str) -> Row:
+    """The sender returns an accepted or queued row to its author: it no longer merges with trunk, or trunk moved
+    under it. The verdict was over the old tip; the author merges trunk and hands it over for a read (H26c)."""
+    require_may(actor, "return", ledger.posts)
+    if not why.strip():
+        raise MoveRefused("say why it goes back (--why), for example the conflict")
+    with ledger.session() as s:
+        row = s.need_open_row(branch)
+        state = s.next_state(row, "return")
+        return s.append(actor, row.id, "return", state, fields={"verdict": "", "why": why.strip()},
+                        evidence={"why": why.strip()})
+
 SEQUENCE = ("merge `{branch}` in your own tree on a branch from `origin/{trunk}`, run `flotilla receipt run "
             "--purpose push` there, push HEAD:{trunk}, then `flotilla work land {branch} --merge <that commit>`")
 
@@ -126,22 +139,27 @@ def land(ledger: Ledger, actor: Actor, branch: str, *, merge: str | None = None)
             raise MoveRefused(f"{commit[:7]} does not contain the revision read ({read[:7]}); "
                               + (SEQUENCE.format(branch=branch, trunk=ledger.trunk) if ledger.mode == "direct"
                                  else f"merge `{branch}` into `{ledger.trunk}` first"))
-        if on_local:
-            loose = batch.unaccounted(ledger, s.rows, trunk_head, base=row.base)   # what the push will carry
+        # what the trunk gained from the moment the sender merged, whatever the main checkout holds: a pulled
+        # local trunk equals origin, and counting only what the push will carry would count nothing (H29)
+        before = gitq.resolve(ledger.root, f"{commit}^1", run=ledger.run) or row.base
+        gained = batch.unaccounted(ledger, s.rows, trunk_head if on_local else origin_head, since=before) \
+            if before else None
+        unknown = (f"could not tell what `{ledger.trunk}` gained with {commit[:7]}: it has no parent and the row "
+                   "records no base")
+        if on_local and gained is not None:
+            push = batch.unaccounted(ledger, s.rows, trunk_head, base=row.base)   # what the push will carry
+            loose = None if push is None else gained + [sha for sha in push if sha not in gained]
             unknown = "could not tell what the push carries: no origin, and no base recorded on the row"
         else:
-            # what origin gained from the moment the sender merged: everything above what origin already held
-            before = gitq.resolve(ledger.root, f"{commit}^1", run=ledger.run) or row.base
-            loose = batch.unaccounted(ledger, s.rows, origin_head, since=before) if before else None
-            unknown = (f"could not tell what origin's `{ledger.trunk}` gained with {commit[:7]}: it has no parent "
-                       "and the row records no base")
+            loose = gained
         if loose is None:
             raise MoveRefused(unknown)
         if loose:
             named = "; ".join(f"{sha[:7]} {batch.subject(ledger, sha)}" for sha in loose[:5])
             more = f" and {len(loose) - 5} more" if len(loose) > 5 else ""
-            raise MoveRefused(f"the batch carries work nobody read: {named}{more}. Hand it over for review, or "
-                              "record work born in the batch with `flotilla work inbatch`")
+            raise MoveRefused(f"the batch carries work nobody read: {named}{more}. Hand it over for review, ask a "
+                              "reader to read it and `flotilla work vouch` for it, or record work born in the batch "
+                              "and not pushed yet with `flotilla work inbatch`")
         where = "trunk" if on_local else f"origin/{ledger.trunk}"
         return s.append(actor, row.id, "land", state, fields={"merge": commit},
                         evidence={"trunk": trunk_head if on_local else origin_head, "on": where})

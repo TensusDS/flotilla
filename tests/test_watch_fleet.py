@@ -115,3 +115,38 @@ def test_empty_seats_are_one_quiet_line():
     assert [(item.kind, item.branch) for item in found] == [(fleet.SEATS, "")]
     assert "2 post seat(s) with no live session: acceptance judge 1, review session 1" in found[0].text
     assert "flotilla fleet down" in found[0].text
+
+
+def test_a_wait_on_the_person_says_what_moved_since():
+    waiting = row(state="handed", reader="review session 1", waiting_on="the person",
+                  note="r2 is blocked on inbatch permission")
+    shipped = row(id="r2", branch="feat/y", state="shipped", updated_at="2026-09-27T11:00:00+00:00")
+    found = fleet.fleet(rows(waiting, shipped), PR, [sess("review session 1"), sess("main session 1")],
+                        post_of=post_of)
+    person = [item for item in found if item.kind == fleet.PERSON]
+    assert [item.text for item in person] == ["waits on the person: r2 is blocked on inbatch permission "
+                                              "(since then: r2 shipped)"]
+
+
+def test_a_fleet_session_waiting_on_the_person_is_raised():
+    orchestrator = sess("orchestrator 1", state="blocked", status="waiting")
+    found = fleet.fleet({}, PR, [orchestrator], post_of=post_of)
+    assert [(item.kind, item.branch, item.text) for item in found] == [
+        (fleet.PERSON, "", "orchestrator 1 waits on the person (census: waiting); answer it in its session")]
+    assert found[0].who == "orchestrator 1"
+    assert fleet.fleet({}, PR, [orchestrator], post_of=post_of, asking={"orchestrator 1"}) == []
+    assert fleet.fleet({}, PR, [sess("someone else", status="waiting")], post_of=post_of) == []
+    assert fleet.fleet({}, PR, [sess("orchestrator 1", status="idle")], post_of=post_of) == []
+
+
+def test_the_empty_seat_item_carries_no_age():
+    seats = rows(row(id="r1", branch="fleet/reviewer-1", owner="review session 1", state="reserved"))
+    found = fleet.fleet(seats, PR, [sess("main session 1")], post_of=post_of)
+    assert [(item.kind, item.since) for item in found] == [(fleet.SEATS, "")]
+
+
+def test_a_holder_waiting_on_a_prompt_is_one_item_not_two():
+    found = fleet.fleet(rows(row(state="handed", reader="review session 1")), PR,
+                        [sess("review session 1", status="waiting"), sess("main session 1", state="working")],
+                        post_of=post_of)
+    assert [item.kind for item in found] == [fleet.DROPPED]
