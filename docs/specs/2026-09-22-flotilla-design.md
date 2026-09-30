@@ -656,13 +656,14 @@ flotilla lane sweep
 
 - **Not a lock**, and documented as such: nothing stops a peer from running a suite without asking. The lane makes
   "is the machine busy" survive the session that answered.
-- Four questions, and a refusal names which one is in the way:
+- Five questions, and a refusal names which one is in the way:
 
 | question | answered by |
 |---|---|
 | does a peer hold the lane | the booking log |
 | does a foreign run exist | `pgrep` |
 | is it computing | two CPU-time samples (procfs or `ps -o time=`, per machine capability) |
+| is memory under the floor | `MemAvailable` in `/proc/meminfo` against `[lane] memory_floor_mb` (default 1500; 0 turns it off); where it cannot be read (macOS) the answer is "not asked" and does not block |
 | has CI on this machine taken it | `gh run list`, only when the profile says CI is self-hosted here |
 
 - `lane run` takes the command's own exit code (never a pipeline's), tells a signal kill (137 / -9) from a failure
@@ -673,7 +674,10 @@ flotilla lane sweep
   different things on Linux and macOS); a reused pid is told apart by the process start mark.
 - A run is known by its program — an interpreter's script or `-m` module — never by a word in its arguments,
   and counted once per process tree. Patterns (full matches of `program` or `program first-arg`) default to
-  pytest, py.test, playwright, vitest, jest, `cargo test`, `go test`; `[lane] run_patterns` replaces them.
+  pytest, py.test, playwright, vitest, jest, `cargo test`, `go test`, and the headless browsers
+  `chrome-headless-shell` and `headless_shell` (a full `chrome` is not a run: a browser tool server keeps one
+  alive for hours); `[lane] run_patterns` replaces them.
+- Low memory and CI on this machine hold the lane whatever its capacity; a foreign run computing takes a slot.
   Booked runs, holding or waiting, and the caller's ancestors are never foreign runs.
 - `lane run --for <branch>` records `last_run` on the row (verdict, summary, revision, time); `status` prints it.
   Handover and push receipts take the lane themselves (`--lane-wait`, or `--no-lane`, which the output records).

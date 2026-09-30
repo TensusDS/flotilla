@@ -1,10 +1,10 @@
 """Waiting for the lane and taking it (spec, section 9).
 
-A caller joins the queue, then asks all four questions each time it polls: the booking log (live holders against
-the capacity, and whether anyone who came earlier still waits), a foreign run computing (it uses a slot), CI on
-this machine (it blocks outright) and anything that could not be asked (it blocks too). `--wait` bounds only the
-caller's own waiting; when it runs out, the refusal names what is in the way and the wait is recorded as expired.
-A caller interrupted while waiting leaves the queue on the way out.
+A caller joins the queue, then asks all five questions each time it polls: the booking log (live holders against
+the capacity, and whether anyone who came earlier still waits), a foreign run computing (it uses a slot), memory
+under the floor and CI on this machine (they block outright), and anything that could not be asked (it blocks
+too). `--wait` bounds only the caller's own waiting; when it runs out, the refusal names what is in the way and the
+wait is recorded as expired. A caller interrupted while waiting leaves the queue on the way out.
 """
 
 from __future__ import annotations
@@ -15,6 +15,8 @@ import time
 from dataclasses import dataclass
 
 POLL = 15.0
+#: Answers that hold the lane whatever the capacity: CI on this machine, and memory under the floor.
+OUTRIGHT = ("ci", "memory")
 ENV = "FLOTILLA_LANE_BOOKING"   # set for a booked command, so a booking inside it reuses the one it runs under
 
 
@@ -57,9 +59,10 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int, wait: fl
     try:
         while True:
             reading = read_machine()
-            ci = [answer for answer in reading.answers if answer.question == "ci" and answer.blocks is not False]
+            outright = [answer for answer in reading.answers
+                        if answer.question in OUTRIGHT and answer.blocks is not False]
             unknown = [answer for answer in reading.answers if answer.blocks is None]
-            if not ci and not unknown:
+            if not outright and not unknown:
                 granted = lanes.grant(mine.id, slots=capacity - len(reading.computing), by_hand=by_hand)
                 if granted is not None:
                     return Grant(granted, reading, "")

@@ -154,3 +154,10 @@ def test_a_booking_inside_a_booking_is_reused(lanes, monkeypatch):
             assert inner.why.startswith("inside booking")
             assert len(lanes.holders()) == 1
     assert lanes.holders() == [] and acquire.ENV not in os.environ
+
+
+def test_low_memory_holds_the_lane_whatever_the_capacity(lanes):
+    low = Reading([Answer("foreign run", False, "none"), Answer("ci", False, "no CI here"),
+                   Answer("memory", True, "878 MB available, under the floor of 1500 MB")], [], [])
+    grant = take(lanes, low, capacity=4)
+    assert grant.booking is None and "memory: 878 MB available" in grant.why
