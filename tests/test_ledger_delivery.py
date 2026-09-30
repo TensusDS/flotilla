@@ -453,3 +453,29 @@ def test_the_senders_own_hand_resolved_merge_is_still_unread(direct):
     git(root, "checkout", "-q", "main")
     with pytest.raises(MoveRefused, match=rf"nobody read: {pushed[:7]}"):
         delivery.land(ledger, actor(ledger, SENDER), "feat/x", merge=pushed)
+
+
+def pull(root):
+    """The person pulls the main checkout, as the twosuns sessions kept asking them to."""
+    git(root, "fetch", "-q", "origin")
+    git(root, "merge", "-q", "--ff-only", "origin/main")
+
+
+def test_a_pulled_main_checkout_does_not_turn_the_unread_check_off(direct):
+    root, ledger = direct
+    queued(root, ledger)
+    pushed = pushed_from_a_side_tree(root, extra="unread work rides along")
+    pull(root)
+    assert git(root, "rev-parse", "main") == pushed   # the local trunk now carries the push
+    with pytest.raises(MoveRefused, match="nobody read: .* unread work rides along"):
+        delivery.land(ledger, actor(ledger, SENDER), "feat/x", merge=pushed)
+    with pytest.raises(MoveRefused, match="nobody read: .* unread work rides along"):
+        delivery.land(ledger, actor(ledger, SENDER), "feat/x")
+
+
+def test_a_reviewed_merge_lands_from_a_pulled_main_checkout(direct):
+    root, ledger = direct
+    queued(root, ledger)
+    pushed = pushed_from_a_side_tree(root)
+    pull(root)
+    assert delivery.land(ledger, actor(ledger, SENDER), "feat/x").merge == pushed
