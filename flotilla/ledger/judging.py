@@ -130,6 +130,25 @@ def broke(ledger: Ledger, actor: Actor, branch: str, *, where: str, saw: str,
     return broken, fix
 
 
+def unbroke(ledger: Ledger, actor: Actor, branch: str, *, why: str) -> Row:
+    """Take a `broke` back: the judge found the break was its own mistake (a stale build, the wrong page).
+
+    The history keeps the break and the retraction; the row is the judge's to walk again. An open fix row is
+    released first, so no one keeps fixing a break that was not one."""
+    require_may(actor, "unbroke", ledger.posts)
+    if not why.strip():
+        raise MoveRefused("say why the break was not one (--why)")
+    with ledger.session() as s:
+        row = s.need_open_row(branch)
+        if not row.broken:
+            raise MoveRefused(f"`{branch}` is not broken")
+        state = s.next_state(row, "unbroke")
+        open_fixes = [other.branch for other in fixes_of(s.rows, row) if other.is_open]
+        if open_fixes:
+            raise MoveRefused(f"`{branch}` has an open fix row ({', '.join(open_fixes)}); release it first")
+        return s.append(actor, row.id, "unbroke", state, fields={"broken": ""}, evidence={"why": why.strip()})
+
+
 def close(ledger: Ledger, actor: Actor, branch: str, *, ref: str = "", why: str = "") -> Row:
     require_may(actor, "close", ledger.posts)
     rule = (ledger.profile.get("evidence") or {}).get("close") or {}

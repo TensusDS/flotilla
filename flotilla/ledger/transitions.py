@@ -21,7 +21,7 @@ BASE = {
     "accepted": {"queue": "queued", "moved": "handed", "release": "released", "offledger": "offledger"},
     "queued": {"land": "landed", "ship": "shipped", "release": "released", "offledger": "offledger"},
     "landed": {"ship": "shipped", "close": "closed", "release": "released", "offledger": "offledger"},
-    "shipped": {"walked": "walked", "broke": "shipped", "close": "closed"},
+    "shipped": {"walked": "walked", "broke": "shipped", "unbroke": "shipped", "close": "closed"},
     "walked": {"close": "closed"},
 }
 ANNOTATIONS = ("wait", "hold", "unhold", "adopt", "urgent", "run", "walkable")

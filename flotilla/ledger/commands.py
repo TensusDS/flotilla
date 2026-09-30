@@ -192,6 +192,7 @@ MOVES = {
                                                    attested=x.attested),
     "walked": lambda l, a, x: judging.walked(l, a, x.branch, build=x.build, steps=x.steps, saw=x.saw),
     "broke": lambda l, a, x: _broke(l, a, x),
+    "unbroke": lambda l, a, x: judging.unbroke(l, a, x.branch, why=x.why),
     "close": lambda l, a, x: judging.close(l, a, x.branch, ref=x.ref, why=x.why),
     "adopt": lambda l, a, x: steering.adopt(l, a, x.branch, to=x.to),
     "hold": lambda l, a, x: steering.hold(l, a, x.branch, until=x.until, why=x.why),

@@ -105,6 +105,12 @@ def test_the_orchestrator_may_mark_work_urgent():
     assert "urgent" in load_post(TEMPLATE_DIR / "orchestrator.md").may
 
 
+def test_the_judge_may_take_a_broke_back():
+    from flotilla.posts import MOVES, TEMPLATE_DIR, load_post
+    assert "unbroke" in MOVES
+    assert "unbroke" in load_post(TEMPLATE_DIR / "judge.md").may
+
+
 def test_a_post_reads_its_model_and_permission_mode(tmp_path):
     from flotilla.posts import load_post
     path = tmp_path / "lead.md"

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 MOVES = ("reserve", "claim", "hand", "moved", "fix", "assign", "recuse", "take", "accept", "queue", "land",
-         "inbatch", "ship", "walked", "broke", "close", "release", "offledger", "wait", "hold", "unhold", "adopt",
+         "inbatch", "ship", "walked", "broke", "unbroke", "close", "release", "offledger", "wait", "hold", "unhold", "adopt",
          "urgent", "walkable")
 PERMISSION_MODES = ("acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan")
 TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates" / "posts"

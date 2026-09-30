@@ -236,3 +236,49 @@ def test_a_fix_branch_name_is_numbered_when_taken(tmp_path):
     assert judging.fix_branch_name(rows, "feat/x") == "fix/x"          # the row table does not know the branch
     with pytest.raises(MoveRefused, match="already exists"):
         judging.broke(ledger, actor(ledger, JUDGE), "feat/x", where="start", saw="nothing")
+
+
+def broken_world(tmp_path):
+    root, ledger, row = world(tmp_path, JUDGED)
+    judging.broke(ledger, actor(ledger, JUDGE), "feat/x", where="start", saw="stale preview")
+    return root, ledger
+
+
+def test_the_judge_takes_a_false_broke_back_once_the_fix_row_is_released(tmp_path):
+    from flotilla.ledger import core
+    root, ledger = broken_world(tmp_path)
+    core.release(ledger, actor(ledger, OWNER), "fix/x", why="false broke: a stale preview")
+    row = judging.unbroke(ledger, actor(ledger, JUDGE), "feat/x", why="walked a foreign preview on port 4173")
+    assert (row.state, row.broken) == ("shipped", "")
+    assert row.history[-1]["evidence"]["why"].startswith("walked a foreign")
+    walked = judging.walked(ledger, actor(ledger, JUDGE), "feat/x", build="main", steps="s", saw="the eclipse")
+    assert walked.state == "walked"
+
+
+def test_unbroke_refuses_while_a_fix_row_is_open(tmp_path):
+    root, ledger = broken_world(tmp_path)
+    with pytest.raises(MoveRefused, match="fix/x.*release it first"):
+        judging.unbroke(ledger, actor(ledger, JUDGE), "feat/x", why="false")
+    assert next(r for r in ledger.rows().values() if r.branch == "feat/x").broken == "start"
+
+
+def test_unbroke_needs_a_reason_and_a_broken_row(tmp_path):
+    root, ledger, row = world(tmp_path, JUDGED)
+    with pytest.raises(MoveRefused, match="is not broken"):
+        judging.unbroke(ledger, actor(ledger, JUDGE), "feat/x", why="x")
+    with pytest.raises(MoveRefused, match="--why"):
+        judging.unbroke(ledger, actor(ledger, JUDGE), "feat/x", why=" ")
+
+
+def test_only_a_post_that_may_unbroke_makes_the_move(tmp_path):
+    root, ledger = broken_world(tmp_path)
+    with pytest.raises(MoveRefused):
+        judging.unbroke(ledger, actor(ledger, OWNER), "feat/x", why="x")
+
+
+def test_the_unbroke_cli_needs_a_reason(tmp_path):
+    from flotilla import cli
+    parsed = cli.build_parser().parse_args(["work", "unbroke", "feat/x", "--why", "a foreign preview"])
+    assert (parsed.branch, parsed.why) == ("feat/x", "a foreign preview")
+    with pytest.raises(SystemExit):
+        cli.build_parser().parse_args(["work", "unbroke", "feat/x"])
