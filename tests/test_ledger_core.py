@@ -208,3 +208,41 @@ def test_a_release_names_a_reason_or_the_row_that_settled_it(tmp_path):
     core.claim(ledger, actor(ledger, "main session 1"), "fix/y")
     with pytest.raises(MoveRefused, match="--why.*--settled-by"):
         core.release(ledger, actor(ledger, "main session 1"), "fix/y")
+
+
+def seat_tree_holding(root, tmp_path, branch_name="feat/held"):
+    """A seat's worktree that switched to a work branch, as a fleet member does with `tree switch`."""
+    branch(root, branch_name, "work")
+    tree = Path(tmp_path) / "seat-tree"
+    git(root, "worktree", "add", "-q", "-b", "fleet/minor-1", str(tree))
+    git(tree, "switch", "-q", branch_name)
+    return tree
+
+
+def test_releasing_a_seat_frees_the_branch_its_clean_tree_held(world, tmp_path):
+    root, ledger = world
+    tree = seat_tree_holding(root, tmp_path)
+    core.reserve(ledger, actor(ledger, "minor session 1"), "fleet/minor-1", tree=str(tree))
+    row = core.release(ledger, actor(ledger, "minor session 1"), "fleet/minor-1", why="retired")
+    assert git(tree, "rev-parse", "--abbrev-ref", "HEAD") == "HEAD"   # detached
+    assert row.history[-1]["evidence"]["tree"] == "detached"
+    other = Path(tmp_path) / "other"
+    git(root, "worktree", "add", "-q", str(other), "feat/held")   # the branch is free now
+
+
+def test_a_dirty_seat_tree_keeps_its_branch_and_the_release_says_so(world, tmp_path):
+    root, ledger = world
+    tree = seat_tree_holding(root, tmp_path)
+    (tree / "wip.txt").write_text("unsaved\n", encoding="utf-8")
+    core.reserve(ledger, actor(ledger, "minor session 1"), "fleet/minor-1", tree=str(tree))
+    row = core.release(ledger, actor(ledger, "minor session 1"), "fleet/minor-1", why="retired")
+    assert git(tree, "rev-parse", "--abbrev-ref", "HEAD") == "feat/held"
+    assert "uncommitted" in row.history[-1]["evidence"]["tree"]
+
+
+def test_releasing_work_leaves_its_tree_alone(world, tmp_path):
+    root, ledger = world
+    tree = seat_tree_holding(root, tmp_path)
+    core.claim(ledger, actor(ledger, "minor session 1"), "feat/held", tree=str(tree))
+    core.release(ledger, actor(ledger, "minor session 1"), "feat/held", why="will not happen")
+    assert git(tree, "rev-parse", "--abbrev-ref", "HEAD") == "feat/held"

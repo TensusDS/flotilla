@@ -257,4 +257,20 @@ def release(ledger: Ledger, actor: Actor, branch: str, *, why: str = "", settled
             evidence["settled_by"] = other.id
             why = why.strip() or f"settled by {other.branch or other.id}"
         evidence["why"] = why.strip()
+        if row.state == "reserved" and row.tree:
+            evidence["tree"] = _free_seat_tree(ledger, row.tree)
         return s.append(actor, row.id, "release", state, evidence=evidence)
+
+
+def _free_seat_tree(ledger: Ledger, tree: str) -> str:
+    """A released seat's tree lets go of the branch it had checked out, so the work can be taken up in another tree
+    (H36); a tree with uncommitted work keeps it, and the release says so."""
+    listed = ledger.run(["git", "-C", tree, "status", "--porcelain"], capture_output=True, text=True, check=False)
+    if listed.returncode != 0:
+        return f"not freed: git could not read {tree}"
+    dirty = len([line for line in listed.stdout.splitlines() if line.strip()])
+    if dirty:
+        return f"not freed: {dirty} uncommitted in {tree}, its branch stays checked out there"
+    done = ledger.run(["git", "-C", tree, "switch", "--detach", "--quiet"], capture_output=True, text=True,
+                      check=False)
+    return "detached" if done.returncode == 0 else f"not freed: {done.stderr.strip()[:120]}"
