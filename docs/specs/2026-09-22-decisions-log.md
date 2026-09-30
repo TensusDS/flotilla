@@ -576,6 +576,26 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    `claimed`; a seat whose turn is done holds its post at spawn as it does at retire. (executor's decision after the
    branch review, field fixes part 5, 2026-09-29)
 
+130. **A merge inside a reviewed row's read range is read**: batch accounting asks the read ranges before judging
+   a merge by whether it is clean, so a conflict the author resolved by hand and the reader read lands (H20).
+   (planner's decision, field fixes part 6 track A, 2026-09-30)
+131. **`land` counts what the landed merge brought over its first parent, whatever the main checkout holds**; on
+   the local trunk it adds what the push will carry. A pulled main checkout can no longer turn the unread-work check
+   off (H29). (planner's decision, field fixes part 6 track A, 2026-09-30)
+132. **Batch work is vouched for by its reader**: `vouch <branch> --commit <sha>` is the reader's own annotation
+   move and counts the commit as read wherever it lies; the sender asks for it and never writes a reader's name
+   itself, which the auto-mode classifier rightly reads as self-approval (H21, H24). (planner's decision, field
+   fixes part 6 track A, 2026-09-30)
+133. **The sender returns an accepted or queued row to its author** with `return --why`, `-> fixing`, the verdict
+   cleared: a row that no longer merges has a legal way back instead of a release and a new claim (H26c).
+   (planner's decision, field fixes part 6 track A, 2026-09-30)
+134. **`moved` needs the reader's agreement only while that reader is alive**: when the census says the reader is
+   gone, the moved tip goes back to `handed` with no reader, for the orchestrator to assign; a census that cannot
+   be asked keeps the refusal (H28). (planner's decision, field fixes part 6 track A, 2026-09-30)
+135. **`accept` refuses a tip that does not merge with trunk** (`git merge-tree --write-tree` exit 1): the
+   reviewer returns it with `fix`, so the sender never has to resolve a conflict nobody reads; a git that cannot
+   say does not refuse (H43). (planner's decision, field fixes part 6 track A, 2026-09-30)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
