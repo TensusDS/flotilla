@@ -132,6 +132,8 @@ def vouch(ledger: Ledger, actor: Actor, branch: str, *, commit: str) -> Row:
                               "queued or landed)")
         if row.owner == actor.name:
             raise MoveRefused(f"{actor.name} owns `{branch}`; someone else vouches for it")
+        if actor.post is not None and ("land" in actor.post.may or actor.post.writes_one_copy):
+            raise MoveRefused(f"{actor.name}'s post may land; the one who merges never vouches for what it merged")
         state = s.next_state(row, "vouch")
         vouched = list(row.vouched) + ([sha] if sha not in row.vouched else [])
         return s.append(actor, row.id, "vouch", state, fields={"vouched": vouched}, evidence={"commit": sha})

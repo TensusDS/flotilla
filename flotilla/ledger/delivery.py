@@ -93,7 +93,8 @@ def send_back(ledger: Ledger, actor: Actor, branch: str, *, why: str) -> Row:
     with ledger.session() as s:
         row = s.need_open_row(branch)
         state = s.next_state(row, "return")
-        return s.append(actor, row.id, "return", state, fields={"verdict": ""}, evidence={"why": why.strip()})
+        return s.append(actor, row.id, "return", state, fields={"verdict": "", "why": why.strip()},
+                        evidence={"why": why.strip()})
 
 SEQUENCE = ("merge `{branch}` in your own tree on a branch from `origin/{trunk}`, run `flotilla receipt run "
             "--purpose push` there, push HEAD:{trunk}, then `flotilla work land {branch} --merge <that commit>`")
@@ -156,8 +157,9 @@ def land(ledger: Ledger, actor: Actor, branch: str, *, merge: str | None = None)
         if loose:
             named = "; ".join(f"{sha[:7]} {batch.subject(ledger, sha)}" for sha in loose[:5])
             more = f" and {len(loose) - 5} more" if len(loose) > 5 else ""
-            raise MoveRefused(f"the batch carries work nobody read: {named}{more}. Hand it over for review, or "
-                              "record work born in the batch with `flotilla work inbatch`")
+            raise MoveRefused(f"the batch carries work nobody read: {named}{more}. Hand it over for review, ask a "
+                              "reader to read it and `flotilla work vouch` for it, or record work born in the batch "
+                              "and not pushed yet with `flotilla work inbatch`")
         where = "trunk" if on_local else f"origin/{ledger.trunk}"
         return s.append(actor, row.id, "land", state, fields={"merge": commit},
                         evidence={"trunk": trunk_head if on_local else origin_head, "on": where})

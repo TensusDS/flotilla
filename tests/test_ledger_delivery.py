@@ -550,3 +550,41 @@ def test_return_needs_a_reason_the_sender_and_a_row_past_its_read(direct):
     drive(root, ledger, "feat/y", to="handed")
     with pytest.raises(MoveRefused, match="not legal from `handed`"):
         delivery.send_back(ledger, actor(ledger, SENDER), "feat/y", why="x")
+
+
+def test_a_returned_row_carries_the_new_reason_not_an_old_fix(direct):
+    from flotilla.ledger import handover, letters, reading
+    root, ledger = direct
+    drive(root, ledger, to="handed")
+    reading.fix(ledger, actor(ledger, "review session 1"), "feat/x", why="OLD: no test for an empty file")
+    git(root, "checkout", "-q", "feat/x")
+    tip = commit(root, "a test for an empty file", "empty.txt")
+    git(root, "checkout", "-q", "main")
+    handover.hand(ledger, actor(ledger, "main session 1"), "feat/x")
+    reading.take(ledger, actor(ledger, "review session 1"), "feat/x")
+    reading.accept(ledger, actor(ledger, "review session 1"), "feat/x", reviewed=tip)
+    delivery.queue(ledger, actor(ledger, SENDER), "feat/x")
+    row = delivery.send_back(ledger, actor(ledger, SENDER), "feat/x", why="NEW: conflicts with main in shared.txt")
+    assert row.why == "NEW: conflicts with main in shared.txt"
+    assert "NEW: conflicts" in letters._body(row) and "OLD" not in letters._body(row)
+
+
+def test_a_post_that_may_land_never_vouches_whatever_the_project_gives_it(tmp_path):
+    import dataclasses
+
+    from flotilla.ledger import outside
+    from flotilla.posts import TEMPLATE_DIR, load_post
+    posts = {p.name: p for p in (load_post(path) for path in sorted(TEMPLATE_DIR.glob("*.md")))}
+    posts["sender"] = dataclasses.replace(posts["sender"], may=posts["sender"].may | {"vouch"})
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile=DIRECT, posts=posts)
+    pushed = senders_own_resolution(root, ledger)
+    with pytest.raises(MoveRefused, match="may land"):
+        outside.vouch(ledger, actor(ledger, SENDER), "feat/x", commit=pushed)
+
+
+def test_the_unread_refusal_names_vouch_as_a_way_out(direct):
+    root, ledger = direct
+    pushed = senders_own_resolution(root, ledger)
+    with pytest.raises(MoveRefused, match="flotilla work vouch"):
+        delivery.land(ledger, actor(ledger, SENDER), "feat/x", merge=pushed)
