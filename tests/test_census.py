@@ -71,3 +71,29 @@ def test_timeout_is_unavailable():
 def test_unexecutable_cli_is_unavailable():
     with pytest.raises(census.CensusUnavailable, match="cannot be run"):
         census.read_census(run=fake_run(exc=PermissionError(13, "Permission denied", "claude")))
+
+
+def test_a_background_session_with_no_process_is_gone():
+    sessions = census.parse_census(sample())
+    kept = census.drop_gone(sessions, pid_alive=lambda pid: pid in (1001, 2002, 3003))
+    assert [s.name for s in kept] == ["operator", "review session 1", "main session 2"]
+
+
+def test_a_background_session_whose_pid_died_is_gone_and_an_interactive_one_is_kept():
+    sessions = census.parse_census(sample())
+    kept = census.drop_gone(sessions, pid_alive=lambda pid: pid == 2002)
+    assert [s.name for s in kept] == ["operator", "review session 1"]
+
+
+def test_a_background_session_with_a_status_but_no_pid_yet_is_kept():
+    text = ('[{"sessionId": "s", "name": "main session 9", "kind": "background", "cwd": "/", "pid": null,'
+            ' "status": "busy", "state": "working"}]')
+    assert [s.name for s in census.drop_gone(census.parse_census(text), pid_alive=lambda pid: False)] == \
+        ["main session 9"]
+
+
+def test_read_census_drops_what_is_gone():
+    def run(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, 0, sample(), "")
+    kept = census.read_census(run=run, pid_alive=lambda pid: pid in (1001, 2002, 3003))
+    assert "minor session 4" not in [s.name for s in kept]
