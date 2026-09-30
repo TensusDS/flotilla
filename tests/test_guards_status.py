@@ -47,3 +47,10 @@ def test_guard_status_says_when_the_census_cannot_be_asked(tmp_path, monkeypatch
     monkeypatch.setattr("flotilla.guards.commands.census", down)
     code, out = status(root)
     assert code == 0 and "hooks: the census could not be asked" in out
+
+
+def test_guard_status_names_the_lane_guard_on_by_default(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    monkeypatch.setattr("flotilla.guards.commands.census", lambda: [])
+    code, out = status(root)
+    assert code == 0 and "guard lane: on (warns; on unless the profile says lane = false)" in out

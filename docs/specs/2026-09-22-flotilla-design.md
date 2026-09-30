@@ -689,6 +689,7 @@ One `flotilla guard` process per Bash call runs every enabled check.
 | revert | `git checkout -- <f>`, `reset --hard`, `clean -f`, `restore` when they would destroy uncommitted work; names the fix (`git add`, then retry) | none needed |
 | line-number edit | `sed -i` with numeric addresses — a line number goes stale silently and lands on the neighbour | address by text |
 | push receipt | `git push`, `gh pr create`, `gh pr merge`, `gh workflow run` without a green `push`-tier receipt over the revisions being pushed | `FLOTILLA_GATE_OVERRIDE="<why>"`, recorded |
+| lane | nothing: it **warns** when a segment runs a tier command or a lane run pattern (by its program, behind `uv run`, `npx` and the like) outside `flotilla lane run` / `flotilla receipt run`, and names the `lane run` form. On unless `lane = false` | none needed |
 
 Also: the `Stop` ball guard (6.9); git `pre-commit` file reservation (a rewrite of a shared file under another open
 row's reservation is refused; appends always pass); git `pre-push` second barrier (catches pushes hidden in scripts).

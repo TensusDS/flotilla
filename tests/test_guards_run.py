@@ -86,3 +86,33 @@ def test_a_command_the_guards_read_stays_inside_the_budget(tmp_path, monkeypatch
     started = time.monotonic()
     ask(root, "git status && sed -n 1p f.txt", monkeypatch, tmp_path)
     assert time.monotonic() - started < 1.0   # spec ~200 ms; measured locally and printed by the executor
+
+
+NPM_TIER = '\n[[tests.tier]]\nname = "npm"\ncommand = "npm test"\nrequired_for = ["push"]\n'
+
+
+@pytest.mark.parametrize("command", ["npm test", "uv run pytest", "npx vitest run", "cd sub && npm test -- --ci",
+                                     "uv run --with pytest python -m pytest -q"])
+def test_a_long_run_outside_the_lane_is_warned_about(tmp_path, monkeypatch, command):
+    root = onboarded(tmp_path, extra=NPM_TIER)
+    (root / "sub").mkdir()
+    answer = ask(root, command, monkeypatch, tmp_path)
+    assert answer is not None and "permissionDecision" not in answer
+    context = answer["additionalContext"]
+    assert context.count("flotilla lane run --for") == 1
+
+
+@pytest.mark.parametrize("command", ["flotilla lane run --for x -- npm test",
+                                     "/opt/flotilla/scripts/flotilla lane run --for x -- uv run pytest",
+                                     "flotilla receipt run --purpose push",
+                                     'echo "run npm test later"', 'git commit -m "npm test passes"',
+                                     "npm install", "uv run python tools/check_version.py"])
+def test_a_booked_run_or_a_mention_is_not_warned_about(tmp_path, monkeypatch, command):
+    root = onboarded(tmp_path, extra=NPM_TIER)
+    answer = ask(root, command, monkeypatch, tmp_path)
+    assert answer is None or "flotilla lane run" not in answer.get("additionalContext", "")
+
+
+def test_the_lane_guard_is_off_when_the_profile_says_so(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, extra=NPM_TIER, off=("lane",))
+    assert ask(root, "npm test", monkeypatch, tmp_path) is None

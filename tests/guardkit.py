@@ -45,9 +45,9 @@ def origin_repo(tmp_path) -> Path:
     return root
 
 
-def onboarded(tmp_path, guards=("revert", "line_edit", "push_receipt"), extra="", push=True) -> Path:
+def onboarded(tmp_path, guards=("revert", "line_edit", "push_receipt"), extra="", push=True, off=()) -> Path:
     root = origin_repo(tmp_path)
-    flags = "".join(f"{name} = true\n" for name in guards)
+    flags = "".join(f"{name} = true\n" for name in guards) + "".join(f"{name} = false\n" for name in off)
     text = (f'schema = 1\n\n[trunk]\nbranch = "main"\n\n[flow]\nmode = "direct"\n\n[guards]\n{flags}\n'
             f"{TIER}{extra}")
     (root / ".flotilla").mkdir()
