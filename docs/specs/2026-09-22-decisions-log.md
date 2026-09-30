@@ -683,6 +683,23 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
 152. **flotilla is MIT-licensed**, so anyone may use it as they like; the repository home is `TensusDS/flotilla`.
    (the person's decision, 2026-09-30)
 
+153. **A seat's plugin set is narrowed by `--settings` with `enabledPlugins: false`**, chosen by measurement on a real
+   `claude --bg` session (Claude Code 2.1.286, `tools/probe_seat_plugins.py`, 2026-09-30, from `/home/max/workspace`
+   with 17 enabled plugins that bring MCP servers). Processes under the session's pid, once its tree held still:
+
+   | variant | plugin MCP processes | their RSS (MB) | other descendants | their RSS (MB) |
+   |---|---|---|---|---|
+   | a: no extra flags | 14 | 1167 | 2 | 118 |
+   | b: `--settings` turning off every enabled MCP plugin | 0 | 0 | 2 | 118 |
+   | c: `--strict-mcp-config` alone | 0 | 0 | 0 | 0 |
+
+   Both mechanisms stop plugin MCP servers; (b) is taken because it keeps what a post declares by leaving that
+   plugin out of the map, while (c) keeps nothing unless flotilla rebuilds each kept server's definition for
+   `--mcp-config`. The "other descendants" are a server from the person's own MCP configuration, which (b) leaves
+   running: the person chose it for every session. Settings given by `--settings` sit above user, project and
+   local files, so a plugin enabled in the main checkout's `.claude/settings.local.json` is turned off too (H49).
+   (planner's decision, field fixes part 8 track B, 2026-10-01)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
