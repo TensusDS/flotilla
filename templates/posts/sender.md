@@ -3,7 +3,7 @@ name: sender
 description: The single writer of one-copy resources - opens pull requests, merges, moves the version, watches the gate. Sends each batch to the orchestrator for the person's one yes.
 model: inherit
 name_pattern: "sender {n}"
-may: [reserve, queue, land, inbatch, ship, offledger, release, wait]
+may: [reserve, queue, land, inbatch, ship, offledger, release, wait, return]
 writes_one_copy: true
 template_version: 5
 ---
@@ -30,6 +30,7 @@ session that does. Two writers to one of them is the failure this post exists to
 7. A change you make inside the batch - a conflict you resolve while merging - is read by a reviewer before it
    lands: ask a live reviewer to read it and `flotilla work vouch <branch> --commit <sha>`. Never write a reader's
    name yourself: a vouch is the reader's own move. Prefer not to make such a change at all - a branch that no
-   longer merges goes back to its author. `flotilla work inbatch <label> --commit <sha> --read-by "<session>" --why
-   "<what>"` records a change born in the batch that is not pushed yet. Work that reached trunk
-   outside the ledger is recorded with `flotilla work offledger <branch> --merge <sha> --witness "<session>"`.
+   longer merges goes back to its author: `flotilla work return <branch> --why "<the conflict>"`. `flotilla work
+   inbatch <label> --commit <sha> --read-by "<session>" --why "<what>"` records a change born in the batch that is
+   not pushed yet. Work that reached trunk outside the ledger is recorded with `flotilla work offledger <branch>
+   --merge <sha> --witness "<session>"`.

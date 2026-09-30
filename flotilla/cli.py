@@ -80,6 +80,8 @@ def build_parser() -> argparse.ArgumentParser:
     inbatch.add_argument("--commit", required=True)
     inbatch.add_argument("--read-by", dest="read_by", required=True)
     inbatch.add_argument("--why", required=True)
+    back = move_parser("return", "send an accepted or queued row back to its author (sender)")
+    back.add_argument("--why", required=True)
     vouch = move_parser("vouch", "vouch for a batch commit no verdict covers (reader)")
     vouch.add_argument("--commit", required=True)
     offledger = move_parser("offledger", "record work that reached trunk outside the ledger")

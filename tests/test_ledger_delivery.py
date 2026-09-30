@@ -518,3 +518,35 @@ def test_only_a_reader_vouches_and_only_for_delivery_rows(direct):
     drive(root, ledger, "feat/y", to="claimed")
     with pytest.raises(MoveRefused, match="accepted, queued or landed"):
         outside.vouch(ledger, actor(ledger, "review session 1"), "feat/y", commit=pushed)
+
+
+def test_the_sender_returns_a_queued_row_that_no_longer_merges(direct):
+    from flotilla.ledger import handover, views
+    root, ledger = direct
+    queued(root, ledger)
+    row = delivery.send_back(ledger, actor(ledger, SENDER), "feat/x", why="conflicts with main in shared.txt")
+    assert (row.state, row.verdict) == ("fixing", "")
+    assert row.history[-1]["evidence"]["why"].startswith("conflicts")
+    assert views.who_moves(row, DIRECT, ledger.rows()) == "main session 1"
+    git(root, "checkout", "-q", "feat/x")
+    commit(root, "merged main, resolved", "resolved.txt")
+    git(root, "checkout", "-q", "main")
+    assert handover.hand(ledger, actor(ledger, "main session 1"), "feat/x").state == "handed"
+
+
+def test_an_accepted_row_may_be_returned_too(direct):
+    root, ledger = direct
+    drive(root, ledger)
+    assert delivery.send_back(ledger, actor(ledger, SENDER), "feat/x", why="trunk moved").state == "fixing"
+
+
+def test_return_needs_a_reason_the_sender_and_a_row_past_its_read(direct):
+    root, ledger = direct
+    queued(root, ledger)
+    with pytest.raises(MoveRefused, match="--why"):
+        delivery.send_back(ledger, actor(ledger, SENDER), "feat/x", why=" ")
+    with pytest.raises(MoveRefused):
+        delivery.send_back(ledger, actor(ledger, "review session 1"), "feat/x", why="x")
+    drive(root, ledger, "feat/y", to="handed")
+    with pytest.raises(MoveRefused, match="not legal from `handed`"):
+        delivery.send_back(ledger, actor(ledger, SENDER), "feat/y", why="x")
