@@ -189,29 +189,37 @@ def check_claim(rows: dict[str, Row], branch: str, *, ref: str = "", also: str =
             if row.is_open and row.ref == ref:
                 raise MoveRefused(f"`{ref}` is already being worked on by {row.owner} in `{row.branch}` "
                                   f"(row {row.id}); pass --also \"<why>\" to work on it too")
+    return link_ids(rows, requires, "--requires")
+
+
+def link_ids(rows: dict[str, Row], wanted_rows, flag: str) -> list[str]:
+    """Row ids for `--requires` or `--after`: a row id, or an open branch; an unknown name is refused."""
     ids = []
-    for wanted in requires:
+    for wanted in wanted_rows:
         target = rows.get(wanted) or next((row for row in reversed(list(rows.values()))
                                            if row.branch == wanted and row.is_open), None)
         if target is None:
-            raise MoveRefused(f"--requires `{wanted}`: no such row or open branch")
+            raise MoveRefused(f"{flag} `{wanted}`: no such row or open branch")
         ids.append(target.id)
     return ids
 
 
-def claim(ledger: Ledger, actor: Actor, branch: str, *, tree: str = "", ref: str = "", requires=(),
+def claim(ledger: Ledger, actor: Actor, branch: str, *, tree: str = "", ref: str = "", requires=(), after=(),
           also: str = "", base: str | None = None) -> Row:
     require_may(actor, "claim", ledger.posts)
     with ledger.session() as s:
         ids = check_claim(s.rows, branch, ref=ref, also=also, requires=requires)
+        later = link_ids(s.rows, after, "--after")
         if base is None:
             base = gitq.fork_point(ledger.root, branch, ledger.trunk, run=ledger.run) or ""
-        return append_claim(s, actor, branch, tree=tree, base=base, ref=ref, ids=ids, also=also)
+        return append_claim(s, actor, branch, tree=tree, base=base, ref=ref, ids=ids, also=also, after=later)
 
 
 def append_claim(s: LedgerSession, actor: Actor, branch: str, *, tree: str, base: str, ref: str, ids: list,
-                 also: str) -> Row:
+                 also: str, after=()) -> Row:
     fields = {"branch": branch, "owner": actor.name, "tree": tree, "base": base, "ref": ref, "requires": ids}
+    if after:
+        fields["after"] = list(after)   # written only when given: a claim without it carries no new field
     return s.append(actor, next_row_id(s.rows), "claim", "claimed", fields=fields,
                     evidence={"also": also} if also else {})
 
@@ -257,4 +265,32 @@ def release(ledger: Ledger, actor: Actor, branch: str, *, why: str = "", settled
             evidence["settled_by"] = other.id
             why = why.strip() or f"settled by {other.branch or other.id}"
         evidence["why"] = why.strip()
+        if row.state == "reserved" and row.tree:
+            evidence["tree"] = free_seat_tree(ledger, row.owner, row.tree)
         return s.append(actor, row.id, "release", state, evidence=evidence)
+
+
+def free_seat_tree(ledger: Ledger, owner: str, tree: str) -> str:
+    """A released seat's tree lets go of the branch it had checked out, so the work can be taken up in another tree
+    (H36). Never the main checkout, never a path git resolves to another repository, never a live owner's tree, and
+    never a tree with uncommitted work: each of those keeps its branch, and the release says why."""
+    top = ledger.run(["git", "-C", tree, "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False)
+    if top.returncode != 0 or Path(top.stdout.strip()).resolve() != Path(tree).resolve():
+        return f"not freed: {tree} is not a worktree git can name"
+    if Path(tree).resolve() == Path(ledger.root).resolve():
+        return "not freed: it is the main checkout"
+    try:
+        alive = owner in ledger.live_names()
+    except MoveRefused:
+        return "not freed: whether its session is alive could not be asked"
+    if alive:
+        return f"not freed: {owner} is alive and works in it"
+    listed = ledger.run(["git", "-C", tree, "status", "--porcelain"], capture_output=True, text=True, check=False)
+    if listed.returncode != 0:
+        return f"not freed: git could not read {tree}"
+    dirty = len([line for line in listed.stdout.splitlines() if line.strip()])
+    if dirty:
+        return f"not freed: {dirty} uncommitted in {tree}, its branch stays checked out there"
+    done = ledger.run(["git", "-C", tree, "switch", "--detach", "--quiet"], capture_output=True, text=True,
+                      check=False)
+    return "detached" if done.returncode == 0 else f"not freed: {done.stderr.strip()[:120]}"

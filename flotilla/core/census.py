@@ -8,6 +8,7 @@ session that is merely unreachable.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from dataclasses import dataclass
 
@@ -62,7 +63,30 @@ def parse_census(text: str) -> list[Session]:
     return sessions
 
 
-def read_census(run=subprocess.run, claude: str = "claude", timeout: float = 30) -> list[Session]:
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True   # someone else's process: it exists
+    return True
+
+
+def drop_gone(sessions: list[Session], pid_alive=_pid_alive) -> list[Session]:
+    """A background session the daemon retired can stay listed for minutes with no process behind it; it is gone.
+    Gone: no status, and no pid or a pid that names no running process. Interactive sessions are kept as listed (H48)."""
+    def gone(session: Session) -> bool:
+        if session.kind != "background":
+            return False
+        if session.status is not None:
+            return False   # a session that reports a status is running; a pid this process cannot see proves nothing
+        return session.pid is None or not pid_alive(session.pid)
+    return [session for session in sessions if not gone(session)]
+
+
+def read_census(run=subprocess.run, claude: str = "claude", timeout: float = 30,
+                pid_alive=_pid_alive) -> list[Session]:
     try:
         done = run([claude, "agents", "--json"], capture_output=True, text=True,
                    timeout=timeout, check=False)
@@ -75,4 +99,4 @@ def read_census(run=subprocess.run, claude: str = "claude", timeout: float = 30)
     if done.returncode != 0:
         raise CensusUnavailable(
             f"`{claude} agents --json` exited {done.returncode}: {done.stderr.strip()[:200]}")
-    return parse_census(done.stdout)
+    return drop_gone(parse_census(done.stdout), pid_alive)

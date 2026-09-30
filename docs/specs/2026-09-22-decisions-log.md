@@ -633,6 +633,52 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
 135. **`accept` refuses a tip that does not merge with trunk** (`git merge-tree --write-tree` exit 1): the
    reviewer returns it with `fix`, so the sender never has to resolve a conflict nobody reads; a git that cannot
    say does not refuse (H43). (planner's decision, field fixes part 6 track A, 2026-09-30)
+136. **The version moves with every release, and CI says when it did not**: `.claude-plugin/plugin.json` holds the
+   version, `pyproject.toml` and `flotilla/__init__.py` carry the same string (a test pins it), and
+   `tools/check_version.py`, run by CI on pushes to `main`, fails when the plugin's code changed since the tag
+   `v<version>` or when that tag is missing. Claude Code caches a plugin by its version, so code shipped under an
+   unmoved one replaces every project's copy at once (T2). This part's release is 0.2.0, bumped and tagged by the
+   coordinator at merge. (planner's decision, field fixes part 7 track B, 2026-09-30)
+137. **A long run started outside the lane is warned about, not refused**: the Bash guard's `lane` rule, on unless
+   the profile says `lane = false`, warns when a segment runs a tier command or a lane run pattern (by its program,
+   behind launchers such as `uv run` and `npx`) outside `flotilla lane run` / `flotilla receipt run`, and names the
+   `lane run` form. A warning, because the lane is not a lock and refusing an ordinary test run would cost more than
+   the wait (H19). (planner's decision, field fixes part 7 track B, 2026-09-30)
+138. **A headless browser is a run**: `chrome-headless-shell` and `headless_shell` join the lane's default run
+   patterns; a full `chrome` does not, because a browser tool server keeps one alive for hours (H22). (planner's decision, field fixes part 7 track B, 2026-09-30)
+139. **The lane asks memory**: `MemAvailable` in `/proc/meminfo` under `[lane] memory_floor_mb` (default 1500, or a
+   quarter of `MemTotal` where that is less, so a small machine's ordinary state does not close it; 0 turns it
+   off) holds the lane outright, like CI on this machine. Where it cannot be read (macOS) the answer is "not
+   asked" and does not block, because an unknown that waiting cannot change would close the lane for ever (H41). (planner's decision, field fixes part 7 track B, 2026-09-30)
+140. **`--after` is an ordering-only link**: `claim`, `tree cut` and `tree switch` take `--after <row or branch>`,
+   stored in the row field `after`; `queue` waits for it as for `requires`, an unknown name is refused at claim, and
+   the part gate reads `requires` only, so a measurement or tool row never holds the walk of the row it records
+   (H44). (planner's decision, field fixes part 7 track B, 2026-09-30)
+141. **Part 6's review minors**: a vouch counts only while its row is open or delivered (a released or returned
+   row's vouch accounts no commit); `return` clears `vouched`, and on a row with a PR says the PR stays open and
+   names it; `unbroke`'s refusal of a delivered fix row says "release or close it"; `waits_on` stops naming a fix
+   that has arrived. (planner's decision, field fixes part 7 track B, 2026-09-30)
+
+146. **A background session with no process behind it is gone**: the census drops an entry that reports no status
+   and has no pid or a pid naming no running process, so a seat the daemon retired is seen empty everywhere (H48). A
+   session that reports a status is kept whatever its pid looks like from here: a pid this process cannot see
+   proves nothing.
+   (planner's decision, field fixes part 7 track A, 2026-09-30)
+147. **Releasing a seat frees its tree** — by `work release` or `retire`: a clean seat worktree whose session is gone
+   is detached, so the branch it held can be taken up in another tree. Never the main checkout, never a path git
+   resolves to another repository, never a live owner's tree, never a dirty one; the release says which (H36). (planner's decision, field fixes part 7
+   track A, 2026-09-30)
+148. **watch tells the orchestrator about a seat with no work** past `watch.idle_seat_minutes` (default 60), for
+   posts that may claim (H45). (planner's decision, field fixes part 7 track A, 2026-09-30)
+149. **watch tells the orchestrator when the queue has drained** — no open work once some has been done — and the
+   orchestrator closes the task: the person checks the result, then is offered `fleet down` (H12, H46). (planner's
+   decision, field fixes part 7 track A, 2026-09-30)
+150. **spawn refuses to raise a seat under a memory floor** (`fleet.memory_floor_mb`, default 2000; `--anyway`
+   overrides; skipped where memory cannot be read), and the orchestrator post says to raise readers, the sender and
+   the judge before another implementer (H47, H9). (planner's decision, field fixes part 7 track A, 2026-09-30)
+151. **fleet down names what stays alive**: census sessions working in the project or its worktrees that are not
+   seats it retired, each with the command that stops it (H12). (planner's decision, field fixes part 7 track A,
+   2026-09-30)
 
 ## Open questions (for the foundation spec)
 

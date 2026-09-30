@@ -429,6 +429,11 @@ is not delivered, the shipped row is nobody's move, and `walked` / `broke` refus
 alone reports a missing entry point that the next row was always going to add — a false `broke` and a duplicate fix
 row (field test F21). The orchestrator marks a part that reaches a person on its own `walkable` (decision 86).
 
+`--after <row or branch>` (on `claim`, `tree cut` and `tree switch`) is an ordering-only link: the row cannot be
+`queued` until that one is delivered, exactly as with `--requires`, but it never makes the other row a part. A
+measurement, a tool or a follow-up that will not ship is claimed `--after` the row it records, so it never holds
+that row's walk (field test H44).
+
 ### 6.5 Duplicates
 
 A second claim with the same `--ref` while a row is open is **refused**, naming the holder. `--also "<why>"`
@@ -656,13 +661,14 @@ flotilla lane sweep
 
 - **Not a lock**, and documented as such: nothing stops a peer from running a suite without asking. The lane makes
   "is the machine busy" survive the session that answered.
-- Four questions, and a refusal names which one is in the way:
+- Five questions, and a refusal names which one is in the way:
 
 | question | answered by |
 |---|---|
 | does a peer hold the lane | the booking log |
 | does a foreign run exist | `pgrep` |
 | is it computing | two CPU-time samples (procfs or `ps -o time=`, per machine capability) |
+| is memory under the floor | `MemAvailable` in `/proc/meminfo` against `[lane] memory_floor_mb` (default 1500, or a quarter of `MemTotal` where that is less; 0 turns it off); where it cannot be read (macOS) the answer is "not asked" and does not block |
 | has CI on this machine taken it | `gh run list`, only when the profile says CI is self-hosted here |
 
 - `lane run` takes the command's own exit code (never a pipeline's), tells a signal kill (137 / -9) from a failure
@@ -673,7 +679,10 @@ flotilla lane sweep
   different things on Linux and macOS); a reused pid is told apart by the process start mark.
 - A run is known by its program — an interpreter's script or `-m` module — never by a word in its arguments,
   and counted once per process tree. Patterns (full matches of `program` or `program first-arg`) default to
-  pytest, py.test, playwright, vitest, jest, `cargo test`, `go test`; `[lane] run_patterns` replaces them.
+  pytest, py.test, playwright, vitest, jest, `cargo test`, `go test`, and the headless browsers
+  `chrome-headless-shell` and `headless_shell` (a full `chrome` is not a run: a browser tool server keeps one
+  alive for hours); `[lane] run_patterns` replaces them.
+- Low memory and CI on this machine hold the lane whatever its capacity; a foreign run computing takes a slot.
   Booked runs, holding or waiting, and the caller's ancestors are never foreign runs.
 - `lane run --for <branch>` records `last_run` on the row (verdict, summary, revision, time); `status` prints it.
   Handover and push receipts take the lane themselves (`--lane-wait`, or `--no-lane`, which the output records).
@@ -689,6 +698,7 @@ One `flotilla guard` process per Bash call runs every enabled check.
 | revert | `git checkout -- <f>`, `reset --hard`, `clean -f`, `restore` when they would destroy uncommitted work; names the fix (`git add`, then retry) | none needed |
 | line-number edit | `sed -i` with numeric addresses — a line number goes stale silently and lands on the neighbour | address by text |
 | push receipt | `git push`, `gh pr create`, `gh pr merge`, `gh workflow run` without a green `push`-tier receipt over the revisions being pushed | `FLOTILLA_GATE_OVERRIDE="<why>"`, recorded |
+| lane | nothing: it **warns** when a segment runs a tier command or a lane run pattern (by its program, behind `uv run`, `npx` and the like) outside `flotilla lane run` / `flotilla receipt run`, and names the `lane run` form. On unless `lane = false` | none needed |
 
 Also: the `Stop` ball guard (6.9); git `pre-commit` file reservation (a rewrite of a shared file under another open
 row's reservation is refused; appends always pass); git `pre-push` second barrier (catches pushes hidden in scripts).

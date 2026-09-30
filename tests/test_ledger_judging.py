@@ -282,3 +282,33 @@ def test_the_unbroke_cli_needs_a_reason(tmp_path):
     assert (parsed.branch, parsed.why) == ("feat/x", "a foreign preview")
     with pytest.raises(SystemExit):
         cli.build_parser().parse_args(["work", "unbroke", "feat/x"])
+
+
+def test_a_row_claimed_only_after_a_shipped_row_does_not_make_it_a_part(tmp_path):
+    from flotilla.ledger import core, views
+    from ledgerkit import branch
+    root, ledger, row = world(tmp_path, JUDGED)
+    branch(root, "tool/measure-x", "records the shipped work, never ships")
+    core.claim(ledger, actor(ledger, OWNER), "tool/measure-x", after=[row.id])
+    rows = ledger.rows()
+    assert views.pending_dependents(rows, rows[row.id], JUDGED) == []
+    assert views.who_moves(rows[row.id], JUDGED, rows) == views.JUDGE
+    walked = judging.walked(ledger, actor(ledger, JUDGE), "feat/x", build="main", steps="s", saw="w")
+    assert walked.state == "walked"
+
+
+def test_unbroke_with_a_delivered_fix_row_says_release_or_close_it(tmp_path):
+    root, ledger = broken_world(tmp_path)
+    cut = tmp_path / "fix-tree"
+    tree_mod.cut(ledger, actor(ledger, OWNER), "fix/x", cut)
+    tip = commit(cut, "fix the start", "fix.txt")
+    handover.hand(ledger, actor(ledger, OWNER), "fix/x")
+    reading.take(ledger, actor(ledger, "review session 1"), "fix/x")
+    reading.accept(ledger, actor(ledger, "review session 1"), "fix/x", reviewed=tip)
+    delivery.queue(ledger, actor(ledger, SENDER), "fix/x")
+    merge(root, "fix/x")
+    delivery.land(ledger, actor(ledger, SENDER), "fix/x")
+    git(root, "push", "-q", "origin", "main")
+    delivery.ship(ledger, actor(ledger, SENDER), "fix/x")
+    with pytest.raises(MoveRefused, match=r"fix/x.*release or close it"):
+        judging.unbroke(ledger, actor(ledger, JUDGE), "feat/x", why="false")

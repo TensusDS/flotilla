@@ -62,6 +62,27 @@ def test_an_unknown_requirement_is_refused(world):
         core.claim(ledger, actor(ledger, "main session 1"), "feat/y", requires=["feat/none"])
 
 
+def test_after_resolves_branches_to_rows_apart_from_requires(world):
+    root, ledger = world
+    core.claim(ledger, actor(ledger, "main session 1"), "feat/x")
+    row = core.claim(ledger, actor(ledger, "minor session 1"), "tool/measure-x", after=["feat/x"])
+    assert (row.after, row.requires) == (["r1"], [])
+
+
+def test_an_unknown_after_is_refused_like_an_unknown_requirement(world):
+    root, ledger = world
+    with pytest.raises(MoveRefused, match=r"--after `feat/none`: no such row or open branch"):
+        core.claim(ledger, actor(ledger, "main session 1"), "feat/y", after=["feat/none"])
+    assert ledger.rows() == {}
+
+
+def test_a_claim_without_after_writes_no_after_field(world):
+    root, ledger = world
+    row = core.claim(ledger, actor(ledger, "main session 1"), "feat/x")
+    events = ledger.store.read(ledger.repo_key).records
+    assert "after" not in events[-1]["fields"] and row.after == []
+
+
 def test_a_post_that_may_not_claim_is_refused(world):
     root, ledger = world
     with pytest.raises(MoveRefused, match="may not `claim`"):
@@ -208,3 +229,73 @@ def test_a_release_names_a_reason_or_the_row_that_settled_it(tmp_path):
     core.claim(ledger, actor(ledger, "main session 1"), "fix/y")
     with pytest.raises(MoveRefused, match="--why.*--settled-by"):
         core.release(ledger, actor(ledger, "main session 1"), "fix/y")
+
+
+def seat_tree_holding(root, tmp_path, branch_name="feat/held"):
+    """A seat's worktree that switched to a work branch, as a fleet member does with `tree switch`."""
+    branch(root, branch_name, "work")
+    tree = Path(tmp_path) / "seat-tree"
+    git(root, "worktree", "add", "-q", "-b", "fleet/minor-1", str(tree))
+    git(tree, "switch", "-q", branch_name)
+    return tree
+
+
+def dead_seat(tmp_path):
+    """A seat whose session is gone, released by the orchestrator, as after a retire wave (H36)."""
+    root = repo_with_origin(tmp_path)
+    live = {"minor session 1"}
+    ledger = make_ledger(root, tmp_path / "state", census=lambda: [_sess(name) for name in live])
+    tree = seat_tree_holding(root, tmp_path)
+    core.reserve(ledger, actor(ledger, "minor session 1"), "fleet/minor-1", tree=str(tree))
+    live.clear()
+    live.add("orchestrator 1")
+    return root, ledger, tree
+
+
+def _sess(name):
+    from flotilla.core.census import Session
+    return Session(name=name, session_id=f"id-{name}", kind="background", pid=None, short_id=None, status="busy",
+                   state="working", cwd="/", started_at_ms=None)
+
+
+def test_releasing_a_seat_frees_the_branch_its_clean_tree_held(tmp_path):
+    root, ledger, tree = dead_seat(tmp_path)
+    row = core.release(ledger, actor(ledger, "orchestrator 1"), "fleet/minor-1", why="retired")
+    assert git(tree, "rev-parse", "--abbrev-ref", "HEAD") == "HEAD"   # detached
+    assert row.history[-1]["evidence"]["tree"] == "detached"
+    other = Path(tmp_path) / "other"
+    git(root, "worktree", "add", "-q", str(other), "feat/held")   # the branch is free now
+
+
+def test_a_dirty_seat_tree_keeps_its_branch_and_the_release_says_so(tmp_path):
+    root, ledger, tree = dead_seat(tmp_path)
+    (tree / "wip.txt").write_text("unsaved\n", encoding="utf-8")
+    row = core.release(ledger, actor(ledger, "orchestrator 1"), "fleet/minor-1", why="retired")
+    assert git(tree, "rev-parse", "--abbrev-ref", "HEAD") == "feat/held"
+    assert "uncommitted" in row.history[-1]["evidence"]["tree"]
+
+
+def test_releasing_work_leaves_its_tree_alone(world, tmp_path):
+    root, ledger = world
+    tree = seat_tree_holding(root, tmp_path)
+    core.claim(ledger, actor(ledger, "minor session 1"), "feat/held", tree=str(tree))
+    core.release(ledger, actor(ledger, "minor session 1"), "feat/held", why="will not happen")
+    assert git(tree, "rev-parse", "--abbrev-ref", "HEAD") == "feat/held"
+
+
+def test_releasing_a_seat_never_detaches_the_main_checkout(world):
+    root, ledger = world
+    core.reserve(ledger, actor(ledger, "minor session 1"), "fleet/minor-1", tree=str(root))
+    row = core.release(ledger, actor(ledger, "minor session 1"), "fleet/minor-1", why="retired")
+    assert git(root, "rev-parse", "--abbrev-ref", "HEAD") == "main"
+    assert "not freed" in row.history[-1]["evidence"]["tree"]
+
+
+def test_a_live_owner_releasing_its_own_seat_keeps_its_tree(tmp_path):
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", live=("minor session 1",))
+    tree = seat_tree_holding(root, tmp_path)
+    core.reserve(ledger, actor(ledger, "minor session 1"), "fleet/minor-1", tree=str(tree))
+    row = core.release(ledger, actor(ledger, "minor session 1"), "fleet/minor-1", why="leaving")
+    assert git(tree, "rev-parse", "--abbrev-ref", "HEAD") == "feat/held"
+    assert "alive" in row.history[-1]["evidence"]["tree"]

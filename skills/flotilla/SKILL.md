@@ -49,7 +49,7 @@ A full suite, a browser run or anything that takes the machine goes through the 
 the result on the row, where `flotilla status` shows it. Receipts take the lane themselves. A run killed by a
 signal is recorded as killed, with no verdict: never report it as passed, and never read a run's success from the
 exit code of a pipeline. The lane is not a lock: a run started without it is seen only as an unbooked run, and
-nobody waits for its result.
+nobody waits for its result. The Bash guard warns when you start one; book it instead of ignoring the warning.
 
 ## Whose move it is
 

@@ -425,3 +425,13 @@ def test_a_letter_goes_to_this_projects_sender_only(tmp_path, monkeypatch):
     code, out = run_cli("work", "accept", "feat/x", "--reviewed", tip, "--root", str(root),
                         "--as", "review session 1")
     assert code == 0 and "letter for sender 1 - send" in out and "sender 2" not in out
+
+
+def test_claim_takes_after_on_the_command_line(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    assert run_cli("work", "claim", "feat/x", "--root", str(root), "--as", "main session 1")[0] == 0
+    code, out = run_cli("work", "claim", "tool/y", "--after", "feat/x", "--root", str(root), "--as", "main session 1")
+    assert code == 0, out
+    from flotilla.ledger.commands import open_ledger
+    rows = open_ledger(root).rows()
+    assert next(row for row in rows.values() if row.branch == "tool/y").after == ["r1"]

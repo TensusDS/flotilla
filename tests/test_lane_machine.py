@@ -202,3 +202,86 @@ def test_an_empty_queue_command_names_the_key(tmp_path):
 def test_a_queue_command_runs_through_the_shell_like_the_other_project_commands(tmp_path):
     piped = {"ci": {"provider": "command", "runs_on": "this-machine", "queue_command": "false | true"}}
     assert machine.ci_here(piped, root=tmp_path).blocks is False
+
+
+def test_a_headless_browser_is_a_run_and_a_full_chrome_is_not(tmp_path):
+    procs = [Proc(1, 0, "init"),
+             Proc(40, 1, "/home/u/.cache/ms-playwright/chromium_headless_shell-1234/chrome-linux/"
+                         "chrome-headless-shell --headless --no-sandbox"),
+             Proc(41, 40, "/home/u/.cache/ms-playwright/chromium_headless_shell-1234/chrome-linux/"
+                          "chrome-headless-shell --type=renderer"),
+             Proc(42, 1, "/opt/pw/chromium-1100/chrome-linux/headless_shell --headless"),
+             Proc(50, 1, "/opt/google/chrome/chrome --remote-debugging-pipe --user-data-dir=/tmp/x")]
+    table = Table(procs, growing={40, 41, 42, 50})
+    lanes = book.Book(LocalLogStore(tmp_path), table)
+    reading = machine.read(lanes, table, {}, own_pid=999, root=tmp_path, sleep=lambda s: None,
+                           meminfo=lambda: None)
+    assert sorted(p.pid for p in reading.computing) == [40, 42]
+    runs = next(a for a in reading.answers if a.question == "foreign run")
+    assert runs.blocks is True
+
+
+def memory(tmp_path, available_kb, profile=None):
+    table = Table([Proc(1, 0, "init")])
+    lanes = book.Book(LocalLogStore(tmp_path), table)
+    reading = machine.read(lanes, table, profile or {}, own_pid=999, root=tmp_path, sleep=lambda s: None,
+                           meminfo=lambda: available_kb)
+    return next(a for a in reading.answers if a.question == "memory")
+
+
+def test_memory_under_the_floor_holds_the_lane_and_names_the_numbers(tmp_path):
+    answer = memory(tmp_path, 900000)
+    assert answer.blocks is True and "878 MB" in answer.text and "1500 MB" in answer.text
+
+
+def test_memory_over_the_floor_is_free(tmp_path):
+    assert memory(tmp_path, 3000000).blocks is False
+
+
+def test_memory_not_asked_opens_the_lane_rather_than_closing_it_for_ever(tmp_path):
+    answer = memory(tmp_path, None)
+    assert answer.blocks is False and "not asked on this platform" in answer.text
+
+
+def test_a_floor_of_zero_never_holds_the_lane(tmp_path):
+    assert memory(tmp_path, 10, {"lane": {"memory_floor_mb": 0}}).blocks is False
+
+
+def test_the_profile_moves_the_floor(tmp_path):
+    assert memory(tmp_path, 3000000, {"lane": {"memory_floor_mb": 4000}}).blocks is True
+
+
+def test_meminfo_reads_mem_available_and_nothing_else(tmp_path):
+    good = tmp_path / "good"
+    good.write_text("MemTotal:       16000000 kB\nMemFree:  100 kB\nMemAvailable:    9650000 kB\n", encoding="utf-8")
+    missing = tmp_path / "missing-field"
+    missing.write_text("MemTotal:       16000000 kB\nMemFree:  100 kB\n", encoding="utf-8")
+    garbled = tmp_path / "garbled"
+    garbled.write_text("MemAvailable: lots kB\n", encoding="utf-8")
+    assert machine.read_meminfo(good) == 9650000
+    assert machine.read_meminfo(missing) is None
+    assert machine.read_meminfo(garbled) is None
+    assert machine.read_meminfo(tmp_path / "absent") is None
+    assert machine.read_meminfo(tmp_path) is None   # a directory: present but unreadable as a file
+
+
+def test_the_default_floor_scales_down_on_a_small_machine(tmp_path):
+    table = Table([Proc(1, 0, "init")])
+    lanes = book.Book(LocalLogStore(tmp_path), table)
+
+    def answer(available_kb, total_kb, profile=None):
+        reading = machine.read(lanes, table, profile or {}, own_pid=999, root=tmp_path, sleep=lambda s: None,
+                               meminfo=lambda: available_kb, memtotal=lambda: total_kb)
+        return next(a for a in reading.answers if a.question == "memory")
+    two_gb = 2 * 1024 * 1024
+    assert answer(900000, two_gb).blocks is False                    # floor 512 MB: a quarter of 2 GB
+    assert answer(400000, two_gb).blocks is True and "512 MB" in answer(400000, two_gb).text
+    assert answer(900000, 16 * 1024 * 1024).blocks is True           # a large machine keeps 1500 MB
+    assert answer(900000, None).blocks is True                       # total unknown: 1500 MB
+    assert answer(900000, two_gb, {"lane": {"memory_floor_mb": 1000}}).blocks is True   # a set floor wins
+
+
+def test_meminfo_reads_mem_total_too(tmp_path):
+    good = tmp_path / "good"
+    good.write_text("MemTotal:       16000000 kB\nMemAvailable:    9650000 kB\n", encoding="utf-8")
+    assert machine.read_meminfo(good, "MemTotal") == 16000000
