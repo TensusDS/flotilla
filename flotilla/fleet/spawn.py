@@ -38,6 +38,7 @@ class Raised:
 
 
 MEMORY_FLOOR_MB = 2000
+HELPER = "helper"
 MEMINFO = Path("/proc/meminfo")
 
 
@@ -97,6 +98,9 @@ def plan(ledger, counts: dict, *, census, store, reserve: bool,
         raise SpawnRefused(str(err)) from err
     if not wanted:
         raise SpawnRefused("name a composition, for example -r 1 -M 1, or use --default")
+    if HELPER in wanted:
+        raise SpawnRefused("a helper is raised by the session it helps, for one piece of its work: "
+                           "`flotilla helper raise --for <branch> --task \"<what>\"`")
     short = "" if anyway else memory_short(ledger)
     if short and strict:
         raise SpawnRefused(short + "; nothing was raised")
@@ -181,12 +185,14 @@ def _find(census, name: str, *, wait: float, poll: float, sleep):
 
 
 def raise_seat(ledger, seat: launch.Seat, *, caller: str, census, wait: float = 30.0, poll: float = 1.0,
-               sleep=time.sleep) -> Raised:
+               sleep=time.sleep, base: str = "", fields: dict | None = None, prompt: str = "") -> Raised:
+    """Cut the seat's tree (from `base`, else trunk), reserve its post row (with any extra `fields`), launch it
+    (with `prompt` as its first prompt, else the fleet's)."""
     post = ledger.posts[seat.post]
     actor = Actor(seat.name, post, "spawn", caller)
     main = launch.main_checkout(ledger.root, run=ledger.run)
-    command = launch.argv(seat, post, ledger.profile, main=main)
-    base = gitq.trunk_ref(ledger.root, ledger.trunk, run=ledger.run)
+    command = launch.argv(seat, post, ledger.profile, main=main, first_prompt=prompt)
+    base = base or gitq.trunk_ref(ledger.root, ledger.trunk, run=ledger.run)
     if seat.tree.exists() or seat.tree.is_symlink():
         raise SpawnRefused(f"{seat.tree} already exists; {seat.name} was not raised and nothing there was touched")
     if gitq.branch_tip(ledger.root, seat.branch, run=ledger.run):
@@ -203,7 +209,8 @@ def raise_seat(ledger, seat: launch.Seat, *, caller: str, census, wait: float = 
         with ledger.session() as s:
             core.check_claim(s.rows, seat.branch)
             row = s.append(actor, next_row_id(s.rows), "reserve", "reserved",
-                           fields={"branch": seat.branch, "owner": seat.name, "tree": str(seat.tree)})
+                           fields={"branch": seat.branch, "owner": seat.name, "tree": str(seat.tree),
+                                   **(fields or {})})
     except MoveRefused as err:
         _take_back_git(ledger, seat)
         raise SpawnRefused(f"the post row for {seat.name} was refused: {err}; the tree and branch were taken "

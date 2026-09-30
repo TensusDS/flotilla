@@ -5,7 +5,7 @@ model: inherit
 name_pattern: "minor session {n}"
 may: [reserve, claim, hand, moved, close, release, wait]
 writes_one_copy: false
-template_version: 3
+template_version: 4
 ---
 You take small work, under the same form as the main post.
 
@@ -24,3 +24,7 @@ You take small work, under the same form as the main post.
   records it: `flotilla work wait <branch> --on "the person" --why "<the question>"`.
 - Build what the task says. A change to what the person asked is a question for them, through the orchestrator,
   before you build it.
+- For reading and research - a lookup, a survey of the code, a second opinion - use an in-session subagent: it
+  costs no seat. For a separate piece of your work that edits files and would run alongside you, raise a helper:
+  `flotilla helper raise --for <your branch> --task "<what>"`. It works in its own tree from your branch's tip,
+  finishes with `flotilla helper done`, and you merge its branch into yours and retire it before you hand over.

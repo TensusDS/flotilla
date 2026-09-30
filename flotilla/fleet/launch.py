@@ -83,10 +83,10 @@ def system_prompt(seat: Seat, post, *, main: Path) -> str:
             "given here: never infer them from the work.\n\n" + post.body.strip())
 
 
-def argv(seat: Seat, post, profile: dict, *, main: Path) -> list[str]:
+def argv(seat: Seat, post, profile: dict, *, main: Path, first_prompt: str = "") -> list[str]:
     command = ["claude", "--bg", "-n", seat.name, "--add-dir", str(seat.tree), "--permission-mode",
                permission_mode(profile, post)]
     model = model_for(profile, post)
     if model:
         command += ["--model", model]
-    return command + ["--append-system-prompt", system_prompt(seat, post, main=main), FIRST_PROMPT]
+    return command + ["--append-system-prompt", system_prompt(seat, post, main=main), first_prompt or FIRST_PROMPT]

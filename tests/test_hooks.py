@@ -235,8 +235,8 @@ def test_a_post_row_is_not_a_move_the_guard_holds(tmp_path):
 
 
 def test_a_session_with_no_post_is_not_asked_for_a_move_it_may_not_make(tmp_path):
-    claimed = rows(row(owner="helper 1"))
-    assert call("stop", tmp_path, context(tmp_path, me=sess("helper 1"), rows_=claimed), payload=IDLE) == ""
+    claimed = rows(row(owner="scribe 1"))   # a name no post's pattern matches
+    assert call("stop", tmp_path, context(tmp_path, me=sess("scribe 1"), rows_=claimed), payload=IDLE) == ""
 
 
 def test_a_post_that_may_not_wait_is_not_blocked(tmp_path):

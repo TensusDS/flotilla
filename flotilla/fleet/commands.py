@@ -148,10 +148,29 @@ def _retire(ledger, args) -> int:
     return 0
 
 
+def _helper(ledger, args) -> int:
+    from flotilla.fleet import helpers
+    from flotilla.ledger.actor import resolve_actor
+    me = resolve_actor(ledger.posts, as_name=args.as_name)
+    if args.helper_action == "done":
+        released, letter = helpers.done(ledger, me, summary=args.summary)
+        print(f"released {released.branch}: {me.name} is done")
+        print(letter)
+        return 0
+    raised = helpers.raise_helper(ledger, me, args.branch, task=args.task, census=census,
+                                  store=LocalLogStore(paths.state_dir() / "fleet"),
+                                  caller=f"helper raise by {me.name}", anyway=args.anyway)
+    note = f" ({raised.note})" if raised.note else ""
+    print(f"raised {raised.seat.name} in {raised.seat.tree} on {raised.seat.branch}{note}")
+    print(f"it will finish with `flotilla helper done`; merge {raised.seat.branch} into {args.branch} then, and "
+          f"retire it: `flotilla retire \"{raised.seat.name}\"`")
+    return 0
+
+
 def run_fleet_command(args) -> int:
     try:
         ledger = open_ledger(Path(args.root))
-        return {"spawn": _spawn, "fleet": _fleet, "retire": _retire}[args.command](ledger, args)
+        return {"spawn": _spawn, "fleet": _fleet, "retire": _retire, "helper": _helper}[args.command](ledger, args)
     except (MoveRefused, PostError, CensusUnavailable, launch.LaunchError, config.ConfigError,
             repo.NotARepository, StorageCorrupt) as err:
         print(f"refused: {err}")

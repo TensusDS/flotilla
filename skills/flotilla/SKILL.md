@@ -51,6 +51,15 @@ signal is recorded as killed, with no verdict: never report it as passed, and ne
 exit code of a pipeline. The lane is not a lock: a run started without it is seen only as an unbooked run, and
 nobody waits for its result. The Bash guard warns when you start one; book it instead of ignoring the warning.
 
+## Helpers
+
+A session with open work may raise a helper for a piece of it that edits files: `flotilla helper raise --for
+<branch> --task "<what>"`. The helper is a seat of its own (`helper <n>`), in its own tree cut from the branch's
+tip, and it is in the ledger from start to end. If you are a helper: work and commit only in your tree, ask the
+session that raised you when something is unclear, and finish with `flotilla helper done --summary "<what you did>"`
+- never stop without it. The session that raised you merges your branch, then retires you. Reading and research
+need no helper: an in-session subagent does it without a seat.
+
 ## Whose move it is
 
 `flotilla status` names, for every open row, whose move it is. If it is yours, make it or record why you wait:

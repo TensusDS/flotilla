@@ -26,7 +26,7 @@ def templates():
 
 
 def test_every_template_is_a_valid_post():
-    assert set(templates()) == {"orchestrator", "sender", "reviewer", "judge", "main", "minor"}
+    assert set(templates()) == {"orchestrator", "sender", "reviewer", "judge", "main", "minor", "helper"}
 
 
 def test_templates_follow_the_spec():
@@ -78,7 +78,7 @@ def test_ambiguous_patterns_are_refused(tmp_path):
 
 
 def test_install_never_overwrites_a_project_post(tmp_path):
-    assert len(P.install_templates(tmp_path)) == 6
+    assert len(P.install_templates(tmp_path)) == 7
     edited = tmp_path / ".flotilla" / "posts" / "reviewer.md"
     edited.write_text(edited.read_text(encoding="utf-8") + "\nProject note.\n", encoding="utf-8")
     assert P.install_templates(tmp_path) == []
@@ -150,3 +150,10 @@ def test_template_posts_inherit_the_model_and_the_permission_mode():
     for path in TEMPLATE_DIR.glob("*.md"):
         post = load_post(path)
         assert (post.model, post.permission_mode) == ("inherit", ""), path.name
+
+
+def test_the_helper_post_never_delivers():
+    helper = templates()["helper"]
+    assert helper.name_pattern == "helper {n}"
+    assert set(helper.may) == {"reserve", "release", "wait"}
+    assert "flotilla helper done" in helper.body and "own tree" in helper.body

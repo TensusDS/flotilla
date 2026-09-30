@@ -184,6 +184,18 @@ def build_parser() -> argparse.ArgumentParser:
     fleet_ = sub.add_parser("fleet", help="the fleet's sessions, their trees and their work; `down` retires them")
     fleet_.add_argument("action", nargs="?", choices=["down"], help="retire every seat but your own")
     fleet_.add_argument("--root", default=".")
+    helper_ = sub.add_parser("helper", help="raise a helper session for a piece of your work, or finish as one")
+    helper_sub = helper_.add_subparsers(dest="helper_action", required=True)
+    helper_raise = helper_sub.add_parser("raise", help="raise a helper in its own tree, from your branch's tip")
+    helper_raise.add_argument("--for", dest="branch", required=True, help="your open branch it helps")
+    helper_raise.add_argument("--task", required=True, help="what the helper is to do")
+    helper_raise.add_argument("--anyway", action="store_true", help="raise even under the memory floor")
+    helper_raise.add_argument("--as", dest="as_name", default=None, help=argparse.SUPPRESS)
+    helper_raise.add_argument("--root", default=".")
+    helper_done = helper_sub.add_parser("done", help="record what you did as a helper and release your seat")
+    helper_done.add_argument("--summary", required=True)
+    helper_done.add_argument("--as", dest="as_name", default=None, help=argparse.SUPPRESS)
+    helper_done.add_argument("--root", default=".")
     watch = sub.add_parser("watch", help="what the fleet needs attention for (exit 0 none, 1 some, 2 unknown)")
     watch.add_argument("--once", action="store_true", help="check once and exit (v1 has no schedule of its own)")
     watch.add_argument("--wait", type=float, default=0.0,
@@ -259,7 +271,7 @@ def main(argv: list[str]) -> int:
     if args.command in ("work", "tree", "receipt", "events", "status", "brief", "metrics"):
         from flotilla.ledger.commands import run_ledger_command
         return run_ledger_command(args)
-    if args.command in ("spawn", "retire", "fleet"):
+    if args.command in ("spawn", "retire", "fleet", "helper"):
         from flotilla.fleet.commands import run_fleet_command
         return run_fleet_command(args)
     if args.command == "lane":

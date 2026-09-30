@@ -73,3 +73,8 @@ def test_blocked_by_names_what_is_not_delivered_yet():
     rows = {"r1": Row(id="r1", branch="a", state="claimed"), "r2": Row(id="r2", branch="b", state="shipped"),
             "r3": Row(id="r3", branch="c", state="handed", requires=["r1", "r2", "r9"])}
     assert [(r.id, r.state) for r in blocked_by(rows, rows["r3"], {})] == [("r1", "claimed"), ("r9", "")]
+
+
+def test_a_helper_seat_names_its_parent_row():
+    from flotilla.ledger.model import ROW_FIELDS, Row
+    assert "helper_of" in ROW_FIELDS and Row(id="r1").helper_of == ""
