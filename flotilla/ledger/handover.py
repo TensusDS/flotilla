@@ -95,14 +95,26 @@ def moved(ledger: Ledger, actor: Actor, branch: str, *, tip: str, agreed_by: str
         if row.owner != actor.name:
             raise MoveRefused(f"`{branch}` belongs to {row.owner}; only the owner records a moved tip")
         state = s.next_state(row, "moved")
-        if row.reader and row.taken and agreed_by != row.reader:
-            raise MoveRefused(f"{row.reader} is reading `{branch}` over {row.tip[:7]}; moving the tip needs their "
-                              f"agreement (--agreed-by \"{row.reader}\")")
         fields = {"tip": current}
+        evidence = {"from": row.tip, "agreed_by": agreed_by, "receipt": receipt}
+        if row.reader and row.taken and agreed_by != row.reader:
+            if not _gone(ledger, row.reader):
+                raise MoveRefused(f"{row.reader} is reading `{branch}` over {row.tip[:7]}; moving the tip needs "
+                                  f"their agreement (--agreed-by \"{row.reader}\")")
+            # nobody can agree for a reader who is gone: the new tip goes back to be read by whoever is assigned
+            fields.update({"reader": "", "taken": False})
+            evidence["reader_gone"] = row.reader
         if row.state == "accepted":
             fields["verdict"] = ""   # the verdict was over the old tip; the reader accepts again
-        return s.append(actor, row.id, "moved", state, fields=fields,
-                        evidence={"from": row.tip, "agreed_by": agreed_by, "receipt": receipt})
+        return s.append(actor, row.id, "moved", state, fields=fields, evidence=evidence)
+
+
+def _gone(ledger: Ledger, name: str) -> bool:
+    """Whether the census says `name` is not alive; a census that cannot be asked says nothing (H28)."""
+    try:
+        return name not in ledger.live_names()
+    except MoveRefused:
+        return False
 
 
 def wait(ledger: Ledger, actor: Actor, branch: str, *, on: str = "", why: str = "", clear: bool = False) -> Row:

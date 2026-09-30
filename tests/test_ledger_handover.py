@@ -141,3 +141,39 @@ def test_a_branch_with_no_commits_of_its_own_is_not_handed_over(tmp_path):
     core.claim(ledger, actor(ledger, "main session 1"), "fix/empty")
     with pytest.raises(MoveRefused, match="no commits of its own.*--settled-by"):
         handover.hand(ledger, actor(ledger, "main session 1"), "fix/empty")
+
+
+def accepted_then_moved_on(tmp_path, **kwargs):
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", **kwargs)
+    claimed(root, ledger)
+    row = handover.hand(ledger, actor(ledger, "main session 1"), "feat/x")
+    reading.take(ledger, actor(ledger, "review session 1"), "feat/x")
+    reading.accept(ledger, actor(ledger, "review session 1"), "feat/x", reviewed=row.tip)
+    git(root, "checkout", "-q", "feat/x")
+    new = commit(root, "merged main", "merged.txt")
+    git(root, "checkout", "-q", "main")
+    return ledger, new
+
+
+def test_a_moved_tip_goes_back_to_reading_when_its_reader_is_gone(tmp_path):
+    ledger, new = accepted_then_moved_on(tmp_path, live=("main session 1", "sender 1", "orchestrator 1"))
+    row = handover.moved(ledger, actor(ledger, "main session 1"), "feat/x", tip=new)
+    assert (row.state, row.tip, row.verdict, row.reader, row.taken) == ("handed", new, "", "", False)
+    assert row.history[-1]["evidence"]["reader_gone"] == "review session 1"
+
+
+def test_a_live_reader_still_has_to_agree(tmp_path):
+    ledger, new = accepted_then_moved_on(tmp_path)
+    with pytest.raises(MoveRefused, match="agreement"):
+        handover.moved(ledger, actor(ledger, "main session 1"), "feat/x", tip=new)
+
+
+def test_a_census_that_cannot_be_asked_keeps_the_refusal(tmp_path):
+    from flotilla.core.census import CensusUnavailable
+
+    def no_census():
+        raise CensusUnavailable("claude agents timed out")
+    ledger, new = accepted_then_moved_on(tmp_path, census=no_census)
+    with pytest.raises(MoveRefused, match="agreement"):
+        handover.moved(ledger, actor(ledger, "main session 1"), "feat/x", tip=new)
