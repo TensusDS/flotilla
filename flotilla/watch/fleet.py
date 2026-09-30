@@ -17,6 +17,8 @@ from flotilla.watch.whose import POST_OF_MOVER, Item, holds_move, since_of
 
 DEVIATION, DROPPED, NOBODY, BREAK, QUESTION, PERSON = ("deviation", "dropped", "nobody", "break", "question",
                                                      "person")
+IDLE, DONE = "idle", "done"
+IDLE_SEAT_MINUTES = 60
 SEATS = "seats"
 THE_PERSON = "the person"
 
@@ -48,7 +50,8 @@ def movers(row, profile: dict, live: set[str], post_of, rows: dict | None = None
     return set()
 
 
-def fleet(rows: dict, profile: dict, sessions, *, post_of, breaks=(), asking=()) -> list[Item]:
+def fleet(rows: dict, profile: dict, sessions, *, post_of, breaks=(), asking=(), claimers=frozenset(),
+          now: dt.datetime | None = None) -> list[Item]:
     by_name = {session.name: session for session in sessions if session.name}
     live = set(by_name)
     found_all = views.deviations(rows, profile, live)
@@ -87,7 +90,43 @@ def fleet(rows: dict, profile: dict, sessions, *, post_of, breaks=(), asking=())
             items.append(Item(PERSON, "", f"{name} waits on the person (census: waiting); answer it in its session",
                               "", who=name))
     items.extend(breaks)
+    items.extend(idle_seats(rows, profile, live, post_of, claimers, now))
+    items.extend(drained(rows, live))
     return items
+
+
+def idle_seats(rows: dict, profile: dict, live: set[str], post_of, claimers, now: dt.datetime | None) -> list[Item]:
+    """A live implementer holding nothing but its seat, for longer than the threshold: memory and hands spent on
+    nothing, and nobody is told (H45)."""
+    if not claimers:
+        return []
+    minutes = (profile.get("watch") or {}).get("idle_seat_minutes", IDLE_SEAT_MINUTES)
+    now = now or dt.datetime.now(dt.timezone.utc)
+    items = []
+    for name in sorted(live):
+        if post_of(name) not in claimers:
+            continue
+        mine = [row for row in rows.values() if row.owner == name]
+        busy = any(row.is_open and row.state != "reserved" for row in mine) or \
+            any(row.is_open and row.state == "handed" and row.reader == name for row in rows.values())
+        last = max((moment for moment in (_moment(row.updated_at) for row in mine) if moment), default=None)
+        if busy or last is None or (now - last).total_seconds() < minutes * 60:
+            continue
+        hours = int((now - last).total_seconds() // 3600)
+        age = f"{hours} h" if hours else f"{int((now - last).total_seconds() // 60)} min"
+        items.append(Item(IDLE, "", f"{name} has held no work for {age}: give it a row, or retire it", "",
+                          who=name))
+    return items
+
+
+def drained(rows: dict, live: set[str]) -> list[Item]:
+    """No open work left: the task is done unless the person says otherwise, and the fleet still holds memory (H12)."""
+    work = [row for row in rows.values()
+            if row.state != "reserved" and not (row.history and row.history[0].get("move") == "reserve")]
+    if not live or not work or any(row.is_open for row in work):
+        return []   # nothing done yet is a fleet starting, not a task finished
+    return [Item(DONE, "", f"the queue is empty: ask the person to check the result, then offer `flotilla fleet down` "
+                           f"({len(live)} session(s) stay alive until then)", "", who="done")]
 
 
 def question_items(questions) -> list[Item]:

@@ -77,7 +77,8 @@ class Context:
         return fleet.question_items(questions) + fleet.fleet(
             self.rows, self.profile, self.project if self.project is not None else self.sessions,
             post_of=self.post_of, breaks=breaks,
-            asking={asked.session for asked in questions})
+            asking={asked.session for asked in questions},
+            claimers={post.name for post in (self.ledger.posts or {}).values() if "claim" in post.may})
 
 
 def this_session(sessions, session_id: str, *, parent_of=None, start_pid: int | None = None):

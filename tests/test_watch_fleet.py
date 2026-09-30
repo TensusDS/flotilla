@@ -150,3 +150,48 @@ def test_a_holder_waiting_on_a_prompt_is_one_item_not_two():
                         [sess("review session 1", status="waiting"), sess("main session 1", state="working")],
                         post_of=post_of)
     assert [item.kind for item in found] == [fleet.DROPPED]
+
+
+def test_a_seat_with_no_work_for_an_hour_is_the_orchestrators_to_see():
+    import datetime as dt
+    seat = row(id="r1", branch="fleet/main-7", owner="main session 7", state="reserved",
+               updated_at="2026-09-30T14:00:00+00:00")
+    done = row(id="r2", branch="feat/old", owner="main session 7", state="closed",
+               updated_at="2026-09-30T17:05:00+00:00")
+    busy = row(id="r3", branch="feat/y", owner="main session 1", state="claimed",
+               updated_at="2026-09-30T20:00:00+00:00")
+    now = dt.datetime(2026, 9, 30, 20, 21, tzinfo=dt.timezone.utc)
+    found = fleet.fleet(rows(seat, done, busy), PR, [sess("main session 7"), sess("main session 1", state="working")],
+                        post_of=lambda n: "main", claimers={"main"}, now=now)
+    idle = [item for item in found if item.kind == fleet.IDLE]
+    assert len(idle) == 1 and idle[0].text.startswith("main session 7 has held no work for 3 h")
+    assert "give it a row, or retire it" in idle[0].text
+
+
+def test_a_seat_idle_for_minutes_or_a_reader_is_not_raised():
+    import datetime as dt
+    seat = row(id="r1", branch="fleet/main-7", owner="main session 7", state="reserved",
+               updated_at="2026-09-30T20:00:00+00:00")
+    reader_seat = row(id="r2", branch="fleet/reviewer-1", owner="review session 1", state="reserved",
+                      updated_at="2026-09-30T10:00:00+00:00")
+    busy = row(id="r3", branch="feat/y", owner="main session 1", state="claimed")
+    now = dt.datetime(2026, 9, 30, 20, 21, tzinfo=dt.timezone.utc)
+    found = fleet.fleet(rows(seat, reader_seat, busy), PR,
+                        [sess("main session 7"), sess("review session 1"), sess("main session 1", state="working")],
+                        post_of=lambda n: "reviewer" if n.startswith("review") else "main", claimers={"main"}, now=now)
+    assert [item for item in found if item.kind == fleet.IDLE] == []
+
+
+def test_a_drained_queue_asks_the_orchestrator_to_close_the_task():
+    seats = rows(row(id="r1", branch="fleet/main-1", owner="main session 1", state="reserved"),
+                 row(id="r2", branch="feat/x", owner="main session 1", state="closed"))
+    found = fleet.fleet(seats, PR, [sess("main session 1"), sess("orchestrator 1")], post_of=post_of)
+    done = [item for item in found if item.kind == fleet.DONE]
+    assert len(done) == 1
+    assert "ask the person to check the result" in done[0].text and "flotilla fleet down" in done[0].text
+    assert "2 session(s) stay alive" in done[0].text
+
+
+def test_open_work_means_the_queue_is_not_drained():
+    found = fleet.fleet(rows(row(state="claimed")), PR, [sess("main session 1", state="working")], post_of=post_of)
+    assert [item for item in found if item.kind == fleet.DONE] == []
