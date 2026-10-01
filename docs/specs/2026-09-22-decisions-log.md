@@ -819,6 +819,14 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    the reviewed change. Both places that take a fingerprint use the same mode; a mix of the two matches nothing, so
    it fails toward "not accounted". (planner's decision, security fixes group 3, 2026-10-01)
 
+177. **Another session's text is data wherever it reaches a person or a session** (review of the group 2 fix):
+   `visible()` escapes by Unicode category - controls, format characters (bidi, zero-width, tags), line and
+   paragraph separators, private use, unassigned, spaces other than " ", and letters that render blank - rather than
+   by a list of code points. Every line the hook block and `watch` print passes through it, so a newline in a note or
+   a why cannot forge a heading; a letter shows the reader's why the same way; a free-text onboarding answer with
+   such a character is refused, since it is printed back before it runs. (planner's decision, security fixes,
+   2026-10-01)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

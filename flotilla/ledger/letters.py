@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from flotilla.core.text import visible
 from flotilla.ledger import views
 from flotilla.ledger.model import Row
 from flotilla.posts import PostError, post_for_session
@@ -43,7 +44,7 @@ def _body(row: Row) -> str:
         return letter(row)
     said = f"`{row.branch}` (row {row.id}) is {WHAT.get(row.state, row.state)}; the next move is yours."
     if row.state == "fixing" and row.why:
-        said += f" What must change: {row.why}"
+        said += f" What must change: {visible(row.why)}"   # the reader's words, shown as data
     if row.state == "fixing" and row.pr:
         said += f" PR #{row.pr} stays open: push the fix to `{row.branch}` and it updates."
     return said + f" `flotilla work show {row.branch}` has the rest."

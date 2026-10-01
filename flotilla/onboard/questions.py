@@ -169,6 +169,10 @@ def validate_answer(question: dict, values: list[str]):
                               f"`{labels[value.casefold()]}`")
         if not question["free_text"]:
             raise AnswerError(f"{question['id']}: {value!r} is not one of {', '.join(allowed)}")
+        from flotilla.core.text import has_hidden, visible
+        if has_hidden(value):   # it is printed back before it runs: nothing in it may hide what follows
+            raise AnswerError(f"{question['id']}: \"{visible(value)}\" holds a control or hidden character; type "
+                              "it plainly")
         if question["id"] == "tracker":
             try:
                 re.compile(value)

