@@ -256,3 +256,22 @@ def test_retire_of_a_session_already_gone_says_its_job_directory_was_not_looked_
     fake.sessions = []
     lines = "\n".join(do_retire(ledger, fake))
     assert "its job directory was not looked at: the session had already gone, so its id is unknown" in lines
+
+
+def test_retire_says_when_the_sessions_job_directory_is_not_there(tmp_path, monkeypatch):
+    fake = FakeClaude()
+    root, ledger, seat = raised_world(tmp_path, fake)
+    monkeypatch.setattr("flotilla.fleet.leftovers.CONFIG_DIR", tmp_path / "claude")
+    lines = "\n".join(do_retire(ledger, fake))
+    assert f"its job directory was not looked at: {tmp_path / 'claude' / 'jobs' / seat.short_id} does not exist" \
+        in lines
+
+
+def test_retire_refuses_a_name_the_census_lists_twice(tmp_path):
+    from fleetkit import session
+    fake = FakeClaude()
+    root, ledger, seat = raised_world(tmp_path, fake)
+    fake.sessions.append(session("main session 1", "abcdef12"))
+    with pytest.raises(retire.RetireRefused, match="2 sessions named `main session 1`"):
+        do_retire(ledger, fake)
+    assert fake.stopped == [] and ledger.rows()["r1"].state == "reserved"

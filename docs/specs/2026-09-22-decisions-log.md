@@ -764,7 +764,12 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    Claude Code configuration directory (`CLAUDE_CONFIG_DIR`, else `~/.claude`), with the same rules as the tree. The
    id comes from the census at the moment retire stops the session; a session already gone left no id behind, so
    its job directory is not looked at, and retire says so. The directory's place is Claude Code's, not a documented
-   interface: where it does not exist, nothing is assumed. (planner's decision, release 0.3.2, 2026-10-01)
+   interface: where it does not exist, nothing is assumed, and retire says it did not look and why. A job directory
+   that is a link is never looked at: its target could be any directory, and the orphans under it are not this
+   session's. (planner's decision, release 0.3.2, 2026-10-01)
+169. **Retire refuses a name the census lists twice**: which of the two is the seat cannot be told, and stopping
+   either, or looking at either's job directory, could stop the wrong session's work. The refusal names both ids
+   for `claude stop` by hand. (planner's decision, review of release 0.3.2, 2026-10-01)
 
 ## Open questions (for the foundation spec)
 

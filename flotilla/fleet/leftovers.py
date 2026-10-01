@@ -48,12 +48,18 @@ class _Proc:
     service: bool
 
 
-def job_dir(short_id) -> Path | None:
-    """The background session's job directory, when its id is a plain id and the directory exists."""
+def job_dir(short_id) -> tuple[Path | None, str]:
+    """The background session's job directory, or None and why it is not looked at: no plain id, no such directory,
+    or a link (a link could point anywhere, and the processes under its target are not this session's)."""
     if not short_id or not re.fullmatch(r"[0-9A-Za-z]{4,64}", str(short_id)):
-        return None
-    found = CONFIG_DIR / "jobs" / str(short_id)
-    return found if found.is_dir() else None
+        return None, f"`{short_id}` is not a plain session id"
+    jobs = CONFIG_DIR / "jobs"
+    found = jobs / str(short_id)
+    if found.is_symlink():
+        return None, f"{found} is a link"
+    if not found.is_dir():
+        return None, f"{found} does not exist"
+    return found, ""
 
 
 def _start(proc_root: Path, pid: int) -> str:

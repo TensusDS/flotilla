@@ -85,8 +85,20 @@ def test_stop_signals_only_the_same_process_it_found(tmp_path):
 
 def test_a_sessions_job_directory_is_named_by_its_id_and_only_when_it_exists(tmp_path, monkeypatch):
     monkeypatch.setattr(leftovers, "CONFIG_DIR", tmp_path / "claude")
-    (tmp_path / "claude" / "jobs" / "cd30b6e8").mkdir(parents=True)
-    assert leftovers.job_dir("cd30b6e8") == tmp_path / "claude" / "jobs" / "cd30b6e8"
-    assert leftovers.job_dir("0d0760af") is None                        # no such directory
+    jobs = tmp_path / "claude" / "jobs"
+    (jobs / "cd30b6e8").mkdir(parents=True)
+    assert leftovers.job_dir("cd30b6e8") == (jobs / "cd30b6e8", "")
+    path, why = leftovers.job_dir("0d0760af")
+    assert path is None and why == f"{jobs / '0d0760af'} does not exist"
     for bad in ("", None, "..", "../cd30b6e8", "a/b", "cd30 b6e8"):
-        assert leftovers.job_dir(bad) is None, bad
+        path, why = leftovers.job_dir(bad)
+        assert path is None and why, bad
+
+
+def test_a_job_directory_that_is_a_link_is_never_looked_at(tmp_path, monkeypatch):
+    monkeypatch.setattr(leftovers, "CONFIG_DIR", tmp_path / "claude")
+    (tmp_path / "claude" / "jobs").mkdir(parents=True)
+    (tmp_path / "home").mkdir()
+    (tmp_path / "claude" / "jobs" / "cd30b6e8").symlink_to(tmp_path / "home")
+    path, why = leftovers.job_dir("cd30b6e8")
+    assert path is None and "is a link" in why

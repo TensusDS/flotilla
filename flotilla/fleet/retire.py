@@ -100,9 +100,14 @@ def retire(ledger, name: str, *, caller: str, census, wait: float = 60.0, poll: 
     if row is None:
         raise RetireRefused(f"no post row for `{name}`; `flotilla fleet` lists the fleet")
     try:
-        found = _running(census(), name)
+        listed = [item for item in census() if item.name == name]
     except CensusUnavailable as err:
         raise RetireRefused(f"cannot tell whether `{name}` runs: the census could not be asked ({err})") from err
+    if len(listed) > 1:   # which one is the seat cannot be told; stopping either could stop the wrong one
+        ids = ", ".join(item.short_id or "(no id)" for item in listed)
+        raise RetireRefused(f"the census lists {len(listed)} sessions named `{name}` ({ids}); stop the right one by "
+                            f"hand with `claude stop <id>`, then retire again")
+    found = listed[0] if listed else None
     if found is not None:
         if not found.short_id:
             raise RetireRefused(f"the census lists `{name}` without an id; stop it by hand with `claude agents`")
@@ -164,9 +169,11 @@ def _stop_leftovers(ledger, tree: str, census, *, short_id: str = "", was_runnin
         else:
             places.append(tree)
     if was_running:
-        job = leftovers.job_dir(short_id)
+        job, why = leftovers.job_dir(short_id)
         if job is not None:
             places.append(str(job))
+        else:
+            lines.append(f"its job directory was not looked at: {why}")
     else:
         lines.append("its job directory was not looked at: the session had already gone, so its id is unknown")
     if not places:
