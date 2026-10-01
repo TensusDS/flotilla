@@ -938,7 +938,8 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    onboard skill asks first: quick or custom. Quick (`flotilla onboard quick`) records the recommended answer to every
    question that applies - what detection found (trunk, test commands, GitHub CI), and otherwise every branch
    reviewed, every permission asked of the person, every guard on, one model; flow is pull requests through a sender
-   on GitHub and a direct push elsewhere, and a remote without GitHub gets "no CI", not an empty gate command (W5). The
+   where GitHub Actions workflows were found and a direct push otherwise, and a remote without them gets "no CI", not
+   an empty gate command (W5). The
    person sees the short list and every shell command, and says yes once; `write --confirm` is unchanged. Then
    `flotilla onboard publish` commits `.flotilla/` (and `.claude/settings.json` when it changed) on trunk, runs the
    tiers over that commit and pushes it - so onboarding no longer ends at "commit" while sessions read origin's trunk
@@ -949,8 +950,9 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
 
 191. **The onboarding session may lead the fleet** (the person's request, 2026-10-01). Onboarding ends by offering to
    raise the fleet: this session leads it (recommended), a background orchestrator, or not now. To lead, the person
-   types `/rename orchestrator N` - only a person can rename an interactive session, and the census then names it -
-   and `flotilla spawn --fill` raises the rest of `[fleet] default`: only the seats nobody holds, so not a second
+   types `/rename orchestrator N` - only a person can rename an interactive session, and the census then names it;
+   `flotilla spawn --lead` issues that name from the names journal first, so it is never issued again - and
+   `flotilla spawn --fill` raises the rest of `[fleet] default`: only the seats nobody holds, so not a second
    orchestrator. The session then follows the orchestrator post. An interactive orchestrator keeps Claude Code's own
    permission prompt for itself; the fleet's questions reach it as before. (planner's decision, 2026-10-01)
 
@@ -975,6 +977,21 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    from a marketplace nobody else knew, and the README's "commits a marketplace entry" was false. The README now adds
    the marketplace with `--scope project`, which writes `extraKnownMarketplaces` beside `enabledPlugins` (measured
    2026-10-01 in a throwaway repository). (planner's decision, 2026-10-01)
+
+195. **Review of 0.5.0: publish carries only the profile; the approve guard reads the move, not the first word**
+   (2026-10-01). `onboard publish` checks everything before it commits - the tree clean but for `.flotilla/` and
+   `.claude/settings.json`, trunk equal to origin's (ahead: the unpushed commits are named and nothing is pushed;
+   behind: pull first) - and commits with a pathspec, so neither a staged file of the person's nor an unpushed
+   commit rides to trunk unseen (C1, I1); an ignored `.flotilla/` is refused, not claimed (M7). The approve guard
+   finds the CLI anywhere in a segment - behind an interpreter or a wrapper, or as `-m flotilla.cli` - and reads the
+   move as the first word after `work` that names one (a test holds its list equal to the CLI's), so a branch or a
+   reason named `approve` passes; the hook's text prefilter also wakes on `flotilla`, since the word `approve` can be
+   quoted apart (I2, M2). `--fill` counts only this project's live sessions (M3). A from-the-top sed range no longer
+   hides a counted line in the block it opens (M4). Quick names the detected test commands a round left out (M6).
+   Ruling: `onboard publish` stays a model-run step in the person's session, gated by the person check and by Claude
+   Code's permission prompt (it is not pre-approved), like `answer` and `write`: onboarding is the person's own act
+   through the skill, and a refused tool call would leave the skill unable to finish it. (planner's decision,
+   2026-10-01)
 
 ## Open questions (for the foundation spec)
 

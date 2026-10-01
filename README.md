@@ -75,8 +75,9 @@ post templates in `.flotilla/posts/`.
 
 Next it offers to publish them: commit `.flotilla/`, run the tiers over that commit, and push it to trunk on origin.
 That step matters: **every session reads its rules from origin's trunk**, not from its own tree, so a session cannot
-change the rules it works under - and until the profile is there, every ledger move is refused with that reason. If
-your tree has uncommitted work of your own, or trunk only takes pull requests, it says so and pushes nothing.
+change the rules it works under - and until the profile is there, every ledger move is refused with that reason. It
+pushes the profile and nothing else: if your tree has uncommitted work of your own, trunk has commits origin has not
+(or the reverse), or trunk only takes pull requests, it says so and pushes nothing.
 
 The permission question matters most:
 
@@ -92,9 +93,9 @@ You can change any answer later by editing `.flotilla/project.toml`; a change ta
 
 Onboarding ends by offering to raise the fleet now, three ways:
 
-- **This session leads it** (recommended). The session you onboarded in becomes the orchestrator: you type
-  `/rename orchestrator 1` (the name it gives you - only you can rename an interactive session), and it raises the rest
-  of the fleet in the background with `flotilla spawn --fill`. You talk to the fleet, answer its permission questions
+- **This session leads it** (recommended). The session you onboarded in becomes the orchestrator: flotilla reserves
+  its name (`flotilla spawn --lead`), you type `/rename orchestrator N` with that name - only you can rename an
+  interactive session - and it raises the rest of the fleet in the background with `flotilla spawn --fill`. You talk to the fleet, answer its permission questions
   and approve its merges right here.
 - **A background orchestrator.** Every seat, the orchestrator included, starts in the background; you attach to talk.
 - **Not now.** Raise it later:
@@ -103,7 +104,7 @@ Onboarding ends by offering to raise the fleet now, three ways:
 
 With no arguments it raises the composition onboarding suggested (`[fleet] default` in the profile: one orchestrator,
 one sender, one main session, and a reviewer when work is reviewed). `--fill` raises only the seats of that composition
-nobody holds yet. You can name one: `-o 1 -s 1 -r 1 -M 2` is one orchestrator, one sender, one reviewer and two main
+this project's live sessions do not hold yet. You can name one: `-o 1 -s 1 -r 1 -M 2` is one orchestrator, one sender, one reviewer and two main
 sessions. Add `--dry-run` to see the names, trees, commands and the plugins each seat will have turned off, without
 raising anything.
 

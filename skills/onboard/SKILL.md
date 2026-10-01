@@ -94,8 +94,8 @@ Ask with AskUserQuestion, header "Fleet", question "Raise the fleet now?":
 
 **This session leads it:**
 
-1. Run `flotilla spawn -o 1 --dry-run` and read the orchestrator's name from the line that starts with it
-   (`orchestrator N`); warnings may come first.
+1. Run `flotilla spawn --lead`. It reserves the orchestrator's name for this session and prints it
+   (`orchestrator N`); a note may come first.
 2. Tell the person: "Type `/rename orchestrator N` (the name above) as your next message - only you can rename this
    session." Wait for it. Then run `flotilla fleet` - or `claude agents --json` - and check that this session now
    carries that name; if not, say what you see and stop.

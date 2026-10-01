@@ -30,7 +30,8 @@ The CLI is `${CLAUDE_PLUGIN_ROOT}/scripts/flotilla`. Every command takes `--help
 **Fleet**
 
     flotilla spawn [-o N] [-s N] [-r N] [-j N] [-M N] [-m N] [--post NAME=N] [--dry-run] [--anyway]
-    flotilla spawn --default | --fill    the profile's composition; --fill raises only the seats nobody holds
+    flotilla spawn --default | --fill    the profile's composition; --fill raises only the seats nobody here holds
+    flotilla spawn --lead                reserve the orchestrator's name for your own session; you type /rename
     flotilla fleet                 the seats, their trees and their work
     flotilla fleet down            retire every seat but your own
     flotilla retire "<name>"       stop one session, release its post
@@ -79,10 +80,10 @@ Worktrees and receipts:
 
 ## Daily operation
 
-1. **Start:** if your own session leads the fleet (onboarding offers it), name it as the orchestrator with
-   `/rename orchestrator N` and raise the rest with `flotilla spawn --fill`. Otherwise `/flotilla:spawn`, then
-   `claude attach <orchestrator id>` (`flotilla fleet` lists the ids). Tell the orchestrator what to build. The
-   project's `.flotilla/` must be on origin's trunk first.
+1. **Start:** if your own session leads the fleet (onboarding offers it), `flotilla spawn --lead` gives it the
+   orchestrator's name, you type `/rename orchestrator N`, and you raise the rest with `flotilla spawn --fill`.
+   Otherwise `/flotilla:spawn`, then `claude attach <orchestrator id>` (`flotilla fleet` lists the ids). Tell the
+   orchestrator what to build. The project's `.flotilla/` must be on origin's trunk first.
 2. **While it runs:** `/flotilla:status` for the picture, `/flotilla:watch` for what needs you. Answer permission
    questions with `/flotilla:permit` in the orchestrator's session.
 3. **Merges you authorize:** the orchestrator shows the batch and the command; for each branch you agree to, you type
@@ -107,8 +108,10 @@ Worktrees and receipts:
 | `permit answer` refused: mark | the answer did not carry the mark of the question shown | run `flotilla permit next` and use the command it prints |
 | `onboard`, `approve` or `--as` refused: not a person | it was run from a background session (the orchestrator included) or a process with no terminal | run it in your own Claude Code session or in a terminal |
 | every move refused: no profile on trunk | `.flotilla/` is committed locally but not on origin's trunk | `flotilla onboard publish`, or push it to origin's trunk yourself |
+| `work approve` refused as a tool call | approving is the person's own move; Claude's Bash call never is | type `! <command>` in your own session, or run it in a terminal |
+| `onboard publish` refuses: trunk is ahead or behind origin | publish pushes only the profile | push or move your own trunk commits, or `git pull`, then publish again |
 | `onboard publish` refuses: your own changes | the tree has uncommitted work besides `.flotilla/` | commit or stash it, then publish again |
-| `onboard publish` could not push | trunk takes pull requests only, or origin refused | open a pull request with `.flotilla/` and merge it |
+| `onboard publish` could not push | origin moved meanwhile, or trunk takes pull requests only | pull and publish again, or open a pull request with `.flotilla/` and merge it |
 | the orchestrator's own permission request is refused | it cannot put a question to itself | attach to the orchestrator and answer there |
 | `onboard write` stops and prints a mark | it shows the whole profile first | read it; if it is right, run `write --confirm <mark>` |
 | a push is refused: receipt | no green push receipt over exactly what is pushed | `flotilla receipt run --purpose push` in that tree, then push |
