@@ -202,3 +202,39 @@ def test_the_first_push_after_onboarding_can_get_its_receipt(tmp_path, monkeypat
     monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
     assert cli.main(["receipt", "run", "--purpose", "push", "--tree", str(root), "--no-lane"]) == 0
     assert judge("git push origin main", root, tmp_path) is None
+
+
+def human_project(tmp_path):
+    root = onboarded(tmp_path)
+    profile = root / ".flotilla" / "project.toml"
+    profile.write_text(profile.read_text().replace('[flow]\nmode = "direct"\n',
+                                                   '[flow]\nmode = "direct"\nmerge_authorized_by = "human"\n'),
+                       encoding="utf-8")
+    git(root, "add", ".flotilla")
+    git(root, *IDENTITY, "commit", "-q", "-m", "a person authorizes merges")
+    git(root, "push", "-q", "origin", "main")
+    (root / "w.txt").write_text("work nobody approved\n", encoding="utf-8")
+    git(root, "add", "w.txt")
+    git(root, *IDENTITY, "commit", "-q", "-m", "unapproved work")
+    receipt(root, tmp_path / "state")
+    return root
+
+
+def test_where_a_person_authorizes_merges_a_push_of_unapproved_work_to_trunk_is_refused(tmp_path):
+    """queue waited for the person's approve, but a push to trunk asked only for a receipt (review of the approve
+    move): the sender could push unapproved work and record it afterwards."""
+    root = human_project(tmp_path)
+    found = judge("git push origin main", root, tmp_path)
+    assert found is not None and found.refuse and "not approved" in found.text
+    head = git(root, "rev-parse", "HEAD")
+    code, text = push.pre_push(root, lines(root, ("refs/heads/main", head, "refs/heads/main")), env=env(tmp_path))
+    assert code == 1 and "not approved" in text
+
+
+def test_where_the_sender_authorizes_merges_the_same_push_opens(tmp_path):
+    root = onboarded(tmp_path)
+    (root / "w.txt").write_text("work\n", encoding="utf-8")
+    git(root, "add", "w.txt")
+    git(root, *IDENTITY, "commit", "-q", "-m", "work")
+    receipt(root, tmp_path / "state")
+    assert judge("git push origin main", root, tmp_path) is None

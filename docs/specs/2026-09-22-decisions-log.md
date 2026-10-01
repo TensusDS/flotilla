@@ -877,9 +877,21 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
 183. **Where a person authorizes merges, the ledger holds it** (security review 2026-10-01, F24; the person's
    decision): `flow.merge_authorized_by = human` was held only by the sender post's text, and a yes arrived as a
    message anyone could write. The person's yes is now their own move, `flotilla work approve <branch>`, recorded
-   at the revision the reader accepted; only a person makes it (decision 173), and `queue` refuses until the row
-   carries an approval of its current revision - a moved and re-read branch needs another. The orchestrator shows
-   the person the batch and the command; it never approves. (the person's decision, 2026-10-01)
+   at the revision the reader accepted; only a person's session or terminal makes it (decision 173), and `queue`
+   refuses until the row carries an approval of its current revision - a moved and re-read branch needs another.
+   The orchestrator shows the person the batch and the command; it never approves. (the person's decision,
+   2026-10-01)
+185. **Every door to trunk asks for the person's approval, not only queue** (review of decision 183): where a person
+   authorizes merges, the batch accounting counts a row's commits only when the person approved it at the revision
+   it carries, so `land` refuses unapproved work riding in a batch; the push guard and the pre-push hook ask the
+   ledger about every revision going to trunk (`git push`, `gh pr merge`), so work cannot be pushed first and
+   recorded afterwards; `offledger` is the person's move there; work born in the batch is approved by its label;
+   work in a project that skips review is approved at its tip. An `approved` field counts only from the person's
+   approve move, not from any line appended to the ledger. What stays: the ledger is a file every session of the
+   same user can write, so a session that forges a whole approve event, or the model in the person's own
+   interactive session, can still pass for the person - the last gate is Claude Code's permission prompt for
+   `flotilla work approve` in the person's session, which nobody should answer "don't ask again".
+   (planner's decision, security fixes, 2026-10-01)
 
 184. **Lower findings of the security review, group C** (2026-10-01): a seat tree must be one of this project's
    worktrees - a git toplevel of another repository is not one, so a forged row cannot have retire signal another

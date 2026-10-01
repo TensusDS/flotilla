@@ -205,6 +205,28 @@ def _failures(pairs, *, directory, profile, state_dir, repo_key, run) -> list[st
     return found
 
 
+def _unapproved(root, profile: dict, pairs) -> list[str]:
+    """Where a person authorizes merges, what goes to trunk is work they approved (F24): each revision is asked of
+    the ledger, which counts only approved rows; a commit no approved row covers closes the door."""
+    if (profile.get("flow") or {}).get("merge_authorized_by") != "human" or not pairs:
+        return []
+    from flotilla.ledger import batch
+    from flotilla.ledger.commands import open_ledger
+    ledger = open_ledger(Path(root))
+    found = []
+    for label, sha in pairs:
+        loose = batch.unaccounted(ledger, ledger.rows(), sha)
+        if loose is None:
+            found.append(f"{label}: which commits it carries could not be told, so whether the person approved "
+                         "them could not be asked")
+        elif loose:
+            named = ", ".join(f"{item[:7]} {batch.subject(ledger, item)}" for item in loose[:5])
+            more = f" and {len(loose) - 5} more" if len(loose) > 5 else ""
+            found.append(f"{label}: carries work the person has not approved: {named}{more}; the person runs "
+                         "`flotilla work approve <branch>`")
+    return found
+
+
 def _home(d: Door, root: Path, profile: dict, run):
     """(project root, profile) the door is judged by, or None when it acts outside any flotilla project."""
     from flotilla.core.config import find_project
@@ -234,8 +256,12 @@ def guard(segment, *, root, profile, env=os.environ, run=subprocess.run) -> Find
             return None
         key = repo.identify(Path(home_root)).key
         trunk = (home_profile.get("trunk") or {}).get("branch", "main")
-        failures = _failures(revisions(d, trunk, run=run), directory=d.directory, profile=home_profile,
-                             state_dir=state, repo_key=key, run=run)
+        pairs = revisions(d, trunk, run=run)
+        failures = _failures(pairs, directory=d.directory, profile=home_profile, state_dir=state, repo_key=key,
+                             run=run)
+        if d.kind in ("git push", "gh pr merge"):   # what lands on trunk; a tag or a PR opened merges nothing
+            failures += _unapproved(home_root, home_profile, [(label, sha) for label, sha in pairs
+                                                              if d.kind == "gh pr merge" or label == trunk])
     except Unknown as err:
         failures = [str(err)]
     except Exception as err:  # noqa: BLE001 - the push guard's own failure refuses (spec, section 10)
@@ -276,6 +302,11 @@ def pre_push(root, stdin_text: str, *, env=os.environ, run=subprocess.run) -> tu
         return 0, ""
     state, key = paths.state_dir(env), repo.identify(Path(root)).key
     failures = _failures(pairs, directory=Path(root), profile=profile, state_dir=state, repo_key=key, run=run)
+    try:
+        failures += _unapproved(root, profile, [(remote, sha) for remote, sha in pairs
+                                                if remote == f"refs/heads/{trunk}"])
+    except Exception as err:  # noqa: BLE001 - a guard that cannot ask refuses (spec, section 10)
+        failures.append(f"whether the person approved this could not be asked: {err}")
     if not failures:
         return 0, ""
     reason = env.get(OVERRIDE, "").strip()

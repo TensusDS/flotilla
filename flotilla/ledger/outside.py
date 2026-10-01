@@ -95,6 +95,12 @@ def _proof(ledger: Ledger, row: Row, sha: str, attested: str) -> str:
 
 def offledger(ledger: Ledger, actor: Actor, branch: str, *, merge: str, witness: str, attested: str = "") -> Row:
     require_may(actor, "offledger", ledger.posts)
+    if (ledger.profile.get("flow") or {}).get("merge_authorized_by") == "human":
+        from flotilla.core import caller   # work that reached trunk unapproved is recorded by the person (F24)
+        refused = caller.person_refusal("records work that reached trunk outside the ledger, where a person "
+                                        "authorizes merges")
+        if refused:
+            raise MoveRefused(refused)
     witness = witness.strip()
     if not witness:
         raise MoveRefused("name the witness (--witness): half of this proof is measured, the other half is signed")

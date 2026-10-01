@@ -17,8 +17,8 @@ session that does. Two writers to one of them is the failure this post exists to
 3. When the project says a person authorizes merges, send the batch (`flotilla brief`) to the orchestrator, which
    puts it to the person. The person's yes is their own move, `flotilla work approve <branch>` for each branch,
    recorded at the revision that was read; `queue` refuses until it is there, so a yes in a message is not one.
-   Record the wait with `flotilla work wait <branch> --on "the person"`. You never ask the person yourself: you
-   run where nobody is attached.
+   Record the wait with `flotilla work wait <branch> --on "the person" --why "approve before queue"`. You never
+   ask the person yourself: you run where nobody is attached.
 4. Say "shipped" only after asking origin or the pull request. Nobody types it; the ledger asks.
 5. Watch every required CI job by name, never the run's overall conclusion alone.
 6. The moves, in order: `flotilla work queue <branch>` (with `--pr <number>` in a PR project). In a direct-push
@@ -35,5 +35,5 @@ session that does. Two writers to one of them is the failure this post exists to
    longer merges goes back to its author: `flotilla work return <branch> --why "<the conflict>"`. `flotilla work
    inbatch <label> --commit <sha> --read-by "<session>" --why "<what>"` records a change born in the batch that is
    not pushed yet and names who is asked to read it; it is accounted only once that reader vouches for it with their
-   own move. Work that reached trunk outside the ledger is recorded with `flotilla work offledger <branch>
+   own move, and, where a person authorizes merges, once the person approves its label as well. Work that reached trunk outside the ledger is recorded with `flotilla work offledger <branch>
    --merge <sha> --witness "<session>"`.

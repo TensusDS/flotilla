@@ -694,3 +694,50 @@ def test_where_the_sender_authorizes_no_approval_is_asked(tmp_path):
                                                                                    "merge_authorized_by": "sender"}})
     drive(root, ledger, "feat/x")
     assert delivery.queue(ledger, actor(ledger, "sender 1"), "feat/x").state == "queued"
+
+
+def test_where_a_human_authorizes_merges_land_counts_only_approved_work(tmp_path):
+    """The sender merges A (approved) and B (accepted, never approved) and lands A: B's commits counted as read in
+    B, so B reached trunk with no approval (review of the approve move)."""
+    from flotilla.ledger import batch
+    root, ledger = human_world(tmp_path)
+    drive(root, ledger, "feat/y")
+    delivery.approve(ledger, "feat/x")
+    merge(root, "feat/x")
+    merge(root, "feat/y")
+    assert batch.unaccounted(ledger, ledger.rows(), "main") != []   # feat/y's work rides unapproved
+    delivery.approve(ledger, "feat/y")
+    assert batch.unaccounted(ledger, ledger.rows(), "main") == []
+
+
+def test_an_approved_field_written_by_any_other_move_is_not_an_approval(tmp_path):
+    """The ledger is a file every session can append to: `approved` counts only from an approve the person made."""
+    from flotilla.ledger.actor import Actor
+    root, ledger = human_world(tmp_path)
+    with ledger.session() as session:
+        row = session.need_open_row("feat/x")
+        session.append(Actor("sender 1", None, "census"), row.id, "wait", row.state,
+                       fields={"approved": row.verdict, "waiting_on": "x"})
+    assert ledger.rows()["r1"].approved == ""
+
+
+def test_where_a_human_authorizes_merges_offledger_is_the_persons(tmp_path, monkeypatch):
+    from flotilla.core import caller
+    from flotilla.ledger import outside
+    root, ledger = human_world(tmp_path)
+    monkeypatch.setattr(caller, "person_refusal", lambda what: "`sender 1` is a background session")
+    merged = merge(root, "feat/x")
+    git(root, "push", "-q", "origin", "main")   # pushed outside the ledger, as the review's scenario does
+    with pytest.raises(MoveRefused, match="background session"):
+        outside.offledger(ledger, actor(ledger, "sender 1"), "feat/x", merge=merged, witness="review session 1")
+
+
+def test_work_with_no_review_is_approved_at_its_tip(tmp_path):
+    from flotilla.ledger import core, handover
+    profile = {**HUMAN, "review": {"depth": "none"}}
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile=profile)
+    branch(root, "feat/z", "work")
+    core.claim(ledger, actor(ledger, "main session 1"), "feat/z")
+    row = delivery.approve(ledger, "feat/z")
+    assert row.approved and row.approved == git(root, "rev-parse", "feat/z")

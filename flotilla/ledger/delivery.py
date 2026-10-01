@@ -25,7 +25,7 @@ from flotilla.ledger.actor import Actor, require_may
 from flotilla.ledger.core import Ledger
 from flotilla.ledger.errors import MoveRefused, NotYet
 from flotilla.ledger.model import Row, blocked_by
-from flotilla.ledger.transitions import next_state
+from flotilla.ledger.transitions import moves_from, next_state
 
 
 def pr_view(ledger: Ledger, pr: int, fields: str) -> dict:
@@ -66,13 +66,23 @@ def approve(ledger: Ledger, branch: str) -> Row:
         raise MoveRefused(refused)
     person = Actor("the person", None, "person", "the person")
     with ledger.session() as s:
-        row = s.need_open_row(branch)
-        if row.state != "accepted" or not row.verdict:
-            raise MoveRefused(f"`{branch}` is {row.state}; a person approves work a reader accepted, at the "
-                              "revision that was read")
-        state = s.next_state(row, "approve")
-        return s.append(person, row.id, "approve", state, fields={"approved": row.verdict},
-                        evidence={"revision": row.verdict})
+        row = s.open_row(branch) or next(   # work born in the batch is a closed row under its label
+            (item for item in reversed(list(s.rows.values())) if item.branch == branch and item.state == "inbatch"),
+            None) or s.need_open_row(branch)
+        if row.state == "inbatch":
+            revision, state = row.merge, row.state
+        elif row.state == "accepted" and row.verdict:
+            revision, state = row.verdict, s.next_state(row, "approve")
+        elif "queue" in moves_from(row.state, ledger.profile, ledger.owner_post(row)):
+            revision = gitq.branch_tip(ledger.root, branch, run=ledger.run) or ""   # no review: the tip as it is
+            state = s.next_state(row, "approve")
+        else:
+            revision, state = "", ""
+        if not revision:
+            raise MoveRefused(f"`{branch}` is {row.state}; a person approves work on its way to trunk: accepted, "
+                              "born in the batch, or not reviewed where the project skips review")
+        return s.append(person, row.id, "approve", state, fields={"approved": revision},
+                        evidence={"revision": revision})
 
 
 def queue(ledger: Ledger, actor: Actor, branch: str, *, pr: int | None = None) -> Row:
@@ -102,7 +112,8 @@ def queue(ledger: Ledger, actor: Actor, branch: str, *, pr: int | None = None) -
         if (ledger.profile.get("flow") or {}).get("merge_authorized_by") == "human" and row.approved != current:
             raise MoveRefused(f"a person authorizes every merge into trunk here, and nobody approved `{branch}` at "
                               f"{current[:7]}: the person runs `flotilla work approve {branch}` from their own "
-                              "session or a terminal; record the wait with `flotilla work wait --on \"the person\"`")
+                              f"session or a terminal; record the wait with `flotilla work wait {branch} --on "
+                              "\"the person\" --why \"approve before queue\"`")
         evidence = _check_pr(ledger, pr, branch, current) if pr is not None else {}
         fields = {"tip": current}
         if pr is not None:

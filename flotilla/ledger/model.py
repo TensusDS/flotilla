@@ -109,6 +109,8 @@ def fold(records) -> dict[str, Row]:
                                      f"{EVENT_VERSION}; update the plugin")
         row = rows.get(event["row"]) or Row(id=event["row"])
         for key, value in (event.get("fields") or {}).items():
+            if key == "approved" and (event.get("move") != "approve" or event.get("via") != "person"):
+                continue   # an approval is the person's approve move, not a field any move may carry (F24)
             if key in ROW_FIELDS:
                 setattr(row, key, value)
         row.state = event["state"]

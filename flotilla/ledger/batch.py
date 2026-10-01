@@ -29,6 +29,12 @@ def _git(ledger, *args: str) -> str | None:
     return done.stdout if done.returncode == 0 else None
 
 
+def approved(row: Row) -> bool:
+    """Whether the person approved this row at the revision it carries (its merge, for work born in the batch)."""
+    target = row.merge if row.state == "inbatch" else revision_of(row)
+    return bool(row.approved) and row.approved == target
+
+
 def revision_of(row: Row) -> str:
     """The revision a row's reader vouched for: the verdict, or the tip where the profile skips review."""
     return row.verdict or row.tip
@@ -127,7 +133,10 @@ class Accounting:
         self.born: dict[str, Row] = {}
         self.vouched: dict[str, Row] = {}
         profile = ledger.profile
+        human = (profile.get("flow") or {}).get("merge_authorized_by") == "human"
         for row in rows.values():
+            if human and not approved(row):   # where a person authorizes merges, only work they approved counts (F24)
+                continue
             if row.is_open or delivered(row, profile):   # a released row's vouch accounts for nothing
                 for sha in row.vouched or []:
                     self.vouched.setdefault(sha, row)
