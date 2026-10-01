@@ -180,16 +180,24 @@ def _stop_leftovers(ledger, tree: str, census, *, short_id: str = "", was_runnin
         lines.append("its job directory was not looked at: the session had already gone, so its id is unknown")
     if not places:
         return lines
+    if started_before is None:
+        return lines + [f"background processes in {', '.join(places)} were not looked for: /proc could not be read "
+                        f"on this machine"]
     try:
         keep = {item.pid for item in census() if item.pid}
     except CensusUnavailable:
         return lines + [f"background processes in {', '.join(places)} were not looked for: the census could not "
                         f"be asked"]
     for place in places:
-        found = leftovers.in_tree(place, keep=keep, started_before=started_before)
-        if found is None:
+        grace = 0 if was_running else int(leftovers.GRACE_SECONDS * leftovers.CLK_TCK)
+        scanned = leftovers.scan(place, keep=keep, started_before=started_before, grace_ticks=grace)
+        if scanned is None:
             return lines + [f"background processes in {', '.join(places)} were not looked for: /proc could not be "
                             f"read on this machine"]
+        found, spared = scanned
+        if spared:
+            lines.append(f"left {len(spared)} process{'es' if len(spared) != 1 else ''} in {place} that started as "
+                         f"the session stopped: " + ", ".join(item.command[:60] for item in spared[:5]))
         if not found:
             continue
         count = leftovers.stop(found)

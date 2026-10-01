@@ -773,8 +773,11 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
 170. **A leftover started before the stop** (H51): retire reads the clock processes' start times are kept in
    (`/proc/uptime`, in clock ticks since boot) before it stops the session, and only an orphan whose start is earlier
    is a leftover; what it forked later is still part of it. What starts after the stop — a plugin's session-end hook
-   saving the session — is the stop's own work. Where that clock cannot be read nothing is looked for, and retire
-   says so. (planner's decision, release 0.3.3, 2026-10-01)
+   saving the session — is the stop's own work. Where that clock cannot be read before the stop nothing is looked
+   for, and retire says so. When the session was already gone as retire came (stopped by hand after a refusal, or a
+   second retire after the wait ran out), the cut-off comes after that stop, so an orphan started up to two minutes
+   before it is spared too. Every spared orphan is named in retire's output, so a dev server started as the
+   session stopped is not silently left behind. (planner's decision, release 0.3.3, review of the fix, 2026-10-01)
 
 ## Open questions (for the foundation spec)
 

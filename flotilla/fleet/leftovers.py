@@ -31,6 +31,7 @@ from pathlib import Path
 from flotilla.lane.procs import CLK_TCK
 
 PROC_ROOT = Path("/proc")
+GRACE_SECONDS = 120   # a session already gone when retire came: what started this close to the cut-off may be its stop's
 CONFIG_DIR = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
 
 
@@ -134,11 +135,19 @@ def in_tree(tree, *, keep: set[int], proc_root: Path | None = None, me: int | No
     """The orphans that started before `started_before` (default: now) and work in `tree`, each followed by what
     runs under it; None where procfs cannot be read."""
     proc_root = PROC_ROOT if proc_root is None else Path(proc_root)
-    if not proc_root.is_dir():
-        return None
     if started_before is None:
         started_before = now_ticks(proc_root)
-    if started_before is None:
+    scanned = scan(tree, keep=keep, proc_root=proc_root, me=me, started_before=started_before)
+    return None if scanned is None else scanned[0]
+
+
+def scan(tree, *, keep: set[int], started_before: int | None, proc_root: Path | None = None, me: int | None = None,
+         grace_ticks: int = 0) -> tuple[list[Leftover], list[Leftover]] | None:
+    """The leftovers in `tree` (orphans started before `started_before - grace_ticks`, with what runs under them),
+    and the orphans spared for starting later: the stop's own work, named so a later leftover is not silent. None
+    where procfs or the cut-off cannot be read."""
+    proc_root = PROC_ROOT if proc_root is None else Path(proc_root)
+    if started_before is None or not proc_root.is_dir():
         return None
     table = _table(proc_root)
     tree = Path(os.path.realpath(tree))
@@ -151,18 +160,19 @@ def in_tree(tree, *, keep: set[int], proc_root: Path | None = None, me: int | No
         protected.add(pid)
         pid = table[pid].ppid
     uid = os.getuid()
-    found = []
+    found, spared = [], []
     for root in sorted(table):
         orphan = table[root]
         if orphan.ppid != 1 or not _inside(orphan.cwd, tree) or orphan.service:
             continue
-        if not orphan.start.isdigit() or int(orphan.start) >= started_before:
-            continue   # started by the stop itself (a session-end hook), or its start could not be read
         subtree = [pid for pid in _subtree(root, children) if pid in table]
         if protected & set(subtree) or any(table[pid].tty or table[pid].uid != uid for pid in subtree):
             continue
+        if not orphan.start.isdigit() or int(orphan.start) >= started_before - grace_ticks:
+            spared.append(Leftover(root, orphan.command, orphan.start))   # started by the stop, or start unknown
+            continue
         found += [Leftover(pid, table[pid].command, table[pid].start) for pid in subtree]
-    return found
+    return found, spared
 
 
 def stop(found: list[Leftover], *, kill=None, proc_root: Path | None = None) -> int:

@@ -285,9 +285,56 @@ def test_retire_spares_what_the_stop_itself_started(tmp_path, monkeypatch):
     fake_proc(proc, 500, ppid=1, cwd=seat.seat.tree, command="node vite")                   # started long before
     fake_proc(proc, 501, ppid=1, cwd=seat.seat.tree, command="bash session-end-hook.sh", start=10 ** 12)
     monkeypatch.setattr("flotilla.fleet.leftovers.PROC_ROOT", proc)
-    clock = iter([5000] + [10 ** 15] * 10)     # the first reading is the one taken before the stop
-    monkeypatch.setattr("flotilla.fleet.leftovers.now_ticks", lambda proc_root=None: next(clock))
+    # the clock moves when the session is stopped: a cut-off read after the stop would be later than the hook
+    monkeypatch.setattr("flotilla.fleet.leftovers.now_ticks", lambda proc_root=None: 10 ** 15 if fake.stopped else 5000)
     sent = []
     monkeypatch.setattr("flotilla.fleet.leftovers.os.kill", lambda pid, sig: sent.append(pid))
     do_retire(ledger, fake)
     assert sent == [500]
+
+
+
+def test_retire_of_a_session_already_gone_spares_what_started_just_before(tmp_path, monkeypatch):
+    from flotilla.fleet.leftovers import CLK_TCK
+    from test_fleet_leftovers import fake_proc
+    fake = FakeClaude()
+    root, ledger, seat = raised_world(tmp_path, fake)
+    fake.sessions = []                       # stopped by hand after a refusal; its session-end hook still saves
+    now = 10 ** 7
+    proc = tmp_path / "proc"
+    fake_proc(proc, 500, ppid=1, cwd=seat.seat.tree, command="node vite", start=now - 3600 * CLK_TCK)
+    fake_proc(proc, 501, ppid=1, cwd=seat.seat.tree, command="bash session-end-hook.sh", start=now - 30 * CLK_TCK)
+    monkeypatch.setattr("flotilla.fleet.leftovers.PROC_ROOT", proc)
+    monkeypatch.setattr("flotilla.fleet.leftovers.now_ticks", lambda proc_root=None: now)
+    sent = []
+    monkeypatch.setattr("flotilla.fleet.leftovers.os.kill", lambda pid, sig: sent.append(pid))
+    lines = "\n".join(do_retire(ledger, fake))
+    assert sent == [500]
+    assert f"left 1 process in {seat.seat.tree} that started as the session stopped: bash session-end-hook.sh" in lines
+
+
+def test_retire_names_what_it_spared_as_started_by_the_stop(tmp_path, monkeypatch):
+    from test_fleet_leftovers import fake_proc
+    fake = FakeClaude()
+    root, ledger, seat = raised_world(tmp_path, fake)
+    proc = tmp_path / "proc"
+    fake_proc(proc, 501, ppid=1, cwd=seat.seat.tree, command="node vite --port 1", start=10 ** 12)
+    monkeypatch.setattr("flotilla.fleet.leftovers.PROC_ROOT", proc)
+    monkeypatch.setattr("flotilla.fleet.leftovers.now_ticks", lambda proc_root=None: 10 ** 15 if fake.stopped else 5000)
+    monkeypatch.setattr("flotilla.fleet.leftovers.os.kill", lambda pid, sig: None)
+    lines = "\n".join(do_retire(ledger, fake))
+    assert f"left 1 process in {seat.seat.tree} that started as the session stopped: node vite --port 1" in lines
+
+
+def test_retire_looks_for_nothing_when_the_clock_could_not_be_read_before_the_stop(tmp_path, monkeypatch):
+    from test_fleet_leftovers import fake_proc
+    fake = FakeClaude()
+    root, ledger, seat = raised_world(tmp_path, fake)
+    proc = tmp_path / "proc"
+    fake_proc(proc, 500, ppid=1, cwd=seat.seat.tree, command="bash session-end-hook.sh")
+    monkeypatch.setattr("flotilla.fleet.leftovers.PROC_ROOT", proc)
+    monkeypatch.setattr("flotilla.fleet.leftovers.now_ticks", lambda proc_root=None: None if not fake.stopped else 10 ** 15)
+    sent = []
+    monkeypatch.setattr("flotilla.fleet.leftovers.os.kill", lambda pid, sig: sent.append(pid))
+    lines = "\n".join(do_retire(ledger, fake))
+    assert sent == [] and "were not looked for" in lines
