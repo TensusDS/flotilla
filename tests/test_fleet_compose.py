@@ -37,3 +37,13 @@ def test_a_fleet_above_three_without_orchestrator_or_sender_is_warned():
 def test_the_orchestrator_is_raised_last():
     order = compose.raise_order({"orchestrator": 1, "reviewer": 2, "minor": 1, "alpha": 1})
     assert order[-1] == "orchestrator" and order[:3] == ["reviewer", "minor", "alpha"]
+
+
+def test_fill_raises_only_what_the_default_lacks_beside_the_live_seats():
+    """The onboarding session that became the orchestrator holds that post: filling the fleet raises the rest of the
+    default, not a second orchestrator."""
+    from flotilla.fleet import compose
+    default = {"orchestrator": 1, "sender": 1, "main": 2, "review": 1}
+    assert compose.fill(default, {"orchestrator": 1}) == {"sender": 1, "main": 2, "reviewer": 1}
+    assert compose.fill(default, {"orchestrator": 1, "main": 3, "reviewer": 1}) == {"sender": 1}
+    assert compose.fill(default, {}) == {"orchestrator": 1, "sender": 1, "main": 2, "reviewer": 1}

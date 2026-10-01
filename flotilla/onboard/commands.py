@@ -107,6 +107,62 @@ def _write(det: dict, given: dict, args, state: Path) -> int:
     store.reset(state, det["repo_key"])
     print(f"project profile written: {path}")
     print(f"posts: {len(installed)} template(s) installed in .flotilla/posts/ (existing posts are kept)")
+    print("next: `flotilla onboard publish` commits .flotilla/ and pushes it to origin's trunk - every session reads "
+          "its rules from there, so until then every ledger move is refused")
+    return 0
+
+
+def _git(root: Path, *args) -> "subprocess.CompletedProcess":
+    import subprocess
+    return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, check=False)
+
+
+def _publish(root: Path, det: dict, state: Path) -> int:
+    """The last step of onboarding: every session reads its rules from origin's trunk, so the profile is committed,
+    the tiers run over that commit - the push receipt a guarded push asks for - and the commit pushed to trunk
+    (field test W5: onboarding said "commit" and stopped)."""
+    from flotilla.ledger import receipts
+    try:
+        profile = config.load_project(root).data
+    except config.ConfigError as err:
+        print(f"not published: {err}")
+        return 2
+    trunk = (profile.get("trunk") or {}).get("branch", "main")
+    branch = _git(root, "symbolic-ref", "-q", "--short", "HEAD").stdout.strip()
+    if branch != trunk:
+        print(f"not published: this tree is on `{branch or 'a detached HEAD'}`; publish from `{trunk}`, the trunk the "
+              "profile names")
+        return 2
+    paths = [path for path in (".flotilla", ".claude/settings.json") if (root / path).exists()]
+    _git(root, "add", "--", *paths)
+    if _git(root, "diff", "--cached", "--quiet").returncode != 0:
+        done = _git(root, "commit", "-q", "-m", "chore: onboard flotilla (profile and posts)")
+        if done.returncode != 0:
+            print(f"not published: git commit failed: {(done.stderr or done.stdout).strip()[:300]}")
+            return 2
+        print(f"committed {', '.join(paths)}")
+    try:
+        receipt = receipts.run_receipt(root, state=state, repo_key=det["repo_key"], purpose="push", profile=profile,
+                                       timeout=1800.0)
+    except receipts.ReceiptRefused as err:
+        print(f"not pushed: {err}. The profile is committed; commit or stash your own changes, then run "
+              "`flotilla onboard publish` again")
+        return 2
+    red = [tier["name"] for tier in receipt.get("tiers") or [] if tier.get("status") != "green"]
+    if red:
+        print(f"not pushed: the tiers are not green over {receipt.get('sha', '')[:7]} ({', '.join(red)}); fix the "
+              "project or the tier commands and run `flotilla onboard publish` again - the commit stays")
+        return 4
+    if not det.get("remote"):
+        print("committed; this repository has no origin, so the profile is on its trunk already")
+        return 0
+    done = _git(root, "push", "origin", trunk)
+    if done.returncode != 0:
+        print(f"not pushed: git push origin {trunk} failed: {(done.stderr or done.stdout).strip()[:300]}. If trunk "
+              "only takes pull requests, open one with the commit above and merge it; the fleet reads the profile "
+              "once it is on origin's trunk")
+        return 2
+    print(f"pushed to origin/{trunk}: the fleet reads its rules from there")
     return 0
 
 
@@ -120,7 +176,7 @@ def run_onboard(args) -> int:
         print(f"{err}; run onboarding from inside the repository, or pass --root")
         return 2
     given = store.load(state, det["repo_key"])
-    if args.action in ("answer", "write", "reset"):   # what is recorded here runs through a shell at `write`
+    if args.action in ("answer", "write", "reset", "quick", "publish"):   # what is recorded runs through a shell
         from flotilla.core import caller
         refused = caller.person_refusal("records, runs or forgets onboarding answers")
         if refused:
@@ -158,6 +214,16 @@ def run_onboard(args) -> int:
         for finding in findings:
             print(finding)
         return exit_code(findings)
+    if args.action == "publish":
+        return _publish(Path(det["root"]), det, state)
+    if args.action == "quick":
+        from flotilla.onboard.questions import quick_answers
+        given = quick_answers(det, given)
+        store.save(state, det["repo_key"], given)
+        for question in all_questions(det, given):
+            value = given.get(question["id"])
+            print(f"{question['id']}: {', '.join(value) if isinstance(value, list) else value}")
+        return 0
     if args.action == "reset":
         store.reset(state, det["repo_key"])
         print("answers forgotten")

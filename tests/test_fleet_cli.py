@@ -57,7 +57,7 @@ def test_spawn_needs_a_composition_and_refuses_both_kinds_at_once(tmp_path, monk
     code, out = run_cli("spawn", "--dry-run", "--root", str(root))
     assert code == 2 and "name a composition" in out
     code, out = run_cli("spawn", "--default", "-r", "1", "--dry-run", "--root", str(root))
-    assert code == 2 and "either --default or counts" in out
+    assert code == 2 and "either --default, --fill or counts" in out
 
 
 def test_spawn_without_the_census_refuses_to_launch(tmp_path, monkeypatch):

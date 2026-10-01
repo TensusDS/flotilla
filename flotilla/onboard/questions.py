@@ -139,6 +139,43 @@ def all_questions(det: dict, answers: dict) -> list[dict]:
     return out
 
 
+GUARDS = ["revert", "line_edit", "push_receipt"]
+#: The recommended answer to each question: what a newcomer gets from quick onboarding, chosen so a fleet raised from
+#: it runs safely - every branch reviewed, every permission asked of the person, every guard on, nothing that needs a
+#: second service (a gate command, a tracker, a deployed build for a judge).
+QUICK = {"merge_auth": "sender", "review": "every", "permissions": "ask", "ci_where": "cloud", "gate_command": "later",
+         "tracker": "nowhere", "repos": "this-first", "release": "none", "deploy": "none", "shared": "reserve",
+         "sequential": "claim", "guards": GUARDS, "model": "one"}
+
+
+def recommended(question: dict, det: dict):
+    """The answer quick onboarding gives this question."""
+    values = [option["value"] for option in question["options"]]
+    github = (det.get("ci") or {}).get("provider") == "github"
+    qid = question["id"]
+    if qid == "flow":
+        return "pr-sender" if github else "direct"   # pull requests need GitHub; any other remote takes a push
+    if qid == "ci":
+        return "github" if "github" in values else "none"
+    if qid == "tiers":
+        return [t["name"] for t in det.get("tests") or []][:MAX_PER_ROUND] or ["none"]
+    if qid == "merge_method":
+        return "squash" if "squash" in values else values[0]
+    return QUICK[qid]
+
+
+def quick_answers(det: dict, given: dict) -> dict:
+    """Every question that applies answered: what the person already said is kept, the rest is recommended."""
+    answers = dict(given)
+    for _ in range(64):   # an answer can make another question apply (flow -> merge_auth); bounded, never a loop
+        pending = [q for q in all_questions(det, answers) if q["id"] not in answers]
+        if not pending:
+            break
+        for question in pending:
+            answers[question["id"]] = recommended(question, det)
+    return effective_answers(det, answers)
+
+
 def next_questions(det: dict, answers: dict, limit: int = MAX_PER_ROUND) -> list[dict]:
     return [q for q in all_questions(det, answers) if q["id"] not in answers][:limit]
 
@@ -173,6 +210,9 @@ def validate_answer(question: dict, values: list[str]):
         if has_hidden(value):   # it is printed back before it runs: nothing in it may hide what follows
             raise AnswerError(f"{question['id']}: \"{visible(value)}\" holds a control or hidden character; type "
                               "it plainly")
+        if question["id"] == "model" and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._\[\]-]*", value):
+            raise AnswerError(f"model: {value!r} is not a model name; pick an option, or type one name such as "
+                              "claude-opus-5-5 - a post's own `model` sets one post apart")   # field test W3
         if question["id"] == "tracker":
             try:
                 re.compile(value)
@@ -188,7 +228,9 @@ def validate_answer(question: dict, values: list[str]):
 
 
 def suggest_composition(answers: dict) -> dict[str, int]:
-    composition = {"main": 1}
+    """A fleet that can deliver: an orchestrator to talk to the person, a sender to own trunk, a builder, and the
+    readers the answers ask for (field test W2: main, review and judge alone could neither ask nor ship)."""
+    composition = {"orchestrator": 1, "sender": 1, "main": 1}
     if answers.get("review", "every") != "none":
         composition["review"] = 1
     if answers.get("deploy") in ("web", "cli", "api"):

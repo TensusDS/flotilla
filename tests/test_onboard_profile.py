@@ -69,7 +69,7 @@ def test_typed_tracker_pattern_is_kept(tmp_path):
 def test_deployment_adds_the_judge_and_a_deploy_section(tmp_path):
     det = detection(tmp_path, signals={"multi_repo": [], "deployment": ["deploy"], "shared_files": [], "sequential": []})
     data = build_profile(det, {**BASE_ANSWERS, "deploy": "web"})
-    assert data["fleet"]["default"] == {"main": 1, "review": 1, "judge": 1}
+    assert data["fleet"]["default"] == {"orchestrator": 1, "sender": 1, "main": 1, "review": 1, "judge": 1}
     assert data["deploy"] == {"surface": "web", "revision_command": ""}
     assert data["judge"] == {"required": True}
 

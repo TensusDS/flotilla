@@ -106,9 +106,10 @@ def test_the_questionnaire_ends():
 
 
 def test_composition_suggestion():
-    assert qs.suggest_composition({"review": "every"}) == {"main": 1, "review": 1}
-    assert qs.suggest_composition({"review": "none"}) == {"main": 1}
-    assert qs.suggest_composition({"review": "every", "deploy": "web"}) == {"main": 1, "review": 1, "judge": 1}
+    assert qs.suggest_composition({"review": "every"}) == {"orchestrator": 1, "sender": 1, "main": 1, "review": 1}
+    assert qs.suggest_composition({"review": "none"}) == {"orchestrator": 1, "sender": 1, "main": 1}
+    assert qs.suggest_composition({"review": "every", "deploy": "web"}) == {"orchestrator": 1, "sender": 1, "main": 1,
+                                                                       "review": 1, "judge": 1}
 
 
 def test_no_guards_is_an_answer():

@@ -26,7 +26,9 @@ def build_parser() -> argparse.ArgumentParser:
     for name, text in (("detect", "print what the repository declares"),
                        ("next", "print the next questions"),
                        ("check", "report drift between the profile and the repository"),
-                       ("reset", "forget the answers given so far")):
+                       ("reset", "forget the answers given so far"),
+                       ("quick", "answer every remaining question with its recommended answer"),
+                       ("publish", "commit .flotilla, run the tiers over that commit, push it to trunk")):
         actions.add_parser(name, help=text).add_argument("--root", default=".")
     answer = actions.add_parser("answer", help="record the answer to one question")
     answer.add_argument("question")
@@ -177,6 +179,8 @@ def build_parser() -> argparse.ArgumentParser:
         spawn_.add_argument(flag, dest=f"count_{post}", type=int, default=0, metavar="N", help=f"{post} sessions")
     spawn_.add_argument("--post", action="append", default=[], metavar="NAME=N", help="sessions of any post")
     spawn_.add_argument("--default", action="store_true", help="the profile's fleet.default composition")
+    spawn_.add_argument("--fill", action="store_true",
+                        help="the default composition, less the posts live sessions already hold")
     spawn_.add_argument("--dry-run", action="store_true", help="show names, trees and commands; change nothing")
     spawn_.add_argument("--anyway", action="store_true", help="raise even under the memory floor")
     spawn_.add_argument("--root", default=".")

@@ -32,6 +32,16 @@ def normalise(counts: dict, posts: dict) -> dict[str, int]:
     return found
 
 
+def fill(default: dict, held: dict) -> dict[str, int]:
+    """What `default` still lacks beside the posts live sessions hold: `spawn --fill` raises only that, so the
+    onboarding session that took the orchestrator post is not given a second one."""
+    wanted: dict[str, int] = {}
+    for key, value in default.items():
+        name = ALIASES.get(key, key)
+        wanted[name] = wanted.get(name, 0) + int(value)
+    return {name: count - held.get(name, 0) for name, count in wanted.items() if count - held.get(name, 0) > 0}
+
+
 def raise_order(counts: dict[str, int]) -> list[str]:
     """The orchestrator last: its first report then sees every seat already raised (field test F8)."""
     first = [name for name in ORDER if name in counts and name != "orchestrator"]

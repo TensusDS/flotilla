@@ -36,15 +36,23 @@ def counts_from(args, profile: dict) -> dict:
         if not sep or not value.strip().isdigit():
             raise MoveRefused(f"--post {item}: write NAME=N, for example --post minor=2")
         flags[name.strip()] = flags.get(name.strip(), 0) + int(value)
-    if args.default and flags:
-        raise MoveRefused("either --default or counts, not both")
-    if args.default:
+    if (args.default or args.fill) and flags:
+        raise MoveRefused("either --default, --fill or counts, not both")
+    if args.default or args.fill:
         return dict((profile.get("fleet") or {}).get("default") or {})
     return flags
 
 
 def _spawn(ledger, args) -> int:
     counts = counts_from(args, ledger.profile)
+    if args.fill:   # the default, less the posts live sessions already hold
+        try:
+            counts = compose.fill(counts, dict(spawn._live_posts(ledger, census())))
+        except CensusUnavailable as err:
+            raise MoveRefused(f"--fill needs the census to see who is alive ({err}); name the counts instead") from err
+        if not counts:
+            print("nothing to raise: the live sessions already hold the default composition")
+            return 0
     store = LocalLogStore(paths.state_dir() / "fleet")
     if args.dry_run:
         try:
