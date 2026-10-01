@@ -111,7 +111,7 @@ def _patch_ids(ledger, *log_args: str) -> list[str]:
                      capture_output=True, text=True, check=False)
     if log.returncode != 0 or not log.stdout:
         return []
-    done = ledger.run(["git", "-C", str(ledger.root), "patch-id", "--stable"], input=log.stdout,
+    done = ledger.run(["git", "-C", str(ledger.root), "patch-id", "--verbatim"], input=log.stdout,
                       capture_output=True, text=True, check=False)
     return [line.split()[0] for line in done.stdout.splitlines() if line.split()] if done.returncode == 0 else []
 
@@ -155,12 +155,11 @@ class Accounting:
         merge = is_merge(ledger, sha) if full else None
         if merge is None:
             return None
-        born = self.born.get(full)
-        if born is not None:
-            return f"born in the batch, read by {born.reader}"
         vouched = self.vouched.get(full)
-        if vouched is not None:
-            return f"vouched for in `{vouched.branch}` ({vouched.id})"
+        if vouched is not None:   # the reader's own move; an inbatch row only names who was asked to read (F1)
+            born = self.born.get(full)
+            where = "born in the batch, " if born is not None else ""
+            return f"{where}vouched for in `{vouched.branch}` ({vouched.id})"
         if merge:
             row = self.read.get(full)
             if row is not None:   # read in the range, a conflict resolved by hand included (H20)

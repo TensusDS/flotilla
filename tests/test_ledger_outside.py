@@ -24,6 +24,9 @@ def test_inbatch_records_a_commit_born_in_the_batch_and_the_batch_accounts_it(wo
     row = outside.inbatch(ledger, actor(ledger, SENDER), "batch/typo", commit=fix, read_by="review session 1",
                           why="a typo in the README")
     assert (row.state, row.merge, row.reader, row.owner) == ("inbatch", fix, "review session 1", SENDER)
+    # the sender's word that a reviewer read it is not a reading: only the reader's own vouch accounts it (F1)
+    assert batch.unaccounted(ledger, ledger.rows(), "main") != []
+    outside.vouch(ledger, actor(ledger, "review session 1"), "batch/typo", commit=fix)
     assert batch.unaccounted(ledger, ledger.rows(), "main") == []
 
 
@@ -124,6 +127,8 @@ def test_a_resolved_merge_is_recorded_as_born_in_the_batch(world):
     resolved = commit(root, "merge feat/x, resolved")
     outside.inbatch(ledger, actor(ledger, SENDER), "batch/resolve", commit=resolved, read_by="review session 1",
                     why="a conflict resolution")
+    assert batch.unaccounted(ledger, ledger.rows(), "main") != []
+    outside.vouch(ledger, actor(ledger, "review session 1"), "batch/resolve", commit=resolved)
     assert batch.unaccounted(ledger, ledger.rows(), "main") == []
 
 

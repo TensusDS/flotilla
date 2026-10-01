@@ -70,7 +70,8 @@ def patch_fingerprint(root: Path, base: str, tip: str, run=subprocess.run) -> st
         return None
     if not diff.stdout:
         return "empty"
-    done = run(["git", "-C", str(root), "patch-id", "--stable"], input=diff.stdout, capture_output=True,
+    # --verbatim, not --stable: --stable drops whitespace, and in Python indentation is meaning (F15)
+    done = run(["git", "-C", str(root), "patch-id", "--verbatim"], input=diff.stdout, capture_output=True,
                text=True, check=False)
     words = done.stdout.split()
     return words[0] if done.returncode == 0 and words else None

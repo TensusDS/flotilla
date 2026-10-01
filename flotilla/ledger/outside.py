@@ -115,7 +115,7 @@ def offledger(ledger: Ledger, actor: Actor, branch: str, *, merge: str, witness:
         return s.append(actor, row.id, "offledger", state, fields={"merge": sha}, evidence=evidence)
 
 
-VOUCHABLE = ("accepted", "queued", "landed")
+VOUCHABLE = ("accepted", "queued", "landed", "inbatch")
 
 
 def vouch(ledger: Ledger, actor: Actor, branch: str, *, commit: str) -> Row:
@@ -126,7 +126,9 @@ def vouch(ledger: Ledger, actor: Actor, branch: str, *, commit: str) -> Row:
     if sha is None:
         raise MoveRefused(f"git could not resolve --commit {commit}")
     with ledger.session() as s:
-        row = s.need_open_row(branch)
+        row = s.open_row(branch) or next(   # batch work recorded with inbatch is a closed row under its label
+            (item for item in reversed(list(s.rows.values())) if item.branch == branch and item.state == "inbatch"),
+            None) or s.need_open_row(branch)
         if row.state not in VOUCHABLE:
             raise MoveRefused(f"`{branch}` is {row.state}; a vouch is for work on its way to trunk (accepted, "
                               "queued or landed)")
@@ -134,6 +136,7 @@ def vouch(ledger: Ledger, actor: Actor, branch: str, *, commit: str) -> Row:
             raise MoveRefused(f"{actor.name} owns `{branch}`; someone else vouches for it")
         if actor.post is not None and ("land" in actor.post.may or actor.post.writes_one_copy):
             raise MoveRefused(f"{actor.name}'s post may land; the one who merges never vouches for what it merged")
-        state = s.next_state(row, "vouch")
+        # a vouch annotates; on a finished inbatch row it is the only move, and the row stays what it was
+        state = row.state if row.state == "inbatch" else s.next_state(row, "vouch")
         vouched = list(row.vouched) + ([sha] if sha not in row.vouched else [])
         return s.append(actor, row.id, "vouch", state, fields={"vouched": vouched}, evidence={"commit": sha})

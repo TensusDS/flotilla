@@ -131,3 +131,22 @@ def test_accounting_costs_grow_with_rows_plus_commits_not_their_product(tmp_path
     (tmp_path / "large").mkdir()
     small, large = git_calls_to_account(tmp_path / "small", 4), git_calls_to_account(tmp_path / "large", 12)
     assert large <= 4 * small, (small, large)
+
+
+def test_a_squash_that_moves_code_into_a_block_is_not_the_change_that_was_read(world):
+    """`git patch-id --stable` drops whitespace, and in Python indentation is meaning: a squash that moves a call
+    into an `if` carried the fingerprint of the reviewed change (security review F15)."""
+    from flotilla.ledger import core, handover, reading
+    from ledgerkit import actor
+    root, ledger = world
+    git(root, "switch", "-q", "-c", "feat/py")
+    write(root, "code.py", "if guarded:\n    check()\nrun()\n")
+    commit(root, "run after the check")
+    git(root, "switch", "-q", "main")
+    core.claim(ledger, actor(ledger, "main session 1"), "feat/py")
+    row = handover.hand(ledger, actor(ledger, "main session 1"), "feat/py")
+    reading.take(ledger, actor(ledger, "review session 1"), "feat/py")
+    reading.accept(ledger, actor(ledger, "review session 1"), "feat/py", reviewed=row.tip)
+    write(root, "code.py", "if guarded:\n    check()\n    run()\n")
+    squashed = commit(root, "squash of feat/py")
+    assert batch.unaccounted(ledger, ledger.rows(), "main") == [squashed]

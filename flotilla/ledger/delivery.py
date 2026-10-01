@@ -165,9 +165,9 @@ def land(ledger: Ledger, actor: Actor, branch: str, *, merge: str | None = None)
         if loose:
             named = "; ".join(f"{sha[:7]} {batch.subject(ledger, sha)}" for sha in loose[:5])
             more = f" and {len(loose) - 5} more" if len(loose) > 5 else ""
-            raise MoveRefused(f"the batch carries work nobody read: {named}{more}. Hand it over for review, ask a "
-                              "reader to read it and `flotilla work vouch` for it, or record work born in the batch "
-                              "and not pushed yet with `flotilla work inbatch`")
+            raise MoveRefused(f"the batch carries work nobody read: {named}{more}. Hand it over for review, or "
+                              "ask a reader to read it and record it with their own `flotilla work vouch`; nobody "
+                              "else's word stands for a reading")
         where = "trunk" if on_local else f"origin/{ledger.trunk}"
         return s.append(actor, row.id, "land", state, fields={"merge": commit},
                         evidence={"trunk": trunk_head if on_local else origin_head, "on": where})

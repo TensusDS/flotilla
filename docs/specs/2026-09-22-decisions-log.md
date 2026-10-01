@@ -808,6 +808,17 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    return or an erase sequence can no longer show the person one command while they allow another. (planner's
    decision, security fixes group 2, 2026-10-01)
 
+175. **Only a reader's own vouch accounts batch work** (security review 2026-10-01, F1; field test H21): `inbatch`
+   records a change born in the batch and names who is asked to read it, and that is all - the sender's word that
+   a reviewer read it accounts nothing. The commit counts as read once the reader vouches for it with their own
+   move (`vouch` now finds an inbatch row by its label and leaves it as it was). In twosuns the auto-mode
+   classifier refused `inbatch --read-by` as a bypass on 2026-10-01: it was right. (planner's decision, security
+   fixes group 3, 2026-10-01)
+176. **A change is recognised by a fingerprint that keeps whitespace** (F15): `git patch-id --verbatim` replaces
+   `--stable`, which drops whitespace - in Python a squash that moved a call into an `if` carried the fingerprint of
+   the reviewed change. Both places that take a fingerprint use the same mode; a mix of the two matches nothing, so
+   it fails toward "not accounted". (planner's decision, security fixes group 3, 2026-10-01)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
