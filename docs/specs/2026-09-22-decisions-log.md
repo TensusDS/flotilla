@@ -683,6 +683,23 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
 152. **flotilla is MIT-licensed**, so anyone may use it as they like; the repository home is `TensusDS/flotilla`.
    (the person's decision, 2026-09-30)
 
+159. **A fleet session may raise a helper for a piece of its own work** (`flotilla helper raise --for <branch>
+   --task`): the owner of an open row in `claimed` or `fixing`; at most `fleet.helpers_per_seat` (default 2) live
+   helpers per row; the memory floor applies (H8). (planner's decision, field fixes part 8 track A, 2026-10-01)
+160. **A helper works in its own tree**, cut from the tip of the branch it helps, on its seat branch
+   `fleet/helper-<n>`; its seat row names the parent row (`helper_of`) — so edits never race (the person's decision,
+   2026-09-30).
+161. **A helper never delivers**: its post may reserve, release and wait only; the parent merges the helper's branch
+   and hands the whole over, so the reviewer reads the helper's commits in the parent's range. (planner's decision,
+   field fixes part 8 track A, 2026-10-01)
+162. **A helper leaves a record**: `flotilla helper done --summary` records its tip and summary as the release of its
+   seat and prints a letter for the parent (merge, then retire). (planner's decision, field fixes part 8 track A,
+   2026-10-01)
+163. **watch tells the orchestrator about a finished helper still running and about an orphaned helper** (its
+   parent row has no live owner). (planner's decision, field fixes part 8 track A, 2026-10-01)
+164. **Reading and research stay with in-session subagents**; a helper session is for work that edits files
+   (H40). (planner's decision, field fixes part 8 track A, 2026-10-01)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
