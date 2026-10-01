@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -29,6 +30,26 @@ def _machine() -> int:
     return 0
 
 
+def commands_of(data: dict, where: str = "") -> list[tuple[str, str]]:
+    """Every shell command a profile runs or stores, with where it sits: each tier's, the gate's, the revision's."""
+    found = []
+    for key, value in data.items():
+        here = f"{where}.{key}" if where else key
+        if isinstance(value, dict):
+            found += commands_of(value, here)
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    found += commands_of(item, f"{here}[{item.get('name', '')}]")
+        elif key.endswith("command") and isinstance(value, str) and value:
+            found.append((here, value))
+    return found
+
+
+def confirmation_mark(commands: list[tuple[str, str]]) -> str:
+    return hashlib.sha256("\n".join(f"{where}\t{command}" for where, command in commands).encode()).hexdigest()[:12]
+
+
 def _write(det: dict, given: dict, args, state: Path) -> int:
     remaining = next_questions(det, given)
     if remaining:
@@ -40,10 +61,21 @@ def _write(det: dict, given: dict, args, state: Path) -> int:
         print(f"{target} already exists; run `flotilla onboard check`, or re-onboard with --force")
         return 2
     data = build_profile(det, given)
+    commands = commands_of(data)
+    mark = confirmation_mark(commands)
+    if commands and args.confirm != mark:   # the answers file is plain JSON: what runs is shown here, at the end
+        from flotilla.core.text import visible
+        print("the profile runs or stores these shell commands:")
+        for where, command in commands:
+            print(f"  {where}: {visible(command)}")
+        print("show them to the person; when the person agrees, run "
+              f"`flotilla onboard write --confirm {mark}` (with the same other options)")
+        return 5
     tiers = (data.get("tests") or {}).get("tier") or []
     if tiers and not args.no_run:
+        from flotilla.core.text import visible
         for tier in tiers:   # named before it runs: a person reading this sees what the shell is given
-            print(f"will run {tier['name']}: {tier['command']}")
+            print(f"will run {tier['name']}: {visible(tier['command'])}")
         runs = [run_tier(t["name"], t["command"], root, timeout=args.timeout) for t in tiers]
         for run in runs:
             timing = f"{run.seconds:.1f}s" if run.seconds is not None else "no time recorded"

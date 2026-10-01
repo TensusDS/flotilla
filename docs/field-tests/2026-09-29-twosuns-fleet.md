@@ -747,3 +747,22 @@ itself (01:59:50, the second `claude stop` ran), re-parented to pid 1, had its w
 terminal, so it met every mark 0.3.2 uses for a leftover: a retire would have sent it SIGTERM mid-save. The hooks
 end by themselves within seconds. Fixed in 0.3.3: retire reads the clock before it stops the session, and only an
 orphan that started before then is a leftover.
+
+H52. **gap — a plugin update leaves the project's posts behind.** After the fleet moved to 0.3.3 (2026-10-01, ~03:00)
+it stalled on three steps at once, two of them from one cause: `.flotilla/posts/*.md` are copied into the project at
+onboarding, existing files are kept, and nothing ever says they are older than the plugin's templates. twosuns ran
+reviewer v1 (no `vouch`), sender v4 (no `return`), judge v2 (no `unbroke`, and no `plugins:`, so 0.3.3 started the
+judges without the browser plugin) and no helper post. The reviewer had read four batch commits and could not record
+it; the sender was told to write the reading in the reviewer's name (`inbatch --read-by`) and Claude Code's auto-mode
+classifier refused that as a bypass, correctly. r11 could not be cleared without `unbroke`. Fixed by hand on
+twosuns trunk (28a7589: every post brought to its 0.3.3 template, the project's `model: opus` kept). Fix direction:
+`doctor` and `watch` name a post whose `template_version` is below the plugin's, and a command brings posts up to the
+templates while keeping the project's own edits.
+
+H53. **gap — a message wakes a retired session.** `orchestrator 3`, stopped by `fleet down` at ~02:00, was alive
+again at 03:06 under its old id next to `orchestrator 4`: a message addressed to a stopped background session
+resumes it. Nothing in flotilla noticed a live session holding the name of a closed seat. Stopped by hand. Fix
+direction: `watch` names a live session whose seat row is closed and offers `claude stop`; letters and the posts
+address the live holder of a post, not a name from memory. Also seen the same morning: the old seats' trees, kept on
+the person's word, still held their branches (0.1.0 did not detach a retired seat's tree), and new seats stopped on
+`tree switch`; 22 clean trees were detached by hand, keeping them.

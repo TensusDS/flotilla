@@ -35,6 +35,6 @@ def the_caller_is_a_person_in_a_terminal(monkeypatch):
     from flotilla.core import caller
     from flotilla.core.census import Session
     monkeypatch.setattr(caller, "has_terminal", lambda: True)
-    monkeypatch.setattr(caller, "calling_session", lambda: Session(
+    monkeypatch.setattr(caller, "calling_sessions", lambda: [Session(
         name="", session_id="person", kind="interactive", pid=None, short_id=None, status=None, state=None, cwd="",
-        started_at_ms=None))
+        started_at_ms=None)])

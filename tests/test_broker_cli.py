@@ -117,7 +117,7 @@ def test_an_answer_from_outside_any_session_needs_a_terminal(tmp_path, monkeypat
     from flotilla.core import caller
     root, state, key = world(tmp_path, monkeypatch)
     asked = ask(state, key, 1000)
-    monkeypatch.setattr(caller, "calling_session", lambda: None)
+    monkeypatch.setattr(caller, "calling_sessions", lambda: [])
     monkeypatch.setattr(caller, "has_terminal", lambda: False)
     assert run(root, "answer", asked.id, "allow") == 2
     assert "a terminal" in capsys.readouterr().out

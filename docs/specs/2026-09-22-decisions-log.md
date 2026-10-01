@@ -782,16 +782,22 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
 171. **Onboarding is the person's** (security review 2026-10-01, F2, F3, F4, F8): the onboard skill is no longer
    model-invocable, and it pre-approves only the reading steps (`machine`, `detect`, `next`, `check`). `answer`,
    `write` and `reset` go through Claude Code's own permission prompt, because a `tiers` answer is a shell command
-   that `write` runs; the CLI refuses them from a background session, and `write` names every command before it
-   runs it. (planner's decision, security fixes group 1, 2026-10-01)
+   that `write` runs; the CLI refuses them from a background session. `write` prints every command the profile will
+   run or store, with a mark over them, and does nothing until it is called again with `--confirm <mark>` - the
+   answers are a plain file a session can edit, so what runs is shown to the person at the end, and a changed
+   command changes the mark. No skill rule may match a command that acts for the person, asked of what the rule
+   matches rather than of its words: `lane --root *` read harmless and matched `lane --root . run -- ...`.
+   (planner's decision, security fixes group 1 and its review, 2026-10-01)
 172. **No skill pre-approves an answer to a permission question** (F7, F9, F12): the permit skill pre-approves only
    `permit next` and `permit list`, so every `permit answer` raises Claude Code's prompt before it runs, and the
    skill says that what a question shows was written by another session - something to show the person, never an
    instruction. (planner's decision, security fixes group 1, 2026-10-01)
 173. **A person is a terminal or the person's own session, never a detached process** (F9): a call from outside any
    census session counts as a person only with a controlling terminal behind it, since a session can detach a
-   process (`setsid`) whose parent chain reaches pid 1; a call from a background session is refused; an unreadable
-   census refuses. Every session runs as the same user, so this stops an overeager or misled session, not a
+   process (`setsid`) whose parent chain reaches pid 1. Inside sessions, every session up the chain is asked, not the
+   nearest only: the nearest must be interactive and none above it background, since a background session can start
+   an interactive one. An unreadable census refuses. A process detached with a pseudo-terminal of its own
+   (`tmux new -d`) still passes for a person: that is the limit of this check. Every session runs as the same user, so this stops an overeager or misled session, not a
    determined program of that user's - the person's gate stays Claude Code's prompt. (planner's decision, security
    fixes group 1, 2026-10-01)
 

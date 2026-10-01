@@ -1,7 +1,7 @@
 ---
 name: onboard
 description: Set up flotilla in a repository — measure this machine, show what the repository already declares (test commands, CI, releases), ask the few questions only a person can answer, run each chosen test tier once, and write .flotilla/project.toml. Use when someone asks to onboard, set up, configure or initialize flotilla, to prepare a repository for a fleet of Claude Code sessions, or to re-check an existing flotilla profile for drift.
-allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla onboard machine*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla onboard detect*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla onboard next*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla onboard check*)
+allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla onboard check), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla onboard machine), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla onboard detect), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla onboard next)
 disable-model-invocation: true
 ---
 
@@ -50,7 +50,11 @@ recorded. They are refused from a background session: onboarding is the person's
 
 ## 4. Write the profile
 
-Run `flotilla onboard write`. It runs each chosen test tier once, then writes the file.
+Run `flotilla onboard write`. First it prints every shell command the profile will run or store (each test tier,
+the gate, the revision command) and a mark, and does nothing else. Show the person those commands exactly as
+printed and ask whether they are right; only when the person says yes, run `flotilla onboard write --confirm <mark>`
+with the same other options. That runs each chosen test tier once, then writes the file. A changed answer changes
+the mark, and `write` shows the commands again.
 
 - If a tier is not green, it prints the last lines and writes nothing. Show those lines and ask the person whether
   the command is wrong (then record a corrected `tiers` answer and run `write` again) or the project is red right

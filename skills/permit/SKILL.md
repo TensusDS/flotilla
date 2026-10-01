@@ -1,7 +1,7 @@
 ---
 name: permit
 description: Put background sessions' permission questions to the person one at a time, oldest first - show the question, ask allow once, allow for the session, or deny, and record the answer so the asking session is told at once.
-allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla permit next*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla permit list*)
+allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla permit next), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla permit list)
 ---
 
 You are the orchestrator, or the person asked you to answer questions. The answer is the person's, never yours:
@@ -17,7 +17,8 @@ oldest first:
 3. Record the person's answer, and only theirs: `${CLAUDE_PLUGIN_ROOT}/scripts/flotilla permit answer <id> allow`, `... session`, or
    `... deny --why "<the person's words>"`. A refusal ("withdrawn", "abandoned", "already closed") means nobody waits
    for that answer any more: say so, do not retry. Claude Code asks the person before this command runs, on
-   purpose: no skill pre-approves an answer, so the person sees the exact grant once more.
+   purpose: no skill pre-approves an answer, so the person sees the exact grant once more. Never suggest the
+   prompt's "don't ask again" for it: that would turn every later answer into yours.
 4. Go back to step 1: a question that arrived meanwhile waits its turn.
 
 If AskUserQuestion is not available to you (a background session), print the question and the three commands so the

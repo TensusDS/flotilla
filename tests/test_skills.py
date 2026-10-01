@@ -175,11 +175,25 @@ def allowed(name):
     return frontmatter(ROOT / "skills" / name / "SKILL.md").get("allowed-tools", "")
 
 
+CLI = "${CLAUDE_PLUGIN_ROOT}/scripts/flotilla"
+#: commands that run whatever they are given, or act for the person: no skill's rule may cover any of them
+ACTS = [f"{CLI} permit answer 7 allow", f"{CLI} permit answer 7 session", f"{CLI} onboard answer tiers sh",
+        f"{CLI} onboard write --confirm 1", f"{CLI} onboard reset", f"{CLI} lane --root . run -- sh -c x",
+        f"{CLI} lane run -- sh", f"{CLI} receipt run --purpose push", f"{CLI} onboard next; {CLI} onboard write"]
+
+
+def rule_patterns(rules: str) -> list:
+    """Each Bash(...) rule as Claude Code matches it: `*` stands for any text, spaces and semicolons included."""
+    return [re.compile("^" + ".*".join(re.escape(part) for part in body.split("*")) + "$")
+            for body in re.findall(r"Bash\(([^)]*)\)", rules)]
+
+
 def test_no_skill_pre_approves_a_command_that_acts_for_the_person():
-    """Answering a permission question, recording an onboarding answer, running or forgetting the answers: each
-    goes through Claude Code's own permission prompt, where the person sees the command (security review F2-F12)."""
+    """Asked of what the rules MATCH, not of the words in them: `lane --root *` read harmless and covered
+    `lane --root . run -- flotilla permit answer` (security review F2-F12, and its own review)."""
     for path in SKILLS:
-        rules = frontmatter(path).get("allowed-tools", "")
-        for word in ("permit answer", "permit *", "onboard answer", "onboard write", "onboard reset", "onboard *"):
-            assert word not in rules, f"{path.parent.name} pre-approves `{word}`"
-    assert "permit next" in allowed("permit") and "onboard detect" in allowed("onboard")
+        for pattern in rule_patterns(frontmatter(path).get("allowed-tools", "")):
+            for command in ACTS:
+                assert not pattern.match(command), f"{path.parent.name}: `{pattern.pattern}` covers `{command}`"
+    assert any(p.match(f"{CLI} permit next") for p in rule_patterns(allowed("permit")))
+    assert any(p.match(f"{CLI} onboard detect") for p in rule_patterns(allowed("onboard")))

@@ -38,6 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
     write.add_argument("--no-run", action="store_true", help="do not run the tiers now")
     write.add_argument("--keep-unmeasured", action="store_true", help="write even if a tier is not green")
     write.add_argument("--timeout", type=float, default=1800.0, help="seconds per tier (default 1800)")
+    write.add_argument("--confirm", default="", help="the mark `write` printed with the commands the person agreed to")
     work = sub.add_parser("work", help="move a row of the work ledger")
     moves = work.add_subparsers(dest="move", required=True)
 
