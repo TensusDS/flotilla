@@ -61,8 +61,10 @@ Answers are stored between sessions; `flotilla onboard reset` forgets them.
 Run `flotilla onboard write`. First it prints the whole profile it will write, then every shell command in it (each
 test tier, the gate, the revision command), and a mark, and does nothing else.
 
-- **Quick:** show the person the answers `quick` printed, as a short list, and every shell command exactly as
-  `write` printed it; offer the whole profile if they want to read it.
+- **Quick:** in your own message, before asking anything, show the person the answers `quick` printed as a short
+  list in plain words, and every shell command exactly as `write` printed it; offer the whole profile if they want
+  to read it. Say in one sentence who authorizes merges into trunk: `merge_auth: sender` means the sender session
+  merges reviewed work without asking the person; `human` means nothing reaches trunk until the person approves it.
 - **Custom:** show the profile and the commands exactly as printed.
 
 Ask whether it is right. Only when the person says yes, run `flotilla onboard write --confirm <mark>` with the same
@@ -87,21 +89,22 @@ Then mention once: the git hooks that back the guards are installed with `/floti
 
 Ask with AskUserQuestion, header "Fleet", question "Raise the fleet now?":
 
-- **"This session leads it (Recommended)"** - "This session becomes the orchestrator: you talk to the fleet here,
-  answer its permission questions and approve its merges here. The other sessions start in the background."
+- **"This session leads it (Recommended)"** - "This session becomes the orchestrator: you talk to the fleet here and
+  answer its permission questions here. The other sessions start in the background." When the profile's
+  `flow.merge_authorized_by` is `human`, add "and approve its merges" after "permission questions"; otherwise do not
+  promise approvals.
 - **"A background orchestrator"** - "Every session starts in the background; you attach to the orchestrator to talk."
 - **"Not now"** - "Raise it later with /flotilla:spawn."
 
 **This session leads it:**
 
-1. Run `flotilla spawn --lead`. It reserves the orchestrator's name for this session and prints it
-   (`orchestrator N`); a note may come first.
-2. Tell the person: "Type `/rename orchestrator N` (the name above) as your next message - only you can rename this
-   session." Wait for it. Then run `flotilla fleet` - or `claude agents --json` - and check that this session now
-   carries that name; if not, say what you see and stop.
-3. Run `flotilla spawn --fill`: it raises the rest of the profile's default composition, not a second orchestrator.
-   Report each seat it raised.
-4. From now on you hold the orchestrator post: read `.flotilla/posts/orchestrator.md` on trunk and follow its
+1. Run `flotilla spawn --lead`. It records that this session leads the fleet under the orchestrator's name
+   (`<project>-orchestrator N`) and prints it; a note may come first. Claude Code shows the name on the person's
+   next message - nobody renames anything. Only if it says it could not tell which session runs it, tell the person
+   to type `/rename <the name>` and then send any message, and wait for that message.
+2. Run `flotilla spawn --fill` right away: it raises the rest of the profile's default composition, and counts this
+   session as the orchestrator. Report each seat it raised.
+3. From now on you hold the orchestrator post: read `.flotilla/posts/orchestrator.md` on trunk and follow its
    instructions, and use the `flotilla:flotilla` skill for every ledger move. Tell the person: "Tell me what to
    build." Permission questions from the fleet reach you; put each to the person with `/flotilla:permit`. Where the
    person authorizes merges, show them each approve command and let them type it with `!` in front; your own Bash

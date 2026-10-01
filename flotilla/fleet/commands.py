@@ -23,6 +23,12 @@ def census():
     return read_census()
 
 
+def calling_session(sessions):
+    """The live session this command runs in, or None."""
+    source = plat.probe().parent_pid_source
+    return find_calling_session(sessions, parent_of=lambda pid: plat.parent_pid(pid, source))
+
+
 def caller_line(sessions) -> str:
     source = plat.probe().parent_pid_source
     found = find_calling_session(sessions, parent_of=lambda pid: plat.parent_pid(pid, source))
@@ -67,11 +73,35 @@ def _lead(ledger, args) -> int:
         print(f"note: {', '.join(held)} already lead(s) this project's fleet")
     taken = {item.name for item in sessions if item.name}
     taken |= {name for row in ledger.rows().values() for name in (row.owner, row.reader) if name}
+    from flotilla.fleet import lead
     store = LocalLogStore(paths.state_dir() / "fleet")
     name = names.next_names(post, 1, taken=taken, store=store, reserve=True, now=ledger.now())[0]
-    print(f"{name}: reserved for this session. Type `/rename {name}` as your next message - only you can rename "
-          "this session - then `flotilla spawn --fill` raises the rest of the default composition.")
+    me = calling_session(sessions)
+    if me is not None and me.session_id:   # the prompt hook names it on the person's next message (W9)
+        lead.record(store, me.session_id, name, now=ledger.now())
+        print(f"{name}: this session leads the fleet. Claude Code shows the name once you send your next message; "
+              "`flotilla spawn --fill` raises the rest of the default composition now.")
+        return 0
+    print(f"{name}: reserved, but flotilla could not tell which session runs this, so it cannot name it. Type "
+          f"`/rename {name}`, then send any message; `flotilla spawn --fill` raises the rest.")
     return 0
+
+
+def _leading(ledger, mine) -> int:
+    """Live sessions of this project that lead the fleet but do not carry the orchestrator's name yet: the name
+    comes with the person's next message, and --fill must not raise a second orchestrator in that gap."""
+    from flotilla.fleet import lead
+    from flotilla.posts import post_for_session
+    waiting = lead.pending(LocalLogStore(paths.state_dir() / "fleet"))
+    count = 0
+    for item in mine:
+        if item.session_id in waiting:
+            try:
+                post = post_for_session(ledger.posts, item.name) if item.name else None
+            except PostError:
+                post = None
+            count += post is None or post.name != "orchestrator"
+    return count
 
 
 def _spawn(ledger, args) -> int:
@@ -82,7 +112,9 @@ def _spawn(ledger, args) -> int:
         from flotilla.ledger import project
         try:
             mine = project.members(census(), ledger.rows(), project.roots(ledger.root))   # the census is the
-            counts = compose.fill(counts, dict(spawn._live_posts(ledger, mine)))           # machine's (M3)
+            held = dict(spawn._live_posts(ledger, mine))                                   # machine's (M3)
+            held["orchestrator"] = held.get("orchestrator", 0) + _leading(ledger, mine)
+            counts = compose.fill(counts, held)
         except CensusUnavailable as err:
             raise MoveRefused(f"--fill needs the census to see who is alive ({err}); name the counts instead") from err
         if not counts:

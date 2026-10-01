@@ -146,9 +146,12 @@ def _session_start(ctx, payload, out, now) -> int:
 
 def _prompt(ctx, payload, out, now) -> int:
     from flotilla.core import paths
+    from flotilla.core.storage import LocalLogStore
+    from flotilla.fleet import lead
     from flotilla.watch import render, throttle
     from flotilla.watch.whose import WAITING
     blocks, keys = [], []
+    title = lead.take(LocalLogStore(paths.state_dir() / "fleet"), str(payload.get("session_id") or ""))
     if ctx.sessions is None:
         blocks.append(f"flotilla: could not ask which session this is: {ctx.census_error}")
     elif ctx.ledger is None:
@@ -163,6 +166,13 @@ def _prompt(ctx, payload, out, now) -> int:
         keys = [f"{item.kind}|{item.branch}|{item.text}" for item in mine + fleet_items]
     keys = keys or blocks
     state = ctx.ledger.state_dir if ctx.ledger is not None else paths.state_dir()
+    if title:   # the person's own session leads the fleet: it takes the orchestrator's name now (W9)
+        note = (f"flotilla: this session is now `{title}` and holds the orchestrator post; follow "
+                ".flotilla/posts/orchestrator.md on trunk and use the flotilla:flotilla skill for every ledger move.")
+        body = {"hookEventName": "UserPromptSubmit", "sessionTitle": title,
+                "additionalContext": "\n".join([note, *blocks])}
+        print(json.dumps({"hookSpecificOutput": body}), file=out)
+        return 0
     if not throttle.due(state, ctx.session_id, throttle.digest(keys) if keys else "", now):
         return 0
     print("\n".join(blocks), file=out)
