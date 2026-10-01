@@ -925,6 +925,14 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    read by flotilla's own reading of push defaults, and only the pre-push hook, where installed, sees what git
    actually sends. (planner's decision, security fixes, 2026-10-01)
 
+189. **`--as` without the census's word is a person's word or nobody's** (review of the README, 2026-10-01): a move
+   named with `--as` was recorded under that name whenever the census could not place the caller - outside every
+   session, the census down, or `FLOTILLA_NO_CENSUS` set - so a process a session detached could record a reading in
+   a reviewer's name, the F9 hole in the ledger. It is now taken only with a terminal behind it (decision 173); a
+   session names itself through the census. The orchestrator post no longer tells the person to approve with `!` in
+   its prompt: that runs inside the orchestrator's background session and is refused. (planner's decision, security
+   fixes, 2026-10-01)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

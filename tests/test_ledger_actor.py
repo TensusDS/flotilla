@@ -72,3 +72,22 @@ def test_as_records_who_really_called():
     same = resolve_actor(POSTS, as_name="main session 1", census=lambda: [session("main session 1", 20)],
                          parent_of={40: 20, 20: 1}.get, start_pid=40)
     assert same.caller == "main session 1"
+
+
+@pytest.mark.parametrize("how", ["outside any session", "census down", "census not asked"])
+def test_a_name_given_with_as_is_taken_only_from_a_person(monkeypatch, how):
+    """`--as` named any session when the census could not place the caller - outside every session, the census down,
+    or FLOTILLA_NO_CENSUS set - so a detached process could record a reading in a reviewer's name (review of the
+    README, as F9 for the ledger). Without the census's word, only a person with a terminal may name who acts."""
+    from flotilla.core import caller
+
+    def broken():
+        raise CensusUnavailable("`claude` is not on PATH")
+    monkeypatch.setattr(caller, "has_terminal", lambda: False)
+    census = {"outside any session": lambda: [], "census down": broken, "census not asked": None}[how]
+    if how == "census not asked":
+        monkeypatch.setenv("FLOTILLA_NO_CENSUS", "1")
+    with pytest.raises(ActorUnknown, match="terminal"):
+        resolve_actor(POSTS, as_name="review session 2", census=census)
+    monkeypatch.setattr(caller, "has_terminal", lambda: True)
+    assert resolve_actor(POSTS, as_name="review session 2", census=census).name == "review session 2"

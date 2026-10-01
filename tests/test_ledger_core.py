@@ -143,6 +143,8 @@ def test_two_claims_at_once_one_wins(tmp_path):
         "from ledgerkit import actor, make_ledger\n"
         "from flotilla.ledger import core\n"
         "from flotilla.ledger.errors import MoveRefused\n"
+        "from flotilla.core import caller\n"
+        "caller.has_terminal = lambda: True   # the harness stands for the person naming who acts (--as)\n"
         f"ledger = make_ledger({str(root)!r}, {str(tmp_path / 'state')!r})\n"
         "me = actor(ledger, sys.argv[1])\n"
         f"Path({str(tmp_path)!r}, 'ready-' + sys.argv[2]).touch()\n"

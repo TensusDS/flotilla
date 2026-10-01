@@ -40,16 +40,27 @@ def _post(posts: dict, name: str) -> Post | None:
         raise MoveRefused(str(err)) from err
 
 
+def _named_by_a_person(as_name: str, why: str) -> None:
+    """`--as` without the census's word is a person's word or nobody's: a session can detach a process that no
+    census places, and that process must not name who acts (decision 173, here for the ledger)."""
+    from flotilla.core import caller
+    if not caller.has_terminal():
+        raise ActorUnknown(f"`--as {as_name}` is taken only from a person at a terminal when the census cannot place "
+                           f"the caller ({why}); run the move from the session itself")
+
+
 def resolve_actor(posts: dict, *, as_name: str | None = None, census=None, parent_of=None,
                   start_pid: int | None = None) -> Actor:
     if census is None and os.environ.get(NO_CENSUS):
         if not as_name:
             raise ActorUnknown(f"{NO_CENSUS} is set, so the calling session is not asked; pass --as <session name>")
+        _named_by_a_person(as_name, f"{NO_CENSUS} is set")
         return Actor(as_name, _post(posts, as_name), "as", f"unknown: {NO_CENSUS} is set")
     try:
         sessions = (census or read_census)()
     except CensusUnavailable as err:
         if as_name:
+            _named_by_a_person(as_name, f"the census could not be asked: {err}")
             return Actor(as_name, _post(posts, as_name), "as", f"unknown: {err}")
         raise ActorUnknown(f"could not identify the calling session: {err}; pass --as <session name>") from err
     found = None
@@ -62,6 +73,8 @@ def resolve_actor(posts: dict, *, as_name: str | None = None, census=None, paren
     if as_name:
         if real and real != as_name:
             raise ActorUnknown(f"this process runs inside `{real}`, which cannot act as `{as_name}`")
+        if not real:
+            _named_by_a_person(as_name, "this process is inside no session the census lists")
         return Actor(as_name, _post(posts, as_name), "as", real or "none: not inside a session the census lists")
     if not real:
         raise ActorUnknown("this process is not inside a Claude Code session the census lists; "
