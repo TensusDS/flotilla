@@ -81,3 +81,12 @@ def test_stop_signals_only_the_same_process_it_found(tmp_path):
     found = [leftovers.Leftover(1, "a", "100"), leftovers.Leftover(2, "b", "100"), leftovers.Leftover(3, "c", "300")]
     assert leftovers.stop(found, kill=kill, proc_root=proc) == 1
     assert sent == [(1, signal.SIGTERM)]
+
+
+def test_a_sessions_job_directory_is_named_by_its_id_and_only_when_it_exists(tmp_path, monkeypatch):
+    monkeypatch.setattr(leftovers, "CONFIG_DIR", tmp_path / "claude")
+    (tmp_path / "claude" / "jobs" / "cd30b6e8").mkdir(parents=True)
+    assert leftovers.job_dir("cd30b6e8") == tmp_path / "claude" / "jobs" / "cd30b6e8"
+    assert leftovers.job_dir("0d0760af") is None                        # no such directory
+    for bad in ("", None, "..", "../cd30b6e8", "a/b", "cd30 b6e8"):
+        assert leftovers.job_dir(bad) is None, bad

@@ -735,3 +735,7 @@ census session. Nothing goes back to the trees of seats retired before 0.3.1: th
 hand. The same machine shows why the mark cannot be the directory alone: the deployment's `curve-serving` and the CI
 runners are also orphans of the same user under pid 1, told apart only by their cgroup, a `.service` unit
 (review of the fix, 2026-10-01).
+A second form, found the same night (~01:00): `main session 12` had copied trunk into its own job directory and run
+`vite --port 4461` there, `~/.claude/jobs/cd30b6e8/tmp/trunk` (193 MB, parent pid 1). That directory is outside the
+seat's tree, so 0.3.1 would not look at it. Fixed in 0.3.2: retire also looks at the job directory of the session it
+stops (`jobs/<its id>/` under the Claude Code configuration directory).

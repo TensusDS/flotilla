@@ -760,6 +760,11 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    a directory git does not name as its own toplevel (the check `free_seat_tree` already made, now one function). A detached process of another session that worked in this seat's tree is stopped with it: a tree is its
    seat's home, and a session that works in another's tree starts its servers there at its own risk. (planner's
    decision, release 0.3.1, 2026-10-01)
+168. **Retire also looks at the job directory of the session it stops** (H50, second form): `jobs/<id>/` under the
+   Claude Code configuration directory (`CLAUDE_CONFIG_DIR`, else `~/.claude`), with the same rules as the tree. The
+   id comes from the census at the moment retire stops the session; a session already gone left no id behind, so
+   its job directory is not looked at, and retire says so. The directory's place is Claude Code's, not a documented
+   interface: where it does not exist, nothing is assumed. (planner's decision, release 0.3.2, 2026-10-01)
 
 ## Open questions (for the foundation spec)
 

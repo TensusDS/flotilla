@@ -25,3 +25,4 @@ def memory_is_not_this_machines(monkeypatch):
 def no_real_process_is_stopped(tmp_path, monkeypatch):
     """Retire stops orphans it finds in /proc; no test may look at, or signal, this machine's processes."""
     monkeypatch.setattr("flotilla.fleet.leftovers.PROC_ROOT", tmp_path / "no-proc-in-tests")
+    monkeypatch.setattr("flotilla.fleet.leftovers.CONFIG_DIR", tmp_path / "no-claude-config-in-tests")

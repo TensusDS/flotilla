@@ -229,3 +229,30 @@ def test_retire_never_looks_for_leftovers_outside_a_seat_worktree(tmp_path, monk
     for tree in (str(root), str(root / "sub"), ".", str(tmp_path)):
         lines = retire._stop_leftovers(ledger, tree, fake.census)
         assert sent == [] and lines and "not looked for" in lines[0], (tree, lines)
+
+
+def test_retire_stops_what_the_session_left_in_its_job_directory(tmp_path, monkeypatch):
+    from test_fleet_leftovers import fake_proc
+    fake = FakeClaude()
+    root, ledger, seat = raised_world(tmp_path, fake)
+    jobs = tmp_path / "claude" / "jobs"
+    (jobs / seat.short_id / "tmp" / "trunk").mkdir(parents=True)
+    (jobs / "ffffff" / "tmp").mkdir(parents=True)
+    monkeypatch.setattr("flotilla.fleet.leftovers.CONFIG_DIR", tmp_path / "claude")
+    proc = tmp_path / "proc"
+    fake_proc(proc, 500, ppid=1, cwd=jobs / seat.short_id / "tmp" / "trunk", command="node vite --port 4461")
+    fake_proc(proc, 501, ppid=1, cwd=jobs / "ffffff" / "tmp", command="node vite --port 9999")   # another session's
+    monkeypatch.setattr("flotilla.fleet.leftovers.PROC_ROOT", proc)
+    sent = []
+    monkeypatch.setattr("flotilla.fleet.leftovers.os.kill", lambda pid, sig: sent.append(pid))
+    lines = "\n".join(do_retire(ledger, fake))
+    assert sent == [500]
+    assert f"left in {jobs / seat.short_id}: node vite --port 4461" in lines
+
+
+def test_retire_of_a_session_already_gone_says_its_job_directory_was_not_looked_at(tmp_path):
+    fake = FakeClaude()
+    root, ledger, seat = raised_world(tmp_path, fake)
+    fake.sessions = []
+    lines = "\n".join(do_retire(ledger, fake))
+    assert "its job directory was not looked at: the session had already gone, so its id is unknown" in lines

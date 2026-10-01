@@ -121,7 +121,8 @@ def retire(ledger, name: str, *, caller: str, census, wait: float = 60.0, poll: 
                 raise RetireRefused(f"`{name}` is still running {wait:g} s after `claude stop`; nothing was released")
             sleep(poll)
             waited += poll
-    left = _stop_leftovers(ledger, row.tree, census)
+    left = _stop_leftovers(ledger, row.tree, census, short_id=found.short_id if found else "",
+                           was_running=found is not None)
     ledger.run(["git", "-C", str(ledger.root), "worktree", "unlock", row.tree], capture_output=True, text=True,
                check=False)
     try:
@@ -151,27 +152,43 @@ def retire(ledger, name: str, *, caller: str, census, wait: float = 60.0, poll: 
     return lines
 
 
-def _stop_leftovers(ledger, tree: str, census) -> list[str]:
-    """Stop what the session left running detached in its tree (H50); live sessions' processes are spared. Only in
-    a seat's own worktree: never the main checkout, a relative path or a directory above the trees."""
-    if not tree or (Path(tree).is_absolute() and not Path(tree).is_dir()):
-        return []
-    refused = core.seat_tree_refusal(ledger, tree)
-    if refused:
-        return [f"background processes were not looked for: {refused}"]
+def _stop_leftovers(ledger, tree: str, census, *, short_id: str = "", was_running: bool = True) -> list[str]:
+    """Stop what the session left running detached (H50): in its tree, and in its job directory when retire stopped
+    it and so knows its id. Live sessions' processes are spared. The tree only when it is a seat's own worktree:
+    never the main checkout, a relative path or a directory above the trees."""
+    places, lines = [], []
+    if tree and not (Path(tree).is_absolute() and not Path(tree).is_dir()):
+        refused = core.seat_tree_refusal(ledger, tree)
+        if refused:
+            lines.append(f"background processes were not looked for: {refused}")
+        else:
+            places.append(tree)
+    if was_running:
+        job = leftovers.job_dir(short_id)
+        if job is not None:
+            places.append(str(job))
+    else:
+        lines.append("its job directory was not looked at: the session had already gone, so its id is unknown")
+    if not places:
+        return lines
     try:
         keep = {item.pid for item in census() if item.pid}
     except CensusUnavailable:
-        return [f"background processes in {tree} were not looked for: the census could not be asked"]
-    found = leftovers.in_tree(tree, keep=keep)
-    if found is None:
-        return [f"background processes in {tree} were not looked for: this machine has no /proc"]
-    if not found:
-        return []
-    count = leftovers.stop(found)
-    names = ", ".join(item.command[:60] for item in found[:5]) + (", ..." if len(found) > 5 else "")
-    missed = f" ({len(found) - count} had already gone)" if count != len(found) else ""
-    return [f"sent SIGTERM to {count} background process{'es' if count != 1 else ''} left in {tree}: {names}{missed}"]
+        return lines + [f"background processes in {', '.join(places)} were not looked for: the census could not "
+                        f"be asked"]
+    for place in places:
+        found = leftovers.in_tree(place, keep=keep)
+        if found is None:
+            return lines + [f"background processes in {', '.join(places)} were not looked for: this machine has "
+                            f"no /proc"]
+        if not found:
+            continue
+        count = leftovers.stop(found)
+        names = ", ".join(item.command[:60] for item in found[:5]) + (", ..." if len(found) > 5 else "")
+        missed = f" ({len(found) - count} had already gone)" if count != len(found) else ""
+        lines.append(f"sent SIGTERM to {count} background process{'es' if count != 1 else ''} left in {place}: "
+                     f"{names}{missed}")
+    return lines
 
 
 def down(ledger, *, caller: str, me: str, census, wait: float = 60.0, poll: float = 1.0,

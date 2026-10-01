@@ -10,17 +10,24 @@ running this command. An orphan of another user, or one a systemd service runs (
 deployment's server, a CI runner), is never a leftover, whatever its directory. A process is signalled only while it
 is still the one found: its start time is read again just before the signal, so a reused pid is left alone.
 
+A session also works outside its tree: a background session has a job directory of its own under the Claude Code
+configuration directory, `jobs/<its id>/`, and a session that copied trunk there to run a dev server leaves the
+server's working directory in it (seen in twosuns: a `vite` in `jobs/cd30b6e8/tmp/trunk`). That directory is looked
+at the same way, by the session's id; where it does not exist nothing is assumed about it.
+
 Linux only: where there is no procfs the leftovers are not looked for, and the caller says so.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import signal
 from dataclasses import dataclass
 from pathlib import Path
 
 PROC_ROOT = Path("/proc")
+CONFIG_DIR = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
 
 
 @dataclass(frozen=True)
@@ -39,6 +46,14 @@ class _Proc:
     start: str
     uid: int
     service: bool
+
+
+def job_dir(short_id) -> Path | None:
+    """The background session's job directory, when its id is a plain id and the directory exists."""
+    if not short_id or not re.fullmatch(r"[0-9A-Za-z]{4,64}", str(short_id)):
+        return None
+    found = CONFIG_DIR / "jobs" / str(short_id)
+    return found if found.is_dir() else None
 
 
 def _start(proc_root: Path, pid: int) -> str:
