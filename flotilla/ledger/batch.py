@@ -35,6 +35,14 @@ def approved(row: Row) -> bool:
     return bool(row.approved) and row.approved == target
 
 
+def vouched_before_approval(row: Row) -> list[str]:
+    """The commits vouched for before the person's last approve of this row: a vouch made after it was not shown to
+    the person, so it does not ride under that approval."""
+    last = max((index for index, step in enumerate(row.history) if step.get("move") == "approve"), default=-1)
+    return [str((step.get("evidence") or {}).get("commit", "")) for index, step in enumerate(row.history)
+            if index < last and step.get("move") == "vouch" and (step.get("evidence") or {}).get("commit")]
+
+
 def revision_of(row: Row) -> str:
     """The revision a row's reader vouched for: the verdict, or the tip where the profile skips review."""
     return row.verdict or row.tip
@@ -138,7 +146,7 @@ class Accounting:
             if human and not approved(row):   # where a person authorizes merges, only work they approved counts (F24)
                 continue
             if row.is_open or delivered(row, profile):   # a released row's vouch accounts for nothing
-                for sha in row.vouched or []:
+                for sha in (vouched_before_approval(row) if human else row.vouched or []):
                     self.vouched.setdefault(sha, row)
             if row.state == "inbatch" and row.merge:
                 full = gitq.resolve(ledger.root, row.merge, run=ledger.run)

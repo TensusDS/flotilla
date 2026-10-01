@@ -914,6 +914,17 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    project at all; a gh door naming its repository (`-R`, `--repo`, `GH_REPO`) from outside every project is
    refused, since whose receipts it needs cannot be told. (planner's decision, security fixes, 2026-10-01)
 
+188. **The person's approval has no override, and what goes to trunk is measured against origin itself** (review
+   of the low-finding fixes, 2026-10-01): `FLOTILLA_GATE_OVERRIDE` waives a missing receipt, never a missing
+   approval - a session cannot waive what only the person gives; the push guard asks origin for trunk's revision
+   (`git ls-remote`) and pre-push takes it from what git says origin has, since a session can repoint the local
+   `origin/<trunk>` and make nothing look outgoing; `--all`, `--mirror` and pattern refspecs are asked as pushes
+   that may carry trunk; a repeated `--match-head-commit` is refused (gh takes the last); a push through `GIT_DIR`
+   or `GIT_WORK_TREE` names no tree and is refused; a vouch made after the person's approve does not ride under it.
+   Left open, named: `gh api` calls that merge or move refs are no door the guard reads; a push with no refspec is
+   read by flotilla's own reading of push defaults, and only the pre-push hook, where installed, sees what git
+   actually sends. (planner's decision, security fixes, 2026-10-01)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

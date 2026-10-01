@@ -105,6 +105,8 @@ def _push_revisions(args, directory, trunk, run) -> list[tuple[str, str]]:
             return []
         return [(branch or "HEAD", _need(_resolve(directory, "HEAD", run), "HEAD"))]
     found = []
+    if any("*" in spec for spec in refspecs):   # a pattern may carry trunk: asked as a broad push
+        return [("HEAD", _need(_resolve(directory, "HEAD", run), "HEAD"))]
     for spec in refspecs:
         src, sep, dst = spec.lstrip("+").partition(":")
         if sep and not src:
@@ -153,6 +155,8 @@ def revisions(d: Door, trunk: str, *, run=subprocess.run) -> list[tuple[str, str
         except (OSError, subprocess.SubprocessError):
             sha = ""
         sha = _need(sha, "the pull request's head (gh pr view)")
+        if sum(1 for word in rest if word.split("=", 1)[0] == "--match-head-commit") > 1:
+            raise Unknown("names --match-head-commit more than once; gh takes the last, so name it once")
         pinned = _value(rest, "--match-head-commit")
         if pinned != sha:   # gh merges the head the PR has when it merges; --auto, a later one (F20, F22)
             raise Unknown(f"merges whatever head the pull request has then, not the one whose receipt was checked; "
@@ -210,7 +214,19 @@ def _failures(pairs, *, directory, profile, state_dir, repo_key, run) -> list[st
     return found
 
 
-def _unapproved(root, profile: dict, pairs) -> list[str]:
+def _remote_trunk(root, trunk: str, run) -> str:
+    """Trunk's revision as origin has it, asked of origin: the local `origin/<trunk>` is a ref any session can
+    repoint, and what goes to trunk is measured from it."""
+    done = run(["git", "-C", str(root), "ls-remote", "origin", f"refs/heads/{trunk}"], capture_output=True,
+               text=True, check=False, timeout=20)
+    if done.returncode != 0:
+        raise Unknown(f"origin could not be asked for `{trunk}` ({(done.stderr or '').strip()[:120]}), so what this "
+                      "carries to trunk cannot be told")
+    words = done.stdout.split()
+    return words[0] if words else ""
+
+
+def _unapproved(root, profile: dict, pairs, since: str = "") -> list[str]:
     """Where a person authorizes merges, what goes to trunk is work they approved (F24): each revision is asked of
     the ledger, which counts only approved rows; a commit no approved row covers closes the door."""
     if (profile.get("flow") or {}).get("merge_authorized_by") != "human" or not pairs:
@@ -220,7 +236,7 @@ def _unapproved(root, profile: dict, pairs) -> list[str]:
     ledger = open_ledger(Path(root))
     found = []
     for label, sha in pairs:
-        loose = batch.unaccounted(ledger, ledger.rows(), sha)
+        loose = batch.unaccounted(ledger, ledger.rows(), sha, since=since)
         if loose is None:
             found.append(f"{label}: which commits it carries could not be told, so whether the person approved "
                          "them could not be asked")
@@ -258,10 +274,13 @@ def guard(segment, *, root, profile, env=os.environ, run=subprocess.run) -> Find
     d = door(segment)
     if d is None:
         return None
-    state, key = paths.state_dir(env), "unknown"
+    state, key, unapproved = paths.state_dir(env), "unknown", []
     try:
         home = _home(d, root, profile, run)
         if home is None:
+            if d.kind == "git push" and d.directory is None:
+                raise Unknown("could not tell which repository this pushes (GIT_DIR, a git dir named elsewhere); "
+                              "run it as `git -C <tree> push`")
             if not _names_repo(d, env):
                 return None
             raise Unknown("names a repository with -R/--repo or GH_REPO from outside any project, so which "
@@ -274,13 +293,17 @@ def guard(segment, *, root, profile, env=os.environ, run=subprocess.run) -> Find
         pairs = revisions(d, trunk, run=run)
         failures = _failures(pairs, directory=d.directory, profile=home_profile, state_dir=state, repo_key=key,
                              run=run)
-        if d.kind in ("git push", "gh pr merge"):   # what lands on trunk; a tag or a PR opened merges nothing
-            failures += _unapproved(home_root, home_profile, [(label, sha) for label, sha in pairs
-                                                              if d.kind == "gh pr merge" or label == trunk])
+        landing = [(label, sha) for label, sha in pairs if d.kind == "gh pr merge" or label in (trunk, "HEAD")]
+        if d.kind in ("git push", "gh pr merge") and landing and \
+                (home_profile.get("flow") or {}).get("merge_authorized_by") == "human":
+            unapproved = _unapproved(home_root, home_profile, landing, since=_remote_trunk(home_root, trunk, run))
     except Unknown as err:
         failures = [str(err)]
     except Exception as err:  # noqa: BLE001 - the push guard's own failure refuses (spec, section 10)
         failures = [f"the guard failed: {err}"]
+    if unapproved:   # the person's approval has no override: a session cannot waive what only a person gives
+        return Finding(GUARD, True, f"flotilla push: `{segment.text}` is closed: it carries work the person has "
+                                    "not approved.\n" + "\n".join(f"  {item}" for item in unapproved))
     if not failures:
         return None
     reason = (segment.assignments.get(OVERRIDE) or env.get(OVERRIDE) or "").strip()
@@ -304,7 +327,7 @@ def pre_push(root, stdin_text: str, *, env=os.environ, run=subprocess.run) -> tu
     if not (profile.get("guards") or {}).get(GUARD):
         return 0, ""
     trunk = (profile.get("trunk") or {}).get("branch", "main")
-    pairs = []
+    pairs, remote_had = [], ""
     for line in (stdin_text or "").splitlines():
         fields = line.split()
         if len(fields) < 4 or fields[1] == ZERO:
@@ -313,15 +336,20 @@ def pre_push(root, stdin_text: str, *, env=os.environ, run=subprocess.run) -> tu
         if remote.startswith("refs/heads/") and remote.removeprefix("refs/heads/") != trunk:
             continue
         pairs.append((remote, _resolve(root, fields[1], run) or fields[1]))
+        if remote == f"refs/heads/{trunk}" and fields[3] != ZERO:
+            remote_had = fields[3]   # what origin has, as git says it: no local ref can stand in for it
     if not pairs:
         return 0, ""
     state, key = paths.state_dir(env), repo.identify(Path(root)).key
     failures = _failures(pairs, directory=Path(root), profile=profile, state_dir=state, repo_key=key, run=run)
     try:
-        failures += _unapproved(root, profile, [(remote, sha) for remote, sha in pairs
-                                                if remote == f"refs/heads/{trunk}"])
+        unapproved = _unapproved(root, profile, [(remote, sha) for remote, sha in pairs
+                                                 if remote == f"refs/heads/{trunk}"], since=remote_had)
     except Exception as err:  # noqa: BLE001 - a guard that cannot ask refuses (spec, section 10)
-        failures.append(f"whether the person approved this could not be asked: {err}")
+        unapproved = [f"whether the person approved this could not be asked: {err}"]
+    if unapproved:   # no override for the person's approval
+        return 1, ("flotilla pre-push: the push is closed: it carries work the person has not approved.\n"
+                   + "\n".join(f"  {item}" for item in unapproved))
     if not failures:
         return 0, ""
     reason = env.get(OVERRIDE, "").strip()

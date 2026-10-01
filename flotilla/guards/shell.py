@@ -53,6 +53,8 @@ class Segment:
         if self.program != "git":
             return None
         words, i, directory = self.words, 1, self.cwd
+        if self.assignments.get("GIT_DIR") or self.assignments.get("GIT_WORK_TREE"):
+            directory = None   # git is pointed at another repository than the directory it runs in
         while i < len(words):
             word = words[i]
             if word in GIT_VALUE_OPTIONS:

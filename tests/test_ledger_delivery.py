@@ -741,3 +741,14 @@ def test_work_with_no_review_is_approved_at_its_tip(tmp_path):
     core.claim(ledger, actor(ledger, "main session 1"), "feat/z")
     row = delivery.approve(ledger, "feat/z")
     assert row.approved and row.approved == git(root, "rev-parse", "feat/z")
+
+
+def test_a_vouch_after_the_approval_is_not_under_it(tmp_path):
+    """A reader could vouch a commit onto a row the person had already approved, and it rode under that approval."""
+    from flotilla.ledger import batch, outside
+    root, ledger = human_world(tmp_path)
+    delivery.approve(ledger, "feat/x")
+    merge(root, "feat/x")
+    extra = commit(root, "a change made in the batch", "extra.txt")
+    outside.vouch(ledger, actor(ledger, "review session 1"), "feat/x", commit=extra)
+    assert extra in (batch.unaccounted(ledger, ledger.rows(), "main") or [])

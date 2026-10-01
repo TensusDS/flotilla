@@ -299,3 +299,53 @@ def test_a_push_from_a_project_without_the_guard_into_one_with_it_is_judged(tmp_
     there = onboarded(tmp_path / "b")
     found = evaluate(f"git -C {there} push origin main", here, here, env=env(tmp_path))
     assert any(item.refuse and "receipt" in item.text for item in found)
+
+
+def test_the_override_opens_a_missing_receipt_never_a_missing_approval(tmp_path):
+    """The override is for a receipt the person chose to skip; it opened the approval gate too, and the refusal
+    told the session how (review of the low-finding fixes)."""
+    root = human_project(tmp_path)
+    found = judge('FLOTILLA_GATE_OVERRIDE="hotfix" git push origin main', root, tmp_path)
+    assert found is not None and found.refuse and "not approved" in found.text
+    head = git(root, "rev-parse", "HEAD")
+    code, text = push.pre_push(root, lines(root, ("refs/heads/main", head, "refs/heads/main")),
+                               env={**env(tmp_path), "FLOTILLA_GATE_OVERRIDE": "hotfix"})
+    assert code == 1 and "not approved" in text
+
+
+def test_what_goes_to_trunk_is_measured_against_the_remote_not_a_local_ref(tmp_path):
+    """`git update-ref refs/remotes/origin/main HEAD` made nothing outgoing, and both barriers passed."""
+    root = human_project(tmp_path)
+    remote_sha = git(root, "rev-parse", "refs/remotes/origin/main")
+    git(root, "update-ref", "refs/remotes/origin/main", "HEAD")
+    assert judge("git push origin main", root, tmp_path).refuse
+    head = git(root, "rev-parse", "HEAD")
+    pushed = f"refs/heads/main {head} refs/heads/main {remote_sha}\n"
+    code, text = push.pre_push(root, pushed, env=env(tmp_path))
+    assert code == 1 and "not approved" in text
+
+
+@pytest.mark.parametrize("command", ["git push --all origin", "git push --mirror origin",
+                                     "git push origin 'refs/heads/*:refs/heads/*'"])
+def test_a_push_that_may_carry_trunk_is_asked_for_approval(tmp_path, command):
+    root = human_project(tmp_path)
+    found = judge(command, root, tmp_path)
+    assert found is not None and found.refuse and "not approved" in found.text
+
+
+def test_a_repeated_pin_is_refused(tmp_path):
+    """gh takes the last --match-head-commit; the guard read the first."""
+    root = onboarded(tmp_path)
+    head = git(root, "rev-parse", "HEAD")
+    receipt(root, tmp_path / "state")
+    found = judge(f"gh pr merge 12 --match-head-commit {head} --match-head-commit {'1' * 40}", root, tmp_path,
+                  run=fake_gh((0, head + "\n")))
+    assert found.refuse
+
+
+def test_a_push_through_git_dir_is_not_waved_through(tmp_path):
+    root = onboarded(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    found = judge(f"GIT_DIR={root}/.git git push origin main", root, tmp_path, cwd=outside)
+    assert found is not None and found.refuse
