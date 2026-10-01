@@ -9,7 +9,7 @@ You run these in an interactive Claude Code session in the project's main checko
 | command | what it does |
 |---|---|
 | `/flotilla:doctor` | checks Python, git, Claude Code, the session census, the state directory and the project profile |
-| `/flotilla:onboard` | sets the project up: reads what it declares, asks what it cannot read, shows the profile, writes `.flotilla/` |
+| `/flotilla:onboard` | sets the project up: reads what it declares, takes the recommended answers (quick) or asks you each one (custom), shows the profile, writes `.flotilla/`, pushes it to trunk, and offers to raise the fleet with your session as orchestrator |
 | `/flotilla:check` | reports drift between the profile and the repository as it is now (CI, trunk, test tiers) |
 | `/flotilla:spawn` | raises background sessions, each with a post and its own worktree |
 | `/flotilla:status` | who is idle, working, waiting, blocked; whose move each open row is; what deviates |
@@ -30,6 +30,7 @@ The CLI is `${CLAUDE_PLUGIN_ROOT}/scripts/flotilla`. Every command takes `--help
 **Fleet**
 
     flotilla spawn [-o N] [-s N] [-r N] [-j N] [-M N] [-m N] [--post NAME=N] [--dry-run] [--anyway]
+    flotilla spawn --default | --fill    the profile's composition; --fill raises only the seats nobody holds
     flotilla fleet                 the seats, their trees and their work
     flotilla fleet down            retire every seat but your own
     flotilla retire "<name>"       stop one session, release its post
@@ -61,6 +62,14 @@ Worktrees and receipts:
     flotilla tree switch <branch>                switch your home tree to another of your branches
     flotilla receipt run --purpose handover|push  run the test tiers over the current revision
 
+**Onboarding** (the person only; `/flotilla:onboard` runs these for you)
+
+    flotilla onboard detect | next | check          read-only
+    flotilla onboard quick                          the recommended answer to every open question
+    flotilla onboard answer <id> <value>            one answer
+    flotilla onboard write [--confirm <mark>]       show the profile, then write it after your yes
+    flotilla onboard publish                        commit .flotilla/, run the tiers over it, push it to trunk
+
 **Machine and guards**
 
     flotilla lane                         who holds the machine
@@ -70,13 +79,15 @@ Worktrees and receipts:
 
 ## Daily operation
 
-1. **Start:** `/flotilla:spawn`, then `claude attach <orchestrator id>` (`flotilla fleet` lists the ids) and tell the
-   orchestrator what to build. The project's `.flotilla/` must be on origin's trunk first.
+1. **Start:** if your own session leads the fleet (onboarding offers it), name it as the orchestrator with
+   `/rename orchestrator N` and raise the rest with `flotilla spawn --fill`. Otherwise `/flotilla:spawn`, then
+   `claude attach <orchestrator id>` (`flotilla fleet` lists the ids). Tell the orchestrator what to build. The
+   project's `.flotilla/` must be on origin's trunk first.
 2. **While it runs:** `/flotilla:status` for the picture, `/flotilla:watch` for what needs you. Answer permission
    questions with `/flotilla:permit` in the orchestrator's session.
-3. **Merges you authorize:** the orchestrator shows the batch; you run `flotilla work approve <branch>` for each branch
-   you agree to, yourself, in your own Claude Code session or a terminal - not with `!` in the orchestrator's prompt,
-   which runs inside a background session and is refused.
+3. **Merges you authorize:** the orchestrator shows the batch and the command; for each branch you agree to, you type
+   `! <command>` in your own Claude Code session (the orchestrator's, when your session leads the fleet) or run it in a
+   terminal. Claude's own Bash call of it is refused, and so is `!` in a background orchestrator's prompt.
 4. **A session done or stuck:** `/flotilla:retire "<name>"`. Its open rows are named; the orchestrator adopts them.
 5. **End of day:** `/flotilla:down`. Worktrees stay until you remove them with `git worktree remove <path>`.
 6. **After a plugin update:** stand the fleet down, update, bring `.flotilla/posts/` up to the new templates, raise
@@ -95,7 +106,9 @@ Worktrees and receipts:
 | a permission question is refused after nine minutes | nobody answered within `[broker] wait_seconds` | answer sooner with `/flotilla:permit`, or add an allow rule for that command |
 | `permit answer` refused: mark | the answer did not carry the mark of the question shown | run `flotilla permit next` and use the command it prints |
 | `onboard`, `approve` or `--as` refused: not a person | it was run from a background session (the orchestrator included) or a process with no terminal | run it in your own Claude Code session or in a terminal |
-| every move refused: no profile on trunk | `.flotilla/` is committed locally but not on origin's trunk | push it to origin's trunk |
+| every move refused: no profile on trunk | `.flotilla/` is committed locally but not on origin's trunk | `flotilla onboard publish`, or push it to origin's trunk yourself |
+| `onboard publish` refuses: your own changes | the tree has uncommitted work besides `.flotilla/` | commit or stash it, then publish again |
+| `onboard publish` could not push | trunk takes pull requests only, or origin refused | open a pull request with `.flotilla/` and merge it |
 | the orchestrator's own permission request is refused | it cannot put a question to itself | attach to the orchestrator and answer there |
 | `onboard write` stops and prints a mark | it shows the whole profile first | read it; if it is right, run `write --confirm <mark>` |
 | a push is refused: receipt | no green push receipt over exactly what is pushed | `flotilla receipt run --purpose push` in that tree, then push |

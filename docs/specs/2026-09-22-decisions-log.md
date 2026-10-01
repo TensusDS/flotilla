@@ -933,6 +933,49 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    its prompt: that runs inside the orchestrator's background session and is refused. (planner's decision, security
    fixes, 2026-10-01)
 
+190. **Quick onboarding: the recommended answers, one yes, published by onboarding itself** (worldcore field test,
+   the person's request, 2026-10-01: "the settings stay for those who want to tune; the rest just onboard"). The
+   onboard skill asks first: quick or custom. Quick (`flotilla onboard quick`) records the recommended answer to every
+   question that applies - what detection found (trunk, test commands, GitHub CI), and otherwise every branch
+   reviewed, every permission asked of the person, every guard on, one model; flow is pull requests through a sender
+   on GitHub and a direct push elsewhere, and a remote without GitHub gets "no CI", not an empty gate command (W5). The
+   person sees the short list and every shell command, and says yes once; `write --confirm` is unchanged. Then
+   `flotilla onboard publish` commits `.flotilla/` (and `.claude/settings.json` when it changed) on trunk, runs the
+   tiers over that commit and pushes it - so onboarding no longer ends at "commit" while sessions read origin's trunk
+   (W5). It refuses a tree with the person's own uncommitted work and pushes nothing on a red tier; a trunk that takes
+   only pull requests is named, not worked around. `write` ends by naming `publish`. The suggested composition always
+   carries an orchestrator, a sender and a main session (W2), and a model answer must be a model name, not a sentence
+   (W3). (planner's decision, 2026-10-01)
+
+191. **The onboarding session may lead the fleet** (the person's request, 2026-10-01). Onboarding ends by offering to
+   raise the fleet: this session leads it (recommended), a background orchestrator, or not now. To lead, the person
+   types `/rename orchestrator N` - only a person can rename an interactive session, and the census then names it -
+   and `flotilla spawn --fill` raises the rest of `[fleet] default`: only the seats nobody holds, so not a second
+   orchestrator. The session then follows the orchestrator post. An interactive orchestrator keeps Claude Code's own
+   permission prompt for itself; the fleet's questions reach it as before. (planner's decision, 2026-10-01)
+
+192. **Claude's tool call never approves, wherever it runs** (review of decision 191): with the person's own session
+   leading the fleet, the person check passes that session's model - it runs in an interactive session - so the model
+   holding the orchestrator post could approve its own batch, with only a permission prompt in the way (the limit
+   decision 185 named). The two doors are told apart by the hook: a model's Bash call fires `PreToolUse`, a command
+   the person types with `!` does not (measured on Claude Code 2.1.287 in a throwaway interactive session: a logging
+   hook saw the model's `echo` and not the person's `!echo`). So the guard hook refuses `flotilla work approve` as a
+   tool call, always: inside and outside a project, whatever guards the profile turns on, with no override. The person
+   types `! <command>` in their own session or runs it in a terminal. What stays: a call the guard's text matcher
+   cannot see (the shell ceiling: `sh -c`, `$( )`, a script) still meets only the permission prompt, and a `!` typed in
+   a background orchestrator's prompt is still refused by the person check. (planner's decision, 2026-10-01)
+
+193. **A sed range from the top to a pattern is not a line-number edit** (worldcore field test W4): `0,/re/` (GNU) and
+   `1,/re/` run from the top of the file to the first match; line 1 is the top whatever was edited before, and the end
+   is found by its text, so neither goes stale. Any other counted start (`3,/re/`) is still refused. (planner's
+   decision, 2026-10-01)
+
+194. **The install line declares the marketplace in the project** (worldcore field test W1): `claude plugin marketplace
+   add` writes to the person's own settings by default, so the project's `.claude/settings.json` enabled a plugin
+   from a marketplace nobody else knew, and the README's "commits a marketplace entry" was false. The README now adds
+   the marketplace with `--scope project`, which writes `extraKnownMarketplaces` beside `enabledPlugins` (measured
+   2026-10-01 in a throwaway repository). (planner's decision, 2026-10-01)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

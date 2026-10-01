@@ -34,13 +34,14 @@ still change between minor versions.
 
 flotilla is its own marketplace. In the project a fleet will work on:
 
-    claude plugin marketplace add TensusDS/flotilla
+    claude plugin marketplace add TensusDS/flotilla --scope project
     claude plugin install flotilla@flotilla --scope project
 
-`--scope project` records it in the project's `.claude/settings.json`, so every session started in the main
-checkout - the ones `flotilla spawn` raises included - loads flotilla. That file enables flotilla and commits a
+`--scope project` on both lines records flotilla in the project's `.claude/settings.json`, so every session started in
+the main checkout - the ones `flotilla spawn` raises included - loads it. That file enables flotilla and commits a
 marketplace entry that points at this repository, so everyone who opens the project and trusts it installs flotilla
-from here.
+from here. Without `--scope project` on the first line the marketplace goes into your own settings only, and the
+project's file names a plugin nobody else can find.
 
 Then check the machine:
 
@@ -59,16 +60,23 @@ In an interactive Claude Code session in the project's main checkout:
     /flotilla:onboard
 
 flotilla reads what the repository already declares - test commands, CI workflows, the trunk branch, version files -
-and asks you only what it cannot read: how work reaches trunk (pull requests, direct push, or local only), who
-authorizes a merge, how much work is reviewed, how background sessions get permission for their tools, and which test
-commands must be green before shipping.
+and then asks one question: **quick or custom**.
 
-Before it writes anything, it shows you the whole profile it will write and every shell command in it, and waits for
-your yes. Then it runs each test tier once on this machine, so a tier that is red today is caught now and not by the
-first session that hands work over. The result is `.flotilla/project.toml` plus the post templates in
-`.flotilla/posts/`. Commit both and push them to trunk on origin: **every session reads its rules from origin's
-trunk**, not from its own tree, so a session cannot change the rules it works under - and until the profile is there,
-every ledger move is refused with that reason.
+- **Quick** takes what it found and the recommended answer to everything else: every branch reviewed by another
+  session, every permission question routed to you, every guard on, one model for every seat. It shows you the short
+  list of answers and every shell command the profile will run, and asks for one yes.
+- **Custom** asks the few things it cannot read, one at a time: how work reaches trunk (pull requests, direct push, or
+  local only), who authorizes a merge, how much work is reviewed, how background sessions get permission for their
+  tools, which test commands must be green before shipping, and which models the seats run.
+
+Either way nothing is written before your yes. Then it runs each test tier once on this machine, so a tier that is red
+today is caught now and not by the first session that hands work over, and writes `.flotilla/project.toml` plus the
+post templates in `.flotilla/posts/`.
+
+Next it offers to publish them: commit `.flotilla/`, run the tiers over that commit, and push it to trunk on origin.
+That step matters: **every session reads its rules from origin's trunk**, not from its own tree, so a session cannot
+change the rules it works under - and until the profile is there, every ledger move is refused with that reason. If
+your tree has uncommitted work of your own, or trunk only takes pull requests, it says so and pushes nothing.
 
 The permission question matters most:
 
@@ -78,13 +86,26 @@ The permission question matters most:
 | **rules** | run what your Claude Code allow rules permit, and are refused the rest | you have rules for the commands your project needs |
 | **auto** | run in Claude Code's auto mode; its classifier decides | you trust the fleet with the project and want it to run unattended |
 
+You can change any answer later by editing `.flotilla/project.toml`; a change takes effect once it is on trunk.
+
 ### 2. Raise the fleet
 
-    /flotilla:spawn
+Onboarding ends by offering to raise the fleet now, three ways:
 
-With no arguments it raises the composition onboarding suggested (`[fleet] default` in the profile). You can name one:
-`-o 1 -s 1 -r 1 -M 2` is one orchestrator, one sender, one reviewer and two main sessions. Add `--dry-run` to see the
-names, trees, commands and the plugins each seat will have turned off, without raising anything.
+- **This session leads it** (recommended). The session you onboarded in becomes the orchestrator: you type
+  `/rename orchestrator 1` (the name it gives you - only you can rename an interactive session), and it raises the rest
+  of the fleet in the background with `flotilla spawn --fill`. You talk to the fleet, answer its permission questions
+  and approve its merges right here.
+- **A background orchestrator.** Every seat, the orchestrator included, starts in the background; you attach to talk.
+- **Not now.** Raise it later:
+
+      /flotilla:spawn
+
+With no arguments it raises the composition onboarding suggested (`[fleet] default` in the profile: one orchestrator,
+one sender, one main session, and a reviewer when work is reviewed). `--fill` raises only the seats of that composition
+nobody holds yet. You can name one: `-o 1 -s 1 -r 1 -M 2` is one orchestrator, one sender, one reviewer and two main
+sessions. Add `--dry-run` to see the names, trees, commands and the plugins each seat will have turned off, without
+raising anything.
 
 Each session is a background Claude Code session (`claude --bg`), named by its post (`main session 3`, `review
 session 1`), with its own worktree beside the repository (`<repo>-main-3`). Plugins that bring MCP servers are turned
@@ -94,6 +115,8 @@ memory would fall below `fleet.memory_floor_mb` (2000 MB by default), counting a
 raise; `--anyway` overrides.
 
 ### 3. Talk to the orchestrator
+
+If this session leads the fleet, you are already talking to it. Otherwise:
 
     claude attach <the orchestrator's id>
 
@@ -227,9 +250,11 @@ approve.
   it cannot be recorded for another question, or for this one changed since. A question nobody answers in nine
   minutes (`[broker] wait_seconds`) is refused on its own.
 - **Approving merges.** If onboarding recorded that a person authorizes merges, no work reaches trunk until you run
-  `flotilla work approve <branch>` yourself, for the revision the reviewer accepted, in your own Claude Code session
-  or a terminal - not with `!` in the orchestrator's prompt, which runs inside a background session and is refused.
-  The orchestrator shows you the batch (`/flotilla:brief`) and the exact command. The sender's queue, the merge check, the push guard and the
+  `flotilla work approve <branch>` yourself, for the revision the reviewer accepted. The orchestrator shows you the
+  batch (`/flotilla:brief`) and the exact command; you type it with `!` in front in your own Claude Code session -
+  the orchestrator's session too, when it is yours - or run it in a terminal. Claude never runs it for you: the
+  guard refuses it as a tool call, because a model in your session would otherwise pass for you. A background
+  orchestrator's prompt is not yours: `!` there runs in a background session and is refused. The sender's queue, the merge check, the push guard and the
   pre-push hook all ask for your approval, and there is no override for it.
 - **Onboarding.** Only you record onboarding answers and write the profile; a background session is refused.
 - **Questions of judgement.** A session that needs your decision records `flotilla work wait <branch> --on "the
