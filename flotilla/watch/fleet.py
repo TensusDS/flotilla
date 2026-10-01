@@ -17,7 +17,7 @@ from flotilla.watch.whose import POST_OF_MOVER, Item, holds_move, since_of
 
 DEVIATION, DROPPED, NOBODY, BREAK, QUESTION, PERSON = ("deviation", "dropped", "nobody", "break", "question",
                                                      "person")
-IDLE, DONE = "idle", "done"
+IDLE, DONE, HELPER = "idle", "done", "helper"
 IDLE_SEAT_MINUTES = 60
 SEATS = "seats"
 THE_PERSON = "the person"
@@ -92,6 +92,7 @@ def fleet(rows: dict, profile: dict, sessions, *, post_of, breaks=(), asking=(),
     items.extend(breaks)
     items.extend(idle_seats(rows, profile, live, post_of, claimers, now))
     items.extend(drained(rows, live))
+    items.extend(helpers(rows, live))
     return items
 
 
@@ -172,4 +173,26 @@ def open_breaks(state_dir, repo_key: str, rows: dict, profile: dict, post_of) ->
             continue
         items.append(Item(BREAK, branch, f"{name} stopped twice while holding this move ({row.state}), and "
                                          "nothing has moved since", at, who=f"{name} {at}"))
+    return items
+
+
+def helpers(rows: dict, live: set[str]) -> list[Item]:
+    """A helper that finished but still runs is to be retired; a helper whose parent has no live owner is an orphan
+    (field test twosuns, H8)."""
+    items = []
+    for name in sorted(live):
+        seats = [row for row in rows.values() if row.owner == name and row.helper_of]
+        if not seats:
+            continue
+        seat = seats[-1]
+        parent = rows.get(seat.helper_of)
+        helped = f"`{parent.branch}`" if parent is not None else seat.helper_of
+        if not seat.is_open:
+            items.append(Item(HELPER, seat.branch, f"{name} finished helping {helped}: merge {seat.branch} "
+                                                   f"into it, then `flotilla retire \"{name}\"`",
+                              seat.updated_at, who=f"{name} done"))
+        elif parent is None or not parent.is_open or parent.owner not in live:
+            items.append(Item(HELPER, seat.branch, f"{name} helps {helped}, which has no live owner: adopt the work "
+                                                   f"or retire the helper (`flotilla retire \"{name}\"`)",
+                              seat.updated_at, who=f"{name} orphan"))
     return items

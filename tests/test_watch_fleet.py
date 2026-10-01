@@ -205,3 +205,33 @@ def test_a_fresh_fleet_on_a_ledger_with_yesterdays_work_is_not_told_to_stand_dow
     seat.history = [{"move": "reserve", "at": "2026-09-30T09:00:00+00:00"}]
     found = fleet.fleet(rows(old, seat), PR, [sess("main session 2"), sess("orchestrator 1")], post_of=post_of)
     assert [item for item in found if item.kind == fleet.DONE] == []
+
+
+def test_a_helper_that_finished_but_still_runs_is_to_be_retired():
+    parent = row(id="r1", branch="feat/x", owner="main session 1", state="claimed")
+    seat = row(id="r2", branch="fleet/helper-1", owner="helper 1", state="released", helper_of="r1")
+    seat.history = [{"move": "reserve", "at": "2026-10-01T00:00:00+00:00"},
+                    {"move": "release", "at": "2026-10-01T00:30:00+00:00", "evidence": {"helped": "r1"}}]
+    found = fleet.fleet(rows(parent, seat), PR, [sess("main session 1", state="working"), sess("helper 1")],
+                        post_of=lambda n: "helper" if n.startswith("helper") else "main")
+    items = [item for item in found if item.kind == fleet.HELPER]
+    assert len(items) == 1 and "helper 1 finished helping `feat/x`" in items[0].text
+    assert "merge fleet/helper-1" in items[0].text and 'flotilla retire "helper 1"' in items[0].text
+
+
+def test_a_helper_whose_parent_is_gone_is_an_orphan():
+    parent = row(id="r1", branch="feat/x", owner="main session 1", state="claimed")
+    seat = row(id="r2", branch="fleet/helper-1", owner="helper 1", state="reserved", helper_of="r1")
+    found = fleet.fleet(rows(parent, seat), PR, [sess("helper 1", state="working")],
+                        post_of=lambda n: "helper" if n.startswith("helper") else "main")
+    items = [item for item in found if item.kind == fleet.HELPER]
+    assert len(items) == 1 and "has no live owner" in items[0].text
+
+
+def test_a_working_helper_with_a_live_parent_is_quiet():
+    parent = row(id="r1", branch="feat/x", owner="main session 1", state="claimed")
+    seat = row(id="r2", branch="fleet/helper-1", owner="helper 1", state="reserved", helper_of="r1")
+    found = fleet.fleet(rows(parent, seat), PR, [sess("main session 1", state="working"),
+                                                 sess("helper 1", state="working")],
+                        post_of=lambda n: "helper" if n.startswith("helper") else "main")
+    assert [item for item in found if item.kind == fleet.HELPER] == []
