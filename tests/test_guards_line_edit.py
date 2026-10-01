@@ -12,6 +12,7 @@ from flotilla.guards import shell
     "gsed --in-place=.orig '1~2d' f.txt",
     "sed -i -e 's/a/b/' -e '7d' f.txt",
     "sed -i '5!d' f.txt",
+    "sed -i '3,/end/d' f.txt",    # the start is a counted line: stale after an edit above it
 ])
 def test_an_in_place_edit_by_line_number_is_refused(command, tmp_path):
     found = [f for f in (line_edit.check(s) for s in shell.segments(command, tmp_path)) if f]
@@ -25,6 +26,10 @@ def test_an_in_place_edit_by_line_number_is_refused(command, tmp_path):
     "sed -i '$d' f.txt",
     "sed -i 's/x/1;2/' f.txt",
     "sed -i -f script.sed f.txt",
+    # field test W4: `0,/re/` is GNU sed's "from the top to the first match" - both ends are found, not counted;
+    # `1,/re/` is the portable spelling. Nothing can be inserted above line 1, so that start never goes stale.
+    "sed -i '0,/^version/s//release/' f.txt",
+    "sed -i -e '1,/^---$/d' f.txt",
 ])
 def test_everything_else_passes(command, tmp_path):
     # every segment the hook would judge, not only the first: a plain split cuts a quoted script at `;`

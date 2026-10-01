@@ -5,7 +5,8 @@ names the neighbour, and an in-place edit lands there silently: nothing fails, t
 the line by its text (`/pattern/`) either finds it or changes nothing.
 
 Seen: `sed` and `gsed` with `-i`, `-i.bak`, `-i ''`, `--in-place`, clustered flags (`-Ei`), scripts given as `-e`,
-`--expression` or the first operand; an address is a number followed by a command, a range, a step or `!`. Not
+`--expression` or the first operand; an address is a number followed by a command, a range, a step or `!`, except a
+range from the top of the file to a pattern (`0,/re/`, `1,/re/`), whose ends are both found rather than counted. Not
 seen: a script read with `-f`, `perl -i`, `awk -i inplace`, `ed`, and the shell's ceiling
 (`flotilla.guards.CEILING`).
 """
@@ -20,10 +21,14 @@ GUARD = "line_edit"
 PROGRAMS = ("sed", "gsed")
 COMMANDS = re.compile(r"[;\n]")
 ADDRESS = re.compile(r"^\d+(?:[,~!]|\s*[A-Za-z{=]|\s*$)")
+#: `0,/re/` (GNU) and `1,/re/`: from the top of the file to the first match. Line 1 is the top whatever an edit did
+#: before, so that start cannot go stale, and the end is found by its text (field test W4).
+FROM_THE_TOP = re.compile(r"^[01],\s*[/\\]")
 
 
 def numeric_address(script: str) -> bool:
-    return any(ADDRESS.match(command.lstrip(" \t{")) for command in COMMANDS.split(script))
+    commands = (command.lstrip(" \t{") for command in COMMANDS.split(script))
+    return any(ADDRESS.match(command) and not FROM_THE_TOP.match(command) for command in commands)
 
 
 def _scripts(words: list[str]) -> tuple[bool, list[str]]:
