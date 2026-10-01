@@ -193,7 +193,8 @@ def test_publish_says_pull_when_origin_is_ahead(project, tmp_path):
     """Review of 0.5.0, M1: a rejected push was answered with "open a pull request"; origin was simply ahead."""
     subprocess.run(["git", "-C", str(project), "push", "-q", "origin", "main"], check=True)
     other = tmp_path / "other"
-    subprocess.run(["git", "clone", "-q", str(tmp_path / "origin.git"), str(other)], check=True)
+    # `-b main`: a bare origin's HEAD follows init.defaultBranch, which is `master` on CI runners (v0.5.0 went red)
+    subprocess.run(["git", "clone", "-q", "-b", "main", str(tmp_path / "origin.git"), str(other)], check=True)
     (other / "theirs.txt").write_text("x\n", encoding="utf-8")
     _git(other, "add", "theirs.txt")
     _git(other, "commit", "-q", "-m", "a teammate's commit")
