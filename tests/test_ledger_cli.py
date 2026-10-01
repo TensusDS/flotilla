@@ -435,3 +435,20 @@ def test_claim_takes_after_on_the_command_line(tmp_path, monkeypatch):
     from flotilla.ledger.commands import open_ledger
     rows = open_ledger(root).rows()
     assert next(row for row in rows.values() if row.branch == "tool/y").after == ["r1"]
+
+
+def test_rules_are_not_read_from_a_branch_the_callers_tree_names_as_trunk(tmp_path, monkeypatch):
+    """`trunk.branch` in the caller's working tree chose the ref the posts were read from; a seat could point it at
+    its own branch, with its own posts (security review F6). origin's default branch has the last word."""
+    from flotilla.core import config
+    from flotilla.ledger.commands import trunk_rules
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    git(root, "switch", "-q", "-c", "fleet/mine")
+    git(root, "push", "-q", "origin", "fleet/mine")
+    profile = root / ".flotilla" / "project.toml"
+    profile.write_text(profile.read_text().replace('branch = "main"', 'branch = "fleet/mine"'), encoding="utf-8")
+    git(root, "add", ".flotilla/project.toml")
+    commit(root, "trunk is my branch now")   # committed, so the profile at that ref agrees with the tree
+    git(root, "push", "-q", "origin", "fleet/mine")
+    with pytest.raises(config.ConfigError, match="origin's default branch is `main`"):
+        trunk_rules(root)

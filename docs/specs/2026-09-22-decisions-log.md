@@ -856,6 +856,15 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    the guard asks; a clean or smudge filter on a racy index entry stays possible and needs that tree set up first.
    (planner's decision, security fixes, 2026-10-01)
 
+181. **A post narrows the permission mode, never widens it; trunk is origin's default branch** (security review
+   2026-10-01, F6): a post's `permission_mode` came from a file a session can edit and went past the profile's ask,
+   rules or auto - `bypassPermissions` included. Now a post may only narrow the profile's mode (plan, manual,
+   dontAsk, acceptEdits, auto in that order), and bypassPermissions is never launched. The tree's own profile names
+   trunk, and the rules - posts, modes, prompts - are read from it; when origin has a default branch and the tree
+   names another, the rules are refused, so a seat cannot point them at a branch of its own. Without an origin
+   default the check cannot be made: a session that rewrites the main checkout's profile and commits it to trunk is
+   beyond what flotilla can stop in one user's account. (planner's decision, security fixes, 2026-10-01)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

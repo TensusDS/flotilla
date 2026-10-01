@@ -72,6 +72,13 @@ def trunk_rules(root: Path) -> Rules:
     """The profile and posts as trunk carries them, and the label `<ref>@<sha>` they were read at."""
     local = _project(root)
     trunk = (local.data.get("trunk") or {}).get("branch", "main")
+    # the tree's own profile names trunk, and a seat edits its tree: origin's default branch has the last word, so a
+    # session cannot point the rules - its posts, their modes and prompts - at a branch of its own (F6)
+    default = subprocess.run(["git", "-C", str(local.root), "symbolic-ref", "-q", "--short",
+                              "refs/remotes/origin/HEAD"], capture_output=True, text=True, check=False).stdout.strip()
+    if default.startswith("origin/") and default[len("origin/"):] != trunk:
+        raise config.ConfigError(f"this tree names trunk `{trunk}`, but origin's default branch is "
+                                 f"`{default[len('origin/'):]}`; the rules are read from the real trunk")
     ref = gitq.trunk_ref(local.root, trunk)
     sha = gitq.resolve(local.root, f"{ref}^{{commit}}")
     if sha is None:

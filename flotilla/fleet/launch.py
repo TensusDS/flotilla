@@ -51,13 +51,24 @@ def seat_for(main: Path, post, name: str) -> Seat:
     return Seat(post.name, name, number, main.parent / f"{main.name}-{slug}", f"fleet/{slug}")
 
 
+#: How much a mode lets a session do without a person; a post may narrow the profile's mode, never widen it (F6).
+WIDTH = {"plan": 0, "manual": 1, "dontAsk": 1, "acceptEdits": 2, "auto": 3}
+
+
 def permission_mode(profile: dict, post) -> str:
-    if post.permission_mode:
-        return post.permission_mode
     answer = (profile.get("permissions") or {}).get("mode", "ask")
     if answer not in PERMISSION:
         raise LaunchError(f"permissions.mode is `{answer}`; it must be ask, rules or auto")
-    return PERMISSION[answer]
+    chosen = PERMISSION[answer]
+    if not post.permission_mode:
+        return chosen
+    if post.permission_mode not in WIDTH:
+        raise LaunchError(f"post `{post.name}` asks for `{post.permission_mode}`, which flotilla never launches: a "
+                          "post's file can be edited by a session, and that mode skips every permission check")
+    if WIDTH[post.permission_mode] > WIDTH[chosen]:
+        raise LaunchError(f"post `{post.name}` asks for `{post.permission_mode}`, wider than the profile's "
+                          f"`{answer}` (`{chosen}`); a post may narrow the mode, never widen it")
+    return post.permission_mode
 
 
 #: `fleet.model` values that name no model: the session inherits the one Claude Code was launched with.

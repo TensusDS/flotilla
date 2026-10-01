@@ -83,3 +83,20 @@ def test_no_plugin_settings_means_no_settings_flag():
     seat = launch.seat_for(MAIN, POSTS["reviewer"], "review session 3")
     assert "--settings" not in launch.argv(seat, POSTS["reviewer"], {}, main=MAIN)
     assert "--settings" not in launch.argv(seat, POSTS["reviewer"], {}, main=MAIN, settings_json="")
+
+
+def test_a_post_may_narrow_the_profiles_permission_mode_never_widen_it():
+    """A post's mode came from a file a session can edit; the profile allows ask, rules or auto, and a post's mode
+    went past it - bypassPermissions included (security review F6)."""
+    import dataclasses
+    main = POSTS["main"]
+    for mode in ("acceptEdits", "auto"):
+        with pytest.raises(launch.LaunchError, match="wider than the profile"):
+            launch.permission_mode({"permissions": {"mode": "ask"}}, dataclasses.replace(main, permission_mode=mode))
+    with pytest.raises(launch.LaunchError, match="never"):
+        launch.permission_mode({"permissions": {"mode": "auto"}},
+                               dataclasses.replace(main, permission_mode="bypassPermissions"))
+    assert launch.permission_mode({"permissions": {"mode": "auto"}},
+                                  dataclasses.replace(main, permission_mode="acceptEdits")) == "acceptEdits"
+    assert launch.permission_mode({"permissions": {"mode": "ask"}},
+                                  dataclasses.replace(main, permission_mode="plan")) == "plan"
