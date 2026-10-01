@@ -121,7 +121,7 @@ def retire(ledger, name: str, *, caller: str, census, wait: float = 60.0, poll: 
                 raise RetireRefused(f"`{name}` is still running {wait:g} s after `claude stop`; nothing was released")
             sleep(poll)
             waited += poll
-    left = _stop_leftovers(row.tree, census)
+    left = _stop_leftovers(ledger, row.tree, census)
     ledger.run(["git", "-C", str(ledger.root), "worktree", "unlock", row.tree], capture_output=True, text=True,
                check=False)
     try:
@@ -151,10 +151,14 @@ def retire(ledger, name: str, *, caller: str, census, wait: float = 60.0, poll: 
     return lines
 
 
-def _stop_leftovers(tree: str, census) -> list[str]:
-    """Stop what the session left running detached in its tree (H50); live sessions' processes are spared."""
-    if not tree or not Path(tree).is_dir():
+def _stop_leftovers(ledger, tree: str, census) -> list[str]:
+    """Stop what the session left running detached in its tree (H50); live sessions' processes are spared. Only in
+    a seat's own worktree: never the main checkout, a relative path or a directory above the trees."""
+    if not tree or (Path(tree).is_absolute() and not Path(tree).is_dir()):
         return []
+    refused = core.seat_tree_refusal(ledger, tree)
+    if refused:
+        return [f"background processes were not looked for: {refused}"]
     try:
         keep = {item.pid for item in census() if item.pid}
     except CensusUnavailable:
@@ -166,7 +170,8 @@ def _stop_leftovers(tree: str, census) -> list[str]:
         return []
     count = leftovers.stop(found)
     names = ", ".join(item.command[:60] for item in found[:5]) + (", ..." if len(found) > 5 else "")
-    return [f"stopped {count} background process{'es' if count != 1 else ''} left in {tree}: {names}"]
+    missed = f" ({len(found) - count} had already gone)" if count != len(found) else ""
+    return [f"sent SIGTERM to {count} background process{'es' if count != 1 else ''} left in {tree}: {names}{missed}"]
 
 
 def down(ledger, *, caller: str, me: str, census, wait: float = 60.0, poll: float = 1.0,

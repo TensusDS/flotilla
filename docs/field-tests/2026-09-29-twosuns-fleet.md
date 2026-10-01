@@ -729,5 +729,9 @@ retired or had died, was re-parented to pid 1, and kept its memory with nobody t
 and released its seat, and nothing looked at what the session had left running in its tree. Measured on this
 machine: a process detached by `nohup ... &` or `setsid` from a session's shell is re-parented to pid 1 (there is no
 subreaper), and a background Claude session runs under its own pty host, so "has no terminal" does not tell a
-person's process from a session's. Fixed in 0.3.1: retire stops the orphans (parent pid 1) working in the seat's tree,
-with everything under them, and spares a subtree that holds a terminal or a live census session.
+person's process from a session's. Fixed in 0.3.1 for every retire from then on: retire stops the orphans (parent
+pid 1) working in the seat's tree, with everything under them, and spares a subtree that holds a terminal or a live
+census session. Nothing goes back to the trees of seats retired before 0.3.1: the 27 found here were stopped by
+hand. The same machine shows why the mark cannot be the directory alone: the deployment's `curve-serving` and the CI
+runners are also orphans of the same user under pid 1, told apart only by their cgroup, a `.service` unit
+(review of the fix, 2026-10-01).

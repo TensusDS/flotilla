@@ -4,11 +4,18 @@ import signal
 from flotilla.fleet import leftovers
 
 
-def fake_proc(root, pid, *, ppid, cwd, command, tty=0):
-    """One entry of a fake /proc: stat with the fields leftovers reads, cmdline, and cwd as a link."""
+SCOPE = "0::/user.slice/user-1000.slice/session-7.scope\n"
+
+
+def fake_proc(root, pid, *, ppid, cwd, command, tty=0, uid=None, cgroup=SCOPE, start=1000):
+    """One entry of a fake /proc: stat (starttime is field 22), status, cgroup, cmdline, and cwd as a link."""
     entry = root / str(pid)
     entry.mkdir(parents=True)
-    (entry / "stat").write_text(f"{pid} ({command.split()[0]}) S {ppid} {pid} {pid} {tty} -1 0\n", encoding="utf-8")
+    (entry / "stat").write_text(f"{pid} ({command.split()[0]}) S {ppid} {pid} {pid} {tty} -1 0 0 0 0 0 0 0 0 0 20 0 1 0 "
+                                f"{start} 0 0\n", encoding="utf-8")
+    (entry / "status").write_text(f"Name:\tx\nUid:\t{os.getuid() if uid is None else uid}\t0\t0\t0\n",
+                                  encoding="utf-8")
+    (entry / "cgroup").write_text(cgroup, encoding="utf-8")
     (entry / "cmdline").write_text(command.replace(" ", "\0") + "\0", encoding="utf-8")
     os.symlink(cwd, entry / "cwd")
 
@@ -54,14 +61,23 @@ def test_a_machine_without_proc_is_not_asked(tmp_path):
     assert leftovers.in_tree(tmp_path, keep=set(), proc_root=tmp_path / "no-proc", me=1) is None
 
 
-def test_stop_terminates_each_and_counts_what_it_reached(tmp_path):
+def test_a_systemd_service_or_another_users_process_is_never_a_leftover(tmp_path):
+    proc, tree, other = world(tmp_path)
+    fake_proc(proc, 500, ppid=1, cwd=tree, command="python serving", cgroup="0::/system.slice/curve-serving.service\n")
+    fake_proc(proc, 501, ppid=1, cwd=tree, command="runsvc.sh", uid=os.getuid() + 1)
+    fake_proc(proc, 502, ppid=1, cwd=tree, command="node vite")
+    assert [item.pid for item in leftovers.in_tree(tree, keep=set(), proc_root=proc, me=99999)] == [502]
+
+
+def test_stop_signals_only_the_same_process_it_found(tmp_path):
+    proc = tmp_path / "proc"
+    fake_proc(proc, 1, ppid=0, cwd=tmp_path, command="a", start=100)
+    fake_proc(proc, 3, ppid=0, cwd=tmp_path, command="c", start=999)     # pid 3 was reused since the scan
     sent = []
 
     def kill(pid, sig):
         sent.append((pid, sig))
-        if pid == 2:
-            raise ProcessLookupError(pid)
 
-    found = [leftovers.Leftover(1, "a"), leftovers.Leftover(2, "b"), leftovers.Leftover(3, "c")]
-    assert leftovers.stop(found, kill=kill) == 2
-    assert sent == [(1, signal.SIGTERM), (2, signal.SIGTERM), (3, signal.SIGTERM)]
+    found = [leftovers.Leftover(1, "a", "100"), leftovers.Leftover(2, "b", "100"), leftovers.Leftover(3, "c", "300")]
+    assert leftovers.stop(found, kill=kill, proc_root=proc) == 1
+    assert sent == [(1, signal.SIGTERM)]

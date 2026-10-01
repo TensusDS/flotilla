@@ -751,9 +751,13 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
 166. **An orphan that serves a terminal or a live session is spared**: a subtree holding a process with a controlling
    terminal (a `tmux` server started in the tree), a live census session, or the process running the retire is left
    running. A terminal alone does not mark a person's process, since background sessions run under a pty host; that
-   is why the test is on the subtree of an orphan. (planner's decision, release 0.3.1, 2026-10-01)
+   is why the test is on the subtree of an orphan. An orphan that a systemd service runs (its cgroup is a `.service`
+   unit: a deployment's server, a CI runner) or that belongs to another user is never a leftover, and a process is
+   signalled only while its start time is still the one read at the scan, so a reused pid is left alone.
+   (planner's decision, release 0.3.1, 2026-10-01)
 167. **Where there is no procfs the leftovers are not looked for, and retire says so**; it never guesses through
-   `ps`. A detached process of another session that worked in this seat's tree is stopped with it: a tree is its
+   `ps`. Nor are they looked for in a tree that is not a seat's own worktree: a relative path, the main checkout or
+   a directory git does not name as its own toplevel (the check `free_seat_tree` already made, now one function). A detached process of another session that worked in this seat's tree is stopped with it: a tree is its
    seat's home, and a session that works in another's tree starts its servers there at its own risk. (planner's
    decision, release 0.3.1, 2026-10-01)
 

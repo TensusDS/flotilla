@@ -270,15 +270,26 @@ def release(ledger: Ledger, actor: Actor, branch: str, *, why: str = "", settled
         return s.append(actor, row.id, "release", state, evidence=evidence)
 
 
+def seat_tree_refusal(ledger: Ledger, tree: str) -> str:
+    """Why `tree` is not a seat's own worktree, or "" when it is: an absolute path that git names as its own
+    toplevel, and not the main checkout. What frees a tree or stops processes in it asks this first."""
+    if not tree or not Path(tree).is_absolute():
+        return f"{tree or '(none)'} is not an absolute path"
+    top = ledger.run(["git", "-C", tree, "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False)
+    if top.returncode != 0 or Path(top.stdout.strip()).resolve() != Path(tree).resolve():
+        return f"{tree} is not a worktree git can name"
+    if Path(tree).resolve() == Path(ledger.root).resolve():
+        return "it is the main checkout"
+    return ""
+
+
 def free_seat_tree(ledger: Ledger, owner: str, tree: str) -> str:
     """A released seat's tree lets go of the branch it had checked out, so the work can be taken up in another tree
     (H36). Never the main checkout, never a path git resolves to another repository, never a live owner's tree, and
     never a tree with uncommitted work: each of those keeps its branch, and the release says why."""
-    top = ledger.run(["git", "-C", tree, "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False)
-    if top.returncode != 0 or Path(top.stdout.strip()).resolve() != Path(tree).resolve():
-        return f"not freed: {tree} is not a worktree git can name"
-    if Path(tree).resolve() == Path(ledger.root).resolve():
-        return "not freed: it is the main checkout"
+    refused = seat_tree_refusal(ledger, tree)
+    if refused:
+        return f"not freed: {refused}"
     try:
         alive = owner in ledger.live_names()
     except MoveRefused:
