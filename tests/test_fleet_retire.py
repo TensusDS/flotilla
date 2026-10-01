@@ -275,3 +275,19 @@ def test_retire_refuses_a_name_the_census_lists_twice(tmp_path):
     with pytest.raises(retire.RetireRefused, match="2 sessions named `main session 1`"):
         do_retire(ledger, fake)
     assert fake.stopped == [] and ledger.rows()["r1"].state == "reserved"
+
+
+def test_retire_spares_what_the_stop_itself_started(tmp_path, monkeypatch):
+    from test_fleet_leftovers import fake_proc
+    fake = FakeClaude()
+    root, ledger, seat = raised_world(tmp_path, fake)
+    proc = tmp_path / "proc"
+    fake_proc(proc, 500, ppid=1, cwd=seat.seat.tree, command="node vite")                   # started long before
+    fake_proc(proc, 501, ppid=1, cwd=seat.seat.tree, command="bash session-end-hook.sh", start=10 ** 12)
+    monkeypatch.setattr("flotilla.fleet.leftovers.PROC_ROOT", proc)
+    clock = iter([5000] + [10 ** 15] * 10)     # the first reading is the one taken before the stop
+    monkeypatch.setattr("flotilla.fleet.leftovers.now_ticks", lambda proc_root=None: next(clock))
+    sent = []
+    monkeypatch.setattr("flotilla.fleet.leftovers.os.kill", lambda pid, sig: sent.append(pid))
+    do_retire(ledger, fake)
+    assert sent == [500]

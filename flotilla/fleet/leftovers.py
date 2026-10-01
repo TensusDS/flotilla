@@ -6,7 +6,9 @@ session stops: the process is re-parented to pid 1 and holds memory until someon
 process's working directory is inside the seat's tree, and its parent is pid 1 — an orphan, not something a live
 shell or session still owns. Each such orphan is stopped with everything under it, unless its subtree holds a
 process with a terminal (a person's `tmux` server started in the tree) or a live census session, or the process
-running this command. An orphan of another user, or one a systemd service runs (its cgroup is a `.service` unit: a
+running this command, or unless it started after the caller's cut-off: retire reads the clock before it stops the
+session, and what starts after that — a plugin's session-end hook saving the session — is the stop's own work, not a
+leftover (the `remember` plugin's hook was seen so). An orphan of another user, or one a systemd service runs (its cgroup is a `.service` unit: a
 deployment's server, a CI runner), is never a leftover, whatever its directory. A process is signalled only while it
 is still the one found: its start time is read again just before the signal, so a reused pid is left alone.
 
@@ -25,6 +27,8 @@ import re
 import signal
 from dataclasses import dataclass
 from pathlib import Path
+
+from flotilla.lane.procs import CLK_TCK
 
 PROC_ROOT = Path("/proc")
 CONFIG_DIR = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
@@ -60,6 +64,15 @@ def job_dir(short_id) -> tuple[Path | None, str]:
     if not found.is_dir():
         return None, f"{found} does not exist"
     return found, ""
+
+
+def now_ticks(proc_root: Path | None = None) -> int | None:
+    """Now, on the clock process start times are kept in: clock ticks since boot."""
+    proc_root = PROC_ROOT if proc_root is None else Path(proc_root)
+    try:
+        return int(float((proc_root / "uptime").read_text(encoding="utf-8").split()[0]) * CLK_TCK)
+    except (OSError, ValueError, IndexError):
+        return None
 
 
 def _start(proc_root: Path, pid: int) -> str:
@@ -116,10 +129,16 @@ def _subtree(root: int, children: dict[int, list[int]]) -> list[int]:
     return found
 
 
-def in_tree(tree, *, keep: set[int], proc_root: Path | None = None, me: int | None = None) -> list[Leftover] | None:
-    """The orphans working in `tree`, each followed by what runs under it; None where procfs is absent."""
+def in_tree(tree, *, keep: set[int], proc_root: Path | None = None, me: int | None = None,
+            started_before: int | None = None) -> list[Leftover] | None:
+    """The orphans that started before `started_before` (default: now) and work in `tree`, each followed by what
+    runs under it; None where procfs cannot be read."""
     proc_root = PROC_ROOT if proc_root is None else Path(proc_root)
     if not proc_root.is_dir():
+        return None
+    if started_before is None:
+        started_before = now_ticks(proc_root)
+    if started_before is None:
         return None
     table = _table(proc_root)
     tree = Path(os.path.realpath(tree))
@@ -137,6 +156,8 @@ def in_tree(tree, *, keep: set[int], proc_root: Path | None = None, me: int | No
         orphan = table[root]
         if orphan.ppid != 1 or not _inside(orphan.cwd, tree) or orphan.service:
             continue
+        if not orphan.start.isdigit() or int(orphan.start) >= started_before:
+            continue   # started by the stop itself (a session-end hook), or its start could not be read
         subtree = [pid for pid in _subtree(root, children) if pid in table]
         if protected & set(subtree) or any(table[pid].tty or table[pid].uid != uid for pid in subtree):
             continue

@@ -108,6 +108,7 @@ def retire(ledger, name: str, *, caller: str, census, wait: float = 60.0, poll: 
         raise RetireRefused(f"the census lists {len(listed)} sessions named `{name}` ({ids}); stop the right one by "
                             f"hand with `claude stop <id>`, then retire again")
     found = listed[0] if listed else None
+    cut_off = leftovers.now_ticks()   # before the stop: what starts after it is the stop's own work (session-end hooks)
     if found is not None:
         if not found.short_id:
             raise RetireRefused(f"the census lists `{name}` without an id; stop it by hand with `claude agents`")
@@ -127,7 +128,7 @@ def retire(ledger, name: str, *, caller: str, census, wait: float = 60.0, poll: 
             sleep(poll)
             waited += poll
     left = _stop_leftovers(ledger, row.tree, census, short_id=found.short_id if found else "",
-                           was_running=found is not None)
+                           was_running=found is not None, started_before=cut_off)
     ledger.run(["git", "-C", str(ledger.root), "worktree", "unlock", row.tree], capture_output=True, text=True,
                check=False)
     try:
@@ -157,7 +158,8 @@ def retire(ledger, name: str, *, caller: str, census, wait: float = 60.0, poll: 
     return lines
 
 
-def _stop_leftovers(ledger, tree: str, census, *, short_id: str = "", was_running: bool = True) -> list[str]:
+def _stop_leftovers(ledger, tree: str, census, *, short_id: str = "", was_running: bool = True,
+                    started_before: int | None = None) -> list[str]:
     """Stop what the session left running detached (H50): in its tree, and in its job directory when retire stopped
     it and so knows its id. Live sessions' processes are spared. The tree only when it is a seat's own worktree:
     never the main checkout, a relative path or a directory above the trees."""
@@ -184,10 +186,10 @@ def _stop_leftovers(ledger, tree: str, census, *, short_id: str = "", was_runnin
         return lines + [f"background processes in {', '.join(places)} were not looked for: the census could not "
                         f"be asked"]
     for place in places:
-        found = leftovers.in_tree(place, keep=keep)
+        found = leftovers.in_tree(place, keep=keep, started_before=started_before)
         if found is None:
-            return lines + [f"background processes in {', '.join(places)} were not looked for: this machine has "
-                            f"no /proc"]
+            return lines + [f"background processes in {', '.join(places)} were not looked for: /proc could not be "
+                            f"read on this machine"]
         if not found:
             continue
         count = leftovers.stop(found)

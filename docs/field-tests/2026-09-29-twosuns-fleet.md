@@ -739,3 +739,11 @@ A second form, found the same night (~01:00): `main session 12` had copied trunk
 `vite --port 4461` there, `~/.claude/jobs/cd30b6e8/tmp/trunk` (193 MB, parent pid 1). That directory is outside the
 seat's tree, so 0.3.1 would not look at it. Fixed in 0.3.2: retire also looks at the job directory of the session it
 stops (`jobs/<its id>/` under the Claude Code configuration directory).
+
+H51. **gap — the 0.3.2 retire would cut a plugin's session-end hook.** Standing the fleet down at ~02:00 on
+2026-10-01 left, in every seat's tree, a `bash .../remember/0.33.0/scripts/session-end-hook.sh` running
+`save-session.sh <session id>`: the `remember` plugin saves the session as it ends. Each was started by the stop
+itself (01:59:50, the second `claude stop` ran), re-parented to pid 1, had its working directory in the tree and no
+terminal, so it met every mark 0.3.2 uses for a leftover: a retire would have sent it SIGTERM mid-save. The hooks
+end by themselves within seconds. Fixed in 0.3.3: retire reads the clock before it stops the session, and only an
+orphan that started before then is a leftover.

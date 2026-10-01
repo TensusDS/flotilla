@@ -11,6 +11,8 @@ def fake_proc(root, pid, *, ppid, cwd, command, tty=0, uid=None, cgroup=SCOPE, s
     """One entry of a fake /proc: stat (starttime is field 22), status, cgroup, cmdline, and cwd as a link."""
     entry = root / str(pid)
     entry.mkdir(parents=True)
+    if not (root / "uptime").exists():   # the clock the cut-off is read from: far later than any default start
+        (root / "uptime").write_text("1000000.00 0.00\n", encoding="utf-8")
     (entry / "stat").write_text(f"{pid} ({command.split()[0]}) S {ppid} {pid} {pid} {tty} -1 0 0 0 0 0 0 0 0 0 20 0 1 0 "
                                 f"{start} 0 0\n", encoding="utf-8")
     (entry / "status").write_text(f"Name:\tx\nUid:\t{os.getuid() if uid is None else uid}\t0\t0\t0\n",
@@ -102,3 +104,20 @@ def test_a_job_directory_that_is_a_link_is_never_looked_at(tmp_path, monkeypatch
     (tmp_path / "claude" / "jobs" / "cd30b6e8").symlink_to(tmp_path / "home")
     path, why = leftovers.job_dir("cd30b6e8")
     assert path is None and "is a link" in why
+
+
+def test_only_what_started_before_the_cut_off_is_a_leftover(tmp_path):
+    proc, tree, other = world(tmp_path)
+    fake_proc(proc, 500, ppid=1, cwd=tree, command="node vite", start=3000)
+    fake_proc(proc, 501, ppid=500, cwd=tree, command="esbuild", start=9000)          # a child the old server forked
+    fake_proc(proc, 600, ppid=1, cwd=tree, command="bash session-end-hook.sh", start=5000)   # started by the stop
+    found = leftovers.in_tree(tree, keep=set(), proc_root=proc, me=99999, started_before=4000)
+    assert [item.pid for item in found] == [500, 501]
+
+
+def test_the_cut_off_is_read_from_the_same_clock_as_process_starts(tmp_path):
+    proc = tmp_path / "proc"
+    proc.mkdir()
+    (proc / "uptime").write_text("123.45 99.00\n", encoding="utf-8")
+    assert leftovers.now_ticks(proc) == int(123.45 * leftovers.CLK_TCK)
+    assert leftovers.now_ticks(tmp_path / "nowhere") is None

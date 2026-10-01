@@ -770,6 +770,11 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
 169. **Retire refuses a name the census lists twice**: which of the two is the seat cannot be told, and stopping
    either, or looking at either's job directory, could stop the wrong session's work. The refusal names both ids
    for `claude stop` by hand. (planner's decision, review of release 0.3.2, 2026-10-01)
+170. **A leftover started before the stop** (H51): retire reads the clock processes' start times are kept in
+   (`/proc/uptime`, in clock ticks since boot) before it stops the session, and only an orphan whose start is earlier
+   is a leftover; what it forked later is still part of it. What starts after the stop — a plugin's session-end hook
+   saving the session — is the stop's own work. Where that clock cannot be read nothing is looked for, and retire
+   says so. (planner's decision, release 0.3.3, 2026-10-01)
 
 ## Open questions (for the foundation spec)
 
