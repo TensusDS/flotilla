@@ -433,6 +433,10 @@ def run_ledger_command(args) -> int:
             return VIEWS[args.command](ledger, args)
         if args.command == "work" and args.move == "show":
             return _show(ledger, args.branch)
+        if args.command == "work" and args.move == "approve":   # the person's move: no session, no post
+            row = delivery.approve(ledger, args.branch)
+            print(summary(row))
+            return 0
         caller = resolve_actor(ledger.posts, as_name=args.as_name)
         before = ledger.rows()
         if args.command == "work" and args.move == "reconcile":

@@ -644,3 +644,53 @@ def test_return_of_a_row_with_a_pr_says_the_pr_stays_open(pr_world):
     assert "PR #12 stays open" in back.history[-1]["evidence"]["pr"]
     found = letters.changed(before, ledger.rows(), ledger.profile, ledger.posts, SENDER, lambda: None)
     assert any("PR #12 stays open" in letter.text for letter in found)
+
+
+HUMAN = {**PROFILE, "flow": {"mode": "direct", "merge_authorized_by": "human"}}
+
+
+def human_world(tmp_path):
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile=HUMAN)
+    drive(root, ledger, "feat/x")
+    return root, ledger
+
+
+def test_where_a_human_authorizes_merges_nothing_is_queued_without_their_approval(tmp_path):
+    """merge_authorized_by = human was held only by the sender post's text; now the ledger holds it (security
+    review F24): the sender's queue waits for the person's own approve of the revision that was read."""
+    root, ledger = human_world(tmp_path)
+    with pytest.raises(MoveRefused, match="flotilla work approve feat/x"):
+        delivery.queue(ledger, actor(ledger, "sender 1"), "feat/x")
+    row = delivery.approve(ledger, "feat/x")
+    assert row.approved == row.verdict and row.state == "accepted"
+    assert delivery.queue(ledger, actor(ledger, "sender 1"), "feat/x").state == "queued"
+
+
+def test_only_a_person_approves(tmp_path, monkeypatch):
+    from flotilla.core import caller
+    root, ledger = human_world(tmp_path)
+    monkeypatch.setattr(caller, "person_refusal", lambda what: "`sender 1` is a background session; only a person")
+    with pytest.raises(MoveRefused, match="background session"):
+        delivery.approve(ledger, "feat/x")
+    assert not ledger.rows()["r1"].approved
+
+
+def test_an_approval_of_another_revision_does_not_count(tmp_path):
+    """An approval names the revision the person approved; work that moved and was read again needs another."""
+    from flotilla.ledger.actor import Actor
+    root, ledger = human_world(tmp_path)
+    with ledger.session() as session:
+        row = session.need_open_row("feat/x")
+        session.append(Actor("the person", None, "person"), row.id, "approve", row.state,
+                       fields={"approved": "0" * 40})
+    with pytest.raises(MoveRefused, match="flotilla work approve feat/x"):
+        delivery.queue(ledger, actor(ledger, "sender 1"), "feat/x")
+
+
+def test_where_the_sender_authorizes_no_approval_is_asked(tmp_path):
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile={**PROFILE, "flow": {"mode": "direct",
+                                                                                   "merge_authorized_by": "sender"}})
+    drive(root, ledger, "feat/x")
+    assert delivery.queue(ledger, actor(ledger, "sender 1"), "feat/x").state == "queued"

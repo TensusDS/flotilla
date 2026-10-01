@@ -57,6 +57,24 @@ def _check_pr(ledger: Ledger, pr: int, branch: str, tip: str) -> dict:
     return {"pr_head": head}
 
 
+def approve(ledger: Ledger, branch: str) -> Row:
+    """The person approves accepted work for trunk, at the revision that was read (merge_authorized_by = human).
+    Only a person: the yes a sender waited for came as a message, and a message can be written by anyone (F24)."""
+    from flotilla.core import caller
+    refused = caller.person_refusal("approves a merge into trunk")
+    if refused:
+        raise MoveRefused(refused)
+    person = Actor("the person", None, "person", "the person")
+    with ledger.session() as s:
+        row = s.need_open_row(branch)
+        if row.state != "accepted" or not row.verdict:
+            raise MoveRefused(f"`{branch}` is {row.state}; a person approves work a reader accepted, at the "
+                              "revision that was read")
+        state = s.next_state(row, "approve")
+        return s.append(person, row.id, "approve", state, fields={"approved": row.verdict},
+                        evidence={"revision": row.verdict})
+
+
 def queue(ledger: Ledger, actor: Actor, branch: str, *, pr: int | None = None) -> Row:
     require_may(actor, "queue", ledger.posts)
     if ledger.mode == "pr" and pr is None:
@@ -81,6 +99,10 @@ def queue(ledger: Ledger, actor: Actor, branch: str, *, pr: int | None = None) -
         if row.verdict and current != row.verdict:
             raise MoveRefused(f"`{branch}` moved since it was accepted ({row.verdict[:7]} -> {current[:7]}); the "
                               "owner records it with `flotilla work moved` and the reader accepts again")
+        if (ledger.profile.get("flow") or {}).get("merge_authorized_by") == "human" and row.approved != current:
+            raise MoveRefused(f"a person authorizes every merge into trunk here, and nobody approved `{branch}` at "
+                              f"{current[:7]}: the person runs `flotilla work approve {branch}` from their own "
+                              "session or a terminal; record the wait with `flotilla work wait --on \"the person\"`")
         evidence = _check_pr(ledger, pr, branch, current) if pr is not None else {}
         fields = {"tip": current}
         if pr is not None:

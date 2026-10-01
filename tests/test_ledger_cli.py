@@ -462,3 +462,19 @@ def test_a_trunk_other_than_origins_default_branch_counts_when_that_branch_says_
     git(root, "push", "-q", "origin", "main:develop")
     git(root, "fetch", "-q", "origin")
     assert trunk_rules(root).label.startswith("origin/develop@")
+
+
+def test_the_person_approves_through_the_cli(tmp_path, monkeypatch):
+    profile = {**PLAIN, "flow": {"mode": "direct", "merge_authorized_by": "human"}}
+    root = onboarded(tmp_path, monkeypatch, profile)
+    tree = tmp_path / "app-main-1"
+    assert run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")[0] == 0
+    tip = commit(tree, "work", "work.txt")
+    assert run_cli("work", "hand", "feat/x", "--root", str(tree), "--as", "main session 1")[0] == 0
+    assert run_cli("work", "take", "feat/x", "--root", str(root), "--as", "review session 1")[0] == 0
+    assert run_cli("work", "accept", "feat/x", "--reviewed", tip[:8], "--root", str(root),
+                   "--as", "review session 1")[0] == 0
+    code, out = run_cli("work", "approve", "feat/x", "--root", str(root))
+    assert code == 0, out
+    code, out = run_cli("work", "show", "feat/x", "--root", str(root))
+    assert "approve" in out.split("history:", 1)[1]

@@ -874,6 +874,13 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    name an honest tree carries, not a ref no session can move. A post may also ask for `default`, the same width as
    `manual`. (planner's decision, security fixes, 2026-10-01)
 
+183. **Where a person authorizes merges, the ledger holds it** (security review 2026-10-01, F24; the person's
+   decision): `flow.merge_authorized_by = human` was held only by the sender post's text, and a yes arrived as a
+   message anyone could write. The person's yes is now their own move, `flotilla work approve <branch>`, recorded
+   at the revision the reader accepted; only a person makes it (decision 173), and `queue` refuses until the row
+   carries an approval of its current revision - a moved and re-read branch needs another. The orchestrator shows
+   the person the batch and the command; it never approves. (the person's decision, 2026-10-01)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
