@@ -5,6 +5,8 @@ One log per repository in the state directory: a bypass describes this machine a
 
 from __future__ import annotations
 
+import re
+
 from pathlib import Path
 
 from flotilla.core.storage import LocalLogStore
@@ -15,9 +17,19 @@ def _store(state_dir) -> LocalLogStore:
     return LocalLogStore(Path(state_dir) / "guards")
 
 
+_ASSIGNMENT = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)=(\S+)")
+_USERINFO = re.compile(r"\b([a-z][a-z0-9+.-]*://)([^/@\s:]+):([^/@\s]+)@", re.IGNORECASE)
+
+
+def redact(text: str) -> str:
+    """A command as the record keeps it: no value of a NAME=value assignment, no password in a URL (F23)."""
+    text = _USERINFO.sub(lambda m: f"{m.group(1)}{m.group(2)}:<redacted>@", text)
+    return _ASSIGNMENT.sub(lambda m: f"{m.group(1)}=<redacted>", text)
+
+
 def record_override(state_dir, repo_key: str, guard: str, reason: str, what) -> None:
     _store(state_dir).append(repo_key, {"at": now_iso(), "guard": guard, "reason": " ".join(reason.split()),
-                                        "what": list(what)})
+                                        "what": [redact(str(item)) for item in what]})
 
 
 def recorded(state_dir, repo_key: str) -> list[dict]:

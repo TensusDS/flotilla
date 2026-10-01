@@ -261,6 +261,8 @@ def main(argv: list[str]) -> int:
     if args.command == "version":
         print(__version__)
         return 0
+    from flotilla.core import paths
+    paths.ensure_private(paths.state_dir())
     if args.command == "doctor":
         from flotilla.doctor import run_doctor
         return run_doctor(quiet=args.quiet)

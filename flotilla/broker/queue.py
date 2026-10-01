@@ -66,10 +66,24 @@ def ask(state_dir, repo_key: str, *, session: str, session_id: str, tool: str, t
                      dict(tool_input or {}), list(suggestions or []), str(cwd or ""))
     base = folder(state_dir, repo_key)
     base.mkdir(parents=True, exist_ok=True)
+    _forget_closed(base, now)
     staged = base / f".q-{asked.id}.tmp"
     staged.write_text(json.dumps(dataclasses.asdict(asked)), encoding="utf-8")
     os.replace(staged, base / f"q-{asked.id}.json")
     return asked
+
+
+KEEP_CLOSED = 86400   # a closed question's file is kept a day: it may hold a secret the call carried (F16)
+
+
+def _forget_closed(base: Path, now: float) -> None:
+    for answered in base.glob("a-*.json"):
+        record = _read(answered)
+        at = record.get("at") if isinstance(record, dict) else None
+        if isinstance(at, (int, float)) and now - at > KEEP_CLOSED:
+            qid = answered.name[2:-5]
+            (base / f"q-{qid}.json").unlink(missing_ok=True)
+            answered.unlink(missing_ok=True)
 
 
 def question(state_dir, repo_key: str, qid: str) -> Question | None:

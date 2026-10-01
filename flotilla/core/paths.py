@@ -17,3 +17,15 @@ def state_dir(env: Mapping[str, str] = os.environ) -> Path:
         return Path(override)
     base = env.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
     return Path(base) / "flotilla"
+
+
+def ensure_private(path: Path) -> None:
+    """The state directory holds command text, tool inputs and the ledger: it is its user's alone (0700). Closing the
+    root closes everything under it, whatever each file's own mode (security review F25, F16)."""
+    import stat
+    try:
+        path.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if stat.S_IMODE(path.stat().st_mode) & 0o077:
+            path.chmod(0o700)
+    except OSError:
+        pass   # a state directory that cannot be made says so where it is first written

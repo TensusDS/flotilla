@@ -106,3 +106,13 @@ def test_a_question_differing_only_in_one_field_has_another_mark(tmp_path, field
     a = queue.ask(tmp_path, KEY, now=1000, **base)
     b = queue.ask(tmp_path, KEY, now=1001, **{**base, field: base[field] + "-other"})
     assert queue.mark_of(a) != queue.mark_of(b)
+
+
+def test_closed_questions_older_than_a_day_are_not_kept(tmp_path):
+    """Every tool input asked about stayed on disk for ever, secrets included (security review F16)."""
+    old = ask(tmp_path, now=1000.0)
+    queue.answer(tmp_path, KEY, old.id, queue.DENY, why="no", now=1001.0)
+    queue.ask(tmp_path, KEY, session="main session 1", session_id="s", tool="Bash", tool_input={"command": "ls"},
+              suggestions=[], wait=540, now=1000.0 + 2 * 86400)
+    base = queue.folder(tmp_path, KEY)
+    assert not (base / f"q-{old.id}.json").exists() and not (base / f"a-{old.id}.json").exists()

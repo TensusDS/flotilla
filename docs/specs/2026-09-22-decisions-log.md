@@ -900,6 +900,13 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    branch it made, never a tree on that path, which may be another session's (F17). (planner's decision, security
    fixes, 2026-10-01)
 
+186. **What flotilla keeps on disk is its user's alone, and keeps no secret it does not need** (security review
+   2026-10-01, F16, F23, F25): the state directory - ledger, receipts, permission questions, override records - is
+   made 0700 at every command's start, and an existing one is closed down; that closes everything under it,
+   whatever each file's own mode. An override record no longer keeps a NAME=value or a URL's password from the
+   command it names, and a closed permission question's files are deleted a day after its answer, since a question
+   carries whatever the call carried. (planner's decision, security fixes, 2026-10-01)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
