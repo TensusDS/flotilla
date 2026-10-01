@@ -19,60 +19,6 @@ Short reference of every command and skill: [USER_MANUAL.md](USER_MANUAL.md).
 days; their findings are in `docs/field-tests/`, and each fix landed with a test that failed first. Interfaces may
 still change between minor versions.
 
----
-
-## Contents
-
-1. [How a fleet works](#how-a-fleet-works)
-2. [Words used here](#words-used-here)
-3. [Requirements](#requirements)
-4. [Install](#install)
-5. [Your first fleet, step by step](#your-first-fleet-step-by-step)
-6. [The posts](#the-posts)
-7. [The work ledger](#the-work-ledger)
-8. [The person's part](#the-persons-part)
-9. [Long runs and the lane](#long-runs-and-the-lane)
-10. [Guards](#guards)
-11. [What it costs](#what-it-costs)
-12. [What flotilla does on your machine](#what-flotilla-does-on-your-machine)
-13. [Security model and its limits](#security-model-and-its-limits)
-14. [Updating, and removing flotilla](#updating-and-removing-flotilla)
-15. [Development](#development)
-
----
-
-## How a fleet works
-
-A typical day, in a project onboarded to flotilla:
-
-1. You raise the fleet with one command: an **orchestrator**, two or three **main** sessions to build, a
-   **reviewer**, a **sender** that owns trunk, and, if your project has a running build, an **acceptance judge**.
-2. You tell the orchestrator what you want built. It splits the work into tasks, hands them out, and raises more
-   sessions if the work needs them.
-3. A main session **claims** a branch in its own worktree, builds, runs the project's tests, and **hands** the branch
-   over at its tip.
-4. The reviewer **takes** it, reads it, and either **accepts** that exact revision or returns it with what must change.
-5. The sender **queues** accepted work, merges it, pushes it, and the ledger asks origin whether it **shipped**.
-6. The judge **walks** the shipped work on the deployed build, the way a person would, and records what broke.
-7. When a session needs you - a permission it cannot get, a decision only you can make, a batch you must approve -
-   the orchestrator puts it to you, one question at a time.
-
-Nobody keeps state in their head or in chat. "Where does this stand" is answered by `flotilla status`, read from the
-ledger, and every move is refused unless its evidence holds: you cannot hand work over without a green test receipt
-over its tip, accept a revision you did not read, or say "shipped" before origin says so.
-
-## Words used here
-
-- **trunk** - the branch work is delivered to (`main`, usually).
-- **seat** - one fleet session holding one post, with its own worktree.
-- **post** - a role: what a session is for and which ledger moves it may make.
-- **ledger** - the shared record of every piece of work and every move on it.
-- **row** - one piece of work in the ledger: a branch, its owner, its state.
-- **test tier** - one of the project's test commands that must be green, named at onboarding.
-- **receipt** - a record that the tiers ran green over one exact revision; a move that needs one asks for it.
-- **census** - Claude Code's list of live sessions (`claude agents`), which flotilla asks to tell who is calling.
-- **walk** - the judge using shipped work on the running build the way a person would.
-
 ## Requirements
 
 - Linux or macOS (both run in CI on every commit). Two protections need Linux's `/proc` and are skipped on macOS,
@@ -103,6 +49,8 @@ Then check the machine:
 It names anything missing (an old Python, an old Claude Code, a state directory it cannot write) and the fix.
 
 ## Your first fleet, step by step
+
+A word you do not know yet (trunk, seat, receipt, tier) is in [Words used here](#words-used-here).
 
 ### 1. Onboard the repository (once)
 
@@ -164,6 +112,60 @@ relays your answers, and tells you when the queue is empty and the work is ready
 
 It retires every session but your own, keeps their worktrees, and names the work left open so the next fleet can
 pick it up with `flotilla work adopt`.
+
+---
+
+## Contents
+
+Setup is above. The rest of this file:
+
+1. [How a fleet works](#how-a-fleet-works)
+2. [Words used here](#words-used-here)
+3. [The posts](#the-posts)
+4. [The work ledger](#the-work-ledger)
+5. [The person's part](#the-persons-part)
+6. [Long runs and the lane](#long-runs-and-the-lane)
+7. [Guards](#guards)
+8. [What it costs](#what-it-costs)
+9. [What flotilla does on your machine](#what-flotilla-does-on-your-machine)
+10. [Security model and its limits](#security-model-and-its-limits)
+11. [Updating, and removing flotilla](#updating-and-removing-flotilla)
+12. [Development](#development)
+13. [License](#license)
+
+---
+
+## How a fleet works
+
+A typical day, in a project onboarded to flotilla:
+
+1. You raise the fleet with one command: an **orchestrator**, two or three **main** sessions to build, a
+   **reviewer**, a **sender** that owns trunk, and, if your project has a running build, an **acceptance judge**.
+2. You tell the orchestrator what you want built. It splits the work into tasks, hands them out, and raises more
+   sessions if the work needs them.
+3. A main session **claims** a branch in its own worktree, builds, runs the project's tests, and **hands** the branch
+   over at its tip.
+4. The reviewer **takes** it, reads it, and either **accepts** that exact revision or returns it with what must change.
+5. The sender **queues** accepted work, merges it, pushes it, and the ledger asks origin whether it **shipped**.
+6. The judge **walks** the shipped work on the deployed build, the way a person would, and records what broke.
+7. When a session needs you - a permission it cannot get, a decision only you can make, a batch you must approve -
+   the orchestrator puts it to you, one question at a time.
+
+Nobody keeps state in their head or in chat. "Where does this stand" is answered by `flotilla status`, read from the
+ledger, and every move is refused unless its evidence holds: you cannot hand work over without a green test receipt
+over its tip, accept a revision you did not read, or say "shipped" before origin says so.
+
+## Words used here
+
+- **trunk** - the branch work is delivered to (`main`, usually).
+- **seat** - one fleet session holding one post, with its own worktree.
+- **post** - a role: what a session is for and which ledger moves it may make.
+- **ledger** - the shared record of every piece of work and every move on it.
+- **row** - one piece of work in the ledger: a branch, its owner, its state.
+- **test tier** - one of the project's test commands that must be green, named at onboarding.
+- **receipt** - a record that the tiers ran green over one exact revision; a move that needs one asks for it.
+- **census** - Claude Code's list of live sessions (`claude agents`), which flotilla asks to tell who is calling.
+- **walk** - the judge using shipped work on the running build the way a person would.
 
 ## The posts
 
