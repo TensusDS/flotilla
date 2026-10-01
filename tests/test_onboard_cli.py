@@ -102,3 +102,54 @@ def test_write_installs_the_post_templates(repo):
     assert run_cli("onboard", "write", "--root", str(repo))[0] == 0
     installed = sorted(p.stem for p in (repo / ".flotilla" / "posts").glob("*.md"))
     assert installed == ["helper", "judge", "main", "minor", "orchestrator", "reviewer", "sender"]
+
+
+def background_seat(monkeypatch, name="main session 1"):
+    from flotilla.core import caller
+    from flotilla.core.census import Session
+    monkeypatch.setattr(caller, "calling_session", lambda: Session(
+        name=name, session_id="s", kind="background", pid=42, short_id="abc123", status=None, state=None, cwd="",
+        started_at_ms=None))
+
+
+@pytest.mark.parametrize("argv", [("answer", "tiers", "git push -f origin HEAD:main"), ("write",), ("reset",)])
+def test_a_background_session_may_not_record_run_or_reset_onboarding(repo, monkeypatch, argv):
+    """Onboarding runs the commands it records through a shell: only a person may record or run them (security
+    review F2, F3, F8)."""
+    background_seat(monkeypatch)
+    code, out = run_cli("onboard", *argv, "--root", str(repo))
+    assert code == 2 and "`main session 1` is a background session" in out
+
+
+def test_onboarding_from_outside_any_session_needs_a_terminal(repo, monkeypatch):
+    from flotilla.core import caller
+    monkeypatch.setattr(caller, "calling_session", lambda: None)
+    monkeypatch.setattr(caller, "has_terminal", lambda: False)
+    code, out = run_cli("onboard", "answer", "tiers", "true", "--root", str(repo))
+    assert code == 2 and "a terminal" in out
+
+
+def test_onboarding_refuses_when_the_census_cannot_say_who_calls(repo, monkeypatch):
+    from flotilla.core import caller
+    from flotilla.core.census import CensusUnavailable
+
+    def down():
+        raise CensusUnavailable("`claude agents --json` did not answer")
+    monkeypatch.setattr(caller, "calling_session", down)
+    code, out = run_cli("onboard", "write", "--root", str(repo))
+    assert code == 2 and "could not tell who" in out
+
+
+def test_reading_steps_need_no_person(repo, monkeypatch):
+    background_seat(monkeypatch)
+    code, out = run_cli("onboard", "next", "--root", str(repo))
+    assert code == 0
+
+
+def test_write_names_every_command_before_it_runs_it(repo):
+    answer_everything(repo)
+    code, out = run_cli("onboard", "write", "--root", str(repo))
+    assert code == 0
+    will = [line for line in out.splitlines() if line.startswith("will run ")]
+    assert will and "print('1 passed')" in will[0]
+    assert out.index(will[0]) < out.index("\ngreen")

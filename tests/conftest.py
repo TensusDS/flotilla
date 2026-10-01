@@ -26,3 +26,15 @@ def no_real_process_is_stopped(tmp_path, monkeypatch):
     """Retire stops orphans it finds in /proc; no test may look at, or signal, this machine's processes."""
     monkeypatch.setattr("flotilla.fleet.leftovers.PROC_ROOT", tmp_path / "no-proc-in-tests")
     monkeypatch.setattr("flotilla.fleet.leftovers.CONFIG_DIR", tmp_path / "no-claude-config-in-tests")
+
+
+@pytest.fixture(autouse=True)
+def the_caller_is_a_person_in_a_terminal(monkeypatch):
+    """Answering a permission question and recording onboarding answers ask who calls (security review F2-F12).
+    A test is a person at a terminal in an interactive session unless it says otherwise; no test asks the census."""
+    from flotilla.core import caller
+    from flotilla.core.census import Session
+    monkeypatch.setattr(caller, "has_terminal", lambda: True)
+    monkeypatch.setattr(caller, "calling_session", lambda: Session(
+        name="", session_id="person", kind="interactive", pid=None, short_id=None, status=None, state=None, cwd="",
+        started_at_ms=None))

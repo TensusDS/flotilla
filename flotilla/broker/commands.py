@@ -54,6 +54,12 @@ def run_permit_command(args, *, clock=time.time, sleep=time.sleep, caller=None) 
             print(f"refused: `{name}` holds {('the ' + post + ' post') if post else 'no post'}; only the "
                   "orchestrator, or a person outside any session, answers a permission question")
             return 2
+        if not name:   # no fleet session: a person's own session, or a terminal - never a detached process
+            from flotilla.core import caller as who
+            refused = who.person_refusal("answers a permission question")
+            if refused:
+                print(f"refused: {refused}")
+                return 2
         try:
             asked = queue.answer(state, key, args.id, args.choice, why=args.why or "", now=clock())
         except queue.QueueRefused as err:

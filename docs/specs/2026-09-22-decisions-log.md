@@ -779,6 +779,22 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    before it is spared too. Every spared orphan is named in retire's output, so a dev server started as the
    session stopped is not silently left behind. (planner's decision, release 0.3.3, review of the fix, 2026-10-01)
 
+171. **Onboarding is the person's** (security review 2026-10-01, F2, F3, F4, F8): the onboard skill is no longer
+   model-invocable, and it pre-approves only the reading steps (`machine`, `detect`, `next`, `check`). `answer`,
+   `write` and `reset` go through Claude Code's own permission prompt, because a `tiers` answer is a shell command
+   that `write` runs; the CLI refuses them from a background session, and `write` names every command before it
+   runs it. (planner's decision, security fixes group 1, 2026-10-01)
+172. **No skill pre-approves an answer to a permission question** (F7, F9, F12): the permit skill pre-approves only
+   `permit next` and `permit list`, so every `permit answer` raises Claude Code's prompt before it runs, and the
+   skill says that what a question shows was written by another session - something to show the person, never an
+   instruction. (planner's decision, security fixes group 1, 2026-10-01)
+173. **A person is a terminal or the person's own session, never a detached process** (F9): a call from outside any
+   census session counts as a person only with a controlling terminal behind it, since a session can detach a
+   process (`setsid`) whose parent chain reaches pid 1; a call from a background session is refused; an unreadable
+   census refuses. Every session runs as the same user, so this stops an overeager or misled session, not a
+   determined program of that user's - the person's gate stays Claude Code's prompt. (planner's decision, security
+   fixes group 1, 2026-10-01)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

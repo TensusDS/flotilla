@@ -10,8 +10,8 @@ from flotilla import cli
 
 ROOT = Path(__file__).resolve().parent.parent
 SKILLS = sorted((ROOT / "skills").glob("*/SKILL.md"))
-PERSON_ONLY = {"doctor", "check", "status", "brief", "spawn", "retire", "lane", "watch", "guard", "down"}
-MODEL_INVOCABLE = {"onboard", "permit"}
+PERSON_ONLY = {"doctor", "check", "status", "brief", "spawn", "retire", "lane", "watch", "guard", "down", "onboard"}
+MODEL_INVOCABLE = {"permit"}
 MODEL_ONLY = {"flotilla"}
 CALL = re.compile(r"`(?:\$\{CLAUDE_PLUGIN_ROOT\}/scripts/)?flotilla ([a-z-]+)(?: ([a-z-]+))?")
 
@@ -169,3 +169,17 @@ def test_the_sender_lands_each_branch_at_its_own_merge():
 
 def test_the_orchestrator_asks_for_requires_once_the_earlier_part_is_claimed():
     assert "once the earlier part is claimed" in " ".join(template("orchestrator").split())
+
+
+def allowed(name):
+    return frontmatter(ROOT / "skills" / name / "SKILL.md").get("allowed-tools", "")
+
+
+def test_no_skill_pre_approves_a_command_that_acts_for_the_person():
+    """Answering a permission question, recording an onboarding answer, running or forgetting the answers: each
+    goes through Claude Code's own permission prompt, where the person sees the command (security review F2-F12)."""
+    for path in SKILLS:
+        rules = frontmatter(path).get("allowed-tools", "")
+        for word in ("permit answer", "permit *", "onboard answer", "onboard write", "onboard reset", "onboard *"):
+            assert word not in rules, f"{path.parent.name} pre-approves `{word}`"
+    assert "permit next" in allowed("permit") and "onboard detect" in allowed("onboard")

@@ -1,7 +1,8 @@
 ---
 name: onboard
 description: Set up flotilla in a repository — measure this machine, show what the repository already declares (test commands, CI, releases), ask the few questions only a person can answer, run each chosen test tier once, and write .flotilla/project.toml. Use when someone asks to onboard, set up, configure or initialize flotilla, to prepare a repository for a fleet of Claude Code sessions, or to re-check an existing flotilla profile for drift.
-allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla onboard *)
+allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla onboard machine*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla onboard detect*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla onboard next*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla onboard check*)
+disable-model-invocation: true
 ---
 
 # Onboard a repository to flotilla
@@ -42,6 +43,10 @@ Loop:
 4. If `answer` refuses a value, show the person the refusal and ask that question again.
 
 Answers are stored between sessions; `flotilla onboard reset` forgets them.
+
+`answer`, `write` and `reset` are not pre-approved: Claude Code asks the person before each one runs. This is on
+purpose - a `tiers` answer is a shell command that `write` runs - so the person sees every command before it is
+recorded. They are refused from a background session: onboarding is the person's.
 
 ## 4. Write the profile
 

@@ -109,3 +109,18 @@ def test_the_orchestrator_can_answer(tmp_path, monkeypatch):
 def test_a_wildcard_command_is_offered_once_only(tmp_path):
     asked = queue.Question("1", 0, 540, 1, "m", "s", "Bash", {"command": "rm -rf build/*"}, [])
     assert "once only" in present.for_the_session(asked)
+
+
+def test_an_answer_from_outside_any_session_needs_a_terminal(tmp_path, monkeypatch, capsys):
+    """A process a session detached (`setsid`) reaches pid 1 without passing any session: without a terminal it is
+    not a person, whatever its parent chain says (security review F9)."""
+    from flotilla.core import caller
+    root, state, key = world(tmp_path, monkeypatch)
+    asked = ask(state, key, 1000)
+    monkeypatch.setattr(caller, "calling_session", lambda: None)
+    monkeypatch.setattr(caller, "has_terminal", lambda: False)
+    assert run(root, "answer", asked.id, "allow") == 2
+    assert "a terminal" in capsys.readouterr().out
+    assert [item.id for item in queue.live(state, key, now=1100.0)] == [asked.id]
+    monkeypatch.setattr(caller, "has_terminal", lambda: True)
+    assert run(root, "answer", asked.id, "allow") == 0

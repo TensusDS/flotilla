@@ -42,6 +42,8 @@ def _write(det: dict, given: dict, args, state: Path) -> int:
     data = build_profile(det, given)
     tiers = (data.get("tests") or {}).get("tier") or []
     if tiers and not args.no_run:
+        for tier in tiers:   # named before it runs: a person reading this sees what the shell is given
+            print(f"will run {tier['name']}: {tier['command']}")
         runs = [run_tier(t["name"], t["command"], root, timeout=args.timeout) for t in tiers]
         for run in runs:
             timing = f"{run.seconds:.1f}s" if run.seconds is not None else "no time recorded"
@@ -79,6 +81,12 @@ def run_onboard(args) -> int:
         print(f"{err}; run onboarding from inside the repository, or pass --root")
         return 2
     given = store.load(state, det["repo_key"])
+    if args.action in ("answer", "write", "reset"):   # what is recorded here runs through a shell at `write`
+        from flotilla.core import caller
+        refused = caller.person_refusal("records, runs or forgets onboarding answers")
+        if refused:
+            print(f"refused: {refused}")
+            return 2
     if args.action == "detect":
         print(json.dumps(det, indent=2, sort_keys=True))
         return 0
