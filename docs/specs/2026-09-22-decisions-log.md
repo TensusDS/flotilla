@@ -881,6 +881,13 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    carries an approval of its current revision - a moved and re-read branch needs another. The orchestrator shows
    the person the batch and the command; it never approves. (the person's decision, 2026-10-01)
 
+184. **Lower findings of the security review, group C** (2026-10-01): a seat tree must be one of this project's
+   worktrees - a git toplevel of another repository is not one, so a forged row cannot have retire signal another
+   project's processes or detach its branch (F13); other processes' command lines reach the lane's answer as data
+   (F14); `tree cut` checks the path again under the ledger lock, and a failed `worktree add` removes only the
+   branch it made, never a tree on that path, which may be another session's (F17). (planner's decision, security
+   fixes, 2026-10-01)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

@@ -280,6 +280,12 @@ def seat_tree_refusal(ledger: Ledger, tree: str) -> str:
         return f"{tree} is not a worktree git can name"
     if Path(tree).resolve() == Path(ledger.root).resolve():
         return "it is the main checkout"
+    listed = ledger.run(["git", "-C", str(ledger.root), "worktree", "list", "--porcelain"], capture_output=True,
+                        text=True, check=False)
+    trees = {str(Path(line[len("worktree "):]).resolve()) for line in listed.stdout.splitlines()
+             if line.startswith("worktree ")} if listed.returncode == 0 else set()
+    if str(Path(tree).resolve()) not in trees:   # a git toplevel of another repository is not a seat (F13)
+        return f"{tree} is not a worktree of this project"
     return ""
 
 

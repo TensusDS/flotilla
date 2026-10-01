@@ -55,11 +55,16 @@ def cut(ledger: core.Ledger, actor: Actor, branch: str, tree: Path, *, expect: s
             filed = None
             ids = core.check_claim(s.rows, branch, ref=ref, also=also, requires=requires)
             later = core.link_ids(s.rows, after, "--after")
+        if tree.exists() or tree.is_symlink():   # checked again under the lock: another session may have just made it
+            raise MoveRefused(f"{tree} already exists; nothing was cut")
         done = ledger.run(["git", "-C", str(ledger.root), "worktree", "add", "-q", "-b", branch, str(tree),
                            base_ref], capture_output=True, text=True, check=False)
+        if done.returncode != 0:   # no tree of ours stands there: never remove one, it may be another session's (F17)
+            # the branch did not exist under this lock a moment ago, so a branch by its name now is the failed add's
+            ledger.run(["git", "-C", str(ledger.root), "branch", "-D", branch], capture_output=True, text=True,
+                       check=False)
+            raise MoveRefused(f"git worktree add failed: {done.stderr.strip()}; nothing was cut")
         try:
-            if done.returncode != 0:
-                raise MoveRefused(f"git worktree add failed: {done.stderr.strip()}; nothing was cut")
             base = gitq.resolve(ledger.root, base_ref, run=ledger.run) or ""
             if filed is not None:
                 return s.append(actor, filed.id, "claim", "claimed",

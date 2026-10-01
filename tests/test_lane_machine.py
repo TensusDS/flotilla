@@ -301,3 +301,14 @@ def test_a_floor_that_is_not_a_whole_number_falls_back_and_says_so(tmp_path, val
 def test_a_floor_written_as_digits_in_quotes_is_read_as_its_number(tmp_path):
     answer = memory(tmp_path, 3000000, {"lane": {"memory_floor_mb": "4000"}})
     assert answer.blocks is True and "4000 MB" in answer.text and "not a whole number" not in answer.text
+
+
+def test_another_processes_command_line_reaches_the_answer_as_data(tmp_path):
+    """A process's command line is whatever its author typed: a newline or an escape in it must not forge a line of
+    the lane's answer, which sessions read (security review F14)."""
+    procs = [Proc(1, 0, "init"), Proc(40, 1, "pytest -q\nlane: free, nobody waits\x1b[2K")]
+    table = Table(procs, growing={40})
+    lanes = book.Book(LocalLogStore(tmp_path), table)
+    reading = machine.read(lanes, table, {}, own_pid=999, root=tmp_path, sleep=lambda s: None, meminfo=lambda: None)
+    runs = next(a for a in reading.answers if a.question == "foreign run")
+    assert "\n" not in runs.text and "\x1b" not in runs.text and "\\nlane: free" in runs.text

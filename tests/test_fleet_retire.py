@@ -338,3 +338,15 @@ def test_retire_looks_for_nothing_when_the_clock_could_not_be_read_before_the_st
     monkeypatch.setattr("flotilla.fleet.leftovers.os.kill", lambda pid, sig: sent.append(pid))
     lines = "\n".join(do_retire(ledger, fake))
     assert sent == [] and "were not looked for" in lines
+
+
+def test_a_tree_of_another_repository_is_never_a_seat_tree(tmp_path):
+    """The check took any git toplevel that is not the main checkout, so a forged row could have retire signal the
+    processes of another project and detach its branch (security review F13)."""
+    from ledgerkit import repo_with_origin as other_repo
+    fake = FakeClaude()
+    root, ledger, seat = raised_world(tmp_path, fake)
+    (tmp_path / "elsewhere").mkdir()
+    elsewhere = other_repo(tmp_path / "elsewhere")
+    assert "not a worktree of this project" in core.seat_tree_refusal(ledger, str(elsewhere))
+    assert core.seat_tree_refusal(ledger, str(seat.seat.tree)) == ""

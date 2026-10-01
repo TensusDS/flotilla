@@ -173,3 +173,25 @@ def test_switch_records_an_after_link(tmp_path):
     first = core.claim(ledger, actor(ledger, "minor session 1"), "feat/a")
     row = tree_mod.switch(ledger, actor(ledger, "main session 1"), "tool/b", after=["feat/a"])
     assert (row.after, row.requires) == ([first.id], [])
+
+
+def test_a_tree_another_session_made_at_the_same_moment_is_never_removed(tmp_path):
+    """The path was checked outside the ledger lock; when `worktree add` then failed because another session had
+    made that tree, the undo force-removed it (security review F17)."""
+    import subprocess as sp
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state")
+    tree = tmp_path / "app-main-1"
+    real = ledger.run
+
+    def racing(cmd, **kwargs):
+        if cmd[3:5] == ["worktree", "add"]:   # another session's tree lands on the path first
+            sp.run(["git", "-C", str(root), "worktree", "add", "-q", "-b", "theirs", str(tree)], check=True,
+                   capture_output=True)
+            (tree / "theirs.txt").write_text("their work\n", encoding="utf-8")
+        return real(cmd, **kwargs)
+    ledger.run = racing
+    with pytest.raises(MoveRefused):
+        tree_mod.cut(ledger, actor(ledger, "main session 1"), "feat/x", tree)
+    assert (tree / "theirs.txt").exists()
+    assert git(root, "rev-parse", "--verify", "-q", "refs/heads/theirs")

@@ -19,6 +19,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from flotilla.core.text import visible
+
 #: A headless browser is a run (a capture or an audit takes gigabytes); a full `chrome` is not, because a browser
 #: tool server keeps one alive for hours.
 DEFAULT_PATTERNS = ("pytest", "py.test", "playwright", "vitest", "jest", "cargo test", "go test",
@@ -259,8 +261,9 @@ def read(lanes, table, profile: dict, *, own_pid: int, root, sleep=time.sleep, r
         busy, idle = [], []
     else:
         busy, idle = split_computing(table, runs, sleep=sleep)
-        named = "; ".join(f"pid {proc.pid} `{proc.command[:80]}`" for proc in busy)
-        resting = "; ".join(f"pid {proc.pid} `{proc.command[:80]}`" for proc in idle)
+        # a command line is whatever its author typed: shown as data, so it cannot forge a line sessions read (F14)
+        named = "; ".join(f"pid {proc.pid} `{visible(proc.command[:80])}`" for proc in busy)
+        resting = "; ".join(f"pid {proc.pid} `{visible(proc.command[:80])}`" for proc in idle)
         if busy:
             answers.append(Answer("foreign run", True, f"{len(busy)} unbooked run(s) computing: {named}"))
         elif idle:
