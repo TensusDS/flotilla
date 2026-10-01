@@ -801,6 +801,13 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    determined program of that user's - the person's gate stays Claude Code's prompt. (planner's decision, security
    fixes group 1, 2026-10-01)
 
+174. **A permission question shows the session's text as data** (security review 2026-10-01, F5, F10, F12): every
+   field another session wrote - the command, a Write's content, an Edit's text, the session's name, the rule
+   "for this session" would add - is printed on one line, in quotes it cannot close, with every control and
+   reordering character made visible (`\\r`, `\\x1b`, `\\u202e`), and a cut named with the count it hides. A carriage
+   return or an erase sequence can no longer show the person one command while they allow another. (planner's
+   decision, security fixes group 2, 2026-10-01)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

@@ -145,7 +145,8 @@ def drained(rows: dict, live: set[str]) -> list[Item]:
 
 def question_items(questions) -> list[Item]:
     from flotilla.broker.present import summary
-    return [Item(QUESTION, asked.session, f"asks {summary(asked)}; answer with /flotilla:permit",
+    from flotilla.core.text import visible
+    return [Item(QUESTION, visible(asked.session), f"asks {summary(asked)}; answer with /flotilla:permit",
                  dt.datetime.fromtimestamp(asked.at, dt.timezone.utc).isoformat(timespec="seconds"), who=str(asked.at))
             for asked in questions]
 

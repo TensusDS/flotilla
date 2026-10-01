@@ -104,7 +104,7 @@ def test_questions_become_items_named_by_the_asking_session():
     asked = queue.Question("1", 1790500000.0, 1790500540.0, 1, "main session 1", "s", "Bash",
                            {"command": "touch x"}, [])
     item = fleet.question_items([asked])[0]
-    assert (item.kind, item.branch) == ("question", "main session 1") and "Bash touch x" in item.text
+    assert (item.kind, item.branch) == ("question", "main session 1") and "Bash \"touch x\"" in item.text
     assert "/flotilla:permit" in item.text
 
 

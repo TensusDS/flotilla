@@ -37,6 +37,7 @@ def _caller(root) -> tuple[str | None, str]:
 
 def run_permit_command(args, *, clock=time.time, sleep=time.sleep, caller=None) -> int:
     from flotilla.broker import present, queue
+    from flotilla.core.text import visible
     from flotilla.core import config, paths, repo
     root = config.find_project(Path(args.root))
     if root is None:
@@ -72,7 +73,7 @@ def run_permit_command(args, *, clock=time.time, sleep=time.sleep, caller=None) 
         if not waiting:
             print("no question waits")
         for asked in waiting:
-            print(f"{asked.id}  {asked.session}: {present.summary(asked)} ({int(clock() - asked.at)} s)")
+            print(f"{asked.id}  {visible(asked.session)}: {present.summary(asked)} ({int(clock() - asked.at)} s)")
         return 0
     started = clock()
     while True:

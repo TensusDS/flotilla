@@ -58,7 +58,7 @@ def test_the_orchestrator_sees_live_questions_first(tmp_path):
               tool_input={"command": "touch x"}, suggestions=[], wait=540, now=NOW.timestamp())
     from flotilla.watch import render
     lines = render.lines(ctx.fleet(now=NOW.timestamp()), NOW)
-    assert lines[0].startswith("  main session 1: asks Bash touch x")
+    assert lines[0].startswith("  main session 1: asks Bash \"touch x")
 
 
 def test_gather_narrows_the_fleet_to_this_projects_sessions(tmp_path):
