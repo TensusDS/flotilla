@@ -84,10 +84,14 @@ def system_prompt(seat: Seat, post, *, main: Path) -> str:
             "given here: never infer them from the work.\n\n" + post.body.strip())
 
 
-def argv(seat: Seat, post, profile: dict, *, main: Path, first_prompt: str = "") -> list[str]:
+def argv(seat: Seat, post, profile: dict, *, main: Path, settings_json: str = "", first_prompt: str = "") -> list[str]:
+    """`settings_json` (from `flotilla.fleet.plugins`) turns off the MCP plugins the post does not keep; it rides as
+    one argv element, never through a shell. `first_prompt` replaces the fleet's first prompt (a helper's task)."""
     command = ["claude", "--bg", "-n", seat.name, "--add-dir", str(seat.tree), "--permission-mode",
                permission_mode(profile, post)]
     model = model_for(profile, post)
     if model:
         command += ["--model", model]
+    if settings_json:
+        command += ["--settings", settings_json]
     return command + ["--append-system-prompt", system_prompt(seat, post, main=main), first_prompt or FIRST_PROMPT]

@@ -2,7 +2,8 @@
 
 A post is a Claude Code agent definition with flotilla keys in its frontmatter: `name_pattern` (for example
 "review session {n}"), `may` (the ledger moves the post may make) and `writes_one_copy` (the single writer of
-one-copy resources). Project posts live in `.flotilla/posts/*.md`; onboarding copies them from the plugin's
+one-copy resources), and `plugins` (the plugins that bring MCP servers a seat of the post keeps; every other one is
+turned off for it). Project posts live in `.flotilla/posts/*.md`; onboarding copies them from the plugin's
 `templates/posts/` and never overwrites a post the project has edited.
 """
 
@@ -35,6 +36,8 @@ class Post:
     body: str
     model: str = "inherit"
     permission_mode: str = ""
+    plugins: tuple = ()   # the MCP-bearing plugins a seat of this post keeps; the rest are turned off (decision 154)
+    plugins_written: bool = False   # whether the post says `plugins:` at all (a post older than the key does not)
 
     def matches(self, session_name: str) -> bool:
         regex = "^" + re.escape(self.name_pattern).replace(re.escape("{n}"), r"\d+") + "$"
@@ -99,7 +102,11 @@ def load_post(path: Path) -> Post:
     mode = meta.get("permission_mode", "")
     if mode and mode not in PERMISSION_MODES:
         raise PostError(f"{path}: `permission_mode` must be one of {', '.join(PERMISSION_MODES)}")
-    return Post(name, pattern, frozenset(may), one_copy, version, path, body, model, mode)
+    kept = meta.get("plugins", [])
+    if not isinstance(kept, list):
+        raise PostError(f"{path}: `plugins` must be a list of plugin ids like [playwright@claude-plugins-official]")
+    return Post(name, pattern, frozenset(may), one_copy, version, path, body, model, mode, tuple(kept),
+                "plugins" in meta)
 
 
 def _folder(root: Path) -> Path:

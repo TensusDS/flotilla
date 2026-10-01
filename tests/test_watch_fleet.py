@@ -235,3 +235,27 @@ def test_a_working_helper_with_a_live_parent_is_quiet():
                                                  sess("helper 1", state="working")],
                         post_of=lambda n: "helper" if n.startswith("helper") else "main")
     assert [item for item in found if item.kind == fleet.HELPER] == []
+
+
+def test_a_stranger_in_a_seat_tree_is_named_and_not_counted_as_a_seat():
+    import dataclasses
+    seats = rows(row(id="r1", branch="fleet/main-1", owner="main session 1", state="reserved",
+                     tree="/work/app-main-1"),
+                 row(id="r2", branch="feat/x", owner="main session 1", state="closed"))
+    stranger = dataclasses.replace(sess("app-main-1-2"), cwd="/work/app-main-1/src")
+    elsewhere = dataclasses.replace(sess("my own session"), cwd="/home/someone")
+    found = fleet.fleet(seats, PR, [sess("main session 1"), sess("orchestrator 1"), stranger, elsewhere],
+                        post_of=post_of)
+    named = [item for item in found if item.kind == fleet.STRANGER]
+    assert [(item.who, item.text) for item in named] == [
+        ("app-main-1-2", "app-main-1-2: not a fleet session (started in /work/app-main-1)")]
+    (done,) = [item for item in found if item.kind == fleet.DONE]
+    assert "3 session(s) stay alive" in done.text   # the two seats' sessions and the person's own, not the stranger
+
+
+def test_a_post_session_in_its_own_tree_is_no_stranger():
+    import dataclasses
+    seats = rows(row(id="r1", branch="fleet/main-1", owner="main session 1", state="reserved",
+                     tree="/work/app-main-1"))
+    mine = dataclasses.replace(sess("main session 1"), cwd="/work/app-main-1")
+    assert [item for item in fleet.fleet(seats, PR, [mine], post_of=post_of) if item.kind == fleet.STRANGER] == []

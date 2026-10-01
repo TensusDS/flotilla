@@ -66,3 +66,20 @@ def test_a_named_fleet_model_runs_every_post_without_its_own():
 def test_one_for_all_still_inherits():
     assert launch.model_for({"fleet": {"model": "one"}}, POSTS["main"]) == ""
     assert launch.model_for({}, POSTS["main"]) == ""
+
+
+def test_the_argv_carries_the_plugin_settings_as_one_element():
+    import json
+    seat = launch.seat_for(MAIN, POSTS["reviewer"], "review session 3")
+    settings = json.dumps({"enabledPlugins": {'odd"id@m': False, "pdf@m": False}})
+    argv = launch.argv(seat, POSTS["reviewer"], {"permissions": {"mode": "auto"}}, main=MAIN,
+                       settings_json=settings)
+    assert argv[argv.index("--settings") + 1] == settings
+    assert json.loads(argv[argv.index("--settings") + 1]) == {"enabledPlugins": {'odd"id@m': False, "pdf@m": False}}
+    assert argv.index("--settings") < argv.index("--append-system-prompt") and argv[-1] == launch.FIRST_PROMPT
+
+
+def test_no_plugin_settings_means_no_settings_flag():
+    seat = launch.seat_for(MAIN, POSTS["reviewer"], "review session 3")
+    assert "--settings" not in launch.argv(seat, POSTS["reviewer"], {}, main=MAIN)
+    assert "--settings" not in launch.argv(seat, POSTS["reviewer"], {}, main=MAIN, settings_json="")

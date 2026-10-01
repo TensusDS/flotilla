@@ -17,7 +17,9 @@ def ready_checkout(monkeypatch):
     """Never ask the real `claude plugin list` or read ~/.claude.json here: on a machine where claude never ran,
     that call creates Claude Code's own files. The setup checks are tested in test_claude_state.py."""
     from flotilla.core import claude_state
+    from flotilla.fleet import plugins
     monkeypatch.setattr(claude_state, "setup_problems", lambda main, **kw: ([], []))
+    monkeypatch.setattr(plugins, "listing", lambda run, cwd, **kw: [])
 
 
 def run_cli(*args):
@@ -107,3 +109,88 @@ def test_a_dry_run_says_where_the_numbering_continues_from(tmp_path, monkeypatch
     code, out = run_cli("spawn", "--dry-run", "--post", "reviewer=1", "--root", str(root))
     assert code == 0 and "review session 38" in out
     assert "note: reviewer numbering continues after review session 37 (alive on this machine" in out
+
+
+def plugin_listing(tmp_path, monkeypatch, entries):
+    from flotilla.fleet import plugins
+    asked = []
+
+    def listing(run, cwd, **kw):
+        asked.append(str(cwd))
+        return entries
+    monkeypatch.setattr(plugins, "listing", listing)
+    return asked
+
+
+def mcp_entry(tmp_path, plugin_id):
+    folder = tmp_path / "plugin-cache" / plugin_id.split("@")[0]
+    folder.mkdir(parents=True)
+    (folder / ".mcp.json").write_text('{"s": {"command": "s"}}', encoding="utf-8")
+    return {"id": plugin_id, "scope": "user", "enabled": True, "installPath": str(folder)}
+
+
+def seat_block(out, name):
+    """The lines a dry run prints for one seat: its heading and the indented lines under it."""
+    lines = out.splitlines()
+    start = next(i for i, line in enumerate(lines) if line.startswith(name + "  "))
+    block = [lines[start]]
+    for line in lines[start + 1:]:
+        if not line.startswith("    "):
+            break
+        block.append(line)
+    return "\n".join(block)
+
+
+def test_a_dry_run_names_the_plugins_each_seat_turns_off(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    asked = plugin_listing(tmp_path, monkeypatch, [mcp_entry(tmp_path, "playwright@claude-plugins-official"),
+                                                   mcp_entry(tmp_path, "serena@official")])
+    code, out = run_cli("spawn", "--dry-run", "--post", "reviewer=1", "--post", "judge=1", "--root", str(root))
+    assert code == 0, out
+    assert "turns off: playwright@claude-plugins-official, serena@official" in seat_block(out, "review session 1")
+    assert "turns off: serena@official" in seat_block(out, "acceptance judge 1")
+    assert asked == [str(root.resolve())]
+
+
+def test_a_judge_post_without_plugins_shows_its_browser_turned_off(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    judge = root / ".flotilla" / "posts" / "judge.md"
+    judge.write_text(judge.read_text(encoding="utf-8").replace("plugins: [playwright@claude-plugins-official]\n", ""),
+                     encoding="utf-8")
+    git(root, "add", ".flotilla")
+    commit(root, "the judge keeps no plugin")
+    git(root, "push", "-q", "origin", "main")   # the rules that count are trunk's
+    plugin_listing(tmp_path, monkeypatch, [mcp_entry(tmp_path, "playwright@claude-plugins-official")])
+    code, out = run_cli("spawn", "--dry-run", "--post", "judge=1", "--root", str(root))
+    assert code == 0, out
+    assert "turns off: playwright@claude-plugins-official" in seat_block(out, "acceptance judge 1")
+
+
+def test_a_dry_run_says_when_the_plugin_set_cannot_be_narrowed(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    plugin_listing(tmp_path, monkeypatch, None)
+    code, out = run_cli("spawn", "--dry-run", "--post", "reviewer=1", "--root", str(root))
+    assert code == 0, out
+    assert "turns off: unknown" in seat_block(out, "review session 1")
+    assert "warning:" in out and "plugin set not narrowed" in out
+
+
+def test_the_fleet_names_a_stranger_in_a_seat_tree(tmp_path, monkeypatch):
+    import dataclasses
+    from fleetkit import FakeClaude, session
+    from flotilla.fleet import spawn
+    from flotilla.ledger.commands import open_ledger
+    from flotilla.core.storage import LocalLogStore
+    root = onboarded(tmp_path, monkeypatch)
+    fake = FakeClaude()
+    ledger = open_ledger(root)
+    ledger.run = fake
+    raised, _ = spawn.spawn(ledger, {"main": 1}, census=fake.census, store=LocalLogStore(tmp_path / "names"),
+                            caller="test", wait=0.1, poll=0.05, sleep=lambda s: None)
+    tree = raised[0].seat.tree
+    stranger = dataclasses.replace(session(f"{tree.name}-3", "ffffff"), cwd=str(tree / "src"))
+    monkeypatch.setattr("flotilla.fleet.commands.census", lambda: fake.census() + [stranger])
+    code, out = run_cli("fleet", "--root", str(root))
+    assert code == 0, out
+    assert f"{tree.name}-3  not a fleet session (started in {tree})" in out
+    assert out.count("main session 1") == 1

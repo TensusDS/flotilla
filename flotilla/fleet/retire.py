@@ -1,7 +1,8 @@
 """The fleet's post rows, and retiring a session (spec, section 7.5).
 
 The view lists every open post row (`reserved`) with what the census and git say about it now: alive, its census
-state, whether its tree is still there and still locked. Retire stops the session and waits for the census to
+state, whether its tree is still there and still locked; after them, any session in a seat's tree that holds no
+post, named as not a fleet session (H7). Retire stops the session and waits for the census to
 agree, unlocks the tree, and releases the post row. It deletes nothing: before it reports, it counts the tree's
 uncommitted files and lists every open row the session still owns, which are now orphaned and wait for `adopt`.
 A retire that cannot tell whether the session runs does nothing.
@@ -14,6 +15,7 @@ import time
 from pathlib import Path
 
 from flotilla.core.census import CensusUnavailable
+from flotilla.fleet import strangers
 from flotilla.ledger import core
 from flotilla.ledger.actor import Actor
 from flotilla.ledger.errors import MoveRefused
@@ -75,7 +77,10 @@ def fleet_view(ledger, sessions: list | None) -> list[dict]:
             "dirty": _dirty(row.tree),
             "work": [other for other in rows.values()
                      if other.is_open and other.owner == row.owner and other.state != "reserved"],
+            "stranger": "",
         })
+    for session, tree in strangers.in_seat_trees(sessions or [], rows, lambda name: _post_name(ledger, name)):
+        view.append({"name": session.name, "post": "", "stranger": tree, "short_id": session.short_id or ""})
     return view
 
 

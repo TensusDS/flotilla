@@ -683,6 +683,50 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
 152. **flotilla is MIT-licensed**, so anyone may use it as they like; the repository home is `TensusDS/flotilla`.
    (the person's decision, 2026-09-30)
 
+153. **A seat's plugin set is narrowed by `--settings` with `enabledPlugins: false`**, chosen by measurement on a real
+   `claude --bg` session (Claude Code 2.1.286, `tools/probe_seat_plugins.py`, 2026-09-30, from `/home/max/workspace`
+   with 17 enabled plugins that bring MCP servers). Processes under the session's pid, once its tree held still:
+
+   | variant | plugin MCP processes | their RSS (MB) | other descendants | their RSS (MB) |
+   |---|---|---|---|---|
+   | a: no extra flags | 14 | 1167 | 2 | 118 |
+   | b: `--settings` turning off every enabled MCP plugin | 0 | 0 | 2 | 118 |
+   | c: `--strict-mcp-config` alone | 0 | 0 | 0 | 0 |
+
+   Both mechanisms stop plugin MCP servers; (b) is taken because it keeps what a post declares by leaving that
+   plugin out of the map, while (c) keeps nothing unless flotilla rebuilds each kept server's definition for
+   `--mcp-config`. The "other descendants" are a server from the person's own MCP configuration, which (b) leaves
+   running: the person chose it for every session. Settings given by `--settings` sit above user, project and
+   local files, so a plugin enabled in the main checkout's `.claude/settings.local.json` is turned off too (H49).
+   (planner's decision, field fixes part 8 track B, 2026-10-01)
+154. **A post keeps only the plugins it declares, among those that bring MCP servers**: the post key `plugins:` (a
+   list of plugin ids, default empty). Every other enabled plugin with MCP servers is turned off for its seats;
+   plugins without MCP servers (skills, commands, hooks only) are left alone, because they cost no resident
+   process and turning off a hook changes behaviour the person chose. flotilla itself is never turned off (H49).
+   (planner's decision, field fixes part 8 track B, 2026-10-01)
+155. **Which plugins bring MCP servers is asked of `claude plugin list --json` in the main checkout**, once per
+   spawn: its `enabled` holds for the directory it runs in, whatever scope enabled the plugin, so a plugin enabled
+   only in the project's own settings is turned off too. A plugin brings servers when the listing names them or
+   its `.mcp.json` or `plugin.json` `mcpServers` does; one whose install path is missing is left enabled (doubt
+   keeps behaviour). A listing that fails or times out narrows nothing and warns "plugin set not narrowed" — never
+   a refused spawn; a kept plugin that is not installed, or not enabled there, is named in a warning. The map rides
+   as one argv element made by `json.dumps`. (planner's decision, field fixes part 8 track B, 2026-10-01)
+156. **The judge template keeps `playwright@claude-plugins-official`; every other template keeps none.** A project
+   may edit its posts; a judge at the current template without it has no browser MCP, and the dry run shows that.
+   A project post that predates the key (no `plugins:` written, `template_version` older than the shipped
+   template's) keeps what the shipped template keeps, and spawn says so, so an upgrade does not silently take an
+   onboarded judge's browser (final review, 2026-10-01).
+   (planner's decision, field fixes part 8 track B, 2026-10-01)
+157. **The dry run names, per seat, the plugins it will turn off** ("turns off: <ids>", or "unknown" when the
+   listing cannot be asked); and **a session in a seat's tree that holds no post** — a hook's headless `claude`, a
+   session opened there by hand — is listed by `flotilla fleet` and `watch` as "not a fleet session (started in
+   <tree>)" and counted nowhere a seat is counted (H7). (planner's decision, field fixes part 8 track B, 2026-10-01)
+158. **Part 7's review minors**: the lane guard ignores a line inside a quoted string (a commit message's body),
+   a version or help question and `playwright install`; `lane.memory_floor_mb`, `fleet.memory_floor_mb` and the
+   new `fleet.seat_cost_mb` fall back to their defaults and say so when they are not whole numbers; spawn's memory
+   floor counts every seat it is about to raise at `fleet.seat_cost_mb` (default 800, a seat with its servers in
+   the twosuns run) rather than free memory once; `check_version` without git prints a message.
+   (planner's decision, field fixes part 8 track B, 2026-10-01)
 159. **A fleet session may raise a helper for a piece of its own work** (`flotilla helper raise --for <branch>
    --task`): the owner of an open row in `claimed` or `fixing`; at most `fleet.helpers_per_seat` (default 2) live
    helpers per row; the memory floor applies (H8). (planner's decision, field fixes part 8 track A, 2026-10-01)

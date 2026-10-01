@@ -3,9 +3,10 @@
 A plan turns a composition into seats: names from the journal (above every live, known and issued number), trees
 and branches that must not exist yet, one-copy posts held once. Raising a seat cuts its tree from trunk and locks
 it, records the post row (written by the spawner in the new session's name, `via: spawn`, the real caller kept),
-launches `claude --bg` from the main checkout, and asks the census for the new name. A launch that fails takes back
-what it made. A session the census does not list yet is reported as launched, never retried: a second launch would
-put two processes under one name. Spawning needs the census, because names are checked against it.
+launches `claude --bg` from the main checkout with the MCP plugins its post does not keep turned off, and asks the
+census for the new name. A launch that fails takes back what it made. A session the census does not list yet is
+reported as launched, never retried: a second launch would put two processes under one name. Spawning needs the
+census, because names are checked against it.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from flotilla.core.census import CensusUnavailable
-from flotilla.fleet import compose, launch, names
+from flotilla.fleet import compose, launch, names, plugins
 from flotilla.ledger import core, gitq
 from flotilla.ledger.actor import Actor
 from flotilla.ledger.errors import MoveRefused
@@ -39,6 +40,7 @@ class Raised:
 
 MEMORY_FLOOR_MB = 2000
 HELPER = "helper"
+SEAT_COST_MB = 800   # a seat with its MCP servers, as measured in the twosuns run (H49)
 MEMINFO = Path("/proc/meminfo")
 
 
@@ -59,16 +61,28 @@ def available_mb() -> int | None:
     return read_available_mb()
 
 
-def memory_short(ledger) -> str:
-    """Why a new seat should not be raised into this machine now, or "" (H47, H9: the daemon retires idle seats
-    under low memory, and a new seat takes the readers' place)."""
-    floor = int((ledger.profile.get("fleet") or {}).get("memory_floor_mb", MEMORY_FLOOR_MB))
+def memory_settings(ledger) -> tuple[int, int, list[str]]:
+    """(floor, cost of one seat, notes): each a whole number of MB from `[fleet]`, or its default with a note."""
+    from flotilla.core.config import whole_number
+    fleet = ledger.profile.get("fleet") or {}
+    floor, floor_note = whole_number(fleet.get("memory_floor_mb", MEMORY_FLOOR_MB), MEMORY_FLOOR_MB,
+                                     "fleet.memory_floor_mb")
+    cost, cost_note = whole_number(fleet.get("seat_cost_mb", SEAT_COST_MB), SEAT_COST_MB, "fleet.seat_cost_mb")
+    return floor, cost, [note for note in (floor_note, cost_note) if note]
+
+
+def memory_short(ledger, seats: int = 1) -> str:
+    """Why `seats` new seats should not be raised into this machine now, or "" (H47, H9: the daemon retires idle
+    seats under low memory, and a new seat takes the readers' place). Each seat is counted at its cost with its MCP
+    servers (`fleet.seat_cost_mb`), not the free memory once."""
+    floor, cost, _ = memory_settings(ledger)
     free = available_mb()
-    if free is None or not floor or free >= floor:
+    left = None if free is None else free - seats * cost
+    if left is None or not floor or left >= floor:
         return ""
-    return (f"{free} MB of memory is available, under the {floor} MB floor (fleet.memory_floor_mb): a new seat "
-            "here makes the daemon retire idle ones, readers first; retire an idle seat first, or raise it with "
-            "--anyway")
+    return (f"{free} MB of memory is available, and {seats} seat(s) at ~{cost} MB each (fleet.seat_cost_mb) "
+            f"leave {left} MB, under the {floor} MB floor (fleet.memory_floor_mb): a new seat here makes the daemon "
+            "retire idle ones, readers first; retire an idle seat first, raise fewer, or raise them with --anyway")
 
 
 def _live(census) -> list:
@@ -101,9 +115,9 @@ def plan(ledger, counts: dict, *, census, store, reserve: bool,
     if HELPER in wanted:
         raise SpawnRefused("a helper is raised by the session it helps, for one piece of its work: "
                            "`flotilla helper raise --for <branch> --task \"<what>\"`")
-    short = "" if anyway else memory_short(ledger)
+    short = "" if anyway else memory_short(ledger, sum(wanted.values()))
     if short and strict:
-        raise SpawnRefused(short + "; nothing was raised")
+        raise SpawnRefused("; ".join(memory_settings(ledger)[2] + [short]) + "; nothing was raised")
     sessions = _live(census)
     held = _live_posts(ledger, sessions)
     problems = compose.one_copy_problems(wanted, ledger.posts, held)
@@ -133,8 +147,8 @@ def plan(ledger, counts: dict, *, census, store, reserve: bool,
     if (ledger.profile.get("judge") or {}).get("required") and not wanted.get("judge") and not held.get("judge"):
         unwalked.append("the profile requires a judge and the fleet will hold none: shipped rows wait for a walk "
                         "nobody makes; add one (`--post judge=1`)")
-    return seats, ([short] if short else []) + compose.warnings(wanted, ledger.posts, held) + unwalked + \
-        refusals + setup_warnings
+    return seats, memory_settings(ledger)[2] + ([short] if short else []) + \
+        compose.warnings(wanted, ledger.posts, held) + unwalked + refusals + setup_warnings
 
 
 def _git(ledger, *args: str) -> subprocess.CompletedProcess:
@@ -185,13 +199,17 @@ def _find(census, name: str, *, wait: float, poll: float, sleep):
 
 
 def raise_seat(ledger, seat: launch.Seat, *, caller: str, census, wait: float = 30.0, poll: float = 1.0,
-               sleep=time.sleep, base: str = "", fields: dict | None = None, prompt: str = "") -> Raised:
+               sleep=time.sleep, base: str = "", fields: dict | None = None, prompt: str = "",
+               settings_json: str | None = None) -> Raised:
     """Cut the seat's tree (from `base`, else trunk), reserve its post row (with any extra `fields`), launch it
-    (with `prompt` as its first prompt, else the fleet's)."""
+    (with `prompt` as its first prompt, else the fleet's). `settings_json` None asks the plugin list here, so a
+    seat raised by any caller is narrowed (H49); "" is an explicit choice not to narrow."""
     post = ledger.posts[seat.post]
     actor = Actor(seat.name, post, "spawn", caller)
     main = launch.main_checkout(ledger.root, run=ledger.run)
-    command = launch.argv(seat, post, ledger.profile, main=main, first_prompt=prompt)
+    if settings_json is None:
+        settings_json = plugins.narrowing(ledger.run, main).settings_json(post)
+    command = launch.argv(seat, post, ledger.profile, main=main, settings_json=settings_json, first_prompt=prompt)
     base = base or gitq.trunk_ref(ledger.root, ledger.trunk, run=ledger.run)
     if seat.tree.exists() or seat.tree.is_symlink():
         raise SpawnRefused(f"{seat.tree} already exists; {seat.name} was not raised and nothing there was touched")
@@ -243,11 +261,13 @@ def raise_seat(ledger, seat: launch.Seat, *, caller: str, census, wait: float = 
 def spawn(ledger, counts: dict, *, census, store, caller: str, wait: float = 30.0, poll: float = 1.0,
           sleep=time.sleep, anyway: bool = False) -> tuple[list[Raised], list[str]]:
     seats, warnings = plan(ledger, counts, census=census, store=store, reserve=True, anyway=anyway)
+    narrow = plugins.narrowing(ledger.run, launch.main_checkout(ledger.root, run=ledger.run))   # once (H49)
+    warnings = warnings + narrow.warnings([ledger.posts[seat.post] for seat in seats])
     raised: list[Raised] = []
     for seat in seats:
         try:
             raised.append(raise_seat(ledger, seat, caller=caller, census=census, wait=wait, poll=poll,
-                                     sleep=sleep))
+                                     sleep=sleep, settings_json=narrow.settings_json(ledger.posts[seat.post])))
         except SpawnRefused as err:
             if not raised:
                 raise

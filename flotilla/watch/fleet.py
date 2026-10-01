@@ -2,7 +2,8 @@
 
 Four kinds of item, none on a clock: a deviation (a move that cannot happen now), a dropped ball (the move is a
 live session's, it recorded no wait, and the census says it is not working), a move named for a post no live
-session holds, and a break (a session stopped twice while holding a move, and the row has not moved since).
+session holds, and a break (a session stopped twice while holding a move, and the row has not moved since). A
+session in a seat's tree that holds no post is named as not a fleet session and counted nowhere (H7).
 """
 
 from __future__ import annotations
@@ -11,13 +12,14 @@ import datetime as dt
 from pathlib import Path
 
 from flotilla.core.storage import LocalLogStore
+from flotilla.fleet import strangers
 from flotilla.ledger import views
 from flotilla.ledger.model import now_iso
 from flotilla.watch.whose import POST_OF_MOVER, Item, holds_move, since_of
 
 DEVIATION, DROPPED, NOBODY, BREAK, QUESTION, PERSON = ("deviation", "dropped", "nobody", "break", "question",
                                                      "person")
-IDLE, DONE, HELPER = "idle", "done", "helper"
+IDLE, DONE, HELPER, STRANGER = "idle", "done", "helper", "stranger"
 IDLE_SEAT_MINUTES = 60
 SEATS = "seats"
 THE_PERSON = "the person"
@@ -52,7 +54,10 @@ def movers(row, profile: dict, live: set[str], post_of, rows: dict | None = None
 
 def fleet(rows: dict, profile: dict, sessions, *, post_of, breaks=(), asking=(), claimers=frozenset(),
           now: dt.datetime | None = None) -> list[Item]:
+    outside = strangers.in_seat_trees(sessions, rows, post_of)   # in a seat's tree, holding no post (H7)
     by_name = {session.name: session for session in sessions if session.name}
+    for session, _ in outside:
+        by_name.pop(session.name, None)   # counted nowhere a seat is counted
     live = set(by_name)
     found_all = views.deviations(rows, profile, live)
     items = [Item(DEVIATION, found["branch"], f"{found['kind']}: {found['why']}", since_of(rows, found["branch"]),
@@ -89,6 +94,8 @@ def fleet(rows: dict, profile: dict, sessions, *, post_of, breaks=(), asking=(),
             # and a holder of a move already reads as DROPPED with its prompt named
             items.append(Item(PERSON, "", f"{name} waits on the person (census: waiting); answer it in its session",
                               "", who=name))
+    items.extend(Item(STRANGER, "", f"{session.name}: {strangers.label(tree)}", "", who=session.name)
+                 for session, tree in outside)
     items.extend(breaks)
     items.extend(idle_seats(rows, profile, live, post_of, claimers, now))
     items.extend(drained(rows, live))

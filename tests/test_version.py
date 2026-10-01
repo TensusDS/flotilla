@@ -85,3 +85,11 @@ def test_a_directory_that_is_not_a_repository_is_refused_without_a_traceback(tmp
     (root / ".claude-plugin" / "plugin.json").write_text('{"version": "1.2.3"}\n', encoding="utf-8")
     assert check_version.main(root) == 1
     assert "tag v1.2.3" in capsys.readouterr().err
+
+
+def test_without_git_installed_it_says_so_without_a_traceback(tmp_path, capsys, monkeypatch):
+    root = plugin_repo(tmp_path)
+    monkeypatch.setenv("PATH", str(tmp_path / "no-programs-here"))
+    assert check_version.main(root) == 1
+    err = capsys.readouterr().err
+    assert "git" in err and "could not be run" in err and "Traceback" not in err

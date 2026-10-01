@@ -252,7 +252,7 @@ def test_the_floor_comes_from_the_profile_and_unknown_memory_does_not_refuse(tmp
     fake = FakeClaude()
     root, ledger, store = world(tmp_path, fake)
     ledger.profile = {**ledger.profile, "fleet": {**(ledger.profile.get("fleet") or {}), "memory_floor_mb": 500}}
-    monkeypatch.setattr(spawn, "available_mb", lambda: 700)
+    monkeypatch.setattr(spawn, "available_mb", lambda: 1400)   # one seat at 800 MB leaves 600, over 500
     assert spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False)[0]
     monkeypatch.setattr(spawn, "available_mb", lambda: None)
     ledger.profile = {**ledger.profile, "fleet": {"memory_floor_mb": 99999}}
@@ -266,3 +266,92 @@ def test_available_mb_reads_meminfo(tmp_path):
     assert spawn.read_available_mb(tmp_path / "absent") is None
     (tmp_path / "odd").write_text("MemTotal: 1 kB\n", encoding="utf-8")
     assert spawn.read_available_mb(tmp_path / "odd") is None
+
+
+def mcp_plugin(tmp_path, plugin_id, **more):
+    folder = tmp_path / "plugin-cache" / plugin_id.split("@")[0]
+    folder.mkdir(parents=True)
+    (folder / ".mcp.json").write_text('{"mcpServers": {"s": {"command": "s"}}}', encoding="utf-8")
+    return {"id": plugin_id, "scope": "user", "enabled": True, "installPath": str(folder), **more}
+
+
+def settings_of(command):
+    import json
+    return json.loads(command[command.index("--settings") + 1]) if "--settings" in command else None
+
+
+def test_each_seat_starts_only_the_mcp_plugins_its_post_declares(tmp_path):
+    entries = [mcp_plugin(tmp_path, "playwright@claude-plugins-official"), mcp_plugin(tmp_path, "serena@official"),
+               mcp_plugin(tmp_path, "pdf@synced", scope="project", projectPath=str(tmp_path / "app")),
+               mcp_plugin(tmp_path, "flotilla@flotilla")]
+    fake = FakeClaude(plugin_entries=entries)
+    root, ledger, store = world(tmp_path, fake)
+    raised, warnings = run(ledger, store, fake, {"review": 1, "judge": 1})
+    by_name = {cmd[3]: settings_of(cmd) for cmd in fake.launched}
+    assert by_name["review session 1"] == {"enabledPlugins": {
+        "pdf@synced": False, "playwright@claude-plugins-official": False, "serena@official": False}}
+    assert by_name["acceptance judge 1"] == {"enabledPlugins": {"pdf@synced": False, "serena@official": False}}
+    assert fake.plugin_lists == [str(root.resolve())] and warnings == []
+
+
+def test_a_plugin_list_that_fails_spawns_anyway_without_settings_and_warns(tmp_path):
+    fake = FakeClaude(plugin_list_fails=True)
+    root, ledger, store = world(tmp_path, fake)
+    raised, warnings = run(ledger, store, fake, {"main": 1})
+    assert raised[0].short_id and "--settings" not in fake.launched[0]
+    assert any("plugin set not narrowed" in line for line in warnings)
+
+
+def test_a_declared_plugin_that_is_not_installed_is_warned_at_spawn(tmp_path):
+    fake = FakeClaude(plugin_entries=[mcp_plugin(tmp_path, "serena@official")])
+    root, ledger, store = world(tmp_path, fake)
+    raised, warnings = run(ledger, store, fake, {"judge": 1})
+    assert settings_of(fake.launched[0]) == {"enabledPlugins": {"serena@official": False}}
+    assert [line for line in warnings if "playwright@claude-plugins-official" in line and "not installed" in line]
+
+
+def fleet_profile(ledger, **fleet):
+    ledger.profile = {**ledger.profile, "fleet": {**(ledger.profile.get("fleet") or {}), **fleet}}
+
+
+@pytest.mark.parametrize("value", ["lots", True, -1, 1.5])
+def test_a_fleet_floor_that_is_not_a_whole_number_falls_back_and_says_so(tmp_path, monkeypatch, value):
+    fake = FakeClaude()
+    root, ledger, store = world(tmp_path, fake)
+    fleet_profile(ledger, memory_floor_mb=value)
+    monkeypatch.setattr(spawn, "available_mb", lambda: 9000)
+    seats, warnings = spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False)
+    assert seats and [line for line in warnings if "fleet.memory_floor_mb" in line and "not a whole number" in line
+                      and "2000 MB" in line]
+    monkeypatch.setattr(spawn, "available_mb", lambda: None)   # memory unknown: still no crash, still said
+    seats, warnings = spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False)
+    assert seats and [line for line in warnings if "not a whole number" in line]
+
+
+def test_the_floor_check_counts_every_seat_about_to_be_raised(tmp_path, monkeypatch):
+    fake = FakeClaude()
+    root, ledger, store = world(tmp_path, fake)
+    monkeypatch.setattr(spawn, "available_mb", lambda: 4000)
+    assert spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False)[0]   # 4000 - 800 >= 2000
+    with pytest.raises(spawn.SpawnRefused, match=r"4000 MB.*3 seat\(s\).*800 MB.*1600 MB.*2000 MB"):
+        spawn.plan(ledger, {"main": 3}, census=fake.census, store=store, reserve=False)
+    fleet_profile(ledger, seat_cost_mb=100)
+    assert len(spawn.plan(ledger, {"main": 3}, census=fake.census, store=store, reserve=False)[0]) == 3
+
+
+def test_a_seat_cost_that_is_not_a_whole_number_falls_back_and_says_so(tmp_path, monkeypatch):
+    fake = FakeClaude()
+    root, ledger, store = world(tmp_path, fake)
+    fleet_profile(ledger, seat_cost_mb="heavy")
+    monkeypatch.setattr(spawn, "available_mb", lambda: 9000)
+    seats, warnings = spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False)
+    assert seats and [line for line in warnings if "fleet.seat_cost_mb" in line and "800 MB" in line]
+
+
+def test_a_seat_raised_directly_is_narrowed_too(tmp_path):
+    fake = FakeClaude(plugin_entries=[mcp_plugin(tmp_path, "serena@official")])
+    root, ledger, store = world(tmp_path, fake)
+    seats, _ = spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=True)
+    spawn.raise_seat(ledger, seats[0], caller=CALLER, census=fake.census, wait=0.2, poll=0.05,
+                     sleep=lambda seconds: None)
+    assert settings_of(fake.launched[0]) == {"enabledPlugins": {"serena@official": False}}
