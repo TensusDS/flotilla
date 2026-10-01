@@ -5,7 +5,8 @@ state, whether its tree is still there and still locked; after them, any session
 post, named as not a fleet session (H7). Retire stops the session and waits for the census to
 agree, unlocks the tree, and releases the post row. It deletes nothing: before it reports, it counts the tree's
 uncommitted files and lists every open row the session still owns, which are now orphaned and wait for `adopt`.
-A retire that cannot tell whether the session runs does nothing.
+A retire that cannot tell whether the session runs does nothing. Once the session is stopped, the processes it left
+running detached in its tree (a dev server, a browser) are stopped too (H50).
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ import time
 from pathlib import Path
 
 from flotilla.core.census import CensusUnavailable
-from flotilla.fleet import strangers
+from flotilla.fleet import leftovers, strangers
 from flotilla.ledger import core
 from flotilla.ledger.actor import Actor
 from flotilla.ledger.errors import MoveRefused
@@ -120,6 +121,7 @@ def retire(ledger, name: str, *, caller: str, census, wait: float = 60.0, poll: 
                 raise RetireRefused(f"`{name}` is still running {wait:g} s after `claude stop`; nothing was released")
             sleep(poll)
             waited += poll
+    left = _stop_leftovers(row.tree, census)
     ledger.run(["git", "-C", str(ledger.root), "worktree", "unlock", row.tree], capture_output=True, text=True,
                check=False)
     try:
@@ -141,11 +143,30 @@ def retire(ledger, name: str, *, caller: str, census, wait: float = 60.0, poll: 
         uncommitted = f", {dirty} uncommitted file{'s' if dirty != 1 else ''}" if dirty else ""
         lines.append(f"its tree is kept at {row.tree}{uncommitted}; remove it with `git worktree remove "
                      f"{row.tree}` once nothing in it is needed")
+    lines += left
     for other in ledger.rows().values():
         if other.is_open and other.owner == name and other.state != "reserved":
             lines.append(f"orphaned: `{other.branch}` ({other.state}); hand it on with `flotilla work adopt "
                          f"{other.branch} --to \"<session>\"`")
     return lines
+
+
+def _stop_leftovers(tree: str, census) -> list[str]:
+    """Stop what the session left running detached in its tree (H50); live sessions' processes are spared."""
+    if not tree or not Path(tree).is_dir():
+        return []
+    try:
+        keep = {item.pid for item in census() if item.pid}
+    except CensusUnavailable:
+        return [f"background processes in {tree} were not looked for: the census could not be asked"]
+    found = leftovers.in_tree(tree, keep=keep)
+    if found is None:
+        return [f"background processes in {tree} were not looked for: this machine has no /proc"]
+    if not found:
+        return []
+    count = leftovers.stop(found)
+    names = ", ".join(item.command[:60] for item in found[:5]) + (", ..." if len(found) > 5 else "")
+    return [f"stopped {count} background process{'es' if count != 1 else ''} left in {tree}: {names}"]
 
 
 def down(ledger, *, caller: str, me: str, census, wait: float = 60.0, poll: float = 1.0,

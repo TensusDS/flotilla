@@ -722,3 +722,12 @@ implementers (main sessions 8–14; 13 and 14 raised at ~22:36). Fix direction: 
 an MCP configuration per post (`--strict-mcp-config` with the servers the post declares, e.g. the judge's browser),
 and onboarding names the user-scope plugins whose hooks run in every seat; the sizing rule of H47 counts a seat at
 its real cost (~0.8 GB with its servers), not the session's.
+
+H50. **gap — a retired session's detached processes outlive it.** At ~00:22 on 2026-10-01, 27 `vite` dev servers
+were alive with no session behind them: each was started detached (`nohup ... &`) by a session that had since been
+retired or had died, was re-parented to pid 1, and kept its memory with nobody to stop it. Retire stopped the session
+and released its seat, and nothing looked at what the session had left running in its tree. Measured on this
+machine: a process detached by `nohup ... &` or `setsid` from a session's shell is re-parented to pid 1 (there is no
+subreaper), and a background Claude session runs under its own pty host, so "has no terminal" does not tell a
+person's process from a session's. Fixed in 0.3.1: retire stops the orphans (parent pid 1) working in the seat's tree,
+with everything under them, and spares a subtree that holds a terminal or a live census session.

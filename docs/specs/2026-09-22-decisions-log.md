@@ -743,6 +743,19 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    parent row has no live owner). (planner's decision, field fixes part 8 track A, 2026-10-01)
 164. **Reading and research stay with in-session subagents**; a helper session is for work that edits files
    (H40). (planner's decision, field fixes part 8 track A, 2026-10-01)
+165. **Retire stops what the session left running detached in its tree** (H50): after the session has left the
+   census, the processes whose working directory is inside the seat's tree and whose parent is pid 1 are sent
+   SIGTERM, each with every process under it. An orphan is the mark, not the tree alone: a person's shell or
+   anything a live process still owns has a living parent and is left. (planner's decision, release 0.3.1,
+   2026-10-01)
+166. **An orphan that serves a terminal or a live session is spared**: a subtree holding a process with a controlling
+   terminal (a `tmux` server started in the tree), a live census session, or the process running the retire is left
+   running. A terminal alone does not mark a person's process, since background sessions run under a pty host; that
+   is why the test is on the subtree of an orphan. (planner's decision, release 0.3.1, 2026-10-01)
+167. **Where there is no procfs the leftovers are not looked for, and retire says so**; it never guesses through
+   `ps`. A detached process of another session that worked in this seat's tree is stopped with it: a tree is its
+   seat's home, and a session that works in another's tree starts its servers there at its own risk. (planner's
+   decision, release 0.3.1, 2026-10-01)
 
 ## Open questions (for the foundation spec)
 

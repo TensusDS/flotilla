@@ -19,3 +19,9 @@ def memory_is_not_this_machines(monkeypatch):
     """The lane asks memory; a test's lane must not close because the machine running the suite is short of it."""
     monkeypatch.setattr("flotilla.lane.machine._meminfo", lambda: None)
     monkeypatch.setattr("flotilla.lane.machine._memtotal", lambda: None)
+
+
+@pytest.fixture(autouse=True)
+def no_real_process_is_stopped(tmp_path, monkeypatch):
+    """Retire stops orphans it finds in /proc; no test may look at, or signal, this machine's processes."""
+    monkeypatch.setattr("flotilla.fleet.leftovers.PROC_ROOT", tmp_path / "no-proc-in-tests")

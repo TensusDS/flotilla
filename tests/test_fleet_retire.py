@@ -198,3 +198,18 @@ def test_retire_frees_the_branch_the_dead_seats_tree_held(tmp_path):
     core.claim(ledger, actor(ledger, "main session 1"), "feat/x", tree=str(tree))
     do_retire(ledger, fake)
     assert git(tree, "rev-parse", "--abbrev-ref", "HEAD") == "HEAD"   # H36 through retire
+
+
+def test_retire_stops_the_background_processes_the_session_left_in_its_tree(tmp_path, monkeypatch):
+    from test_fleet_leftovers import fake_proc
+    fake = FakeClaude()
+    root, ledger, seat = raised_world(tmp_path, fake)
+    proc = tmp_path / "proc"
+    fake_proc(proc, 500, ppid=1, cwd=seat.seat.tree, command="node vite")
+    fake_proc(proc, 501, ppid=1, cwd=tmp_path, command="node vite")
+    monkeypatch.setattr("flotilla.fleet.leftovers.PROC_ROOT", proc)
+    sent = []
+    monkeypatch.setattr("flotilla.fleet.leftovers.os.kill", lambda pid, sig: sent.append(pid))
+    lines = "\n".join(do_retire(ledger, fake))
+    assert sent == [500]
+    assert f"stopped 1 background process left in {seat.seat.tree}: node vite" in lines
