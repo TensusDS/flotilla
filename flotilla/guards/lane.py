@@ -5,7 +5,9 @@ one kept off the machine. This guard tells the session starting such a run how t
 way the lane knows it, by its program and never by a word in its arguments (`machine.program_of`): a segment whose
 program, behind a launcher (`uv run`, `npx`, ...), is one of the project's tier commands or matches a lane run
 pattern. `flotilla lane run ...` and `flotilla receipt run ...` book the lane themselves, and are programs of their
-own, so they are never matched. A warning, because refusing an ordinary test run would cost more than the wait.
+own, so they are never matched; nor are a line of a quoted string (a commit message), a version or help question
+(`pytest --version`) and a tool's setup (`npx playwright install`). A warning, because refusing an ordinary test
+run would cost more than the wait.
 """
 
 from __future__ import annotations
@@ -26,6 +28,10 @@ VALUE_OPTIONS = frozenset({"--with", "--with-editable", "--with-requirements", "
                            "--signal", "-k", "--kill-after", "-e", "--env"})
 #: `npm run <script>` names the script; the verb alone would match every script (`npm run dev`).
 SCRIPT_RUNNERS = frozenset({"npm", "pnpm", "yarn", "bun"})
+#: Words that make a run program answer a question and exit instead of running (`pytest --version`).
+QUESTIONS = frozenset({"--version", "-V", "--help", "-h"})
+#: "program first-word" names that set a tool up rather than run it (`npx playwright install chromium`).
+SETUP = frozenset({"playwright install", "playwright install-deps", "playwright uninstall"})
 
 
 def is_on(profile: dict) -> bool:
@@ -96,11 +102,23 @@ def booking(segment, command: str) -> str:
     return f"flotilla lane run --for <branch> -- {run}"
 
 
+def _inside_quotes(segment, command: str) -> bool:
+    """Whether the segment is a line cut out of a quoted string (a commit message's body), not a command: the shell's
+    own split, which reads quotes and heredocs whole, has no part with its text."""
+    from flotilla.guards import shell
+    if not command:
+        return False
+    parts = {part.strip() for part in shell._split_outside_quotes(shell.without_heredoc_bodies(command))}
+    return segment.text.strip() not in parts
+
+
 def check(segment, profile: dict, command: str = "") -> Finding | None:
     from flotilla.lane.machine import patterns_for
     names = run_names(segment.words)
-    if not names or os.path.basename(segment.words[0]) == "flotilla":
+    if not names or os.path.basename(segment.words[0]) == "flotilla" or _inside_quotes(segment, command):
         return None
+    if QUESTIONS & set(_unwrap(list(segment.words))[1:]) or names[-1] in SETUP:
+        return None   # a version, a help text or an install: over in seconds
     patterns = [re.compile(pattern) for pattern in patterns_for(profile)]
     if not (set(names) & _tier_keys(profile) or any(regex.fullmatch(name) for regex in patterns for name in names)):
         return None

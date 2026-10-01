@@ -252,7 +252,7 @@ def test_the_floor_comes_from_the_profile_and_unknown_memory_does_not_refuse(tmp
     fake = FakeClaude()
     root, ledger, store = world(tmp_path, fake)
     ledger.profile = {**ledger.profile, "fleet": {**(ledger.profile.get("fleet") or {}), "memory_floor_mb": 500}}
-    monkeypatch.setattr(spawn, "available_mb", lambda: 700)
+    monkeypatch.setattr(spawn, "available_mb", lambda: 1400)   # one seat at 800 MB leaves 600, over 500
     assert spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False)[0]
     monkeypatch.setattr(spawn, "available_mb", lambda: None)
     ledger.profile = {**ledger.profile, "fleet": {"memory_floor_mb": 99999}}
@@ -308,3 +308,41 @@ def test_a_declared_plugin_that_is_not_installed_is_warned_at_spawn(tmp_path):
     raised, warnings = run(ledger, store, fake, {"judge": 1})
     assert settings_of(fake.launched[0]) == {"enabledPlugins": {"serena@official": False}}
     assert [line for line in warnings if "playwright@claude-plugins-official" in line and "not installed" in line]
+
+
+def fleet_profile(ledger, **fleet):
+    ledger.profile = {**ledger.profile, "fleet": {**(ledger.profile.get("fleet") or {}), **fleet}}
+
+
+@pytest.mark.parametrize("value", ["lots", True, -1, 1.5])
+def test_a_fleet_floor_that_is_not_a_whole_number_falls_back_and_says_so(tmp_path, monkeypatch, value):
+    fake = FakeClaude()
+    root, ledger, store = world(tmp_path, fake)
+    fleet_profile(ledger, memory_floor_mb=value)
+    monkeypatch.setattr(spawn, "available_mb", lambda: 9000)
+    seats, warnings = spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False)
+    assert seats and [line for line in warnings if "fleet.memory_floor_mb" in line and "not a whole number" in line
+                      and "2000 MB" in line]
+    monkeypatch.setattr(spawn, "available_mb", lambda: None)   # memory unknown: still no crash, still said
+    seats, warnings = spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False)
+    assert seats and [line for line in warnings if "not a whole number" in line]
+
+
+def test_the_floor_check_counts_every_seat_about_to_be_raised(tmp_path, monkeypatch):
+    fake = FakeClaude()
+    root, ledger, store = world(tmp_path, fake)
+    monkeypatch.setattr(spawn, "available_mb", lambda: 4000)
+    assert spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False)[0]   # 4000 - 800 >= 2000
+    with pytest.raises(spawn.SpawnRefused, match=r"4000 MB.*3 seat\(s\).*800 MB.*1600 MB.*2000 MB"):
+        spawn.plan(ledger, {"main": 3}, census=fake.census, store=store, reserve=False)
+    fleet_profile(ledger, seat_cost_mb=100)
+    assert len(spawn.plan(ledger, {"main": 3}, census=fake.census, store=store, reserve=False)[0]) == 3
+
+
+def test_a_seat_cost_that_is_not_a_whole_number_falls_back_and_says_so(tmp_path, monkeypatch):
+    fake = FakeClaude()
+    root, ledger, store = world(tmp_path, fake)
+    fleet_profile(ledger, seat_cost_mb="heavy")
+    monkeypatch.setattr(spawn, "available_mb", lambda: 9000)
+    seats, warnings = spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False)
+    assert seats and [line for line in warnings if "fleet.seat_cost_mb" in line and "800 MB" in line]

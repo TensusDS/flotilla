@@ -113,6 +113,28 @@ def test_a_booked_run_or_a_mention_is_not_warned_about(tmp_path, monkeypatch, co
     assert answer is None or "flotilla lane run" not in answer.get("additionalContext", "")
 
 
+@pytest.mark.parametrize("command", ["git commit -m 'npm test passes'",
+                                     'git commit -m "fix the tier\n\nnpm test passes now"',
+                                     "git commit -m 'first line\npytest -q is green'",
+                                     'git commit -m "title" -m "uv run pytest passes"',
+                                     "git commit -q -F - <<'EOF'\nfix\n\npytest -q passes\nEOF",
+                                     'git commit -m "fix\n\nuv run pytest -q\n\nmore"',
+                                     "git commit -m 'fix\nnpm test\nok'",
+                                     'git commit -m "fix\n\npytest -q passes;\nnpm test too"',
+                                     "pytest --version", "uv run pytest --version", "npx playwright install",
+                                     "npx playwright install chromium", "playwright install --with-deps"])
+def test_text_in_a_commit_message_and_tool_setup_are_not_warned_about(tmp_path, monkeypatch, command):
+    root = onboarded(tmp_path, extra=NPM_TIER)
+    answer = ask(root, command, monkeypatch, tmp_path)
+    assert answer is None or "flotilla lane run" not in answer.get("additionalContext", ""), answer
+
+
+def test_a_real_run_after_a_commit_is_still_warned_about(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, extra=NPM_TIER)
+    answer = ask(root, "git commit -m 'wip' && npx playwright test", monkeypatch, tmp_path)
+    assert answer is not None and answer["additionalContext"].count("flotilla lane run --for") == 1
+
+
 def test_the_lane_guard_is_off_when_the_profile_says_so(tmp_path, monkeypatch):
     root = onboarded(tmp_path, extra=NPM_TIER, off=("lane",))
     assert ask(root, "npm test", monkeypatch, tmp_path) is None

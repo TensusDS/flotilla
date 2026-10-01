@@ -94,29 +94,37 @@ def _memtotal() -> int | None:
     return read_meminfo(MEMINFO, "MemTotal")
 
 
-def memory_floor_mb(profile: dict, total_kb: int | None = None) -> int:
+def memory_floor(profile: dict, total_kb: int | None = None) -> tuple[int, str]:
     """The profile's floor; without one, 1500 MB, or a quarter of the machine where that is less, so a small
-    machine's lane is not closed by its ordinary state."""
-    value = (profile.get("lane") or {}).get("memory_floor_mb")
-    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
-        return value
-    return min(MEMORY_FLOOR_MB, total_kb // 1024 // 4) if total_kb else MEMORY_FLOOR_MB
+    machine's lane is not closed by its ordinary state. A floor that is not a whole number gives that default, and
+    the note says so."""
+    from flotilla.core.config import whole_number
+    default = min(MEMORY_FLOOR_MB, total_kb // 1024 // 4) if total_kb else MEMORY_FLOOR_MB
+    lane = profile.get("lane") or {}
+    if "memory_floor_mb" not in lane:
+        return default, ""
+    return whole_number(lane["memory_floor_mb"], default, "[lane] memory_floor_mb")
+
+
+def memory_floor_mb(profile: dict, total_kb: int | None = None) -> int:
+    return memory_floor(profile, total_kb)[0]
 
 
 def memory(profile: dict, meminfo, memtotal=None) -> Answer:
     """Low memory holds the lane: a run started under pressure is killed, booked or not (field test H41). Memory
     that cannot be asked opens it, because an unknown that waiting cannot change would close the lane for ever."""
-    floor = memory_floor_mb(profile, (memtotal or _memtotal)())
+    floor, note = memory_floor(profile, (memtotal or _memtotal)())
+    said = f"; {note}" if note else ""
     if floor == 0:
         return Answer("memory", False, "memory not asked: `[lane] memory_floor_mb = 0`")
     available = meminfo()
     if available is None:
-        return Answer("memory", False, "memory not asked on this platform (no MemAvailable in /proc/meminfo)")
+        return Answer("memory", False, f"memory not asked on this platform (no MemAvailable in /proc/meminfo){said}")
     megabytes = available // 1024
     if available < floor * 1024:
         return Answer("memory", True, f"{megabytes} MB available, under the floor of {floor} MB "
-                                      f"(`[lane] memory_floor_mb`); a run started now may be killed")
-    return Answer("memory", False, f"{megabytes} MB available (floor {floor} MB)")
+                                      f"(`[lane] memory_floor_mb`); a run started now may be killed{said}")
+    return Answer("memory", False, f"{megabytes} MB available (floor {floor} MB){said}")
 
 
 def foreign_runs(table, patterns, exclude: set[int]) -> list | None:

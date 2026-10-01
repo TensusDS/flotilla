@@ -23,6 +23,15 @@ def _git(root: Path, *args: str) -> subprocess.CompletedProcess:
 
 
 def main(root: Path | None = None) -> int:
+    try:
+        return _check(root)
+    except OSError as error:   # git not installed, or not runnable here
+        print(f"git could not be run ({error}): this check compares the plugin with its release tag and needs git",
+              file=sys.stderr)
+        return 1
+
+
+def _check(root: Path | None) -> int:
     root = Path.cwd() if root is None else Path(root)
     try:
         version = json.loads((root / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))["version"]

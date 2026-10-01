@@ -39,6 +39,7 @@ class Raised:
 
 
 MEMORY_FLOOR_MB = 2000
+SEAT_COST_MB = 800   # a seat with its MCP servers, as measured in the twosuns run (H49)
 MEMINFO = Path("/proc/meminfo")
 
 
@@ -59,16 +60,28 @@ def available_mb() -> int | None:
     return read_available_mb()
 
 
-def memory_short(ledger) -> str:
-    """Why a new seat should not be raised into this machine now, or "" (H47, H9: the daemon retires idle seats
-    under low memory, and a new seat takes the readers' place)."""
-    floor = int((ledger.profile.get("fleet") or {}).get("memory_floor_mb", MEMORY_FLOOR_MB))
+def memory_settings(ledger) -> tuple[int, int, list[str]]:
+    """(floor, cost of one seat, notes): each a whole number of MB from `[fleet]`, or its default with a note."""
+    from flotilla.core.config import whole_number
+    fleet = ledger.profile.get("fleet") or {}
+    floor, floor_note = whole_number(fleet.get("memory_floor_mb", MEMORY_FLOOR_MB), MEMORY_FLOOR_MB,
+                                     "fleet.memory_floor_mb")
+    cost, cost_note = whole_number(fleet.get("seat_cost_mb", SEAT_COST_MB), SEAT_COST_MB, "fleet.seat_cost_mb")
+    return floor, cost, [note for note in (floor_note, cost_note) if note]
+
+
+def memory_short(ledger, seats: int = 1) -> str:
+    """Why `seats` new seats should not be raised into this machine now, or "" (H47, H9: the daemon retires idle
+    seats under low memory, and a new seat takes the readers' place). Each seat is counted at its cost with its MCP
+    servers (`fleet.seat_cost_mb`), not the free memory once."""
+    floor, cost, _ = memory_settings(ledger)
     free = available_mb()
-    if free is None or not floor or free >= floor:
+    left = None if free is None else free - seats * cost
+    if left is None or not floor or left >= floor:
         return ""
-    return (f"{free} MB of memory is available, under the {floor} MB floor (fleet.memory_floor_mb): a new seat "
-            "here makes the daemon retire idle ones, readers first; retire an idle seat first, or raise it with "
-            "--anyway")
+    return (f"{free} MB of memory is available, and {seats} seat(s) at ~{cost} MB each (fleet.seat_cost_mb) "
+            f"leave {left} MB, under the {floor} MB floor (fleet.memory_floor_mb): a new seat here makes the daemon "
+            "retire idle ones, readers first; retire an idle seat first, raise fewer, or raise them with --anyway")
 
 
 def _live(census) -> list:
@@ -98,9 +111,9 @@ def plan(ledger, counts: dict, *, census, store, reserve: bool,
         raise SpawnRefused(str(err)) from err
     if not wanted:
         raise SpawnRefused("name a composition, for example -r 1 -M 1, or use --default")
-    short = "" if anyway else memory_short(ledger)
+    short = "" if anyway else memory_short(ledger, sum(wanted.values()))
     if short and strict:
-        raise SpawnRefused(short + "; nothing was raised")
+        raise SpawnRefused("; ".join(memory_settings(ledger)[2] + [short]) + "; nothing was raised")
     sessions = _live(census)
     held = _live_posts(ledger, sessions)
     problems = compose.one_copy_problems(wanted, ledger.posts, held)
@@ -130,8 +143,8 @@ def plan(ledger, counts: dict, *, census, store, reserve: bool,
     if (ledger.profile.get("judge") or {}).get("required") and not wanted.get("judge") and not held.get("judge"):
         unwalked.append("the profile requires a judge and the fleet will hold none: shipped rows wait for a walk "
                         "nobody makes; add one (`--post judge=1`)")
-    return seats, ([short] if short else []) + compose.warnings(wanted, ledger.posts, held) + unwalked + \
-        refusals + setup_warnings
+    return seats, memory_settings(ledger)[2] + ([short] if short else []) + \
+        compose.warnings(wanted, ledger.posts, held) + unwalked + refusals + setup_warnings
 
 
 def _git(ledger, *args: str) -> subprocess.CompletedProcess:

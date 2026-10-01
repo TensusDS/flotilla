@@ -1,6 +1,8 @@
 import json
 import subprocess
 
+import pytest
+
 from flotilla.core.storage import LocalLogStore
 from flotilla.lane import book, machine
 from flotilla.lane.procs import Proc
@@ -285,3 +287,17 @@ def test_meminfo_reads_mem_total_too(tmp_path):
     good = tmp_path / "good"
     good.write_text("MemTotal:       16000000 kB\nMemAvailable:    9650000 kB\n", encoding="utf-8")
     assert machine.read_meminfo(good, "MemTotal") == 16000000
+
+
+@pytest.mark.parametrize("value", ["lots", "1.5 GB", True, -5, 2.5])
+def test_a_floor_that_is_not_a_whole_number_falls_back_and_says_so(tmp_path, value):
+    answer = memory(tmp_path, 900000, {"lane": {"memory_floor_mb": value}})
+    assert answer.blocks is True and "1500 MB" in answer.text
+    assert "`[lane] memory_floor_mb`" in answer.text and "not a whole number" in answer.text
+    unknown = memory(tmp_path, None, {"lane": {"memory_floor_mb": value}})
+    assert unknown.blocks is False and "not a whole number" in unknown.text
+
+
+def test_a_floor_written_as_digits_in_quotes_is_read_as_its_number(tmp_path):
+    answer = memory(tmp_path, 3000000, {"lane": {"memory_floor_mb": "4000"}})
+    assert answer.blocks is True and "4000 MB" in answer.text and "not a whole number" not in answer.text

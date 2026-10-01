@@ -55,3 +55,14 @@ def load_project(root: Path) -> Project:
         raise ConfigError(f"{path}: schema {schema} is newer than this flotilla understands "
                           f"({SUPPORTED_SCHEMA}); update the plugin")
     return Project(root=Path(root), path=path, schema=schema, data=data)
+
+
+def whole_number(value, default: int, key: str) -> tuple[int, str]:
+    """A setting that must be a whole number of at least 0: (the value to use, a note when it falls back). Digits in
+    quotes count as their number; anything else (a word, a fraction, a negative, true or false) gives the default
+    and says so, never an exception."""
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value, ""
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip()), ""
+    return default, f"`{key}` = {value!r} is not a whole number of MB; the default {default} MB is used"
