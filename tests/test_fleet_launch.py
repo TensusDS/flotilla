@@ -100,3 +100,9 @@ def test_a_post_may_narrow_the_profiles_permission_mode_never_widen_it():
                                   dataclasses.replace(main, permission_mode="acceptEdits")) == "acceptEdits"
     assert launch.permission_mode({"permissions": {"mode": "ask"}},
                                   dataclasses.replace(main, permission_mode="plan")) == "plan"
+
+
+def test_a_posts_default_mode_is_the_asking_mode():
+    import dataclasses
+    post = dataclasses.replace(POSTS["main"], permission_mode="default")
+    assert launch.permission_mode({"permissions": {"mode": "ask"}}, post) == "default"

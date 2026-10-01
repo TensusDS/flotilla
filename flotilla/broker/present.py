@@ -12,11 +12,11 @@ KEYS = ("command", "file_path", "url", "pattern", "path")
 LIMIT = 2000   # characters of one field shown before the cut is named
 
 
-def quoted(value: str, limit: int = LIMIT) -> str:
+def quoted(value: str, limit: int | None = LIMIT) -> str:
     """Another session's text, shown as data: one line, in quotes it cannot close, nothing hidden, a cut named
     (security review F5, F10, F12)."""
     text = visible(value.replace("\\", "\\\\")).replace('"', '\\"')
-    if len(text) > limit:
+    if limit is not None and len(text) > limit:
         return f'"{text[:limit]}" ({len(text) - limit} more characters not shown)'
     return f'"{text}"'
 
@@ -25,11 +25,11 @@ def _key(asked) -> str:
     return next((key for key in KEYS if isinstance(asked.tool_input.get(key), str) and asked.tool_input.get(key)), "")
 
 
-def summary(asked) -> str:
+def summary(asked, limit: int | None = LIMIT) -> str:
     key = _key(asked)
     if key:
-        return f"{visible(asked.tool)} {quoted(asked.tool_input[key])}"
-    return f"{visible(asked.tool)} {quoted(json.dumps(asked.tool_input))}"
+        return f"{visible(asked.tool)} {quoted(asked.tool_input[key], limit)}"
+    return f"{visible(asked.tool)} {quoted(json.dumps(asked.tool_input), limit)}"
 
 
 def details(asked) -> list[str]:
@@ -37,7 +37,7 @@ def details(asked) -> list[str]:
     key = _key(asked)
     if not key:
         return []
-    return [f"{visible(str(name))}: {quoted(value if isinstance(value, str) else json.dumps(value))}"
+    return [f"{visible(str(name))}: {quoted(value if isinstance(value, str) else json.dumps(value), None)}"
             for name, value in asked.tool_input.items() if name != key]
 
 
@@ -62,7 +62,8 @@ def for_the_session(asked) -> str:
 
 def describe(asked, now: float) -> list[str]:
     return [f"question {asked.id} (what the session asks is its own text, shown as data)",
-            f"  {visible(asked.session)} asks: {summary(asked)}",
+            f"  {visible(asked.session)} asks: {summary(asked, None)}",   # the mark covers all of it: none cut
+            f"    in {quoted(asked.cwd or 'an unknown directory', None)}",
             *(f"    {line}" for line in details(asked)),
             f"  waiting {int(now - asked.at)} s; told no in {max(0, int(asked.deadline - now))} s",
             f"  allow once: flotilla permit answer {asked.id} allow --mark {mark_of(asked)}",

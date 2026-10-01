@@ -16,7 +16,7 @@ from pathlib import Path
 MOVES = ("reserve", "claim", "hand", "moved", "fix", "assign", "recuse", "take", "accept", "queue", "land",
          "inbatch", "ship", "walked", "broke", "unbroke", "close", "release", "offledger", "wait", "hold",
          "unhold", "adopt", "urgent", "walkable", "vouch", "return")
-PERMISSION_MODES = ("acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan")
+PERMISSION_MODES = ("acceptEdits", "auto", "bypassPermissions", "default", "manual", "dontAsk", "plan")
 TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates" / "posts"
 POSTS_DIR = Path(".flotilla") / "posts"
 

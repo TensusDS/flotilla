@@ -118,7 +118,8 @@ def _wait(payload, ctx, *, clock, sleep, timer, poll, started, parent, pid) -> d
     home = parent()
     asked = queue.ask(state, ctx.ledger.repo_key, session=ctx.me.name, session_id=ctx.me.session_id,
                       tool=str(payload.get("tool_name") or ""), tool_input=tool_input, suggestions=suggestions,
-                      wait=max(0.0, ends - timer()), now=clock(), pid=pid)
+                      wait=max(0.0, ends - timer()), now=clock(), pid=pid,
+                      cwd=str(payload.get("cwd") or ctx.me.cwd or ""))
     while True:
         got = queue.answer_of(state, key, asked.id)
         if got is not None:

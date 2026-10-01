@@ -52,7 +52,7 @@ def seat_for(main: Path, post, name: str) -> Seat:
 
 
 #: How much a mode lets a session do without a person; a post may narrow the profile's mode, never widen it (F6).
-WIDTH = {"plan": 0, "manual": 1, "dontAsk": 1, "acceptEdits": 2, "auto": 3}
+WIDTH = {"plan": 0, "default": 1, "manual": 1, "dontAsk": 1, "acceptEdits": 2, "auto": 3}
 
 
 def permission_mode(profile: dict, post) -> str:

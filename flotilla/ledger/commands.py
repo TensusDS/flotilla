@@ -68,6 +68,17 @@ def _show_file(root: Path, sha: str, path: str) -> str:
     return done.stdout
 
 
+def _trunk_named_on(root: Path, ref: str) -> str:
+    """The trunk the profile committed on `ref` names, or "" when it carries none."""
+    import tomllib
+    shown = subprocess.run(["git", "-C", str(root), "show", f"{ref}:.flotilla/project.toml"], capture_output=True,
+                           text=True, check=False)
+    try:
+        return (tomllib.loads(shown.stdout).get("trunk") or {}).get("branch", "main") if shown.returncode == 0 else ""
+    except tomllib.TOMLDecodeError:
+        return ""
+
+
 def trunk_rules(root: Path) -> Rules:
     """The profile and posts as trunk carries them, and the label `<ref>@<sha>` they were read at."""
     local = _project(root)
@@ -76,9 +87,12 @@ def trunk_rules(root: Path) -> Rules:
     # session cannot point the rules - its posts, their modes and prompts - at a branch of its own (F6)
     default = subprocess.run(["git", "-C", str(local.root), "symbolic-ref", "-q", "--short",
                               "refs/remotes/origin/HEAD"], capture_output=True, text=True, check=False).stdout.strip()
-    if default.startswith("origin/") and default[len("origin/"):] != trunk:
+    if default.startswith("origin/") and default[len("origin/"):] != trunk and _trunk_named_on(local.root,
+                                                                                           default) != trunk:
         raise config.ConfigError(f"this tree names trunk `{trunk}`, but origin's default branch is "
-                                 f"`{default[len('origin/'):]}`; the rules are read from the real trunk")
+                                 f"`{default[len('origin/'):]}` and its profile does not name `{trunk}`; the rules are "
+                                 "read from the real trunk. If the default branch moved, `git remote set-head origin "
+                                 "-a`; if trunk is another branch, name it in the profile on the default branch too")
     ref = gitq.trunk_ref(local.root, trunk)
     sha = gitq.resolve(local.root, f"{ref}^{{commit}}")
     if sha is None:

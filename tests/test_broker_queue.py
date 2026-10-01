@@ -85,3 +85,24 @@ def test_an_allow_names_the_question_it_allows_by_its_mark(tmp_path):
 def test_a_deny_needs_no_mark(tmp_path):
     q = ask(tmp_path)
     queue.answer(tmp_path, KEY, q.id, queue.DENY, why="no", now=1002)
+
+
+def test_the_same_call_from_another_session_or_tree_is_another_question(tmp_path):
+    """Two sessions asking the same command in different trees got one mark, so an allow shown for one could be
+    recorded on the other (review of the mark)."""
+    a = queue.ask(tmp_path, KEY, session="main session 1", session_id="s1", tool="Bash", tool_input={"command": "rm x"},
+                  suggestions=[], wait=540, now=1000, cwd="/w/one")
+    b = queue.ask(tmp_path, KEY, session="main session 2", session_id="s2", tool="Bash", tool_input={"command": "rm x"},
+                  suggestions=[], wait=540, now=1001, cwd="/w/two")
+    assert queue.mark_of(a) != queue.mark_of(b)
+    with pytest.raises(queue.QueueRefused, match="mark"):
+        queue.answer(tmp_path, KEY, b.id, queue.ALLOW, mark=queue.mark_of(a), now=1002)
+
+
+@pytest.mark.parametrize("field", ["session_id", "cwd"])
+def test_a_question_differing_only_in_one_field_has_another_mark(tmp_path, field):
+    base = dict(session="main session 1", session_id="s1", tool="Bash", tool_input={"command": "rm x"},
+                suggestions=[], wait=540, cwd="/w/one")
+    a = queue.ask(tmp_path, KEY, now=1000, **base)
+    b = queue.ask(tmp_path, KEY, now=1001, **{**base, field: base[field] + "-other"})
+    assert queue.mark_of(a) != queue.mark_of(b)

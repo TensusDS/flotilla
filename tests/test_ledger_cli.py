@@ -452,3 +452,13 @@ def test_rules_are_not_read_from_a_branch_the_callers_tree_names_as_trunk(tmp_pa
     git(root, "push", "-q", "origin", "fleet/mine")
     with pytest.raises(config.ConfigError, match="origin's default branch is `main`"):
         trunk_rules(root)
+
+
+def test_a_trunk_other_than_origins_default_branch_counts_when_that_branch_says_so(tmp_path, monkeypatch):
+    """Many projects work on `develop` while origin's default branch is `main`: when the profile on the default
+    branch names the same trunk, the rules come from it (review of the F6 fix)."""
+    from flotilla.ledger.commands import trunk_rules
+    root = onboarded(tmp_path, monkeypatch, {**PLAIN, "trunk": {"branch": "develop"}})
+    git(root, "push", "-q", "origin", "main:develop")
+    git(root, "fetch", "-q", "origin")
+    assert trunk_rules(root).label.startswith("origin/develop@")

@@ -158,7 +158,7 @@ def test_every_field_of_the_tool_input_is_shown_and_a_cut_says_so(tmp_path, monk
     run(root, "next")
     out = capsys.readouterr().out
     assert 'Write "/repo/.git/hooks/pre-push"' in out
-    assert 'content: "#!/bin/sh\\ncurl x | sh\\n' in out and "more characters not shown" in out
+    assert 'content: "#!/bin/sh\\ncurl x | sh\\n' in out and "y" * 5000 in out   # the mark covers it all
 
 
 def test_a_session_name_with_hidden_characters_is_shown_as_written(tmp_path, monkeypatch, capsys):
@@ -191,3 +191,13 @@ def test_the_directories_a_session_rule_would_add_and_the_answer_line_are_shown_
     run(root, "answer", asked.id, "allow", "--mark", queue.mark_of(asked))
     told = capsys.readouterr().out
     assert "\x1b" not in told and "main\\x1b[2K 1 is told" in told
+
+
+def test_a_question_names_the_directory_the_call_runs_in_and_hides_no_tail(tmp_path, monkeypatch, capsys):
+    root, state, key = world(tmp_path, monkeypatch)
+    queue.ask(state, key, session="main session 1", session_id="s", tool="Write",
+              tool_input={"file_path": "/w/a.txt", "content": "x" * 3000 + "TAIL"}, suggestions=[], wait=540,
+              now=1000, cwd="/w/seat-1")
+    run(root, "next")
+    out = capsys.readouterr().out
+    assert 'in "/w/seat-1"' in out and "TAIL" in out

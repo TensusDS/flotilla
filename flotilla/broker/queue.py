@@ -34,6 +34,7 @@ class Question:
     tool: str
     tool_input: dict
     suggestions: list
+    cwd: str = ""   # where the call runs: the same command means something else in another tree
 
 
 def folder(state_dir, repo_key: str) -> Path:
@@ -58,11 +59,11 @@ def is_alive(pid: int) -> bool:
 
 
 def ask(state_dir, repo_key: str, *, session: str, session_id: str, tool: str, tool_input, suggestions, wait: float,
-        now: float | None = None, pid: int | None = None) -> Question:
+        now: float | None = None, pid: int | None = None, cwd: str = "") -> Question:
     now = time.time() if now is None else now
     pid = os.getpid() if pid is None else pid
     asked = Question(f"{int(now * 1000):013d}-{pid}", now, now + wait, pid, session, session_id, tool,
-                     dict(tool_input or {}), list(suggestions or []))
+                     dict(tool_input or {}), list(suggestions or []), str(cwd or ""))
     base = folder(state_dir, repo_key)
     base.mkdir(parents=True, exist_ok=True)
     staged = base / f".q-{asked.id}.tmp"
@@ -117,7 +118,8 @@ def mark_of(asked: Question) -> str:
     it, so the answer cannot be given for another question, or for this one changed since it was shown (security
     review of 203ac1c)."""
     import hashlib
-    body = json.dumps({"tool": asked.tool, "input": asked.tool_input, "suggestions": asked.suggestions},
+    body = json.dumps({"session": asked.session, "session_id": asked.session_id, "cwd": asked.cwd,
+                       "tool": asked.tool, "input": asked.tool_input, "suggestions": asked.suggestions},
                       sort_keys=True, ensure_ascii=True)
     return hashlib.sha256(body.encode()).hexdigest()[:12]
 

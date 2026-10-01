@@ -865,6 +865,15 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    default the check cannot be made: a session that rewrites the main checkout's profile and commits it to trunk is
    beyond what flotilla can stop in one user's account. (planner's decision, security fixes, 2026-10-01)
 
+182. **The answer and the trunk check, tightened after their review** (2026-10-01): a question's mark also covers
+   the asking session and the directory the call runs in, and the directory is shown - the same command from
+   another tree is another question; no field of a question is cut any more, since the mark covers all of it. The
+   trunk check accepts a trunk other than origin's default branch when the profile committed on that default
+   branch names it (a project on `develop`), and its refusal says how to fix a moved default. Its ceiling stays as
+   it is: `refs/remotes/origin/HEAD` and `origin/<trunk>` are local refs a session can repoint, so the check binds a
+   name an honest tree carries, not a ref no session can move. A post may also ask for `default`, the same width as
+   `manual`. (planner's decision, security fixes, 2026-10-01)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
