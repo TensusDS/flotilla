@@ -93,10 +93,10 @@ You can change any answer later by editing `.flotilla/project.toml`; a change ta
 
 Onboarding ends by offering to raise the fleet now, three ways:
 
-- **This session leads it** (recommended). The session you onboarded in becomes the orchestrator: flotilla reserves
-  its name (`flotilla spawn --lead`), you type `/rename orchestrator N` with that name - only you can rename an
-  interactive session - and it raises the rest of the fleet in the background with `flotilla spawn --fill`. You talk to the fleet, answer its permission questions
-  and approve its merges right here.
+- **This session leads it** (recommended). The session you onboarded in becomes the orchestrator: flotilla gives it
+  the orchestrator's name (`flotilla spawn --lead`; Claude Code shows the name with your next message) and raises the
+  rest of the fleet in the background with `flotilla spawn --fill`. You talk to the fleet and answer its permission
+  questions right here.
 - **A background orchestrator.** Every seat, the orchestrator included, starts in the background; you attach to talk.
 - **Not now.** Raise it later:
 
@@ -108,8 +108,11 @@ this project's live sessions do not hold yet. You can name one: `-o 1 -s 1 -r 1 
 sessions. Add `--dry-run` to see the names, trees, commands and the plugins each seat will have turned off, without
 raising anything.
 
-Each session is a background Claude Code session (`claude --bg`), named by its post (`main session 3`, `review
-session 1`), with its own worktree beside the repository (`<repo>-main-3`). Plugins that bring MCP servers are turned
+Each session is a background Claude Code session (`claude --bg`), named by the project and its post
+(`worldcore-main session 3`, `worldcore-review session 1`), with its own worktree beside the repository
+(`<repo>-main-3`). Numbers run per project. Session names are addresses on the whole machine - messages between
+sessions are delivered by name - so the project word (`[fleet] name`, set at onboarding from the directory) is unique
+on the machine: a second project that wants a word already taken gets `worldcore-2`, and flotilla says so. Plugins that bring MCP servers are turned
 off for a seat unless its post declares them, so a reviewer does not carry a browser it never uses; MCP servers you
 configured outside plugins still start in every seat. `flotilla spawn` refuses to raise seats when free
 memory would fall below `fleet.memory_floor_mb` (2000 MB by default), counting about 800 MB per seat it is about to

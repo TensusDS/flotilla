@@ -51,6 +51,50 @@ checks shipped", for a project whose origin is a local bare repository with no C
 "set it later" but no "there is no CI". Fix direction: the closing message says "commit and push `.flotilla/` to
 origin's trunk", and the CI question has a "no CI" answer that the profile and `ship` understand.
 
+W6. **friction - another plugin's review sessions read as the person's sessions.** Committing in worldcore from a
+session with the `security-guidance` plugin started two short Agent SDK sessions (`entrypoint: sdk-py`, about 30
+seconds each) in worldcore's directory, to review the diff. The census listed them as `interactive`, named
+`worldcore-xx`, beside the person's one session; the person asked why three sessions were open when they had opened
+one. They hold no post, so `--fill` does not count them, but `flotilla fleet` and the check after `/rename` show
+them as live interactive sessions of the project. Fix direction: `flotilla fleet` marks a session whose transcript's
+entrypoint is an SDK one as a tool's service session, not a person's.
+
+W7. **friction - quick onboarding asked for the yes without saying the answers.** On 0.5.0 the session ran
+`onboard quick`, then `onboard write`, and asked "Write this profile? Confirming runs `npm test` once" - the answer
+list was only in the raw command output. Quick had set `merge_auth: sender`: merges into trunk go without the person's
+approval. That is the recommended answer, but it is the one choice a person must hear in words before saying yes.
+Fix direction: the skill shows the answer list in its own message before the question, and names who authorizes
+merges in plain words; `quick` could print a one-line meaning beside each answer.
+
+W8. **friction - the lead offer promises approvals the profile does not ask for.** After publish (which worked on the
+first try: `.flotilla/` and the settings' marketplace entry committed, `npm test` green over that commit, pushed to
+origin's main) the skill offered "This session leads it - ... answer its permission questions and approve its merges
+here", while quick had set `merge_auth: sender`, so no merge waits on the person. Fix direction: the skill reads
+`flow.merge_authorized_by` and mentions approvals only when it is `human`.
+
+W9. **defect - `/rename` does not wake the session, so leading stalls.** `spawn --lead` reserved `orchestrator 5` and
+the session asked the person to type `/rename orchestrator 5` "as your next message", then to wait while it checked
+and raised the rest. The rename took effect (the census lists `orchestrator 5`), but `/rename` is a local command:
+the model got only a system note, no turn, so it never checked the name or ran `spawn --fill`. The person sees an
+idle session and no fleet. Fix direction: the skill asks for `/rename orchestrator N` and then any message ("done");
+`spawn --fill` run before the rename could also refuse with that instruction instead of raising seats beside an
+unnamed orchestrator.
+
+W10. **defect - the one-copy check counts every project's sender.** After `/rename` and a nudge, `orchestrator 5` ran
+`flotilla spawn --fill`; it was refused: "post `sender` writes one-copy resources and is held by one session at most;
+this would make 2 (1 alive)", the one alive being twosuns' `sender 9`. 0.5.0 scoped `--fill`'s count to the project
+(review finding M3) but not `spawn.plan`'s one-copy check, which still counts the machine's census. A sender's
+one-copy resources (trunk, the batch) are its project's. The refusal also listed all sixteen live sessions of the
+machine, which sent the orchestrator into twosuns' sessions and flotilla's code to find out why. Fix direction: the
+one-copy check counts this project's members, and the refusal lists only them.
+
+W11. **friction - seat numbers run across every project on the machine.** The names journal is one per machine, so
+worldcore's first orchestrator is `orchestrator 5` and its seats continue twosuns' numbers; to understand a name or a
+refusal the orchestrator read other projects' sessions and the journal. Session names are machine-wide addresses
+(messages are delivered by name), which is why the journal is machine-wide. Fix direction (the person's request):
+number per project and carry the project in the name, so names stay unique on the machine while each project counts
+from 1.
+
 ## What 0.5.0 does about them
 
 - W1: the README adds the marketplace with `--scope project`, so the project's settings carry the marketplace entry
@@ -64,3 +108,13 @@ origin's trunk", and the CI question has a "no CI" answer that the profile and `
 
 Beyond the findings, onboarding was simplified on the person's request: quick or custom, one yes, and an offer to
 lead the fleet from the onboarding session (decisions 190-192).
+
+## What 0.6.0 does about W6-W11
+
+- W7, W8: the skill shows the quick answers in words, says who authorizes merges, and promises approvals only where
+  the person gives them (decision 197).
+- W9: no `/rename` - `spawn --lead` records the lead and the prompt hook names the session on the person's next
+  message; `--fill` counts it meanwhile (decision 197).
+- W10, W11: seat names carry the project (`worldcore-orchestrator 1`), numbers run per project, and spawn's one-copy
+  check and its refusal see only the project's sessions (decision 196).
+- W6 waits (ruling in decision 197).

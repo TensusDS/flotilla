@@ -31,7 +31,7 @@ The CLI is `${CLAUDE_PLUGIN_ROOT}/scripts/flotilla`. Every command takes `--help
 
     flotilla spawn [-o N] [-s N] [-r N] [-j N] [-M N] [-m N] [--post NAME=N] [--dry-run] [--anyway]
     flotilla spawn --default | --fill    the profile's composition; --fill raises only the seats nobody here holds
-    flotilla spawn --lead                reserve the orchestrator's name for your own session; you type /rename
+    flotilla spawn --lead                your own session leads the fleet; its name comes with your next message
     flotilla fleet                 the seats, their trees and their work
     flotilla fleet down            retire every seat but your own
     flotilla retire "<name>"       stop one session, release its post
@@ -81,7 +81,7 @@ Worktrees and receipts:
 ## Daily operation
 
 1. **Start:** if your own session leads the fleet (onboarding offers it), `flotilla spawn --lead` gives it the
-   orchestrator's name, you type `/rename orchestrator N`, and you raise the rest with `flotilla spawn --fill`.
+   orchestrator's name - shown with your next message - and you raise the rest with `flotilla spawn --fill`.
    Otherwise `/flotilla:spawn`, then `claude attach <orchestrator id>` (`flotilla fleet` lists the ids). Tell the
    orchestrator what to build. The project's `.flotilla/` must be on origin's trunk first.
 2. **While it runs:** `/flotilla:status` for the picture, `/flotilla:watch` for what needs you. Answer permission

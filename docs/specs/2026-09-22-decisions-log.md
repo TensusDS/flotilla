@@ -993,6 +993,32 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    through the skill, and a refused tool call would leave the skill unable to finish it. (planner's decision,
    2026-10-01)
 
+196. **Seat names carry the project, and numbers run per project** (worldcore field test W10, W11; the person's
+   request, 2026-10-01: "worldcore-orchestrator 1, 2, 3"). The machine-wide names journal made worldcore's first
+   orchestrator `orchestrator 5` and sent its orchestrator into twosuns' sessions to understand a name and a refusal.
+   Session names stay machine-wide addresses - messages are delivered by name - so the project gets a word of its
+   own: `[fleet] name` in the profile (onboarding writes the directory's name), prefixed to every post's pattern when
+   the rules are read (`worldcore-` + `orchestrator {n}`). A machine-wide journal records which project (by its
+   repository key) holds which word; a second project that wants a taken word gets `-2`, `-3` and is told so -
+   readable rather than a hash (the person's question). The names journal records each name's pattern, so each
+   project counts from 1; records from before keep the unprefixed, machine-wide series. Numbering steps over seat
+   branches an older fleet left (`fleet/main-2`). A profile without `[fleet] name` keeps the old names, so a running
+   fleet is not renamed under it. Spawn's one-copy check counts only this project's live sessions and names only
+   them (W10). (planner's decision, 2026-10-01)
+
+197. **The leading session is named by the prompt hook, not by the person** (worldcore field test W9, the person's
+   remark: asking the session to rename itself "will read as a bug"). `/rename` is the person's command and does not
+   wake the session; a UserPromptSubmit hook may return `sessionTitle`, and the census then lists the session under
+   it (measured on Claude Code 2.1.287 in a throwaway session). `flotilla spawn --lead` records "this session leads,
+   as <name>" for the calling session; the prompt hook gives it that name on the person's next message, once, and
+   tells the model it now holds the orchestrator post; `--fill` counts a recorded lead of a live session of the
+   project as the orchestrator's seat, so the gap before the next message raises no second orchestrator. When the
+   calling session cannot be told, `--lead` falls back to asking for `/rename` and then any message. The onboarding
+   skill shows the quick answers in words and says who authorizes merges before asking to write (W7), and promises
+   approvals only where a person gives them (W8). Ruling: W6 (another plugin's short Agent SDK sessions listed as
+   interactive) waits - the census does not say how a session was started, and reading every session's transcript
+   to tell is a cost for a cosmetic mistake. (planner's decision, 2026-10-01)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
