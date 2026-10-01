@@ -116,3 +116,10 @@ def test_closed_questions_older_than_a_day_are_not_kept(tmp_path):
               suggestions=[], wait=540, now=1000.0 + 2 * 86400)
     base = queue.folder(tmp_path, KEY)
     assert not (base / f"q-{old.id}.json").exists() and not (base / f"a-{old.id}.json").exists()
+
+
+def test_a_question_nobody_answered_is_forgotten_a_day_after_its_deadline(tmp_path):
+    old = ask(tmp_path, now=1000.0, wait=540)
+    queue.ask(tmp_path, KEY, session="main session 1", session_id="s", tool="Bash", tool_input={"command": "ls"},
+              suggestions=[], wait=540, now=1540.0 + 2 * 86400)
+    assert not (queue.folder(tmp_path, KEY) / f"q-{old.id}.json").exists()

@@ -77,6 +77,11 @@ KEEP_CLOSED = 86400   # a closed question's file is kept a day: it may hold a se
 
 
 def _forget_closed(base: Path, now: float) -> None:
+    for asked in base.glob("q-*.json"):   # never answered: its hook was killed; a day past its deadline it goes
+        record = _read(asked)
+        deadline = record.get("deadline") if isinstance(record, dict) else None
+        if isinstance(deadline, (int, float)) and now - deadline > KEEP_CLOSED:
+            asked.unlink(missing_ok=True)
     for answered in base.glob("a-*.json"):
         record = _read(answered)
         at = record.get("at") if isinstance(record, dict) else None

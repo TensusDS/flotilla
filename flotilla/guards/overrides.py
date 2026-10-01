@@ -17,13 +17,16 @@ def _store(state_dir) -> LocalLogStore:
     return LocalLogStore(Path(state_dir) / "guards")
 
 
-_ASSIGNMENT = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)=(\S+)")
-_USERINFO = re.compile(r"\b([a-z][a-z0-9+.-]*://)([^/@\s:]+):([^/@\s]+)@", re.IGNORECASE)
+_ASSIGNMENT = re.compile(r"""\b([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|\S+)""")
+_USERINFO = re.compile(r"\b([a-z][a-z0-9+.-]*://)[^/@\s]+@", re.IGNORECASE)
+_HEADER = re.compile(r"(?i)\b(authorization|cookie|x-api-key)(\s*:\s*)[^'\"\n]+")
 
 
 def redact(text: str) -> str:
-    """A command as the record keeps it: no value of a NAME=value assignment, no password in a URL (F23)."""
-    text = _USERINFO.sub(lambda m: f"{m.group(1)}{m.group(2)}:<redacted>@", text)
+    """A command as the record keeps it: no value of a NAME=value assignment, quoted or not; nothing between a URL's
+    scheme and its `@` (a password, or a token used as the user); no credential header (F23)."""
+    text = _USERINFO.sub(lambda m: f"{m.group(1)}<redacted>@", text)
+    text = _HEADER.sub(lambda m: f"{m.group(1)}{m.group(2)}<redacted>", text)
     return _ASSIGNMENT.sub(lambda m: f"{m.group(1)}=<redacted>", text)
 
 

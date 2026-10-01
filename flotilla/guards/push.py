@@ -266,7 +266,8 @@ def _home(d: Door, root, profile: dict, run):
 def _names_repo(d: Door, env) -> bool:
     """A gh door that names its repository acts on it whatever directory it runs in (F21)."""
     return d.kind.startswith("gh ") and (_value(list(d.segment.words[3:]), "-R", "--repo") is not None
-                                         or bool(d.segment.assignments.get("GH_REPO") or env.get("GH_REPO")))
+                                         or bool(d.segment.assignments.get("GH_REPO")))
+    # a GH_REPO exported in the person's environment names no door of this command: work outside flotilla stays open
 
 
 def guard(segment, *, root, profile, env=os.environ, run=subprocess.run) -> Finding | None:

@@ -248,7 +248,7 @@ def test_an_override_record_keeps_no_token(tmp_path):
                               ["GH_TOKEN=ghp_secret123 git push https://max:tok456@github.com/a/b main"])
     stored = json.dumps(overrides.recorded(tmp_path / "state", "k"))
     assert "ghp_secret123" not in stored and "tok456" not in stored
-    assert "GH_TOKEN=<redacted>" in stored and "https://max:<redacted>@github.com/a/b" in stored
+    assert "GH_TOKEN=<redacted>" in stored and "https://<redacted>@github.com/a/b" in stored
 
 
 
@@ -349,3 +349,23 @@ def test_a_push_through_git_dir_is_not_waved_through(tmp_path):
     outside.mkdir()
     found = judge(f"GIT_DIR={root}/.git git push origin main", root, tmp_path, cwd=outside)
     assert found is not None and found.refuse
+
+
+def test_a_global_gh_repo_does_not_block_work_outside_flotilla(tmp_path):
+    root = onboarded(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    profile, _ = rules.rules_for(root)
+    found = push.guard(first("gh pr create --fill", outside), root=None, profile={},
+                       env={**env(tmp_path), "GH_REPO": "someone/else"})
+    assert found is None
+
+
+@pytest.mark.parametrize("command,secret", [
+    ("git push https://ghp_tokenAsUser@github.com/a/b main", "ghp_tokenAsUser"),
+    ("curl -H 'Authorization: Bearer abc123def' https://x", "abc123def"),
+    ('GH_TOKEN="two words" git push', "two words"),
+])
+def test_an_override_record_keeps_no_secret_in_any_common_form(tmp_path, command, secret):
+    overrides.record_override(tmp_path / "state", "k", "push_receipt", "why", [command])
+    assert secret not in json.dumps(overrides.recorded(tmp_path / "state", "k"))
