@@ -91,3 +91,42 @@ def test_a_quiet_clean_is_still_judged(tmp_path):
     (root / "notes.md").write_text("mine\n", encoding="utf-8")
     assert check("git clean -fdq", root).refuse
     assert check("git clean -f -q", root).refuse
+
+
+def test_the_guard_never_deletes_what_it_was_asked_to_judge(tmp_path):
+    """git takes `--forc` for `--force` and `--no-dry-run` undoes `-n`: the guard ran `git clean -n` with the
+    command's own arguments, so this command deleted the files before anyone allowed it (security review F11)."""
+    root = plain_repo(tmp_path)
+    (root / "new.txt").write_text("unsaved\n", encoding="utf-8")
+    (root / "notes").mkdir()
+    (root / "notes" / "draft.md").write_text("draft\n", encoding="utf-8")
+    found = check("git clean -f --forc --no-dry-run -dx", root)
+    assert (root / "new.txt").exists() and (root / "notes" / "draft.md").exists()
+    assert found.refuse and "new.txt" in found.text
+
+
+def test_an_abbreviated_force_is_a_force(tmp_path):
+    root = plain_repo(tmp_path)
+    (root / "new.txt").write_text("unsaved\n", encoding="utf-8")
+    found = check("git clean --forc -d", root)
+    assert found is not None and found.refuse and "new.txt" in found.text
+
+
+def test_the_guard_does_not_run_the_judged_repositorys_fsmonitor(tmp_path):
+    """The guard asks git about the tree the command names, before anyone allowed the command; that tree's own
+    config must not get a program run by the asking (security review F19)."""
+    root = plain_repo(tmp_path)
+    marker = tmp_path / "fsmonitor-ran"
+    git(root, "config", "core.fsmonitor", f"touch {marker} #")
+    (root / "README.md").write_text("changed\n", encoding="utf-8")
+    check("git checkout -- README.md", root)
+    check("git reset --hard", root)
+    assert not marker.exists()
+
+
+def test_a_dry_run_undone_later_in_the_command_is_a_real_clean(tmp_path):
+    root = plain_repo(tmp_path)
+    (root / "new.txt").write_text("unsaved\n", encoding="utf-8")
+    found = check("git clean -n -f --no-dry-run", root)
+    assert found is not None and found.refuse and "new.txt" in found.text
+    assert (root / "new.txt").exists()

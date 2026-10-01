@@ -846,6 +846,16 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    that lands on a reused pid could pass for that session - it needs a pid race and a pre-approved wrapper first.
    (planner's decision, security fixes, 2026-10-01)
 
+180. **A guard never runs what it judges, and never lets the judged tree run a program** (security review
+   2026-10-01, F11, F19): the revert guard showed what a forced `git clean` would remove by running `git clean -n`
+   with the command's own arguments, and git takes `--forc` for `--force` and lets `--no-dry-run` undo `-n` - so the
+   guard deleted the files it was judging, before anyone allowed the command. It now reads a forced clean by an
+   allow-list (untracked, with ignored, or only ignored; exclusions; paths), lists the files with `git ls-files
+   --others`, which changes nothing, and reads git's abbreviations and `--no-dry-run` as git does. Its git calls run
+   with `core.fsmonitor` off and no optional locks, since the tree's own config could otherwise run a program while
+   the guard asks; a clean or smudge filter on a racy index entry stays possible and needs that tree set up first.
+   (planner's decision, security fixes, 2026-10-01)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

@@ -23,8 +23,14 @@ VERBS = ("checkout", "restore", "reset", "clean")
 SHOWN = 5
 
 
+#: The guard asks git about the tree a command names before anyone allowed the command, so that tree's config must
+#: not get a program run: no fsmonitor hook, no index refresh written back (F19). A clean or smudge filter could
+#: still run on a racy index entry; that needs a filter set up in the tree's config and .gitattributes first.
+SAFE_GIT = ("git", "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false", "--no-optional-locks")
+
+
 def _git(directory, *args, run):
-    return run(["git", "-C", str(directory), *args], capture_output=True, text=True, check=False, timeout=10)
+    return run([*SAFE_GIT, "-C", str(directory), *args], capture_output=True, text=True, check=False, timeout=10)
 
 
 def _letters(args) -> set[str]:
@@ -60,7 +66,7 @@ def _is_commit(directory, word, run) -> bool:
 
 def _plan(verb, args, directory, run):
     """What the command overwrites: ("paths", paths, index_saves), ("tracked", None, False),
-    ("untracked", dry-run args, False), or None when it overwrites nothing uncommitted."""
+    ("untracked", what to list, False), or None when it overwrites nothing uncommitted."""
     if any(arg in ("-p", "--patch") for arg in args):
         return None
     if verb == "checkout":
@@ -98,22 +104,50 @@ def _plan(verb, args, directory, run):
         return "paths", paths, source is None and not staged
     if verb == "reset":
         return ("tracked", None, False) if "--hard" in args else None
+    return _clean(args)
+
+
+def _long(arg: str, option: str) -> bool:
+    """git takes any unambiguous prefix of a long option: `--forc` is `--force`, `--no-dry` is `--no-dry-run`."""
+    name = arg.split("=", 1)[0]
+    return name == option or (len(name) > 3 and option.startswith(name))
+
+
+def _clean(args):
+    """A forced `git clean`, read for what it would remove: which files (untracked, ignored too, or only ignored),
+    which exclusions and which paths - and nothing else, because the guard never runs `git clean` itself (F11)."""
     letters = _letters(args)
-    if "--dry-run" in args or "n" in letters or "--interactive" in args or "i" in letters:
+    if any(_long(arg, "--interactive") for arg in args) or "i" in letters:
         return None
-    if "--force" not in args and "f" not in letters:
+    dry = "n" in letters or any(_long(arg, "--dry-run") for arg in args)
+    if any(_long(arg, "--no-dry-run") for arg in args):
+        dry = False   # undoes -n wherever it stands; read the worst case
+    if dry or not ("f" in letters or any(_long(arg, "--force") for arg in args)):
         return None
-    dry = []
-    for arg in args:
-        if arg in ("--force", "--quiet"):
-            continue   # a quiet dry run prints nothing, and nothing would read as nothing to lose
-        if arg.startswith("-") and not arg.startswith("--"):
-            rest = arg[1:].replace("f", "").replace("q", "")
-            if rest:
-                dry.append("-" + rest)
-            continue
-        dry.append(arg)
-    return "untracked", dry, False
+    excludes, paths, index = [], [], 0
+    while index < len(args):
+        arg = args[index]
+        if arg == "--":
+            paths += args[index + 1:]
+            break
+        if _long(arg, "--exclude"):
+            if "=" in arg:
+                excludes.append(arg.split("=", 1)[1])
+            elif index + 1 < len(args):
+                excludes.append(args[index + 1])
+                index += 1
+        elif arg.startswith("-") and not arg.startswith("--") and "e" in arg[1:]:
+            value = arg[arg.index("e", 1) + 1:]
+            if value:
+                excludes.append(value)
+            elif index + 1 < len(args):
+                excludes.append(args[index + 1])
+                index += 1
+        elif not arg.startswith("-"):
+            paths.append(arg)
+        index += 1
+    mode = "only-ignored" if "X" in letters else "with-ignored" if "x" in letters else "untracked"
+    return "untracked", {"mode": mode, "excludes": excludes, "paths": paths}, False
 
 
 def _at_risk(kind, detail, index_saves, directory, run) -> list[str] | None:
@@ -125,10 +159,19 @@ def _at_risk(kind, detail, index_saves, directory, run) -> list[str] | None:
         done = _git(directory, "status", "--porcelain", "--untracked-files=no", "--",
                     *(detail if kind == "paths" else []), run=run)
         return [line[3:] for line in done.stdout.splitlines()] if done.returncode == 0 else None
-    done = _git(directory, "clean", "-n", *detail, run=run)
+    # `git ls-files` lists and changes nothing; a dry run of `git clean` with the command's own arguments did not
+    # stay dry (`--no-dry-run`), so the guard deleted what it was judging (F11). Every untracked file is named,
+    # inside directories too, which can only overstate the loss.
+    listing = ["ls-files", "--others", "--full-name"]
+    if detail["mode"] == "untracked":
+        listing.append("--exclude-standard")
+    elif detail["mode"] == "only-ignored":
+        listing += ["--ignored", "--exclude-standard"]
+    listing += [f"--exclude={pattern}" for pattern in detail["excludes"]]
+    done = _git(directory, *listing, "--", *detail["paths"], run=run)
     if done.returncode != 0:
         return None
-    return [line.removeprefix("Would remove ") for line in done.stdout.splitlines() if line.strip()]
+    return [line for line in done.stdout.splitlines() if line.strip()]
 
 
 def _fix(kind, index_saves) -> str:
