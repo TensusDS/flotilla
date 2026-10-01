@@ -117,6 +117,34 @@ def _git(root: Path, *args) -> "subprocess.CompletedProcess":
     return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, check=False)
 
 
+def _before_publish(root: Path, trunk: str, paths: list[str], *, remote: bool) -> str:
+    """Why publishing would carry more than the profile, or "" (review of 0.5.0, C1 and I1): checked before anything
+    is committed, so a refusal leaves the tree and the history as they were."""
+    excluded = [f":(exclude){path}" for path in paths]
+    dirty = [line[3:] for line in _git(root, "status", "--porcelain", "--", ".", *excluded).stdout.splitlines()]
+    if dirty:
+        more = f" and {len(dirty) - 5} more" if len(dirty) > 5 else ""
+        return (f"the tree has changes of your own ({', '.join(dirty[:5])}{more}); commit or stash your own changes "
+                "first - publish commits and pushes only .flotilla/")
+    if not remote:
+        return ""
+    listed = _git(root, "ls-remote", "origin", f"refs/heads/{trunk}")
+    if listed.returncode != 0:
+        return f"origin could not be asked for its trunk: {(listed.stderr or listed.stdout).strip()[:300]}"
+    theirs = listed.stdout.split()[0] if listed.stdout.split() else ""
+    if not theirs:
+        return ""   # origin has no trunk yet: this push creates it with exactly what is here
+    if _git(root, "cat-file", "-e", f"{theirs}^{{commit}}").returncode != 0 or \
+            _git(root, "merge-base", "--is-ancestor", theirs, "HEAD").returncode != 0:
+        return f"origin's {trunk} has commits this tree lacks; pull them (`git pull origin {trunk}`), then publish again"
+    ahead = _git(root, "log", "--format=%h %s", f"{theirs}..HEAD").stdout.splitlines()
+    if ahead:
+        more = f"; and {len(ahead) - 5} more" if len(ahead) > 5 else ""
+        return (f"{trunk} has {len(ahead)} commit(s) origin has not ({'; '.join(ahead[:5])}{more}); publish pushes "
+                f"only the profile - push those yourself, or move them off {trunk}, then publish again")
+    return ""
+
+
 def _publish(root: Path, det: dict, state: Path) -> int:
     """The last step of onboarding: every session reads its rules from origin's trunk, so the profile is committed,
     the tiers run over that commit - the push receipt a guarded push asks for - and the commit pushed to trunk
@@ -134,19 +162,32 @@ def _publish(root: Path, det: dict, state: Path) -> int:
               "profile names")
         return 2
     paths = [path for path in (".flotilla", ".claude/settings.json") if (root / path).exists()]
-    _git(root, "add", "--", *paths)
-    if _git(root, "diff", "--cached", "--quiet").returncode != 0:
-        done = _git(root, "commit", "-q", "-m", "chore: onboard flotilla (profile and posts)")
+    refused = _before_publish(root, trunk, paths, remote=bool(det.get("remote")))
+    if refused:
+        print(f"not published: {refused}")
+        return 2
+    added = _git(root, "add", "--", *paths)
+    if added.returncode != 0:
+        print(f"not published: git could not add {', '.join(paths)}: {(added.stderr or added.stdout).strip()[:300]}"
+              " - is .flotilla/ ignored? The fleet reads it from origin's trunk, so it must be committed")
+        return 2
+    if _git(root, "diff", "--cached", "--quiet", "--", *paths).returncode != 0:
+        # the pathspec keeps the commit to the profile: the tree was checked clean above, and this says so again
+        done = _git(root, "commit", "-q", "-m", "chore: onboard flotilla (profile and posts)", "--", *paths)
         if done.returncode != 0:
             print(f"not published: git commit failed: {(done.stderr or done.stdout).strip()[:300]}")
             return 2
         print(f"committed {', '.join(paths)}")
+    elif _git(root, "ls-files", "--error-unmatch", "--", f"{config.PROJECT_DIR}/{config.PROJECT_FILE}").returncode:
+        print(f"not published: {config.PROJECT_DIR}/{config.PROJECT_FILE} is not in git - is .flotilla/ ignored? "
+              "The fleet reads it from origin's trunk, so it must be committed")
+        return 2
     try:
         receipt = receipts.run_receipt(root, state=state, repo_key=det["repo_key"], purpose="push", profile=profile,
                                        timeout=1800.0)
     except receipts.ReceiptRefused as err:
-        print(f"not pushed: {err}. The profile is committed; commit or stash your own changes, then run "
-              "`flotilla onboard publish` again")
+        print(f"not pushed: {err}. The profile is committed; run `flotilla onboard publish` again once the tree is "
+              "clean")
         return 2
     red = [tier["name"] for tier in receipt.get("tiers") or [] if tier.get("status") != "green"]
     if red:
@@ -158,9 +199,9 @@ def _publish(root: Path, det: dict, state: Path) -> int:
         return 0
     done = _git(root, "push", "origin", trunk)
     if done.returncode != 0:
-        print(f"not pushed: git push origin {trunk} failed: {(done.stderr or done.stdout).strip()[:300]}. If trunk "
-              "only takes pull requests, open one with the commit above and merge it; the fleet reads the profile "
-              "once it is on origin's trunk")
+        print(f"not pushed: git push origin {trunk} failed: {(done.stderr or done.stdout).strip()[:300]}. If origin "
+              "moved meanwhile, pull and publish again; if trunk only takes pull requests, open one with the commit "
+              "above and merge it - the fleet reads the profile once it is on origin's trunk")
         return 2
     print(f"pushed to origin/{trunk}: the fleet reads its rules from there")
     return 0
@@ -223,6 +264,11 @@ def run_onboard(args) -> int:
         for question in all_questions(det, given):
             value = given.get(question["id"])
             print(f"{question['id']}: {', '.join(value) if isinstance(value, list) else value}")
+        chosen = given.get("tiers") if isinstance(given.get("tiers"), list) else []
+        left = [t for t in det.get("tests") or [] if t["name"] not in chosen]
+        if left and chosen != ["none"]:   # a round asks at most four; the rest is said, not dropped (M6)
+            print("left out (one round takes four): " + "; ".join(f"{t['name']} ({t['command']})" for t in left)
+                  + " - add them to .flotilla/project.toml after writing, or choose tiers in custom onboarding")
         return 0
     if args.action == "reset":
         store.reset(state, det["repo_key"])

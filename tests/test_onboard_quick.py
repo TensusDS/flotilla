@@ -147,3 +147,84 @@ def test_quick_on_a_project_without_github_says_no_ci_rather_than_an_empty_gate(
     det = detect(project)
     profile = build_profile(det, quick_answers(det, {}))
     assert profile["ci"] == {"provider": "none"}
+
+
+def _ready(project):
+    """Onboarded and written with a green tier, nothing published yet."""
+    import sys
+    from test_onboard_cli import write_confirmed
+    assert run_cli("onboard", "quick", "--root", str(project))[0] == 0
+    command = f"{sys.executable} -c \"print('1 passed')\""
+    assert run_cli("onboard", "answer", "tiers", command, "--root", str(project))[0] == 0
+    assert write_confirmed(project)[0] == 0
+
+
+def _git(root, *args):
+    return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True)
+
+
+def test_publish_never_commits_what_the_person_staged(project, tmp_path):
+    """Review of 0.5.0, C1: `git add .flotilla` then a bare `git commit` took the whole index, so a staged secret rode
+    in the onboarding commit to origin's trunk. The tree is checked before anything is committed."""
+    _ready(project)
+    (project / "secret.txt").write_text("token\n", encoding="utf-8")
+    _git(project, "add", "secret.txt")
+    head = _git(project, "rev-parse", "HEAD").stdout
+    code, out = run_cli("onboard", "publish", "--root", str(project))
+    assert code == 2 and "secret.txt" in out and "commit or stash your own changes" in out
+    assert _git(project, "rev-parse", "HEAD").stdout == head          # nothing committed
+    assert _git(tmp_path / "origin.git", "rev-parse", "--verify", "-q", "main").returncode != 0
+
+
+def test_publish_pushes_nothing_but_the_profile(project, tmp_path):
+    """Review of 0.5.0, I1: `git push origin main` pushed every unpushed trunk commit, unseen. Publish refuses while
+    trunk carries commits origin has not, and names them."""
+    subprocess.run(["git", "-C", str(project), "push", "-q", "origin", "main"], check=True)
+    (project / "wip.txt").write_text("half done\n", encoding="utf-8")
+    _git(project, "add", "wip.txt")
+    _git(project, "commit", "-q", "-m", "wip: not for origin yet")
+    _ready(project)
+    code, out = run_cli("onboard", "publish", "--root", str(project))
+    assert code == 2 and "wip: not for origin yet" in out
+    assert "wip.txt" not in _git(tmp_path / "origin.git", "ls-tree", "--name-only", "main").stdout
+
+
+def test_publish_says_pull_when_origin_is_ahead(project, tmp_path):
+    """Review of 0.5.0, M1: a rejected push was answered with "open a pull request"; origin was simply ahead."""
+    subprocess.run(["git", "-C", str(project), "push", "-q", "origin", "main"], check=True)
+    other = tmp_path / "other"
+    subprocess.run(["git", "clone", "-q", str(tmp_path / "origin.git"), str(other)], check=True)
+    (other / "theirs.txt").write_text("x\n", encoding="utf-8")
+    _git(other, "add", "theirs.txt")
+    _git(other, "commit", "-q", "-m", "a teammate's commit")
+    subprocess.run(["git", "-C", str(other), "push", "-q", "origin", "main"], check=True)
+    _ready(project)
+    head = _git(project, "rev-parse", "HEAD").stdout
+    code, out = run_cli("onboard", "publish", "--root", str(project))
+    assert code == 2 and "pull" in out and "pull request" not in out
+    assert _git(project, "rev-parse", "HEAD").stdout == head
+
+
+def test_publish_of_an_ignored_profile_is_refused_not_claimed(project):
+    """Review of 0.5.0, M7: with `.flotilla/` gitignored, `add` failed unread and publish said the fleet reads it."""
+    (project / ".gitignore").write_text(".flotilla/\n", encoding="utf-8")
+    _git(project, "add", ".gitignore")
+    _git(project, "commit", "-q", "-m", "ignore it")
+    _ready(project)
+    code, out = run_cli("onboard", "publish", "--root", str(project))
+    assert code == 2 and "pushed to origin" not in out and ".flotilla" in out
+
+
+def test_quick_names_the_test_commands_it_left_out(project):
+    """Review of 0.5.0, M6: quick keeps the first four detected tiers and dropped the rest without a word."""
+    (project / "pyproject.toml").write_text("[tool.pytest.ini_options]\n", encoding="utf-8")
+    (project / "Cargo.toml").write_text("[package]\nname = 'app'\n", encoding="utf-8")
+    (project / "go.mod").write_text("module app\n", encoding="utf-8")
+    (project / "Makefile").write_text("test:\n\techo ok\n", encoding="utf-8")
+    det = detect(project)
+    found = [t["name"] for t in det.get("tests") or []]
+    assert len(found) > 4, found
+    code, out = run_cli("onboard", "quick", "--root", str(project))
+    assert code == 0
+    left = [name for name in found if name not in out.split("tiers:")[1].splitlines()[0]]
+    assert left and all(name in out for name in left) and "project.toml" in out
