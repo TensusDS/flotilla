@@ -180,7 +180,9 @@ def build_parser() -> argparse.ArgumentParser:
     spawn_.add_argument("--post", action="append", default=[], metavar="NAME=N", help="sessions of any post")
     spawn_.add_argument("--default", action="store_true", help="the profile's fleet.default composition")
     spawn_.add_argument("--fill", action="store_true",
-                        help="the default composition, less the posts live sessions already hold")
+                        help="the default composition, less the posts this project's live sessions already hold")
+    spawn_.add_argument("--lead", action="store_true",
+                        help="reserve the orchestrator's name for your own session (you type /rename); raises nothing")
     spawn_.add_argument("--dry-run", action="store_true", help="show names, trees and commands; change nothing")
     spawn_.add_argument("--anyway", action="store_true", help="raise even under the memory floor")
     spawn_.add_argument("--root", default=".")

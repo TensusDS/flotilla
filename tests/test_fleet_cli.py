@@ -194,3 +194,49 @@ def test_the_fleet_names_a_stranger_in_a_seat_tree(tmp_path, monkeypatch):
     assert code == 0, out
     assert f"{tree.name}-3  not a fleet session (started in {tree})" in out
     assert out.count("main session 1") == 1
+
+
+def _a_session(name, cwd):
+    from flotilla.core.census import Session
+    return Session(name=name, session_id=f"sid-{name}", kind="background", pid=None, short_id=name[-6:], status=None,
+                   state="idle", cwd=str(cwd), started_at_ms=None)
+
+
+def test_lead_reserves_the_orchestrators_name_for_the_persons_session(tmp_path, monkeypatch):
+    """Review of 0.5.0, I3: the name the person typed with /rename came from a dry run, which reserves nothing, so a
+    later spawn could issue the same `orchestrator N` again and two sessions' records would read as one."""
+    root = onboarded(tmp_path, monkeypatch)
+    monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [])
+    monkeypatch.setattr("flotilla.core.caller.person_refusal", lambda what: "")
+    code, out = run_cli("spawn", "--lead", "--root", str(root))
+    assert code == 0 and "/rename orchestrator 1" in out and "spawn --fill" in out
+    code, out = run_cli("spawn", "--dry-run", "-o", "1", "--root", str(root))
+    assert code == 0 and "orchestrator 2" in out and "orchestrator 1 " not in out
+
+
+def test_lead_is_the_persons(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [])
+    monkeypatch.setattr("flotilla.core.caller.person_refusal",
+                        lambda what: f"`main session 2` is a background session; only a person {what}")
+    code, out = run_cli("spawn", "--lead", "--root", str(root))
+    assert code == 2 and "background session" in out
+
+
+def test_lead_takes_no_counts(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    monkeypatch.setattr("flotilla.core.caller.person_refusal", lambda what: "")
+    code, out = run_cli("spawn", "--lead", "-M", "1", "--root", str(root))
+    assert code == 2 and "--lead" in out
+
+
+def test_fill_counts_only_this_projects_sessions(tmp_path, monkeypatch):
+    """Review of 0.5.0, M3: the census is machine-wide, so another project's live reviewer stopped `--fill` from
+    raising this project's."""
+    root = onboarded(tmp_path, monkeypatch)
+    elsewhere = tmp_path / "another-project"
+    elsewhere.mkdir()
+    monkeypatch.setattr("flotilla.fleet.commands.census",
+                        lambda: [_a_session("review session 4", elsewhere), _a_session("main session 3", root)])
+    code, out = run_cli("spawn", "--fill", "--dry-run", "--root", str(root))
+    assert code == 0 and "(reviewer)" in out and "(main)" not in out

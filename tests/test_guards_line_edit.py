@@ -13,6 +13,8 @@ from flotilla.guards import shell
     "sed -i -e 's/a/b/' -e '7d' f.txt",
     "sed -i '5!d' f.txt",
     "sed -i '3,/end/d' f.txt",    # the start is a counted line: stale after an edit above it
+    "sed -i '1,/x/{5d}' f.txt",   # review of 0.5.0, M4: the from-the-top range must not hide a counted line inside
+    "sed -i '0,/x/{ 2d; }' f.txt",
 ])
 def test_an_in_place_edit_by_line_number_is_refused(command, tmp_path):
     found = [f for f in (line_edit.check(s) for s in shell.segments(command, tmp_path)) if f]

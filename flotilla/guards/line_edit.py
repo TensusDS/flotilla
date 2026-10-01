@@ -26,9 +26,14 @@ ADDRESS = re.compile(r"^\d+(?:[,~!]|\s*[A-Za-z{=]|\s*$)")
 FROM_THE_TOP = re.compile(r"^[01],\s*[/\\]")
 
 
+def _counted(command: str) -> bool:
+    if FROM_THE_TOP.match(command):   # exempt is the range, not a block it opens: `1,/x/{5d}` still counts (M4)
+        return "{" in command and numeric_address(command[command.index("{") + 1:])
+    return bool(ADDRESS.match(command))
+
+
 def numeric_address(script: str) -> bool:
-    commands = (command.lstrip(" \t{") for command in COMMANDS.split(script))
-    return any(ADDRESS.match(command) and not FROM_THE_TOP.match(command) for command in commands)
+    return any(_counted(command.lstrip(" \t{")) for command in COMMANDS.split(script))
 
 
 def _scripts(words: list[str]) -> tuple[bool, list[str]]:

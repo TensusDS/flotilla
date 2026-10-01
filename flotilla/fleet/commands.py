@@ -43,11 +43,46 @@ def counts_from(args, profile: dict) -> dict:
     return flags
 
 
+def _lead(ledger, args) -> int:
+    """Reserve the orchestrator's name for the person's own session (decision 191): only a person renames an
+    interactive session, so flotilla can only issue the name - from the journal, never reissued (review of 0.5.0, I3)."""
+    from flotilla.core import caller
+    from flotilla.ledger import project
+    if counts_from(args, {}) or args.default or args.fill or args.dry_run:
+        raise MoveRefused("--lead takes nothing else: it names this session the orchestrator; "
+                          "`flotilla spawn --fill` raises the rest afterwards")
+    refused = caller.person_refusal("leads the fleet from their own session")
+    if refused:
+        raise MoveRefused(refused)
+    post = next((p for p in ledger.posts.values() if p.name == "orchestrator"), None)
+    if post is None:
+        raise MoveRefused("this project has no orchestrator post in .flotilla/posts/")
+    try:
+        sessions = census()
+    except CensusUnavailable as err:
+        raise MoveRefused(f"--lead needs the census to keep the name unique ({err})") from err
+    mine = project.members(sessions, ledger.rows(), project.roots(ledger.root))
+    held = [item.name for item in mine if item.name and names.number_of(post, item.name) is not None]
+    if held:
+        print(f"note: {', '.join(held)} already lead(s) this project's fleet")
+    taken = {item.name for item in sessions if item.name}
+    taken |= {name for row in ledger.rows().values() for name in (row.owner, row.reader) if name}
+    store = LocalLogStore(paths.state_dir() / "fleet")
+    name = names.next_names(post, 1, taken=taken, store=store, reserve=True, now=ledger.now())[0]
+    print(f"{name}: reserved for this session. Type `/rename {name}` as your next message - only you can rename "
+          "this session - then `flotilla spawn --fill` raises the rest of the default composition.")
+    return 0
+
+
 def _spawn(ledger, args) -> int:
+    if getattr(args, "lead", False):
+        return _lead(ledger, args)
     counts = counts_from(args, ledger.profile)
-    if args.fill:   # the default, less the posts live sessions already hold
+    if args.fill:   # the default, less the posts this project's live sessions already hold
+        from flotilla.ledger import project
         try:
-            counts = compose.fill(counts, dict(spawn._live_posts(ledger, census())))
+            mine = project.members(census(), ledger.rows(), project.roots(ledger.root))   # the census is the
+            counts = compose.fill(counts, dict(spawn._live_posts(ledger, mine)))           # machine's (M3)
         except CensusUnavailable as err:
             raise MoveRefused(f"--fill needs the census to see who is alive ({err}); name the counts instead") from err
         if not counts:

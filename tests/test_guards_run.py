@@ -165,7 +165,15 @@ CLI_PATH = str(ROOT / "scripts" / "flotilla")
     f"{CLI_PATH} work approve feat/x",
     "flotilla work approve feat/x",
     f"cd /tmp && {CLI_PATH} work approve feat/x --root .",
-    f"FLOTILLA_STATE_DIR=/s {CLI_PATH} work --root . approve feat/x",
+    f"FLOTILLA_STATE_DIR=/s {CLI_PATH} work approve feat/x --root .",
+    # review of 0.5.0, I2: each of these passed the first version - the quoted word escaped the text prefilter, and an
+    # interpreter or a wrapper put the CLI out of the first word
+    f"{CLI_PATH} work app''rove feat/x",
+    f"{CLI_PATH} work appro\\ve feat/x",
+    f"python3 {CLI_PATH} work approve feat/x",
+    f"timeout 60 {CLI_PATH} work approve feat/x",
+    f"setsid bash {CLI_PATH} work approve feat/x",
+    "python3 -m flotilla.cli work approve feat/x",
 ])
 def test_claude_running_the_persons_approval_is_refused(tmp_path, monkeypatch, command):
     """Where a session leads the fleet from the person's own interactive session, the person check lets that
@@ -188,7 +196,24 @@ def test_approval_is_refused_to_claude_outside_any_project_too(tmp_path, monkeyp
     f"{CLI_PATH} brief",
     "git log --grep approve",
     f"{CLI_PATH} work accept feat/x --reviewed abc1234",
+    # review of 0.5.0, M2: the move is the word after `work`; `approve` elsewhere is a branch or a reason
+    f"{CLI_PATH} work show approve",
+    f"{CLI_PATH} work claim approve",
+    f"{CLI_PATH} work wait feat/x --on me --why approve",
+    "git checkout -b approve",
 ])
 def test_other_moves_and_the_word_alone_pass(tmp_path, monkeypatch, command):
     answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
     assert answer is None or answer.get("permissionDecision") != "deny"
+
+
+def test_the_guard_knows_every_move_the_cli_has():
+    """The move is read as the first word after `work` that names one; a move the guard does not know would let the
+    scan run on to a later `approve`."""
+    import argparse
+    from flotilla import cli
+    from flotilla.guards import person
+    parser = cli.build_parser()
+    work = next(a for a in parser._subparsers._group_actions[0].choices["work"]._actions
+                if isinstance(a, argparse._SubParsersAction))
+    assert set(work.choices) == set(person.MOVES)

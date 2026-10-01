@@ -7,9 +7,11 @@ model there is the door: a Bash tool call fires this hook, a command the person 
 Claude Code 2.1.287). So a tool call that approves is refused, always, with no override and whatever guards the
 profile turns on: a session cannot waive what only a person gives.
 
-Seen: the flotilla CLI by any path (`.../scripts/flotilla`, `flotilla`), with the words `work` and then `approve`.
-Not seen: what the shell's ceiling hides (`flotilla.guards.CEILING`) - such a call still meets Claude Code's
-permission prompt in the person's session.
+Seen: the flotilla CLI anywhere in the segment - by any path, behind an interpreter or a wrapper (`python3 .../flotilla`,
+`timeout 60 .../flotilla`), or as the module (`-m flotilla.cli`) - whose move, the first word after `work` that names
+one, is `approve`. Quotes and backslashes inside the word are read as the shell reads them. Not seen: what the shell's
+ceiling hides (`flotilla.guards.CEILING`) and Python handed the code as text (`python3 -c ...`) - such a call still
+meets Claude Code's permission prompt in the person's session.
 """
 
 from __future__ import annotations
@@ -19,15 +21,30 @@ import os
 from flotilla.guards import Finding
 
 GUARD = "person"
+#: Every move `flotilla work` takes; a test holds it equal to the CLI's own list.
+MOVES = ("accept", "adopt", "approve", "assign", "broke", "claim", "close", "fix", "hand", "hold", "inbatch", "land",
+         "moved", "offledger", "queue", "reconcile", "recuse", "release", "reserve", "return", "ship", "show", "take", "unbroke",
+         "unhold", "urgent", "vouch", "wait", "walkable", "walked")
+
+
+def _runs_flotilla(word: str, previous: str) -> bool:
+    return os.path.basename(word) == "flotilla" or (previous == "-m" and word.split(".")[0] == "flotilla")
+
+
+def _move(words: list[str]) -> str:
+    """The move of the first `flotilla ... work <move>` in the segment, or ""."""
+    for at, word in enumerate(words):
+        if not _runs_flotilla(word, words[at - 1] if at else ""):
+            continue
+        rest = words[at + 1:]
+        if "work" in rest:
+            return next((w for w in rest[rest.index("work") + 1:] if w in MOVES), "")
+    return ""
 
 
 def check(segment) -> Finding | None:
-    words = list(segment.words)
-    if not words or os.path.basename(words[0]) != "flotilla" or "work" not in words:
-        return None
-    if "approve" not in words[words.index("work") + 1:]:
+    if _move(list(segment.words)) != "approve":
         return None
     return Finding(GUARD, True, "flotilla: approving work for trunk is the person's own move, and a Claude tool call "
                                 "is never the person's. Show the person the command; they type it with `!` in front "
-                                f"in their own Claude Code session (`! {segment.text.strip()}`), or run it in a "
-                                "terminal.")
+                                "in their own Claude Code session, or run it in a terminal.")
