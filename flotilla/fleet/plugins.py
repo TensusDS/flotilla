@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 
@@ -62,3 +63,52 @@ def mcp_plugins_in(entries: list[dict]) -> list[str]:
 def mcp_plugins(run, cwd: Path, *, timeout: float = 30) -> list[str] | None:
     entries = listing(run, cwd, timeout=timeout)
     return None if entries is None else mcp_plugins_in(entries)
+
+
+NOT_NARROWED = "plugin set not narrowed"
+
+
+def _is_flotilla(plugin_id: str) -> bool:
+    return plugin_id.split("@", 1)[0] == "flotilla"
+
+
+@dataclass(frozen=True)
+class Narrowing:
+    """The plugin listing of the main checkout, asked once per spawn, and what it means for each post's seats."""
+
+    main: Path
+    entries: tuple | None   # None: `claude plugin list` could not be asked, so nothing is narrowed
+
+    def mcp(self) -> list[str]:
+        return [] if self.entries is None else mcp_plugins_in(list(self.entries))
+
+    def turned_off(self, post) -> list[str]:
+        """The enabled MCP-bearing plugins a seat of this post starts without: all but the declared and flotilla."""
+        kept = set(post.plugins)
+        return [plugin for plugin in self.mcp() if plugin not in kept and not _is_flotilla(plugin)]
+
+    def settings_json(self, post) -> str:
+        off = self.turned_off(post)
+        return json.dumps({"enabledPlugins": {plugin: False for plugin in off}}) if off else ""
+
+    def warnings(self, posts) -> list[str]:
+        if self.entries is None:
+            return [f"`claude plugin list` could not be asked in {self.main}: {NOT_NARROWED}; each seat starts every "
+                    "MCP server its enabled plugins bring"]
+        listed = {entry["id"] for entry in self.entries}
+        enabled = {entry["id"] for entry in self.entries if entry.get("enabled") is True}
+        lines = []
+        for post in {post.name: post for post in posts}.values():
+            for plugin in post.plugins:
+                if plugin not in listed:
+                    lines.append(f"post `{post.name}` keeps plugin `{plugin}`, which is not installed: its seats "
+                                 "will not have it")
+                elif plugin not in enabled:
+                    lines.append(f"post `{post.name}` keeps plugin `{plugin}`, which is not enabled in {self.main}: "
+                                 "its seats will not have it")
+        return lines
+
+
+def narrowing(run, main: Path, *, timeout: float = 30) -> Narrowing:
+    entries = listing(run, main, timeout=timeout)
+    return Narrowing(Path(main), None if entries is None else tuple(entries))

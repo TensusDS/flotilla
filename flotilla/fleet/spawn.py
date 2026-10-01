@@ -3,9 +3,10 @@
 A plan turns a composition into seats: names from the journal (above every live, known and issued number), trees
 and branches that must not exist yet, one-copy posts held once. Raising a seat cuts its tree from trunk and locks
 it, records the post row (written by the spawner in the new session's name, `via: spawn`, the real caller kept),
-launches `claude --bg` from the main checkout, and asks the census for the new name. A launch that fails takes back
-what it made. A session the census does not list yet is reported as launched, never retried: a second launch would
-put two processes under one name. Spawning needs the census, because names are checked against it.
+launches `claude --bg` from the main checkout with the MCP plugins its post does not keep turned off, and asks the
+census for the new name. A launch that fails takes back what it made. A session the census does not list yet is
+reported as launched, never retried: a second launch would put two processes under one name. Spawning needs the
+census, because names are checked against it.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from flotilla.core.census import CensusUnavailable
-from flotilla.fleet import compose, launch, names
+from flotilla.fleet import compose, launch, names, plugins
 from flotilla.ledger import core, gitq
 from flotilla.ledger.actor import Actor
 from flotilla.ledger.errors import MoveRefused
@@ -181,11 +182,11 @@ def _find(census, name: str, *, wait: float, poll: float, sleep):
 
 
 def raise_seat(ledger, seat: launch.Seat, *, caller: str, census, wait: float = 30.0, poll: float = 1.0,
-               sleep=time.sleep) -> Raised:
+               sleep=time.sleep, settings_json: str = "") -> Raised:
     post = ledger.posts[seat.post]
     actor = Actor(seat.name, post, "spawn", caller)
     main = launch.main_checkout(ledger.root, run=ledger.run)
-    command = launch.argv(seat, post, ledger.profile, main=main)
+    command = launch.argv(seat, post, ledger.profile, main=main, settings_json=settings_json)
     base = gitq.trunk_ref(ledger.root, ledger.trunk, run=ledger.run)
     if seat.tree.exists() or seat.tree.is_symlink():
         raise SpawnRefused(f"{seat.tree} already exists; {seat.name} was not raised and nothing there was touched")
@@ -236,11 +237,13 @@ def raise_seat(ledger, seat: launch.Seat, *, caller: str, census, wait: float = 
 def spawn(ledger, counts: dict, *, census, store, caller: str, wait: float = 30.0, poll: float = 1.0,
           sleep=time.sleep, anyway: bool = False) -> tuple[list[Raised], list[str]]:
     seats, warnings = plan(ledger, counts, census=census, store=store, reserve=True, anyway=anyway)
+    narrow = plugins.narrowing(ledger.run, launch.main_checkout(ledger.root, run=ledger.run))   # once (H49)
+    warnings = warnings + narrow.warnings([ledger.posts[seat.post] for seat in seats])
     raised: list[Raised] = []
     for seat in seats:
         try:
             raised.append(raise_seat(ledger, seat, caller=caller, census=census, wait=wait, poll=poll,
-                                     sleep=sleep))
+                                     sleep=sleep, settings_json=narrow.settings_json(ledger.posts[seat.post])))
         except SpawnRefused as err:
             if not raised:
                 raise

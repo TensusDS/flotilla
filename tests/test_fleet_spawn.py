@@ -266,3 +266,45 @@ def test_available_mb_reads_meminfo(tmp_path):
     assert spawn.read_available_mb(tmp_path / "absent") is None
     (tmp_path / "odd").write_text("MemTotal: 1 kB\n", encoding="utf-8")
     assert spawn.read_available_mb(tmp_path / "odd") is None
+
+
+def mcp_plugin(tmp_path, plugin_id, **more):
+    folder = tmp_path / "plugin-cache" / plugin_id.split("@")[0]
+    folder.mkdir(parents=True)
+    (folder / ".mcp.json").write_text('{"mcpServers": {"s": {"command": "s"}}}', encoding="utf-8")
+    return {"id": plugin_id, "scope": "user", "enabled": True, "installPath": str(folder), **more}
+
+
+def settings_of(command):
+    import json
+    return json.loads(command[command.index("--settings") + 1]) if "--settings" in command else None
+
+
+def test_each_seat_starts_only_the_mcp_plugins_its_post_declares(tmp_path):
+    entries = [mcp_plugin(tmp_path, "playwright@claude-plugins-official"), mcp_plugin(tmp_path, "serena@official"),
+               mcp_plugin(tmp_path, "pdf@synced", scope="project", projectPath=str(tmp_path / "app")),
+               mcp_plugin(tmp_path, "flotilla@flotilla")]
+    fake = FakeClaude(plugin_entries=entries)
+    root, ledger, store = world(tmp_path, fake)
+    raised, warnings = run(ledger, store, fake, {"review": 1, "judge": 1})
+    by_name = {cmd[3]: settings_of(cmd) for cmd in fake.launched}
+    assert by_name["review session 1"] == {"enabledPlugins": {
+        "pdf@synced": False, "playwright@claude-plugins-official": False, "serena@official": False}}
+    assert by_name["acceptance judge 1"] == {"enabledPlugins": {"pdf@synced": False, "serena@official": False}}
+    assert fake.plugin_lists == [str(root.resolve())] and warnings == []
+
+
+def test_a_plugin_list_that_fails_spawns_anyway_without_settings_and_warns(tmp_path):
+    fake = FakeClaude(plugin_list_fails=True)
+    root, ledger, store = world(tmp_path, fake)
+    raised, warnings = run(ledger, store, fake, {"main": 1})
+    assert raised[0].short_id and "--settings" not in fake.launched[0]
+    assert any("plugin set not narrowed" in line for line in warnings)
+
+
+def test_a_declared_plugin_that_is_not_installed_is_warned_at_spawn(tmp_path):
+    fake = FakeClaude(plugin_entries=[mcp_plugin(tmp_path, "serena@official")])
+    root, ledger, store = world(tmp_path, fake)
+    raised, warnings = run(ledger, store, fake, {"judge": 1})
+    assert settings_of(fake.launched[0]) == {"enabledPlugins": {"serena@official": False}}
+    assert [line for line in warnings if "playwright@claude-plugins-official" in line and "not installed" in line]

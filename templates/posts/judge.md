@@ -5,7 +5,8 @@ model: inherit
 name_pattern: "acceptance judge {n}"
 may: [reserve, walked, broke, unbroke, wait]
 writes_one_copy: false
-template_version: 5
+plugins: [playwright@claude-plugins-official]
+template_version: 6
 ---
 Your question is whether the work reaches a person; every other post asks about code.
 

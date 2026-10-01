@@ -150,3 +150,31 @@ def test_template_posts_inherit_the_model_and_the_permission_mode():
     for path in TEMPLATE_DIR.glob("*.md"):
         post = load_post(path)
         assert (post.model, post.permission_mode) == ("inherit", ""), path.name
+
+
+def test_a_post_reads_the_plugins_it_keeps(tmp_path):
+    from flotilla.posts import load_post
+    path = tmp_path / "lead.md"
+    path.write_text("---\nname: lead\nname_pattern: \"lead {n}\"\nmay: [assign]\n"
+                    "plugins: [playwright@claude-plugins-official, \"serena@claude-plugins-official\"]\n---\n",
+                    encoding="utf-8")
+    assert load_post(path).plugins == ("playwright@claude-plugins-official", "serena@claude-plugins-official")
+    path.write_text("---\nname: lead\nname_pattern: \"lead {n}\"\nmay: [assign]\n---\n", encoding="utf-8")
+    assert load_post(path).plugins == ()
+
+
+def test_a_post_refuses_plugins_that_are_not_a_list(tmp_path):
+    import pytest
+    from flotilla.posts import PostError, load_post
+    path = tmp_path / "lead.md"
+    path.write_text("---\nname: lead\nname_pattern: \"lead {n}\"\nmay: [assign]\nplugins: playwright\n---\n",
+                    encoding="utf-8")
+    with pytest.raises(PostError, match="plugins"):
+        load_post(path)
+
+
+def test_only_the_judge_template_keeps_a_plugin_and_it_is_the_browser():
+    posts = templates()
+    assert posts["judge"].plugins == ("playwright@claude-plugins-official",)
+    assert posts["judge"].template_version == 6
+    assert all(post.plugins == () for name, post in posts.items() if name != "judge")

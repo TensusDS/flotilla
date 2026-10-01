@@ -1,8 +1,12 @@
 """A fake `claude` for fleet tests: launches and stops are recorded, the census is a list, git runs for real."""
 
+import json
 import subprocess
 
 from flotilla.core.census import CensusUnavailable, Session
+
+
+FLOTILLA_ENABLED = {"id": "flotilla@flotilla", "scope": "project", "enabled": True}
 
 
 def session(name, short_id, state="blocked"):
@@ -12,7 +16,11 @@ def session(name, short_id, state="blocked"):
 
 class FakeClaude:
     def __init__(self, sessions=(), *, appear=True, fail_launch=False, reachable=True, fail_on=(),
-                 appear_then_fail=False, timeout=False):
+                 appear_then_fail=False, timeout=False, plugin_entries=None, plugin_list_fails=False):
+        # what `claude plugin list --json` answers: by default flotilla enabled and nothing that brings MCP servers
+        self.plugin_entries = list(plugin_entries if plugin_entries is not None else [FLOTILLA_ENABLED])
+        self.plugin_list_fails = plugin_list_fails
+        self.plugin_lists: list[str] = []             # the directories it was asked in
         self.fail_on = set(fail_on)
         self.appear_then_fail = appear_then_fail
         self.timeout = timeout
@@ -45,6 +53,11 @@ class FakeClaude:
             if self.appear:
                 self.sessions.append(session(name, f"{len(self.launched):06x}"))
             return subprocess.CompletedProcess(cmd, 0, "backgrounded", "")
+        if cmd[1:4] == ["plugin", "list", "--json"]:
+            self.plugin_lists.append(kwargs.get("cwd"))
+            if self.plugin_list_fails:
+                raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout", 30))
+            return subprocess.CompletedProcess(cmd, 0, json.dumps(self.plugin_entries), "")
         if cmd[1] in ("stop", "kill"):
             if any(s.short_id == cmd[2] and s.name in self.stop_fails for s in self.sessions):
                 return subprocess.CompletedProcess(cmd, 1, "", "fake claude: stop failed")

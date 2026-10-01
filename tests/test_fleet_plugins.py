@@ -89,3 +89,81 @@ def test_claude_failing_answers_none(tmp_path):
     for fake in (FakeList(returncode=1), FakeList(timeout=True), FakeList(missing=True), FakeList(stdout="nope"),
                  FakeList(stdout='{"not": "a list"}')):
         assert plugins.mcp_plugins(fake, tmp_path) is None
+
+
+def world_of_plugins(tmp_path):
+    """Four enabled plugins with MCP servers (one only at project scope, one is flotilla) and one without."""
+    ids = {"playwright@official": "playwright", "serena@official": "serena", "flotilla@flotilla": "flotilla"}
+    entries = [entry(pid, plugin_dir(tmp_path, name, mcp_json={name: {"command": name}})) for pid, name in ids.items()]
+    entries.append(entry("pdf@synced", plugin_dir(tmp_path, "pdf", mcp_json={"pdf": {"command": "npx"}}),
+                         scope="project", projectPath=str(tmp_path)))
+    entries.append(entry("skills@official", plugin_dir(tmp_path, "skills")))
+    entries.append(entry("off@official", plugin_dir(tmp_path, "off", mcp_json={"o": {"command": "o"}}),
+                         enabled=False))
+    return entries
+
+
+def post_keeping(*kept, name="judge"):
+    from dataclasses import replace
+    from flotilla.posts import TEMPLATE_DIR, load_post
+    return replace(load_post(TEMPLATE_DIR / "reviewer.md"), name=name, plugins=tuple(kept))
+
+
+def test_a_post_that_declares_nothing_turns_off_every_mcp_plugin_but_flotilla(tmp_path):
+    narrow = plugins.narrowing(FakeList(world_of_plugins(tmp_path)), tmp_path)
+    reviewer = post_keeping(name="reviewer")
+    assert narrow.turned_off(reviewer) == ["pdf@synced", "playwright@official", "serena@official"]
+    assert json.loads(narrow.settings_json(reviewer)) == {"enabledPlugins": {
+        "pdf@synced": False, "playwright@official": False, "serena@official": False}}
+    assert narrow.warnings([reviewer]) == []
+
+
+def test_a_post_keeps_the_plugins_it_declares(tmp_path):
+    narrow = plugins.narrowing(FakeList(world_of_plugins(tmp_path)), tmp_path)
+    judge = post_keeping("playwright@official")
+    assert narrow.turned_off(judge) == ["pdf@synced", "serena@official"]
+    assert "playwright@official" not in json.loads(narrow.settings_json(judge))["enabledPlugins"]
+
+
+def test_a_plugin_enabled_only_at_project_scope_is_still_turned_off(tmp_path):
+    narrow = plugins.narrowing(FakeList(world_of_plugins(tmp_path)), tmp_path)
+    assert "pdf@synced" in json.loads(narrow.settings_json(post_keeping()))["enabledPlugins"]
+
+
+def test_flotilla_is_never_turned_off_even_when_it_brings_servers(tmp_path):
+    narrow = plugins.narrowing(FakeList(world_of_plugins(tmp_path)), tmp_path)
+    assert not any(pid.startswith("flotilla@") for pid in narrow.turned_off(post_keeping()))
+
+
+def test_nothing_to_turn_off_means_no_settings(tmp_path):
+    narrow = plugins.narrowing(FakeList([entry("skills@official", plugin_dir(tmp_path, "skills"))]), tmp_path)
+    assert narrow.turned_off(post_keeping()) == [] and narrow.settings_json(post_keeping()) == ""
+
+
+def test_a_failing_plugin_list_narrows_nothing_and_says_so(tmp_path):
+    for fake in (FakeList(returncode=1), FakeList(timeout=True)):
+        narrow = plugins.narrowing(fake, tmp_path)
+        assert narrow.settings_json(post_keeping()) == "" and narrow.turned_off(post_keeping()) == []
+        (line,) = narrow.warnings([post_keeping()])
+        assert "plugin set not narrowed" in line and str(tmp_path) in line
+
+
+def test_a_declared_plugin_that_is_not_installed_is_named_and_changes_nothing(tmp_path):
+    narrow = plugins.narrowing(FakeList(world_of_plugins(tmp_path)), tmp_path)
+    judge = post_keeping("playwright@official", "ghost@nowhere")
+    assert narrow.turned_off(judge) == ["pdf@synced", "serena@official"]
+    (line,) = narrow.warnings([judge, judge])
+    assert "`ghost@nowhere`" in line and "not installed" in line and "`judge`" in line
+
+
+def test_a_declared_plugin_installed_but_not_enabled_here_is_named(tmp_path):
+    narrow = plugins.narrowing(FakeList(world_of_plugins(tmp_path)), tmp_path)
+    (line,) = narrow.warnings([post_keeping("off@official")])
+    assert "`off@official`" in line and "not enabled" in line
+
+
+def test_plugin_ids_that_need_quoting_stay_valid_json(tmp_path):
+    odd = 'we"ird\\id@m'
+    narrow = plugins.narrowing(FakeList([entry(odd, plugin_dir(tmp_path, "weird", mcp_json={"w": {"command": "w"}}))]),
+                               tmp_path)
+    assert json.loads(narrow.settings_json(post_keeping())) == {"enabledPlugins": {odd: False}}
