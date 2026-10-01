@@ -104,6 +104,30 @@ def _live_posts(ledger, sessions) -> Counter:
     return held
 
 
+def _named_before(ledger, mine) -> str:
+    """Why seats cannot be raised while live seats of this project carry names from before its fleet name: they match
+    no post, so the one-copy check would not see a live sender and raise a second one (review of 0.6.0, I1)."""
+    import re
+    old = []
+    for item in mine:
+        if not item.name or any(post.matches(item.name) for post in ledger.posts.values()):
+            continue
+        for post in ledger.posts.values():
+            if not post.project:
+                continue
+            base = post.name_pattern[len(post.project) + 1:]
+            regex = "^(?:.+-)?" + re.escape(base).replace(re.escape("{n}"), r"\d+") + "$"
+            if re.match(regex, item.name):
+                old.append(item.name)
+                break
+    if not old:
+        return ""
+    project = next(post.project for post in ledger.posts.values() if post.project)
+    return (f"live seats of this project carry names from before its fleet name `{project}`: {', '.join(old)}; "
+            "they hold their posts unseen by the new names - stand that fleet down (`flotilla fleet down`) or "
+            "retire them first")
+
+
 def _left_by_older_seats(ledger) -> set[str]:
     """The names whose seat branch (`fleet/<post>-<n>`) is still in the repository: numbering steps over them, so a
     project that took a fleet name and counts from 1 again does not meet the branches of its older seats (W11)."""
@@ -135,6 +159,9 @@ def plan(ledger, counts: dict, *, census, store, reserve: bool,
     sessions = _live(census)
     from flotilla.ledger import project
     mine = project.members(sessions, ledger.rows(), project.roots(ledger.root, run=ledger.run))
+    stale = _named_before(ledger, mine)
+    if stale and strict:
+        raise SpawnRefused(stale + "; nothing was raised")
     held = _live_posts(ledger, mine)   # one-copy resources are the project's; the census is the machine's (W10)
     problems = compose.one_copy_problems(wanted, ledger.posts, held)
     if problems:

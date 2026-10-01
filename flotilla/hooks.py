@@ -151,7 +151,9 @@ def _prompt(ctx, payload, out, now) -> int:
     from flotilla.watch import render, throttle
     from flotilla.watch.whose import WAITING
     blocks, keys = [], []
-    title = lead.take(LocalLogStore(paths.state_dir() / "fleet"), str(payload.get("session_id") or ""))
+    current = ctx.me.name if getattr(ctx, "me", None) is not None and ctx.me.name else ""
+    title = lead.due(LocalLogStore(paths.state_dir() / "fleet"), str(payload.get("session_id") or ""),
+                     current=current, now=now)
     if ctx.sessions is None:
         blocks.append(f"flotilla: could not ask which session this is: {ctx.census_error}")
     elif ctx.ledger is None:

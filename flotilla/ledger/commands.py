@@ -144,6 +144,16 @@ def fleet_name(root: Path, profile: dict) -> str:
     return project_name.resolve(store, repo.identify(Path(root)).key, wanted)[0]
 
 
+def fleet_note(root: Path, profile: dict) -> str:
+    """What the person is told when the fleet name the profile wants is another project's on this machine."""
+    wanted = (profile.get("fleet") or {}).get("name")
+    if not isinstance(wanted, str) or not wanted.strip():
+        return ""
+    from flotilla.fleet import project_name
+    store = LocalLogStore(paths.state_dir() / "fleet")
+    return project_name.resolve(store, repo.identify(Path(root)).key, wanted)[1]
+
+
 def open_ledger(root: Path, *, skip_events: dict | None = None) -> core.Ledger:
     rules = trunk_rules(Path(root))
     ident = repo.identify(Path(root))

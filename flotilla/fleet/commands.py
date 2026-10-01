@@ -92,7 +92,8 @@ def _leading(ledger, mine) -> int:
     comes with the person's next message, and --fill must not raise a second orchestrator in that gap."""
     from flotilla.fleet import lead
     from flotilla.posts import post_for_session
-    waiting = lead.pending(LocalLogStore(paths.state_dir() / "fleet"))
+    import datetime as dt
+    waiting = lead.pending(LocalLogStore(paths.state_dir() / "fleet"), now=dt.datetime.now(dt.timezone.utc))
     count = 0
     for item in mine:
         if item.session_id in waiting:
@@ -105,6 +106,10 @@ def _leading(ledger, mine) -> int:
 
 
 def _spawn(ledger, args) -> int:
+    from flotilla.ledger.commands import fleet_note
+    said = fleet_note(ledger.root, ledger.profile)
+    if said:
+        print(f"note: {said}")
     if getattr(args, "lead", False):
         return _lead(ledger, args)
     counts = counts_from(args, ledger.profile)

@@ -142,3 +142,12 @@ def test_the_letter_reads_like_every_other_letter_and_the_prompt_does_not_send_a
     assert letter.startswith(f"letter for {OWNER} - send it with SendMessage; an idle background session is woken")
     system = fake.launched[-1][fake.launched[-1].index("--append-system-prompt") + 1]
     assert "tree switch" not in system
+
+
+def test_a_helper_steps_over_a_seat_branch_left_by_an_older_fleet(tmp_path):
+    """Review of 0.6.0, I3: helpers built their taken names without the seat branches still in the repository, so a
+    project counting from 1 again met `fleet/helper-1` at `git worktree add -b` and burnt a number per retry."""
+    root, ledger, fake, row, tip = world(tmp_path)
+    git(root, "branch", "fleet/helper-1")
+    raised = raise_one(ledger, fake)
+    assert raised.seat.name == "helper 2" and raised.seat.branch == "fleet/helper-2"

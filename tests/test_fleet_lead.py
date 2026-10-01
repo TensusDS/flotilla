@@ -13,13 +13,14 @@ from test_fleet_cli import _a_session, onboarded, run_cli
 from watchkit import context, onboarded as watch_onboarded, sess
 
 
-def test_a_lead_is_taken_once(tmp_path):
+def test_a_lead_is_given_until_it_shows(tmp_path):
     store = LocalLogStore(tmp_path)
     lead.record(store, "sid-1", "worldcore-orchestrator 1", now="t")
     assert lead.pending(store) == {"sid-1": "worldcore-orchestrator 1"}
-    assert lead.take(store, "sid-1") == "worldcore-orchestrator 1"
-    assert lead.take(store, "sid-1") == "" and lead.pending(store) == {}
-    assert lead.take(store, "sid-other") == ""
+    assert lead.due(store, "sid-1", current="app-3f") == "worldcore-orchestrator 1"
+    assert lead.due(store, "sid-1", current="app-3f") == "worldcore-orchestrator 1"
+    assert lead.due(store, "sid-1", current="worldcore-orchestrator 1") == "" and lead.pending(store) == {}
+    assert lead.due(store, "sid-other", current="x") == ""
 
 
 def test_lead_names_this_session_without_a_rename(tmp_path, monkeypatch):
@@ -42,28 +43,53 @@ def test_lead_falls_back_to_a_rename_when_it_cannot_tell_which_session_calls(tmp
     assert code == 0 and "/rename orchestrator 1" in out and "then send any message" in out
 
 
-def _prompt(tmp_path, sid, monkeypatch):
+def _prompt(tmp_path, sid, monkeypatch, me="app-3f", rows_=None, now=None):
     monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
     watch_onboarded(tmp_path)
     out = io.StringIO()
     payload = {"cwd": str(tmp_path), "session_id": sid, "prompt": "build the orbit tests"}
-    ctx = context(tmp_path, me=sess("app-3f"))
-    assert hooks.run_hook("prompt", io.StringIO(json.dumps(payload)), out=out, gather=lambda root, s: ctx) == 0
+    ctx = context(tmp_path, me=sess(me), rows_=rows_)
+    assert hooks.run_hook("prompt", io.StringIO(json.dumps(payload)), out=out, gather=lambda root, s: ctx,
+                          now=now) == 0
     return out.getvalue()
 
 
-def test_the_next_prompt_gives_the_session_its_name_once(tmp_path, monkeypatch):
-    lead.record(LocalLogStore(tmp_path / "state" / "fleet"), "sid-me", "worldcore-orchestrator 1", now="t")
+def _store(tmp_path):
+    return LocalLogStore(tmp_path / "state" / "fleet")
+
+
+def test_the_session_is_named_until_the_census_shows_the_name(tmp_path, monkeypatch):
+    """Review of 0.6.0, I4: the lead was marked given before Claude Code had applied it, and nothing read it back.
+    Now the hook keeps naming the session until the census lists it under that name."""
+    lead.record(_store(tmp_path), "sid-me", "worldcore-orchestrator 1", now="t")
     said = json.loads(_prompt(tmp_path, "sid-me", monkeypatch))["hookSpecificOutput"]
     assert said["hookEventName"] == "UserPromptSubmit" and said["sessionTitle"] == "worldcore-orchestrator 1"
     assert "orchestrator" in said["additionalContext"]
-    assert "sessionTitle" not in _prompt(tmp_path, "sid-me", monkeypatch)
+    assert "sessionTitle" in _prompt(tmp_path, "sid-me", monkeypatch)                  # not applied yet: again
+    assert "sessionTitle" not in _prompt(tmp_path, "sid-me", monkeypatch, me="worldcore-orchestrator 1")
+    assert lead.pending(_store(tmp_path)) == {}
+
+
+def test_the_lead_keeps_what_the_hook_had_to_say(tmp_path, monkeypatch):
+    from watchkit import row, rows
+    lead.record(_store(tmp_path), "sid-me", "worldcore-orchestrator 1", now="t")
+    handed = rows(row(state="handed", reader="app-3f", tip="abc1234def"))
+    said = json.loads(_prompt(tmp_path, "sid-me", monkeypatch, rows_=handed))["hookSpecificOutput"]
+    assert "your move" in said["additionalContext"]
+
+
+def test_a_lead_left_a_day_is_forgotten(tmp_path, monkeypatch):
+    import datetime as dt
+    from watchkit import NOW
+    old = (NOW - dt.timedelta(hours=25)).isoformat()
+    lead.record(_store(tmp_path), "sid-me", "worldcore-orchestrator 1", now=old)
+    assert "sessionTitle" not in _prompt(tmp_path, "sid-me", monkeypatch, now=NOW)
 
 
 def test_another_sessions_prompt_takes_no_name(tmp_path, monkeypatch):
-    lead.record(LocalLogStore(tmp_path / "state" / "fleet"), "sid-me", "worldcore-orchestrator 1", now="t")
+    lead.record(_store(tmp_path), "sid-me", "worldcore-orchestrator 1", now="t")
     assert "sessionTitle" not in _prompt(tmp_path, "sid-someone", monkeypatch)
-    assert lead.pending(LocalLogStore(tmp_path / "state" / "fleet")) == {"sid-me": "worldcore-orchestrator 1"}
+    assert lead.pending(_store(tmp_path)) == {"sid-me": "worldcore-orchestrator 1"}
 
 
 def _onboarded_with(tmp_path, monkeypatch, default):
@@ -95,3 +121,12 @@ def test_fill_counts_a_leading_session_before_its_name_shows(tmp_path, monkeypat
     lead.record(LocalLogStore(tmp_path / "state" / "fleet"), me.session_id, "orchestrator 1", now="t")
     code, out = run_cli("spawn", "--fill", "--dry-run", "--root", str(root))
     assert code == 0 and "(orchestrator)" not in out and "(main)" in out, out
+
+
+def test_fill_does_not_count_a_lead_whose_session_is_gone(tmp_path, monkeypatch):
+    """Review of 0.6.0, M6: nothing pinned that a dead session's lead stops holding the orchestrator's seat."""
+    root = _onboarded_with(tmp_path, monkeypatch, {"orchestrator": 1, "main": 1})
+    monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [_a_session("app-3f", root)])
+    lead.record(LocalLogStore(tmp_path / "state" / "fleet"), "sid-gone", "orchestrator 1", now="t")
+    code, out = run_cli("spawn", "--fill", "--dry-run", "--root", str(root))
+    assert code == 0 and "(orchestrator)" in out, out

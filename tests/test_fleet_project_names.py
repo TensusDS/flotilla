@@ -67,9 +67,16 @@ def test_a_fleet_name_is_unique_on_the_machine(tmp_path):
 
 
 @pytest.mark.parametrize("raw, clean", [("worldcore", "worldcore"), ("My Game!", "My-Game"),
-                                        ("  ", "project"), ("a/b", "a-b")])
+                                        ("  ", "project"), ("a/b", "a-b"), ("κόσμος", "κόσμος"), ("x" * 500, "x" * 40)])
 def test_a_fleet_name_is_cleaned_to_an_address_word(raw, clean):
+    """Review of 0.6.0, M7: a directory in a non-Latin script became `project`; a 5000-character name went through whole."""
     assert project_name.clean(raw) == clean
+
+
+def test_a_fleet_name_differing_only_in_case_is_taken(tmp_path):
+    store = LocalLogStore(tmp_path / "fleet")
+    assert project_name.resolve(store, "repo-a", "App")[0] == "App"
+    assert project_name.resolve(store, "repo-b", "app")[0] == "app-2"
 
 
 def test_the_ledger_reads_posts_under_the_profiles_fleet_name(tmp_path, monkeypatch):
@@ -133,3 +140,34 @@ def test_onboarding_names_the_fleet_after_the_project(tmp_path):
     profile = build_profile(det, {"flow": "local", "review": "every", "permissions": "ask", "tiers": ["none"],
                                   "model": "one"})
     assert profile["fleet"]["name"] == "worldcore"
+
+
+@pytest.mark.parametrize("live_name, fleet_name", [("sender 9", "worldcore"), ("worldcore-sender 1", "wc")])
+def test_a_fleet_name_arriving_under_a_live_fleet_is_refused(tmp_path, live_name, fleet_name):
+    """Review of 0.6.0, I1: a live seat named before the fleet name (or under another one) matches no post, so the
+    one-copy check counted no sender and raised a second one."""
+    root, ledger, store, fake = world(tmp_path, [at(live_name, tmp_path / "app")], fleet_name=fleet_name)
+    with pytest.raises(spawn.SpawnRefused, match="before") as refused:
+        spawn.plan(ledger, {"sender": 1}, census=fake.census, store=store, reserve=False)
+    assert live_name in str(refused.value) and "fleet down" in str(refused.value)
+
+
+def test_spawn_says_when_the_fleet_name_was_taken(tmp_path, monkeypatch):
+    """Review of 0.6.0, I2: the "-2" note was computed and thrown away; the person saw `app-2-...` unexplained."""
+    from flotilla.onboard.tomlw import render_toml
+    from flotilla.posts import install_templates
+    from ledgerkit import commit
+    from test_fleet_cli import run_cli
+    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setenv("FLOTILLA_NO_CENSUS", "1")
+    project_name.resolve(LocalLogStore(tmp_path / "state" / "fleet"), "another-repo", "app")
+    root = repo_with_origin(tmp_path)
+    (root / ".flotilla").mkdir()
+    profile = {**PROFILE, "fleet": {"name": "app", "default": {"main": 1}}}
+    (root / ".flotilla" / "project.toml").write_text(render_toml(profile), encoding="utf-8")
+    install_templates(root)
+    git(root, "add", ".flotilla")
+    commit(root, "onboard")
+    git(root, "push", "-q", "origin", "main")
+    code, out = run_cli("spawn", "--dry-run", "-M", "1", "--root", str(root))
+    assert code == 0 and "app-2-main session 1" in out and "taken" in out

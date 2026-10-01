@@ -12,11 +12,13 @@ from __future__ import annotations
 import re
 
 KEY = "projects"
+LONGEST = 40
 
 
 def clean(raw: str) -> str:
-    """The name as one address word: letters, digits, `.`, `_` and `-`; anything else becomes `-`."""
-    word = re.sub(r"[^A-Za-z0-9._-]+", "-", str(raw).strip()).strip("-.")
+    """The name as one address word of at most 40 characters: letters of any script, digits, `.`, `_` and `-`;
+    anything else becomes `-`."""
+    word = re.sub(r"[^\w.-]+", "-", str(raw).strip()).strip("-.")[:LONGEST].strip("-.")
     return word or "project"
 
 
@@ -32,9 +34,10 @@ def resolve(store, repo_key: str, wanted: str) -> tuple[str, str]:
         for record in records:   # another caller may have claimed it since the read above
             if record.get("repo") == repo_key and record.get("wanted") == wanted:
                 return record["name"], _note(wanted, record["name"])
-        taken = {record.get("name") for record in records if record.get("repo") != repo_key}
+        # compared without case: whether a name is told from another by case alone is not ours to rely on
+        taken = {str(record.get("name")).casefold() for record in records if record.get("repo") != repo_key}
         name, number = wanted, 1
-        while name in taken:
+        while name.casefold() in taken:
             number += 1
             name = f"{wanted}-{number}"
         tx.append({"repo": repo_key, "wanted": wanted, "name": name})

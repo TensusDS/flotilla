@@ -1019,6 +1019,20 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    interactive) waits - the census does not say how a session was started, and reading every session's transcript
    to tell is a cost for a cosmetic mistake. (planner's decision, 2026-10-01)
 
+198. **Review of 0.6.0: a fleet name never hides a live fleet; a lead is given until it shows** (2026-10-01). Spawn
+   refuses while live seats of the project carry names from before its fleet name (or under another one) - they
+   match no post, so the one-copy check would raise a second sender - and names them, with `flotilla fleet down` as
+   the way out (I1). Spawn says when the fleet name it wanted is another project's and the seats carry `-2` (I2).
+   Helpers step over seat branches an older fleet left, as spawn does (I3). The prompt hook gives the leading
+   session its name on every prompt until the census lists it under that name, and only then closes the lead: Claude
+   Code says nothing back about a title (I4); a lead not shown within a day is forgotten. A fleet name keeps letters of
+   any script, is cut at 40 characters, and is compared without case when another project's is taken. Rulings, each
+   costing little if wrong: the broker's fallback when trunk cannot be read stays unprefixed - it refuses a prefixed
+   orchestrator's answer, which fails closed; a word a repository once wanted stays reserved for it; the prompt that
+   carries the name repeats the hook's blocks once more; and the one-copy check sees only this checkout's sessions,
+   so two checkouts of one origin, each with a live sender, are not refused at spawn - a rare shape, left open and not
+   measured. (planner's decision, 2026-10-01)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
