@@ -231,6 +231,7 @@ def build_parser() -> argparse.ArgumentParser:
     permit_answer.add_argument("id")
     permit_answer.add_argument("choice", choices=["allow", "session", "deny"])
     permit_answer.add_argument("--why", default="")
+    permit_answer.add_argument("--mark", default="", help="the question's mark, as `flotilla permit next` printed it")
     permit_answer.add_argument("--root", default=".")
     import argparse as _argparse
     lane = sub.add_parser("lane", help="book the machine for long runs (not a lock)")

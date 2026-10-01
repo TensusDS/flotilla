@@ -12,7 +12,8 @@ from flotilla.onboard import machine
 from flotilla.onboard.check import check_drift, exit_code
 from flotilla.onboard.detect import detect
 from flotilla.onboard.firstrun import load_measurements, run_tier, save_measurements
-from flotilla.onboard.profile import ProfileExists, ProfileUnsafe, build_profile, write_profile
+from flotilla.onboard.profile import HEADER, ProfileExists, ProfileUnsafe, build_profile, write_profile
+from flotilla.onboard.tomlw import render_toml
 from flotilla.onboard.questions import AnswerError, all_questions, next_questions, validate_answer
 from flotilla.posts import PostError, install_templates
 
@@ -46,8 +47,9 @@ def commands_of(data: dict, where: str = "") -> list[tuple[str, str]]:
     return found
 
 
-def confirmation_mark(commands: list[tuple[str, str]]) -> str:
-    return hashlib.sha256("\n".join(f"{where}\t{command}" for where, command in commands).encode()).hexdigest()[:12]
+def confirmation_mark(text: str) -> str:
+    """Over the whole profile as it will be written: a changed command, mode or guard changes the mark."""
+    return hashlib.sha256(text.encode()).hexdigest()[:12]
 
 
 def _write(det: dict, given: dict, args, state: Path) -> int:
@@ -61,14 +63,19 @@ def _write(det: dict, given: dict, args, state: Path) -> int:
         print(f"{target} already exists; run `flotilla onboard check`, or re-onboard with --force")
         return 2
     data = build_profile(det, given)
-    commands = commands_of(data)
-    mark = confirmation_mark(commands)
-    if commands and args.confirm != mark:   # the answers file is plain JSON: what runs is shown here, at the end
+    text = render_toml(data, header=HEADER)
+    mark = confirmation_mark(text)
+    if args.confirm != mark:   # the answers are a plain file a session can edit: the whole profile is shown here
         from flotilla.core.text import visible
-        print("the profile runs or stores these shell commands:")
-        for where, command in commands:
-            print(f"  {where}: {visible(command)}")
-        print("show them to the person; when the person agrees, run "
+        print(f"the profile it writes, {config.PROJECT_DIR}/{config.PROJECT_FILE}:")
+        for line in text.splitlines():
+            print(f"  | {visible(line)}")
+        commands = commands_of(data)
+        if commands:
+            print("of which these are shell commands it runs or stores:")
+            for where, command in commands:
+                print(f"  {visible(where)}: {visible(command)}")
+        print("show the person the profile; when the person agrees, run "
               f"`flotilla onboard write --confirm {mark}` (with the same other options)")
         return 5
     tiers = (data.get("tests") or {}).get("tier") or []

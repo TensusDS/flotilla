@@ -50,9 +50,9 @@ recorded. They are refused from a background session: onboarding is the person's
 
 ## 4. Write the profile
 
-Run `flotilla onboard write`. First it prints every shell command the profile will run or store (each test tier,
-the gate, the revision command) and a mark, and does nothing else. Show the person those commands exactly as
-printed and ask whether they are right; only when the person says yes, run `flotilla onboard write --confirm <mark>`
+Run `flotilla onboard write`. First it prints the whole profile it will write, then every shell command in it (each
+test tier, the gate, the revision command), and a mark, and does nothing else. Show the person the profile and
+those commands exactly as printed and ask whether they are right; only when the person says yes, run `flotilla onboard write --confirm <mark>`
 with the same other options. That runs each chosen test tier once, then writes the file. A changed answer changes
 the mark, and `write` shows the commands again.
 

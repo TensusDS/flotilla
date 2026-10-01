@@ -64,6 +64,9 @@ def _timed_out(wait: float) -> dict:
 
 def _decision(got: dict, asked: queue.Question, wait: float) -> dict:
     choice = got.get("choice")
+    if choice in (queue.ALLOW, queue.SESSION) and got.get("mark") != queue.mark_of(asked):
+        return _deny("the answer was given for another question than this call (the question on disk no longer "
+                     "matches it), so this call is refused; ask again")
     if choice == queue.ALLOW:
         return {"behavior": "allow"}
     if choice == queue.SESSION:

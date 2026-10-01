@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 from flotilla.broker.decide import session_rules
+from flotilla.broker.queue import mark_of
 from flotilla.core.text import visible
 
 KEYS = ("command", "file_path", "url", "pattern", "path")
@@ -64,6 +65,7 @@ def describe(asked, now: float) -> list[str]:
             f"  {visible(asked.session)} asks: {summary(asked)}",
             *(f"    {line}" for line in details(asked)),
             f"  waiting {int(now - asked.at)} s; told no in {max(0, int(asked.deadline - now))} s",
-            f"  allow once: flotilla permit answer {asked.id} allow",
-            f"  allow for the session ({for_the_session(asked)}): flotilla permit answer {asked.id} session",
+            f"  allow once: flotilla permit answer {asked.id} allow --mark {mark_of(asked)}",
+            f"  allow for the session ({for_the_session(asked)}): flotilla permit answer {asked.id} session "
+            f"--mark {mark_of(asked)}",
             f'  deny: flotilla permit answer {asked.id} deny --why "<why>"']

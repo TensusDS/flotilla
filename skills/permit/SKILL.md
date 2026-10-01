@@ -14,7 +14,8 @@ oldest first:
    file, the URL, as printed). Three options: "Allow once"; "Allow for this session" (its description is the text
    the command printed after "allow for the session"); "Deny". A typed answer ("Other") is the reason for a deny,
    unless it clearly says to allow.
-3. Record the person's answer, and only theirs: `${CLAUDE_PLUGIN_ROOT}/scripts/flotilla permit answer <id> allow`, `... session`, or
+3. Record the person's answer, and only theirs, with the command `permit next` printed for it - an allow carries
+   the question's mark: `${CLAUDE_PLUGIN_ROOT}/scripts/flotilla permit answer <id> allow --mark <mark>`, `... session --mark <mark>`, or
    `... deny --why "<the person's words>"`. A refusal ("withdrawn", "abandoned", "already closed") means nobody waits
    for that answer any more: say so, do not retry. Claude Code asks the person before this command runs, on
    purpose: no skill pre-approves an answer, so the person sees the exact grant once more. Never suggest the

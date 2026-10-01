@@ -112,8 +112,18 @@ def live(state_dir, repo_key: str, *, now: float | None = None, alive=is_alive) 
     return sorted(found, key=lambda item: (item.at, item.id))
 
 
-def answer(state_dir, repo_key: str, qid: str, choice: str, *, why: str = "", now: float | None = None,
-           alive=is_alive) -> Question:
+def mark_of(asked: Question) -> str:
+    """What the question asks, by content: the tool, its input and the rules Claude Code suggested. An allow names
+    it, so the answer cannot be given for another question, or for this one changed since it was shown (security
+    review of 203ac1c)."""
+    import hashlib
+    body = json.dumps({"tool": asked.tool, "input": asked.tool_input, "suggestions": asked.suggestions},
+                      sort_keys=True, ensure_ascii=True)
+    return hashlib.sha256(body.encode()).hexdigest()[:12]
+
+
+def answer(state_dir, repo_key: str, qid: str, choice: str, *, why: str = "", mark: str = "",
+           now: float | None = None, alive=is_alive) -> Question:
     if choice not in CHOICES:
         raise QueueRefused(f"`{choice}` is not an answer; one of {', '.join(CHOICES)}")
     now = time.time() if now is None else now
@@ -129,7 +139,12 @@ def answer(state_dir, repo_key: str, qid: str, choice: str, *, why: str = "", no
     if not alive(asked.pid):
         raise QueueRefused(f"question `{qid}` was abandoned: the hook that asked it is gone ({asked.session} "
                            "stopped)")
-    if not _close(state_dir, repo_key, qid, {"choice": choice, "why": why.strip(), "at": now}):
+    if choice != DENY and mark != mark_of(asked):   # a deny is safe for any question; an allow is for this one
+        raise QueueRefused(f"an allow names the question it allows: pass --mark {mark_of(asked)} as `flotilla permit "
+                           "next` printed it, after the person saw that question" if not mark else
+                           f"the mark {mark} is not question `{qid}` as it stands; run `flotilla permit next` and "
+                           "answer what it shows")
+    if not _close(state_dir, repo_key, qid, {"choice": choice, "why": why.strip(), "at": now, "mark": mark}):
         raise QueueRefused(f"question `{qid}` was closed a moment ago; `flotilla permit next` shows what is left")
     return asked
 

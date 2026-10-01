@@ -58,7 +58,7 @@ def test_answer_records_and_a_second_answer_is_refused(tmp_path, monkeypatch, ca
     asked = ask(state, key, 1000)
     assert run(root, "answer", asked.id, "deny", "--why", "not today") == 0
     assert queue.answer_of(state, key, asked.id)["why"] == "not today"
-    assert run(root, "answer", asked.id, "allow") == 2 and "already closed" in capsys.readouterr().out
+    assert run(root, "answer", asked.id, "allow", "--mark", queue.mark_of(asked)) == 2 and "already closed" in capsys.readouterr().out
 
 
 def test_a_second_question_waits_its_turn(tmp_path, monkeypatch, capsys):
@@ -67,7 +67,7 @@ def test_a_second_question_waits_its_turn(tmp_path, monkeypatch, capsys):
     second = ask(state, key, 1010, session="minor session 1", command="touch y.txt")
     run(root, "next")
     assert f"question {first.id}" in capsys.readouterr().out
-    run(root, "answer", first.id, "allow")
+    run(root, "answer", first.id, "allow", "--mark", queue.mark_of(first))
     capsys.readouterr()
     run(root, "next")
     assert f"question {second.id}" in capsys.readouterr().out
@@ -92,7 +92,7 @@ def test_for_the_session_is_said_in_words():
 def test_a_worker_session_cannot_answer(tmp_path, monkeypatch, capsys):
     root, state, key = world(tmp_path, monkeypatch)
     asked = ask(state, key, 1000)
-    args = cli.build_parser().parse_args(["permit", "answer", asked.id, "allow", "--root", str(root)])
+    args = cli.build_parser().parse_args(["permit", "answer", asked.id, "allow", "--mark", queue.mark_of(asked), "--root", str(root)])
     code = commands.run_permit_command(args, clock=lambda: 1100.0, caller=lambda root: ("main session 2", "main"))
     assert code == 2 and "only the orchestrator" in capsys.readouterr().out
     assert queue.answer_of(state, key, asked.id) is None
@@ -101,7 +101,7 @@ def test_a_worker_session_cannot_answer(tmp_path, monkeypatch, capsys):
 def test_the_orchestrator_can_answer(tmp_path, monkeypatch):
     root, state, key = world(tmp_path, monkeypatch)
     asked = ask(state, key, 1000)
-    args = cli.build_parser().parse_args(["permit", "answer", asked.id, "allow", "--root", str(root)])
+    args = cli.build_parser().parse_args(["permit", "answer", asked.id, "allow", "--mark", queue.mark_of(asked), "--root", str(root)])
     assert commands.run_permit_command(args, clock=lambda: 1100.0,
                                        caller=lambda root: ("orchestrator 1", "orchestrator")) == 0
 
@@ -119,11 +119,11 @@ def test_an_answer_from_outside_any_session_needs_a_terminal(tmp_path, monkeypat
     asked = ask(state, key, 1000)
     monkeypatch.setattr(caller, "calling_sessions", lambda: [])
     monkeypatch.setattr(caller, "has_terminal", lambda: False)
-    assert run(root, "answer", asked.id, "allow") == 2
+    assert run(root, "answer", asked.id, "allow", "--mark", queue.mark_of(asked)) == 2
     assert "a terminal" in capsys.readouterr().out
     assert [item.id for item in queue.live(state, key, now=1100.0)] == [asked.id]
     monkeypatch.setattr(caller, "has_terminal", lambda: True)
-    assert run(root, "answer", asked.id, "allow") == 0
+    assert run(root, "answer", asked.id, "allow", "--mark", queue.mark_of(asked)) == 0
 
 
 def test_a_question_shows_the_command_on_one_line_with_every_hidden_character_visible(tmp_path, monkeypatch, capsys):
@@ -167,3 +167,14 @@ def test_a_session_name_with_hidden_characters_is_shown_as_written(tmp_path, mon
     run(root, "next")
     out = capsys.readouterr().out
     assert "\x1b" not in out and "main\\x1b[2K session 9" in out
+
+
+def test_next_prints_the_mark_in_every_command_that_allows(tmp_path, monkeypatch, capsys):
+    root, state, key = world(tmp_path, monkeypatch)
+    asked = ask(state, key, 1000)
+    run(root, "next")
+    out = capsys.readouterr().out
+    mark = queue.mark_of(asked)
+    assert f"permit answer {asked.id} allow --mark {mark}" in out and f"permit answer {asked.id} session --mark {mark}" in out
+    assert run(root, "answer", asked.id, "allow") == 2 and "mark" in capsys.readouterr().out
+    assert run(root, "answer", asked.id, "allow", "--mark", mark) == 0

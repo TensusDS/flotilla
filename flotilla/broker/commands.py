@@ -62,7 +62,8 @@ def run_permit_command(args, *, clock=time.time, sleep=time.sleep, caller=None) 
                 print(f"refused: {refused}")
                 return 2
         try:
-            asked = queue.answer(state, key, args.id, args.choice, why=args.why or "", now=clock())
+            asked = queue.answer(state, key, args.id, args.choice, why=args.why or "", mark=args.mark or "",
+                                 now=clock())
         except queue.QueueRefused as err:
             print(f"refused: {err}")
             return 2

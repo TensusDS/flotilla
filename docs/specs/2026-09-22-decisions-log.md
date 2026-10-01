@@ -827,6 +827,16 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    such a character is refused, since it is printed back before it runs. (planner's decision, security fixes,
    2026-10-01)
 
+178. **What the person approves is named by a mark over exactly what they saw** (review of the group 1 and 2
+   fixes): `onboard write` shows the whole profile it will write, not only its commands, and its mark covers that
+   whole text - switching background sessions to auto mode in the answers file changes no command but changes the
+   mark. An allow of a permission question carries the question's mark (tool, input and suggested rules), which
+   `permit next` prints: an allow without it, or with another question's, is refused, and the hook allows only when
+   the mark matches the call it holds, so a question file changed after the hook wrote it cannot carry the person's
+   yes to another call. A deny needs no mark. A mark proves that nothing changed since it was printed, not that a
+   person read it: in auto mode, or after "don't ask again" on the prompt, the model makes both calls - the person's
+   gate stays Claude Code's prompt in ask mode. (planner's decision, security fixes, 2026-10-01)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
