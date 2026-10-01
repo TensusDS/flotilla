@@ -289,7 +289,7 @@ def test_meminfo_reads_mem_total_too(tmp_path):
     assert machine.read_meminfo(good, "MemTotal") == 16000000
 
 
-@pytest.mark.parametrize("value", ["lots", "1.5 GB", True, -5, 2.5])
+@pytest.mark.parametrize("value", ["lots", "1.5 GB", True, -5, 2.5, "\u00b2"])
 def test_a_floor_that_is_not_a_whole_number_falls_back_and_says_so(tmp_path, value):
     answer = memory(tmp_path, 900000, {"lane": {"memory_floor_mb": value}})
     assert answer.blocks is True and "1500 MB" in answer.text

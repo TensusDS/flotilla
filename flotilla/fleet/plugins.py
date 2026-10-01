@@ -83,8 +83,8 @@ class Narrowing:
         return [] if self.entries is None else mcp_plugins_in(list(self.entries))
 
     def turned_off(self, post) -> list[str]:
-        """The enabled MCP-bearing plugins a seat of this post starts without: all but the declared and flotilla."""
-        kept = set(post.plugins)
+        """The enabled MCP-bearing plugins a seat of this post starts without: all but the kept ones and flotilla."""
+        kept = set(kept_by(post)[0])
         return [plugin for plugin in self.mcp() if plugin not in kept and not _is_flotilla(plugin)]
 
     def settings_json(self, post) -> str:
@@ -99,7 +99,10 @@ class Narrowing:
         enabled = {entry["id"] for entry in self.entries if entry.get("enabled") is True}
         lines = []
         for post in {post.name: post for post in posts}.values():
-            for plugin in post.plugins:
+            kept, inherited = kept_by(post)
+            if inherited:
+                lines.append(inherited)
+            for plugin in kept:
                 if plugin not in listed:
                     lines.append(f"post `{post.name}` keeps plugin `{plugin}`, which is not installed: its seats "
                                  "will not have it")
@@ -107,6 +110,27 @@ class Narrowing:
                     lines.append(f"post `{post.name}` keeps plugin `{plugin}`, which is not enabled in {self.main}: "
                                  "its seats will not have it")
         return lines
+
+
+def kept_by(post) -> tuple[tuple, str]:
+    """The plugins a seat of this post keeps, and a note when they are not the post's own words. A project post
+    that predates the `plugins:` key (its `template_version` is older than the shipped template's, and it does not
+    write the key) keeps what the shipped template of its name keeps: otherwise an upgrade would silently take the
+    judge's browser. A post at the current template that leaves the key out keeps none, as written."""
+    if post.plugins_written:
+        return tuple(post.plugins), ""
+    from flotilla.posts import TEMPLATE_DIR, PostError, load_post
+    template_path = TEMPLATE_DIR / f"{post.name}.md"
+    try:
+        template = load_post(template_path) if template_path.is_file() else None
+    except PostError:
+        template = None
+    if template is None or not template.plugins or post.template_version >= template.template_version:
+        return tuple(post.plugins), ""
+    names = ", ".join(template.plugins)
+    return tuple(template.plugins), (f"post `{post.name}` (template_version {post.template_version}) predates the "
+                                     f"`plugins:` key, so its seats keep the template's {names}; write `plugins: "
+                                     f"[{names}]` (or `plugins: []`) in it to decide")
 
 
 def narrowing(run, main: Path, *, timeout: float = 30) -> Narrowing:

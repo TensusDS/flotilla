@@ -195,10 +195,14 @@ def _find(census, name: str, *, wait: float, poll: float, sleep):
 
 
 def raise_seat(ledger, seat: launch.Seat, *, caller: str, census, wait: float = 30.0, poll: float = 1.0,
-               sleep=time.sleep, settings_json: str = "") -> Raised:
+               sleep=time.sleep, settings_json: str | None = None) -> Raised:
+    """`settings_json` None asks the plugin list here, so a seat raised by any caller is narrowed (H49); "" is an
+    explicit choice not to narrow."""
     post = ledger.posts[seat.post]
     actor = Actor(seat.name, post, "spawn", caller)
     main = launch.main_checkout(ledger.root, run=ledger.run)
+    if settings_json is None:
+        settings_json = plugins.narrowing(ledger.run, main).settings_json(post)
     command = launch.argv(seat, post, ledger.profile, main=main, settings_json=settings_json)
     base = gitq.trunk_ref(ledger.root, ledger.trunk, run=ledger.run)
     if seat.tree.exists() or seat.tree.is_symlink():

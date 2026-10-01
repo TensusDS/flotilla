@@ -712,7 +712,10 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    a refused spawn; a kept plugin that is not installed, or not enabled there, is named in a warning. The map rides
    as one argv element made by `json.dumps`. (planner's decision, field fixes part 8 track B, 2026-10-01)
 156. **The judge template keeps `playwright@claude-plugins-official`; every other template keeps none.** A project
-   may edit its posts; a judge without it has no browser MCP, and the dry run shows that.
+   may edit its posts; a judge at the current template without it has no browser MCP, and the dry run shows that.
+   A project post that predates the key (no `plugins:` written, `template_version` older than the shipped
+   template's) keeps what the shipped template keeps, and spawn says so, so an upgrade does not silently take an
+   onboarded judge's browser (final review, 2026-10-01).
    (planner's decision, field fixes part 8 track B, 2026-10-01)
 157. **The dry run names, per seat, the plugins it will turn off** ("turns off: <ids>", or "unknown" when the
    listing cannot be asked); and **a session in a seat's tree that holds no post** — a hook's headless `claude`, a

@@ -37,6 +37,7 @@ class Post:
     model: str = "inherit"
     permission_mode: str = ""
     plugins: tuple = ()   # the MCP-bearing plugins a seat of this post keeps; the rest are turned off (decision 154)
+    plugins_written: bool = False   # whether the post says `plugins:` at all (a post older than the key does not)
 
     def matches(self, session_name: str) -> bool:
         regex = "^" + re.escape(self.name_pattern).replace(re.escape("{n}"), r"\d+") + "$"
@@ -104,7 +105,8 @@ def load_post(path: Path) -> Post:
     kept = meta.get("plugins", [])
     if not isinstance(kept, list):
         raise PostError(f"{path}: `plugins` must be a list of plugin ids like [playwright@claude-plugins-official]")
-    return Post(name, pattern, frozenset(may), one_copy, version, path, body, model, mode, tuple(kept))
+    return Post(name, pattern, frozenset(may), one_copy, version, path, body, model, mode, tuple(kept),
+                "plugins" in meta)
 
 
 def _folder(root: Path) -> Path:

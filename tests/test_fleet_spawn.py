@@ -346,3 +346,12 @@ def test_a_seat_cost_that_is_not_a_whole_number_falls_back_and_says_so(tmp_path,
     monkeypatch.setattr(spawn, "available_mb", lambda: 9000)
     seats, warnings = spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False)
     assert seats and [line for line in warnings if "fleet.seat_cost_mb" in line and "800 MB" in line]
+
+
+def test_a_seat_raised_directly_is_narrowed_too(tmp_path):
+    fake = FakeClaude(plugin_entries=[mcp_plugin(tmp_path, "serena@official")])
+    root, ledger, store = world(tmp_path, fake)
+    seats, _ = spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=True)
+    spawn.raise_seat(ledger, seats[0], caller=CALLER, census=fake.census, wait=0.2, poll=0.05,
+                     sleep=lambda seconds: None)
+    assert settings_of(fake.launched[0]) == {"enabledPlugins": {"serena@official": False}}

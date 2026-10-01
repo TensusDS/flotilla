@@ -106,7 +106,7 @@ def world_of_plugins(tmp_path):
 def post_keeping(*kept, name="judge"):
     from dataclasses import replace
     from flotilla.posts import TEMPLATE_DIR, load_post
-    return replace(load_post(TEMPLATE_DIR / "reviewer.md"), name=name, plugins=tuple(kept))
+    return replace(load_post(TEMPLATE_DIR / "reviewer.md"), name=name, plugins=tuple(kept), plugins_written=True)
 
 
 def test_a_post_that_declares_nothing_turns_off_every_mcp_plugin_but_flotilla(tmp_path):
@@ -167,3 +167,40 @@ def test_plugin_ids_that_need_quoting_stay_valid_json(tmp_path):
     narrow = plugins.narrowing(FakeList([entry(odd, plugin_dir(tmp_path, "weird", mcp_json={"w": {"command": "w"}}))]),
                                tmp_path)
     assert json.loads(narrow.settings_json(post_keeping())) == {"enabledPlugins": {odd: False}}
+
+
+def project_judge(tmp_path, frontmatter_extra, version):
+    from flotilla.posts import load_post
+    path = tmp_path / "posts" / "judge.md"
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(f"---\nname: judge\nname_pattern: \"acceptance judge {{n}}\"\nmay: [walked]\n{frontmatter_extra}"
+                    f"template_version: {version}\n---\nbody\n", encoding="utf-8")
+    return load_post(path)
+
+
+def browser_world(tmp_path):
+    return FakeList([entry("playwright@claude-plugins-official",
+                           plugin_dir(tmp_path, "playwright", mcp_json={"p": {"command": "p"}})),
+                     entry("serena@official", plugin_dir(tmp_path, "serena", mcp_json={"s": {"command": "s"}}))])
+
+
+def test_a_judge_onboarded_before_plugins_existed_keeps_the_templates_browser_and_is_told(tmp_path):
+    narrow = plugins.narrowing(browser_world(tmp_path), tmp_path)
+    old = project_judge(tmp_path, "", 2)
+    assert narrow.turned_off(old) == ["serena@official"]
+    (line,) = narrow.warnings([old])
+    assert "`judge`" in line and "playwright@claude-plugins-official" in line and "plugins:" in line
+
+
+def test_a_judge_at_the_current_template_without_plugins_keeps_none(tmp_path):
+    narrow = plugins.narrowing(browser_world(tmp_path), tmp_path)
+    edited = project_judge(tmp_path, "", 6)
+    assert narrow.turned_off(edited) == ["playwright@claude-plugins-official", "serena@official"]
+    assert narrow.warnings([edited]) == []
+
+
+def test_an_old_judge_that_says_plugins_empty_keeps_none(tmp_path):
+    narrow = plugins.narrowing(browser_world(tmp_path), tmp_path)
+    chosen = project_judge(tmp_path, "plugins: []\n", 2)
+    assert narrow.turned_off(chosen) == ["playwright@claude-plugins-official", "serena@official"]
+    assert narrow.warnings([chosen]) == []

@@ -63,6 +63,6 @@ def whole_number(value, default: int, key: str) -> tuple[int, str]:
     and says so, never an exception."""
     if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
         return value, ""
-    if isinstance(value, str) and value.strip().isdigit():
+    if isinstance(value, str) and value.strip().isascii() and value.strip().isdecimal():
         return int(value.strip()), ""
     return default, f"`{key}` = {value!r} is not a whole number of MB; the default {default} MB is used"
