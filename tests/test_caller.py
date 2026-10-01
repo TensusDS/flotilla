@@ -24,3 +24,9 @@ def test_only_an_interactive_session_with_no_background_session_above_it_is_a_pe
     assert "`main session 1` is a background session" in caller.person_refusal("does it")
     chain(session("odd", "", 20))
     assert "is not a session a person works in" in caller.person_refusal("does it")
+
+
+def test_a_session_of_any_kind_but_interactive_anywhere_above_is_refused(monkeypatch):
+    monkeypatch.setattr(caller, "calling_sessions", lambda: [session("nested", "interactive", 20),
+                                                             session("odd", "", 15)])
+    assert "is not a session a person works in" in caller.person_refusal("does it")

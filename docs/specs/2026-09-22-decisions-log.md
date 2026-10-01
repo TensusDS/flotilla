@@ -837,6 +837,15 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    person read it: in auto mode, or after "don't ask again" on the prompt, the model makes both calls - the person's
    gate stays Claude Code's prompt in ask mode. (planner's decision, security fixes, 2026-10-01)
 
+179. **Smaller holes from the same review, and what stays open** (2026-10-01): every session up the caller's chain
+   must be interactive - a session of any other or unknown kind anywhere above refuses, not only a background one;
+   the directories a "for this session" rule would add and the "answered ... is told" line are shown as data. Left
+   as they are, with their reason: a skill rule with a trailing `*` (`status*`, `fleet*`) is not narrowed against a
+   chained command (`status; permit answer ...`), because Claude Code splits compound commands before matching and
+   approves each part on its own; the census keeps an interactive session's pid after it ends, so a detached process
+   that lands on a reused pid could pass for that session - it needs a pid race and a pre-approved wrapper first.
+   (planner's decision, security fixes, 2026-10-01)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

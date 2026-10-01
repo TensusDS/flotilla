@@ -49,7 +49,7 @@ def _rule_text(rule: dict) -> str:
     if kind == "setMode":
         return f"switch the session to {rule.get('mode')} mode"
     if kind == "addDirectories":
-        return "let it work in " + ", ".join(rule.get("directories") or [])
+        return "let it work in " + ", ".join(quoted(str(path)) for path in rule.get("directories") or [])
     return json.dumps(rule)
 
 

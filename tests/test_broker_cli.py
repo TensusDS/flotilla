@@ -86,7 +86,7 @@ def test_for_the_session_is_said_in_words():
     asked = queue.Question("1", 0, 540, 1, "m", "s", "Bash", {"command": "touch x"},
                            [{"type": "setMode", "mode": "acceptEdits"},
                             {"type": "addDirectories", "directories": ["/w"]}])
-    assert present.for_the_session(asked) == "allow Bash(touch x); let it work in /w"   # never the mode
+    assert present.for_the_session(asked) == 'allow Bash(touch x); let it work in "/w"'   # never the mode
 
 
 def test_a_worker_session_cannot_answer(tmp_path, monkeypatch, capsys):
@@ -178,3 +178,16 @@ def test_next_prints_the_mark_in_every_command_that_allows(tmp_path, monkeypatch
     assert f"permit answer {asked.id} allow --mark {mark}" in out and f"permit answer {asked.id} session --mark {mark}" in out
     assert run(root, "answer", asked.id, "allow") == 2 and "mark" in capsys.readouterr().out
     assert run(root, "answer", asked.id, "allow", "--mark", mark) == 0
+
+
+def test_the_directories_a_session_rule_would_add_and_the_answer_line_are_shown_as_data(tmp_path, monkeypatch, capsys):
+    root, state, key = world(tmp_path, monkeypatch)
+    asked = queue.ask(state, key, session="main\x1b[2K 1", session_id="s", tool="Read", tool_input={"file_path": "/x"},
+                      suggestions=[{"type": "addDirectories", "directories": ["/w\r/etc"], "destination": "session"}],
+                      wait=540, now=1000)
+    run(root, "next")
+    out = capsys.readouterr().out
+    assert "\r" not in out and "/w\\r/etc" in out
+    run(root, "answer", asked.id, "allow", "--mark", queue.mark_of(asked))
+    told = capsys.readouterr().out
+    assert "\x1b" not in told and "main\\x1b[2K 1 is told" in told

@@ -67,7 +67,7 @@ def run_permit_command(args, *, clock=time.time, sleep=time.sleep, caller=None) 
         except queue.QueueRefused as err:
             print(f"refused: {err}")
             return 2
-        print(f"answered {args.id}: {args.choice}; {asked.session} is told at once")
+        print(f"answered {args.id}: {args.choice}; {visible(asked.session)} is told at once")
         return 0
     if args.action == "list":
         waiting = queue.live(state, key, now=clock())

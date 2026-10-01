@@ -64,9 +64,9 @@ def person_refusal(what: str) -> str:
     if not chain:
         return "" if has_terminal() else (
             f"this process runs outside any session and has no terminal, so it is not a person; {tail}")
-    for session in chain:
+    for session in chain:   # every session up the chain, not the nearest: a background one can start another
         if session.kind == "background":
             return f"`{session.name or session.short_id}` is a background session; {tail}"
-    if chain[0].kind != "interactive":
-        return f"`{chain[0].name or chain[0].short_id}` is not a session a person works in ({chain[0].kind!r}); {tail}"
+        if session.kind != "interactive":
+            return f"`{session.name or session.short_id}` is not a session a person works in ({session.kind!r}); {tail}"
     return ""
