@@ -1,10 +1,13 @@
 {
   "name": "flotilla",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Coordinate independent peer Claude Code sessions: named posts, per-session worktrees, an evidence-backed work ledger, a machine lane and command guards.",
   "author": {
     "name": "TensusDS"
   },
+  "homepage": "https://github.com/TensusDS/flotilla",
+  "repository": "https://github.com/TensusDS/flotilla",
+  "license": "MIT",
   "keywords": [
     "multi-session",
     "worktree",
