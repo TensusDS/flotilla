@@ -1,3 +1,5 @@
+import pytest
+
 from flotilla.guards import revert
 from guardkit import first, git, plain_repo
 
@@ -130,3 +132,24 @@ def test_a_dry_run_undone_later_in_the_command_is_a_real_clean(tmp_path):
     found = check("git clean -n -f --no-dry-run", root)
     assert found is not None and found.refuse and "new.txt" in found.text
     assert (root / "new.txt").exists()
+
+
+@pytest.mark.parametrize("command", ["git clean --f -d", "git clean -fd -en", "git clean -f -e -n",
+                                     "git clean -f -e --dry-run", "git clean -d", "git clean -f --e keep"])
+def test_every_form_git_runs_as_a_clean_is_read_as_one(tmp_path, command):
+    """git takes any unambiguous prefix (`--f`), takes the word after `-e` as its value even when it looks like a
+    flag, and with clean.requireForce=false cleans without -f: each form below removes new.txt, so each is judged
+    (review of the F11 fix)."""
+    root = plain_repo(tmp_path)
+    (root / "new.txt").write_text("unsaved\n", encoding="utf-8")
+    found = check(command, root)
+    assert found is not None and found.refuse and "new.txt" in found.text, command
+    assert (root / "new.txt").exists()
+
+
+@pytest.mark.parametrize("option", ["--work-tree=elsewhere", "--git-dir=elsewhere/.git"])
+def test_a_tree_named_with_an_equals_sign_is_not_mistaken_for_the_shells(tmp_path, option):
+    root = plain_repo(tmp_path)
+    (root / "new.txt").write_text("unsaved\n", encoding="utf-8")
+    found = check(f"git {option} clean -fd", root)
+    assert found is not None and "could not tell which tree" in found.text

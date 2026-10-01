@@ -107,45 +107,52 @@ def _plan(verb, args, directory, run):
     return _clean(args)
 
 
-def _long(arg: str, option: str) -> bool:
-    """git takes any unambiguous prefix of a long option: `--forc` is `--force`, `--no-dry` is `--no-dry-run`."""
-    name = arg.split("=", 1)[0]
-    return name == option or (len(name) > 3 and option.startswith(name))
+def _long(name: str, option: str) -> bool:
+    """git takes any unambiguous prefix of a long option, three characters and up: `--f` is `--force`."""
+    return name == option or (len(name) >= 3 and option.startswith(name))
 
 
 def _clean(args):
-    """A forced `git clean`, read for what it would remove: which files (untracked, ignored too, or only ignored),
-    which exclusions and which paths - and nothing else, because the guard never runs `git clean` itself (F11)."""
-    letters = _letters(args)
-    if any(_long(arg, "--interactive") for arg in args) or "i" in letters:
-        return None
-    dry = "n" in letters or any(_long(arg, "--dry-run") for arg in args)
-    if any(_long(arg, "--no-dry-run") for arg in args):
-        dry = False   # undoes -n wherever it stands; read the worst case
-    if dry or not ("f" in letters or any(_long(arg, "--force") for arg in args)):
-        return None
-    excludes, paths, index = [], [], 0
+    """A `git clean`, read for what it would remove: which files (untracked, ignored too, or only ignored), which
+    exclusions and which paths - and nothing else, because the guard never runs `git clean` itself (F11). The word
+    after `-e` is its value even when it looks like a flag, and a clean without -f still removes where
+    clean.requireForce is false, so only a dry run or an interactive one is let by unread."""
+    excludes, paths, letters, names, index = [], [], set(), [], 0
     while index < len(args):
         arg = args[index]
         if arg == "--":
             paths += args[index + 1:]
             break
-        if _long(arg, "--exclude"):
-            if "=" in arg:
-                excludes.append(arg.split("=", 1)[1])
-            elif index + 1 < len(args):
-                excludes.append(args[index + 1])
-                index += 1
-        elif arg.startswith("-") and not arg.startswith("--") and "e" in arg[1:]:
-            value = arg[arg.index("e", 1) + 1:]
-            if value:
-                excludes.append(value)
-            elif index + 1 < len(args):
-                excludes.append(args[index + 1])
-                index += 1
-        elif not arg.startswith("-"):
+        if arg.startswith("--"):
+            name, equals, value = arg.partition("=")
+            if _long(name, "--exclude"):
+                if equals:
+                    excludes.append(value)
+                elif index + 1 < len(args):
+                    excludes.append(args[index + 1])
+                    index += 1
+            else:
+                names.append(name)
+        elif arg.startswith("-") and arg != "-":
+            for at, ch in enumerate(arg[1:], start=1):
+                if ch == "e":   # the rest of the cluster, or the next word, is the pattern
+                    if arg[at + 1:]:
+                        excludes.append(arg[at + 1:])
+                    elif index + 1 < len(args):
+                        excludes.append(args[index + 1])
+                        index += 1
+                    break
+                letters.add(ch)
+        else:
             paths.append(arg)
         index += 1
+    if "i" in letters or any(_long(name, "--interactive") for name in names):
+        return None
+    dry = "n" in letters or any(_long(name, "--dry-run") for name in names)
+    if any(_long(name, "--no-dry-run") for name in names):
+        dry = False   # undoes -n wherever it stands; read the worst case
+    if dry:
+        return None
     mode = "only-ignored" if "X" in letters else "with-ignored" if "x" in letters else "untracked"
     return "untracked", {"mode": mode, "excludes": excludes, "paths": paths}, False
 

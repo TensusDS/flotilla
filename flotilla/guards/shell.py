@@ -58,7 +58,12 @@ class Segment:
             if word in GIT_VALUE_OPTIONS:
                 if word == "-C":
                     directory = into(directory, words[i + 1] if i + 1 < len(words) else None)
+                elif word in ("--git-dir", "--work-tree"):
+                    directory = None   # the tree is not the directory the command runs in: not ours to guess
                 i += 2
+            elif word.startswith(("--git-dir=", "--work-tree=")):
+                directory = None
+                i += 1
             elif word.startswith("-"):
                 i += 1
             else:
