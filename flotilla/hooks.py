@@ -26,7 +26,7 @@ PEERS_SHOWN = 8
 #: A Bash command naming none of these reaches no guard, so the hook answers before looking anything up. The last
 #: group lets a long run reach the lane guard: the lane's default run patterns and the launchers that run them. A
 #: tier whose program is none of these (`make test`, `./run-tests.sh`) is not warned about unless the line names one.
-GUARD_TRIGGERS = ("checkout", "restore", "reset", "clean", "sed", "push", "gh",
+GUARD_TRIGGERS = ("checkout", "restore", "reset", "clean", "sed", "push", "gh", "approve",
                   "pytest", "py.test", "playwright", "vitest", "jest", "cargo", "go test", "npm", "pnpm", "yarn",
                   "npx", "bun", "tox", "nox")
 

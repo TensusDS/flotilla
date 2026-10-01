@@ -33,12 +33,14 @@ def _override(segment, env) -> str:
 
 
 def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run) -> list[Finding]:
-    from flotilla.guards import lane, line_edit, push, revert, shell
+    from flotilla.guards import lane, line_edit, person, push, revert, shell
     from flotilla.guards.rules import rules_for
     segments = shell.segments(command, Path(cwd) if cwd else None)
+    persons = [found for found in (person.check(segment) for segment in segments) if found]   # always on, no rules
     if root is None:   # the session stands in no project; a push into one is still judged by that project (F18)
-        return [found for found in (push.guard(segment, root=None, profile={}, env=env, run=run)
-                                    for segment in segments if push.door(segment) is not None) if found is not None]
+        return persons + [found for found in (push.guard(segment, root=None, profile={}, env=env, run=run)
+                                              for segment in segments if push.door(segment) is not None)
+                          if found is not None]
     try:
         profile, _ = rules_for(Path(root), run=run)
     except Exception as err:  # noqa: BLE001 - which guards are on is unknown
@@ -54,10 +56,10 @@ def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run) -> 
                                                        f"rules could not be read ({err}), so whether it needs a "
                                                        f"receipt is unknown; fix the profile, or, knowingly: "
                                                        f'{push.OVERRIDE}="<why>"'))
-        return found or [Finding("rules", False, f"flotilla guards: the project's rules could not be read ({err}); "
+        return persons + found or [Finding("rules", False, f"flotilla guards: the project's rules could not be read ({err}); "
                                                  "the revert and line-number guards did not run")]
     on = profile.get("guards") or {}
-    findings: list[Finding] = []
+    findings: list[Finding] = list(persons)
     for segment in segments:
         if on.get(revert.GUARD):
             findings += _safely(revert.GUARD, lambda: revert.check(segment, run=run))

@@ -111,8 +111,8 @@ def queue(ledger: Ledger, actor: Actor, branch: str, *, pr: int | None = None) -
                               "owner records it with `flotilla work moved` and the reader accepts again")
         if (ledger.profile.get("flow") or {}).get("merge_authorized_by") == "human" and row.approved != current:
             raise MoveRefused(f"a person authorizes every merge into trunk here, and nobody approved `{branch}` at "
-                              f"{current[:7]}: the person runs `flotilla work approve {branch}` from their own "
-                              f"session or a terminal; record the wait with `flotilla work wait {branch} --on "
+                              f"{current[:7]}: the person types `! flotilla work approve {branch}` in their own "
+                              f"session, or runs it in a terminal; record the wait with `flotilla work wait {branch} --on "
                               "\"the person\" --why \"approve before queue\"`")
         evidence = _check_pr(ledger, pr, branch, current) if pr is not None else {}
         fields = {"tip": current}

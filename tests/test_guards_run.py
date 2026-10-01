@@ -156,3 +156,39 @@ def test_the_suggested_lane_run_starts_the_same_run(tmp_path, monkeypatch, comma
     words = shlex.split(suggested)
     assert words[:4] == ["flotilla", "lane", "run", "--for"]
     assert words[words.index("--") + 1:] == booked
+
+
+CLI_PATH = str(ROOT / "scripts" / "flotilla")
+
+
+@pytest.mark.parametrize("command", [
+    f"{CLI_PATH} work approve feat/x",
+    "flotilla work approve feat/x",
+    f"cd /tmp && {CLI_PATH} work approve feat/x --root .",
+    f"FLOTILLA_STATE_DIR=/s {CLI_PATH} work --root . approve feat/x",
+])
+def test_claude_running_the_persons_approval_is_refused(tmp_path, monkeypatch, command):
+    """Where a session leads the fleet from the person's own interactive session, the person check lets that
+    session's model through: it IS an interactive session. A tool call is never the person's own act, and the person
+    has their own door that this hook does not see - a command typed with `!` (measured on Claude Code 2.1.287: a
+    `!` command fires no PreToolUse hook, a model's Bash call does)."""
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert answer["permissionDecision"] == "deny"
+    assert "the person's own move" in answer["permissionDecisionReason"]
+    assert "`!`" in answer["permissionDecisionReason"]
+
+
+def test_approval_is_refused_to_claude_outside_any_project_too(tmp_path, monkeypatch):
+    answer = ask(tmp_path, f"{CLI_PATH} work approve feat/x --root /elsewhere", monkeypatch, tmp_path)
+    assert answer["permissionDecision"] == "deny"
+
+
+@pytest.mark.parametrize("command", [
+    f"{CLI_PATH} work show feat/x",
+    f"{CLI_PATH} brief",
+    "git log --grep approve",
+    f"{CLI_PATH} work accept feat/x --reviewed abc1234",
+])
+def test_other_moves_and_the_word_alone_pass(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert answer is None or answer.get("permissionDecision") != "deny"
