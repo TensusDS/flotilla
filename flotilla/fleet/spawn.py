@@ -104,6 +104,20 @@ def _live_posts(ledger, sessions) -> Counter:
     return held
 
 
+def _left_by_older_seats(ledger) -> set[str]:
+    """The names whose seat branch (`fleet/<post>-<n>`) is still in the repository: numbering steps over them, so a
+    project that took a fleet name and counts from 1 again does not meet the branches of its older seats (W11)."""
+    listed = _git(ledger, "for-each-ref", "--format=%(refname:short)", "refs/heads/fleet/").stdout.split()
+    found = set()
+    for branch in listed:
+        slug = branch[len("fleet/"):]
+        post_name, _, number = slug.rpartition("-")
+        post = ledger.posts.get(post_name)
+        if post is not None and number.isdigit():
+            found.add(post.name_pattern.replace("{n}", number))
+    return found
+
+
 def plan(ledger, counts: dict, *, census, store, reserve: bool,
          strict: bool = True, anyway: bool = False) -> tuple[list[launch.Seat], list[str]]:
     try:
@@ -119,13 +133,16 @@ def plan(ledger, counts: dict, *, census, store, reserve: bool,
     if short and strict:
         raise SpawnRefused("; ".join(memory_settings(ledger)[2] + [short]) + "; nothing was raised")
     sessions = _live(census)
-    held = _live_posts(ledger, sessions)
+    from flotilla.ledger import project
+    mine = project.members(sessions, ledger.rows(), project.roots(ledger.root, run=ledger.run))
+    held = _live_posts(ledger, mine)   # one-copy resources are the project's; the census is the machine's (W10)
     problems = compose.one_copy_problems(wanted, ledger.posts, held)
     if problems:
-        alive = ", ".join(item.name for item in sessions if item.name)
-        raise SpawnRefused("; ".join(problems) + (f" (alive: {alive})" if alive else ""))
-    taken = {item.name for item in sessions if item.name}
+        alive = ", ".join(item.name for item in mine if item.name)
+        raise SpawnRefused("; ".join(problems) + (f" (alive here: {alive})" if alive else ""))
+    taken = {item.name for item in sessions if item.name}   # names are machine-wide addresses: all of them
     taken |= {name for row in ledger.rows().values() for name in (row.owner, row.reader) if name}
+    taken |= _left_by_older_seats(ledger)
     main = launch.main_checkout(ledger.root, run=ledger.run)
     from flotilla.core import claude_state
     refusals, setup_warnings = claude_state.setup_problems(main, run=ledger.run)   # F2, F3

@@ -9,9 +9,9 @@ from flotilla.core.census import CensusUnavailable, Session
 FLOTILLA_ENABLED = {"id": "flotilla@flotilla", "scope": "project", "enabled": True}
 
 
-def session(name, short_id, state="blocked"):
+def session(name, short_id, state="blocked", cwd=""):
     return Session(name=name, session_id=f"sid-{short_id}", kind="background", pid=None, short_id=short_id,
-                   status=None, state=state, cwd="", started_at_ms=None)
+                   status=None, state=state, cwd=str(cwd), started_at_ms=None)
 
 
 class FakeClaude:

@@ -67,7 +67,7 @@ def test_names_skip_live_sessions_and_ledger_names(tmp_path):
 
 
 def test_a_second_sender_is_refused_naming_the_live_one(tmp_path):
-    fake = FakeClaude([session("sender 1", "aaaaaa")])
+    fake = FakeClaude([session("sender 1", "aaaaaa", cwd=tmp_path / "app")])   # a sender of this project (W10)
     root, ledger, store = world(tmp_path, fake)
     with pytest.raises(spawn.SpawnRefused, match="one-copy"):
         run(ledger, store, fake, {"sender": 1})
@@ -223,7 +223,7 @@ def test_a_required_judge_with_no_judge_in_the_fleet_is_warned(tmp_path):
 
 
 def test_a_seat_whose_turn_is_done_still_holds_its_one_copy_post(tmp_path):
-    fake = FakeClaude([session("sender 1", "aaa111", state="done")])
+    fake = FakeClaude([session("sender 1", "aaa111", state="done", cwd=tmp_path / "app")])
     root, ledger, store = world(tmp_path, fake)
     with pytest.raises(spawn.SpawnRefused, match="one-copy"):
         spawn.plan(ledger, {"sender": 1}, census=fake.census, store=store, reserve=False)

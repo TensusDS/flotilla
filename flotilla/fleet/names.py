@@ -20,9 +20,17 @@ def number_of(post, name: str) -> int | None:
     return int(found.group(1)) if found else None
 
 
+def _same_series(record: dict, post) -> bool:
+    """Whether an issued number counts against this post's next one: a project's fleet name gives its posts their own
+    series (W11); a record from before names carried patterns belongs to the machine-wide, unprefixed series."""
+    if "pattern" in record:
+        return record["pattern"] == post.name_pattern
+    return record.get("post") == post.name and not getattr(post, "project", "")
+
+
 def next_names(post, count: int, *, taken: set[str], store, reserve: bool, now: str = "") -> list[str]:
     with store.transaction(KEY) as tx:
-        issued = [record.get("n", 0) for record in tx.read().records if record.get("post") == post.name]
+        issued = [record.get("n", 0) for record in tx.read().records if _same_series(record, post)]
         known = [number_of(post, name) or 0 for name in taken]
         number = max([0, *issued, *known])
         found: list[str] = []
@@ -33,14 +41,14 @@ def next_names(post, count: int, *, taken: set[str], store, reserve: bool, now: 
                 continue
             found.append(name)
             if reserve:
-                tx.append({"post": post.name, "n": number, "name": name, "at": now})
+                tx.append({"post": post.name, "pattern": post.name_pattern, "n": number, "name": name, "at": now})
     return found
 
 
 def numbered_after(post, *, taken: set[str], live: set[str], store) -> str:
     """Why a post's next number is not 1 (field test F7): names are machine-wide addresses, so another project's
     live session holds its number here too. "" when numbering starts at 1."""
-    issued = max((record.get("n", 0) for record in store.read(KEY).records if record.get("post") == post.name),
+    issued = max((record.get("n", 0) for record in store.read(KEY).records if _same_series(record, post)),
                  default=0)
     known = {name: number_of(post, name) or 0 for name in taken}
     top_known = max(known.values(), default=0)

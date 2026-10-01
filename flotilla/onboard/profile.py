@@ -111,7 +111,10 @@ def build_profile(det: dict, answers: dict) -> dict:
     if answers.get("release") == "sender-semver":
         data["release"] = {"version_files": list((det.get("release") or {}).get("version_files") or []),
                            "tag": "v{version}", "annotated": True}
-    data["fleet"] = {"default": suggest_composition(answers), "model": answers.get("model", "one")}
+    from flotilla.fleet.project_name import clean
+    # the word every seat name starts with (`worldcore-orchestrator 1`): numbers then run per project (W11)
+    data["fleet"] = {"name": clean(Path(det["root"]).name), "default": suggest_composition(answers),
+                     "model": answers.get("model", "one")}
     chosen_guards = answers.get("guards") or []
     data["guards"] = {guard: guard in chosen_guards and "none" not in chosen_guards for guard in GUARDS}
     tracker = answers.get("tracker", "nowhere")

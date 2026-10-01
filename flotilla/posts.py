@@ -9,6 +9,8 @@ turned off for it). Project posts live in `.flotilla/posts/*.md`; onboarding cop
 
 from __future__ import annotations
 
+import dataclasses
+
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -38,6 +40,7 @@ class Post:
     permission_mode: str = ""
     plugins: tuple = ()   # the MCP-bearing plugins a seat of this post keeps; the rest are turned off (decision 154)
     plugins_written: bool = False   # whether the post says `plugins:` at all (a post older than the key does not)
+    project: str = ""   # the fleet's name its seats carry (`worldcore-orchestrator 1`); "" for a profile without one
 
     def matches(self, session_name: str) -> bool:
         regex = "^" + re.escape(self.name_pattern).replace(re.escape("{n}"), r"\d+") + "$"
@@ -116,11 +119,17 @@ def _folder(root: Path) -> Path:
     return folder
 
 
-def load_posts(root: Path) -> dict[str, Post]:
+def load_posts(root: Path, *, project: str = "") -> dict[str, Post]:
+    """The project's posts; with a fleet name, every pattern is prefixed with it (`worldcore-` + `orchestrator {n}`),
+    so the project's seats count from 1 and another project's sessions match none of its posts."""
     folder = _folder(root)
     if not folder.is_dir():
         return {}
-    return {post.name: post for post in (load_post(path) for path in sorted(folder.glob("*.md")))}
+    posts = (load_post(path) for path in sorted(folder.glob("*.md")))
+    if project:
+        posts = (dataclasses.replace(post, name_pattern=f"{project}-{post.name_pattern}", project=project)
+                 for post in posts)
+    return {post.name: post for post in posts}
 
 
 def post_for_session(posts: dict[str, Post], session_name: str) -> Post | None:

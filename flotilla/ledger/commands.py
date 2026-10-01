@@ -124,13 +124,24 @@ def trunk_rules(root: Path) -> Rules:
             target.write_text(_show_file(local.root, sha, path), encoding="utf-8")
         try:
             profile = config.load_project(Path(tmp)).data
-            posts = load_posts(Path(tmp))
+            posts = load_posts(Path(tmp), project=fleet_name(local.root, profile))
         except (config.ConfigError, PostError) as err:
             raise type(err)(str(err).replace(f"{tmp}/", f"{ref}:")) from err
     if (profile.get("trunk") or {}).get("branch", "main") != trunk:
         raise config.ConfigError(f"this tree names trunk `{trunk}`, but `{ref}` names another; the rules on trunk "
                                  "are the ones that count")
     return Rules(profile, posts, scripts, f"{ref}@{sha[:12]}")
+
+
+def fleet_name(root: Path, profile: dict) -> str:
+    """The word this project's seat names start with, or "" when the profile names no fleet (W11): unique on the
+    machine, so a project that wants a word another project holds gets `-2`."""
+    wanted = (profile.get("fleet") or {}).get("name")
+    if not isinstance(wanted, str) or not wanted.strip():
+        return ""
+    from flotilla.fleet import project_name
+    store = LocalLogStore(paths.state_dir() / "fleet")
+    return project_name.resolve(store, repo.identify(Path(root)).key, wanted)[0]
 
 
 def open_ledger(root: Path, *, skip_events: dict | None = None) -> core.Ledger:
