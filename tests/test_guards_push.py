@@ -135,7 +135,8 @@ def test_a_merge_asks_the_pr_for_its_head(tmp_path):
     head = git(root, "rev-parse", "HEAD")
     assert judge("gh pr merge 12 --squash", root, tmp_path, run=fake_gh((0, head + "\n"))).refuse
     receipt(root, tmp_path / "state")
-    assert judge("gh pr merge 12 --squash", root, tmp_path, run=fake_gh((0, head + "\n"))) is None
+    assert judge(f"gh pr merge 12 --squash --match-head-commit {head}", root, tmp_path,
+                 run=fake_gh((0, head + "\n"))) is None
     found = judge("gh pr merge 12", root, tmp_path, run=fake_gh((1, "")))
     assert found.refuse and "gh pr view" in found.text
 
@@ -248,3 +249,53 @@ def test_an_override_record_keeps_no_token(tmp_path):
     stored = json.dumps(overrides.recorded(tmp_path / "state", "k"))
     assert "ghp_secret123" not in stored and "tok456" not in stored
     assert "GH_TOKEN=<redacted>" in stored and "https://max:<redacted>@github.com/a/b" in stored
+
+
+
+def test_a_merge_is_pinned_to_the_head_whose_receipt_was_checked(tmp_path):
+    """The receipt was checked over the PR's head at hook time, but gh merged whatever head the PR had then - and
+    with --auto, whatever it had later (security review F20, F22)."""
+    root = onboarded(tmp_path)
+    head = git(root, "rev-parse", "HEAD")
+    receipt(root, tmp_path / "state")
+    found = judge("gh pr merge 12 --squash --auto", root, tmp_path, run=fake_gh((0, head + "\n")))
+    assert found.refuse and f"--match-head-commit {head}" in found.text
+    found = judge(f"gh pr merge 12 --match-head-commit {'0' * 40}", root, tmp_path, run=fake_gh((0, head + "\n")))
+    assert found.refuse and "--match-head-commit" in found.text
+    assert judge(f"gh pr merge 12 --auto --match-head-commit={head}", root, tmp_path,
+                 run=fake_gh((0, head + "\n"))) is None
+
+
+def test_a_gh_door_naming_a_repository_from_outside_any_project_is_refused(tmp_path):
+    """`cd /tmp && gh pr merge 12 -R owner/repo` was judged by the shell's directory, which is no project, so it
+    went unchecked (security review F21)."""
+    root = onboarded(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    found = judge("gh pr merge 12 -R someone/repo", root, tmp_path, cwd=outside)
+    assert found is not None and found.refuse
+
+
+def test_a_push_into_a_project_is_judged_by_that_project_from_anywhere(tmp_path):
+    """The guards ran only for the project the session stands in: a push into another onboarded project, from a
+    directory outside any, skipped its receipt (security review F18)."""
+    import io
+    from flotilla import hooks
+    root = onboarded(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    payload = {"cwd": str(outside), "tool_input": {"command": f"git -C {root} push origin main"}}
+    out = io.StringIO()
+    hooks.run_hook("guard", io.StringIO(json.dumps(payload)), out)
+    said = json.loads(out.getvalue() or "{}").get("hookSpecificOutput") or {}
+    assert said.get("permissionDecision") == "deny" and "receipt" in said.get("permissionDecisionReason", "")
+
+
+def test_a_push_from_a_project_without_the_guard_into_one_with_it_is_judged(tmp_path):
+    from flotilla.guards.run import evaluate
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    here = onboarded(tmp_path / "a", guards=("revert",))
+    there = onboarded(tmp_path / "b")
+    found = evaluate(f"git -C {there} push origin main", here, here, env=env(tmp_path))
+    assert any(item.refuse and "receipt" in item.text for item in found)

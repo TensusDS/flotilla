@@ -907,6 +907,13 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    command it names, and a closed permission question's files are deleted a day after its answer, since a question
    carries whatever the call carried. (planner's decision, security fixes, 2026-10-01)
 
+187. **The push guard judges a door by the project it acts on, and pins a merge to what it checked** (security
+   review 2026-10-01, F18, F20, F21, F22): `gh pr merge` passes only with `--match-head-commit` naming the head whose
+   receipt was checked, so neither a later push to the PR nor `--auto` merges another revision; the guard runs for
+   every door and asks the door's own project whether its guard is on, including from a session standing in no
+   project at all; a gh door naming its repository (`-R`, `--repo`, `GH_REPO`) from outside every project is
+   refused, since whose receipts it needs cannot be told. (planner's decision, security fixes, 2026-10-01)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

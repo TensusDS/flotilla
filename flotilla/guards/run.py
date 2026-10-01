@@ -36,6 +36,9 @@ def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run) -> 
     from flotilla.guards import lane, line_edit, push, revert, shell
     from flotilla.guards.rules import rules_for
     segments = shell.segments(command, Path(cwd) if cwd else None)
+    if root is None:   # the session stands in no project; a push into one is still judged by that project (F18)
+        return [found for found in (push.guard(segment, root=None, profile={}, env=env, run=run)
+                                    for segment in segments if push.door(segment) is not None) if found is not None]
     try:
         profile, _ = rules_for(Path(root), run=run)
     except Exception as err:  # noqa: BLE001 - which guards are on is unknown
@@ -60,10 +63,9 @@ def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run) -> 
             findings += _safely(revert.GUARD, lambda: revert.check(segment, run=run))
         if on.get(line_edit.GUARD):
             findings += _safely(line_edit.GUARD, lambda: line_edit.check(segment))
-        if on.get(push.GUARD):
-            found = push.guard(segment, root=Path(root), profile=profile, env=env, run=run)
-            if found is not None:
-                findings.append(found)
+        found = push.guard(segment, root=Path(root), profile=profile, env=env, run=run)   # it asks the door's
+        if found is not None:                                                            # own project (F18)
+            findings.append(found)
         if lane.is_on(profile):
             findings += _safely(lane.GUARD, lambda: lane.check(segment, profile, command))
     return findings

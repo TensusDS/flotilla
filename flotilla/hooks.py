@@ -48,6 +48,9 @@ def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime
     from flotilla.core.config import find_project
     root = find_project(cwd)
     if root is None:
+        if event == "guard":   # outside every project, a door into one is still that project's to judge (F18)
+            from flotilla.guards.run import guard_hook
+            return guard_hook(command, cwd, None, out)
         return 0
     _trace(event, payload, root, now)
     if event == "guard":

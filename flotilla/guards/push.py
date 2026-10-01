@@ -152,7 +152,12 @@ def revisions(d: Door, trunk: str, *, run=subprocess.run) -> list[tuple[str, str
             sha = done.stdout.strip() if done.returncode == 0 else ""
         except (OSError, subprocess.SubprocessError):
             sha = ""
-        return [(f"PR {target or '(this branch)'}", _need(sha, "the pull request's head (gh pr view)"))]
+        sha = _need(sha, "the pull request's head (gh pr view)")
+        pinned = _value(rest, "--match-head-commit")
+        if pinned != sha:   # gh merges the head the PR has when it merges; --auto, a later one (F20, F22)
+            raise Unknown(f"merges whatever head the pull request has then, not the one whose receipt was checked; "
+                          f"pin it: add --match-head-commit {sha}")
+        return [(f"PR {target or '(this branch)'}", sha)]
     return [("HEAD", _need(_resolve(d.directory, "HEAD", run), "HEAD"))]
 
 
@@ -227,18 +232,25 @@ def _unapproved(root, profile: dict, pairs) -> list[str]:
     return found
 
 
-def _home(d: Door, root: Path, profile: dict, run):
-    """(project root, profile) the door is judged by, or None when it acts outside any flotilla project."""
+def _home(d: Door, root, profile: dict, run):
+    """(project root, profile) the door is judged by, or None when it acts outside any flotilla project. The
+    project is the one the door acts on, not the one the session stands in (F18)."""
     from flotilla.core.config import find_project
     from flotilla.guards.rules import rules_for
     if d.directory is None:
-        return root, profile
+        return (root, profile) if root is not None else None
     found = find_project(d.directory)
     if found is None:
         return None
-    if found.resolve() == Path(root).resolve():
+    if root is not None and found.resolve() == Path(root).resolve():
         return root, profile
     return found, rules_for(found, run=run)[0]
+
+
+def _names_repo(d: Door, env) -> bool:
+    """A gh door that names its repository acts on it whatever directory it runs in (F21)."""
+    return d.kind.startswith("gh ") and (_value(list(d.segment.words[3:]), "-R", "--repo") is not None
+                                         or bool(d.segment.assignments.get("GH_REPO") or env.get("GH_REPO")))
 
 
 def guard(segment, *, root, profile, env=os.environ, run=subprocess.run) -> Finding | None:
@@ -248,9 +260,12 @@ def guard(segment, *, root, profile, env=os.environ, run=subprocess.run) -> Find
         return None
     state, key = paths.state_dir(env), "unknown"
     try:
-        home = _home(d, Path(root), profile, run)
+        home = _home(d, root, profile, run)
         if home is None:
-            return None
+            if not _names_repo(d, env):
+                return None
+            raise Unknown("names a repository with -R/--repo or GH_REPO from outside any project, so which "
+                          "project's receipts it needs cannot be told; run it from that repository's tree")
         home_root, home_profile = home
         if not (home_profile.get("guards") or {}).get(GUARD):
             return None
