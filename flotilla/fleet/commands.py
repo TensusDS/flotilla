@@ -10,7 +10,7 @@ from flotilla.core import platform as plat
 from flotilla.core.census import CensusUnavailable, read_census
 from flotilla.core.identity import find_calling_session
 from flotilla.core.storage import LocalLogStore, StorageCorrupt
-from flotilla.fleet import compose, launch, names, retire, spawn
+from flotilla.fleet import compose, launch, names, plugins, retire, spawn, strangers
 from flotilla.ledger.actor import NO_CENSUS
 from flotilla.ledger.commands import open_ledger
 from flotilla.ledger.errors import MoveRefused
@@ -54,6 +54,9 @@ def _spawn(ledger, args) -> int:
             print(f"census: unknown ({err}); names may collide with live sessions")
             live, probe = set(), (lambda: [])  # noqa: E731
         seats, warnings = spawn.plan(ledger, counts, census=probe, store=store, reserve=False, strict=False)
+        main = launch.main_checkout(ledger.root, run=ledger.run)
+        narrow = plugins.narrowing(ledger.run, main)
+        warnings = warnings + narrow.warnings([ledger.posts[seat.post] for seat in seats])
         for line in warnings:
             print(f"warning: {line}")
         taken = live | {name for row in ledger.rows().values() for name in (row.owner, row.reader) if name}
@@ -61,7 +64,6 @@ def _spawn(ledger, args) -> int:
             said = names.numbered_after(ledger.posts[post_name], taken=taken, live=live, store=store)
             if said:
                 print(f"note: {said}")
-        main = launch.main_checkout(ledger.root, run=ledger.run)
         for seat in seats:
             post = ledger.posts[seat.post]
             model = launch.model_for(ledger.profile, post)
@@ -69,6 +71,8 @@ def _spawn(ledger, args) -> int:
             print(f"    claude --bg -n \"{seat.name}\" --add-dir {seat.tree} --permission-mode "
                   f"{launch.permission_mode(ledger.profile, post)}" + (f" --model {model}" if model else "")
                   + f"  (from {main})")
+            off = ", ".join(narrow.turned_off(post)) or "none"
+            print(f"    turns off: {off if narrow.entries is not None else 'unknown, ' + plugins.NOT_NARROWED}")
         print(f"dry run: {len(seats)} session(s) planned; nothing was changed")
         return 0
     try:
@@ -109,6 +113,10 @@ def _fleet(ledger, args) -> int:
     if not view:
         print("no post rows: nobody was spawned, or everyone was retired")
     for item in view:
+        if item["stranger"]:
+            stop = f"; `claude stop {item['short_id']}` stops it" if item["short_id"] else ""
+            print(f"{item['name']}  {strangers.label(item['stranger'])}{stop}")
+            continue
         attach = f"claude attach {item['short_id']}" if item["short_id"] else "no id in the census"
         live = {True: f"alive ({item['state'] or 'no state'}), {attach}",
                 False: "not running", None: "liveness unknown"}[item["live"]]
