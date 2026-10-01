@@ -77,8 +77,9 @@ def model_for(profile: dict, post) -> str:
 def system_prompt(seat: Seat, post, *, main: Path) -> str:
     return (f"You are the session named \"{seat.name}\", holding the post `{post.name}` in a flotilla fleet on "
             f"this machine. Your home worktree is {seat.tree} (branch {seat.branch}). The main checkout {main} "
-            "belongs to nobody: read it, never edit it. Your home tree is the one directory you may edit: take "
-            "each task there with `flotilla tree switch <branch>`. "
+            "belongs to nobody: read it, never edit it. Your home tree is the one directory you may edit"
+            + (": take each task there with `flotilla tree switch <branch>`. " if "claim" in post.may else
+               ", on its own branch. ") +
             f"The flotilla command line is {CLI}; every ledger move goes through it. Your name and your post are "
             "given here: never infer them from the work.\n\n" + post.body.strip())
 

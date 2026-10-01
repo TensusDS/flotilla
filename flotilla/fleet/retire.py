@@ -29,6 +29,12 @@ def post_rows(ledger) -> list[Row]:
     return [row for row in ledger.rows().values() if row.is_open and row.state == "reserved"]
 
 
+def finished_helper_seat(ledger, name: str) -> Row | None:
+    """A helper that ran `helper done` released its seat but still runs until retired: its latest seat row."""
+    seats = [row for row in ledger.rows().values() if row.owner == name and row.helper_of]
+    return seats[-1] if seats and not seats[-1].is_open else None
+
+
 def _post_name(ledger, name: str) -> str:
     try:
         post = post_for_session(ledger.posts, name)
@@ -83,7 +89,8 @@ def _dirty(tree: str) -> int | None:
 
 def retire(ledger, name: str, *, caller: str, census, wait: float = 60.0, poll: float = 1.0,
            sleep=time.sleep) -> list[str]:
-    row = next((item for item in post_rows(ledger) if item.owner == name), None)
+    row = next((item for item in post_rows(ledger) if item.owner == name), None) or \
+        finished_helper_seat(ledger, name)
     if row is None:
         raise RetireRefused(f"no post row for `{name}`; `flotilla fleet` lists the fleet")
     try:
@@ -115,9 +122,10 @@ def retire(ledger, name: str, *, caller: str, census, wait: float = 60.0, poll: 
     except PostError:
         post = None
     freed = core.free_seat_tree(ledger, name, row.tree) if row.tree else ""
-    with ledger.session() as s:
-        s.append(Actor(name, post, "retire", caller), row.id, "release", "released",
-                 evidence={"why": "retired", **({"tree": freed} if freed else {})})
+    if row.is_open:   # a finished helper released its seat with `helper done`; retiring it only stops it
+        with ledger.session() as s:
+            s.append(Actor(name, post, "retire", caller), row.id, "release", "released",
+                     evidence={"why": "retired", **({"tree": freed} if freed else {})})
     lines = [f"retired {name}" + (f" (stopped {found.short_id})" if found else " (it was not running)")]
     dirty = _dirty(row.tree)
     if not row.tree or not Path(row.tree).is_dir():
@@ -144,7 +152,13 @@ def down(ledger, *, caller: str, me: str, census, wait: float = 60.0, poll: floa
     except CensusUnavailable as err:
         raise RetireRefused(f"the census could not be asked ({err}); nothing was stopped or released") from err
     lines, refused = [], 0
-    for row in post_rows(ledger):
+    try:
+        running = {item.name for item in census() if item.name}
+    except CensusUnavailable:
+        running = set()
+    seats = post_rows(ledger)
+    seats += [seat for seat in (finished_helper_seat(ledger, name) for name in sorted(running)) if seat is not None]
+    for row in seats:
         if row.owner == me:
             lines.append(f"kept {me}: it runs this command; retire it last, from elsewhere: "
                          f"`flotilla retire \"{me}\"`")

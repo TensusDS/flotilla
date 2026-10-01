@@ -98,3 +98,47 @@ def test_spawn_does_not_raise_helpers(tmp_path):
     root, ledger, fake, row, tip = world(tmp_path)
     with pytest.raises(spawn.SpawnRefused, match="flotilla helper raise"):
         spawn.plan(ledger, {"helper": 1}, census=fake.census, store=LocalLogStore(tmp_path / "s"), reserve=False)
+
+
+def finished(tmp_path):
+    root, ledger, fake, row, tip = world(tmp_path)
+    raised = raise_one(ledger, fake)
+    commit(raised.seat.tree, "storm tests", "storm_test.txt")
+    helpers.done(ledger, actor(ledger, "helper 1"), summary="three storm tests")
+    return root, ledger, fake, raised
+
+
+def test_a_finished_helper_is_retired_by_the_command_its_letter_names(tmp_path):
+    from flotilla.fleet import retire
+    root, ledger, fake, raised = finished(tmp_path)
+    lines = retire.retire(ledger, "helper 1", caller="retire by main session 1", census=fake.census, wait=0.2,
+                          poll=0.05, sleep=lambda seconds: None)
+    assert any(line.startswith("retired helper 1") for line in lines)
+    assert "helper 1" not in [s.name for s in fake.census()]
+    assert git(root, "rev-parse", "--verify", "fleet/helper-1")   # its branch is kept for the merge
+
+
+def test_fleet_down_stops_a_finished_helper(tmp_path):
+    from flotilla.fleet import retire
+    root, ledger, fake, raised = finished(tmp_path)
+    lines, refused = retire.down(ledger, caller="fleet down by the person", me="", census=fake.census, wait=0.2,
+                                 poll=0.05, sleep=lambda seconds: None)
+    assert refused == 0 and "helper 1" not in [s.name for s in fake.census()]
+    assert any(line.startswith("retired helper 1") for line in lines)
+
+
+def test_done_refuses_while_work_is_uncommitted(tmp_path):
+    root, ledger, fake, row, tip = world(tmp_path)
+    raised = raise_one(ledger, fake)
+    (raised.seat.tree / "half.txt").write_text("not committed\n", encoding="utf-8")
+    with pytest.raises(MoveRefused, match="1 uncommitted"):
+        helpers.done(ledger, actor(ledger, "helper 1"), summary="done")
+
+
+def test_the_letter_reads_like_every_other_letter_and_the_prompt_does_not_send_a_helper_switching(tmp_path):
+    root, ledger, fake, row, tip = world(tmp_path)
+    raised = raise_one(ledger, fake)
+    _, letter = helpers.done(ledger, actor(ledger, "helper 1"), summary="nothing to do")
+    assert letter.startswith(f"letter for {OWNER} - send it with SendMessage; an idle background session is woken")
+    system = fake.launched[-1][fake.launched[-1].index("--append-system-prompt") + 1]
+    assert "tree switch" not in system

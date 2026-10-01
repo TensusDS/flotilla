@@ -84,6 +84,14 @@ def done(ledger, actor: Actor, *, summary: str) -> tuple[Row, str]:
                      if row.owner == actor.name and row.is_open and row.state == "reserved" and row.helper_of), None)
         if seat is None:
             raise MoveRefused(f"{actor.name} is not a helper with an open seat; `helper done` ends a helper's work")
+        if seat.tree:
+            listed = ledger.run(["git", "-C", seat.tree, "status", "--porcelain"], capture_output=True, text=True,
+                                check=False)
+            dirty = len([line for line in listed.stdout.splitlines() if line.strip()]) if listed.returncode == 0 \
+                else 0
+            if dirty:
+                raise MoveRefused(f"{dirty} uncommitted in {seat.tree}: commit the work you keep (or remove what you "
+                                  "do not), so the session you help gets all of it")
         parent = s.rows.get(seat.helper_of)
         tip = gitq.branch_tip(ledger.root, seat.branch, run=ledger.run) or ""
         state = s.next_state(seat, "release")
@@ -91,7 +99,8 @@ def done(ledger, actor: Actor, *, summary: str) -> tuple[Row, str]:
                             evidence={"why": f"helped: {summary}", "helped": seat.helper_of, "tip": tip,
                                       "summary": summary})
     owner = parent.owner if parent is not None else "the session that raised you"
-    letter = (f"letter for {owner} - send it with SendMessage: {actor.name} finished helping "
-              f"`{parent.branch if parent else seat.helper_of}`: {summary} (tip {tip[:7] or 'unknown'}). "
-              f"Read it, merge {seat.branch} into your branch, then `flotilla retire \"{actor.name}\"`.")
+    letter = (f"letter for {owner} - send it with SendMessage; an idle background session is woken only by a "
+              f"message:\n  {actor.name} finished helping `{parent.branch if parent else seat.helper_of}`: {summary} "
+              f"(tip {tip[:7] or 'unknown'}).\n  Read it, merge {seat.branch} into your branch, then "
+              f"`flotilla retire \"{actor.name}\"`.")
     return released, letter
