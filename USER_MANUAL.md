@@ -70,11 +70,13 @@ Worktrees and receipts:
 
 ## Daily operation
 
-1. **Start:** `/flotilla:spawn`, then `claude attach <orchestrator id>` and tell the orchestrator what to build.
+1. **Start:** `/flotilla:spawn`, then `claude attach <orchestrator id>` (`flotilla fleet` lists the ids) and tell the
+   orchestrator what to build. The project's `.flotilla/` must be on origin's trunk first.
 2. **While it runs:** `/flotilla:status` for the picture, `/flotilla:watch` for what needs you. Answer permission
    questions with `/flotilla:permit` in the orchestrator's session.
 3. **Merges you authorize:** the orchestrator shows the batch; you run `flotilla work approve <branch>` for each branch
-   you agree to, yourself (with `!` in the orchestrator's prompt, or in a terminal).
+   you agree to, yourself, in your own Claude Code session or a terminal - not with `!` in the orchestrator's prompt,
+   which runs inside a background session and is refused.
 4. **A session done or stuck:** `/flotilla:retire "<name>"`. Its open rows are named; the orchestrator adopts them.
 5. **End of day:** `/flotilla:down`. Worktrees stay until you remove them with `git worktree remove <path>`.
 6. **After a plugin update:** stand the fleet down, update, bring `.flotilla/posts/` up to the new templates, raise
@@ -92,7 +94,9 @@ Worktrees and receipts:
 | a run looks green but did not finish | it was killed (often out of memory) and the wrapper returned 0 | read the tail of its output for the passed count; use `flotilla lane run` |
 | a permission question is refused after nine minutes | nobody answered within `[broker] wait_seconds` | answer sooner with `/flotilla:permit`, or add an allow rule for that command |
 | `permit answer` refused: mark | the answer did not carry the mark of the question shown | run `flotilla permit next` and use the command it prints |
-| `onboard`, `permit answer` or `approve` refused: not a person | it was run from a background session or a process with no terminal | run it in your own Claude Code session or in a terminal |
+| `onboard`, `approve` or `--as` refused: not a person | it was run from a background session (the orchestrator included) or a process with no terminal | run it in your own Claude Code session or in a terminal |
+| every move refused: no profile on trunk | `.flotilla/` is committed locally but not on origin's trunk | push it to origin's trunk |
+| the orchestrator's own permission request is refused | it cannot put a question to itself | attach to the orchestrator and answer there |
 | `onboard write` stops and prints a mark | it shows the whole profile first | read it; if it is right, run `write --confirm <mark>` |
 | a push is refused: receipt | no green push receipt over exactly what is pushed | `flotilla receipt run --purpose push` in that tree, then push |
 | a push is refused: not approved | a person authorizes merges and has not approved that work | `flotilla work approve <branch>` by the person |

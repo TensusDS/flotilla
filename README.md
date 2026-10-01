@@ -24,19 +24,20 @@ still change between minor versions.
 ## Contents
 
 1. [How a fleet works](#how-a-fleet-works)
-2. [Requirements](#requirements)
-3. [Install](#install)
-4. [Your first fleet, step by step](#your-first-fleet-step-by-step)
-5. [The posts](#the-posts)
-6. [The work ledger](#the-work-ledger)
-7. [The person's part](#the-persons-part)
-8. [Long runs and the lane](#long-runs-and-the-lane)
-9. [Guards](#guards)
-10. [What it costs](#what-it-costs)
-11. [What flotilla does on your machine](#what-flotilla-does-on-your-machine)
-12. [Security model and its limits](#security-model-and-its-limits)
-13. [Updating, and removing flotilla](#updating-and-removing-flotilla)
-14. [Development](#development)
+2. [Words used here](#words-used-here)
+3. [Requirements](#requirements)
+4. [Install](#install)
+5. [Your first fleet, step by step](#your-first-fleet-step-by-step)
+6. [The posts](#the-posts)
+7. [The work ledger](#the-work-ledger)
+8. [The person's part](#the-persons-part)
+9. [Long runs and the lane](#long-runs-and-the-lane)
+10. [Guards](#guards)
+11. [What it costs](#what-it-costs)
+12. [What flotilla does on your machine](#what-flotilla-does-on-your-machine)
+13. [Security model and its limits](#security-model-and-its-limits)
+14. [Updating, and removing flotilla](#updating-and-removing-flotilla)
+15. [Development](#development)
 
 ---
 
@@ -44,9 +45,10 @@ still change between minor versions.
 
 A typical day, in a project onboarded to flotilla:
 
-1. You start one **orchestrator** session and tell it what you want built. It splits the work into tasks.
-2. It raises the sessions the work needs: two or three **main** sessions to build, a **reviewer**, a **sender** that
-   owns trunk, and, if your project has a running build, an **acceptance judge**.
+1. You raise the fleet with one command: an **orchestrator**, two or three **main** sessions to build, a
+   **reviewer**, a **sender** that owns trunk, and, if your project has a running build, an **acceptance judge**.
+2. You tell the orchestrator what you want built. It splits the work into tasks, hands them out, and raises more
+   sessions if the work needs them.
 3. A main session **claims** a branch in its own worktree, builds, runs the project's tests, and **hands** the branch
    over at its tip.
 4. The reviewer **takes** it, reads it, and either **accepts** that exact revision or returns it with what must change.
@@ -59,9 +61,23 @@ Nobody keeps state in their head or in chat. "Where does this stand" is answered
 ledger, and every move is refused unless its evidence holds: you cannot hand work over without a green test receipt
 over its tip, accept a revision you did not read, or say "shipped" before origin says so.
 
+## Words used here
+
+- **trunk** - the branch work is delivered to (`main`, usually).
+- **seat** - one fleet session holding one post, with its own worktree.
+- **post** - a role: what a session is for and which ledger moves it may make.
+- **ledger** - the shared record of every piece of work and every move on it.
+- **row** - one piece of work in the ledger: a branch, its owner, its state.
+- **test tier** - one of the project's test commands that must be green, named at onboarding.
+- **receipt** - a record that the tiers ran green over one exact revision; a move that needs one asks for it.
+- **census** - Claude Code's list of live sessions (`claude agents`), which flotilla asks to tell who is calling.
+- **walk** - the judge using shipped work on the running build the way a person would.
+
 ## Requirements
 
-- Linux or macOS (both run in CI on every commit)
+- Linux or macOS (both run in CI on every commit). Two protections need Linux's `/proc` and are skipped on macOS,
+  saying so: the memory floor before raising seats and before long runs, and stopping the processes a retired seat
+  left running.
 - Python 3.11 or newer as `python3` on your PATH - the hooks run through it
 - git
 - Claude Code 2.1.280 or newer, with background sessions (`claude --bg`)
@@ -102,8 +118,9 @@ commands must be green before shipping.
 Before it writes anything, it shows you the whole profile it will write and every shell command in it, and waits for
 your yes. Then it runs each test tier once on this machine, so a tier that is red today is caught now and not by the
 first session that hands work over. The result is `.flotilla/project.toml` plus the post templates in
-`.flotilla/posts/`. Commit both and bring them to trunk: **every session reads its rules from trunk**, not from its
-own tree, so a session cannot change the rules it works under.
+`.flotilla/posts/`. Commit both and push them to trunk on origin: **every session reads its rules from origin's
+trunk**, not from its own tree, so a session cannot change the rules it works under - and until the profile is there,
+every ledger move is refused with that reason.
 
 The permission question matters most:
 
@@ -122,8 +139,9 @@ With no arguments it raises the composition onboarding suggested (`[fleet] defau
 names, trees, commands and the plugins each seat will have turned off, without raising anything.
 
 Each session is a background Claude Code session (`claude --bg`), named by its post (`main session 3`, `review
-session 1`), with its own worktree beside the repository (`<repo>-main-3`). Each starts only the MCP servers its post
-declares, so a reviewer does not carry a browser it never uses. `flotilla spawn` refuses to raise seats when free
+session 1`), with its own worktree beside the repository (`<repo>-main-3`). Plugins that bring MCP servers are turned
+off for a seat unless its post declares them, so a reviewer does not carry a browser it never uses; MCP servers you
+configured outside plugins still start in every seat. `flotilla spawn` refuses to raise seats when free
 memory would fall below `fleet.memory_floor_mb` (2000 MB by default), counting about 800 MB per seat it is about to
 raise; `--anyway` overrides.
 
@@ -131,7 +149,7 @@ raise; `--anyway` overrides.
 
     claude attach <the orchestrator's id>
 
-`flotilla spawn` prints the id. Tell it what to build. It assigns tasks, raises helpers when a session needs one,
+`flotilla spawn` prints the id; `flotilla fleet` lists every seat with its id later. Tell it what to build. It assigns tasks, raises helpers when a session needs one,
 relays your answers, and tells you when the queue is empty and the work is ready for you to check.
 
 ### 4. Watch
@@ -163,7 +181,9 @@ instructions its session starts with. The templates:
 | helper | `helper N` | a short-lived session raised by another for a piece of its work, in its own tree | release, wait |
 
 Every post may also `reserve` its home branch. A post's file is yours to edit: change its instructions, its `model`,
-the `plugins` it keeps, or narrow its permission mode (a post can narrow the profile's mode, never widen it).
+the `plugins` it keeps, or narrow its permission mode (a post can narrow the profile's mode, never widen it). One
+exception to a post's own `model`: when onboarding chose the strongest model for reviewers, every post that may accept
+runs on it, whatever its file says.
 
 **Plugin updates change the templates, not your posts.** When you update flotilla, compare `.flotilla/posts/` with the
 new templates (`template_version` in each file's header says which you have) and bring them up to date, keeping your
@@ -205,8 +225,9 @@ approve.
   it cannot be recorded for another question, or for this one changed since. A question nobody answers in nine
   minutes (`[broker] wait_seconds`) is refused on its own.
 - **Approving merges.** If onboarding recorded that a person authorizes merges, no work reaches trunk until you run
-  `flotilla work approve <branch>` yourself, for the revision the reviewer accepted. The orchestrator shows you the
-  batch (`/flotilla:brief`) and the exact command. The sender's queue, the merge check, the push guard and the
+  `flotilla work approve <branch>` yourself, for the revision the reviewer accepted, in your own Claude Code session
+  or a terminal - not with `!` in the orchestrator's prompt, which runs inside a background session and is refused.
+  The orchestrator shows you the batch (`/flotilla:brief`) and the exact command. The sender's queue, the merge check, the push guard and the
   pre-push hook all ask for your approval, and there is no override for it.
 - **Onboarding.** Only you record onboarding answers and write the profile; a background session is refused.
 - **Questions of judgement.** A session that needs your decision records `flotilla work wait <branch> --on "the
@@ -260,13 +281,25 @@ seen. The pre-push hook covers pushes; nothing covers `gh api` calls that merge 
 - **Your attention.** In `ask` mode, expect permission questions until your allow rules cover the commands the project
   needs; `/flotilla:permit` answers them one at a time.
 
+Before you start, know plainly:
+
+- **Sessions keep running** after you close the terminal you raised them from; they stop when you retire them or
+  stand the fleet down. A message sent to a retired background session wakes it again.
+- **There is no usage cap in flotilla.** A fleet spends until you stand it down; watch your plan's usage.
+- **`auto` mode means unattended commands run as you**, decided by Claude Code's classifier, in your project and with
+  your credentials. Start with `ask` until you have seen what the fleet does.
+
 ## What flotilla does on your machine
 
 So nothing comes as a surprise:
 
-- **Hooks.** It runs on Claude Code's session start, before each prompt, before each Bash command (the guards), when a
-  session stops, and on permission requests. They read the ledger and print a few lines; the Bash hook may refuse a
-  command.
+- **Hooks.** At session start and before each prompt it prints a few lines: who the session is and whose move it
+  holds. Before each Bash command it runs the guards, which may refuse the command. When a background session tries to
+  stop while it holds a move and records no wait, it is asked once to move or record the wait. A background session
+  other than the orchestrator that tries to ask you a question (`AskUserQuestion`) is refused and told to send it to
+  the orchestrator, since nobody is attached to answer it. In `ask` mode a background session's permission request
+  goes to the orchestrator; it is refused when nobody answers in nine minutes, at once when no orchestrator is alive,
+  and always for the orchestrator's own requests - answer those by attaching to the orchestrator.
 - **Background sessions.** `flotilla spawn` starts `claude --bg` sessions with the permission mode your profile names
   and each post's instructions as their system prompt. They run as you, with your credentials.
 - **Worktrees.** Each seat gets a git worktree beside the repository (`<repo>-<post>-<n>`). Retiring a seat keeps its
@@ -288,8 +321,8 @@ So nothing comes as a surprise:
 flotilla assumes a fleet session can be **overeager or misled** - it read a malicious file, a web page, or a message
 from another session - and keeps such a session from acting for you: it cannot answer permission questions, record
 onboarding answers, approve merges, widen its own permission mode, push to trunk without a receipt over what it
-pushes, or have its work recorded as read by someone who did not read it. Text one session writes reaches you and
-other sessions as data, never as instructions.
+pushes, or record a move under another session's name. Text one session writes reaches you and other sessions as
+data, never as instructions.
 
 It does **not** defend against a determined program running as your user. Every session runs as you, so a session
 that writes the ledger file directly, detaches a process with a pseudo-terminal of its own, or drives the model in
@@ -297,7 +330,7 @@ your own interactive session can still pass for you. Against that, the last gate
 prompt in `ask` mode. If you need isolation from the code a fleet works on, run Claude Code inside a sandbox.
 
 The 2026-10-01 security review, its 25 findings and how each was fixed are recorded in
-`docs/specs/2026-09-22-decisions-log.md` (decisions 171-188).
+`docs/specs/2026-09-22-decisions-log.md` (decisions 171-189).
 
 ## Updating, and removing flotilla
 
