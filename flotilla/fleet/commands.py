@@ -208,6 +208,8 @@ def _leaders(ledger, sessions, listed: set) -> list[str]:
 def _fleet(ledger, args) -> int:
     if getattr(args, "action", None) == "down":
         return _down(ledger)
+    if getattr(args, "action", None) == "clean":
+        return _clean(ledger, act=args.yes)
     try:
         sessions = census()
     except CensusUnavailable as err:
@@ -235,6 +237,21 @@ def _fleet(ledger, args) -> int:
     return 0
 
 
+def _clean(ledger, *, act: bool) -> int:
+    """Trees and branches whose work is surely on trunk go; everything else stays, with why (decision 206)."""
+    from flotilla.fleet import cleanup
+    try:
+        sessions = census()
+    except CensusUnavailable as err:
+        raise MoveRefused(f"cleaning needs the census to see which trees a live session works in ({err}); "
+                          "nothing was removed") from err
+    for line in cleanup.sweep(ledger, sessions=sessions, act=act):
+        print(line)
+    if not act:
+        print("plan only: nothing was changed; `flotilla fleet clean --yes` removes what it marks `would`")
+    return 0
+
+
 def _down(ledger) -> int:
     try:
         sessions = census()
@@ -249,6 +266,8 @@ def _down(ledger) -> int:
                                    "command short; nothing was stopped: run `flotilla fleet down` from a terminal")
     lines, refused = retire.down(ledger, caller=f"fleet down {caller_line(sessions)}", me=me, census=census)
     print("\n".join(lines))
+    if any("its tree is kept" in line for line in lines):
+        print("some trees were kept; `flotilla fleet clean` names why, and removes them once their work is on trunk")
     return 1 if refused else 0
 
 

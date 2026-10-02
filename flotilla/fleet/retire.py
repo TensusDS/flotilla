@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 from flotilla.core.census import CensusUnavailable
-from flotilla.fleet import leftovers, strangers
+from flotilla.fleet import cleanup, leftovers, strangers
 from flotilla.ledger import core
 from flotilla.ledger.actor import Actor
 from flotilla.ledger.errors import MoveRefused
@@ -136,27 +136,43 @@ def retire(ledger, name: str, *, caller: str, census, wait: float = 60.0, poll: 
         post = post_for_session(ledger.posts, name)
     except PostError:
         post = None
-    freed = core.free_seat_tree(ledger, name, row.tree) if row.tree else ""
+    # judged before the tree lets go of its branch: which branch it is, is the question (decision 206)
+    verdict = cleanup.judge(ledger, row.tree, spare_rows={row.id}) if row.tree and Path(row.tree).is_dir() else None
+    cleaned = cleanup.remove(ledger, verdict) if verdict is not None and verdict.removable else []
+    freed = "" if cleaned or not row.tree else core.free_seat_tree(ledger, name, row.tree)
     if row.is_open:   # a finished helper released its seat with `helper done`; retiring it only stops it
         with ledger.session() as s:
             s.append(Actor(name, post, "retire", caller), row.id, "release", "released",
                      evidence={"why": "retired", **({"tree": freed} if freed else {})})
     lines = [f"retired {name}" + (f" (stopped {found.short_id})" if found else " (it was not running)")]
     dirty = _dirty(row.tree)
-    if not row.tree or not Path(row.tree).is_dir():
+    if cleaned and not Path(row.tree).exists():
+        lines += cleaned
+        lines += _home_branch(ledger, row.branch, verdict.branch)
+    elif not row.tree or not Path(row.tree).is_dir():
         lines.append(f"its tree {row.tree or '(none)'} is gone")
     elif dirty is None:
         lines.append(f"its tree {row.tree} exists; its state is unknown (git could not read it), so it is kept")
     else:
         uncommitted = f", {dirty} uncommitted file{'s' if dirty != 1 else ''}" if dirty else ""
-        lines.append(f"its tree is kept at {row.tree}{uncommitted}; remove it with `git worktree remove "
-                     f"{row.tree}` once nothing in it is needed")
+        why = f" - kept because {'; '.join(verdict.reasons)}" if verdict is not None and verdict.reasons else ""
+        lines.append(f"its tree is kept at {row.tree}{uncommitted}{why}; `flotilla fleet clean` removes it once its "
+                     "work is surely on trunk")
     lines += left
     for other in ledger.rows().values():
         if other.is_open and other.owner == name and other.state != "reserved":
             lines.append(f"orphaned: `{other.branch}` ({other.state}); hand it on with `flotilla work adopt "
                          f"{other.branch} --to \"<session>\"`")
     return lines
+
+
+def _home_branch(ledger, home: str, removed: str) -> list[str]:
+    """The seat's home branch (`fleet/<post>-<n>`), when its tree had moved on to a task branch: deleted only on the
+    same terms, and only when no tree holds it."""
+    if not home or home == removed:
+        return []
+    sweep = [line for line in cleanup.sweep_branch(ledger, home)]
+    return sweep
 
 
 def _stop_leftovers(ledger, tree: str, census, *, short_id: str = "", was_running: bool = True,

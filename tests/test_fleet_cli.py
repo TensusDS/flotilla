@@ -240,3 +240,21 @@ def test_fill_counts_only_this_projects_sessions(tmp_path, monkeypatch):
                         lambda: [_a_session("review session 4", elsewhere), _a_session("main session 3", root)])
     code, out = run_cli("spawn", "--fill", "--dry-run", "--root", str(root))
     assert code == 0 and "(reviewer)" in out and "(main)" not in out
+
+
+def test_fleet_clean_previews_then_removes_what_is_sure(tmp_path, monkeypatch):
+    """Decision 206: a sweep for what forced stops and older fleets left; it shows its plan unless told --yes."""
+    root = onboarded(tmp_path, monkeypatch)
+    tree = tmp_path / "app-main-9"
+    git(root, "worktree", "add", "-q", "-b", "fleet/main-9", str(tree))
+    monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [])
+    code, out = run_cli("fleet", "clean", "--root", str(root))
+    assert code == 0 and "would remove" in out and "--yes" in out and tree.exists()
+    code, out = run_cli("fleet", "clean", "--yes", "--root", str(root))
+    assert code == 0 and "removed" in out and not tree.exists()
+
+
+def test_fleet_clean_needs_the_census(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    code, out = run_cli("fleet", "clean", "--yes", "--root", str(root))
+    assert code == 2 and "census" in out

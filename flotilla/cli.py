@@ -192,7 +192,10 @@ def build_parser() -> argparse.ArgumentParser:
     retire_.add_argument("name")
     retire_.add_argument("--root", default=".")
     fleet_ = sub.add_parser("fleet", help="the fleet's sessions, their trees and their work; `down` retires them")
-    fleet_.add_argument("action", nargs="?", choices=["down"], help="retire every seat but your own")
+    fleet_.add_argument("action", nargs="?", choices=["down", "clean"],
+                        help="down: retire every seat but your own; clean: remove trees and branches whose work is "
+                             "surely on trunk (a plan unless --yes)")
+    fleet_.add_argument("--yes", action="store_true", help="with clean: remove what the plan names")
     fleet_.add_argument("--root", default=".")
     helper_ = sub.add_parser("helper", help="raise a helper session for a piece of your work, or finish as one")
     helper_sub = helper_.add_subparsers(dest="helper_action", required=True)

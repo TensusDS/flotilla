@@ -38,9 +38,19 @@ def test_retire_stops_the_session_unlocks_the_tree_and_releases_the_post_row(tmp
     root, ledger, seat = raised_world(tmp_path, fake)
     lines = do_retire(ledger, fake)
     assert fake.stopped == [seat.short_id]
-    assert "locked" not in git(root, "worktree", "list", "--porcelain")
     assert [row.state for row in ledger.rows().values()] == ["released"]
-    assert seat.seat.tree.is_dir() and any(str(seat.seat.tree) in line for line in lines)
+    # its tree carried nothing off trunk: surely done with, so it goes, branch and all (decision 206)
+    assert not seat.seat.tree.exists() and any("removed" in line for line in lines)
+    assert "fleet/main-1" not in git(root, "branch", "--list")
+
+
+def test_retire_keeps_a_tree_whose_work_is_not_on_trunk_and_says_why(tmp_path):
+    fake = FakeClaude()
+    root, ledger, seat = raised_world(tmp_path, fake)
+    commit(seat.seat.tree, "not shipped", "w.txt", "x\n")
+    lines = "\n".join(do_retire(ledger, fake))
+    assert seat.seat.tree.is_dir() and "not on origin's trunk" in lines and "fleet clean" in lines
+    assert "locked" not in git(root, "worktree", "list", "--porcelain")
 
 
 def test_retire_names_what_the_session_leaves_behind(tmp_path):
