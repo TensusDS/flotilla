@@ -1189,14 +1189,18 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    first, and turns each gap line into a question whose recommended answer is "this session leads it"; `onboard
    check` names a default composition without an orchestrator, or without a sender where the sender merges. A gap
    is said, not refused: a person adding one seat to a fleet whose orchestrator is restarting must not be stopped.
-   (planner's decision, 2026-10-02)
+   The opposite case is refused: `--lead` while another live session leads the project's fleet - a live
+   orchestrator, or another session's pending lead - would put two sessions to routing one fleet's work, and the
+   skill asks "who leads" only after `flotilla fleet` shows nobody does (review of 0.6.8, I2). The lead path raises
+   the composition the person named, not the default (I3). (planner's decision, 2026-10-02)
 
 213. **The first green receipt measures a tier this machine never measured** (twosuns field test of 0.6.7, W2). Tier
    times were written only by `onboard write`, so a machine other than the one that onboarded - or a profile kept
    through a re-onboarding - had none: `onboard check` reported a finding with no command to clear it, and the
    lane's receipt ceiling fell back to half an hour. A tier a receipt actually ran green (not reused) records its
    time when none is recorded; an existing measurement stands, so one lucky short run cannot lower the ceiling.
-   (planner's decision, 2026-10-02)
+   Measuring is a side effect: written whole through a staged file, and an unreadable file or a failed write
+   measures nothing rather than costing the receipt (review of 0.6.8, I1). (planner's decision, 2026-10-02)
 
 ## Open questions (for the foundation spec)
 
