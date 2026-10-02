@@ -205,3 +205,11 @@ def test_spawn_with_no_arguments_offers_that_this_session_leads():
     text = (ROOT / "skills" / "spawn" / "SKILL.md").read_text(encoding="utf-8")
     assert "AskUserQuestion" in text and "flotilla spawn --lead" in text and "flotilla spawn --fill" in text
     assert text.index("flotilla spawn --lead") < text.index("flotilla spawn --fill")
+
+
+def test_spawn_turns_a_gap_into_a_question():
+    """Twosuns field test of 0.6.7, W3: a fleet nobody leads was raised with no word; spawn now prints `gap:` lines,
+    and the skill must put each to the person, offering this session to lead."""
+    text = (ROOT / "skills" / "spawn" / "SKILL.md").read_text(encoding="utf-8")
+    assert "gap:" in text and "nobody leads this fleet" in text and "nobody merges" in text
+    assert "flotilla spawn -o 1" in text and "flotilla spawn -s 1" in text

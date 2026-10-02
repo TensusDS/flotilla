@@ -22,9 +22,19 @@ allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla spawn*)
    **A background orchestrator:** go on with step 1 and `--default`.
 
 1. Show the plan first: run `${CLAUDE_PLUGIN_ROOT}/scripts/flotilla spawn $ARGUMENTS --dry-run` from the repository
-   root (with no arguments and a background orchestrator, use `--default`). Show every line it prints: names, trees, branches, the permission
-   mode and the warnings.
-2. Ask the person whether to raise exactly that fleet. Raising sessions spends money and occupies worktrees; do
+   root (with no arguments and a background orchestrator, use `--default`). Show every line it prints: names, trees,
+   branches, the permission mode, the warnings and the gaps.
+2. **A `gap:` line is a question for the person, not a remark.** The fleet would lack someone, and a person new to
+   flotilla will not know what is missing.
+   - "nobody leads this fleet": AskUserQuestion, header "Leader", question "Nobody would lead this fleet. Who
+     leads it?", options "This session leads it (Recommended)" - "You talk to the fleet here" -, "A background
+     orchestrator" - "Raised with the rest; you attach to talk" -, and "Nobody for now" - "The seats wait for
+     work". This session: go to step 0's lead path and raise nothing now - the seats rise with `--fill` once the
+     name shows. A background orchestrator: after this spawn, also run `flotilla spawn -o 1` (dry run first).
+   - "nobody merges": ask whether to add a sender; on yes, after this spawn also run `flotilla spawn -s 1` (dry run
+     first).
+
+   Then ask the person whether to raise exactly that fleet. Raising sessions spends money and occupies worktrees; do
    not proceed on your own judgement.
 3. On a yes, run the same command without `--dry-run` and show the table it prints: each name with its
    `claude attach <id>` and its tree.
