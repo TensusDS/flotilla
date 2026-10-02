@@ -222,7 +222,7 @@ def _fleet(ledger, args) -> int:
     for item in view:
         if item["stranger"]:
             stop = f"; `claude stop {item['short_id']}` stops it" if item["short_id"] else ""
-            print(f"{item['name']}  {strangers.label(item['stranger'])}{stop}")
+            print(f"{item['name']}  {strangers.label(item['stranger'], item.get('started', ''))}{stop}")
             continue
         attach = f"claude attach {item['short_id']}" if item["short_id"] else "no id in the census"
         live = {True: f"alive ({item['state'] or 'no state'}), {attach}",

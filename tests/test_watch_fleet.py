@@ -259,3 +259,38 @@ def test_a_post_session_in_its_own_tree_is_no_stranger():
                      tree="/work/app-main-1"))
     mine = dataclasses.replace(sess("main session 1"), cwd="/work/app-main-1")
     assert [item for item in fleet.fleet(seats, PR, [mine], post_of=post_of) if item.kind == fleet.STRANGER] == []
+
+
+def _transcript(config_dir, session, entrypoint, prompt="Review this change for security vulnerabilities."):
+    import json
+    from flotilla.fleet import strangers
+    folder = config_dir / "projects" / strangers.project_slug(session.cwd)
+    folder.mkdir(parents=True, exist_ok=True)
+    lines = [{"type": "user", "entrypoint": entrypoint, "message": {"role": "user", "content": prompt}}]
+    (folder / f"{session.session_id}.jsonl").write_text("\n".join(json.dumps(x) for x in lines) + "\n",
+                                                         encoding="utf-8")
+
+
+def test_a_plugins_headless_review_in_a_seat_tree_is_no_alarm(tmp_path, monkeypatch):
+    """Worldcore field test W6: security-guidance starts a headless review session in the tree after each commit;
+    `watch` raised it as a stranger and the orchestrator went to find out what it was. The census does not say how
+    a session was started, but the session's own transcript does, in its first records."""
+    import dataclasses
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
+    seats = rows(row(id="r1", branch="fleet/main-1", owner="main session 1", state="reserved",
+                     tree="/work/app-main-1"))
+    review = dataclasses.replace(sess("app-main-1-2f", kind="interactive"), cwd="/work/app-main-1")
+    person = dataclasses.replace(sess("app-main-1-77", kind="interactive"), cwd="/work/app-main-1")
+    _transcript(tmp_path / "claude", review, "sdk-py")
+    _transcript(tmp_path / "claude", person, "cli", prompt="let me look at this tree")
+    found = fleet.fleet(seats, PR, [sess("main session 1"), review, person], post_of=post_of)
+    named = [item.who for item in found if item.kind == fleet.STRANGER]
+    assert named == ["app-main-1-77"]   # a session a person opened there is still named
+
+
+def test_the_persons_own_session_waiting_on_them_is_no_alarm():
+    """Worldcore field test W17: the leading session is interactive; waiting on the person is its normal state."""
+    leading = sess("orchestrator 1", kind="interactive", status="waiting")
+    assert fleet.fleet({}, PR, [leading], post_of=post_of) == []
+    seat = sess("main session 1", state="blocked", status="waiting")
+    assert [item.kind for item in fleet.fleet({}, PR, [seat], post_of=post_of)] == [fleet.PERSON]

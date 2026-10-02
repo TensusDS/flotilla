@@ -89,13 +89,14 @@ def fleet(rows: dict, profile: dict, sessions, *, post_of, breaks=(), asking=(),
     for name in sorted(live):
         session = by_name[name]
         dropped = any(item.kind == DROPPED and item.who == name for item in items)
-        if session.status == "waiting" and name not in asking and post_of(name) and not dropped:
+        if session.status == "waiting" and name not in asking and post_of(name) and not dropped \
+                and session.kind != "interactive":   # the person is in front of it: waiting on them is normal (W17)
             # a question open in its own session that no row records (H42); one in the queue is a QUESTION item,
             # and a holder of a move already reads as DROPPED with its prompt named
             items.append(Item(PERSON, "", f"{name} waits on the person (census: waiting); answer it in its session",
                               "", who=name))
     items.extend(Item(STRANGER, "", f"{session.name}: {strangers.label(tree)}", "", who=session.name)
-                 for session, tree in outside)
+                 for session, tree in outside if not strangers.started_by(session))   # a hook's review: no alarm (W6)
     items.extend(breaks)
     items.extend(idle_seats(rows, profile, live, post_of, claimers, now))
     items.extend(drained(rows, live))

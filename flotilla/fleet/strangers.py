@@ -7,11 +7,47 @@ post: it is named for what it is and counted nowhere a seat is counted.
 
 from __future__ import annotations
 
+import json
+import os
+import re
 from pathlib import Path
 
+#: How many records of a transcript are read for its entrypoint: it is on the first ones.
+HEAD = 20
 
-def label(tree: str) -> str:
+
+def label(tree: str, started: str = "") -> str:
+    if started:
+        return (f"a headless session a plugin hook started ({started}) in {tree}: it reviews the change it was "
+                "started for and holds no post; not a fleet session")
     return f"not a fleet session (started in {tree})"
+
+
+def project_slug(cwd: str) -> str:
+    """The folder Claude Code keeps a session's transcript in, under its projects directory: the working directory
+    with every character but letters and digits turned into `-` (measured on 2.1.287)."""
+    return re.sub(r"[^A-Za-z0-9]", "-", cwd)
+
+
+def started_by(session) -> str:
+    """How a session was started, when its transcript says it was not by a person at a terminal: the entrypoint
+    (`sdk-py`, `sdk-ts`), or "" for the command line or when nothing can be read (worldcore field test W6)."""
+    if not session.cwd or not session.session_id:
+        return ""
+    home = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
+    path = home / "projects" / project_slug(session.cwd) / f"{session.session_id}.jsonl"
+    try:
+        with open(path, encoding="utf-8", errors="replace") as transcript:
+            for _, line in zip(range(HEAD), transcript):
+                try:
+                    entry = json.loads(line).get("entrypoint")
+                except (ValueError, AttributeError):
+                    continue
+                if isinstance(entry, str) and entry:
+                    return "" if entry == "cli" else entry[:20]
+    except OSError:
+        return ""
+    return ""
 
 
 def seat_trees(rows: dict) -> list[Path]:

@@ -81,7 +81,8 @@ def fleet_view(ledger, sessions: list | None) -> list[dict]:
             "stranger": "",
         })
     for session, tree in strangers.in_seat_trees(sessions or [], rows, lambda name: _post_name(ledger, name)):
-        view.append({"name": session.name, "post": "", "stranger": tree, "short_id": session.short_id or ""})
+        view.append({"name": session.name, "post": "", "stranger": tree, "short_id": session.short_id or "",
+                     "started": strangers.started_by(session)})
     return view
 
 
