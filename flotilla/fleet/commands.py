@@ -69,8 +69,15 @@ def _lead(ledger, args) -> int:
         raise MoveRefused(f"--lead needs the census to keep the name unique ({err})") from err
     mine = project.members(sessions, ledger.rows(), project.roots(ledger.root))
     held = [item.name for item in mine if item.name and names.number_of(post, item.name) is not None]
-    if held:
-        print(f"note: {', '.join(held)} already lead(s) this project's fleet")
+    from flotilla.fleet import lead
+    import datetime as dt
+    waiting = lead.pending(LocalLogStore(paths.state_dir() / "fleet"), now=dt.datetime.now(dt.timezone.utc))
+    me_now = calling_session(sessions)
+    held += [item.name or item.session_id for item in mine if item.session_id in waiting
+             and (me_now is None or item.session_id != me_now.session_id) and item.name not in held]
+    if held:   # two sessions routing one fleet's work (review of 0.6.8, I2)
+        raise MoveRefused(f"{', '.join(held)} already leads this project's fleet; talk to it, or retire it "
+                          "(/flotilla:retire) and run --lead again")
     taken = {item.name for item in sessions if item.name}
     taken |= {name for row in ledger.rows().values() for name in (row.owner, row.reader) if name}
     from flotilla.fleet import lead
@@ -150,6 +157,8 @@ def _spawn(ledger, args) -> int:
         counts = compose.fill(counts, held)
         if not counts:
             print("nothing to raise: the live sessions already hold the default composition")
+            for line in _gaps(ledger, {}):   # an old default may be whole and still lack a leader (0.6.8, M1)
+                print(f"gap: {line}")
             return 0
     store = LocalLogStore(paths.state_dir() / "fleet")
     if args.dry_run:

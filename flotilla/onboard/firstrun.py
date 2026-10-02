@@ -103,15 +103,26 @@ def save_measurements(state: Path, repo_key: str, runs: list[TierRun]) -> Path:
 def measure_once(state: Path, repo_key: str, times: dict[str, float]) -> None:
     """Record a tier's green time where this machine has none yet (twosuns field test of 0.6.7, W2): a receipt is
     the first green run a machine sees after the one onboarding made elsewhere, and a measurement already there -
-    onboarding's - stands."""
-    known = load_measurements(state, repo_key)
-    new = {name: seconds for name, seconds in times.items() if name not in known and seconds is not None}
-    if not new:
-        return
-    path = _path(state, repo_key)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render_toml({"seconds": {**known, **new}}, header="Tier run times on this machine, green runs "
-                                "only."), encoding="utf-8")
+    onboarding's - stands. A side effect: an unreadable file or a failed write measures nothing and never costs the
+    receipt it rides on (review of 0.6.8, I1). Written whole through a staged file, so a reader never sees half."""
+    staged = None
+    try:
+        known = load_measurements(state, repo_key)
+        new = {name: seconds for name, seconds in times.items() if name not in known and seconds is not None}
+        if not new:
+            return
+        path = _path(state, repo_key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        staged = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+        staged.write_text(render_toml({"seconds": {**known, **new}}, header="Tier run times on this machine, green "
+                                      "runs only."), encoding="utf-8")
+        os.replace(staged, path)
+    except (OSError, ValueError):
+        if staged is not None:
+            try:
+                staged.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def load_measurements(state: Path, repo_key: str) -> dict[str, float]:

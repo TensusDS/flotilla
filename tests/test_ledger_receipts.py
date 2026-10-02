@@ -281,3 +281,30 @@ def test_the_first_green_receipt_measures_a_tier_this_machine_never_measured(tmp
     assert measured["lint"] == 77.0                      # onboarding's measurement stands
     assert isinstance(measured.get("unit"), float)       # the first green run measured it
     assert "e2e" not in measured                         # a red run measures nothing
+
+
+def test_a_torn_measurements_file_never_costs_a_green_receipt(tmp_path):
+    """Review of 0.6.8, I1: measuring is a side effect; a half-written measurements file raised out of
+    run_receipt, so every later receipt on the repository failed until someone fixed the file by hand."""
+    from flotilla.onboard import firstrun
+    state = tmp_path / "s"
+    path = firstrun._path(state, KEY)
+    path.parent.mkdir(parents=True)
+    path.write_text("[seconds]\nunit = ", encoding="utf-8")
+    root = repo_with_origin(tmp_path)
+    sha = git(root, "rev-parse", "HEAD")
+    receipts.run_receipt(root, state=state, repo_key=KEY, purpose="handover", profile=profile(GREEN), timeout=60)
+    ok, why = receipts.check_receipt(state=state, repo_key=KEY, sha=sha, purpose="handover", profile=profile(GREEN))
+    assert ok, why
+
+
+def test_measurements_are_written_whole_or_not_at_all(tmp_path, monkeypatch):
+    """Review of 0.6.8, I1: two seats' first receipts at once could read each other's half-written file."""
+    import os
+    from flotilla.onboard import firstrun
+    seen = []
+    real = os.replace
+    monkeypatch.setattr(os, "replace", lambda a, b: (seen.append((str(a), str(b))), real(a, b))[1])
+    firstrun.measure_once(tmp_path, KEY, {"unit": 3.0})
+    assert seen and seen[-1][1] == str(firstrun._path(tmp_path, KEY))
+    assert firstrun.load_measurements(tmp_path, KEY) == {"unit": 3.0}

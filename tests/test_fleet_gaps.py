@@ -83,3 +83,39 @@ def test_the_gap_is_said_after_a_real_launch_too(tmp_path, monkeypatch):
     monkeypatch.setattr(spawn, "spawn", lambda ledger, counts, **kw: ([], []))
     code, out = run_cli("spawn", "--default", "--root", str(root))
     assert code == 0 and "nobody leads" in out, out
+
+
+def test_lead_refuses_while_another_session_leads(tmp_path, monkeypatch):
+    """Review of 0.6.8, I2: `/flotilla:spawn` recommends "this session leads it", and `--lead` only noted a live
+    orchestrator - two sessions would route the same fleet's work."""
+    root = _onboarded(tmp_path, monkeypatch, {"orchestrator": 1, "main": 1})
+    me = _a_session("twosuns-7c", root)
+    monkeypatch.setattr("flotilla.fleet.commands.calling_session", lambda sessions: me)
+    monkeypatch.setattr("flotilla.core.caller.person_refusal", lambda what: "")
+    _census(monkeypatch, me, _a_session("orchestrator 2", root))
+    code, out = run_cli("spawn", "--lead", "--root", str(root))
+    assert code != 0 and "orchestrator 2" in out and "already leads" in out, out
+    other = _a_session("twosuns-9d", root)
+    lead.record(LocalLogStore(tmp_path / "state" / "fleet"), other.session_id, "orchestrator 3", now="t")
+    _census(monkeypatch, me, other)
+    code, out = run_cli("spawn", "--lead", "--root", str(root))
+    assert code != 0 and "twosuns-9d" in out, out
+    _census(monkeypatch, me)
+    code, out = run_cli("spawn", "--lead", "--root", str(root))
+    assert code == 0, out
+
+
+def test_fill_with_nothing_to_raise_still_names_a_gap(tmp_path, monkeypatch):
+    """Review of 0.6.8, M1: an old default whose seats are all alive returned "nothing to raise" before the gap."""
+    root = _onboarded(tmp_path, monkeypatch, {"main": 1})
+    _census(monkeypatch, _a_session("main session 1", root))
+    code, out = run_cli("spawn", "--fill", "--root", str(root))
+    assert code == 0 and "nothing to raise" in out and "nobody leads" in out, out
+
+
+def test_gaps_count_a_live_reviewer_under_its_alias(tmp_path, monkeypatch):
+    """Review of 0.6.8, M8: the default names `review`, the post is `reviewer`."""
+    root = _onboarded(tmp_path, monkeypatch, {"orchestrator": 1, "review": 1})
+    _census(monkeypatch, _a_session("orchestrator 1", root), _a_session("review session 1", root))
+    code, out = run_cli("spawn", "--fill", "--root", str(root))
+    assert code == 0 and "nothing to raise" in out and "gap:" not in out, out

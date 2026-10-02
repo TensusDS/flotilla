@@ -140,7 +140,7 @@ def run_receipt(tree: Path, *, state: Path, repo_key: str, purpose: str, profile
     # file is the files the author's receipt already tested. A green answer is reused; a red one runs again.
     files = gitq.files_of(tree, sha, run=run)
     known = _green_over(state, repo_key, files)
-    results, learned = [], {}
+    results, learned, ran_green = [], {}, {}
     for tier in tiers:
         seen = known.get(_tier_key(tier))
         if seen:
@@ -156,6 +156,7 @@ def run_receipt(tree: Path, *, state: Path, repo_key: str, purpose: str, profile
                 result["summary"] = (f"{result['summary']} ({prepared}; `flotilla receipt run --setup` runs it "
                                      "again)").strip()
         else:
+            ran_green[r.name] = r.seconds
             learned[_tier_key(tier)] = {"sha": sha, "summary": r.summary or "", "seconds": r.seconds,
                                         "at": now_iso()}
         results.append(result)
@@ -171,8 +172,7 @@ def run_receipt(tree: Path, *, state: Path, repo_key: str, purpose: str, profile
         known_path.parent.mkdir(parents=True, exist_ok=True)
         known_path.write_text(json.dumps({**_green_over(state, repo_key, files), **learned}, indent=2,
                                          sort_keys=True), encoding="utf-8")
-    measure_once(state, repo_key, {r["name"]: r["seconds"] for r in results
-                                   if r["status"] == "green" and not str(r.get("summary", "")).startswith("reused")})
+    measure_once(state, repo_key, ran_green)   # only tiers that ran here: a reused green measured nothing (M5)
     path = _path(state, repo_key, sha, purpose)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(receipt, indent=2, sort_keys=True), encoding="utf-8")
