@@ -50,3 +50,17 @@ def test_exit_code_separates_drift_from_unknown():
     assert exit_code([]) == 0
     assert exit_code(["unknown: x"]) == 3
     assert exit_code(["unknown: x", "trunk: y"]) == 1
+
+
+def test_a_default_composition_without_an_orchestrator_or_a_needed_sender():
+    """Twosuns field test of 0.6.7, W3: a profile written on 0.3 had `main, review, judge` as its default, and
+    `/flotilla:spawn` raised a fleet nobody led. Onboarding now always composes both; an older profile is named."""
+    old = {**PROFILE, "flow": {"merge_authorized_by": "sender"}, "fleet": {"default": {"main": 1, "review": 1}}}
+    found = check_drift(old, detection(), {"unit": 1})
+    assert any(f.startswith("fleet: the default composition has no orchestrator") and "orchestrator = 1" in f
+               for f in found), found
+    assert any(f.startswith("fleet: the default composition has no sender") and "sender = 1" in f for f in found)
+    whole = {**old, "fleet": {"default": {"orchestrator": 1, "sender": 1, "main": 1}}}
+    assert check_drift(whole, detection(), {"unit": 1}) == []
+    human = {**old, "flow": {"merge_authorized_by": "human"}, "fleet": {"default": {"orchestrator": 1, "main": 1}}}
+    assert check_drift(human, detection(), {"unit": 1}) == []
