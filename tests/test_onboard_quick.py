@@ -252,3 +252,22 @@ def test_write_says_in_plain_words_what_the_person_agrees_to(project):
     said = out[out.index("in plain words"):]
     assert "merges into trunk" in said and "without asking you" in said
     assert "auto mode" in said and "every branch" in said and "npm test" in said
+
+
+@pytest.mark.parametrize("data, says, never", [
+    ({"flow": {"mode": "pr"}, "pr": {"merged_by": "human"}, "review": {"depth": "every"}},
+     "you merge each pull request yourself", "without asking you"),
+    ({"flow": {"mode": "direct", "merge_authorized_by": "sender"}, "review": {"depth": "none"}},
+     "merges work on its own", "reviewed work"),
+    ({"flow": {"mode": "direct", "merge_authorized_by": "sender"}, "permissions": {"mode": "ask"}},
+     "except flotilla's own", "every tool call waits"),
+    ({"flow": {"mode": "direct", "merge_authorized_by": "sender"}, "permissions": {"mode": "auto"}},
+     "no question is put to you", "asked only"),
+])
+def test_plain_words_say_nothing_false(data, says, never):
+    """Review of 0.6.1, I4 and M4: a pull-request flow merged by a person was summed up as "the sender merges ...
+    without asking you"; review `none` still said "reviewed work"; ask mode claimed every call waits, and auto mode
+    promised questions flotilla never routes."""
+    from flotilla.onboard.profile import plain_words
+    said = " ".join(plain_words(data))
+    assert says in said and never not in said

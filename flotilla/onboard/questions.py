@@ -50,7 +50,7 @@ def all_questions(det: dict, answers: dict) -> list[dict]:
         ("none", "No review", "Branches go to the sender once handed over."),
     ]))
     out.append(_q("permissions", "Permissions", "How do background sessions get permission for their tools?", [
-        ("auto", "Auto mode (Recommended)", "Claude Code's classifier decides; you are asked only what it finds risky."),
+        ("auto", "Auto mode (Recommended)", "Claude Code's classifier decides each call; no question waits on you."),
         ("ask", "They ask me", "Sessions stop and wait for you at every permission prompt."),
         ("rules", "Allow rules exist", "Your settings already allow the commands the fleet needs."),
     ]))

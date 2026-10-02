@@ -158,20 +158,24 @@ def plain_words(data: dict) -> list[str]:
     person through the command's own output whatever the session retells (worldcore field test W12)."""
     flow = data.get("flow") or {}
     mode, who = flow.get("mode", "local"), flow.get("merge_authorized_by")
+    depth = (data.get("review") or {}).get("depth", "every")
+    work = "reviewed work" if depth != "none" else "work"
     if mode == "local":
         merges = "merges into trunk: work stays on this machine; nothing is pushed"
+    elif mode == "pr" and (data.get("pr") or {}).get("merged_by") == "human":
+        merges = f"merges into trunk: the sender opens a pull request for {work}; you merge each pull request yourself"
     elif who == "human":
         merges = "merges into trunk: nothing reaches trunk until you approve it (`! flotilla work approve <branch>`)"
     else:
-        merges = "merges into trunk: the sender session merges reviewed work on its own, without asking you"
-    depth = (data.get("review") or {}).get("depth", "every")
+        merges = f"merges into trunk: the sender session merges {work} on its own, without asking you"
     review = {"every": "review: every branch is read by another session before it can ship",
               "main-only": "review: large work is read by another session; small fixes go straight on",
               "none": "review: nobody reads a branch before it ships"}.get(depth, f"review: {depth}")
     permission = (data.get("permissions") or {}).get("mode", "ask")
-    asks = {"auto": "permissions: background sessions run in Claude Code's auto mode; you are asked only what its "
-                    "classifier finds risky",
-            "ask": "permissions: every tool call of a background session waits for your answer",
+    asks = {"auto": "permissions: background sessions run in Claude Code's auto mode - its classifier decides each "
+                    "call, and no question is put to you",
+            "ask": "permissions: every tool call of a background session waits for your answer, except flotilla's "
+                   "own read commands and ledger moves, which flotilla checks itself",
             "rules": "permissions: background sessions run what your allow rules permit, and are refused the rest"
             }.get(permission, f"permissions: {permission}")
     tiers = [tier.get("command", "") for tier in (data.get("tests") or {}).get("tier") or []]
