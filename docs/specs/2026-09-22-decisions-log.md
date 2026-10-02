@@ -1093,6 +1093,23 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    the fleet skill asks for flotilla's command line as a whole command, which the ask-mode pass recognizes (W18).
    (planner's decision, 2026-10-02)
 
+204. **Review of 0.6.2: what ran must still be what is committed; a stop takes everything with it** (2026-10-02). A
+   receipt checks HEAD and cleanliness again after its tiers; a tree edited or moved during the run gets no receipt
+   and teaches the file store nothing, so reuse cannot carry a green over untested files (I1). The lane refuses a
+   name given with `--as` when the census says the caller is someone else - `lane stop` and `release` no longer act
+   on a peer's booking (I2). A receipt turns a stop into an exception and an interrupted tier stops its whole group,
+   so `lane stop` on a receipt leaves nothing computing; its message no longer claims a record a receipt does not
+   write (I3). The setup marker is keyed on the tree's birth too (its `gitdir` file, written when the tree is cut), so
+   a seat raised again at the same path is set up again while a tree's own commits are not; a red tier after a
+   skipped setup says so and names `receipt run --setup` (I4). A receipt's tiers get ten times their measured time and
+   at least ten minutes; any other run in the lane at least half an hour, so a measured project never gets less room
+   than an unmeasured one (I5). `watch` stays quiet only for a session started through the SDK, not for an IDE.
+   Rulings, each cheap if wrong: a descendant that left the process group and holds the run's output keeps a ceiling
+   run alive until it exits (`lane stop` still recovers it); a tier's fingerprint is its name and command, so a tier
+   that reads commit metadata (a message lint) is reused across commits with the same files; lockfiles are looked for
+   at the root only; a forged files record is no new power beyond decision 185's same-user limit. (planner's
+   decision, 2026-10-02)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
