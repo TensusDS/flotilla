@@ -75,6 +75,10 @@ def _write(det: dict, given: dict, args, state: Path) -> int:
             print("of which these are shell commands it runs or stores:")
             for where, command in commands:
                 print(f"  {visible(where)}: {visible(command)}")
+        from flotilla.onboard.profile import plain_words
+        print("in plain words:")
+        for line in plain_words(data):
+            print(f"  - {visible(line)}")
         print("show the person the profile; when the person agrees, run "
               f"`flotilla onboard write --confirm {mark}` (with the same other options)")
         return 5

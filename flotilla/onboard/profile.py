@@ -151,3 +151,30 @@ def write_profile(root: Path, data: dict, *, force: bool = False) -> Path:
         handle.write(render_toml(data, header=HEADER))
     config.load_project(Path(root))
     return path
+
+
+def plain_words(data: dict) -> list[str]:
+    """What the profile means for the person, one line each - printed by `write` before the yes, so it reaches the
+    person through the command's own output whatever the session retells (worldcore field test W12)."""
+    flow = data.get("flow") or {}
+    mode, who = flow.get("mode", "local"), flow.get("merge_authorized_by")
+    if mode == "local":
+        merges = "merges into trunk: work stays on this machine; nothing is pushed"
+    elif who == "human":
+        merges = "merges into trunk: nothing reaches trunk until you approve it (`! flotilla work approve <branch>`)"
+    else:
+        merges = "merges into trunk: the sender session merges reviewed work on its own, without asking you"
+    depth = (data.get("review") or {}).get("depth", "every")
+    review = {"every": "review: every branch is read by another session before it can ship",
+              "main-only": "review: large work is read by another session; small fixes go straight on",
+              "none": "review: nobody reads a branch before it ships"}.get(depth, f"review: {depth}")
+    permission = (data.get("permissions") or {}).get("mode", "ask")
+    asks = {"auto": "permissions: background sessions run in Claude Code's auto mode; you are asked only what its "
+                    "classifier finds risky",
+            "ask": "permissions: every tool call of a background session waits for your answer",
+            "rules": "permissions: background sessions run what your allow rules permit, and are refused the rest"
+            }.get(permission, f"permissions: {permission}")
+    tiers = [tier.get("command", "") for tier in (data.get("tests") or {}).get("tier") or []]
+    tests = ("tests before every handover and push: " + "; ".join(tiers)) if tiers else \
+        "tests: none - nothing is run before a handover or a push"
+    return [merges, review, asks, tests]

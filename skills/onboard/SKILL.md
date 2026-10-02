@@ -38,7 +38,8 @@ whether its jobs came from a real push run or only from workflow files ("unverif
 Ask the person with AskUserQuestion, header "Setup", question "How do you want to set flotilla up?":
 
 - **"Quick (Recommended)"** - "flotilla takes what it found and the recommended answer to every other question:
-  every branch reviewed, every permission asked of you, every guard on. You confirm the result once."
+  every branch reviewed, Claude Code's auto mode deciding what to ask you, every guard on. You confirm the result
+  once."
 - **"Custom"** - "Answer each question yourself: how work reaches trunk, review, permissions, tests, CI, models."
 
 **Quick:** run `flotilla onboard quick`. It records the recommended answer to every question that applies and prints
@@ -61,10 +62,9 @@ Answers are stored between sessions; `flotilla onboard reset` forgets them.
 Run `flotilla onboard write`. First it prints the whole profile it will write, then every shell command in it (each
 test tier, the gate, the revision command), and a mark, and does nothing else.
 
-- **Quick:** in your own message, before asking anything, show the person the answers `quick` printed as a short
-  list in plain words, and every shell command exactly as `write` printed it; offer the whole profile if they want
-  to read it. Say in one sentence who authorizes merges into trunk: `merge_auth: sender` means the sender session
-  merges reviewed work without asking the person; `human` means nothing reaches trunk until the person approves it.
+- **Quick:** in your own message, before asking anything, show the person the lines `write` printed under "in plain
+  words" exactly as printed - who merges into trunk, what is reviewed, what they are asked, which tests run - and
+  every shell command exactly as printed; offer the whole profile if they want to read it.
 - **Custom:** show the profile and the commands exactly as printed.
 
 Ask whether it is right. Only when the person says yes, run `flotilla onboard write --confirm <mark>` with the same

@@ -192,8 +192,8 @@ def test_a_free_text_answer_with_a_hidden_character_is_refused(repo):
 
 
 def test_the_mark_covers_the_whole_profile_not_only_its_commands(repo):
-    """The answers are a plain file: switching background sessions from asking to auto mode changes no command, and
-    must still change what the person confirmed (security review of 15221f3)."""
+    """The answers are a plain file: switching background sessions' permission mode changes no command, and must
+    still change what the person confirmed (security review of 15221f3)."""
     answer_everything(repo)
     code, out = run_cli("onboard", "write", "--root", str(repo))
     assert code == 5 and "[permissions]" in out
@@ -202,8 +202,8 @@ def test_the_mark_covers_the_whole_profile_not_only_its_commands(repo):
     from flotilla.onboard import answers as store
     key = repos.identify(repo).key
     given = store.load(paths.state_dir(), key)
-    assert given.get("permissions") not in (None, "auto")
-    given["permissions"] = "auto"   # what a session could write into the answers file by hand
+    assert given.get("permissions") is not None
+    given["permissions"] = "ask" if given["permissions"] != "ask" else "auto"   # a hand edit of the answers file
     store.save(paths.state_dir(), key, given)
     code, out = run_cli("onboard", "write", "--root", str(repo), "--confirm", mark)
     assert code == 5 and not (repo / ".flotilla" / "project.toml").exists()

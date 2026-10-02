@@ -50,9 +50,9 @@ def all_questions(det: dict, answers: dict) -> list[dict]:
         ("none", "No review", "Branches go to the sender once handed over."),
     ]))
     out.append(_q("permissions", "Permissions", "How do background sessions get permission for their tools?", [
+        ("auto", "Auto mode (Recommended)", "Claude Code's classifier decides; you are asked only what it finds risky."),
         ("ask", "They ask me", "Sessions stop and wait for you at every permission prompt."),
         ("rules", "Allow rules exist", "Your settings already allow the commands the fleet needs."),
-        ("auto", "Auto mode", "Sessions run in auto mode and the classifier decides."),
     ]))
     if remote:  # without a remote nothing is ever pushed, so no CI can stand behind shipped (spec 4.6)
         ci_options = []
@@ -141,9 +141,9 @@ def all_questions(det: dict, answers: dict) -> list[dict]:
 
 GUARDS = ["revert", "line_edit", "push_receipt"]
 #: The recommended answer to each question: what a newcomer gets from quick onboarding, chosen so a fleet raised from
-#: it runs safely - every branch reviewed, every permission asked of the person, every guard on, nothing that needs a
+#: it runs safely and quietly - every branch reviewed, Claude Code's classifier deciding what to ask, every guard on, nothing that needs a
 #: second service (a gate command, a tracker, a deployed build for a judge).
-QUICK = {"merge_auth": "sender", "review": "every", "permissions": "ask", "ci_where": "cloud", "gate_command": "later",
+QUICK = {"merge_auth": "sender", "review": "every", "permissions": "auto", "ci_where": "cloud", "gate_command": "later",
          "tracker": "nowhere", "repos": "this-first", "release": "none", "deploy": "none", "shared": "reserve",
          "sequential": "claim", "guards": GUARDS, "model": "one"}
 

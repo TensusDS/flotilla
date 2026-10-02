@@ -35,7 +35,7 @@ def test_quick_answers_every_question_that_applies_with_its_recommendation(proje
     answers = quick_answers(det, {})
     assert next_questions(det, answers) == []
     assert answers["flow"] == "direct"            # a remote that is not GitHub: no pull requests to open
-    assert answers["merge_auth"] == "sender" and answers["review"] == "every" and answers["permissions"] == "ask"
+    assert answers["merge_auth"] == "sender" and answers["review"] == "every" and answers["permissions"] == "auto"
     assert answers["tiers"] == [t["name"] for t in det["tests"]] and answers["tiers"]
     assert sorted(answers["guards"]) == ["line_edit", "push_receipt", "revert"] and answers["model"] == "one"
     for question in all_questions(det, answers):   # every recommendation is an answer its question accepts
@@ -52,7 +52,7 @@ def test_quick_keeps_what_the_person_already_answered(project):
 def test_quick_through_the_cli_records_every_answer_and_says_them_in_a_few_lines(project):
     code, out = run_cli("onboard", "quick", "--root", str(project))
     assert code == 0, out
-    assert "flow: direct" in out and "permissions: ask" in out
+    assert "flow: direct" in out and "permissions: auto" in out
     code, out = run_cli("onboard", "next", "--root", str(project))
     assert json.loads(out)["done"] is True
 
@@ -229,3 +229,26 @@ def test_quick_names_the_test_commands_it_left_out(project):
     assert code == 0
     left = [name for name in found if name not in out.split("tiers:")[1].splitlines()[0]]
     assert left and all(name in out for name in left) and "project.toml" in out
+
+
+def test_quick_lets_the_classifier_decide_rather_than_ask_the_person_everything(project):
+    """Worldcore field test W16 and the person's decision (2026-10-02): with `ask`, three seats' first census put six
+    questions to the person in a minute, each about flotilla's own read commands. Quick recommends Claude Code's auto
+    mode; `ask` stays an answer for whoever chooses it."""
+    det = detect(project)
+    assert quick_answers(det, {})["permissions"] == "auto"
+    question = next(q for q in all_questions(det, {}) if q["id"] == "permissions")
+    assert {o["value"] for o in question["options"]} == {"ask", "rules", "auto"}
+    assert question["options"][0]["value"] == "auto" and "Recommended" in question["options"][0]["label"]
+
+
+def test_write_says_in_plain_words_what_the_person_agrees_to(project):
+    """Worldcore field test W12: the 0.6.0 skill told the session to say the answers in words before asking to write,
+    and the session skipped it - the person never heard that merges go to trunk without them. The command says it,
+    so it reaches the person through the output whatever the model retells."""
+    assert run_cli("onboard", "quick", "--root", str(project))[0] == 0
+    code, out = run_cli("onboard", "write", "--root", str(project))
+    assert code == 5
+    said = out[out.index("in plain words"):]
+    assert "merges into trunk" in said and "without asking you" in said
+    assert "auto mode" in said and "every branch" in said and "npm test" in said
