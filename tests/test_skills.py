@@ -197,3 +197,11 @@ def test_no_skill_pre_approves_a_command_that_acts_for_the_person():
                 assert not pattern.match(command), f"{path.parent.name}: `{pattern.pattern}` covers `{command}`"
     assert any(p.match(f"{CLI} permit next") for p in rule_patterns(allowed("permit")))
     assert any(p.match(f"{CLI} onboard detect") for p in rule_patterns(allowed("onboard")))
+
+
+def test_spawn_with_no_arguments_offers_that_this_session_leads():
+    """Field test of 0.6.7 on twosuns, W1: in an onboarded project the recommended way to lead a fleet was offered only
+    by onboarding; `/flotilla:spawn` raised a background orchestrator and never named `--lead`."""
+    text = (ROOT / "skills" / "spawn" / "SKILL.md").read_text(encoding="utf-8")
+    assert "AskUserQuestion" in text and "flotilla spawn --lead" in text and "flotilla spawn --fill" in text
+    assert text.index("flotilla spawn --lead") < text.index("flotilla spawn --fill")
