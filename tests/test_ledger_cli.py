@@ -478,3 +478,34 @@ def test_the_person_approves_through_the_cli(tmp_path, monkeypatch):
     assert code == 0, out
     code, out = run_cli("work", "show", "feat/x", "--root", str(root))
     assert "approve" in out.split("history:", 1)[1]
+
+
+def test_a_receipt_with_nothing_to_run_does_not_queue_for_the_lane(tmp_path, monkeypatch):
+    """The lane is the machine's one-at-a-time queue, and on the twosuns fleet the wait in it was most of the path to
+    trunk. A receipt whose every tier is already green over the same files books nothing."""
+    profile = {**PLAIN, "tests": {"tier": [{"name": "unit", "command": GREEN, "required_for": ["handover", "push"]}]}}
+    root = onboarded(tmp_path, monkeypatch, profile)
+    tree = tmp_path / "app-main-1"
+    assert run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")[0] == 0
+    commit(tree, "work", "work.txt")
+    assert run_cli("receipt", "run", "--purpose", "handover", "--tree", str(tree), "--no-lane")[0] == 0
+    import flotilla.lane.commands as lane_commands
+
+    def no_booking(*a, **k):
+        raise AssertionError("the lane was booked for a receipt with nothing to run")
+    monkeypatch.setattr(lane_commands, "booked", no_booking)
+    code, out = run_cli("receipt", "run", "--purpose", "push", "--tree", str(tree))
+    assert code == 0, out
+    assert "reused" in out and "lane: not booked" in out
+
+
+def test_a_red_receipt_prints_why(tmp_path, monkeypatch):
+    """Worldcore field test W23: `node: red` and nothing else."""
+    import sys
+    red = f"{sys.executable} -c \"import sys; print('sh: 1: vitest: not found'); sys.exit(127)\""
+    profile = {**PLAIN, "tests": {"tier": [{"name": "unit", "command": red, "required_for": ["handover"]}]}}
+    root = onboarded(tmp_path, monkeypatch, profile)
+    tree = tmp_path / "app-main-1"
+    assert run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")[0] == 0
+    code, out = run_cli("receipt", "run", "--purpose", "handover", "--tree", str(tree), "--no-lane")
+    assert code == 1 and "exit 127" in out and "vitest: not found" in out

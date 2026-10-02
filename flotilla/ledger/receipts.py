@@ -37,6 +37,32 @@ def _path(state: Path, repo_key: str, sha: str, purpose: str) -> Path:
     return Path(state) / "receipts" / repo_key / f"{sha}-{purpose}.json"
 
 
+def _tier_key(tier: dict) -> str:
+    return tiers_fingerprint([tier])
+
+
+def _files_path(state: Path, repo_key: str, files: str) -> Path:
+    return Path(state) / "receipts" / repo_key / f"files-{files}.json"
+
+
+def _green_over(state: Path, repo_key: str, files: str | None) -> dict:
+    """Tier fingerprint -> the green run of that tier over exactly these files, whichever commit carried them."""
+    if not files:
+        return {}
+    try:
+        return json.loads(_files_path(state, repo_key, files).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def to_run(tree: Path, *, state: Path, repo_key: str, purpose: str, profile: dict,
+           run=subprocess.run) -> list[str]:
+    """The tiers a receipt here would have to run: those with no green answer over these files yet."""
+    sha = gitq.resolve(tree, "HEAD", run=run)
+    known = _green_over(state, repo_key, gitq.files_of(tree, sha, run=run) if sha else None)
+    return [tier["name"] for tier in tiers_for(profile, purpose) if _tier_key(tier) not in known]
+
+
 def run_receipt(tree: Path, *, state: Path, repo_key: str, purpose: str, profile: dict, timeout: float,
                 run=subprocess.run) -> dict:
     if purpose not in PURPOSES:
@@ -48,10 +74,33 @@ def run_receipt(tree: Path, *, state: Path, repo_key: str, purpose: str, profile
         raise ReceiptRefused(f"{tree} has uncommitted changes, or git could not say; a receipt describes one "
                              "revision, so commit first")
     tiers = tiers_for(profile, purpose)
-    runs = [run_tier(tier["name"], tier["command"], Path(tree), timeout=timeout) for tier in tiers]
+    # A tier's answer depends on the files it tests, not on the commit that carries them: a merge that changes no
+    # file is the files the author's receipt already tested. A green answer is reused; a red one runs again.
+    files = gitq.files_of(tree, sha, run=run)
+    known = _green_over(state, repo_key, files)
+    results, learned = [], {}
+    for tier in tiers:
+        seen = known.get(_tier_key(tier))
+        if seen:
+            results.append({"name": tier["name"], "status": "green", "seconds": seen.get("seconds"),
+                            "summary": f"reused: green over the same files at {str(seen.get('sha', ''))[:7]} "
+                                       f"({seen.get('summary', '')})"})
+            continue
+        r = run_tier(tier["name"], tier["command"], Path(tree), timeout=timeout)
+        result = {"name": r.name, "status": r.status, "summary": r.summary or "", "seconds": r.seconds}
+        if r.status != "green":   # why it is not green travels with it (worldcore field test W23)
+            result.update({"exit": r.exit, "tail": r.tail})
+        else:
+            learned[_tier_key(tier)] = {"sha": sha, "summary": r.summary or "", "seconds": r.seconds,
+                                        "at": now_iso()}
+        results.append(result)
     receipt = {"sha": sha, "purpose": purpose, "at": now_iso(), "tiers_fingerprint": tiers_fingerprint(tiers),
-               "tiers": [{"name": r.name, "status": r.status, "summary": r.summary or "", "seconds": r.seconds}
-                         for r in runs]}
+               "tiers": results}
+    if files and learned:
+        known_path = _files_path(state, repo_key, files)
+        known_path.parent.mkdir(parents=True, exist_ok=True)
+        known_path.write_text(json.dumps({**_green_over(state, repo_key, files), **learned}, indent=2,
+                                         sort_keys=True), encoding="utf-8")
     path = _path(state, repo_key, sha, purpose)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(receipt, indent=2, sort_keys=True), encoding="utf-8")

@@ -82,7 +82,8 @@ def test_a_run_needs_a_command(tmp_path, monkeypatch):
 
 
 def test_a_receipt_takes_the_lane(tmp_path, monkeypatch):
-    root = onboarded(tmp_path, monkeypatch)
+    tier = {"name": "unit", "command": f"{sys.executable} -c \"print('1 passed')\"", "required_for": ["handover"]}
+    root = onboarded(tmp_path, monkeypatch, {**PROFILE, "tests": {"tier": [tier]}})   # something to run: it queues
     run_cli("lane", "take", "--note", "hands off", "--root", str(root), "--as", "main session 1")
     code, out = run_cli("receipt", "run", "--purpose", "handover", "--tree", str(root), "--lane-wait", "0")
     assert code == 2 and "held by main session 1 (hands off)" in out

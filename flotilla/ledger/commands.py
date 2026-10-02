@@ -17,7 +17,7 @@ from pathlib import Path
 
 from flotilla.core import config, paths, repo
 from flotilla.core.storage import LocalLogStore, StorageCorrupt
-from flotilla.core.text import strip_ansi
+from flotilla.core.text import strip_ansi, visible
 from flotilla.ledger import (core, delivery, events, findings, gitq, handover, judging, letters, outside, reading,
                              receipts, report, steering, views)
 from flotilla.ledger import tree as tree_mod
@@ -256,8 +256,11 @@ def _receipt(args) -> int:
     ident = repo.identify(tree)
     state = paths.state_dir()
     if args.action == "run":
-        if args.no_lane:
-            print("lane: not booked (--no-lane)")
+        nothing = not receipts.to_run(ident.root, state=state, repo_key=ident.key, purpose=args.purpose,
+                                      profile=profile)
+        if args.no_lane or nothing:
+            print("lane: not booked (" + ("--no-lane" if args.no_lane else
+                                          "every tier is already green over these files") + ")")
             result = receipts.run_receipt(ident.root, state=state, repo_key=ident.key, purpose=args.purpose,
                                           profile=profile, timeout=args.timeout)
         else:
@@ -267,6 +270,12 @@ def _receipt(args) -> int:
                                               profile=profile, timeout=args.timeout)
         for tier in result["tiers"]:
             print(f"{tier['status']:<9} {tier['name']}: {tier['summary']}")
+            if tier["status"] != "green":   # why, not only that (worldcore field test W23)
+                code = tier.get("exit")
+                print(f"          {'exit ' + str(code) if code is not None else 'stopped for its time'}; "
+                      "last lines:")
+                for line in (tier.get("tail") or "(it printed nothing)").splitlines()[-15:]:
+                    print(f"          | {visible(line)}")
         if not result["tiers"]:
             print(f"no {args.purpose} tiers configured; nothing to run")
         print(f"{args.purpose} receipt over {result['sha'][:7]}")

@@ -33,6 +33,7 @@ class TierRun:
     seconds: float | None
     summary: str | None
     tail: str
+    exit: int | None = None   # the command's exit code; None when it was stopped for its time
 
 
 def _tail(text: str) -> str:
@@ -71,7 +72,8 @@ def run_tier(name: str, command: str, cwd: Path, *, timeout: float) -> TierRun:
         status = "green"
     else:
         status = "red"
-    return TierRun(name, status, seconds if status == "green" else None, _summary(output), _tail(output))
+    return TierRun(name, status, seconds if status == "green" else None, _summary(output), _tail(output),
+                   proc.returncode)
 
 
 def _path(state: Path, repo_key: str) -> Path:

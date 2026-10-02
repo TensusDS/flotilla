@@ -23,6 +23,13 @@ def resolve(root: Path, rev: str, run=subprocess.run) -> str | None:
     return value if done.returncode == 0 and value else None
 
 
+def files_of(root: Path, rev: str, run=subprocess.run) -> str | None:
+    """The id of the tree of files a commit carries: two commits with the same files have the same one."""
+    done = _git(root, "rev-parse", "--verify", "--quiet", f"{rev}^{{tree}}", run=run)
+    value = done.stdout.strip()
+    return value if done.returncode == 0 and value else None
+
+
 def same_revision(root: Path, a: str, b: str, run=subprocess.run) -> bool | None:
     first, second = resolve(root, a, run=run), resolve(root, b, run=run)
     if first is None or second is None:
