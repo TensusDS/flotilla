@@ -64,6 +64,14 @@ def run_tier(name: str, command: str, cwd: Path, *, timeout: float) -> TierRun:
             proc.wait()
             output = ""
         return TierRun(name, "timed-out", None, None, _tail(output or ""))
+    except BaseException:
+        # stopped (`flotilla lane stop`, the session ending): the tier's whole group goes with it, never left
+        # computing unbooked (review of 0.6.2, I3)
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+        raise
     seconds = round(time.monotonic() - started, 2)
     output = output or ""
     if proc.returncode < 0:

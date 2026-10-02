@@ -68,22 +68,39 @@ def _locks_of(tree: Path) -> str:
     return digest.hexdigest()
 
 
+def _birth(tree: Path) -> str:
+    """Which checkout stands at this path: the git directory of a tree is made anew when the tree is cut again, so
+    a seat retired and raised at the same path is a different tree (review of 0.6.2, I4)."""
+    done = subprocess.run(["git", "-C", str(tree), "rev-parse", "--absolute-git-dir"], capture_output=True,
+                          text=True, check=False)
+    where = done.stdout.strip()
+    # a linked tree's `gitdir` file is written once, when the tree is cut; the directory itself changes with every
+    # commit (index.lock), so it would set the tree up again each time. The main checkout keeps its .git for good.
+    made = Path(where) / "gitdir"
+    try:
+        found = made.stat() if made.exists() else Path(where).stat()
+        return f"{where}:{found.st_ino}:{found.st_ctime_ns if made.exists() else 0}"
+    except OSError:
+        return where
+
+
 def _setup_path(state: Path, repo_key: str, tree: Path) -> Path:
     where = hashlib.sha256(str(Path(tree).resolve()).encode()).hexdigest()[:16]
     return Path(state) / "receipts" / repo_key / f"setup-{where}.json"
 
 
-def set_up(tree: Path, *, state: Path, repo_key: str, profile: dict, timeout: float) -> str:
+def set_up(tree: Path, *, state: Path, repo_key: str, profile: dict, timeout: float, force: bool = False) -> str:
     """Run the profile's tree setup in `tree` when its lockfiles changed since the last one there, or it never ran
     (worldcore field test W24: a sender's fresh tree had no node_modules, and its push receipt read as red tests).
     Returns what was done; a failed setup refuses the receipt, naming it."""
     command = ((profile.get("tests") or {}).get("setup_command") or "").strip()
     if not command:
         return ""
-    locks, marker = _locks_of(tree), _setup_path(state, repo_key, tree)
+    locks, marker, birth = _locks_of(tree), _setup_path(state, repo_key, tree), _birth(tree)
     try:
-        if json.loads(marker.read_text(encoding="utf-8")).get("locks") == locks:
-            return ""
+        last = json.loads(marker.read_text(encoding="utf-8"))
+        if not force and last.get("locks") == locks and last.get("birth") == birth:
+            return f"skipped: the tree was set up at {last.get('at', '?')} and its lockfile has not changed"
     except (OSError, ValueError):
         pass
     done = run_tier("setup", command, Path(tree), timeout=timeout)
@@ -92,7 +109,8 @@ def set_up(tree: Path, *, state: Path, repo_key: str, profile: dict, timeout: fl
         raise ReceiptRefused(f"not run: the tree setup `{command}` failed in {tree} ({code}); its last lines:\n"
                              + (done.tail or "(it printed nothing)"))
     marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text(json.dumps({"locks": locks, "command": command, "at": now_iso()}), encoding="utf-8")
+    marker.write_text(json.dumps({"locks": locks, "birth": birth, "command": command, "at": now_iso()}),
+                      encoding="utf-8")
     return f"set up the tree: {command}"
 
 
@@ -105,7 +123,7 @@ def to_run(tree: Path, *, state: Path, repo_key: str, purpose: str, profile: dic
 
 
 def run_receipt(tree: Path, *, state: Path, repo_key: str, purpose: str, profile: dict, timeout: float,
-                run=subprocess.run) -> dict:
+                run=subprocess.run, setup: bool = False) -> dict:
     if purpose not in PURPOSES:
         raise ReceiptRefused(f"unknown purpose `{purpose}`; one of {', '.join(PURPOSES)}")
     sha = gitq.resolve(tree, "HEAD", run=run)
@@ -115,8 +133,9 @@ def run_receipt(tree: Path, *, state: Path, repo_key: str, purpose: str, profile
         raise ReceiptRefused(f"{tree} has uncommitted changes, or git could not say; a receipt describes one "
                              "revision, so commit first")
     tiers = tiers_for(profile, purpose)
+    prepared = ""
     if to_run(tree, state=state, repo_key=repo_key, purpose=purpose, profile=profile, run=run):
-        set_up(tree, state=state, repo_key=repo_key, profile=profile, timeout=timeout)
+        prepared = set_up(tree, state=state, repo_key=repo_key, profile=profile, timeout=timeout, force=setup)
     # A tier's answer depends on the files it tests, not on the commit that carries them: a merge that changes no
     # file is the files the author's receipt already tested. A green answer is reused; a red one runs again.
     files = gitq.files_of(tree, sha, run=run)
@@ -133,10 +152,18 @@ def run_receipt(tree: Path, *, state: Path, repo_key: str, purpose: str, profile
         result = {"name": r.name, "status": r.status, "summary": r.summary or "", "seconds": r.seconds}
         if r.status != "green":   # why it is not green travels with it (worldcore field test W23)
             result.update({"exit": r.exit, "tail": r.tail})
+            if prepared.startswith("skipped"):   # a tree whose dependencies went missing reads as red tests
+                result["summary"] = (f"{result['summary']} ({prepared}; `flotilla receipt run --setup` runs it "
+                                     "again)").strip()
         else:
             learned[_tier_key(tier)] = {"sha": sha, "summary": r.summary or "", "seconds": r.seconds,
                                         "at": now_iso()}
         results.append(result)
+    # what ran was these files only if the tree still is them: a tree edited or moved during the run gets no receipt,
+    # and its greens are not kept for other commits to reuse (review of 0.6.2, I1)
+    if gitq.resolve(tree, "HEAD", run=run) != sha or gitq.is_clean(tree, run=run) is not True:
+        raise ReceiptRefused(f"{tree} changed while its tiers ran (a commit, or uncommitted changes); what ran is "
+                             "not what is committed, so there is no receipt - run it again on a tree nobody edits")
     receipt = {"sha": sha, "purpose": purpose, "at": now_iso(), "tiers_fingerprint": tiers_fingerprint(tiers),
                "tiers": results}
     if files and learned:

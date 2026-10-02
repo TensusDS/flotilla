@@ -256,21 +256,24 @@ def _receipt(args) -> int:
     ident = repo.identify(tree)
     state = paths.state_dir()
     if args.action == "run":
+        from flotilla.lane.commands import _on_signals
+        _on_signals()   # a stop reaches the tier as an exception, so its processes are stopped too (review of 0.6.2)
         if not args.timeout:   # a tier that will not end is stopped at the lane's ceiling (worldcore W21)
             from flotilla.lane.commands import ceiling_for
-            args.timeout = float(ceiling_for(tree, profile))
+            args.timeout = float(ceiling_for(tree, profile, tiers=True))
         nothing = not receipts.to_run(ident.root, state=state, repo_key=ident.key, purpose=args.purpose,
                                       profile=profile)
         if args.no_lane or nothing:
-            print("lane: not booked (" + ("--no-lane" if args.no_lane else
-                                          "every tier is already green over these files") + ")")
+            why = ("--no-lane" if args.no_lane else "nothing to run: every tier is already green over these files"
+                   if receipts.tiers_for(profile, args.purpose) else f"no {args.purpose} tiers configured")
+            print(f"lane: not booked ({why})")
             result = receipts.run_receipt(ident.root, state=state, repo_key=ident.key, purpose=args.purpose,
-                                          profile=profile, timeout=args.timeout)
+                                          profile=profile, timeout=args.timeout, setup=args.setup)
         else:
             from flotilla.lane.commands import booked
             with booked(tree, note=f"{args.purpose} receipt", wait=args.lane_wait):
                 result = receipts.run_receipt(ident.root, state=state, repo_key=ident.key, purpose=args.purpose,
-                                              profile=profile, timeout=args.timeout)
+                                              profile=profile, timeout=args.timeout, setup=args.setup)
         for tier in result["tiers"]:
             print(f"{tier['status']:<9} {tier['name']}: {tier['summary']}")
             if tier["status"] != "green":   # why, not only that (worldcore field test W23)

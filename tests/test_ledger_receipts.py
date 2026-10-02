@@ -164,3 +164,99 @@ def test_a_failed_setup_is_named_not_reported_as_a_red_tier(tmp_path):
     with pytest.raises(receipts.ReceiptRefused, match="setup") as refused:
         receipts.run_receipt(root, state=tmp_path / "s", repo_key=KEY, purpose="handover", profile=data, timeout=60)
     assert "npm ERR! network" in str(refused.value) and "exit 1" in str(refused.value)
+
+
+def test_a_tree_that_moved_during_the_run_gets_no_receipt_and_teaches_nothing(tmp_path):
+    """Review of 0.6.2, I1: HEAD and cleanliness were checked only before the tiers; a tree edited during the run
+    could record green for files never tested, and reuse then carried that green to every commit with those files."""
+    root = repo_with_origin(tmp_path)
+    edits = f"{sys.executable} -c \"open('wip.txt', 'w').write('edited while testing'); print('2 passed')\""
+    with pytest.raises(receipts.ReceiptRefused, match="changed while"):
+        receipts.run_receipt(root, state=tmp_path / "s", repo_key=KEY, purpose="handover", profile=profile(edits),
+                             timeout=60)
+    (root / "wip.txt").unlink()
+    command, counter = _counting(tmp_path)
+    assert not list((tmp_path / "s" / "receipts" / KEY).glob("files-*.json"))
+    moves = f"{sys.executable} -c \"import subprocess; subprocess.run(['git', '-c', 'user.email=t@x', '-c', " \
+            f"'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'during']); print('2 passed')\""
+    with pytest.raises(receipts.ReceiptRefused, match="changed while"):
+        receipts.run_receipt(root, state=tmp_path / "s", repo_key=KEY, purpose="handover", profile=profile(moves),
+                             timeout=60)
+
+
+def test_a_tier_interrupted_takes_its_processes_with_it(tmp_path):
+    """Review of 0.6.2, I3: a receipt stopped with SIGTERM died, and its tier - started in its own session - kept
+    computing, unbooked. Whatever interrupts a tier stops the tier's whole group."""
+    import os
+    import signal
+    import threading
+    import time
+    from flotilla.onboard.firstrun import run_tier
+    child = tmp_path / "tier.pid"
+    command = f"{sys.executable} -c \"import os, time; open(r'{child}', 'w').write(str(os.getpid())); time.sleep(60)\""
+
+    def interrupt():
+        for _ in range(100):
+            if child.exists() and child.read_text():
+                break
+            time.sleep(0.05)
+        signal.pthread_kill(main, signal.SIGUSR1)   # to the main thread, where Python runs its handlers
+    main = threading.main_thread().ident
+    previous = signal.signal(signal.SIGUSR1, lambda *a: (_ for _ in ()).throw(SystemExit(143)))
+    try:
+        threading.Thread(target=interrupt, daemon=True).start()
+        with pytest.raises(SystemExit):
+            run_tier("unit", command, tmp_path, timeout=60)
+    finally:
+        signal.signal(signal.SIGUSR1, previous)
+    pid = int(child.read_text())
+    for _ in range(50):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.1)
+    else:
+        raise AssertionError("the tier outlived the interrupted receipt")
+
+
+def test_a_tree_cut_again_at_the_same_path_is_set_up_again(tmp_path):
+    """Review of 0.6.2, I4: the setup marker was keyed on the tree's path, and seat trees live at fixed paths; a seat
+    retired and raised again got a fresh tree that skipped its setup."""
+    root = repo_with_origin(tmp_path)
+    tiers, _ = _counting(tmp_path)
+    data, counter = _with_setup(tmp_path, root, tiers)
+    seat = tmp_path / "app-main-1"
+    git(root, "worktree", "add", "-q", "-b", "fleet/main-1", str(seat))
+    receipts.run_receipt(seat, state=tmp_path / "s", repo_key=KEY, purpose="handover", profile=data, timeout=60)
+    assert counter.read_text() == "s"
+    git(root, "worktree", "remove", "--force", str(seat))
+    git(root, "branch", "-D", "fleet/main-1")
+    git(root, "worktree", "add", "-q", "-b", "fleet/main-1", str(seat))
+    commit(seat, "new work", "w.txt", "x\n")
+    receipts.run_receipt(seat, state=tmp_path / "s", repo_key=KEY, purpose="handover", profile=data, timeout=60)
+    assert counter.read_text() == "ss"
+
+
+def test_a_red_tier_after_a_skipped_setup_says_so(tmp_path):
+    root = repo_with_origin(tmp_path)
+    data, _ = _with_setup(tmp_path, root, GREEN)
+    receipts.run_receipt(root, state=tmp_path / "s", repo_key=KEY, purpose="handover", profile=data, timeout=60)
+    data["tests"]["tier"][0]["command"] = "exit 1"
+    commit(root, "more", "m.txt", "m\n")
+    red = receipts.run_receipt(root, state=tmp_path / "s", repo_key=KEY, purpose="handover", profile=data, timeout=60)
+    assert "setup" in red["tiers"][0]["summary"] and "--setup" in red["tiers"][0]["summary"]
+
+
+def test_a_seat_tree_is_not_set_up_again_for_its_own_commits(tmp_path):
+    """The other side of the re-cut test: a seat's tree making commits is the same tree, and its setup holds."""
+    root = repo_with_origin(tmp_path)
+    tiers, _ = _counting(tmp_path)
+    data, counter = _with_setup(tmp_path, root, tiers)
+    seat = tmp_path / "app-main-1"
+    git(root, "worktree", "add", "-q", "-b", "fleet/main-1", str(seat))
+    receipts.run_receipt(seat, state=tmp_path / "s", repo_key=KEY, purpose="handover", profile=data, timeout=60)
+    for n in range(3):
+        commit(seat, f"work {n}", f"w{n}.txt", "x\n")
+        receipts.run_receipt(seat, state=tmp_path / "s", repo_key=KEY, purpose="handover", profile=data, timeout=60)
+    assert counter.read_text() == "s"

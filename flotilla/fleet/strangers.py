@@ -43,8 +43,8 @@ def started_by(session) -> str:
                     entry = json.loads(line).get("entrypoint")
                 except (ValueError, AttributeError):
                     continue
-                if isinstance(entry, str) and entry:
-                    return "" if entry == "cli" else entry[:20]
+                if isinstance(entry, str) and entry:   # the SDK is how a hook starts one; an IDE is a person
+                    return entry[:20] if entry.startswith("sdk") else ""
     except OSError:
         return ""
     return ""

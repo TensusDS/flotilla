@@ -18,7 +18,7 @@ from flotilla.lane import run as runner
 from flotilla.lane.procs import ProcessTable
 from flotilla.ledger import gitq, runs
 from flotilla.ledger.actor import resolve_actor
-from flotilla.ledger.errors import ActorUnknown, MoveRefused
+from flotilla.ledger.errors import ActorMismatch, ActorUnknown, MoveRefused
 from flotilla.ledger.model import LedgerVersionError
 from flotilla.onboard.machine import read_machine
 from flotilla.posts import PostError
@@ -54,28 +54,33 @@ CEILING_UNMEASURED = 1800
 CEILING_FLOOR = 600
 
 
-def ceiling(profile: dict, measured: dict) -> int:
-    """Seconds a run in the lane may take (worldcore field test W21): the profile's `[lane] max_run_seconds`, else ten
-    times the slowest tier measured on this machine and never under ten minutes, else half an hour."""
+def ceiling(profile: dict, measured: dict, *, tiers: bool = False) -> int:
+    """Seconds a run in the lane may take (worldcore field test W21): the profile's `[lane] max_run_seconds`; else ten
+    times the slowest tier measured on this machine - never under ten minutes for a receipt, whose commands are those
+    tiers, and never under half an hour for any other run, which no measurement describes; else half an hour."""
     named = (profile.get("lane") or {}).get("max_run_seconds")
     if isinstance(named, (int, float)) and not isinstance(named, bool) and named > 0:
         return int(named)
     slowest = max((float(v) for v in measured.values() if isinstance(v, (int, float))), default=0.0)
-    return max(CEILING_FLOOR, int(slowest * 10)) if slowest else CEILING_UNMEASURED
+    if not slowest:
+        return CEILING_UNMEASURED
+    return max(CEILING_FLOOR if tiers else CEILING_UNMEASURED, int(slowest * 10))
 
 
-def ceiling_for(root, profile: dict) -> int:
+def ceiling_for(root, profile: dict, *, tiers: bool = False) -> int:
     from flotilla.onboard.firstrun import load_measurements
     try:
         measured = load_measurements(paths.state_dir(), repo.identify(Path(root)).key)
     except (repo.NotARepository, OSError, ValueError):
         measured = {}
-    return ceiling(profile, measured)
+    return ceiling(profile, measured, tiers=tiers)
 
 
 def _who(as_name) -> str:
     try:
         return resolve_actor({}, as_name=as_name).name
+    except ActorMismatch as err:   # the census names someone else: never their word (review of 0.6.2, I2)
+        raise MoveRefused(str(err)) from err
     except (ActorUnknown, MoveRefused):
         return as_name or "outside any listed session"
 
@@ -262,7 +267,8 @@ def _stop_run(args) -> int:
     os.kill(item.pid, signal.SIGTERM)   # the run stops its command's whole group and releases the lane itself
     for _ in range(100):
         if not lanes.live(item):
-            print(f"stopped {item.id} ({item.note or 'no note'}): its run is recorded as killed, not as a verdict")
+            print(f"stopped {item.id} ({item.note or 'no note'}) with everything it started: a `lane run` is recorded "
+                  "as killed, with no verdict; a receipt issues none")
             return 0
         time.sleep(0.1)
     print(f"sent the stop to {item.id} (pid {item.pid}); it has not ended within 10 s - `flotilla lane` shows it")
@@ -273,6 +279,6 @@ def run_lane_command(args) -> int:
     try:
         return {None: _status, "take": _take, "release": _release, "run": _run, "sweep": _sweep,
                 "stop": _stop_run}[args.action](args)
-    except (StorageCorrupt, config.ConfigError) as err:
+    except (StorageCorrupt, config.ConfigError, MoveRefused) as err:
         print(f"refused: {err}")
         return 2

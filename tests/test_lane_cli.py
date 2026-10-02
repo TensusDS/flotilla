@@ -144,11 +144,15 @@ def test_lane_run_takes_a_ceiling(tmp_path, monkeypatch):
 
 
 def test_the_default_ceiling_follows_what_the_tiers_were_measured_at(tmp_path, monkeypatch):
-    """Ten times the slowest measured tier, never under ten minutes; the profile may name its own."""
+    """For a receipt, whose commands are the measured tiers: ten times the slowest, never under ten minutes. For any
+    other run in the lane, never under half an hour - a measured project must not get less room than an unmeasured
+    one (review of 0.6.2, I5). The profile may name its own."""
     from flotilla.lane import commands
     assert commands.ceiling({}, {}) == 1800
-    assert commands.ceiling({}, {"node": 34.0}) == 600
+    assert commands.ceiling({}, {"node": 34.0}, tiers=True) == 600
+    assert commands.ceiling({}, {"node": 34.0}) == 1800
     assert commands.ceiling({}, {"node": 34.0, "e2e": 300.0}) == 3000
+    assert commands.ceiling({}, {"node": 34.0, "e2e": 300.0}, tiers=True) == 3000
     assert commands.ceiling({"lane": {"max_run_seconds": 90}}, {"node": 34.0}) == 90
 
 
@@ -175,3 +179,18 @@ def test_lane_stop_stops_the_holders_own_run(tmp_path, monkeypatch):
     said, _ = runner.communicate(timeout=20)
     assert runner.returncode != 0 and "killed" in said
     assert "held: nobody" in run_cli("lane", "--root", str(root))[1]
+
+
+def test_lane_stop_does_not_take_another_sessions_word(tmp_path, monkeypatch):
+    """Review of 0.6.2, I2: the lane fell back to the name given with --as even when the census said the caller is
+    another session, so `lane stop --as <peer>` stopped the peer's run (and `release` released it)."""
+    from flotilla.ledger.errors import ActorMismatch
+    from flotilla.lane import commands
+    root = onboarded(tmp_path, monkeypatch)
+
+    def refuse(posts, as_name=None, **kw):
+        raise ActorMismatch(f"this process runs inside `seat A`, which cannot act as `{as_name}`")
+    monkeypatch.setattr(commands, "resolve_actor", refuse)
+    for action in (["stop"], ["release"]):
+        code, out = run_cli("lane", *action, "--root", str(root), "--as", "seat B")
+        assert code == 2 and "cannot act as" in out

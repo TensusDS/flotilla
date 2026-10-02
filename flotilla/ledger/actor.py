@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from flotilla.core import platform as plat
 from flotilla.core.census import CensusUnavailable, read_census
 from flotilla.core.identity import find_calling_session
-from flotilla.ledger.errors import ActorUnknown, MoveRefused
+from flotilla.ledger.errors import ActorMismatch, ActorUnknown, MoveRefused
 from flotilla.posts import Post, PostError, post_for_session
 
 
@@ -72,7 +72,7 @@ def resolve_actor(posts: dict, *, as_name: str | None = None, census=None, paren
     real = found.name if found is not None and found.name else ""
     if as_name:
         if real and real != as_name:
-            raise ActorUnknown(f"this process runs inside `{real}`, which cannot act as `{as_name}`")
+            raise ActorMismatch(f"this process runs inside `{real}`, which cannot act as `{as_name}`")
         if not real:
             _named_by_a_person(as_name, "this process is inside no session the census lists")
         return Actor(as_name, _post(posts, as_name), "as", real or "none: not inside a session the census lists")

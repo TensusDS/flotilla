@@ -282,7 +282,7 @@ def test_a_plugins_headless_review_in_a_seat_tree_is_no_alarm(tmp_path, monkeypa
     review = dataclasses.replace(sess("app-main-1-2f", kind="interactive"), cwd="/work/app-main-1")
     person = dataclasses.replace(sess("app-main-1-77", kind="interactive"), cwd="/work/app-main-1")
     _transcript(tmp_path / "claude", review, "sdk-py")
-    _transcript(tmp_path / "claude", person, "cli", prompt="let me look at this tree")
+    _transcript(tmp_path / "claude", person, "claude-vscode", prompt="let me look at this tree")   # a person's IDE
     found = fleet.fleet(seats, PR, [sess("main session 1"), review, person], post_of=post_of)
     named = [item.who for item in found if item.kind == fleet.STRANGER]
     assert named == ["app-main-1-77"]   # a session a person opened there is still named

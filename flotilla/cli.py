@@ -148,6 +148,7 @@ def build_parser() -> argparse.ArgumentParser:
     run = receipt_actions.add_parser("run", help="run the tiers for a purpose over this tree's HEAD")
     run.add_argument("--purpose", choices=["handover", "push"], required=True)
     run.add_argument("--tree", default=".")
+    run.add_argument("--setup", action="store_true", help="run the profile's tree setup even if it ran here before")
     run.add_argument("--timeout", type=float, default=0.0,
                      help="seconds per tier (default: the lane's ceiling for this project)")
     run.add_argument("--lane-wait", dest="lane_wait", type=float, default=1800.0,
