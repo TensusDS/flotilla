@@ -1033,6 +1033,23 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    so two checkouts of one origin, each with a live sender, are not refused at spawn - a rare shape, left open and not
    measured. (planner's decision, 2026-10-01)
 
+199. **Auto mode is quick onboarding's answer; flotilla's own commands never wait on the person** (worldcore field test
+   W12-W16; the person's decision, 2026-10-02: "we work inside Claude Code's infrastructure anyway, and they made auto
+   mode the default"). With `ask`, three seats' first census put six questions to the person in a minute, each about
+   flotilla's own read commands. Quick now answers `permissions = auto` and lists it first as the recommended option;
+   `ask` and `rules` stay for whoever chooses them. In `ask` mode the broker passes, without a question, flotilla's
+   own command line by its real path with one listed subcommand (status, fleet, watch, brief, metrics, doctor, lane,
+   work, tree, receipt, helper) and no shell sign at all - no separator, redirect, substitution, assignment or glob -
+   and never with `fleet down`, `lane run` or `work approve` anywhere in it: flotilla checks each of those moves
+   itself, so a person's yes adds nothing. `spawn` warns when a seat would run auto mode on a model Claude Code was
+   seen to refuse it for (Haiku 4.5, measured 2026-10-01). The person hears the profile in plain words from the
+   command itself: `write` prints who merges into trunk, what is reviewed, what the person is asked and which tests
+   run, because the 0.6.0 skill's instruction to say so was skipped (W12). A leading session not yet named is the
+   orchestrator for the broker - questions go to it, and its `permit answer` counts - and `flotilla fleet` lists it
+   (W13, W15). Ruling: W14 (seats that wrote to the leader's old name) is left to W13's fix - seats raised after the
+   lead no longer stall in that gap - and to auto mode, under which no question waits there at all. (planner's
+   decision, 2026-10-02)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

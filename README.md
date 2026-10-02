@@ -63,8 +63,9 @@ flotilla reads what the repository already declares - test commands, CI workflow
 and then asks one question: **quick or custom**.
 
 - **Quick** takes what it found and the recommended answer to everything else: every branch reviewed by another
-  session, every permission question routed to you, every guard on, one model for every seat. It shows you the short
-  list of answers and every shell command the profile will run, and asks for one yes.
+  session, Claude Code's auto mode for background sessions (you are asked only what its classifier finds risky),
+  every guard on, one model for every seat. It says in plain words what that means - who merges into trunk, what is
+  reviewed, what you are asked - shows every shell command the profile will run, and asks for one yes.
 - **Custom** asks the few things it cannot read, one at a time: how work reaches trunk (pull requests, direct push, or
   local only), who authorizes a merge, how much work is reviewed, how background sessions get permission for their
   tools, which test commands must be green before shipping, and which models the seats run.
@@ -83,9 +84,12 @@ The permission question matters most:
 
 | answer | what background sessions do | when to choose it |
 |---|---|---|
-| **ask** | stop at every permission prompt; flotilla routes the question to you through the orchestrator | you want to see what the fleet does, or you are trying flotilla for the first time |
+| **auto** (recommended) | run in Claude Code's auto mode; its classifier decides, and asks you only what it finds risky | most projects: the fleet works without a question per command |
+| **ask** | stop at every permission prompt; flotilla routes the question to you through the orchestrator - except flotilla's own commands (status, fleet, ledger moves), which flotilla checks itself | you want to see every command the fleet runs, and will answer often |
 | **rules** | run what your Claude Code allow rules permit, and are refused the rest | you have rules for the commands your project needs |
-| **auto** | run in Claude Code's auto mode; its classifier decides | you trust the fleet with the project and want it to run unattended |
+
+Auto mode is not offered for every model: Claude Code has said "auto mode unavailable for this model" for Haiku, and
+`flotilla spawn` warns when a seat would run auto mode on such a model.
 
 You can change any answer later by editing `.flotilla/project.toml`; a change takes effect once it is on trunk.
 

@@ -95,6 +95,38 @@ refusal the orchestrator read other projects' sessions and the journal. Session 
 number per project and carry the project in the name, so names stay unique on the machine while each project counts
 from 1.
 
+W12. **friction - the skill's "say the answers in words first" is not followed (0.6.0).** The 0.6.0 skill tells the
+session to show the quick answers in plain words and name who authorizes merges in its own message before asking to
+write (the W7 fix). The fresh session ran `quick`, then `write`, and asked "write this profile? it runs `npm test`
+once" with no message between: the person again did not hear that merges go to trunk without them. An instruction
+the model may skip is not a guarantee. Fix direction: the command prints it - `onboard quick` and `write` end with a
+plain-words summary (who merges, what is reviewed, what asks the person), so it reaches the person through the
+command's output whatever the model retells.
+
+W13. **defect - seats raised before the lead's name lands are blocked by the broker (0.6.0).** The skill runs
+`spawn --fill` right after `spawn --lead`, so the seats start while the leading session still carries `worldcore-0c`.
+The profile asks the person for every permission; each seat's first Bash call (`flotilla status`) went to the broker,
+which looks for a live session named by the orchestrator post, found none, and refused: "no live orchestrator to put
+this question to". The seats could not take a step until the person's next message renamed the leader. Fix
+direction: the broker counts a recorded lead of a live session of the project as the orchestrator (as `--fill` does).
+
+W14. **defect - seats learned the leader's old name.** Raised in that gap, the seats addressed their first letters to
+`worldcore-0c`; once the hook renamed it, "No agent named 'worldcore-0c' is reachable". Fix direction: with W13 fixed
+the seats ask the census for the orchestrator post's holder, and a recorded lead answers with its coming name.
+
+W15. **friction - `flotilla fleet` does not list the leading session.** It lists spawned seats' post rows; the person's
+own session holds the orchestrator post without one, so the orchestrator concluded it was missing from the fleet and
+read flotilla's source to find out why. Fix direction: `fleet` lists the live holder of the orchestrator post (or a
+recorded lead) as the orchestrator, marked as the person's session.
+
+W16. **friction - quick's `permissions: ask` puts every seat's flotilla call to the person.** Quick recommends `ask`
+("every permission asked of you"). In a running fleet each background seat's Bash call goes through the broker to the
+orchestrator and to the person - including flotilla's own `status`, `fleet` and `work show`; the person was asked
+six times in a minute while three seats took their first census. A person's yes on a flotilla command protects
+nothing: every ledger move is checked by flotilla itself (post, evidence, revision). Fix direction: seats run
+flotilla's own command line without a question (an allow rule written at spawn for the CLI path), and quick
+recommends a mode that asks the person only what the classifier finds risky.
+
 ## What 0.5.0 does about them
 
 - W1: the README adds the marketplace with `--scope project`, so the project's settings carry the marketplace entry
@@ -118,3 +150,12 @@ lead the fleet from the onboarding session (decisions 190-192).
 - W10, W11: seat names carry the project (`worldcore-orchestrator 1`), numbers run per project, and spawn's one-copy
   check and its refusal see only the project's sessions (decision 196).
 - W6 waits (ruling in decision 197).
+
+## What 0.6.1 does about W12-W16
+
+- W12: `onboard write` prints the profile in plain words before the yes; the skill shows those lines (decision 199).
+- W13, W15: a leading session not yet named is the orchestrator for the broker and for `permit answer`, and
+  `flotilla fleet` lists it.
+- W14: left to W13's fix and to auto mode (ruling in decision 199).
+- W16: quick answers auto mode; in `ask` mode flotilla's own safe commands pass without a question; `spawn` warns about
+  auto mode on a model that was seen to lack it.
