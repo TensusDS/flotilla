@@ -1110,6 +1110,14 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    at the root only; a forged files record is no new power beyond decision 185's same-user limit. (planner's
    decision, 2026-10-02)
 
+205. **A stopped run is reaped, and `ps` answers for zombies where /proc does not** (CI of v0.6.2, red on macOS and
+   on every runner without a git identity). macOS's `/bin/sh` (bash) execs a lone command, so the tier it runs is the
+   receipt's own child; killed and not waited for, it stayed a zombie, which reads as alive. An interrupted tier is now
+   waited for after its group is stopped, and where the lane asks `ps` instead of /proc, a `Z` state is not a live
+   run. The new tests committed with the runner's missing identity; they use the shared helper that names one. Both
+   shapes are reproduced on Linux (`exec` in the tier, `ps` faked; no global git config). (planner's decision,
+   2026-10-02)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

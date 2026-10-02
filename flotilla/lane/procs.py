@@ -121,6 +121,8 @@ class ProcessTable:
             fields = self._stat(pid)
             if fields and fields[0] in ("Z", "X"):   # ended, waiting to be reaped: not a live run
                 return False
+        elif (self._ps(pid, "stat") or "").startswith("Z"):   # the same where `ps` answers (macOS)
+            return False
         return self.start_mark(pid) == mark
 
     def cpu_seconds(self, pid) -> float | None:

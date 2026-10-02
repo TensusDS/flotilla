@@ -71,6 +71,10 @@ def run_tier(name: str, command: str, cwd: Path, *, timeout: float) -> TierRun:
             os.killpg(proc.pid, signal.SIGKILL)
         except (ProcessLookupError, PermissionError):
             pass
+        try:
+            proc.wait(timeout=ESCAPE_GRACE)   # reaped, not left a zombie: a shell that execs (macOS's) made it ours
+        except subprocess.TimeoutExpired:
+            pass
         raise
     seconds = round(time.monotonic() - started, 2)
     output = output or ""

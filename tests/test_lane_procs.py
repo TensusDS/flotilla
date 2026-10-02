@@ -92,3 +92,19 @@ def test_a_process_that_has_ended_but_is_not_reaped_is_not_alive(tmp_path):
     stat = tmp_path / "proc" / "30" / "stat"
     stat.write_text(stat.read_text(encoding="utf-8").replace(") S ", ") Z "), encoding="utf-8")
     assert not table.alive(30, mark)
+
+
+def test_an_unreaped_process_is_not_alive_where_ps_answers_too():
+    """macOS has no /proc: the lane asks `ps`. A run that ended and waits to be reaped still has its start time there
+    (CI of 0.6.2 on macOS: `lane stop` waited on a zombie for ten seconds)."""
+    state = {"stat": "S"}
+
+    def run(cmd, **kwargs):
+        field = cmd[2].rstrip("=")
+        out = {"lstart": "Fri Oct  2 10:00:00 2026", "stat": state["stat"]}[field]
+        return subprocess.CompletedProcess(cmd, 0, out + "\n", "")
+    table = procs.ProcessTable("ps", run=run)
+    mark = table.start_mark(42)
+    assert table.alive(42, mark)
+    state["stat"] = "Z+"
+    assert not table.alive(42, mark)

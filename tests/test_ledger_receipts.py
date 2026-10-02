@@ -91,7 +91,7 @@ def test_the_same_files_are_not_tested_twice(tmp_path):
     tip = git(root, "rev-parse", "HEAD")
     receipts.run_receipt(root, state=tmp_path / "s", repo_key=KEY, purpose="handover", profile=profile(command),
                          timeout=60)
-    git(root, "commit", "-q", "--allow-empty", "-m", "a merge that changes no file")
+    commit(root, "a merge that changes no file")   # no file changes: the helper commits with --allow-empty
     merge = git(root, "rev-parse", "HEAD")
     assert merge != tip
     receipt = receipts.run_receipt(root, state=tmp_path / "s", repo_key=KEY, purpose="push", profile=profile(command),
@@ -138,7 +138,7 @@ def _with_setup(tmp_path, root, command):
     data["tests"]["setup_command"] = setup
     (root / "package-lock.json").write_text('{"v": 1}', encoding="utf-8")
     git(root, "add", "package-lock.json")
-    git(root, "commit", "-q", "-m", "a lockfile")
+    commit(root, "a lockfile")
     return data, counter
 
 
@@ -152,7 +152,8 @@ def test_a_fresh_tree_is_set_up_before_its_tiers_once_per_lockfile(tmp_path):
     receipts.run_receipt(root, state=tmp_path / "s", repo_key=KEY, purpose="handover", profile=data, timeout=60)
     assert counter.read_text() == "s"                  # the lockfile did not change: nothing to set up
     (root / "package-lock.json").write_text('{"v": 2}', encoding="utf-8")
-    git(root, "commit", "-q", "-am", "a new dependency")
+    git(root, "add", "package-lock.json")
+    commit(root, "a new dependency")
     receipts.run_receipt(root, state=tmp_path / "s", repo_key=KEY, purpose="handover", profile=data, timeout=60)
     assert counter.read_text() == "ss"
 
@@ -184,7 +185,8 @@ def test_a_tree_that_moved_during_the_run_gets_no_receipt_and_teaches_nothing(tm
                              timeout=60)
 
 
-def test_a_tier_interrupted_takes_its_processes_with_it(tmp_path):
+@pytest.mark.parametrize("launch", ["", "exec "])   # macOS's /bin/sh (bash) execs a lone command, as `exec` does
+def test_a_tier_interrupted_takes_its_processes_with_it(tmp_path, launch):
     """Review of 0.6.2, I3: a receipt stopped with SIGTERM died, and its tier - started in its own session - kept
     computing, unbooked. Whatever interrupts a tier stops the tier's whole group."""
     import os
@@ -193,7 +195,8 @@ def test_a_tier_interrupted_takes_its_processes_with_it(tmp_path):
     import time
     from flotilla.onboard.firstrun import run_tier
     child = tmp_path / "tier.pid"
-    command = f"{sys.executable} -c \"import os, time; open(r'{child}', 'w').write(str(os.getpid())); time.sleep(60)\""
+    command = f"{launch}{sys.executable} -c \"import os, time; open(r'{child}', 'w').write(str(os.getpid())); " \
+              "time.sleep(60)\""
 
     def interrupt():
         for _ in range(100):
