@@ -7,7 +7,7 @@ unverified by definition, and comparing against it would report drift that nobod
 from __future__ import annotations
 
 
-def check_drift(profile: dict, det: dict, measured: dict[str, float]) -> list[str]:
+def check_drift(profile: dict, det: dict, measured: dict[str, float], posts: set[str] | None = None) -> list[str]:
     findings: list[str] = []
     ci = profile.get("ci") or {}
     now = det.get("ci") or {}
@@ -29,12 +29,12 @@ def check_drift(profile: dict, det: dict, measured: dict[str, float]) -> list[st
         findings.append(f"trunk: the profile says `{trunk}`, the repository says `{det['trunk']}`")
     default = (profile.get("fleet") or {}).get("default")
     if isinstance(default, dict):   # profiles written before both were always composed (twosuns 0.6.7, W3)
-        if not default.get("orchestrator"):
+        if not default.get("orchestrator") and (posts is None or "orchestrator" in posts):
             findings.append("fleet: the default composition has no orchestrator, so a fleet raised from it has nobody "
                             "to route work; add `orchestrator = 1` under [fleet.default] (a session leading the fleet "
                             "counts as it)")
         merger = (profile.get("flow") or {}).get("merge_authorized_by")
-        if merger == "sender" and not default.get("sender"):
+        if merger == "sender" and not default.get("sender") and (posts is None or "sender" in posts):
             findings.append("fleet: the default composition has no sender, and the profile has the sender merge to "
                             "trunk; add `sender = 1` under [fleet.default]")
     for tier in (profile.get("tests") or {}).get("tier") or []:

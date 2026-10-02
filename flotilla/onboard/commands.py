@@ -255,7 +255,8 @@ def run_onboard(args) -> int:
         except config.ConfigError as err:
             print(err)
             return 2
-        findings = check_drift(profile, det, load_measurements(state, det["repo_key"]))
+        posts = {path.stem for path in (Path(det["root"]) / ".flotilla" / "posts").glob("*.md")}
+        findings = check_drift(profile, det, load_measurements(state, det["repo_key"]), posts=posts or None)
         for finding in findings:
             print(finding)
         return exit_code(findings)

@@ -64,3 +64,11 @@ def test_a_default_composition_without_an_orchestrator_or_a_needed_sender():
     assert check_drift(whole, detection(), {"unit": 1}) == []
     human = {**old, "flow": {"merge_authorized_by": "human"}, "fleet": {"default": {"orchestrator": 1, "main": 1}}}
     assert check_drift(human, detection(), {"unit": 1}) == []
+
+
+def test_a_project_without_such_posts_is_not_told_to_compose_them():
+    """Review of 0.6.8, M6: adding `orchestrator = 1` to a project whose posts have no orchestrator makes
+    `spawn --default` fail with "no post `orchestrator`"."""
+    old = {**PROFILE, "flow": {"merge_authorized_by": "sender"}, "fleet": {"default": {"main": 1}}}
+    assert check_drift(old, detection(), {"unit": 1}, posts={"main", "reviewer"}) == []
+    assert len(check_drift(old, detection(), {"unit": 1}, posts={"main", "orchestrator", "sender"})) == 2
