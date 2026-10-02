@@ -1118,6 +1118,20 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    shapes are reproduced on Linux (`exec` in the tier, `ps` faked; no global git config). (planner's decision,
    2026-10-02)
 
+206. **A seat's tree and branch go when their work is surely on trunk** (the person's decision, 2026-10-02: "if there is
+   the slightest doubt the work may not be merged - do not delete; if it surely is - delete"; measured that day: 76
+   seat trees, about 6.9 GB, and 228 local branches already on origin's trunk, left by fleets `down` stood down without
+   deleting anything). `retire` and `fleet down` judge a stopped seat's tree before it lets go of its branch and remove
+   it, with its branch and its home branch, when every one of these holds: nothing uncommitted or untracked; nothing
+   ignored but what an install or a build makes again (`node_modules`, `.venv`, caches - an ignored `.env` holds the
+   tree, since `git worktree remove` deletes ignored files silently); no stash made on the branch; no open row on it;
+   no other tree holding it; every commit on origin's trunk as origin answers at that moment, or a squash whose exact
+   tip the ledger shipped. Removal never forces. Anything else stays, and `retire` names the reason. `flotilla fleet
+   clean` sweeps the project's trees and local branches on the same terms - for forced stops and older fleets - as a
+   plan unless `--yes`, and needs the census so a live session's tree is never touched. The orchestrator (template
+   v11) runs the plan when the queue is empty and settles a kept tree only by making it sure (commit, hand, ship);
+   removing work not on trunk stays the person's call. (planner's decision, 2026-10-02)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

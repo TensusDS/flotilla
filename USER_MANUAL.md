@@ -34,6 +34,7 @@ The CLI is `${CLAUDE_PLUGIN_ROOT}/scripts/flotilla`. Every command takes `--help
     flotilla spawn --lead                your own session leads the fleet; its name comes with your next message
     flotilla fleet                 the seats, their trees and their work
     flotilla fleet down            retire every seat but your own
+    flotilla fleet clean [--yes]   remove trees and branches whose work is surely on trunk (a plan without --yes)
     flotilla retire "<name>"       stop one session, release its post
     flotilla helper raise --for <branch> --task "<what>"     a helper in its own tree (from a working session)
     flotilla helper done --summary "<what was done>"         finish as a helper
@@ -91,7 +92,8 @@ Worktrees and receipts:
    `! <command>` in your own Claude Code session (the orchestrator's, when your session leads the fleet) or run it in a
    terminal. Claude's own Bash call of it is refused, and so is `!` in a background orchestrator's prompt.
 4. **A session done or stuck:** `/flotilla:retire "<name>"`. Its open rows are named; the orchestrator adopts them.
-5. **End of day:** `/flotilla:down`. Worktrees stay until you remove them with `git worktree remove <path>`.
+5. **End of day:** `/flotilla:down`. Trees and branches whose work is surely on trunk go with their seats; the rest
+   stay and say why. `flotilla fleet clean` shows what is left to remove, `--yes` removes it.
 6. **After a plugin update:** stand the fleet down, update, bring `.flotilla/posts/` up to the new templates, raise
    the fleet again.
 

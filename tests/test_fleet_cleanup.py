@@ -24,7 +24,7 @@ def seat(root, tmp_path, name="app-main-1", branch="fleet/main-1"):
 
 def ship(root, tree, branch):
     """The branch's work reaches origin's trunk by a merge, as a sender's does."""
-    git(root, "merge", "-q", "--no-ff", "--no-edit", branch)
+    git(root, "-c", "user.email=t@example.invalid", "-c", "user.name=t", "merge", "-q", "--no-ff", "--no-edit", branch)
     git(root, "push", "-q", "origin", "HEAD:main")
 
 
