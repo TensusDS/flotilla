@@ -99,6 +99,33 @@ def _unnamed_leads(ledger, mine) -> list[tuple[str, str]]:
             if item.session_id in waiting and item.name != waiting[item.session_id]]
 
 
+def _gaps(ledger, counts: dict) -> list[str]:
+    """What the fleet would lack once `counts` rise beside this project's live sessions: someone to lead it, and -
+    where the profile has the sender merge - someone to merge (twosuns field test of 0.6.7, W3). A profile written
+    before both were part of every composition raised seats that waited for work nobody routes, and nothing said so."""
+    from flotilla.fleet import lead
+    from flotilla.ledger import project
+    import datetime as dt
+    try:
+        wanted = compose.normalise(counts, ledger.posts)
+        mine = project.members(census(), ledger.rows(), project.roots(ledger.root))
+    except (compose.CompositionError, CensusUnavailable):
+        return []
+    held = spawn._live_posts(ledger, mine)
+    waiting = lead.pending(LocalLogStore(paths.state_dir() / "fleet"), now=dt.datetime.now(dt.timezone.utc))
+    leading = any(item.session_id in waiting for item in mine)
+    lines = []
+    if "orchestrator" in ledger.posts and not (wanted.get("orchestrator") or held["orchestrator"] or leading):
+        lines.append("nobody leads this fleet: no orchestrator is alive or raised, and the seats wait for work only "
+                     "an orchestrator routes. Lead it from your own session with `flotilla spawn --lead`, or raise a "
+                     "background one with `flotilla spawn -o 1`.")
+    merger = str(((ledger.profile.get("flow") or {}).get("merge_authorized_by")) or "")
+    if merger == "sender" and "sender" in ledger.posts and not (wanted.get("sender") or held["sender"]):
+        lines.append("nobody merges: the profile has the sender merge accepted work to trunk, and no sender is alive "
+                     "or raised. Raise one with `flotilla spawn -s 1`.")
+    return lines
+
+
 def _spawn(ledger, args) -> int:
     from flotilla.ledger.commands import fleet_note
     said = fleet_note(ledger.root, ledger.profile)
@@ -153,12 +180,15 @@ def _spawn(ledger, args) -> int:
             off = ", ".join(narrow.turned_off(post)) or "none"
             print(f"    turns off: {off if narrow.entries is not None else 'unknown, ' + plugins.NOT_NARROWED}")
         print(f"dry run: {len(seats)} session(s) planned; nothing was changed")
+        for line in _gaps(ledger, counts):
+            print(f"gap: {line}")
         return 0
     try:
         sessions = census()
     except CensusUnavailable as err:
         raise spawn.SpawnRefused(f"spawning needs the census to check names, and it could not be asked: "
                                  f"{err}") from err
+    gaps = _gaps(ledger, counts)   # asked before the launch: a seat just raised may not be in the census yet
     try:
         raised, warnings = spawn.spawn(ledger, counts, census=census, store=store,
                                        caller=f"spawn {caller_line(sessions)}", anyway=args.anyway)
@@ -170,6 +200,8 @@ def _spawn(ledger, args) -> int:
         print(f"warning: {line}")
     _print_raised(raised)
     print("a closed terminal tab does not stop a session; `flotilla fleet` lists the fleet")
+    for line in gaps:
+        print(f"gap: {line}")
     return 0
 
 
