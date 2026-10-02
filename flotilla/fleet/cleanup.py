@@ -182,6 +182,22 @@ def _delete_branch(ledger, branch: str, tip: str) -> str:
             else f"kept branch `{branch}`: it moved since it was judged")
 
 
+#: The lock reason spawn writes on a seat's tree.
+LOCK_PREFIX = "flotilla: "
+
+
+def _locks(ledger) -> dict[Path, str]:
+    """Tree -> its lock reason, for every locked worktree of the project."""
+    listing = _git(ledger.root, "worktree", "list", "--porcelain", run=ledger.run).stdout
+    found, current = {}, None
+    for line in listing.splitlines():
+        if line.startswith("worktree "):
+            current = Path(line[len("worktree "):]).resolve()
+        elif line.startswith("locked") and current is not None:
+            found[current] = line[len("locked"):].strip()
+    return found
+
+
 def _trees(ledger) -> list[tuple[Path, str]]:
     """(tree, branch) for every worktree of the project but the main checkout."""
     listing = _git(ledger.root, "worktree", "list", "--porcelain", run=ledger.run).stdout
@@ -246,6 +262,7 @@ def sweep(ledger, *, sessions, act: bool) -> list[str]:
     # tree an open row holds for a live session is that session's, wherever the census says it runs
     held_for = {Path(row.tree).resolve(): row.owner for row in ledger.rows().values()
                 if row.tree and row.is_open and row.owner in live}
+    locks = _locks(ledger)
     for tree, branch in trees:
         here = tree.resolve()
         if here not in ours_trees:
@@ -257,10 +274,21 @@ def sweep(ledger, *, sessions, act: bool) -> list[str]:
         if alive:
             lines.append(f"kept {tree}: {alive[0]} is alive and works in it")
             continue
+        reason = locks.get(here)
+        if reason is not None:   # a lock is lifted only when it is flotilla's and its session is gone
+            holder = reason[len(LOCK_PREFIX):] if reason.startswith(LOCK_PREFIX) else None
+            if holder is None:
+                lines.append(f"kept {tree}: locked by someone else ({reason or 'no reason given'})")
+                continue
+            if holder in live:
+                lines.append(f"kept {tree}: {holder} is alive and holds its lock")
+                continue
         verdict = judge(ledger, tree)
         if not verdict.removable:
             lines.append(f"kept {tree}: {'; '.join(verdict.reasons)}")
         elif act:
+            if reason is not None:   # flotilla's lock of a seat no longer alive (a fleet stopped by force)
+                _git(ledger.root, "worktree", "unlock", str(tree), run=ledger.run)
             lines += remove(ledger, verdict)
         else:
             lines.append(f"would remove {tree}" + (f" and `{branch}`" if branch else "") + ": its work is on trunk")

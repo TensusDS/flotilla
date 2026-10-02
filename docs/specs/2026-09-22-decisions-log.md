@@ -1153,6 +1153,12 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    ran; neither the tests nor the review had caught it, since every test seat sat in its own tree. (planner's
    decision, 2026-10-02)
 
+209. **The sweep lifts flotilla's own lock of a dead seat's tree, and no other lock** (cleaning this machine,
+   2026-10-02: a snake fleet stopped by force left five trees locked `flotilla: <session>`, and git refused to remove
+   them). Spawn locks a seat's tree with that reason; when the named session is not in the census and the tree is
+   surely done with, the sweep unlocks it and removes it. A lock naming a live session, or any lock flotilla did not
+   write, keeps the tree and is named. (planner's decision, 2026-10-02)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

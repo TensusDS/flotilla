@@ -253,3 +253,22 @@ def test_the_sweep_leaves_a_live_seats_tree_whose_session_works_from_the_main_ch
     alive = dataclasses.replace(sess("main session 1"), cwd=str(root))
     lines = cleanup.sweep(ledger, sessions=[alive], act=True)
     assert tree.exists() and any("main session 1" in line and "alive" in line for line in lines)
+
+
+def test_a_lock_flotilla_put_on_a_dead_seats_tree_does_not_hold_it(tmp_path):
+    """A fleet stopped by force left its trees locked `flotilla: <session>`; git refused the sweep (snake, 2026-10-02).
+    flotilla lifts its own lock when that session is not alive, and only then; another lock is not its to lift."""
+    import dataclasses
+    from watchkit import sess
+    root, ledger = world(tmp_path)
+    dead = seat(root, tmp_path, "app-main-1", "fleet/main-1")
+    git(root, "worktree", "lock", "--reason", "flotilla: main session 1", str(dead))
+    alive_lock = seat(root, tmp_path, "app-main-2", "fleet/main-2")
+    git(root, "worktree", "lock", "--reason", "flotilla: main session 2", str(alive_lock))
+    theirs = seat(root, tmp_path, "app-main-3", "fleet/main-3")
+    git(root, "worktree", "lock", "--reason", "on a removable disk", str(theirs))
+    alive = dataclasses.replace(sess("main session 2"), cwd=str(root))
+    lines = cleanup.sweep(ledger, sessions=[alive], act=True)
+    assert not dead.exists()
+    assert alive_lock.exists() and any("main session 2" in line for line in lines)
+    assert theirs.exists() and any("on a removable disk" in line for line in lines)
