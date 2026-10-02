@@ -1164,15 +1164,20 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    2.1.280 floor; but the census listing the session under it was measured on 2.1.287 only. A version that ignored
    it would leave the session unnamed, and a day later the fleet would stop counting it as the orchestrator with
    nobody told. Each message that offers the title is recorded; after three without the census showing it, the hook
-   tells the session to ask the person for `/rename <name>`, and keeps offering the title. (planner's decision,
-   2026-10-02)
+   tells the session to ask the person for `/rename <name>`, and keeps offering the title. A message on which the
+   census does not list the session is not counted: there the hook cannot tell whether the name shows (review of
+   0.6.7, I2). (planner's decision, 2026-10-02)
 
 211. **The leading session raises the rest of the fleet only after its name shows** (W14, which decision 199 had
    left to W13's fix and auto mode - neither touched it: `--fill` ran in the same turn as `--lead`, before the
    person's next message renamed the session, so the seats learned the old name in any permission mode). The
    onboarding skill now tells the person "Tell me what to build" after `--lead` and runs `--fill` first thing on
    their next message, the one that renames the session; `--lead`'s output and the hook's rename note say the same.
-   No manual step is added: the person's next message is the task. (planner's decision, 2026-10-02)
+   No manual step is added: the person's next message is the task. The order is kept by code, not by the wording:
+   `--fill` refuses while a live leading session does not carry its new name yet, naming both names (review of
+   0.6.7, I1 - words alone would have let a version that ignores the title bring W14 back). The skill also runs
+   onboarding's check before raising the fleet, so the turn ends on "Tell me what to build". (planner's decision,
+   2026-10-02)
 
 ## Open questions (for the foundation spec)
 

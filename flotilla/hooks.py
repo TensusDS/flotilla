@@ -151,7 +151,7 @@ def _prompt(ctx, payload, out, now) -> int:
     from flotilla.watch import render, throttle
     from flotilla.watch.whose import WAITING
     blocks, keys = [], []
-    current = ctx.me.name if getattr(ctx, "me", None) is not None and ctx.me.name else ""
+    current = (ctx.me.name or "") if getattr(ctx, "me", None) is not None else None
     title = lead.due(LocalLogStore(paths.state_dir() / "fleet"), str(payload.get("session_id") or ""),
                      current=current, now=now)
     if ctx.sessions is None:
@@ -169,13 +169,15 @@ def _prompt(ctx, payload, out, now) -> int:
     keys = keys or blocks
     state = ctx.ledger.state_dir if ctx.ledger is not None else paths.state_dir()
     if title:   # the person's own session leads the fleet: it takes the orchestrator's name now (W9)
-        note = (f"flotilla: this session is now `{title}` and holds the orchestrator post; follow "
-                ".flotilla/posts/orchestrator.md on trunk and use the flotilla:flotilla skill for every ledger move. "
-                "If the rest of the fleet is not raised yet, run `flotilla spawn --fill` first - the seats learn "
-                "this name.")
-        if lead.offered(LocalLogStore(paths.state_dir() / "fleet"), str(payload.get("session_id"))) > lead.ASK_AFTER:
+        unseen = lead.offered(LocalLogStore(paths.state_dir() / "fleet"),
+                              str(payload.get("session_id"))) > lead.ASK_AFTER
+        note = (f"flotilla: this session {'is to be' if unseen else 'is now'} `{title}` and holds the orchestrator "
+                "post; follow .flotilla/posts/orchestrator.md on trunk and use the flotilla:flotilla skill for every "
+                "ledger move. If the rest of the fleet is not raised yet, run `flotilla spawn --fill` first - the "
+                "seats learn this name.")
+        if unseen:
             note += (f"\nClaude Code has not shown this name after {lead.ASK_AFTER} messages - ask the person to type "
-                     f"`/rename {title}` and then send any message.")
+                     f"`/rename {title}` and then send any message; `--fill` waits for the name.")
         body = {"hookEventName": "UserPromptSubmit", "sessionTitle": title,
                 "additionalContext": "\n".join([note, *blocks])}
         print(json.dumps({"hookSpecificOutput": body}), file=out)

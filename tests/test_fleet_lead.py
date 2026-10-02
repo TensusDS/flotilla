@@ -49,7 +49,7 @@ def _prompt(tmp_path, sid, monkeypatch, me="app-3f", rows_=None, now=None):
     watch_onboarded(tmp_path)
     out = io.StringIO()
     payload = {"cwd": str(tmp_path), "session_id": sid, "prompt": "build the orbit tests"}
-    ctx = context(tmp_path, me=sess(me), rows_=rows_)
+    ctx = context(tmp_path, me=sess(me) if me else None, rows_=rows_)
     assert hooks.run_hook("prompt", io.StringIO(json.dumps(payload)), out=out, gather=lambda root, s: ctx,
                           now=now) == 0
     return out.getvalue()
@@ -112,15 +112,18 @@ def _onboarded_with(tmp_path, monkeypatch, default):
     return root
 
 
-def test_fill_counts_a_leading_session_before_its_name_shows(tmp_path, monkeypatch):
-    """Between --lead and the person's next message the session still carries its old name; --fill must not raise
-    a second orchestrator in that gap."""
+def test_fill_waits_until_the_leading_sessions_name_shows(tmp_path, monkeypatch):
+    """W14 and the review of 0.6.7, I1: seats raised while the leading session still carries its old name learn that
+    name, and their letters go nowhere once it changes. The order is kept by --fill, not by the skill's wording: it
+    refuses until the census lists the leading session under its new name."""
     root = _onboarded_with(tmp_path, monkeypatch, {"orchestrator": 1, "main": 1})
     me = _a_session("app-3f", root)
     monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [me])
-    code, out = run_cli("spawn", "--fill", "--dry-run", "--root", str(root))
-    assert code == 0 and "(orchestrator)" in out, out          # without the lead, the gap would raise one
     lead.record(LocalLogStore(tmp_path / "state" / "fleet"), me.session_id, "orchestrator 1", now="t")
+    code, out = run_cli("spawn", "--fill", "--dry-run", "--root", str(root))
+    assert code != 0 and "orchestrator 1" in out and "app-3f" in out and "next message" in out, out
+    named = _a_session("orchestrator 1", root)
+    monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [named])
     code, out = run_cli("spawn", "--fill", "--dry-run", "--root", str(root))
     assert code == 0 and "(orchestrator)" not in out and "(main)" in out, out
 
@@ -161,6 +164,8 @@ def test_a_title_the_census_never_shows_turns_into_a_rename(tmp_path, monkeypatc
     assert all(s["sessionTitle"] == "worldcore-orchestrator 1" for s in said)
     assert not any("/rename" in s["additionalContext"] for s in said[:lead.ASK_AFTER])
     assert "/rename worldcore-orchestrator 1" in said[lead.ASK_AFTER]["additionalContext"]
+    assert "is to be `worldcore-orchestrator 1`" in said[lead.ASK_AFTER]["additionalContext"]   # 0.6.7 review, M7
+    assert "is now `worldcore-orchestrator 1`" in said[0]["additionalContext"]
 
 
 def test_offers_are_counted_per_session(tmp_path):
@@ -173,3 +178,22 @@ def test_offers_are_counted_per_session(tmp_path):
     assert lead.offered(store, "sid-1") == 2 and lead.offered(store, "sid-2") == 1
     lead.record(store, "sid-1", "a2", now="t")            # a new lead starts its own count
     assert lead.offered(store, "sid-1") == 0
+
+
+def test_a_session_the_census_cannot_see_is_not_asked_to_rename(tmp_path, monkeypatch):
+    """Review of 0.6.7, I2: with the session missing from the census the hook cannot tell whether the name shows, so
+    it must not claim it did not - nor count those messages towards the /rename request."""
+    lead.record(_store(tmp_path), "sid-me", "worldcore-orchestrator 1", now="t")
+    said = [_prompt(tmp_path, "sid-me", monkeypatch, me=None) for _ in range(lead.ASK_AFTER + 2)]
+    assert not any("/rename" in out for out in said)
+    assert lead.offered(_store(tmp_path), "sid-me") == 0
+
+
+def test_the_rename_request_stops_once_the_name_shows(tmp_path, monkeypatch):
+    lead.record(_store(tmp_path), "sid-me", "worldcore-orchestrator 1", now="t")
+    for _ in range(lead.ASK_AFTER + 1):
+        _prompt(tmp_path, "sid-me", monkeypatch)
+    assert "/rename" not in _prompt(tmp_path, "sid-me", monkeypatch, me="worldcore-orchestrator 1")
+    assert lead.pending(_store(tmp_path)) == {}
+    lead.record(_store(tmp_path), "sid-me", "worldcore-orchestrator 2", now="t")   # a later lead counts afresh
+    assert lead.offered(_store(tmp_path), "sid-me") == 0

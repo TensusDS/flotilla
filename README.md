@@ -376,19 +376,22 @@ What flotilla does not do yet, or does only partly. Each one was met in a field 
 `docs/field-tests/`.
 
 - **No Windows.** Linux and macOS only; see [Requirements](#requirements) for what macOS skips.
-- **One lane per machine, shared by every project's fleet.** Two fleets on one machine wait for each other's long
-  runs. The lane spends its time carefully (see [Long runs and the lane](#long-runs-and-the-lane)), but it does not
+- **One lane per machine, shared by every project's fleet.** At the default `lane_capacity` of 1, two fleets on one
+  machine wait for each other's long runs. The lane spends its time carefully (see [Long runs and the lane](#long-runs-and-the-lane)), but it does not
   split the machine between projects.
 - **Long-lived seats get slower.** A model turn over 600k tokens of context took about twice as long as one under
-  100k. flotilla does not replace a seat by itself yet; after many tasks, retire the seat with `/flotilla:retire`
-  and raise a fresh one with `flotilla spawn --fill`.
+  100k. flotilla does not replace a seat by itself yet; after many tasks, retire a seat that holds no open work
+  with `/flotilla:retire` and raise a fresh one with `flotilla spawn --fill`. Your own leading session is not
+  replaced that way - start a fresh session and lead from it.
 - **In `ask` mode, permission questions wait for the orchestrator** - and when the orchestrator is your own session
-  and is itself waiting on you, a seat's question waits too and is refused after about nine minutes; an answer you
-  give after that is not kept, and the seat asks again. `auto` mode, the default, routes no such questions.
+  and is itself waiting on you, a seat's question waits too and is refused, after about nine minutes by default; an
+  answer you give after that is not kept, and the seat has to ask again. `auto` mode, which onboarding recommends,
+  routes no such questions.
 - **The leading session's name comes through a hook** that measured working on Claude Code 2.1.287. If your version
   does not show the name after three messages, flotilla tells the session to ask you for `/rename <name>`.
 - **Auto mode is not offered for every model.** Claude Code has refused it for some (seen with Haiku);
-  `flotilla spawn` warns before raising such a seat - pick another model or `ask` mode for that post.
+  `flotilla spawn --dry-run` warns about such a seat, and `flotilla spawn` warns again after raising it - pick
+  another model or `ask` mode for that post.
 - **It does not isolate sessions from you or from each other** - see the next section.
 
 ## Security model and its limits

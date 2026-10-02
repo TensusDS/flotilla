@@ -85,7 +85,12 @@ takes pull requests, say so and what to do; do not push another way.
 
 Then mention once: the git hooks that back the guards are installed with `/flotilla:guard`, one yes each.
 
-## 6. Raise the fleet
+## 6. Confirm
+
+Run `flotilla onboard check` and report its findings, if any. Tell the person the profile is theirs to edit; a
+change takes effect once it is on origin's trunk.
+
+## 7. Raise the fleet
 
 Ask with AskUserQuestion, header "Fleet", question "Raise the fleet now?":
 
@@ -101,7 +106,7 @@ Ask with AskUserQuestion, header "Fleet", question "Raise the fleet now?":
 1. Run `flotilla spawn --lead`. It records that this session leads the fleet under the orchestrator's name
    (`<project>-orchestrator N`) and prints it; a note may come first. Claude Code shows the name on the person's
    next message - nobody renames anything. Only if it says it could not tell which session runs it, tell the person
-   to type `/rename <the name>` and then send any message, and wait for that message.
+   to type `/rename <the name>` and then tell you what to build - one message, then step 2's "next message" part.
 2. Do not raise the rest yet: seats raised now would learn this session's old name, and their letters would go
    nowhere once the name changes. Tell the person: "Tell me what to build." Their next message renames this session
    (the flotilla hook says so in its context); then, before anything else, run `flotilla spawn --fill`: it raises
@@ -117,8 +122,3 @@ Ask with AskUserQuestion, header "Fleet", question "Raise the fleet now?":
 `claude attach <id>` from what it printed.
 
 **Not now:** tell the person that `/flotilla:spawn` raises the fleet when they are ready.
-
-## 7. Confirm
-
-Run `flotilla onboard check` and report its findings, if any. Tell the person the profile is theirs to edit; a
-change takes effect once it is on origin's trunk.

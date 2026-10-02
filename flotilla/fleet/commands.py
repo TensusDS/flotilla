@@ -84,26 +84,19 @@ def _lead(ledger, args) -> int:
               "not the old one.")
         return 0
     print(f"{name}: reserved, but flotilla could not tell which session runs this, so it cannot name it. Type "
-          f"`/rename {name}`, then send any message; `flotilla spawn --fill` raises the rest.")
+          f"`/rename {name}`, then send any message; run `flotilla spawn --fill` after that message.")
     return 0
 
 
-def _leading(ledger, mine) -> int:
-    """Live sessions of this project that lead the fleet but do not carry the orchestrator's name yet: the name
-    comes with the person's next message, and --fill must not raise a second orchestrator in that gap."""
+def _unnamed_leads(ledger, mine) -> list[tuple[str, str]]:
+    """(name now, name to come) of this project's live sessions that lead the fleet but whose new name the census
+    does not show yet. Seats raised in that gap learn the old name, and their letters go nowhere once it changes
+    (W14), so --fill waits for it (review of 0.6.7, I1)."""
     from flotilla.fleet import lead
-    from flotilla.posts import post_for_session
     import datetime as dt
     waiting = lead.pending(LocalLogStore(paths.state_dir() / "fleet"), now=dt.datetime.now(dt.timezone.utc))
-    count = 0
-    for item in mine:
-        if item.session_id in waiting:
-            try:
-                post = post_for_session(ledger.posts, item.name) if item.name else None
-            except PostError:
-                post = None
-            count += post is None or post.name != "orchestrator"
-    return count
+    return [(item.name or item.session_id, waiting[item.session_id]) for item in mine
+            if item.session_id in waiting and item.name != waiting[item.session_id]]
 
 
 def _spawn(ledger, args) -> int:
@@ -119,10 +112,15 @@ def _spawn(ledger, args) -> int:
         try:
             mine = project.members(census(), ledger.rows(), project.roots(ledger.root))   # the census is the
             held = dict(spawn._live_posts(ledger, mine))                                   # machine's (M3)
-            held["orchestrator"] = held.get("orchestrator", 0) + _leading(ledger, mine)
-            counts = compose.fill(counts, held)
         except CensusUnavailable as err:
             raise MoveRefused(f"--fill needs the census to see who is alive ({err}); name the counts instead") from err
+        unnamed = _unnamed_leads(ledger, mine)
+        if unnamed:
+            now_, coming = unnamed[0]
+            raise MoveRefused(f"the leading session `{now_}` does not carry its name `{coming}` yet, and seats raised "
+                              "now would learn the old one; run --fill after the person's next message, which "
+                              f"brings the name (or after they type `/rename {coming}`)")
+        counts = compose.fill(counts, held)
         if not counts:
             print("nothing to raise: the live sessions already hold the default composition")
             return 0

@@ -64,12 +64,14 @@ def offered(store, session_id: str) -> int:
     return count
 
 
-def due(store, session_id: str, *, current: str, now=None) -> str:
+def due(store, session_id: str, *, current: str | None, now=None) -> str:
     """The name to give this session now, or "". Given again on every prompt until the census lists the session
     under it - Claude Code says nothing back about a title it was handed (review of 0.6.0, I4) - and then closed."""
     name = pending(store, now).get(session_id, "") if session_id else ""
     if not name:
         return ""
+    if current is None:   # the census does not list this session: whether the name shows is unknown (0.6.7, I2)
+        return name
     if name != current:
         store.append(KEY, {"session": session_id, "offered": name})
         return name
