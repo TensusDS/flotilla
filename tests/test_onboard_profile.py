@@ -197,3 +197,15 @@ def test_a_local_flow_writes_no_judge_even_if_answered(tmp_path):
 def test_the_trunk_name_is_quoted_in_the_revision_command(tmp_path):
     data = build_profile(detection(tmp_path, trunk="main;touch x"), {**BASE_ANSWERS, "deploy": "cli"})
     assert data["deploy"]["revision_command"] == "git ls-remote origin 'refs/heads/main;touch x'"
+
+
+def test_the_profile_carries_the_tree_setup_and_shows_it_as_a_command(tmp_path):
+    from flotilla.onboard.commands import commands_of
+    from flotilla.onboard.profile import build_profile
+    det = {"root": str(tmp_path / "app"), "trunk": "main", "remote": "", "ci": {"provider": "none"},
+           "tests": [{"name": "node", "command": "npm test", "source": "package.json"}],
+           "setup": {"command": "npm ci", "source": "package-lock.json"}}
+    data = build_profile(det, {"flow": "local", "review": "every", "permissions": "auto", "tiers": ["node"],
+                               "model": "one"})
+    assert data["tests"]["setup_command"] == "npm ci"
+    assert ("tests.setup_command", "npm ci") in commands_of(data)

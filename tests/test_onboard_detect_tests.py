@@ -63,3 +63,25 @@ def test_rust_go_and_make_in_order(tmp_path):
     write(tmp_path, "go.mod", "module x\n")
     write(tmp_path, "Makefile", "build:\n\ttrue\ntest:\n\ttrue\n")
     assert [t["name"] for t in detect_tiers(tmp_path)[0]] == ["rust", "go", "make"]
+
+
+import pytest  # noqa: E402
+
+from flotilla.onboard.detect_tests import tree_setup  # noqa: E402
+
+
+@pytest.mark.parametrize("lock, command", [("package-lock.json", "npm ci"),
+                                           ("pnpm-lock.yaml", "pnpm install --frozen-lockfile"),
+                                           ("yarn.lock", "yarn install --frozen-lockfile"),
+                                           ("poetry.lock", "poetry install")])
+def test_a_lockfile_names_how_a_fresh_tree_gets_its_dependencies(tmp_path, lock, command):
+    """Worldcore field test W24: every seat found its tree without node_modules; the sender did not, and its push
+    receipt went red with `npm test` having nothing to run with."""
+    (tmp_path / lock).write_text("{}", encoding="utf-8")
+    assert tree_setup(tmp_path)["command"] == command
+
+
+def test_uv_needs_no_setup_and_nothing_found_is_none(tmp_path):
+    assert tree_setup(tmp_path) is None
+    (tmp_path / "uv.lock").write_text("", encoding="utf-8")
+    assert tree_setup(tmp_path) is None   # `uv run` brings the environment up to the lock itself

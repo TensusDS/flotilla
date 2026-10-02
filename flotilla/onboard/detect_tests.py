@@ -55,6 +55,20 @@ def _node_tier(root: Path, notes: list[str]) -> dict | None:
     return {"name": "node", "command": "npm test", "source": "package.json"}
 
 
+#: Lockfile -> how a fresh checkout gets its dependencies. `uv.lock` has no entry: `uv run` brings the environment up
+#: to the lock itself.
+SETUPS = (("package-lock.json", "npm ci"), ("pnpm-lock.yaml", "pnpm install --frozen-lockfile"),
+          ("yarn.lock", "yarn install --frozen-lockfile"), ("poetry.lock", "poetry install"))
+
+
+def tree_setup(root: Path) -> dict | None:
+    """The command a seat's fresh tree runs before its tiers (worldcore field test W24), or None."""
+    for lock, command in SETUPS:
+        if (root / lock).is_file():
+            return {"command": command, "source": lock}
+    return None
+
+
 def detect_tiers(root: Path) -> tuple[list[dict], list[str]]:
     tiers: list[dict] = []
     notes: list[str] = []

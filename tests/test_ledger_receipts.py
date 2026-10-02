@@ -129,3 +129,38 @@ def test_a_red_tier_is_never_reused_and_says_why(tmp_path):
     again = receipts.run_receipt(root, state=tmp_path / "s", repo_key=KEY, purpose="push", profile=profile(red),
                                  timeout=60)
     assert "reused" not in again["tiers"][0]["summary"]
+
+
+def _with_setup(tmp_path, root, command):
+    counter = tmp_path / "setup-runs.txt"
+    setup = f"{sys.executable} -c \"open(r'{counter}', 'a').write('s')\""
+    data = profile(command)
+    data["tests"]["setup_command"] = setup
+    (root / "package-lock.json").write_text('{"v": 1}', encoding="utf-8")
+    git(root, "add", "package-lock.json")
+    git(root, "commit", "-q", "-m", "a lockfile")
+    return data, counter
+
+
+def test_a_fresh_tree_is_set_up_before_its_tiers_once_per_lockfile(tmp_path):
+    root = repo_with_origin(tmp_path)
+    tiers, _ = _counting(tmp_path)
+    data, counter = _with_setup(tmp_path, root, tiers)
+    receipts.run_receipt(root, state=tmp_path / "s", repo_key=KEY, purpose="handover", profile=data, timeout=60)
+    assert counter.read_text() == "s"
+    commit(root, "a change", "src.txt", "new\n")
+    receipts.run_receipt(root, state=tmp_path / "s", repo_key=KEY, purpose="handover", profile=data, timeout=60)
+    assert counter.read_text() == "s"                  # the lockfile did not change: nothing to set up
+    (root / "package-lock.json").write_text('{"v": 2}', encoding="utf-8")
+    git(root, "commit", "-q", "-am", "a new dependency")
+    receipts.run_receipt(root, state=tmp_path / "s", repo_key=KEY, purpose="handover", profile=data, timeout=60)
+    assert counter.read_text() == "ss"
+
+
+def test_a_failed_setup_is_named_not_reported_as_a_red_tier(tmp_path):
+    root = repo_with_origin(tmp_path)
+    data, _ = _with_setup(tmp_path, root, GREEN)
+    data["tests"]["setup_command"] = f"{sys.executable} -c \"import sys; print('npm ERR! network'); sys.exit(1)\""
+    with pytest.raises(receipts.ReceiptRefused, match="setup") as refused:
+        receipts.run_receipt(root, state=tmp_path / "s", repo_key=KEY, purpose="handover", profile=data, timeout=60)
+    assert "npm ERR! network" in str(refused.value) and "exit 1" in str(refused.value)

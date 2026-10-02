@@ -55,6 +55,47 @@ def _green_over(state: Path, repo_key: str, files: str | None) -> dict:
         return {}
 
 
+#: The lockfiles whose content decides whether a tree's dependencies are current.
+LOCKFILES = ("package-lock.json", "pnpm-lock.yaml", "yarn.lock", "poetry.lock", "uv.lock")
+
+
+def _locks_of(tree: Path) -> str:
+    digest = hashlib.sha256()
+    for name in LOCKFILES:
+        path = Path(tree) / name
+        if path.is_file():
+            digest.update(name.encode() + b"\0" + path.read_bytes() + b"\0")
+    return digest.hexdigest()
+
+
+def _setup_path(state: Path, repo_key: str, tree: Path) -> Path:
+    where = hashlib.sha256(str(Path(tree).resolve()).encode()).hexdigest()[:16]
+    return Path(state) / "receipts" / repo_key / f"setup-{where}.json"
+
+
+def set_up(tree: Path, *, state: Path, repo_key: str, profile: dict, timeout: float) -> str:
+    """Run the profile's tree setup in `tree` when its lockfiles changed since the last one there, or it never ran
+    (worldcore field test W24: a sender's fresh tree had no node_modules, and its push receipt read as red tests).
+    Returns what was done; a failed setup refuses the receipt, naming it."""
+    command = ((profile.get("tests") or {}).get("setup_command") or "").strip()
+    if not command:
+        return ""
+    locks, marker = _locks_of(tree), _setup_path(state, repo_key, tree)
+    try:
+        if json.loads(marker.read_text(encoding="utf-8")).get("locks") == locks:
+            return ""
+    except (OSError, ValueError):
+        pass
+    done = run_tier("setup", command, Path(tree), timeout=timeout)
+    if done.status != "green":
+        code = f"exit {done.exit}" if done.exit is not None else "stopped for its time"
+        raise ReceiptRefused(f"not run: the tree setup `{command}` failed in {tree} ({code}); its last lines:\n"
+                             + (done.tail or "(it printed nothing)"))
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(json.dumps({"locks": locks, "command": command, "at": now_iso()}), encoding="utf-8")
+    return f"set up the tree: {command}"
+
+
 def to_run(tree: Path, *, state: Path, repo_key: str, purpose: str, profile: dict,
            run=subprocess.run) -> list[str]:
     """The tiers a receipt here would have to run: those with no green answer over these files yet."""
@@ -74,6 +115,8 @@ def run_receipt(tree: Path, *, state: Path, repo_key: str, purpose: str, profile
         raise ReceiptRefused(f"{tree} has uncommitted changes, or git could not say; a receipt describes one "
                              "revision, so commit first")
     tiers = tiers_for(profile, purpose)
+    if to_run(tree, state=state, repo_key=repo_key, purpose=purpose, profile=profile, run=run):
+        set_up(tree, state=state, repo_key=repo_key, profile=profile, timeout=timeout)
     # A tier's answer depends on the files it tests, not on the commit that carries them: a merge that changes no
     # file is the files the author's receipt already tested. A green answer is reused; a red one runs again.
     files = gitq.files_of(tree, sha, run=run)

@@ -105,6 +105,9 @@ def build_profile(det: dict, answers: dict) -> dict:
     tiers = _tiers(det, answers.get("tiers") or [])
     if tiers:
         data["tests"] = {"tier": tiers}
+        setup = (det.get("setup") or {}).get("command")
+        if setup:   # run in a seat's fresh tree before its tiers, whenever the lockfile changed (worldcore W24)
+            data["tests"]["setup_command"] = setup
     data["ci"] = _ci(det, answers)
     data["review"] = {"depth": answers.get("review", "every")}
     data["permissions"] = {"mode": answers.get("permissions", "ask")}

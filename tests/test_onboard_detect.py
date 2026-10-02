@@ -51,7 +51,7 @@ def test_whole_detection_on_a_repository(tmp_path):
     assert [t["name"] for t in got["tests"]] == ["python"]
     assert got["ci"]["jobs"] == ["test"] and "unverified" in got["ci"]["jobs_source"]
     assert set(got) == {"root", "repo_key", "origin", "remote", "trunk", "tests", "notes", "ci", "release",
-                        "commit_convention", "signals"}
+                        "commit_convention", "signals", "setup"}
 
 
 def test_repository_without_remote(tmp_path):

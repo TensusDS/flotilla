@@ -9,7 +9,7 @@ from flotilla.core import repo
 from flotilla.onboard.detect_ci import detect_ci
 from flotilla.onboard.detect_repo import commit_convention, has_remote, release_info, trunk_branch
 from flotilla.onboard.detect_signals import detect_signals
-from flotilla.onboard.detect_tests import detect_tiers
+from flotilla.onboard.detect_tests import detect_tiers, tree_setup
 
 
 def detect(root: Path, run=subprocess.run) -> dict:
@@ -25,6 +25,7 @@ def detect(root: Path, run=subprocess.run) -> dict:
         "remote": has_remote(top, run=run),
         "trunk": trunk,
         "tests": tiers,
+        "setup": tree_setup(top),
         "notes": notes,
         "ci": detect_ci(top, normalized or None, trunk, run=run),
         "release": release_info(top, run=run),
