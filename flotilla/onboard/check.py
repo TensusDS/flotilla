@@ -39,7 +39,7 @@ def check_drift(profile: dict, det: dict, measured: dict[str, float]) -> list[st
                             "trunk; add `sender = 1` under [fleet.default]")
     for tier in (profile.get("tests") or {}).get("tier") or []:
         if tier.get("name") not in measured:
-            findings.append(f"tests: tier `{tier.get('name')}` has never run green on this machine")
+            findings.append(f"tests: tier `{tier.get('name')}` has never run green on this machine; the first green receipt measures it")
     return findings
 
 

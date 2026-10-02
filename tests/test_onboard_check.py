@@ -37,7 +37,7 @@ def test_trunk_renamed():
 
 
 def test_a_tier_never_green_on_this_machine():
-    assert check_drift(PROFILE, detection(), {}) == ["tests: tier `unit` has never run green on this machine"]
+    assert check_drift(PROFILE, detection(), {}) == ["tests: tier `unit` has never run green on this machine; the first green receipt measures it"]
 
 
 def test_unverifiable_jobs_are_unknown_not_matching():

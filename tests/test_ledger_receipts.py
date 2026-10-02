@@ -263,3 +263,21 @@ def test_a_seat_tree_is_not_set_up_again_for_its_own_commits(tmp_path):
         commit(seat, f"work {n}", f"w{n}.txt", "x\n")
         receipts.run_receipt(seat, state=tmp_path / "s", repo_key=KEY, purpose="handover", profile=data, timeout=60)
     assert counter.read_text() == "s"
+
+
+def test_the_first_green_receipt_measures_a_tier_this_machine_never_measured(tmp_path):
+    """Twosuns field test of 0.6.7, W2: only `onboard write` recorded tier times, so `onboard check` said "never run
+    green on this machine" with no way out but importing flotilla's internals - and the lane's ceiling had no time to
+    derive from. A green tier a receipt ran records its time once; a measurement already there is kept."""
+    from flotilla.onboard.firstrun import TierRun, load_measurements, save_measurements
+    state = tmp_path / "s"
+    two = {"schema": 1, "tests": {"tier": [{"name": "unit", "command": GREEN, "required_for": ["handover"]},
+                                           {"name": "lint", "command": GREEN, "required_for": ["handover"]},
+                                           {"name": "e2e", "command": "exit 1", "required_for": ["handover"]}]}}
+    save_measurements(state, KEY, [TierRun("lint", "green", 77.0, "", "")])
+    root = repo_with_origin(tmp_path)
+    receipts.run_receipt(root, state=state, repo_key=KEY, purpose="handover", profile=two, timeout=60)
+    measured = load_measurements(state, KEY)
+    assert measured["lint"] == 77.0                      # onboarding's measurement stands
+    assert isinstance(measured.get("unit"), float)       # the first green run measured it
+    assert "e2e" not in measured                         # a red run measures nothing
