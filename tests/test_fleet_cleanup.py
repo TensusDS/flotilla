@@ -113,14 +113,16 @@ def test_the_sweep_removes_what_is_sure_and_lists_the_rest(tmp_path):
     ship(root, done, "fleet/main-1")
     kept = seat(root, tmp_path, "app-main-2", "fleet/main-2")
     commit(kept, "not shipped", "y.txt", "y\n")
-    git(root, "branch", "old-merged", "HEAD")
+    git(root, "branch", "fleet/main-7", "HEAD")      # an older seat's home branch, its work on trunk
+    git(root, "branch", "old-merged", "HEAD")        # a person's: merged, but not the fleet's to delete
     preview = cleanup.sweep(ledger, sessions=[], act=False)
     assert done.exists() and any("would remove" in line and "app-main-1" in line for line in preview)
     lines = cleanup.sweep(ledger, sessions=[], act=True)
     assert not done.exists() and kept.exists()
     assert any("kept" in line and "app-main-2" in line for line in lines)
     branches = git(root, "branch", "--list")
-    assert "old-merged" not in branches and "fleet/main-2" in branches and "main" in branches
+    assert "fleet/main-7" not in branches and "fleet/main-2" in branches and "main" in branches
+    assert "old-merged" in branches
 
 
 def test_the_sweep_leaves_a_tree_a_live_session_works_in(tmp_path):
@@ -146,3 +148,91 @@ def test_work_added_after_a_squash_ship_is_a_doubt(tmp_path):
     commit(tree, "more work, after the ship", "more.txt", "y\n")
     found = cleanup.judge(ledger, tree)
     assert not found.removable and any("not on origin's trunk" in why for why in found.reasons)
+
+
+# --- review of the cleanup (decision 207): each of these lost work in a probe of the first version ---
+
+def test_a_config_that_hides_untracked_files_hides_nothing_from_the_judge(tmp_path):
+    """C1: with status.showUntrackedFiles=no, untracked work and an ignored .env were invisible, and removed."""
+    root, ledger = world(tmp_path)
+    commit(root, "ignore", ".gitignore", ".env\n")
+    git(root, "push", "-q", "origin", "HEAD:main")
+    git(root, "config", "status.showUntrackedFiles", "no")
+    tree = seat(root, tmp_path)
+    (tree / "notes.txt").write_text("mine\n", encoding="utf-8")
+    assert not cleanup.judge(ledger, tree).removable
+    (tree / "notes.txt").unlink()
+    (tree / ".env").write_text("TOKEN=1\n", encoding="utf-8")
+    assert not cleanup.judge(ledger, tree).removable
+
+
+def test_only_the_ignored_entry_itself_may_be_regenerable(tmp_path):
+    """I1: `deploy/build/prod.env` passed because a parent directory is named `build`."""
+    assert not cleanup._regenerable("deploy/build/prod.env")
+    assert cleanup._regenerable("node_modules/") and cleanup._regenerable("packages/a/node_modules/")
+    assert cleanup._regenerable("src/__pycache__/") and cleanup._regenerable("a/b.pyc")
+
+
+def test_files_git_is_told_not_to_look_at_are_a_doubt(tmp_path):
+    """I2: an edit to a skip-worktree file shows nowhere in status."""
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    git(tree, "update-index", "--skip-worktree", "README.md")
+    (tree / "README.md").write_text("edited where git does not look\n", encoding="utf-8")
+    found = cleanup.judge(ledger, tree)
+    assert not found.removable and any("not to look" in why for why in found.reasons)
+
+
+@pytest.mark.parametrize("move_away", ["detach", "reset"])
+def test_commits_only_its_reflog_reaches_are_a_doubt(tmp_path, move_away):
+    """I3: a commit left behind by a detach or a reset survives only in the tree's or the branch's reflog, which go
+    with the tree and the branch."""
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    if move_away == "detach":   # a commit made on a detached HEAD, then left: no branch ever held it
+        git(tree, "checkout", "-q", "--detach")
+        commit(tree, "work nobody shipped", "w.txt", "x\n")
+        git(tree, "checkout", "-q", "--detach", "origin/main")
+    else:
+        commit(tree, "work nobody shipped", "w.txt", "x\n")
+        git(tree, "reset", "-q", "--hard", "origin/main")
+    found = cleanup.judge(ledger, tree)
+    assert not found.removable and any("reflog" in why for why in found.reasons)
+
+
+def test_a_closed_row_that_never_shipped_is_not_trunk(tmp_path):
+    """I4: in local flow a row closes after landing on the local trunk only; nothing reached origin."""
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path, branch="feat/x")
+    tip = commit(tree, "work", "w.txt", "x\n")
+    with ledger.session() as s:
+        s.append(actor(ledger, "main session 1"), "r9", "close", "closed", fields={"branch": "feat/x", "tip": tip})
+    assert not cleanup.judge(ledger, tree).removable
+
+
+def test_the_sweep_leaves_what_flotilla_did_not_make(tmp_path):
+    """I5: a person's own worktree and branches were swept like a fleet's."""
+    root, ledger = world(tmp_path)
+    mine = tmp_path / "my-own-tree"
+    git(root, "worktree", "add", "-q", "-b", "person/try", str(mine))
+    git(root, "branch", "my-idea", "HEAD")
+    lines = cleanup.sweep(ledger, sessions=[], act=True)
+    assert mine.exists() and "my-idea" in git(root, "branch", "--list")
+    assert any("flotilla did not make" in line for line in lines)
+
+
+def test_a_branch_that_moved_after_the_judgement_is_not_deleted(tmp_path):
+    """M4: the branch is deleted only at the commit it was judged at."""
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    found = cleanup.judge(ledger, tree)
+    assert found.removable
+    git(root, "worktree", "remove", str(tree))
+    other = tmp_path / "elsewhere"
+    git(root, "worktree", "add", "-q", str(other), "fleet/main-1")
+    commit(other, "a commit after the judgement", "late.txt", "z\n")
+    git(root, "worktree", "remove", str(other))
+    git(root, "worktree", "add", "-q", str(tree), "fleet/main-1")
+    git(root, "worktree", "remove", "--force", str(tree))
+    cleanup._delete_branch(ledger, found.branch, found.tip)
+    assert "fleet/main-1" in git(root, "branch", "--list")

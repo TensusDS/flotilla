@@ -360,3 +360,16 @@ def test_a_tree_of_another_repository_is_never_a_seat_tree(tmp_path):
     elsewhere = other_repo(tmp_path / "elsewhere")
     assert "not a worktree of this project" in core.seat_tree_refusal(ledger, str(elsewhere))
     assert core.seat_tree_refusal(ledger, str(seat.seat.tree)) == ""
+
+
+def test_a_removal_git_refuses_still_frees_the_branch_and_says_why(tmp_path, monkeypatch):
+    """Review of the cleanup, I6: a refused removal returned a line, which read as `cleaned`, so the tree kept its
+    branch checked out and the refusal was dropped."""
+    from flotilla.fleet import cleanup
+    fake = FakeClaude()
+    root, ledger, seat = raised_world(tmp_path, fake)
+    monkeypatch.setattr(cleanup, "remove", lambda ledger, verdict: [
+        f"kept {verdict.tree}: git refused to remove it (working trees containing submodules cannot be removed)"])
+    lines = "\n".join(do_retire(ledger, fake))
+    assert seat.seat.tree.is_dir() and "git refused" in lines and "submodules" in lines
+    assert "HEAD detached" in git(seat.seat.tree, "status") or not git(seat.seat.tree, "branch", "--show-current")

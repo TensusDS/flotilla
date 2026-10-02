@@ -137,16 +137,20 @@ def retire(ledger, name: str, *, caller: str, census, wait: float = 60.0, poll: 
     except PostError:
         post = None
     # judged before the tree lets go of its branch: which branch it is, is the question (decision 206)
-    verdict = cleanup.judge(ledger, row.tree, spare_rows={row.id}) if row.tree and Path(row.tree).is_dir() else None
+    # never the main checkout or another repository's tree, whatever git would allow (F13; review of the cleanup, M2)
+    judged = row.tree and Path(row.tree).is_dir() and not core.seat_tree_refusal(ledger, row.tree)
+    verdict = cleanup.judge(ledger, row.tree, spare_rows={row.id}) if judged else None
     cleaned = cleanup.remove(ledger, verdict) if verdict is not None and verdict.removable else []
-    freed = "" if cleaned or not row.tree else core.free_seat_tree(ledger, name, row.tree)
+    removed = bool(cleaned) and not Path(row.tree).exists()
+    # a removal git refused keeps the tree: it still lets go of its branch, and the refusal is said (review, I6)
+    freed = "" if removed or not row.tree else core.free_seat_tree(ledger, name, row.tree)
     if row.is_open:   # a finished helper released its seat with `helper done`; retiring it only stops it
         with ledger.session() as s:
             s.append(Actor(name, post, "retire", caller), row.id, "release", "released",
                      evidence={"why": "retired", **({"tree": freed} if freed else {})})
     lines = [f"retired {name}" + (f" (stopped {found.short_id})" if found else " (it was not running)")]
     dirty = _dirty(row.tree)
-    if cleaned and not Path(row.tree).exists():
+    if removed:
         lines += cleaned
         lines += _home_branch(ledger, row.branch, verdict.branch)
     elif not row.tree or not Path(row.tree).is_dir():
@@ -155,7 +159,8 @@ def retire(ledger, name: str, *, caller: str, census, wait: float = 60.0, poll: 
         lines.append(f"its tree {row.tree} exists; its state is unknown (git could not read it), so it is kept")
     else:
         uncommitted = f", {dirty} uncommitted file{'s' if dirty != 1 else ''}" if dirty else ""
-        why = f" - kept because {'; '.join(verdict.reasons)}" if verdict is not None and verdict.reasons else ""
+        why = (f" - kept because {'; '.join(verdict.reasons)}" if verdict is not None and verdict.reasons
+               else f" - {'; '.join(cleaned)}" if cleaned else "")
         lines.append(f"its tree is kept at {row.tree}{uncommitted}{why}; `flotilla fleet clean` removes it once its "
                      "work is surely on trunk")
     lines += left
