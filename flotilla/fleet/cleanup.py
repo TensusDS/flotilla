@@ -241,12 +241,19 @@ def sweep(ledger, *, sessions, act: bool) -> list[str]:
     lines: list[str] = []
     trees = _trees(ledger)
     ours_trees, ours_branches = _made_by_flotilla(ledger)
+    live = {item.name for item in sessions if item.name}
+    # a seat works in its tree from the main checkout (`--add-dir`): the census puts it there, not in its tree, so a
+    # tree an open row holds for a live session is that session's, wherever the census says it runs
+    held_for = {Path(row.tree).resolve(): row.owner for row in ledger.rows().values()
+                if row.tree and row.is_open and row.owner in live}
     for tree, branch in trees:
         here = tree.resolve()
         if here not in ours_trees:
             lines.append(f"kept {tree}: flotilla did not make it")
             continue
         alive = [s.name for s in sessions if s.cwd and (Path(s.cwd).resolve() == here or here in Path(s.cwd).resolve().parents)]
+        if here in held_for:
+            alive.insert(0, held_for[here])
         if alive:
             lines.append(f"kept {tree}: {alive[0]} is alive and works in it")
             continue

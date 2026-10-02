@@ -236,3 +236,20 @@ def test_a_branch_that_moved_after_the_judgement_is_not_deleted(tmp_path):
     git(root, "worktree", "remove", "--force", str(tree))
     cleanup._delete_branch(ledger, found.branch, found.tip)
     assert "fleet/main-1" in git(root, "branch", "--list")
+
+
+def test_the_sweep_leaves_a_live_seats_tree_whose_session_works_from_the_main_checkout(tmp_path):
+    """Seats are launched from the main checkout with their tree added (`--add-dir`): the census lists them at the
+    main checkout, not in their tree. Found running the plan on a real machine (2026-10-02): a live fleet's seat trees
+    would have been removed. A tree an open post row holds for a live session is never the sweep's."""
+    import dataclasses
+    from watchkit import sess
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    with ledger.session() as s:
+        s.append(actor(ledger, "main session 1"), "r1", "reserve", "reserved",
+                 fields={"branch": "fleet/main-1", "owner": "main session 1", "tree": str(tree)})
+    git(tree, "switch", "-q", "-c", "feat/done")   # its post moved it onto a task branch, as `tree switch` does
+    alive = dataclasses.replace(sess("main session 1"), cwd=str(root))
+    lines = cleanup.sweep(ledger, sessions=[alive], act=True)
+    assert tree.exists() and any("main session 1" in line and "alive" in line for line in lines)

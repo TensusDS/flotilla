@@ -1145,6 +1145,14 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    trees, and a clean merged tree is what such a session would lose at most; a stash holds a tree only as a sign of
    work in progress. (planner's decision, 2026-10-02)
 
+208. **A tree an open row holds for a live session is never the sweep's** (found running `fleet clean`'s plan on this
+   machine, 2026-10-02). Seats are launched from the main checkout with their tree added, so the census lists them at
+   the main checkout, not in their tree: the sweep's working-directory check did not see a live seat, and a seat
+   whose task branch was already on trunk would have lost its tree while it ran. A tree an open row holds for a
+   session the census lists is now kept, named with that session. No live fleet was on the machine when the plan
+   ran; neither the tests nor the review had caught it, since every test seat sat in its own tree. (planner's
+   decision, 2026-10-02)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
