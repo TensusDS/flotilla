@@ -230,4 +230,10 @@ the review hook's.
 - W24: onboarding writes `tests.setup_command`; a fresh tree is set up before its first receipt.
 - Beyond the findings: a tier green over the same files is not run twice (decision 201), from the slowdown measured
   on the twosuns fleet (`2026-10-02-fleet-slowdown.md`).
-- W14, W19, W20 wait: they live in `ask` mode, which is no longer the default.
+- W19, W20 wait: they live in `ask` mode, which is no longer the default; README's "Known limitations" names them.
+
+## What 0.6.7 does
+
+- W14: it did not live in `ask` mode after all - `--fill` ran before the rename in any mode. The leading session now
+  raises the rest of the fleet on the person's next message, once its name shows (decision 211).
+- A title the census never shows turns into a `/rename` request after three messages (decision 210).

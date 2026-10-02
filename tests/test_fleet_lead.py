@@ -31,6 +31,7 @@ def test_lead_names_this_session_without_a_rename(tmp_path, monkeypatch):
     monkeypatch.setattr("flotilla.core.caller.person_refusal", lambda what: "")
     code, out = run_cli("spawn", "--lead", "--root", str(root))
     assert code == 0 and "/rename" not in out and "next message" in out
+    assert "after that message" in out   # W14: seats raised before the rename learn the old name
     assert lead.pending(LocalLogStore(tmp_path / "state" / "fleet")) == {me.session_id: "orchestrator 1"}
 
 
@@ -65,6 +66,7 @@ def test_the_session_is_named_until_the_census_shows_the_name(tmp_path, monkeypa
     said = json.loads(_prompt(tmp_path, "sid-me", monkeypatch))["hookSpecificOutput"]
     assert said["hookEventName"] == "UserPromptSubmit" and said["sessionTitle"] == "worldcore-orchestrator 1"
     assert "orchestrator" in said["additionalContext"]
+    assert "flotilla spawn --fill" in said["additionalContext"]   # W14: the rest is raised once the name shows
     assert "sessionTitle" in _prompt(tmp_path, "sid-me", monkeypatch)                  # not applied yet: again
     assert "sessionTitle" not in _prompt(tmp_path, "sid-me", monkeypatch, me="worldcore-orchestrator 1")
     assert lead.pending(_store(tmp_path)) == {}

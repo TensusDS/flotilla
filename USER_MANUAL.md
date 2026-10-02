@@ -83,7 +83,8 @@ Worktrees and receipts:
 ## Daily operation
 
 1. **Start:** if your own session leads the fleet (onboarding offers it), `flotilla spawn --lead` gives it the
-   orchestrator's name - shown with your next message - and you raise the rest with `flotilla spawn --fill`.
+   orchestrator's name - shown with your next message - and after that message you raise the rest with
+   `flotilla spawn --fill`, so the seats learn the new name.
    Otherwise `/flotilla:spawn`, then `claude attach <orchestrator id>` (`flotilla fleet` lists the ids). Tell the
    orchestrator what to build. The project's `.flotilla/` must be on origin's trunk first.
 2. **While it runs:** `/flotilla:status` for the picture, `/flotilla:watch` for what needs you. Answer permission

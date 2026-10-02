@@ -99,8 +99,8 @@ You can change any answer later by editing `.flotilla/project.toml`; a change ta
 Onboarding ends by offering to raise the fleet now, three ways:
 
 - **This session leads it** (recommended). The session you onboarded in becomes the orchestrator: flotilla gives it
-  the orchestrator's name (`flotilla spawn --lead`; Claude Code shows the name with your next message) and raises the
-  rest of the fleet in the background with `flotilla spawn --fill`. You talk to the fleet and answer its permission
+  the orchestrator's name (`flotilla spawn --lead`; Claude Code shows the name with your next message) and, on that
+  message, raises the rest of the fleet in the background with `flotilla spawn --fill`. You talk to the fleet and answer its permission
   questions right here.
 - **A background orchestrator.** Every seat, the orchestrator included, starts in the background; you attach to talk.
 - **Not now.** Raise it later:
@@ -164,10 +164,11 @@ Setup is above. The rest of this file:
 7. [Guards](#guards)
 8. [What it costs](#what-it-costs)
 9. [What flotilla does on your machine](#what-flotilla-does-on-your-machine)
-10. [Security model and its limits](#security-model-and-its-limits)
-11. [Updating, and removing flotilla](#updating-and-removing-flotilla)
-12. [Development](#development)
-13. [License](#license)
+10. [Known limitations](#known-limitations)
+11. [Security model and its limits](#security-model-and-its-limits)
+12. [Updating, and removing flotilla](#updating-and-removing-flotilla)
+13. [Development](#development)
+14. [License](#license)
 
 ---
 
@@ -368,6 +369,27 @@ So nothing comes as a surprise:
 - **Git hooks.** `pre-commit` and `pre-push` are written into `.git/hooks/` only when you say yes in `/flotilla:guard`.
 - **Network.** Only what your project's own commands do, plus `git` and `gh` asking origin and GitHub about what
   shipped. flotilla itself sends nothing anywhere.
+
+## Known limitations
+
+What flotilla does not do yet, or does only partly. Each one was met in a field test; the test reports are in
+`docs/field-tests/`.
+
+- **No Windows.** Linux and macOS only; see [Requirements](#requirements) for what macOS skips.
+- **One lane per machine, shared by every project's fleet.** Two fleets on one machine wait for each other's long
+  runs. The lane spends its time carefully (see [Long runs and the lane](#long-runs-and-the-lane)), but it does not
+  split the machine between projects.
+- **Long-lived seats get slower.** A model turn over 600k tokens of context took about twice as long as one under
+  100k. flotilla does not replace a seat by itself yet; after many tasks, retire the seat with `/flotilla:retire`
+  and raise a fresh one with `flotilla spawn --fill`.
+- **In `ask` mode, permission questions wait for the orchestrator** - and when the orchestrator is your own session
+  and is itself waiting on you, a seat's question waits too and is refused after about nine minutes; an answer you
+  give after that is not kept, and the seat asks again. `auto` mode, the default, routes no such questions.
+- **The leading session's name comes through a hook** that measured working on Claude Code 2.1.287. If your version
+  does not show the name after three messages, flotilla tells the session to ask you for `/rename <name>`.
+- **Auto mode is not offered for every model.** Claude Code has refused it for some (seen with Haiku);
+  `flotilla spawn` warns before raising such a seat - pick another model or `ask` mode for that post.
+- **It does not isolate sessions from you or from each other** - see the next section.
 
 ## Security model and its limits
 

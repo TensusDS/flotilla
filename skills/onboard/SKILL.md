@@ -102,11 +102,13 @@ Ask with AskUserQuestion, header "Fleet", question "Raise the fleet now?":
    (`<project>-orchestrator N`) and prints it; a note may come first. Claude Code shows the name on the person's
    next message - nobody renames anything. Only if it says it could not tell which session runs it, tell the person
    to type `/rename <the name>` and then send any message, and wait for that message.
-2. Run `flotilla spawn --fill` right away: it raises the rest of the profile's default composition, and counts this
-   session as the orchestrator. Report each seat it raised.
+2. Do not raise the rest yet: seats raised now would learn this session's old name, and their letters would go
+   nowhere once the name changes. Tell the person: "Tell me what to build." Their next message renames this session
+   (the flotilla hook says so in its context); then, before anything else, run `flotilla spawn --fill`: it raises
+   the rest of the profile's default composition and counts this session as the orchestrator. Report each seat it
+   raised, then take up what the person asked.
 3. From now on you hold the orchestrator post: read `.flotilla/posts/orchestrator.md` on trunk and follow its
-   instructions, and use the `flotilla:flotilla` skill for every ledger move. Tell the person: "Tell me what to
-   build." Where the profile's permission mode is `ask`, the fleet's permission questions reach you; put each to the
+   instructions, and use the `flotilla:flotilla` skill for every ledger move. Where the profile's permission mode is `ask`, the fleet's permission questions reach you; put each to the
    person with `/flotilla:permit` (in `auto` mode none come). Where the
    person authorizes merges, show them each approve command and let them type it with `!` in front; your own Bash
    call of `flotilla work approve` is refused, by design.

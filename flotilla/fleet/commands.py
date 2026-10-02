@@ -80,7 +80,8 @@ def _lead(ledger, args) -> int:
     if me is not None and me.session_id:   # the prompt hook names it on the person's next message (W9)
         lead.record(store, me.session_id, name, now=ledger.now())
         print(f"{name}: this session leads the fleet. Claude Code shows the name once you send your next message; "
-              "`flotilla spawn --fill` raises the rest of the default composition now.")
+              "raise the rest with `flotilla spawn --fill` after that message, so the seats learn this name and "
+              "not the old one.")
         return 0
     print(f"{name}: reserved, but flotilla could not tell which session runs this, so it cannot name it. Type "
           f"`/rename {name}`, then send any message; `flotilla spawn --fill` raises the rest.")

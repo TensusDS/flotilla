@@ -170,7 +170,9 @@ def _prompt(ctx, payload, out, now) -> int:
     state = ctx.ledger.state_dir if ctx.ledger is not None else paths.state_dir()
     if title:   # the person's own session leads the fleet: it takes the orchestrator's name now (W9)
         note = (f"flotilla: this session is now `{title}` and holds the orchestrator post; follow "
-                ".flotilla/posts/orchestrator.md on trunk and use the flotilla:flotilla skill for every ledger move.")
+                ".flotilla/posts/orchestrator.md on trunk and use the flotilla:flotilla skill for every ledger move. "
+                "If the rest of the fleet is not raised yet, run `flotilla spawn --fill` first - the seats learn "
+                "this name.")
         if lead.offered(LocalLogStore(paths.state_dir() / "fleet"), str(payload.get("session_id"))) > lead.ASK_AFTER:
             note += (f"\nClaude Code has not shown this name after {lead.ASK_AFTER} messages - ask the person to type "
                      f"`/rename {title}` and then send any message.")
