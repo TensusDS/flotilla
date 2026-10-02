@@ -74,7 +74,8 @@ Worktrees and receipts:
 **Machine and guards**
 
     flotilla lane                         who holds the machine
-    flotilla lane run --for <branch> -- <command>
+    flotilla lane run --for <branch> [--max SECONDS] -- <command>
+    flotilla lane stop                    stop your own run in the lane
     flotilla guard status                 guards on, hooks installed
     flotilla permit next | list | answer <id> allow|session --mark <mark> | answer <id> deny --why "<why>"
 
@@ -103,6 +104,8 @@ Worktrees and receipts:
 | a seat waits on `tree switch` | another worktree still has that branch checked out | `git -C <old tree> switch --detach` in the old tree (if it is clean), or retire its session |
 | `spawn` refuses: memory | free memory would fall below `fleet.memory_floor_mb` | retire idle seats, or `--anyway` if you know better |
 | a test run waits a long time | the lane is held, or memory is low | `/flotilla:lane` names the holder and what it waits for |
+| a run in the lane says "stopped at the ceiling" | it ran past ten times the slowest measured tier (at least 10 min), or past `--max` | a hang: find it; a long run: `--max <seconds>` or `[lane] max_run_seconds` in the profile |
+| a receipt refuses: "the tree setup ... failed" | the profile's `tests.setup_command` (e.g. `npm ci`) failed in that tree | read the lines it prints; fix the dependency or the network, then run the receipt again |
 | a run looks green but did not finish | it was killed (often out of memory) and the wrapper returned 0 | read the tail of its output for the passed count; use `flotilla lane run` |
 | a permission question is refused after nine minutes | nobody answered within `[broker] wait_seconds` | answer sooner with `/flotilla:permit`, or add an allow rule for that command |
 | `permit answer` refused: mark | the answer did not carry the mark of the question shown | run `flotilla permit next` and use the command it prints |

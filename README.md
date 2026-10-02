@@ -284,6 +284,18 @@ holds it, who waits, unbooked runs computing, low memory, and CI using this mach
 machine is `lane_capacity` in the machine profile (`machine.toml` in the state directory, 1 by default). The lane is a
 booking, not a lock: a run started outside it is not stopped - the command guard warns about it.
 
+The lane is also where a fleet loses its time. Measured on a fleet that ran three days: the way from "handed over"
+to "on trunk" grew about tenfold after the first hours, almost all of it waiting for the lane, while the model's own
+turns slowed about twofold as sessions' contexts grew. So flotilla spends the lane carefully:
+
+- **nothing is tested twice** - a test tier already green over the same files (an author's tip and a sender's merge
+  that changes no file) is reused, and a receipt with nothing left to run does not queue at all;
+- **a run has a ceiling** - ten times the slowest tier measured on this machine, at least ten minutes, or `--max`;
+  past it the run is stopped with every process it started and recorded as killed. `flotilla lane stop` stops your
+  own run sooner;
+- **a fresh tree is set up once** - the profile's `tests.setup_command` (`npm ci` beside a `package-lock.json`, found
+  at onboarding) runs before a tree's first receipt and again only when its lockfile changes.
+
 ## Guards
 
 Before a Bash command runs, flotilla refuses a few commands that do silent damage:

@@ -1065,6 +1065,34 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    stays on spawn only and does not see a model the person launched Claude Code with; a corrupt leads store fails
    `flotilla fleet` loudly rather than hiding it. (planner's decision, 2026-10-02)
 
+201. **A test tier is not run twice over the same files** (the slowdown measured on the twosuns fleet, 2026-10-02:
+   `docs/field-tests/2026-10-02-fleet-slowdown.md`). A tier's answer depends on the files it tests and its command,
+   not on the commit that carries them: a green run is kept per file tree and tier command, and a receipt over a
+   commit with the same files - a sender's merge that changes no file - reuses it, without queueing for the lane when
+   nothing is left to run. A red tier always runs again. A red, killed or timed-out tier carries its exit code and its
+   last lines in the receipt, and `receipt run` prints them (worldcore W23). Ruling: what a tree has outside git (its
+   installed dependencies) is not part of the files; a tier green over the author's tree counts for the sender's
+   identical files, which is the point - and the setup of decision 203 keeps such trees alike. (planner's decision,
+   2026-10-02)
+
+202. **A run in the lane has a ceiling, and its holder can stop it** (worldcore W21, W22). A command in the lane runs in
+   its own process group; past its ceiling the whole group is stopped and the run is recorded as killed. The ceiling
+   is the profile's `[lane] max_run_seconds`, else ten times the slowest tier measured on this machine and never under
+   ten minutes, else half an hour; `--max` names one for a single run; receipts use it as their tier timeout.
+   `flotilla lane stop` stops the caller's own run by the pid flotilla recorded - a seat's `pkill -f` had matched its
+   own command line - and the stopped run says so. A process that has ended but is not yet reaped no longer reads as
+   a live run. `lane` shows how long each run has held it. (planner's decision, 2026-10-02)
+
+203. **A fresh tree is set up before its first receipt** (worldcore W24). Onboarding detects how a checkout gets its
+   dependencies from its lockfile - `npm ci`, `pnpm install --frozen-lockfile`, `yarn install --frozen-lockfile`,
+   `poetry install`; `uv run` syncs itself - and writes it as `tests.setup_command`, shown among the profile's shell
+   commands before the person's yes. A receipt with something to run sets the tree up first, inside the lane, when its
+   lockfiles changed since the last setup there; a failed setup refuses the receipt with its exit code and last lines.
+   Also in 0.6.2: `watch` tells a plugin hook's headless review session (its transcript names an SDK entrypoint) from a
+   stranger and no longer raises it, nor raises the person's own interactive session for waiting on them (W6, W17);
+   the fleet skill asks for flotilla's command line as a whole command, which the ask-mode pass recognizes (W18).
+   (planner's decision, 2026-10-02)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

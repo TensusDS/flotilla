@@ -7,7 +7,10 @@ user-invocable: false
 # Working in a flotilla fleet
 
 Your system prompt names you, your post, your home worktree and the absolute path of the flotilla command line.
-Use that path for every command below. Never infer your name or your post from the work.
+Use that path for every command below, written out as the whole command, one flotilla command per call - not
+behind `cd ... &&`, a variable or a pipe: name a tree with `--root`/`--tree` instead. A plain call is one flotilla
+can tell is its own and let through without a question where every other call waits on the person. Never infer
+your name or your post from the work.
 
 ## When you start
 
@@ -50,6 +53,12 @@ the result on the row, where `flotilla status` shows it. Receipts take the lane 
 signal is recorded as killed, with no verdict: never report it as passed, and never read a run's success from the
 exit code of a pipeline. The lane is not a lock: a run started without it is seen only as an unbooked run, and
 nobody waits for its result. The Bash guard warns when you start one; book it instead of ignoring the warning.
+
+A run in the lane has a ceiling - ten times the slowest tier measured on this machine, at least ten minutes, or
+`--max <seconds>` - past which it is stopped with everything it started and recorded as killed. To stop your own
+run sooner, `flotilla lane stop`: it uses the pid flotilla recorded. Never `pkill -f` your way to it - the pattern
+is in your own command line and matches it first. A receipt runs nothing twice: a tier already green over the
+same files is reused, and a fresh tree is set up (the profile's `tests.setup_command`) before its first run.
 
 ## Helpers
 

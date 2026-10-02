@@ -200,3 +200,34 @@ W22. **friction - stopping one's own hung run is left to `pkill`.** To free the 
 ran `pkill -f` with a pattern that matched its own command line and killed itself first ("pkill killed itself: the
 pattern matched my own command"). Flotilla knows the run's pid - `lane` prints it. Fix direction: `flotilla lane stop
 <booking>` stops the holder's own run by the pid flotilla recorded, so no session has to find processes by text.
+
+W23. **defect - a red receipt says nothing about why.** `worldcore-sender 1`'s push receipt for task 0 over
+`0261fc9` came back `node: red` with `seconds: null`, an empty summary and no output: `npm test` exited non-zero, and
+the receipt keeps neither the tail nor the exit code (`run_tier` has the tail; the receipt drops it), nor does
+`receipt run` print it. The sender went looking for a log that does not exist. Fix direction: a red, killed or
+timed-out tier carries its exit code and the last lines of its output in the receipt and in what `receipt run` prints.
+
+W24. **friction - a seat's tree is cut without its dependencies.** Each worldcore seat found on its first test run that
+its tree had no `node_modules` and ran `npm ci` itself; the sender did not, and its push receipt for task 0 went red
+(W23) because `npm test` had nothing to run with - the merge was identical to the accepted branch. Fix direction:
+onboarding detects a tree setup command (`npm ci` beside `package-lock.json`, `uv sync` beside `uv.lock`) into the
+profile, flotilla runs it when it cuts a seat's tree, and a receipt names a missing setup instead of a red tier.
+
+W6, again (2026-10-02, 16:27): it costs the fleet's attention, not only the person's. The orchestrator's `flotilla
+watch` raised "a stranger interactive session" `worldcore-main-2-d2` in `worldcore-main session 2`'s tree, started a
+minute after that seat committed - the security-guidance review of the commit - and the orchestrator went to find
+out what it was. Graded up from cosmetic: `watch` should not raise a session it cannot tell is a person's or a
+tool's as an alarm; an interactive session that appears in a seat's tree right after a commit and lives a minute is
+the review hook's.
+
+## What 0.6.2 does about W6, W17, W18, W21-W24
+
+- W6, W17: `watch` reads a stranger's transcript for its entrypoint: a plugin's headless review is no alarm, nor is the
+  person's own session waiting on them.
+- W18: the fleet skill asks for flotilla's command line as a whole command, `--root`/`--tree` instead of `cd`.
+- W21, W22: a lane run has a ceiling and stops with all it started; `flotilla lane stop` stops your own run.
+- W23: a red tier carries its exit code and last lines; `receipt run` prints them.
+- W24: onboarding writes `tests.setup_command`; a fresh tree is set up before its first receipt.
+- Beyond the findings: a tier green over the same files is not run twice (decision 201), from the slowdown measured
+  on the twosuns fleet (`2026-10-02-fleet-slowdown.md`).
+- W14, W19, W20 wait: they live in `ask` mode, which is no longer the default.
