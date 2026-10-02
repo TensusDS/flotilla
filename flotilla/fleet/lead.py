@@ -15,6 +15,10 @@ KEY = "leads"
 #: A lead not shown within a day is forgotten: the session was closed before the person's next message, and a resume
 #: days later must not rename it.
 KEEP = dt.timedelta(days=1)
+#: After this many messages that offered the title without the census showing it, the session asks the person for
+#: `/rename`: the hook's title is measured on one Claude Code version only, and a version that ignored it would leave
+#: the session unnamed with nobody told.
+ASK_AFTER = 3
 
 
 def record(store, session_id: str, name: str, *, now: str) -> None:
@@ -47,11 +51,27 @@ def pending(store, now=None) -> dict[str, str]:
     return waiting
 
 
+def offered(store, session_id: str) -> int:
+    """How many messages have offered this session its title since its newest lead was recorded."""
+    count = 0
+    for item in store.read(KEY).records:
+        if item.get("session") != session_id:
+            continue
+        if "offered" in item:
+            count += 1
+        elif "applied" in item or item.get("name"):
+            count = 0
+    return count
+
+
 def due(store, session_id: str, *, current: str, now=None) -> str:
     """The name to give this session now, or "". Given again on every prompt until the census lists the session
     under it - Claude Code says nothing back about a title it was handed (review of 0.6.0, I4) - and then closed."""
     name = pending(store, now).get(session_id, "") if session_id else ""
-    if not name or name != current:
+    if not name:
+        return ""
+    if name != current:
+        store.append(KEY, {"session": session_id, "offered": name})
         return name
     with store.transaction(KEY) as tx:
         if pending(store, now).get(session_id) == name:

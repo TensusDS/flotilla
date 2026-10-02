@@ -147,3 +147,27 @@ def test_fleet_lists_the_leading_session(tmp_path, monkeypatch):
     monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [named])
     code, out = run_cli("fleet", "--root", str(root))
     assert code == 0 and "orchestrator 1 (orchestrator)" in out and "leads the fleet" in out
+
+
+def test_a_title_the_census_never_shows_turns_into_a_rename(tmp_path, monkeypatch):
+    """The hook's title is measured only on Claude Code 2.1.287. A version that ignores it would leave the session
+    unnamed and silently stop counting as the orchestrator a day later; so after a few messages the session is told
+    to ask the person for `/rename`, and the title keeps being offered meanwhile."""
+    lead.record(_store(tmp_path), "sid-me", "worldcore-orchestrator 1", now="t")
+    said = [json.loads(_prompt(tmp_path, "sid-me", monkeypatch))["hookSpecificOutput"]
+            for _ in range(lead.ASK_AFTER + 1)]
+    assert all(s["sessionTitle"] == "worldcore-orchestrator 1" for s in said)
+    assert not any("/rename" in s["additionalContext"] for s in said[:lead.ASK_AFTER])
+    assert "/rename worldcore-orchestrator 1" in said[lead.ASK_AFTER]["additionalContext"]
+
+
+def test_offers_are_counted_per_session(tmp_path):
+    store = LocalLogStore(tmp_path)
+    lead.record(store, "sid-1", "a", now="t")
+    lead.record(store, "sid-2", "b", now="t")
+    lead.due(store, "sid-1", current="x")
+    lead.due(store, "sid-1", current="x")
+    lead.due(store, "sid-2", current="x")
+    assert lead.offered(store, "sid-1") == 2 and lead.offered(store, "sid-2") == 1
+    lead.record(store, "sid-1", "a2", now="t")            # a new lead starts its own count
+    assert lead.offered(store, "sid-1") == 0

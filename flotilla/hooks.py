@@ -171,6 +171,9 @@ def _prompt(ctx, payload, out, now) -> int:
     if title:   # the person's own session leads the fleet: it takes the orchestrator's name now (W9)
         note = (f"flotilla: this session is now `{title}` and holds the orchestrator post; follow "
                 ".flotilla/posts/orchestrator.md on trunk and use the flotilla:flotilla skill for every ledger move.")
+        if lead.offered(LocalLogStore(paths.state_dir() / "fleet"), str(payload.get("session_id"))) > lead.ASK_AFTER:
+            note += (f"\nClaude Code has not shown this name after {lead.ASK_AFTER} messages - ask the person to type "
+                     f"`/rename {title}` and then send any message.")
         body = {"hookEventName": "UserPromptSubmit", "sessionTitle": title,
                 "additionalContext": "\n".join([note, *blocks])}
         print(json.dumps({"hookSpecificOutput": body}), file=out)
