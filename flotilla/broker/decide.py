@@ -77,6 +77,46 @@ def _decision(got: dict, asked: queue.Question, wait: float) -> dict:
     return _timed_out(wait)
 
 
+#: flotilla's own subcommands a seat runs without asking the person: reading the fleet, and ledger moves flotilla
+#: itself checks - post, evidence, revision (worldcore field test W16). A second word listed with a subcommand is
+#: refused even so: standing the fleet down, a long run of any command, the person's approval.
+OWN_SUBCOMMANDS = {"status": (), "fleet": ("down",), "watch": (), "brief": (), "metrics": (), "doctor": (),
+                   "lane": ("run",), "work": ("approve",), "tree": (), "receipt": (), "helper": ()}
+#: Any of these in the command line, quoted or not, and it is not passed: what the shell would read as another
+#: command, a redirect or a substitution.
+SHELL_SIGNS = set(";&|<>$`\\\n(){}*?!~")
+
+
+def own_command(payload: dict) -> bool:
+    """Whether a Bash call is one of flotilla's own safe commands: the plugin's command line by its real path, one
+    command, no assignment, redirect or substitution, a listed subcommand (decision 199)."""
+    import shlex
+    from flotilla.hooks import CLI
+    tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
+    command = tool_input.get("command") if payload.get("tool_name") == "Bash" else None
+    if not isinstance(command, str) or SHELL_SIGNS & set(command):
+        return False
+    try:
+        words = shlex.split(command)
+    except ValueError:
+        return False
+    if len(words) < 2 or words[0] != str(CLI):
+        return False
+    refused = OWN_SUBCOMMANDS.get(words[1])
+    if refused is None:
+        return False
+    return not any(word in refused for word in words[2:])   # anywhere: an option's value would hide the word
+
+
+def _leads(ctx) -> set:
+    from flotilla.core.storage import LocalLogStore
+    from flotilla.fleet import lead
+    try:
+        return set(lead.pending(LocalLogStore(ctx.ledger.state_dir / "fleet")))
+    except Exception:  # noqa: BLE001 - an unreadable record of leads only hides one, it never invents one
+        return set()
+
+
 def decide(payload: dict, ctx, *, clock=time.time, sleep=time.sleep, timer=time.monotonic, poll: float = POLL,
            started: float | None = None, parent=os.getppid, pid: int | None = None) -> dict | None:
     """The decision for this permission request, or None to leave the dialog to decide.
@@ -93,13 +133,17 @@ def decide(payload: dict, ctx, *, clock=time.time, sleep=time.sleep, timer=time.
                      "to anyone")
     if not enabled(ctx.profile):
         return None
+    if own_command(payload):   # nothing a person's yes would add: flotilla checks each of these itself (W16)
+        return {"behavior": "allow"}
     me = ctx.me.name
     if ctx.post_of(me) == "orchestrator":
         handle = ctx.me.short_id or ctx.me.session_id[:8]
         return _deny(f"the orchestrator's own question cannot be put to itself; the person answers it with "
                      f"`claude attach {handle}`")
     mine = ctx.project if ctx.project is not None else ctx.sessions   # an orchestrator of another project never reads
-    if not any(s.name and s.name != me and ctx.post_of(s.name) == "orchestrator" for s in mine):
+    leading = _leads(ctx)   # the person's own session leads before its name shows (worldcore field test W13)
+    if not any(s.name and s.name != me and (ctx.post_of(s.name) == "orchestrator" or s.session_id in leading)
+               for s in mine):
         return _deny("no live orchestrator to put this question to; spawn one (`flotilla spawn -o 1`), or give this "
                      "session a rule that allows the call")
     try:

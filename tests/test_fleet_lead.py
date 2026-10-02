@@ -130,3 +130,20 @@ def test_fill_does_not_count_a_lead_whose_session_is_gone(tmp_path, monkeypatch)
     lead.record(LocalLogStore(tmp_path / "state" / "fleet"), "sid-gone", "orchestrator 1", now="t")
     code, out = run_cli("spawn", "--fill", "--dry-run", "--root", str(root))
     assert code == 0 and "(orchestrator)" in out, out
+
+
+def test_fleet_lists_the_leading_session(tmp_path, monkeypatch):
+    """Worldcore field test W15: `flotilla fleet` listed only spawned seats, so the orchestrator - the person's own
+    session - concluded it was missing from the fleet and read flotilla's source to find out why."""
+    root = _onboarded_with(tmp_path, monkeypatch, {"orchestrator": 1, "main": 1})
+    unnamed = _a_session("app-3f", root)
+    monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [unnamed])
+    code, out = run_cli("fleet", "--root", str(root))
+    assert code == 0 and "leads the fleet" not in out
+    lead.record(LocalLogStore(tmp_path / "state" / "fleet"), unnamed.session_id, "orchestrator 1", now="t")
+    code, out = run_cli("fleet", "--root", str(root))
+    assert code == 0 and "app-3f (orchestrator)" in out and "leads the fleet" in out and "orchestrator 1" in out
+    named = _a_session("orchestrator 1", root)
+    monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [named])
+    code, out = run_cli("fleet", "--root", str(root))
+    assert code == 0 and "orchestrator 1 (orchestrator)" in out and "leads the fleet" in out

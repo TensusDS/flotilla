@@ -181,6 +181,30 @@ def _print_raised(raised) -> None:
         print(f"{item.seat.name}  {address}  {item.seat.tree}{note}")
 
 
+def _leaders(ledger, sessions, listed: set) -> list[str]:
+    """The person's own session leading the fleet: it holds the orchestrator post without a seat row, so the rows do
+    not list it (worldcore field test W15)."""
+    import datetime as dt
+    from flotilla.fleet import lead
+    from flotilla.ledger import project
+    from flotilla.posts import post_for_session
+    waiting = lead.pending(LocalLogStore(paths.state_dir() / "fleet"), now=dt.datetime.now(dt.timezone.utc))
+    lines = []
+    for item in project.members(sessions, ledger.rows(), project.roots(ledger.root)):
+        if not item.name or item.name in listed:
+            continue
+        try:
+            post = post_for_session(ledger.posts, item.name)
+        except PostError:
+            post = None
+        coming = waiting.get(item.session_id, "")
+        if (post is not None and post.name == "orchestrator") or coming:
+            later = f"; named `{coming}` with the person's next message" if coming and coming != item.name else ""
+            whose = "the person's own session" if item.kind == "interactive" else "a session with no seat row"
+            lines.append(f"{item.name} (orchestrator) leads the fleet: {whose}, in the main checkout{later}")
+    return lines
+
+
 def _fleet(ledger, args) -> int:
     if getattr(args, "action", None) == "down":
         return _down(ledger)
@@ -190,7 +214,10 @@ def _fleet(ledger, args) -> int:
         sessions = None
         print(f"census: unknown ({err}); liveness is not asserted")
     view = retire.fleet_view(ledger, sessions)
-    if not view:
+    leaders = _leaders(ledger, sessions, {item["name"] for item in view}) if sessions is not None else []
+    for line in leaders:
+        print(line)
+    if not view and not leaders:
         print("no post rows: nobody was spawned, or everyone was retired")
     for item in view:
         if item["stranger"]:

@@ -104,6 +104,26 @@ def _live_posts(ledger, sessions) -> Counter:
     return held
 
 
+#: Models Claude Code was seen to refuse auto mode for ("auto mode unavailable for this model", Haiku 4.5, measured
+#: 2026-10-01). A warning, not a refusal: the list is Claude Code's, and it moves.
+NO_AUTO_SEEN = ("haiku",)
+
+
+def _auto_unavailable(ledger, wanted) -> list[str]:
+    lines = []
+    for post_name in wanted:
+        post = ledger.posts[post_name]
+        try:
+            mode = launch.permission_mode(ledger.profile, post)
+        except launch.LaunchError:
+            continue
+        model = launch.model_for(ledger.profile, post)
+        if mode == "auto" and any(word in model.lower() for word in NO_AUTO_SEEN):
+            lines.append(f"post `{post_name}` would run auto mode on `{model}`, for which Claude Code has said "
+                         "\"auto mode unavailable for this model\"; pick another model or permission mode")
+    return lines
+
+
 def _named_before(ledger, mine) -> str:
     """Why seats cannot be raised while live seats of this project carry names from before its fleet name: they match
     no post, so the one-copy check would not see a live sender and raise a second one (review of 0.6.0, I1)."""
@@ -187,7 +207,7 @@ def plan(ledger, counts: dict, *, census, store, reserve: bool,
                 if gitq.branch_tip(ledger.root, seat.branch, run=ledger.run)]
     if clashes:
         raise SpawnRefused("; ".join(clashes) + "; nothing was raised")
-    unwalked = []
+    unwalked = _auto_unavailable(ledger, wanted)
     if (ledger.profile.get("judge") or {}).get("required") and not wanted.get("judge") and not held.get("judge"):
         unwalked.append("the profile requires a judge and the fleet will hold none: shipped rows wait for a walk "
                         "nobody makes; add one (`--post judge=1`)")

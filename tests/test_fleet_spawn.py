@@ -355,3 +355,18 @@ def test_a_seat_raised_directly_is_narrowed_too(tmp_path):
     spawn.raise_seat(ledger, seats[0], caller=CALLER, census=fake.census, wait=0.2, poll=0.05,
                      sleep=lambda seconds: None)
     assert settings_of(fake.launched[0]) == {"enabledPlugins": {"serena@official": False}}
+
+
+def test_auto_mode_on_a_model_that_may_not_have_it_is_warned(tmp_path):
+    """Auto mode became quick onboarding's answer (decision 199); Claude Code said "auto mode unavailable for this
+    model" for Haiku 4.5 in a session measured 2026-10-01. A seat that would run auto on Haiku is warned, not
+    refused: the list of models is Claude Code's, and it moves."""
+    fake = FakeClaude()
+    profile = {**PROFILE, "permissions": {"mode": "auto"}, "fleet": {"model": "claude-haiku-4-5-20251001"}}
+    root, ledger, store = world(tmp_path, fake, profile=profile)
+    _, warnings = spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False)
+    assert any("auto mode" in line and "haiku" in line.lower() for line in warnings)
+    (tmp_path / "b").mkdir()
+    root2, ledger2, store2 = world(tmp_path / "b", fake, profile={**profile, "fleet": {"model": "one"}})
+    _, warnings = spawn.plan(ledger2, {"main": 1}, census=fake.census, store=store2, reserve=False)
+    assert not any("auto mode" in line for line in warnings)

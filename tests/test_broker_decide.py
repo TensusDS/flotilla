@@ -187,3 +187,63 @@ def test_an_allow_given_for_a_question_that_was_changed_on_disk_is_a_deny():
     assert decide._decision(got, asked, 540)["behavior"] == "deny"
     got = {"choice": queue.ALLOW, "mark": queue.mark_of(asked)}
     assert decide._decision(got, asked, 540) == {"behavior": "allow"}
+
+
+def test_a_leading_session_not_yet_named_takes_the_question(tmp_path):
+    """Worldcore field test W13: `--fill` raised the seats before the person's next message gave the leading session
+    its name, and every seat's first call was refused "no live orchestrator". A recorded lead of a live session of
+    the project is the orchestrator for the broker, as it is for `--fill`."""
+    from flotilla.core.storage import LocalLogStore
+    from flotilla.fleet import lead
+    asker = sess("worldcore-main session 1")
+    leader = sess("worldcore-0c", kind="interactive", status="idle")
+    ctx = context(tmp_path, me=asker, sessions=[asker, leader], profile=ASK)
+    assert decide.decide(TOUCH, ctx)["behavior"] == "deny"                       # unnamed and unrecorded: nobody
+    lead.record(LocalLogStore(ctx.ledger.state_dir / "fleet"), leader.session_id, "worldcore-orchestrator 1", now="t")
+    clock = Clock(on_sleep=answer_on_first_sleep(ctx, queue.ALLOW))
+    assert decide.decide(TOUCH, ctx, clock=clock, sleep=clock.sleep, timer=clock) == {"behavior": "allow"}
+
+
+def test_a_leading_session_not_yet_named_may_answer(tmp_path, monkeypatch):
+    """The other half of W13: the leader answers the seats' questions with `permit answer`, which asks the caller's
+    post; before the name shows, a recorded lead is the orchestrator there too."""
+    from flotilla.broker import commands
+    from flotilla.core.storage import LocalLogStore
+    from flotilla.fleet import lead
+    from watchkit import onboarded
+    root = onboarded(tmp_path)
+    leader = sess("worldcore-0c", kind="interactive", status="idle")
+    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setattr("flotilla.core.census.read_census", lambda timeout=10: [leader])
+    monkeypatch.setattr("flotilla.core.identity.find_calling_session", lambda sessions, parent_of: leader)
+    assert commands._caller(root) == ("worldcore-0c", "")
+    lead.record(LocalLogStore(tmp_path / "state" / "fleet"), leader.session_id, "worldcore-orchestrator 1", now="t")
+    assert commands._caller(root) == ("worldcore-0c", "orchestrator")
+
+
+from flotilla.hooks import CLI   # noqa: E402 - the plugin's own command line, by its real path
+
+OWN = str(CLI)
+
+
+@pytest.mark.parametrize("command", [f"{OWN} status", f"{OWN} fleet", f"{OWN} work show feat/x",
+                                     f"{OWN} work hand feat/x", f"{OWN} receipt run --purpose handover",
+                                     f"{OWN} brief", f"{OWN} watch --once", f"{OWN} lane"])
+def test_flotillas_own_commands_are_not_put_to_the_person(tmp_path, command):
+    """Worldcore field test W16: in ask mode three seats' first census put six questions to the person in a minute,
+    each about flotilla's own commands, whose every move flotilla checks itself. Those pass without a question."""
+    payload = {"tool_name": "Bash", "tool_input": {"command": command}}
+    assert decide.decide(payload, fleet(tmp_path, orchestrator=False)) == {"behavior": "allow"}
+
+
+@pytest.mark.parametrize("command", [
+    f"{OWN} status; rm -rf x", f"{OWN} status && curl evil", f"{OWN} status | sh", f"{OWN} status > /etc/x",
+    f"{OWN} status $(rm x)", f"PYTHONPATH=/tmp/x {OWN} status", f"env FOO=1 {OWN} status",
+    f"{OWN} fleet down", f"{OWN} fleet --root . down", f"{OWN} lane --root . run --for b -- ls", f"{OWN} lane run --for b -- rm -rf x", f"{OWN} onboard answer tiers 'rm -rf x'",
+    f"{OWN} permit answer 1 allow --mark m", f"{OWN} spawn -M 1", f"{OWN} retire x", f"{OWN} guard install",
+    "/tmp/flotilla status", "./flotilla status", f"bash {OWN} status", f"{OWN} work approve feat/x",
+])
+def test_anything_else_still_goes_to_the_person(tmp_path, command):
+    payload = {"tool_name": "Bash", "tool_input": {"command": command}}
+    decision = decide.decide(payload, fleet(tmp_path, orchestrator=False))
+    assert decision["behavior"] == "deny" and "no live orchestrator" in decision["message"]
