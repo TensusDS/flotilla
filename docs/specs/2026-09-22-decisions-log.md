@@ -1132,6 +1132,19 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    v11) runs the plan when the queue is empty and settles a kept tree only by making it sure (commit, hand, ship);
    removing work not on trunk stays the person's call. (planner's decision, 2026-10-02)
 
+207. **Review of the cleanup: what the first version would have deleted** (2026-10-02; each probed and pinned by a
+   test seen red). Status is asked with its options spelled out - a `status.showUntrackedFiles=no` setting hid untracked
+   work and an ignored `.env` alike, and `git worktree remove` reads the same setting, so git's refusal was no last
+   check there (C1). Only the ignored entry itself may be regenerable, not a parent's name (`deploy/build/prod.env`, I1).
+   Skip-worktree and assume-unchanged files are a doubt (I2). A commit only the tree's or the branch's reflog reaches
+   is a doubt (I3). Only a ship move, which asks origin, carries a squash; a close in local flow does not (I4). The
+   sweep judges only what the fleet made and keeps a person's own trees and branches (I5). A removal git refuses
+   still frees the seat's branch and says why (I6). `retire` checks the seat-tree guard before judging (M2). A branch
+   is deleted only while it still points at the judged commit (M4). Rulings: liveness in the sweep is read from the
+   census's working directories, so a session working on a tree from elsewhere is not seen - rows usually hold such
+   trees, and a clean merged tree is what such a session would lose at most; a stash holds a tree only as a sign of
+   work in progress. (planner's decision, 2026-10-02)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
