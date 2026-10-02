@@ -165,3 +165,38 @@ W17. **friction - `watch` alerts the leading session about its own question to t
 session" while the orchestrator was the one asking the person (fleet size, AskUserQuestion). For an interactive
 leading session, waiting on the person is its normal state, not a deviation. Fix direction: `watch` does not report
 the census state `waiting` of an interactive session - the person is in front of it.
+
+W18. **friction - seats call flotilla in a form the own-command pass will not take.** The seats write
+`cd <tree> && F=<cli path>; $F status; $F fleet`. 0.6.1's pass for flotilla's own commands takes only the plain
+command line by its full path, and rightly refuses `&&`, `;` and `$F`, so in `ask` mode those calls still reach the
+person. Under the auto default it does not matter. Fix direction: the `flotilla:flotilla` skill tells seats to run
+the command line as the whole command, by its full path, one command per call, with `--root`/`--tree` instead of `cd`.
+
+W19. **defect - a leading session waiting on the person starves the fleet's permission questions.** The orchestrator
+(the person's own session) asked the person three API questions and waited on the answer. Meanwhile
+`worldcore-sender 1` asked, through the broker, to read the `core-tests` row before pushing the accepted task 0;
+the question sat in the queue, nobody showed it, and the broker refused it after 540 s - task 0 did not reach trunk.
+A background orchestrator never waits on the person, so it never had this gap. Fix direction: the orchestrator post
+checks `flotilla permit next` before every question it puts to the person and puts waiting permission questions in
+the same AskUserQuestion call; and `auto` mode, now the default, routes no such questions at all.
+
+W20. **friction - a late yes is thrown away.** Three of `worldcore-sender 1`'s permission questions in a row (to read
+the `core-tests` row, to read it again, to `git fetch origin`) expired after 540 s while the person was answering the
+orchestrator's other questions; the third time the person answered about a minute late and was told "question ... is
+already closed: withdrawn no answer in time". Task 0, accepted, did not reach trunk for over half an hour. Fix
+direction: an answer to a question withdrawn in the last minutes is kept and answers the same question when the same
+session asks it again; and the auto default routes none of these.
+
+W21. **defect - a hung run holds the machine's lane for every fleet, with no limit.** `worldcore-main session 4`
+started the full vitest suite through `flotilla lane run` at 15:01; one worker sat at 100% CPU with no output for 18
+minutes (the whole suite takes about 35 s; likely an infinite loop in the new weather code - a synchronous loop also
+blocks vitest's own test timeout). The lane is one per machine (capacity 1), so behind it waited worldcore's handover
+receipt for task 2 and twosuns' `sender 9` push receipt and `main session 21`: one project's hung test stopped another
+project's delivery. Nothing flagged it - `lane` lists the holder as alive. Fix direction: a run in the lane has a
+ceiling (per tier, from its measured time, with a margin) after which it is stopped and recorded as killed, not
+green; `lane` and `watch` name a run past its expected time.
+
+W22. **friction - stopping one's own hung run is left to `pkill`.** To free the lane (W21), `worldcore-main session 4`
+ran `pkill -f` with a pattern that matched its own command line and killed itself first ("pkill killed itself: the
+pattern matched my own command"). Flotilla knows the run's pid - `lane` prints it. Fix direction: `flotilla lane stop
+<booking>` stops the holder's own run by the pid flotilla recorded, so no session has to find processes by text.
