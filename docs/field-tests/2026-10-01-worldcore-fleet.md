@@ -159,3 +159,9 @@ lead the fleet from the onboarding session (decisions 190-192).
 - W14: left to W13's fix and to auto mode (ruling in decision 199).
 - W16: quick answers auto mode; in `ask` mode flotilla's own safe commands pass without a question; `spawn` warns about
   auto mode on a model that was seen to lack it.
+
+W17. **friction - `watch` alerts the leading session about its own question to the person.** The orchestrator's
+`flotilla watch --wait` fired "worldcore-orchestrator 1 waits on the person (census: waiting); answer it in its
+session" while the orchestrator was the one asking the person (fleet size, AskUserQuestion). For an interactive
+leading session, waiting on the person is its normal state, not a deviation. Fix direction: `watch` does not report
+the census state `waiting` of an interactive session - the person is in front of it.

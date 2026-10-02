@@ -14,5 +14,6 @@ allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla spawn*)
    `claude attach <id>` and its tree.
 4. A session reported "launched, not yet seen in the census" is alive or starting: never run spawn again for it,
    because two processes would share one name. Tell the person to check `claude agents`.
-5. When the permission mode is `manual`, say that each session stops and waits at every permission prompt until
-   someone attaches and answers.
+5. When the profile's permission mode is `ask`, say that each session's permission questions come to the
+   orchestrator, which puts them to the person; flotilla's own read commands and ledger moves pass without one. In
+   `auto` mode Claude Code's classifier decides each call and no question waits on anyone.

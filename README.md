@@ -63,7 +63,8 @@ flotilla reads what the repository already declares - test commands, CI workflow
 and then asks one question: **quick or custom**.
 
 - **Quick** takes what it found and the recommended answer to everything else: every branch reviewed by another
-  session, Claude Code's auto mode for background sessions (you are asked only what its classifier finds risky),
+  session, Claude Code's auto mode for background sessions (its classifier decides each call; no question waits on
+  you),
   every guard on, one model for every seat. It says in plain words what that means - who merges into trunk, what is
   reviewed, what you are asked - shows every shell command the profile will run, and asks for one yes.
 - **Custom** asks the few things it cannot read, one at a time: how work reaches trunk (pull requests, direct push, or
@@ -84,7 +85,7 @@ The permission question matters most:
 
 | answer | what background sessions do | when to choose it |
 |---|---|---|
-| **auto** (recommended) | run in Claude Code's auto mode; its classifier decides, and asks you only what it finds risky | most projects: the fleet works without a question per command |
+| **auto** (recommended) | run in Claude Code's auto mode; its classifier decides each call, and no question waits on you | most projects: the fleet works without a question per command |
 | **ask** | stop at every permission prompt; flotilla routes the question to you through the orchestrator - except flotilla's own commands (status, fleet, ledger moves), which flotilla checks itself | you want to see every command the fleet runs, and will answer often |
 | **rules** | run what your Claude Code allow rules permit, and are refused the rest | you have rules for the commands your project needs |
 

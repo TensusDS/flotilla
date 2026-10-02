@@ -1039,9 +1039,9 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    flotilla's own read commands. Quick now answers `permissions = auto` and lists it first as the recommended option;
    `ask` and `rules` stay for whoever chooses them. In `ask` mode the broker passes, without a question, flotilla's
    own command line by its real path with one listed subcommand (status, fleet, watch, brief, metrics, doctor, lane,
-   work, tree, receipt, helper) and no shell sign at all - no separator, redirect, substitution, assignment or glob -
-   and never with `fleet down`, `lane run` or `work approve` anywhere in it: flotilla checks each of those moves
-   itself, so a person's yes adds nothing. `spawn` warns when a seat would run auto mode on a model Claude Code was
+   work, tree, receipt, helper) and no shell sign at all - no separator, redirect, substitution or assignment - and
+   never with `fleet down`, `lane run` or `work approve` anywhere in it: flotilla checks each of those moves itself,
+   so a person's yes adds nothing (narrowed by decision 200). `spawn` warns when a seat would run auto mode on a model Claude Code was
    seen to refuse it for (Haiku 4.5, measured 2026-10-01). The person hears the profile in plain words from the
    command itself: `write` prints who merges into trunk, what is reviewed, what the person is asked and which tests
    run, because the 0.6.0 skill's instruction to say so was skipped (W12). A leading session not yet named is the
@@ -1049,6 +1049,21 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    (W13, W15). Ruling: W14 (seats that wrote to the leader's old name) is left to W13's fix - seats raised after the
    lead no longer stall in that gap - and to auto mode, under which no question waits there at all. (planner's
    decision, 2026-10-02)
+
+200. **Review of 0.6.1: the pass for flotilla's own commands is a strict whitelist** (2026-10-02). Decision 199's list
+   let a seat in `ask` mode run, with no question: `receipt run`, which runs the seat's own tree's test code
+   (`conftest.py`, package scripts) - any code at all; `work ... --skip-event`, which steps around the project's event
+   scripts; `helper raise --anyway` and `receipt --no-lane`, which step around the memory floor and the lane; `tree cut
+   --tree <path>`, which writes a checkout anywhere. The pass now takes only reading commands (`status`, `fleet` but
+   not `down`, `watch`, `brief`, `metrics`, `doctor`, `lane` bare) and ledger moves (`work`, never `approve`), and
+   refuses any `--skip...`, `--anyway`, `--no-lane`, `--as` or `--tree` and a carriage return as well as a newline;
+   `receipt`, `tree` and `helper` are the person's to allow again. Tests pin that the pass widens nothing outside ask
+   mode or for an interactive session. The plain-words summary says nothing false: a pull-request flow merged by a
+   person says so, review `none` does not say "reviewed", ask mode names its exception, and auto mode says no
+   question waits on the person - flotilla routes none there, so "asks you only what is risky" was a promise nobody
+   kept. The broker and `permit answer` forget a lead after a day, as the rename hook does. Rulings: the Haiku warning
+   stays on spawn only and does not see a model the person launched Claude Code with; a corrupt leads store fails
+   `flotilla fleet` loudly rather than hiding it. (planner's decision, 2026-10-02)
 
 ## Open questions (for the foundation spec)
 
