@@ -1179,6 +1179,25 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    onboarding's check before raising the fleet, so the turn ends on "Tell me what to build". (planner's decision,
    2026-10-02)
 
+212. **A fleet nobody leads is a question put to the person, in the command and in the skill** (twosuns field test
+   of 0.6.7, W1 and W3; the person: "it should offer to become the orchestrator itself, or to raise one - I know what
+   to do, a new user may not"). A person who stood a fleet down and opens a fresh session to raise a new one met a
+   profile from 0.3 whose default had no orchestrator; `/flotilla:spawn` raised `main, review, judge`, which waited
+   for work nobody routes. Three layers now: `spawn` prints a `gap:` line, in its dry run and after a launch, when
+   no orchestrator is alive, raised or recorded as a lead (naming `spawn --lead` and `spawn -o 1`), and when the
+   profile has the sender merge and no sender is alive or raised; `/flotilla:spawn` with no arguments asks who leads
+   first, and turns each gap line into a question whose recommended answer is "this session leads it"; `onboard
+   check` names a default composition without an orchestrator, or without a sender where the sender merges. A gap
+   is said, not refused: a person adding one seat to a fleet whose orchestrator is restarting must not be stopped.
+   (planner's decision, 2026-10-02)
+
+213. **The first green receipt measures a tier this machine never measured** (twosuns field test of 0.6.7, W2). Tier
+   times were written only by `onboard write`, so a machine other than the one that onboarded - or a profile kept
+   through a re-onboarding - had none: `onboard check` reported a finding with no command to clear it, and the
+   lane's receipt ceiling fell back to half an hour. A tier a receipt actually ran green (not reused) records its
+   time when none is recorded; an existing measurement stands, so one lucky short run cannot lower the ceiling.
+   (planner's decision, 2026-10-02)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
