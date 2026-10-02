@@ -117,6 +117,10 @@ class ProcessTable:
         """Whether this is still the same process. No pid or no mark means unknown, which reads as alive."""
         if pid is None or not mark:
             return True
+        if self.source == "procfs":
+            fields = self._stat(pid)
+            if fields and fields[0] in ("Z", "X"):   # ended, waiting to be reaped: not a live run
+                return False
         return self.start_mark(pid) == mark
 
     def cpu_seconds(self, pid) -> float | None:

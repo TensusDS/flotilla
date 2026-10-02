@@ -148,7 +148,8 @@ def build_parser() -> argparse.ArgumentParser:
     run = receipt_actions.add_parser("run", help="run the tiers for a purpose over this tree's HEAD")
     run.add_argument("--purpose", choices=["handover", "push"], required=True)
     run.add_argument("--tree", default=".")
-    run.add_argument("--timeout", type=float, default=1800.0)
+    run.add_argument("--timeout", type=float, default=0.0,
+                     help="seconds per tier (default: the lane's ceiling for this project)")
     run.add_argument("--lane-wait", dest="lane_wait", type=float, default=1800.0,
                      help="seconds to wait for the lane (default 1800)")
     run.add_argument("--no-lane", dest="no_lane", action="store_true", help="run without booking the lane")
@@ -254,9 +255,14 @@ def build_parser() -> argparse.ArgumentParser:
     lane_run.add_argument("--note", default="")
     lane_run.add_argument("--wait", type=float, default=1800.0, help="seconds to wait for the lane (default 1800)")
     lane_run.add_argument("--tree", default=".")
+    lane_run.add_argument("--max", type=float, default=0.0, metavar="SECONDS",
+                          help="stop the run past this many seconds (default: the profile's [lane] max_run_seconds, "
+                               "else ten times the slowest measured tier, at least 600)")
     lane_run.add_argument("run_command", nargs=_argparse.REMAINDER, metavar="COMMAND")
     lane_actions.add_parser("sweep", help="remove bookings whose process is gone")
-    for item in (lane_take, lane_release, lane_run, lane_actions.choices["sweep"]):
+    lane_stop = lane_actions.add_parser("stop", help="stop your own run in the lane, by the pid flotilla recorded")
+    lane_stop.add_argument("--booking", default=None)
+    for item in (lane_take, lane_release, lane_run, lane_actions.choices["sweep"], lane_stop):
         item.add_argument("--root", default=_argparse.SUPPRESS)
         item.add_argument("--as", dest="as_name", default=None)
     return parser

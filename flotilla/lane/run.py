@@ -9,9 +9,12 @@ evidence over code nobody checked. The summary is the last line that counts test
 
 from __future__ import annotations
 
+import os
 import re
+import signal as signals
 import subprocess
 import sys
+import threading
 from collections import deque
 from dataclasses import dataclass
 
@@ -47,23 +50,41 @@ def verdict_of(returncode: int) -> tuple[str, int | None, int]:
     return ("green" if returncode == 0 else "red"), None, returncode
 
 
+def _signal_group(process, number) -> None:
+    try:
+        os.killpg(process.pid, number)   # the command and everything it started: a test runner's workers too
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
 def _stop(process) -> None:
-    process.terminate()
+    _signal_group(process, signals.SIGTERM)
     try:
         process.wait(5)
     except subprocess.TimeoutExpired:
-        process.kill()
+        _signal_group(process, signals.SIGKILL)
         process.wait()
 
 
-def execute(command: list[str], *, cwd=None, popen=subprocess.Popen, out=None) -> RunResult:
+def execute(command: list[str], *, cwd=None, popen=subprocess.Popen, out=None, ceiling: float | None = None) -> RunResult:
+    """Run `command` in its own process group. Past `ceiling` seconds the group is stopped and the run has no verdict
+    (worldcore field test W21: one looping test held the machine's lane for 28 minutes)."""
     out = out if out is not None else sys.stdout   # chosen at call time, so a redirected stdout is honoured
     try:
         process = popen(command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-                        errors="replace", bufsize=1)
+                        errors="replace", bufsize=1, start_new_session=True)
     except OSError as err:
         return RunResult(127, "red", f"could not start: {err}", None)
     tail: deque = deque(maxlen=200)
+    over = threading.Event()
+
+    def stop_at_ceiling():
+        over.set()
+        _stop(process)
+    timer = threading.Timer(ceiling, stop_at_ceiling) if ceiling else None
+    if timer is not None:
+        timer.daemon = True
+        timer.start()
     try:
         for line in process.stdout:
             out.write(line)
@@ -72,8 +93,14 @@ def execute(command: list[str], *, cwd=None, popen=subprocess.Popen, out=None) -
     except BaseException:
         _stop(process)   # the booking is about to be released; the command must not go on computing under it
         raise
+    finally:
+        if timer is not None:
+            timer.cancel()
     verdict, signal_number, code = verdict_of(process.wait())
     summary = summarize(tail)
+    if over.is_set():
+        return RunResult(code if code else 124, "killed",
+                         f"stopped at the ceiling of {ceiling:g} s - no verdict (last line: {summary})", signal_number)
     if verdict == "killed":
         summary = f"killed by signal {signal_number} - no verdict (last line: {summary})"
     return RunResult(code, verdict, summary, signal_number)

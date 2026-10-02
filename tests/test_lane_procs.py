@@ -81,3 +81,14 @@ def test_ps_is_asked_in_a_fixed_locale_and_time_zone():
         return subprocess.CompletedProcess(cmd, 0, "Sat Sep 27 13:00:00 2026\n", "")
     procs.ProcessTable("ps", run=run).start_mark(123)
     assert seen["env"].get("LC_ALL") == "C" and seen["env"].get("TZ") == "UTC"
+
+
+def test_a_process_that_has_ended_but_is_not_reaped_is_not_alive(tmp_path):
+    """A run that ended stays in /proc, with its start mark, until its parent reaps it; its booking must not read as
+    held by a live run (found writing `lane stop`)."""
+    table = fake_procfs(tmp_path)
+    mark = table.start_mark(30)
+    assert table.alive(30, mark)
+    stat = tmp_path / "proc" / "30" / "stat"
+    stat.write_text(stat.read_text(encoding="utf-8").replace(") S ", ") Z "), encoding="utf-8")
+    assert not table.alive(30, mark)

@@ -134,3 +134,44 @@ def test_release_ends_a_waiter_named_by_its_booking(tmp_path, monkeypatch):
         "main session 2", "waiting", pid=None)
     code, out = run_cli("lane", "release", "--booking", stuck.id, "--root", str(root), "--as", "orchestrator 1")
     assert code == 0 and f"ended {stuck.id}" in out
+
+
+def test_lane_run_takes_a_ceiling(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    code, out = run_cli("lane", "run", "--max", "1", "--tree", str(root), "--as", "main session 1", "--",
+                        sys.executable, "-c", "import time; time.sleep(30)")
+    assert code != 0 and "ceiling of 1 s" in out
+
+
+def test_the_default_ceiling_follows_what_the_tiers_were_measured_at(tmp_path, monkeypatch):
+    """Ten times the slowest measured tier, never under ten minutes; the profile may name its own."""
+    from flotilla.lane import commands
+    assert commands.ceiling({}, {}) == 1800
+    assert commands.ceiling({}, {"node": 34.0}) == 600
+    assert commands.ceiling({}, {"node": 34.0, "e2e": 300.0}) == 3000
+    assert commands.ceiling({"lane": {"max_run_seconds": 90}}, {"node": 34.0}) == 90
+
+
+def test_lane_stop_stops_the_holders_own_run(tmp_path, monkeypatch):
+    """Worldcore field test W22: to free the lane a seat ran `pkill -f` and killed itself first. Flotilla recorded
+    the run's pid; `lane stop` uses it."""
+    import os
+    import subprocess
+    import time
+    root = onboarded(tmp_path, monkeypatch)
+    env = {**os.environ, "FLOTILLA_STATE_DIR": str(tmp_path / "state"), "FLOTILLA_NO_CENSUS": "1"}
+    cli_path = os.path.join(os.path.dirname(__file__), "..", "scripts", "flotilla")
+    runner = subprocess.Popen([sys.executable, cli_path, "lane", "run", "--tree", str(root), "--as", "main session 7",
+                               "--", sys.executable, "-c", "import time; time.sleep(60)"], env=env,
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    for _ in range(100):
+        if "main session 7" in run_cli("lane", "--root", str(root))[1]:
+            break
+        time.sleep(0.1)
+    code, out = run_cli("lane", "stop", "--root", str(root), "--as", "main session 8")
+    assert code == 2 and "main session 8" in out          # not someone else's run
+    code, out = run_cli("lane", "stop", "--root", str(root), "--as", "main session 7")
+    assert code == 0 and "stopped" in out, out
+    said, _ = runner.communicate(timeout=20)
+    assert runner.returncode != 0 and "killed" in said
+    assert "held: nobody" in run_cli("lane", "--root", str(root))[1]

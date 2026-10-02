@@ -256,6 +256,9 @@ def _receipt(args) -> int:
     ident = repo.identify(tree)
     state = paths.state_dir()
     if args.action == "run":
+        if not args.timeout:   # a tier that will not end is stopped at the lane's ceiling (worldcore W21)
+            from flotilla.lane.commands import ceiling_for
+            args.timeout = float(ceiling_for(tree, profile))
         nothing = not receipts.to_run(ident.root, state=state, repo_key=ident.key, purpose=args.purpose,
                                       profile=profile)
         if args.no_lane or nothing:

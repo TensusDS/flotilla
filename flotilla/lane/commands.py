@@ -7,6 +7,7 @@ import datetime as dt
 import os
 import signal
 import subprocess
+import time
 from pathlib import Path
 
 from flotilla.core import config, paths, repo
@@ -47,6 +48,31 @@ def _profile(root) -> tuple[dict, Path, str]:
         return {}, top, str(err)
 
 
+#: A run's ceiling when nothing was measured and the profile names none.
+CEILING_UNMEASURED = 1800
+#: Never under ten minutes: a ceiling exists for a run that will not end, not for a slow one.
+CEILING_FLOOR = 600
+
+
+def ceiling(profile: dict, measured: dict) -> int:
+    """Seconds a run in the lane may take (worldcore field test W21): the profile's `[lane] max_run_seconds`, else ten
+    times the slowest tier measured on this machine and never under ten minutes, else half an hour."""
+    named = (profile.get("lane") or {}).get("max_run_seconds")
+    if isinstance(named, (int, float)) and not isinstance(named, bool) and named > 0:
+        return int(named)
+    slowest = max((float(v) for v in measured.values() if isinstance(v, (int, float))), default=0.0)
+    return max(CEILING_FLOOR, int(slowest * 10)) if slowest else CEILING_UNMEASURED
+
+
+def ceiling_for(root, profile: dict) -> int:
+    from flotilla.onboard.firstrun import load_measurements
+    try:
+        measured = load_measurements(paths.state_dir(), repo.identify(Path(root)).key)
+    except (repo.NotARepository, OSError, ValueError):
+        measured = {}
+    return ceiling(profile, measured)
+
+
 def _who(as_name) -> str:
     try:
         return resolve_actor({}, as_name=as_name).name
@@ -75,6 +101,15 @@ def booked(root, *, note: str, wait: float, run_for: str = "", as_name=None):
         yield grant
 
 
+def _for_how_long(since: str) -> str:
+    try:
+        began = dt.datetime.fromisoformat(since)
+    except (TypeError, ValueError):
+        return ""
+    minutes = int((dt.datetime.now(dt.timezone.utc) - began).total_seconds() // 60)
+    return f" ({minutes} min)"
+
+
 def _status(args) -> int:
     table = ProcessTable.for_machine()
     lanes = _lanes(table)
@@ -86,7 +121,8 @@ def _status(args) -> int:
         state = "alive" if lanes.live(item) else "its process is gone - `flotilla lane sweep`"
         by = f"pid {item.pid}" if item.pid else "taken by hand - `flotilla lane release`"
         target = f", for {item.run_for}" if item.run_for else ""
-        print(f"  {item.id} {item.who} ({item.note or 'no note'}) since {item.since}{target}; {by}; {state}")
+        print(f"  {item.id} {item.who} ({item.note or 'no note'}) since {item.since}{_for_how_long(item.since)}"
+              f"{target}; {by}; {state}")
     print("waiting:" if waiting else "waiting: nobody")
     for item in waiting:
         gone = "" if lanes.live(item) else "; its process is gone - `flotilla lane sweep`"
@@ -182,24 +218,61 @@ def _run(args) -> int:
         print("refused: name the command after --, for example `flotilla lane run -- uv run pytest`")
         return 2
     _on_signals()
+    where, started = None, None
     try:
         with booked(args.tree, note=args.note or " ".join(command)[:80], wait=args.wait, run_for=args.for_ or "",
                     as_name=args.as_name):
             where = _where(Path(args.tree))
             started = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
-            result = runner.execute(command, cwd=args.tree)
+            limit = args.max if args.max else ceiling_for(args.tree, _profile(args.tree)[0])
+            result = runner.execute(command, cwd=args.tree, ceiling=limit)
     except acq.LaneRefused as err:
         print(f"refused: {err}")
         return 2
+    except SystemExit as stop:   # `lane stop`, or the session ending: the command's group was stopped first
+        if started is None:
+            raise
+        result = runner.RunResult(stop.code if isinstance(stop.code, int) else 143, "killed",
+                                  "stopped by a signal (`flotilla lane stop`, or the session ending) - no verdict",
+                                  15)
     print(f"lane run: {result.verdict} - {result.summary}")
     if args.for_:
         _record(args, result, where, started)
     return result.exit
 
 
+def _stop_run(args) -> int:
+    """Stop the caller's own run in the lane by the pid flotilla recorded, so nobody has to find it with `pkill`
+    (worldcore field test W22: a seat's `pkill -f` matched its own command line and killed itself first)."""
+    lanes = _lanes(ProcessTable.for_machine())
+    who = _who(args.as_name)
+    held = [item for item in lanes.holders() if item.pid and args.booking in (None, item.id)]
+    mine = [item for item in held if item.who == who]
+    if not mine:
+        others = ", ".join(f"{item.id} ({item.who})" for item in held)
+        print(f"refused: no run in the lane is {who}'s" + (f"; held: {others} - ask its holder" if others else ""))
+        return 2
+    if len(mine) > 1:
+        print("refused: several runs are yours; name one with --booking: " + ", ".join(item.id for item in mine))
+        return 2
+    item = mine[0]
+    if not lanes.live(item):
+        print(f"{item.id}'s process is already gone; `flotilla lane sweep` clears the booking")
+        return 0
+    os.kill(item.pid, signal.SIGTERM)   # the run stops its command's whole group and releases the lane itself
+    for _ in range(100):
+        if not lanes.live(item):
+            print(f"stopped {item.id} ({item.note or 'no note'}): its run is recorded as killed, not as a verdict")
+            return 0
+        time.sleep(0.1)
+    print(f"sent the stop to {item.id} (pid {item.pid}); it has not ended within 10 s - `flotilla lane` shows it")
+    return 1
+
+
 def run_lane_command(args) -> int:
     try:
-        return {None: _status, "take": _take, "release": _release, "run": _run, "sweep": _sweep}[args.action](args)
+        return {None: _status, "take": _take, "release": _release, "run": _run, "sweep": _sweep,
+                "stop": _stop_run}[args.action](args)
     except (StorageCorrupt, config.ConfigError) as err:
         print(f"refused: {err}")
         return 2

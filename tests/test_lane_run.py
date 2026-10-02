@@ -78,3 +78,32 @@ def test_a_summary_of_only_wrapper_errors_keeps_the_last_line():
 
 def test_a_counting_line_still_wins():
     assert run.summarize(["212 passed in 3.1s", "bash: kill: no such process"]) == "212 passed in 3.1s"
+
+
+def test_a_run_past_its_ceiling_is_stopped_with_everything_it_started(tmp_path):
+    """Worldcore field test W21: a vitest worker looped for 28 minutes and held the machine's one lane - another
+    project's push receipt waited behind it. A run has a ceiling; past it, the command and every process it started
+    are stopped, and the run is recorded as stopped, not as a verdict."""
+    import os
+    import time
+    child = tmp_path / "child.pid"
+    script = (f"import subprocess, sys, time; p = subprocess.Popen([sys.executable, '-c', 'import time; "
+              f"time.sleep(60)']); open(r'{child}', 'w').write(str(p.pid)); time.sleep(60)")
+    started = time.monotonic()
+    result = run.execute([sys.executable, "-c", script], out=io.StringIO(), ceiling=1.5)
+    assert time.monotonic() - started < 20
+    assert result.verdict == "killed" and "ceiling" in result.summary and "1.5" in result.summary
+    pid = int(child.read_text())
+    for _ in range(50):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.1)
+    else:
+        raise AssertionError("the grandchild outlived the ceiling")
+
+
+def test_a_run_under_its_ceiling_is_untouched():
+    result = run.execute([sys.executable, "-c", "print('3 passed')"], out=io.StringIO(), ceiling=30)
+    assert result.verdict == "green" and result.summary == "3 passed"
