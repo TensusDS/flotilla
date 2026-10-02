@@ -107,11 +107,12 @@ Onboarding ends by offering to raise the fleet now, three ways:
 
       /flotilla:spawn
 
-With no arguments it first asks who leads - this session (`flotilla spawn --lead`, then the rest on your next message)
-or a background orchestrator - and raises the composition onboarding suggested (`[fleet] default` in the profile: one
-orchestrator, one sender, one main session, and a reviewer when work is reviewed). When the fleet would have nobody to
-lead it or nobody to merge - a profile written by an older flotilla may lack both - `spawn` says so in a `gap:` line,
-and the command asks you how to fill it. `--fill` raises only the seats of that composition
+With no arguments, and no live leader, it first asks who leads - this session (`flotilla spawn --lead`, then the rest
+on your next message) or a background orchestrator - and raises the composition onboarding suggested (`[fleet] default`
+in the profile: one orchestrator, one sender, one main session, and a reviewer when work is reviewed); when this
+session leads, it is that orchestrator. When the fleet would have nobody to lead it or nobody to merge - a profile
+written by an older flotilla may lack both - `flotilla spawn` prints a `gap:` line, and `/flotilla:spawn` asks you how
+to fill it. `--fill` raises only the seats of that composition
 this project's live sessions do not hold yet. You can name one: `-o 1 -s 1 -r 1 -M 2` is one orchestrator, one sender, one reviewer and two main
 sessions. Add `--dry-run` to see the names, trees, commands and the plugins each seat will have turned off, without
 raising anything.
