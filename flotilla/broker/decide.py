@@ -78,18 +78,24 @@ def _decision(got: dict, asked: queue.Question, wait: float) -> dict:
 
 
 #: flotilla's own subcommands a seat runs without asking the person: reading the fleet, and ledger moves flotilla
-#: itself checks - post, evidence, revision (worldcore field test W16). A second word listed with a subcommand is
-#: refused even so: standing the fleet down, a long run of any command, the person's approval.
+#: checks itself - post, evidence, revision (worldcore field test W16). Each maps to the words that refuse it anyway:
+#: standing the fleet down, the person's approval. `lane` passes only bare (who holds the machine), never a booking.
+#: Not here, on purpose (review of 0.6.1): `receipt` runs the tree's own test code, `helper` raises a session,
+#: `tree` writes a checkout wherever it is told - each of those is the person's to allow.
 OWN_SUBCOMMANDS = {"status": (), "fleet": ("down",), "watch": (), "brief": (), "metrics": (), "doctor": (),
-                   "lane": ("run",), "work": ("approve",), "tree": (), "receipt": (), "helper": ()}
+                   "lane": None, "work": ("approve",)}
+#: Options that step around one of flotilla's own checks: an event script, the memory floor, the lane, the census's
+#: word on who acts. A command carrying one is put to the person.
+STEPS_AROUND = ("--skip", "--anyway", "--no-lane", "--as", "--tree")
 #: Any of these in the command line, quoted or not, and it is not passed: what the shell would read as another
 #: command, a redirect or a substitution.
-SHELL_SIGNS = set(";&|<>$`\\\n(){}*?!~")
+SHELL_SIGNS = set(";&|<>$`\\\n\r(){}*?!~")
 
 
 def own_command(payload: dict) -> bool:
     """Whether a Bash call is one of flotilla's own safe commands: the plugin's command line by its real path, one
-    command, no assignment, redirect or substitution, a listed subcommand (decision 199)."""
+    command, no assignment, redirect or substitution, a listed subcommand, no option that steps around a check
+    (decisions 199, 200)."""
     import shlex
     from flotilla.hooks import CLI
     tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
@@ -100,19 +106,23 @@ def own_command(payload: dict) -> bool:
         words = shlex.split(command)
     except ValueError:
         return False
-    if len(words) < 2 or words[0] != str(CLI):
+    if len(words) < 2 or words[0] != str(CLI) or words[1] not in OWN_SUBCOMMANDS:
         return False
-    refused = OWN_SUBCOMMANDS.get(words[1])
-    if refused is None:
+    rest = words[2:]
+    if any(word.startswith(STEPS_AROUND) for word in rest):
         return False
-    return not any(word in refused for word in words[2:])   # anywhere: an option's value would hide the word
+    refused = OWN_SUBCOMMANDS[words[1]]
+    if refused is None:   # bare only: `lane` and `lane --root <dir>`
+        return rest == [] or (len(rest) == 2 and rest[0] == "--root")
+    return not any(word in refused for word in rest)   # anywhere: an option's value would hide the word
 
 
 def _leads(ctx) -> set:
     from flotilla.core.storage import LocalLogStore
     from flotilla.fleet import lead
     try:
-        return set(lead.pending(LocalLogStore(ctx.ledger.state_dir / "fleet")))
+        import datetime as dt
+        return set(lead.pending(LocalLogStore(ctx.ledger.state_dir / "fleet"), now=dt.datetime.now(dt.timezone.utc)))
     except Exception:  # noqa: BLE001 - an unreadable record of leads only hides one, it never invents one
         return set()
 

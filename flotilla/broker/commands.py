@@ -36,7 +36,9 @@ def _caller(root) -> tuple[str | None, str]:
         from flotilla.core import paths
         from flotilla.core.storage import LocalLogStore
         from flotilla.fleet import lead
-        if found.session_id in lead.pending(LocalLogStore(paths.state_dir() / "fleet")):
+        import datetime as dt
+        if found.session_id in lead.pending(LocalLogStore(paths.state_dir() / "fleet"),
+                                            now=dt.datetime.now(dt.timezone.utc)):
             return found.name, "orchestrator"
     return found.name, post.name if post else ""
 

@@ -227,8 +227,8 @@ OWN = str(CLI)
 
 
 @pytest.mark.parametrize("command", [f"{OWN} status", f"{OWN} fleet", f"{OWN} work show feat/x",
-                                     f"{OWN} work hand feat/x", f"{OWN} receipt run --purpose handover",
-                                     f"{OWN} brief", f"{OWN} watch --once", f"{OWN} lane"])
+                                     f"{OWN} work hand feat/x", f"{OWN} brief", f"{OWN} watch --once", f"{OWN} lane",
+                                     f"{OWN} work wait feat/x --on me --why 'a question'"])
 def test_flotillas_own_commands_are_not_put_to_the_person(tmp_path, command):
     """Worldcore field test W16: in ask mode three seats' first census put six questions to the person in a minute,
     each about flotilla's own commands, whose every move flotilla checks itself. Those pass without a question."""
@@ -242,8 +242,36 @@ def test_flotillas_own_commands_are_not_put_to_the_person(tmp_path, command):
     f"{OWN} fleet down", f"{OWN} fleet --root . down", f"{OWN} lane --root . run --for b -- ls", f"{OWN} lane run --for b -- rm -rf x", f"{OWN} onboard answer tiers 'rm -rf x'",
     f"{OWN} permit answer 1 allow --mark m", f"{OWN} spawn -M 1", f"{OWN} retire x", f"{OWN} guard install",
     "/tmp/flotilla status", "./flotilla status", f"bash {OWN} status", f"{OWN} work approve feat/x",
+    # review of 0.6.1, C1/I1/I2/M6: each of these runs code, steps around a check, or writes anywhere
+    f"{OWN} receipt run --purpose handover", f"{OWN} receipt run --purpose push --tree /tmp/x --no-lane",
+    f"{OWN} work hand feat/x --skip-event pre-handed --skip-why ok", f"{OWN} work hand feat/x --as other",
+    f"{OWN} helper raise --for b --task t --anyway", f"{OWN} tree cut b --tree /tmp/anywhere",
+    f"{OWN} tree switch b", f"{OWN} lane take --note x", f"{OWN} status\nrm -rf x", f"{OWN} status\rrm -rf x",
 ])
 def test_anything_else_still_goes_to_the_person(tmp_path, command):
     payload = {"tool_name": "Bash", "tool_input": {"command": command}}
     decision = decide.decide(payload, fleet(tmp_path, orchestrator=False))
+    assert decision["behavior"] == "deny" and "no live orchestrator" in decision["message"]
+
+
+@pytest.mark.parametrize("profile, kind", [({"permissions": {"mode": "auto"}}, "background"), (ASK, "interactive")])
+def test_the_own_command_pass_widens_nothing_outside_ask_mode_and_background_seats(tmp_path, profile, kind):
+    """Review of 0.6.1, I3: the pass sits after the background-only and ask-mode checks, and nothing pinned it there;
+    moved above them it would allow for an interactive session or under auto mode, where the dialog decides."""
+    payload = {"tool_name": "Bash", "tool_input": {"command": f"{OWN} status"}}
+    assert decide.decide(payload, fleet(tmp_path, kind=kind, profile=profile)) is None
+
+
+def test_a_lead_left_a_day_is_not_the_orchestrator_for_the_broker(tmp_path):
+    """Review of 0.6.1, M1: the broker read leads without the day's expiry the rename hook and --fill apply."""
+    import datetime as dt
+    from flotilla.core.storage import LocalLogStore
+    from flotilla.fleet import lead
+    asker = sess("worldcore-main session 1")
+    leader = sess("worldcore-0c", kind="interactive", status="idle")
+    ctx = context(tmp_path, me=asker, sessions=[asker, leader], profile=ASK)
+    old = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=25)).isoformat()
+    lead.record(LocalLogStore(ctx.ledger.state_dir / "fleet"), leader.session_id, "worldcore-orchestrator 1", now=old)
+    clock = Clock()   # counted as the orchestrator, the question would wait; a fake clock makes that a time-out
+    decision = decide.decide(TOUCH, ctx, clock=clock, sleep=clock.sleep, timer=clock)
     assert decision["behavior"] == "deny" and "no live orchestrator" in decision["message"]
