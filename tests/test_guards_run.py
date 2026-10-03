@@ -794,3 +794,16 @@ def test_a_branch_on_origin_that_calls_itself_trunk_grants_nothing(tmp_path, mon
     assert not _allowed(ask(root, f"{CLI} status", monkeypatch, tmp_path))
     git(root, "remote", "set-head", "origin", "evil")   # the local idea of origin's default branch, repointed
     assert not _allowed(ask(root, f"{CLI} status", monkeypatch, tmp_path))
+
+
+def test_a_session_is_told_once_that_the_opt_in_is_off(tmp_path, monkeypatch):
+    """Review of the directory readiness work, M6: on updating, auto mode's classifier refuses the sender's push
+    and ledger moves again (W9, W11), and nothing said why. Where only the missing opt-in keeps flotilla from
+    allowing a command, the session is told so - once - and that turning it on is the person's choice."""
+    root = onboarded(tmp_path)
+    first = ask(root, f"{CLI} work land feat/x", monkeypatch, tmp_path, session="sid-a")
+    assert first and "skip_classifier_for_checked" in first.get("additionalContext", "")
+    assert "person" in first["additionalContext"] and not _allowed(first)
+    assert ask(root, f"{CLI} status", monkeypatch, tmp_path, session="sid-a") is None   # said once
+    assert ask(root, "ls -la", monkeypatch, tmp_path, session="sid-b") is None   # not one of flotilla's own
+    assert ask(root, f"{CLI} status", monkeypatch, tmp_path, session="sid-c", mode="default") is None   # auto only

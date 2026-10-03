@@ -271,6 +271,38 @@ def opted_in(profile: dict) -> bool:
     return (profile.get("permissions") or {}).get(OPT_IN) is True
 
 
+NOT_OPTED = ("flotilla: this is one of flotilla's own checked commands. In this project flotilla does not let them "
+             "past auto mode's classifier: `[permissions] skip_classifier_for_checked` is off in the profile on "
+             "trunk (README, \"Letting checked commands past auto mode's classifier\"). If the classifier refuses "
+             "one, tell the person that; turning it on is the person's choice, never yours.")
+
+
+def not_opted_note(command: str, root, session_id: str, run=subprocess.run) -> str:
+    """Said once per session, where only the missing opt-in keeps flotilla from allowing a command (review of the
+    directory readiness work, M6): after updating, the classifier's refusals come back and nothing else says why."""
+    import re
+    from flotilla.core import paths
+    from flotilla.guards.rules import rules_for
+    if root is None or not session_id:
+        return ""
+    try:
+        profile = rules_for(Path(root), run=run)[0]
+        if opted_in(profile):
+            return ""
+        trunk = str((profile.get("trunk") or {}).get("branch") or "main")
+        push = re.fullmatch(rf"git -C ({_PATH}) push origin HEAD:{re.escape(trunk)}", command)
+        if not (_own(command, root) or push):
+            return ""
+        told = paths.state_dir() / "opt-in-told" / re.sub(r"[^A-Za-z0-9-]", "_", session_id)
+        if told.exists():
+            return ""
+        told.parent.mkdir(parents=True, exist_ok=True)
+        told.touch()
+    except Exception:  # noqa: BLE001 - a note that cannot be worked out is not said
+        return ""
+    return NOT_OPTED
+
+
 def allowance(command: str, cwd, root, *, session_id: str = "", run=subprocess.run) -> tuple[str, str]:
     """(why flotilla lets this call past Claude Code's permission check, the command to run instead) - or ("", "").
     A PreToolUse allow passes auto mode's classifier (measured on Claude Code 2.1.288), so it is given only where the
@@ -323,6 +355,8 @@ def guard_hook(command: str, cwd, root, out, *, env=os.environ, run=subprocess.r
             body["updatedInput"] = {**(tool_input or {}), "command": rewritten}
     elif findings:
         body = {"hookEventName": "PreToolUse", "additionalContext": "\n".join(f.text for f in findings)}
+    elif mode == "auto" and sandboxed and (note := not_opted_note(command, root, session_id, run)):
+        body = {"hookEventName": "PreToolUse", "additionalContext": note}
     else:
         return 0
     print(json.dumps({"hookSpecificOutput": body}), file=out)

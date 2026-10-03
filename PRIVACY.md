@@ -34,7 +34,7 @@ its path.
 | Permission questions | who asked, when, the answer - and, while it waits, the call it asks about (a command, a file's new content) | the call: until the asking session has its answer or stops waiting (if that session was killed mid-wait, until flotilla next reads the queue); the rest: one day after the answer |
 | Override records | a command run with `FLOTILLA_GATE_OVERRIDE` and the reason given, with any `NAME=value` and URL password removed | until you delete them |
 | Fleet and lane state | seat names, which session leads, machine bookings for long runs | until you delete them |
-| Hook activity | per session id: which hook last ran, and when | until you delete it |
+| Hook activity | per session id: which hook last ran and when, and whether it was told the opt-in is off | until you delete it |
 
 The directory survives plugin updates and uninstalling on purpose, so a ledger is never lost by accident. To
 remove everything, delete it.
