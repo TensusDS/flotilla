@@ -1210,11 +1210,16 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    <sha>`, by a reader, records the reading as a finished row on trunk (state `offledger`, the reader named, the
    commit vouched), and the batch accounts it like any vouched commit; the finding names the move and the refusals
    of `offledger` and `inbatch` point to it. Where a person authorizes merges it is refused - approval accounts
-   work there, and that path is not built. (planner's decision, 2026-10-03)
+   work there, and that path is not built - the finding says the person settles it. Review of 0.6.9, I1: a reader
+   never vouches for a commit it made - refused when the reflog of a branch it owns, or of its seat tree's HEAD,
+   records creating the commit; author and committer are recorded, and are not the gate. Events now see a row with
+   `branch` = trunk and move `vouch` (M1): a project event script must not treat that branch as feature work.
+   (planner's decision, 2026-10-03)
 
 215. **The fleet's rules are not the product the judge walks** (twosuns field test of 0.6.7, W6). `walked` accepts a
    build that differs from the deployed revision only in `.flotilla/`, and its evidence says so; a difference
-   anywhere else is refused as before. (planner's decision, 2026-10-03)
+   anywhere else is refused as before; the diff runs with `--no-renames`, so a product file moved into `.flotilla/`
+   is a product change (review of 0.6.9, I2). (planner's decision, 2026-10-03)
 
 216. **A gone session's move comes with who can take it** (twosuns field test of 0.6.7; the person's proposal: "if it
    is closed, tell the orchestrator, and a free session of this fleet - or a new one - adopts the work"). The
@@ -1223,10 +1228,20 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    or a `spawn` line when there is none; `broke` no longer tells a dead author to take the fix in its home tree. A
    session of the fleet before its name is recognised by its former post for this question only. Ruling against
    adopting automatically: "free" is not something flotilla knows - a seat may be waiting on the lane, or hold work
-   deferred by agreement - so the orchestrator chooses, in one move. (planner's decision, 2026-10-03)
+   deferred by agreement - so the orchestrator chooses, in one move. Review of 0.6.9: successors are this project's
+   sessions only (I4), a gone reader's are ordered by what they read (M7), and the printed line is shell-quoted
+   (M8). (planner's decision, 2026-10-03)
 
 217. **`flotilla lane status` is the bare `flotilla lane`** (twosuns field test of 0.6.7, W7). (planner's decision,
    2026-10-03)
+
+218. **The reviewer runs its tiers itself; W8's reuse is rejected** (twosuns field test of 0.6.7, W8; review of
+   0.6.9, I5). W8 had the reviewer run its tiers through a receipt so the author's green over the same files would
+   be reused. A cached green records no runner, was made in the author's tree by the author, and sits in the shared
+   state directory: reusing it would mean no run of the tests that is not the author's. The reviewer runs the tiers
+   in the lane, outside a receipt; the lane slot it costs buys an independent run. Open: the sender's push receipt
+   still reuses the author's cached green (decision 201) - a cached green should name its runner, and a push
+   receipt should reuse a green the reader made, not the author's. (planner's decision, 2026-10-03)
 
 ## Open questions (for the foundation spec)
 
