@@ -1314,6 +1314,21 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    names take shlex's unquoted set, and a change born in the batch gets its approve line too.
    (planner's decision, 2026-10-03)
 
+222. **flotilla is made ready for Anthropic's plugin directory against the rules as read on 2026-10-03** (research
+   update of that date; the person's choices of the same day). The directory lists a plugin on every surface that
+   loads its parts, and flotilla works only in Claude Code: the command line moves to `bin/`, the plugin layout's
+   documented place for executables, which Claude Code puts on the Bash tool's PATH and claude.ai chat and Cowork
+   refuse to install; every skill's `compatibility` and the README's first lines say Claude Code only. No manifest
+   or skill field restricts surfaces (manifest reference and skill frontmatter, read in full). The policy forbids
+   software that enables users "to circumvent Claude's safety guardrails": letting checked commands past auto mode's
+   classifier becomes the person's opt-in, `[permissions] skip_classifier_for_checked = true` on trunk, off unless
+   set and not recommended to people new to Claude Code or auto mode - for the push it is read where origin names
+   trunk; the person turns it on in their own projects. Data minimization: a permission question drops the call it
+   carried once the asking hook has its answer or stops waiting. PRIVACY.md, SUPPORT.md, SECURITY.md and a
+   CHANGELOG are linked from the manifest's directory fields. Left to the person: turning on GitHub's private
+   vulnerability reporting, and whether `ask` mode's automatic answer for flotilla's own commands needs the same
+   opt-in. (planner's decision, 2026-10-03)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
