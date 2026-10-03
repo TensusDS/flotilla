@@ -434,8 +434,9 @@ So nothing comes as a surprise:
   its answer or stops waiting, and the rest of the record - who asked, when, the answer - a day later. The directory survives plugin updates and uninstall on purpose; `flotilla doctor`
   prints its path.
 - **Git hooks.** `pre-commit` and `pre-push` are written into `.git/hooks/` only when you say yes in `/flotilla:guard`.
-- **Network.** Only what your project's own commands do, plus `git` and `gh` asking origin and GitHub about what
-  shipped. flotilla itself sends nothing anywhere.
+- **Network.** `git` to your repository's origin (`ls-remote`, `fetch`, and the one push of `onboard publish`) and
+  `gh` to GitHub (pull requests, CI runs), with your credentials; nothing to any other host. The full list is in
+  [PRIVACY.md](PRIVACY.md#network).
 
 ## Known limitations
 
@@ -516,7 +517,7 @@ The design is in `docs/specs/2026-09-22-flotilla-design.md`; every decision sinc
 ## Support, privacy and security
 
 - Questions and defects: [GitHub issues](https://github.com/TensusDS/flotilla/issues) - see [SUPPORT.md](SUPPORT.md).
-- What flotilla reads and stores, and that it sends nothing anywhere: [PRIVACY.md](PRIVACY.md).
+- What flotilla reads, stores and sends - only to your own origin and GitHub: [PRIVACY.md](PRIVACY.md).
 - A vulnerability: report it privately - see [SECURITY.md](SECURITY.md).
 
 ## License
