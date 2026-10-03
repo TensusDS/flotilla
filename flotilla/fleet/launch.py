@@ -9,8 +9,6 @@ system prompt, and its first prompt sends it to the `flotilla` skill. It is neve
 
 from __future__ import annotations
 
-import json
-
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -97,51 +95,14 @@ def system_prompt(seat: Seat, post, *, main: Path) -> str:
             "given here: never infer them from the work.\n\n" + post.body.strip())
 
 
-#: flotilla's command line, as the seats call it.
-CLI = Path(__file__).resolve().parents[2] / "scripts" / "flotilla"
-#: Every ledger move a seat may make without the person's say - all but `approve`, the person's alone.
-OWN_WORK_MOVES = ("accept", "adopt", "assign", "broke", "claim", "close", "fix", "hand", "hold", "inbatch", "land",
-                  "moved", "offledger", "queue", "reconcile", "recuse", "release", "reserve", "return", "ship", "show",
-                  "take", "unbroke", "unhold", "urgent", "vouch", "wait", "walkable", "walked")
-#: Commands a seat runs with any arguments; `fleet` is allowed bare only, since `fleet down` and `fleet clean` are
-#: its arguments. Never here: spawn, retire, helper raise, onboard, guard, permit answer, events run.
-OWN_COMMANDS = ("tree", "receipt", "lane", "status", "watch", "brief", "metrics", "doctor", "version", "events check",
-                "events schema", "permit next", "permit list", "helper done")
-
-
-def own_allow(seat: Seat, post, profile: dict) -> list[str]:
-    """The allow rules a seat is launched with (twosuns field test of 0.6.7, W9 and W11). In auto mode Claude Code's
-    classifier judged flotilla's own moves by the conversation around them - `work land` refused as "Merge Without
-    Review" - and every sender's push of reviewed work waited on the person. A seat may run flotilla's own commands,
-    and the post that lands may push trunk from its own tree. They pass the classifier, not flotilla's hooks: a hook's
-    deny wins over an allow rule (measured on Claude Code 2.1.288), so the push guard still asks for a receipt and
-    `work approve` stays the person's."""
-    cli = str(CLI)
-    rules = [rule for move in OWN_WORK_MOVES for rule in (f"Bash({cli} work {move})", f"Bash({cli} work {move} *)")]
-    for command in OWN_COMMANDS:
-        rules += [f"Bash({cli} {command})", f"Bash({cli} {command} *)"]
-    rules.append(f"Bash({cli} fleet)")
-    if "land" in post.may:
-        trunk = str((profile.get("trunk") or {}).get("branch") or "main")
-        rules += [f"Bash(git push origin HEAD:{trunk})", f"Bash(git -C {seat.tree} push origin HEAD:{trunk})"]
-    return rules
-
-
-def seat_settings(seat: Seat, post, profile: dict, plugin_json: str = "") -> str:
-    """One `--settings` value: the plugins the post turns off, and the seat's own allow rules."""
-    settings = json.loads(plugin_json) if plugin_json else {}
-    settings["permissions"] = {"allow": own_allow(seat, post, profile)}
-    return json.dumps(settings)
-
-
 def argv(seat: Seat, post, profile: dict, *, main: Path, settings_json: str = "", first_prompt: str = "") -> list[str]:
-    """`settings_json` (from `flotilla.fleet.plugins`) turns off the MCP plugins the post does not keep; the seat's
-    own allow rules join it, and it rides as one argv element, never through a shell. `first_prompt` replaces the
-    fleet's first prompt (a helper's task)."""
+    """`settings_json` (from `flotilla.fleet.plugins`) turns off the MCP plugins the post does not keep; it rides as
+    one argv element, never through a shell. `first_prompt` replaces the fleet's first prompt (a helper's task)."""
     command = ["claude", "--bg", "-n", seat.name, "--add-dir", str(seat.tree), "--permission-mode",
                permission_mode(profile, post)]
     model = model_for(profile, post)
     if model:
         command += ["--model", model]
-    command += ["--settings", seat_settings(seat, post, profile, settings_json)]
+    if settings_json:
+        command += ["--settings", settings_json]
     return command + ["--append-system-prompt", system_prompt(seat, post, main=main), first_prompt or FIRST_PROMPT]
