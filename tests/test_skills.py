@@ -213,3 +213,10 @@ def test_spawn_turns_a_gap_into_a_question():
     text = (ROOT / "skills" / "spawn" / "SKILL.md").read_text(encoding="utf-8")
     assert "gap:" in text and "nobody leads this fleet" in text and "nobody merges" in text
     assert "flotilla spawn -o 1" in text and "flotilla spawn -s 1" in text
+
+
+def test_the_reviewer_runs_its_tiers_through_a_receipt():
+    """Twosuns field test of 0.6.7, W8: told to "run the tiers yourself", the reviewer ran the suite by hand outside
+    a receipt, so the green the author's receipt measured over the same files was run again from nothing."""
+    text = (ROOT / "templates" / "posts" / "reviewer.md").read_text(encoding="utf-8")
+    assert "flotilla receipt run --purpose handover --tree" in text
