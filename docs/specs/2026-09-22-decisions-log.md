@@ -1335,7 +1335,10 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    was started was read from the first records of its transcript - it is read from Claude Code's session registry
    now, since the policy forbids reading chat history; and PRIVACY.md claimed no network use while flotilla runs
    `git ls-remote`, `fetch`, one `push` and `gh` - it lists each. A session is told once when only the missing
-   opt-in keeps a command from the allow. (planner's decision, 2026-10-03)
+   opt-in keeps a command from the allow. The person then chose that the same opt-in governs `ask` mode, where the
+   broker had answered "allow" for flotilla's own commands with nobody choosing it: without the opt-in they are put
+   to the person like any other call - noisier, but no permission decision is made on the person's behalf by
+   default. (planner's decision, 2026-10-03)
 
 ## Open questions (for the foundation spec)
 

@@ -303,6 +303,22 @@ def not_opted_note(command: str, root, session_id: str, run=subprocess.run) -> s
     return NOT_OPTED
 
 
+def opt_in_counts(root, *, run=subprocess.run) -> bool:
+    """Whether the person opted in, as origin's trunk carries it: asked of origin only where the tree's own profile
+    opts in at all. The one answer the guard's allow and the broker's ask-mode answer both take."""
+    from flotilla.guards.rules import rules_for
+    if root is None:
+        return False
+    try:
+        profile = rules_for(Path(root), run=run)[0]
+        if not opted_in(profile):   # where nobody opted in, origin is not even asked
+            return False
+        got = _origin_trunk(Path(root), str((profile.get("trunk") or {}).get("branch") or "main"), run)
+    except Exception:  # noqa: BLE001 - an opt-in that cannot be confirmed is not one
+        return False
+    return got is not None and opted_in(got[1].profile)
+
+
 def allowance(command: str, cwd, root, *, session_id: str = "", run=subprocess.run) -> tuple[str, str]:
     """(why flotilla lets this call past Claude Code's permission check, the command to run instead) - or ("", "").
     A PreToolUse allow passes auto mode's classifier (measured on Claude Code 2.1.288), so it is given only where the
@@ -310,14 +326,10 @@ def allowance(command: str, cwd, root, *, session_id: str = "", run=subprocess.r
     person's."""
     from flotilla.guards.rules import rules_for
     try:
-        if root is None:
-            return "", ""
-        profile = rules_for(Path(root), run=run)[0]
-        if not opted_in(profile):   # where nobody opted in, origin is not even asked
+        if root is None or not opted_in(rules_for(Path(root), run=run)[0]):   # nothing asked of origin then
             return "", ""
         if _own(command, root):
-            got = _origin_trunk(Path(root), str((profile.get("trunk") or {}).get("branch") or "main"), run)
-            if got is None or not opted_in(got[1].profile):   # the opt-in that counts is on origin's trunk
+            if not opt_in_counts(root, run=run):   # the opt-in that counts is on origin's trunk
                 return "", ""
             return "flotilla's own command; flotilla checks the post, the state and the evidence itself", ""
         rewritten = _senders_push(command, cwd, root, session_id, run)

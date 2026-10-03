@@ -90,7 +90,7 @@ The permission question matters most:
 | answer | what background sessions do | when to choose it |
 |---|---|---|
 | **auto** (recommended) | run in Claude Code's auto mode; its classifier decides each call, and no question waits on you | most projects: the fleet works without a question per command |
-| **ask** | stop at every permission prompt; flotilla routes the question to you through the orchestrator - except flotilla's own commands (status, fleet, ledger moves), which flotilla checks itself | you want to see every command the fleet runs, and will answer often |
+| **ask** | stop at every permission prompt; flotilla routes the question to you through the orchestrator - flotilla's own commands (status, fleet, ledger moves) included, unless you opt in (below) | you want to see every command the fleet runs, and will answer often |
 | **rules** | run what your Claude Code allow rules permit, and are refused the rest | you have rules for the commands your project needs |
 
 Auto mode is not offered for every model: Claude Code has said "auto mode unavailable for this model" for Haiku, and
@@ -112,6 +112,10 @@ second `[permissions]` header, which makes the profile unreadable), commit, and 
 **Not recommended if you are new to Claude Code or to auto mode.** The classifier is one of Claude Code's own
 safety checks; this replaces it, for these commands only, with flotilla's checks. Turn it on once you know what the
 fleet does and want it to run without those refusals. With it off, a refused command waits for you as before.
+
+The same opt-in governs `ask` mode: with it, flotilla answers the permission question for its own commands itself
+instead of putting it to you; without it, those questions reach you like any other - a fleet makes dozens of
+ledger moves an hour, so expect many.
 
 When you have opted in, flotilla's guard hook, which runs before every Bash call, answers "allow" in auto mode only,
 after every guard has run and found nothing, and for two things:

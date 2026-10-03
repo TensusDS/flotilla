@@ -226,10 +226,16 @@ from flotilla.hooks import CLI   # noqa: E402 - the plugin's own command line, b
 OWN = str(CLI)
 
 
+@pytest.fixture
+def opted(monkeypatch):
+    """The person opted in on origin's trunk - asked of origin by the guard's own helper, measured in its tests."""
+    monkeypatch.setattr(decide, "_opted_in", lambda root: True)
+
+
 @pytest.mark.parametrize("command", [f"{OWN} status", f"{OWN} fleet", f"{OWN} work show feat/x",
                                      f"{OWN} work hand feat/x", f"{OWN} brief", f"{OWN} watch --once", f"{OWN} lane",
                                      f"{OWN} work wait feat/x --on me --why 'a question'"])
-def test_flotillas_own_commands_are_not_put_to_the_person(tmp_path, command):
+def test_flotillas_own_commands_are_not_put_to_the_person(tmp_path, command, opted):
     """Worldcore field test W16: in ask mode three seats' first census put six questions to the person in a minute,
     each about flotilla's own commands, whose every move flotilla checks itself. Those pass without a question."""
     payload = {"tool_name": "Bash", "tool_input": {"command": command}}
@@ -256,14 +262,15 @@ def test_flotillas_own_commands_are_not_put_to_the_person(tmp_path, command):
     # third review of 0.6.10, C1: a root that is not this project's repository runs its profile's commands
     f"{OWN} lane --root /tmp/made-by-a-seat", f"{OWN} work show feat/x --root /tmp/made-by-a-seat",
 ])
-def test_anything_else_still_goes_to_the_person(tmp_path, command):
+def test_anything_else_still_goes_to_the_person(tmp_path, command, opted):
     payload = {"tool_name": "Bash", "tool_input": {"command": command}}
     decision = decide.decide(payload, fleet(tmp_path, orchestrator=False))
     assert decision["behavior"] == "deny" and "no live orchestrator" in decision["message"]
 
 
 @pytest.mark.parametrize("profile, kind", [({"permissions": {"mode": "auto"}}, "background"), (ASK, "interactive")])
-def test_the_own_command_pass_widens_nothing_outside_ask_mode_and_background_seats(tmp_path, profile, kind):
+def test_the_own_command_pass_widens_nothing_outside_ask_mode_and_background_seats(tmp_path, profile, kind,
+                                                                                    opted):
     """Review of 0.6.1, I3: the pass sits after the background-only and ask-mode checks, and nothing pinned it there;
     moved above them it would allow for an interactive session or under auto mode, where the dialog decides."""
     payload = {"tool_name": "Bash", "tool_input": {"command": f"{OWN} status"}}
@@ -320,3 +327,21 @@ def test_a_broker_that_fails_while_waiting_closes_its_question_and_keeps_no_call
     monkeypatch.undo()
     assert decision["behavior"] == "deny" and "broker failed" in decision["message"]
     assert queue.live(ctx.ledger.state_dir, "repo", now=clock.now) == [] and _kept_inputs(ctx) == [{}]
+
+
+def test_without_the_opt_in_flotillas_own_commands_are_asked_too(tmp_path, monkeypatch):
+    """Directory readiness, the person's choice of 2026-10-03: in ask mode the broker answered "allow" for
+    flotilla's own commands without anyone choosing it. The same opt-in that lets them past auto mode's classifier
+    now governs it; without it they are put to the person like any other call."""
+    monkeypatch.setattr(decide, "_opted_in", lambda root: False)
+    payload = {"tool_name": "Bash", "tool_input": {"command": f"{OWN} status"}}
+    decision = decide.decide(payload, fleet(tmp_path, orchestrator=False))
+    assert decision["behavior"] == "deny" and "no live orchestrator" in decision["message"]
+
+
+def test_the_broker_asks_the_guards_question_about_the_opt_in(monkeypatch):
+    """One answer for both doors: the broker's opt-in is the guard's, read where origin names trunk."""
+    from flotilla.guards import run
+    asked = []
+    monkeypatch.setattr(run, "opt_in_counts", lambda root, **kw: asked.append(root) or True)
+    assert decide._opted_in("/w") is True and asked == ["/w"]

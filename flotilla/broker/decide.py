@@ -176,6 +176,11 @@ def _leads(ctx) -> set:
         return set()
 
 
+def _opted_in(root) -> bool:
+    from flotilla.guards.run import opt_in_counts
+    return opt_in_counts(root)
+
+
 def decide(payload: dict, ctx, *, clock=time.time, sleep=time.sleep, timer=time.monotonic, poll: float = POLL,
            started: float | None = None, parent=os.getppid, pid: int | None = None) -> dict | None:
     """The decision for this permission request, or None to leave the dialog to decide.
@@ -192,7 +197,9 @@ def decide(payload: dict, ctx, *, clock=time.time, sleep=time.sleep, timer=time.
                      "to anyone")
     if not enabled(ctx.profile):
         return None
-    if own_command(payload, ctx.root):   # nothing a person's yes would add: flotilla checks each of these itself (W16)
+    # nothing a person's yes would add: flotilla checks each of these itself (W16) - where the person opted in, as
+    # origin's trunk carries it; otherwise they are asked like any other call (directory readiness)
+    if own_command(payload, ctx.root) and _opted_in(ctx.root):
         return {"behavior": "allow"}
     me = ctx.me.name
     if ctx.post_of(me) == "orchestrator":

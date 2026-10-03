@@ -48,5 +48,6 @@ compatibility: Claude Code only (CLI, IDE or desktop Code tab) - needs the Bash 
 4. A session reported "launched, not yet seen in the census" is alive or starting: never run spawn again for it,
    because two processes would share one name. Tell the person to check `claude agents`.
 5. When the profile's permission mode is `ask`, say that each session's permission questions come to the
-   orchestrator, which puts them to the person; flotilla's own read commands and ledger moves pass without one. In
+   orchestrator, which puts them to the person - flotilla's own read commands and ledger moves too, unless the
+   profile on trunk sets `[permissions] skip_classifier_for_checked = true`, the person's own choice. In
    `auto` mode Claude Code's classifier decides each call and no question waits on anyone.
