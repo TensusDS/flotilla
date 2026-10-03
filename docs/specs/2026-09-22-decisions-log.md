@@ -1265,8 +1265,16 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    pushing where the main checkout fetches from, no hook but flotilla's own, and the accounting base asked of origin
    (a seat can move its local remote-tracking ref). Measured too: a user's own `deny` rule wins over the hook's
    allow. Known and accepted: the exact push of the sender's tree is allowed whoever runs it - its content is
-   accounted either way. (planner's decision, 2026-10-03; the person chose the exact-command allow over a prose
-   classifier rule)
+   accounted either way. A third review found more, and the person chose to finish the allow rather than ship
+   without it (2026-10-03): the person guard reads every spelling bash turns into `approve` (braces, `$'..'`,
+   extglob, a continuation, a decoy `work`); an own command's `--root` must be this project's repository and `lane`
+   is left out (another repository's profile commands and event scripts had run); and the push is allowed only
+   rewritten (updatedInput, measured): its caller must own the tree, the repository's own git config may hold only
+   plain keys (no push URL, pack command, ssh command, hooks path, credential helper, include, URL rewrite), origin's
+   trunk is asked with hooks off, and the command run is `git -C <tree> -c core.hooksPath=<an empty dir> push origin
+   <checked sha>:refs/heads/<trunk>` - no repository hook, and no other commit than the one checked. Left as a known
+   limit, outside the allow: rules are read from the local remote-tracking ref of trunk. (planner's decision,
+   2026-10-03; the person chose the exact-command allow over a prose classifier rule)
 
 220. **`reconcile` names `land` without a placeholder** (twosuns field test of 0.6.7, W11): `land` finds the merge
    that carries a row itself, and "--merge <the commit>" made the sender ask. (planner's decision, 2026-10-03)

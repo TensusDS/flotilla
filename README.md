@@ -94,16 +94,20 @@ Auto mode is not offered for every model: Claude Code has said "auto mode unavai
 
 **What flotilla lets past auto mode's classifier.** In auto mode Claude Code's classifier judged flotilla's own
 commands by the conversation around them and refused some - a sender's push of reviewed work as "Merge Without
-Review", then a plain ledger record. flotilla's guard hook, which runs before every Bash call, now answers "allow" in
-auto mode for exactly two things, and only after every guard has run and found nothing: one of flotilla's own
-commands the broker's check passes (a listed subcommand, no shell sign, no option that steps around a check, never
-`approve`, `spawn`, `fleet down` or a run of an arbitrary command; judged as flotilla parses it, with no character
-a shell would expand), and the sender's push of accounted work (exactly `git -C <its tree> push origin HEAD:<trunk>`
-from a checkout of this repository, origin pushing where your main checkout fetches from, no hook but flotilla's, a
-green receipt over that revision, and every commit past origin's trunk accounted for by the ledger). Anything else
-is the classifier's to decide, as before; unreviewed work still meets it. Your own `deny` rules still win over this
-allow, and in `ask` mode nothing changes: you see what you chose to see. This leans on Claude Code honouring a
-hook's allow and deny, measured on 2.1.288; a mod that overrides plugin hooks would change it.
+Review", then a plain ledger record. flotilla's guard hook, which runs before every Bash call, answers "allow" in
+auto mode only, after every guard has run and found nothing, and for two things:
+
+- one of flotilla's own commands, judged as flotilla's parser reads it: a listed subcommand on this project's own
+  repository, no character a shell would expand, no option that steps around a check - never `approve`, `spawn`,
+  `fleet down`, `lane` or a run of an arbitrary command;
+- the sender's push of accounted work: typed as exactly `git -C <its tree> push origin HEAD:<trunk>` by the session
+  that owns that tree, in a repository whose own git config holds nothing that runs code or sends a push elsewhere,
+  with a green receipt and every commit past origin's trunk accounted for by the ledger. It runs rewritten: the
+  commit that was checked, pushed with no repository hook.
+
+Anything else is the classifier's to decide, as before; unreviewed work still meets it. Your own `deny` rules still
+win over this allow, and in `ask` mode nothing changes. This leans on Claude Code honouring a hook's allow, deny and
+rewritten input, measured on 2.1.288.
 
 You can change any answer later by editing `.flotilla/project.toml`; a change takes effect once it is on trunk.
 
@@ -409,6 +413,9 @@ What flotilla does not do yet, or does only partly. Each one was met in a field 
 - **Auto mode is not offered for every model.** Claude Code has refused it for some (seen with Haiku);
   `flotilla spawn --dry-run` warns about such a seat, and `flotilla spawn` warns again after raising it - pick
   another model or `ask` mode for that post.
+- **A project's rules are read from origin's trunk as this checkout last fetched it** - the local
+  `refs/remotes/origin/<trunk>`. A session that moves that ref by hand changes the rules the next flotilla command
+  reads, event scripts included. The classifier sees the command that moves it; flotilla does not check it yet.
 - **It does not isolate sessions from you or from each other** - see the next section.
 
 ## Security model and its limits
