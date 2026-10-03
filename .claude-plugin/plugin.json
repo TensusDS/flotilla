@@ -8,6 +8,7 @@
   "homepage": "https://github.com/TensusDS/flotilla",
   "repository": "https://github.com/TensusDS/flotilla",
   "license": "MIT",
+  "icon": "./.claude-plugin/icon.png",
   "documentationUrl": "https://github.com/TensusDS/flotilla/blob/main/USER_MANUAL.md",
   "supportUrl": "https://github.com/TensusDS/flotilla/blob/main/SUPPORT.md",
   "privacyPolicyUrl": "https://github.com/TensusDS/flotilla/blob/main/PRIVACY.md",

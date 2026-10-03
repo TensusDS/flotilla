@@ -78,3 +78,15 @@ def test_the_readme_gives_at_least_three_examples():
     used = set(re.findall(r"/flotilla:([a-z-]+)", section))
     assert len(re.findall(r"^\d+\. ", section, re.M)) >= 3
     assert used and all((ROOT / "skills" / name / "SKILL.md").is_file() for name in used)
+
+
+def test_the_listing_icon_is_what_the_directory_accepts():
+    """The directory takes a square PNG or JPEG of 512 to 2048 px a side, under 2 MB, and only once: the first time
+    the plugin is saved in the developer portal. Read from the PNG header, so a replaced file is checked too."""
+    import struct
+    manifest = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    icon = (ROOT / ".claude-plugin" / manifest["icon"].removeprefix("./.claude-plugin/")).resolve()
+    data = icon.read_bytes()
+    assert data[:8] == b"\x89PNG\r\n\x1a\n" and len(data) < 2 * 1024 * 1024
+    width, height = struct.unpack(">II", data[16:24])
+    assert width == height and 512 <= width <= 2048
