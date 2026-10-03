@@ -5,9 +5,10 @@ it). Until the onboarding commit reaches trunk there are no rules there at all, 
 be judged by nothing, so the tree's own profile is obeyed and the note says so.
 
 This reads trunk's name from the tree and trunk itself through a local ref, both of which a session can change, so
-nothing that decides a push uses it: the push guard, the pre-push hook and the person's approval read
-`push.origin_rules`, which asks origin (scan of 0.7.0, F1). The guards that stay here keep a session from damaging
-its own tree; README, "Known limitations", says what that leaves open.
+the push guard and the pre-push hook do not take their rules from here: they read `push.origin_trunk` and
+`push.rules_at`, which ask origin (scan of 0.7.0, F1). The guards that stay here keep a session from damaging its
+own tree. No client-side guard locks a repository against a session set on getting around it - README, "Security
+model and its limits", says what does.
 """
 
 from __future__ import annotations

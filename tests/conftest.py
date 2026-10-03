@@ -38,3 +38,13 @@ def the_caller_is_a_person_in_a_terminal(monkeypatch):
     monkeypatch.setattr(caller, "calling_sessions", lambda: [Session(
         name="", session_id="person", kind="interactive", pid=None, short_id=None, status=None, state=None, cwd="",
         started_at_ms=None)])
+
+
+@pytest.fixture(autouse=True)
+def git_rewrites_switched_off_per_test(monkeypatch):
+    """The hook entry points switch off git's replace refs and grafts for their whole process; in a test process
+    that would outlive the test. Each test starts without them and leaves none behind."""
+    from flotilla.guards.push import NO_REWRITES
+    for key in NO_REWRITES:
+        monkeypatch.setenv(key, "")
+        monkeypatch.delenv(key)

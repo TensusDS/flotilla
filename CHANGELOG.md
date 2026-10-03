@@ -8,8 +8,12 @@ each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2
 Closes the findings of a scan of the fleet, lane, onboarding and guard code:
 - **A push is judged by origin's trunk.** The push guard, the `pre-push` hook and the person's approval took trunk's
   name from the tree's own profile and fell back to that file when the ref carried none, so an uncommitted edit
-  could turn a push to the real trunk into a push "to another branch". Trunk is now origin's default branch and the
-  rules are the profile it carries; when origin cannot be asked, the push is refused with no override.
+  could turn a push to the real trunk into a push "to another branch". Trunk is now origin's default branch (or the
+  trunk the profile there names) and the rules are the profile trunk carries; git's history is read with replace
+  refs and grafts off; `pre-push` asks the destination git names, after every URL rewrite. A push that lands on
+  trunk is refused with no override when its rules cannot be read; a branch push needs nothing of origin.
+- **Where the line is.** README and SECURITY.md now say plainly that the push guards check what a session pushes
+  and are not a lock on the repository: protect trunk on your Git host.
 - **Text another session wrote cannot forge lines.** A lane booking's note, name and `--for`, and a leftover
   process's command line in `retire`, are shown with control characters made visible.
 

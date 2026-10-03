@@ -455,10 +455,15 @@ def test_a_tree_that_renames_trunk_does_not_switch_off_the_push_guard(tmp_path, 
     profile = root / ".flotilla" / "project.toml"
     profile.write_text(profile.read_text(encoding="utf-8").replace('branch = "main"', edit), encoding="utf-8")
     found = judge("git push origin main", root, tmp_path)
-    assert found is not None and found.refuse
+    assert found is not None and found.refuse and "not approved" in found.text
+    # the approval is closed - judged unapproved, or (the tree's renamed trunk keeps the ledger from opening) not
+    # askable, which closes it just the same - and no override opens it
+    overridden = judge('FLOTILLA_GATE_OVERRIDE="hotfix" git push origin main', root, tmp_path)
+    assert overridden is not None and overridden.refuse
     head = git(root, "rev-parse", "HEAD")
-    code, _ = push.pre_push(root, lines(root, ("refs/heads/main", head, "refs/heads/main")), env=env(tmp_path))
-    assert code == 1
+    code, text = push.pre_push(root, lines(root, ("refs/heads/main", head, "refs/heads/main")),
+                               env={**env(tmp_path), "FLOTILLA_GATE_OVERRIDE": "hotfix"})
+    assert code == 1 and "not approved" in text
 
 
 def test_before_trunk_carries_a_profile_the_trees_own_is_obeyed(tmp_path):
@@ -467,3 +472,34 @@ def test_before_trunk_carries_a_profile_the_trees_own_is_obeyed(tmp_path):
     root = onboarded(tmp_path, push=False)
     found = judge("git push origin main", root, tmp_path)
     assert found is not None and found.refuse and "receipt" in found.text   # the tree's push_receipt guard is on
+
+
+def test_a_trunk_that_is_not_origins_default_branch_keeps_its_guard(tmp_path):
+    """Review of the scan fixes of 0.7.0, I1: the profile's trunk was overwritten with origin's default branch, so a
+    project whose trunk is `develop` lost its guard there without a word. The profile on origin's default branch
+    says which branch is trunk."""
+    root = human_project(tmp_path)
+    profile = root / ".flotilla" / "project.toml"
+    git(root, "switch", "-q", "-c", "develop", "origin/main")
+    profile.write_text(profile.read_text(encoding="utf-8").replace('branch = "main"', 'branch = "develop"'),
+                       encoding="utf-8")
+    git(root, *IDENTITY, "commit", "-q", "-am", "trunk is develop")
+    git(root, "push", "-q", "origin", "develop")
+    git(root, "push", "-q", "origin", "develop:main")   # the default branch's profile names develop too
+    (root / "d.txt").write_text("unapproved on develop\n", encoding="utf-8")
+    git(root, "add", "d.txt")
+    git(root, *IDENTITY, "commit", "-q", "-m", "unapproved on develop")
+    receipt(root, tmp_path / "state")
+    found = judge("git push origin develop", root, tmp_path)
+    assert found is not None and found.refuse and "not approved" in found.text
+
+
+def test_a_branch_push_needs_neither_a_reachable_origin_nor_a_fetched_trunk(tmp_path):
+    """Review of the scan fixes of 0.7.0, I2: every push door asked origin and wanted its trunk fetched before
+    looking at what was pushed, so a feature branch could not be pushed with origin moved or out of reach. What
+    lands on no trunk and no tag is judged by nothing, as before."""
+    root = human_project(tmp_path)
+    git(root, "switch", "-q", "-c", "feat/x")
+    assert judge("git push -u origin feat/x", root, tmp_path) is None
+    git(root, "config", "remote.origin.url", str(tmp_path / "gone.git"))   # origin out of reach
+    assert judge("git push -u origin feat/x", root, tmp_path) is None

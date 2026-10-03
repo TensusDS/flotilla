@@ -1351,7 +1351,17 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    push is refused with no override, because rules nobody can read decide nothing. The other guards still read
    through the local ref - they keep a session from damaging its own tree, and asking origin on every command would
    put a network call before every Bash call; README says so. F2, F3: a lane booking's caller-written fields and a
-   leftover process's command line are made visible where they are read. (planner's decision, 2026-10-03)
+   leftover process's command line are made visible where they are read. The fixes' review reproduced four more
+   ways around the push guard, each through the session's own checkout - a replace ref standing in for origin's
+   trunk, a renamed origin, a fetch URL apart from the push URL, a broken tree profile under an override - and two
+   regressions of the first version (a `develop` trunk silently swapped for origin's default branch; branch pushes
+   refused when origin was out of reach). The person chose to draw the line rather than chase every git knob:
+   README and SECURITY.md say the push guards check what a session pushes and are no lock on the repository, and
+   that trunk is protected on the Git host; and the cheap steps that close whole classes are taken - git runs with
+   replace refs and grafts off in every guard process, pre-push asks the destination git names (after pushurl and
+   every rewrite, measured on git 2.53) from outside the repository, trunk is the branch the profile on origin's
+   default branch names, a branch push asks origin nothing, and a push to trunk whose rules or approval cannot be
+   read is refused with no override. Booking names compare as stored. (planner's decision, 2026-10-03)
 
 ## Open questions (for the foundation spec)
 

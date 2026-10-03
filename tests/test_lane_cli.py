@@ -219,3 +219,13 @@ def test_a_peers_booking_note_cannot_forge_lines_or_move_the_cursor(tmp_path, mo
     code, out = run_cli("lane", "take", "--root", str(root), "--as", "review session 1")   # the refusal names it too
     refused = [line for line in out.splitlines() if "held by main session 1" in line]
     assert code == 2 and "\x1b" not in out and len(refused) == 1 and "\\n  waiting: nobody" in refused[0]
+
+
+def test_a_name_with_a_hidden_character_still_releases_its_own_booking(tmp_path, monkeypatch):
+    """Review of the scan fixes of 0.7.0, M1: booking names are made visible where the log is read, and release
+    compared that with the raw name - a name with a tab or a joiner could no longer release its own booking."""
+    root = onboarded(tmp_path, monkeypatch)
+    name = "main\tsession 1"
+    assert run_cli("lane", "take", "--root", str(root), "--as", name)[0] == 0
+    code, out = run_cli("lane", "release", "--root", str(root), "--as", name)
+    assert code == 0 and "released b1" in out

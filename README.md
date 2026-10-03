@@ -468,8 +468,11 @@ What flotilla does not do yet, or does only partly. Each one was met in a field 
   `refs/remotes/origin/<trunk>`, or the tree's own profile before onboarding reaches trunk. A session that moves
   that ref, or renames trunk in its own profile, changes the rules the next flotilla command reads: the revert and
   line-number guards, the lane, file reservations, event scripts. The classifier sees the command that does it.
-  What decides a push does not rest on either: the push guard, the `pre-push` hook, the person's approval and every
-  allow ask origin for its default branch and read the profile that branch carries.
+  The push guard, the `pre-push` hook, the person's approval and every allow ask origin instead - but a session can
+  still reconfigure its own checkout around a client-side guard; see
+  [Security model and its limits](#security-model-and-its-limits) for what protects trunk.
+- **A broken profile on trunk closes trunk.** If the profile on origin's trunk cannot be read, every push to trunk
+  is refused, the one that would fix it included. You fix it from your own terminal with `git push --no-verify`.
 - **It does not isolate sessions from you or from each other** - see the next section.
 
 ## Security model and its limits
@@ -484,6 +487,17 @@ It does **not** defend against a determined program running as your user. Every 
 that writes the ledger file directly, detaches a process with a pseudo-terminal of its own, or drives the model in
 your own interactive session can still pass for you. Against that, the last gate is Claude Code's own permission
 prompt in `ask` mode. If you need isolation from the code a fleet works on, run Claude Code inside a sandbox.
+
+**The push guards are a check on what a session pushes, not a lock on your repository.** They read trunk and its
+rules from origin, read git's history with replace refs and grafts switched off, and the `pre-push` hook asks the
+destination git itself names. They catch a session that pushes unreviewed or unapproved work by mistake, or because
+it was told to. A session set on getting around them still can: it owns its checkout - its git config, its remotes,
+its objects, `git push --no-verify` - and a guard running on that checkout can only judge what it is shown. The lock
+is on the server: **protect your trunk on GitHub** (Settings → Rules → Rulesets, or Branches → branch protection) so
+it accepts changes only through pull requests with the reviews and checks you require. The pull-request flows work
+with that on; the `direct` flow pushes to trunk itself, so pick a pull-request flow, or let the ruleset allow the
+sender's pushes knowing what that leaves to flotilla. With such protection, the push guards are a second, earlier
+line rather than the only one.
 
 The 2026-10-01 security review, its 25 findings and how each was fixed are recorded in
 `docs/specs/2026-09-22-decisions-log.md` (decisions 171-189).

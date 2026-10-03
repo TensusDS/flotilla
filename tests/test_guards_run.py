@@ -807,3 +807,87 @@ def test_a_session_is_told_once_that_the_opt_in_is_off(tmp_path, monkeypatch):
     assert ask(root, f"{CLI} status", monkeypatch, tmp_path, session="sid-a") is None   # said once
     assert ask(root, "ls -la", monkeypatch, tmp_path, session="sid-b") is None   # not one of flotilla's own
     assert ask(root, f"{CLI} status", monkeypatch, tmp_path, session="sid-c", mode="default") is None   # auto only
+
+
+def _human_with_unapproved(tmp_path):
+    """Origin's trunk: a person approves merges, the receipt guard on. The tree: one commit nobody approved."""
+    from guardkit import IDENTITY, git, receipt
+    root = onboarded(tmp_path)
+    profile = root / ".flotilla" / "project.toml"
+    profile.write_text(profile.read_text().replace('mode = "direct"', 'mode = "direct"\nmerge_authorized_by = "human"'),
+                       encoding="utf-8")
+    git(root, *IDENTITY, "commit", "-q", "-am", "a person authorizes merges")
+    git(root, "push", "-q", "origin", "main")
+    (root / "w.txt").write_text("work nobody approved\n", encoding="utf-8")
+    git(root, "add", "w.txt")
+    git(root, *IDENTITY, "commit", "-q", "-m", "unapproved work")
+    receipt(root, tmp_path / "state")
+    return root
+
+
+def _pre_push(root, tmp_path, url):
+    from flotilla.guards.commands import run_githook
+    from guardkit import git
+    head = git(root, "rev-parse", "HEAD")
+    stdin = f"refs/heads/main {head} refs/heads/main {'0' * 40}\n"
+    import contextlib
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err):
+        code = run_githook("pre-push", root, stdin, env={"FLOTILLA_STATE_DIR": str(tmp_path / "state")},
+                           hook_args=("origin", url))
+    return code, err.getvalue()
+
+
+def test_a_replaced_trunk_commit_does_not_change_the_rules_a_push_is_judged_by(tmp_path, monkeypatch):
+    """Review of the scan fixes of 0.7.0, C1: the rules were read from the local object store, which honours
+    `git replace` - a commit with every guard off stood in for origin's trunk. Both barriers read with replace refs
+    and grafts switched off."""
+    from guardkit import IDENTITY, git
+    root = _human_with_unapproved(tmp_path)
+    real = git(root, "rev-parse", "refs/remotes/origin/main")
+    git(root, "switch", "-q", "-c", "forge", real)
+    profile = root / ".flotilla" / "project.toml"
+    profile.write_text(profile.read_text().replace("push_receipt = true", "push_receipt = false")
+                       .replace('merge_authorized_by = "human"', 'merge_authorized_by = "sender"'), encoding="utf-8")
+    git(root, *IDENTITY, "commit", "-q", "-am", "every guard off")
+    forged = git(root, "rev-parse", "HEAD")
+    git(root, "switch", "-q", "main")
+    git(root, "replace", real, forged)
+    answer = ask(root, "git push origin main", monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny" and "not approved" in answer["permissionDecisionReason"]
+    code, text = _pre_push(root, tmp_path, git(root, "config", "--get", "remote.origin.url"))
+    assert code == 1 and "not approved" in text
+
+
+def test_pre_push_asks_the_destination_git_names_not_the_remote_by_name(tmp_path, monkeypatch):
+    """Review of the scan fixes of 0.7.0, C3, C4: origin's fetch URL pointed at a repository the session made,
+    whose trunk turned every guard off, while `pushurl` (or a rename, or an insteadOf) sent the push to the real
+    one. git hands pre-push the real destination after every rewrite (measured on git 2.53); that is what is asked,
+    from outside the repository, so no repository config redirects the question."""
+    from guardkit import IDENTITY, git
+    root = _human_with_unapproved(tmp_path)
+    real_url = git(root, "config", "--get", "remote.origin.url")
+    fake = tmp_path / "fake.git"
+    git(tmp_path, "clone", "-q", "--bare", real_url, str(fake))
+    work = tmp_path / "fake-work"
+    git(tmp_path, "clone", "-q", str(fake), str(work))
+    profile = work / ".flotilla" / "project.toml"
+    profile.write_text(profile.read_text().replace("push_receipt = true", "push_receipt = false")
+                       .replace('merge_authorized_by = "human"', 'merge_authorized_by = "sender"'), encoding="utf-8")
+    git(work, *IDENTITY, "commit", "-q", "-am", "every guard off")
+    git(work, "push", "-q", "origin", "main")
+    git(root, "config", "remote.origin.url", str(fake))
+    git(root, "config", "remote.origin.pushurl", real_url)
+    git(root, "fetch", "-q", "origin")
+    code, text = _pre_push(root, tmp_path, real_url)   # what git passes: the push URL
+    assert code == 1 and "not approved" in text
+
+
+def test_a_broken_tree_profile_and_an_override_do_not_open_a_push(tmp_path, monkeypatch):
+    """Review of the scan fixes of 0.7.0, C2: a tree profile that could not be read made the push guard's verdict
+    an overridable failure, and pre-push let any failure through with the override, unrecorded. The push is judged
+    by origin's rules either way, and the person's approval has no override."""
+    root = _human_with_unapproved(tmp_path)
+    (root / ".flotilla" / "project.toml").write_text("[[[", encoding="utf-8")
+    answer = ask(root, 'FLOTILLA_GATE_OVERRIDE="x" git push origin main', monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny" and "not approved" in answer["permissionDecisionReason"]

@@ -27,11 +27,6 @@ def _safely(name: str, check) -> list[Finding]:
     return [found] if found else []
 
 
-def _override(segment, env) -> str:
-    from flotilla.guards.push import OVERRIDE
-    return (segment.assignments.get(OVERRIDE) or env.get(OVERRIDE) or "").strip()
-
-
 def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run) -> list[Finding]:
     from flotilla.guards import lane, line_edit, person, push, revert, shell
     from flotilla.guards.rules import rules_for
@@ -44,18 +39,11 @@ def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run) -> 
     try:
         profile, _ = rules_for(Path(root), run=run)
     except Exception as err:  # noqa: BLE001 - which guards are on is unknown
-        found = []
-        for segment in segments:
-            if push.door(segment) is None:
-                continue
-            if _override(segment, env):
-                found.append(Finding(push.GUARD, False, f"flotilla push receipt: the rules could not be read "
-                                                        f"({err}); the override lets it through, unrecorded"))
-            else:
-                found.append(Finding(push.GUARD, True, f"flotilla push receipt: `{segment.text}`: the project's "
-                                                       f"rules could not be read ({err}), so whether it needs a "
-                                                       f"receipt is unknown; fix the profile, or, knowingly: "
-                                                       f'{push.OVERRIDE}="<why>"'))
+        # a push is judged by origin's rules, which the push guard reads itself: an unreadable tree profile is no
+        # reason to judge it otherwise, nor one an override covers (review of the scan of 0.7.0, C2)
+        found = [finding for finding in (push.guard(segment, root=Path(root), profile={}, env=env, run=run)
+                                         for segment in segments if push.door(segment) is not None)
+                 if finding is not None]
         return persons + found or [Finding("rules", False, f"flotilla guards: the project's rules could not be read ({err}); "
                                                  "the revert and line-number guards did not run")]
     on = profile.get("guards") or {}

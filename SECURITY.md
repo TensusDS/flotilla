@@ -20,5 +20,13 @@ Only the latest release gets fixes. flotilla is pre-1.0; to update, see
 
 ## What flotilla does and does not promise
 
+flotilla's push guards check what a session pushes; they are not a lock on your repository. A session runs as you
+and owns its checkout, so one set on getting around a client-side guard can. Protect trunk on your Git host (branch
+protection or rulesets requiring pull requests and reviews) - that is the lock, and flotilla's pull-request flows
+work with it on. A way
+around the guards that needs no change to the session's own git configuration, remotes, objects or hooks is a
+vulnerability; please report it.
+
+
 [README.md, "Security model and its limits"](README.md#security-model-and-its-limits) says what flotilla protects
 against and what it leaves to Claude Code, to your permission mode and to you.

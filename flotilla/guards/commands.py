@@ -46,7 +46,7 @@ def _hooks_fired(root: Path) -> list[str]:
     return lines
 
 
-def run_githook(name: str, root, stdin_text: str, *, env=os.environ, run=subprocess.run) -> int:
+def run_githook(name: str, root, stdin_text: str, *, env=os.environ, run=subprocess.run, hook_args=()) -> int:
     if name == "pre-commit":
         from flotilla.guards import reserve
         try:
@@ -55,14 +55,14 @@ def run_githook(name: str, root, stdin_text: str, *, env=os.environ, run=subproc
             code, text = 0, f"flotilla reservation: the check failed and lets the commit through: {err}"
     else:
         from flotilla.guards import push
+        push.no_rewrites()   # what git reads below is what the push really sends (review of the scan of 0.7.0, C1)
+        url = hook_args[1] if len(hook_args) > 1 else ""   # git's own word for the destination: $2 of pre-push
         try:
-            code, text = push.pre_push(root, stdin_text, env=env, run=run)
+            code, text = push.pre_push(root, stdin_text, env=env, run=run, url=url)
         except Exception as err:  # noqa: BLE001 - a push cannot be taken back: refused on failure
-            if env.get(push.OVERRIDE, "").strip():
-                code, text = 0, f"flotilla pre-push: the check failed ({err}); the override lets it through, unrecorded"
-            else:
-                code, text = 1, (f"flotilla pre-push: the check failed ({err}), and a push is refused on failure. "
-                                 f'Knowingly: {push.OVERRIDE}="<why>" git push ...')
+            # no override here: a check that failed may be the one for the person's approval, which has none (C2)
+            code, text = 1, (f"flotilla pre-push: the check failed ({err}), and a push is refused on failure. A "
+                             "person who knows why pushes from their own terminal with `git push --no-verify`.")
     if text:
         print(text, file=sys.stderr)
     return code
@@ -71,7 +71,8 @@ def run_githook(name: str, root, stdin_text: str, *, env=os.environ, run=subproc
 def run_guard_command(args) -> int:
     from flotilla.guards import githooks
     if args.action == "githook":
-        return run_githook(args.name, Path.cwd(), sys.stdin.read() if args.name == "pre-push" else "")
+        return run_githook(args.name, Path.cwd(), sys.stdin.read() if args.name == "pre-push" else "",
+                           hook_args=tuple(args.hook_args or ()))
     if args.action == "check":
         root = config.find_project(Path(args.cwd))
         if root is None:

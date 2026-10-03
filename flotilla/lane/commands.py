@@ -12,6 +12,7 @@ from pathlib import Path
 
 from flotilla.core import config, paths, repo
 from flotilla.core.storage import LocalLogStore, StorageCorrupt
+from flotilla.core.text import visible
 from flotilla.lane import acquire as acq
 from flotilla.lane import book, machine
 from flotilla.lane import run as runner
@@ -166,7 +167,7 @@ def _release(args) -> int:
             return 0
     held = [item for item in lanes.holders() if args.booking in (None, item.id)]
     if args.booking is None:
-        held = [item for item in held if item.who == who]
+        held = [item for item in held if item.who == visible(who)]   # who is stored visible (F2)
     if not held:
         print(f"refused: no booking held by {who}" if args.booking is None else f"refused: {args.booking} is not held")
         return 2
@@ -252,7 +253,7 @@ def _stop_run(args) -> int:
     lanes = _lanes(ProcessTable.for_machine())
     who = _who(args.as_name)
     held = [item for item in lanes.holders() if item.pid and args.booking in (None, item.id)]
-    mine = [item for item in held if item.who == who]
+    mine = [item for item in held if item.who == visible(who)]   # who is stored visible (F2)
     if not mine:
         others = ", ".join(f"{item.id} ({item.who})" for item in held)
         print(f"refused: no run in the lane is {who}'s" + (f"; held: {others} - ask its holder" if others else ""))

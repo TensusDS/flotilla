@@ -45,6 +45,8 @@ def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime
         command = tool_input.get("command") if isinstance(tool_input.get("command"), str) else ""
         if not any(word in command for word in GUARD_TRIGGERS):
             return 0
+        from flotilla.guards.push import no_rewrites
+        no_rewrites()   # every git the guards start reads what a push really sends (review of the scan of 0.7.0, C1)
 
     from flotilla.core.config import find_project
     root = find_project(cwd)
