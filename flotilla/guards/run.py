@@ -73,6 +73,66 @@ def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run) -> 
     return findings
 
 
+def _own(command: str) -> bool:
+    from flotilla.broker.decide import own_command
+    return own_command({"tool_name": "Bash", "tool_input": {"command": command}})
+
+
+def _senders_push(command: str, cwd, root, run) -> bool:
+    """Whether this is the sender's push of accounted work, as every check flotilla has says (twosuns field test of
+    0.6.7, W9; review of 0.6.10, I2, I3): one exact push of HEAD to trunk, no option; a direct-flow project with the
+    receipt guard on; the tree is the home of an open row whose owner's post may land; and the ledger accounts for
+    every commit the push carries. The push guard itself has already run and found nothing to say."""
+    from flotilla.guards import shell
+    from flotilla.guards.rules import rules_for
+    from flotilla.ledger import batch, gitq
+    from flotilla.ledger.commands import open_ledger
+    from flotilla.posts import post_for_session
+    if root is None:
+        return False
+    profile, _ = rules_for(Path(root), run=run)
+    trunk = str((profile.get("trunk") or {}).get("branch") or "main")
+    if (profile.get("flow") or {}).get("mode") != "direct" or not (profile.get("guards") or {}).get("push_receipt"):
+        return False
+    segments = shell.segments(command, Path(cwd) if cwd else None)
+    if len(segments) != 1 or segments[0].assignments:
+        return False
+    words = list(segments[0].words)
+    if words == ["git", "push", "origin", f"HEAD:{trunk}"]:
+        tree = Path(cwd)
+    elif len(words) == 6 and words[:2] == ["git", "-C"] and words[3:] == ["push", "origin", f"HEAD:{trunk}"]:
+        tree = Path(words[2])
+    else:
+        return False
+    tree = tree.resolve()
+    ledger = open_ledger(Path(root))
+    rows = ledger.rows()
+    home = [row for row in rows.values() if row.is_open and row.tree and Path(row.tree).resolve() == tree]
+    if not any((post := post_for_session(ledger.posts, row.owner)) is not None and "land" in post.may
+               for row in home):
+        return False
+    head = gitq.resolve(tree, "HEAD", run=run)
+    remote = gitq.resolve(tree, f"refs/remotes/origin/{trunk}", run=run) or ""
+    loose = batch.unaccounted(ledger, rows, head, since=remote) if head else None
+    return loose == []
+
+
+def allowance(command: str, cwd, root, *, run=subprocess.run) -> str:
+    """Why flotilla lets this call past Claude Code's permission check, or "": its own command, or the sender's push
+    of accounted work. A PreToolUse allow passes auto mode's classifier (measured on Claude Code 2.1.288), so it is
+    given only where flotilla's own checks are the whole story; anything else stays the classifier's or the
+    person's."""
+    try:
+        if _own(command):
+            return "flotilla's own command; flotilla checks the post, the state and the evidence itself"
+        if _senders_push(command, cwd, root, run):
+            return ("the sender's push of accounted work: the receipt is green over the pushed revision and the "
+                    "ledger accounts for every commit it carries")
+    except Exception:  # noqa: BLE001 - an allow that could not be justified is not given
+        return ""
+    return ""
+
+
 def guard_hook(command: str, cwd, root, out, *, env=os.environ, run=subprocess.run) -> int:
     try:
         findings = evaluate(command, cwd, root, env=env, run=run)
@@ -85,9 +145,12 @@ def guard_hook(command: str, cwd, root, out, *, env=os.environ, run=subprocess.r
                                'FLOTILLA_GATE_OVERRIDE="<why>"' if may_push and not knowingly
                                else "the command runs unchecked"))]
     refusals = [finding.text for finding in findings if finding.refuse]
+    allowed = "" if findings else allowance(command, cwd, root, run=run)
     if refusals:
         body = {"hookEventName": "PreToolUse", "permissionDecision": "deny",
                 "permissionDecisionReason": "\n\n".join(refusals)}
+    elif allowed:
+        body = {"hookEventName": "PreToolUse", "permissionDecision": "allow", "permissionDecisionReason": allowed}
     elif findings:
         body = {"hookEventName": "PreToolUse", "additionalContext": "\n".join(f.text for f in findings)}
     else:

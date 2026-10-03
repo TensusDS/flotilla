@@ -217,3 +217,118 @@ def test_the_guard_knows_every_move_the_cli_has():
     work = next(a for a in parser._subparsers._group_actions[0].choices["work"]._actions
                 if isinstance(a, argparse._SubParsersAction))
     assert set(work.choices) == set(person.MOVES)
+
+
+CLI = str(hooks.CLI)
+
+
+def _allowed(answer) -> bool:
+    return bool(answer) and answer.get("permissionDecision") == "allow"
+
+
+@pytest.mark.parametrize("command", [f"{CLI} work land feat/x", f"{CLI} status", f"{CLI} work reconcile --root /a"])
+def test_flotillas_own_commands_pass_the_classifier(tmp_path, monkeypatch, command):
+    """Twosuns field test of 0.6.7, W11: in auto mode Claude Code's classifier refused `work land` - a ledger record -
+    as "Merge Without Review". The guard hook allows exactly what the broker's own-command check passes (decisions
+    199, 200); a hook's allow passes the classifier (measured on Claude Code 2.1.288)."""
+    assert _allowed(ask(onboarded(tmp_path), command, monkeypatch, tmp_path))
+
+
+@pytest.mark.parametrize("command", [
+    f"{CLI} work land feat/x --skip-event pre-landed --skip-why y",   # an event gate is the person's to skip
+    f"{CLI} lane run --for x -- sh -c 'git push --force origin HEAD:main'",   # review of 0.6.10, C1
+    f"{CLI} events check --tree .",   # review of 0.6.10, C2: runs scripts the seat wrote
+    f"{CLI} status; touch x",
+    f"{CLI} work approve feat/x",
+    f"{CLI} work hand x --as 'sender 1'",
+    f"{CLI} receipt run --purpose push",
+])
+def test_what_steps_around_a_check_is_left_to_the_classifier(tmp_path, monkeypatch, command):
+    assert not _allowed(ask(onboarded(tmp_path), command, monkeypatch, tmp_path))
+
+
+def _sender_tree(tmp_path, monkeypatch):
+    """A direct-flow project whose main checkout is the sender's home tree, as the ledger records it."""
+    from flotilla.ledger import core
+    from flotilla.ledger.commands import open_ledger
+    from flotilla.posts import install_templates
+    from guardkit import IDENTITY, git
+    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setenv("FLOTILLA_NO_CENSUS", "1")
+    root = onboarded(tmp_path, extra='\n[flow2]\n', push=False)
+    text = (root / ".flotilla" / "project.toml").read_text(encoding="utf-8")
+    (root / ".flotilla" / "project.toml").write_text(text.replace('mode = "direct"',
+                                                                  'mode = "direct"\nmerge_authorized_by = "sender"'),
+                                                     encoding="utf-8")
+    install_templates(root)
+    git(root, "add", ".flotilla")
+    git(root, *IDENTITY, "commit", "-q", "-m", "posts")
+    git(root, "push", "-q", "origin", "main")
+    from ledgerkit import actor
+    ledger = open_ledger(root)
+    core.reserve(ledger, actor(ledger, "sender 1"), "fleet/sender-1", tree=str(root))
+    return root
+
+
+def test_the_senders_exact_push_of_accounted_work_passes_the_classifier(tmp_path, monkeypatch):
+    """W9: the classifier refused the sender's push of reviewed work as "Merge Without Review". The guard allows it
+    only when everything flotilla checks holds: the post may land, the tree is its home, the flow is direct, the
+    receipt is green over the pushed revision, and every commit it carries is accounted for by the ledger."""
+    from guardkit import IDENTITY, git, receipt
+    root = _sender_tree(tmp_path, monkeypatch)
+    git(root, *IDENTITY, "commit", "-q", "--allow-empty", "-m", "carries no change")   # accounted: nothing in it
+    receipt(root, tmp_path / "state")
+    assert _allowed(ask(root, "git push origin HEAD:main", monkeypatch, tmp_path))
+    assert _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path))
+    assert not _allowed(ask(root, "git push --force origin HEAD:main", monkeypatch, tmp_path))
+
+
+def test_a_push_of_unreviewed_work_is_left_to_the_classifier(tmp_path, monkeypatch):
+    """Review of 0.6.10, I2: in a sender-merges flow the push guard asks for green tests, not for review; the
+    classifier's "Merge Without Review" was the wall against unreviewed commits, and an allow must not pass it."""
+    from guardkit import IDENTITY, git, receipt
+    root = _sender_tree(tmp_path, monkeypatch)
+    (root / "own.txt").write_text("the sender's own change\n", encoding="utf-8")
+    git(root, "add", "own.txt")
+    git(root, *IDENTITY, "commit", "-q", "-m", "unreviewed")
+    receipt(root, tmp_path / "state")
+    answer = ask(root, "git push origin HEAD:main", monkeypatch, tmp_path)
+    assert not _allowed(answer)
+
+
+def test_a_push_from_a_tree_whose_owner_may_not_land_is_left_to_the_classifier(tmp_path, monkeypatch):
+    from flotilla.ledger import core
+    from flotilla.ledger.commands import open_ledger
+    from guardkit import IDENTITY, git, receipt
+    from ledgerkit import actor
+    root = _sender_tree(tmp_path, monkeypatch)
+    git(root, *IDENTITY, "commit", "-q", "--allow-empty", "-m", "carries no change")
+    receipt(root, tmp_path / "state")
+    other = tmp_path / "elsewhere"
+    git(root, "worktree", "add", "-q", "-b", "fleet/main-1", str(other), "main")
+    core.reserve(open_ledger(root), actor(open_ledger(root), "main session 1"), "fleet/main-1", tree=str(other))
+    assert not _allowed(ask(root, f"git -C {other} push origin HEAD:main", monkeypatch, tmp_path))
+
+
+def test_a_push_inside_a_compound_command_is_left_to_the_classifier(tmp_path, monkeypatch):
+    from guardkit import IDENTITY, git, receipt
+    root = _sender_tree(tmp_path, monkeypatch)
+    git(root, *IDENTITY, "commit", "-q", "--allow-empty", "-m", "carries no change")
+    receipt(root, tmp_path / "state")
+    assert not _allowed(ask(root, "git push origin HEAD:main; touch x", monkeypatch, tmp_path))
+    assert not _allowed(ask(root, "git push origin HEAD:main && touch x", monkeypatch, tmp_path))
+
+
+def test_a_push_let_through_by_a_recorded_override_is_not_allowed_past_the_classifier(tmp_path, monkeypatch):
+    """An override lets a push without a receipt through flotilla's guard, recorded; it is the person's knowing
+    step, not a check that passed, so it gives no allow."""
+    from guardkit import IDENTITY, git
+    root = _sender_tree(tmp_path, monkeypatch)
+    git(root, *IDENTITY, "commit", "-q", "--allow-empty", "-m", "carries no change")   # no receipt run
+    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
+    payload = {"cwd": str(root), "tool_name": "Bash", "tool_input": {"command": "git push origin HEAD:main"}}
+    monkeypatch.setenv("FLOTILLA_GATE_OVERRIDE", "the person said so")
+    out = io.StringIO()
+    hooks.run_hook("guard", io.StringIO(json.dumps(payload)), out=out)
+    answer = json.loads(out.getvalue())["hookSpecificOutput"] if out.getvalue() else None
+    assert answer is not None and "override" in json.dumps(answer) and not _allowed(answer)
