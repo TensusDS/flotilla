@@ -8,9 +8,6 @@ Deferred findings, kept here until a plan takes them. Each names where it came f
   hang; `spawn` could export a marker (`FLOTILLA_SESSION_KIND=background`) so the hook knows without the census.
 - On some mounts (FUSE, SMB, exFAT) `os.link` raises EPERM/ENOTSUP, not FileExistsError: the hook denies with the
   error, but `permit answer` prints a traceback. Map it to a refusal naming the filesystem.
-- The queue is never pruned: `live()` parses every question on each poll, and a `Write`/`Edit` question keeps the
-  whole file content in the state directory. Prune closed and dead questions older than a day.
-- For `Write`/`Edit` the person sees only the path; show a truncated diff or content.
 - `status: waiting` may also mean prompts other than permissions; a waiting session is reported only when it holds
   a ledger move.
 - A background orchestrator counts as live: questions then wait the full budget instead of naming `claude attach`.

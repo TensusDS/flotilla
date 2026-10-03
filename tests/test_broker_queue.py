@@ -123,3 +123,13 @@ def test_a_question_nobody_answered_is_forgotten_a_day_after_its_deadline(tmp_pa
     queue.ask(tmp_path, KEY, session="main session 1", session_id="s", tool="Bash", tool_input={"command": "ls"},
               suggestions=[], wait=540, now=1540.0 + 2 * 86400)
     assert not (queue.folder(tmp_path, KEY) / f"q-{old.id}.json").exists()
+
+
+def test_an_abandoned_question_loses_its_call_when_the_queue_is_next_read(tmp_path):
+    """A hook killed while it waited answers nothing and cleans nothing; its question's call goes once its deadline
+    passed, the next time anyone reads the queue - not only when another question is asked."""
+    import json
+    old = ask(tmp_path, now=1000.0, wait=540)
+    queue.live(tmp_path, KEY, now=1600.0)
+    kept = json.loads((queue.folder(tmp_path, KEY) / f"q-{old.id}.json").read_text(encoding="utf-8"))
+    assert kept["tool_input"] == {} and kept["suggestions"] == []

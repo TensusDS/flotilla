@@ -223,6 +223,17 @@ def _wait(payload, ctx, *, clock, sleep, timer, poll, started, parent, pid) -> d
                       tool=str(payload.get("tool_name") or ""), tool_input=tool_input, suggestions=suggestions,
                       wait=max(0.0, ends - timer()), now=clock(), pid=pid,
                       cwd=str(payload.get("cwd") or ctx.me.cwd or ""))
+    try:
+        return _await(state, key, asked, wait, ends, home, clock=clock, sleep=sleep, timer=timer, poll=poll,
+                      parent=parent)
+    finally:   # answered, withdrawn or timed out - or the broker failed: nothing reads the call again
+        try:
+            queue.withdraw(state, key, asked.id, "the asking hook stopped waiting", now=clock())   # no-op if closed
+        finally:
+            queue.forget_call(state, key, asked.id)
+
+
+def _await(state, key, asked, wait, ends, home, *, clock, sleep, timer, poll, parent) -> dict:
     while True:
         got = queue.answer_of(state, key, asked.id)
         if got is not None:

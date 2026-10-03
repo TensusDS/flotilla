@@ -73,7 +73,25 @@ def ask(state_dir, repo_key: str, *, session: str, session_id: str, tool: str, t
     return asked
 
 
-KEEP_CLOSED = 86400   # a closed question's file is kept a day: it may hold a secret the call carried (F16)
+KEEP_CLOSED = 86400   # a closed question's file is kept a day, without the call it carried (F16)
+
+
+def _drop_call(path: Path) -> None:
+    """Keep who asked and when, not what the call carried - a Write's content, an Edit's text, a command with a
+    secret in it (Software Directory Policy: no extraneous conversation data, "even for logging")."""
+    record = _read(path)
+    if not isinstance(record, dict) or (not record.get("tool_input") and not record.get("suggestions")):
+        return
+    record["tool_input"], record["suggestions"] = {}, []
+    staged = path.with_name(f".{path.stem}-{os.getpid()}.tmp")
+    staged.write_text(json.dumps(record), encoding="utf-8")
+    os.replace(staged, path)
+
+
+def forget_call(state_dir, repo_key: str, qid: str) -> None:
+    """The asking hook has its answer, or stopped waiting: nothing reads the call again. The rest stays a day, so a
+    late answer is still told the question is closed."""
+    _drop_call(folder(state_dir, repo_key) / f"q-{qid}.json")
 
 
 def _forget_closed(base: Path, now: float) -> None:
@@ -82,6 +100,8 @@ def _forget_closed(base: Path, now: float) -> None:
         deadline = record.get("deadline") if isinstance(record, dict) else None
         if isinstance(deadline, (int, float)) and now - deadline > KEEP_CLOSED:
             asked.unlink(missing_ok=True)
+        elif isinstance(deadline, (int, float)) and now >= deadline:   # its hook was killed: nobody cleaned up
+            _drop_call(asked)
     for answered in base.glob("a-*.json"):
         record = _read(answered)
         at = record.get("at") if isinstance(record, dict) else None
@@ -121,6 +141,8 @@ def _close(state_dir, repo_key: str, qid: str, record: dict) -> bool:
 def live(state_dir, repo_key: str, *, now: float | None = None, alive=is_alive) -> list[Question]:
     now = time.time() if now is None else now
     base = folder(state_dir, repo_key)
+    if base.is_dir():
+        _forget_closed(base, now)   # the orchestrator reads the queue often; a quiet one is cleaned there too
     found = []
     for path in sorted(base.glob("q-*.json")) if base.is_dir() else []:
         asked = question(state_dir, repo_key, path.name[2:-5])

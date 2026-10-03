@@ -283,3 +283,40 @@ def test_a_lead_left_a_day_is_not_the_orchestrator_for_the_broker(tmp_path):
     clock = Clock()   # counted as the orchestrator, the question would wait; a fake clock makes that a time-out
     decision = decide.decide(TOUCH, ctx, clock=clock, sleep=clock.sleep, timer=clock)
     assert decision["behavior"] == "deny" and "no live orchestrator" in decision["message"]
+
+
+def _kept_inputs(ctx):
+    import json
+    base = queue.folder(ctx.ledger.state_dir, "repo")
+    return [json.loads(path.read_text(encoding="utf-8"))["tool_input"] for path in base.glob("q-*.json")]
+
+
+@pytest.mark.parametrize("choice", [queue.ALLOW, queue.DENY])
+def test_once_the_hook_has_its_answer_the_call_it_carried_is_not_kept(tmp_path, choice):
+    """Directory readiness, p.2 (Software Directory Policy: "must not collect extraneous conversation data, even for
+    logging"): a question carries the whole call - a Write's content, an Edit's text - and that was kept a day after
+    the answer. The person decided on it; once the hook has the answer, nothing reads it again."""
+    ctx = fleet(tmp_path)
+    clock = Clock(on_sleep=answer_on_first_sleep(ctx, choice))
+    decide.decide(TOUCH, ctx, clock=clock, sleep=clock.sleep, timer=clock)
+    assert _kept_inputs(ctx) == [{}]
+
+
+def test_a_question_nobody_answered_keeps_no_call_either(tmp_path):
+    ctx = fleet(tmp_path)
+    clock = Clock()
+    decide.decide(TOUCH, ctx, clock=clock, sleep=clock.sleep, timer=clock)
+    assert _kept_inputs(ctx) == [{}]
+
+
+def test_a_broker_that_fails_while_waiting_closes_its_question_and_keeps_no_call(tmp_path, monkeypatch):
+    ctx = fleet(tmp_path)
+    clock = Clock()
+
+    def broken(*args, **kwargs):
+        raise OSError("disk went away")
+    monkeypatch.setattr(queue, "answer_of", broken)
+    decision = decide.decide(TOUCH, ctx, clock=clock, sleep=clock.sleep, timer=clock)
+    monkeypatch.undo()
+    assert decision["behavior"] == "deny" and "broker failed" in decision["message"]
+    assert queue.live(ctx.ledger.state_dir, "repo", now=clock.now) == [] and _kept_inputs(ctx) == [{}]

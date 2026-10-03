@@ -400,8 +400,9 @@ So nothing comes as a surprise:
   It spares anything started after the stop, anything another user owns, systemd services, anything with a terminal,
   and anything under a live session, and it names what it stopped and what it spared.
 - **State.** The ledger, receipts, permission questions and override records live in `${FLOTILLA_STATE_DIR}` if set,
-  else `${XDG_STATE_HOME:-~/.local/state}/flotilla/`, closed to other users (0700). Closed permission questions are
-  deleted a day after their answer. The directory survives plugin updates and uninstall on purpose; `flotilla doctor`
+  else `${XDG_STATE_HOME:-~/.local/state}/flotilla/`, closed to other users (0700). A permission question carries
+  the call it asks about (a command, a file's new content); that call is dropped as soon as the asking session has
+  its answer or stops waiting, and the rest of the record - who asked, when, the answer - a day later. The directory survives plugin updates and uninstall on purpose; `flotilla doctor`
   prints its path.
 - **Git hooks.** `pre-commit` and `pre-push` are written into `.git/hooks/` only when you say yes in `/flotilla:guard`.
 - **Network.** Only what your project's own commands do, plus `git` and `gh` asking origin and GitHub about what
