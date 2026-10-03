@@ -3,6 +3,11 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.7.3 - 2026-10-03
+
+- The public tree names no person, home directory, email or other project of the people who built it: the field
+  tests, plans and tests read "the person", `/home/user` and neutral names.
+
 ## 0.7.2 - 2026-10-03
 
 - **A seat number whose tree an earlier fleet left is skipped.** `spawn` and `helper raise` stepped over the numbers of older seats'
