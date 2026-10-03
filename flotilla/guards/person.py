@@ -32,23 +32,51 @@ def _runs_flotilla(word: str, previous: str) -> bool:
     return os.path.basename(word) == "flotilla" or (previous == "-m" and word.split(".")[0] == "flotilla")
 
 
-def _move(words: list[str]) -> str:
-    """The move of the first `flotilla ... work <move>` in the segment, or ""."""
+#: What bash expands inside a word, so the word the guard reads is not the word that runs: braces, ANSI-C and locale
+#: quoting, extglob (third review of 0.6.10, I1). A line ending in a backslash continues the word on the next line.
+EXPANDS = ("{", "$'", '$"', "@(", "+(", "!(", "?(", "*(")
+
+
+def _moves(words: list[str]) -> list[str]:
+    """Every move a `flotilla ... work <move>` in the segment may name: each flotilla occurrence and each `work` after
+    it, since a decoy (`env -C <dir named flotilla> -u work -u show <cli> work approve`) put a harmless move first."""
+    found = []
     for at, word in enumerate(words):
         if not _runs_flotilla(word, words[at - 1] if at else ""):
             continue
         rest = words[at + 1:]
-        if "work" in rest:
-            for word in rest[rest.index("work") + 1:]:
-                if word in MOVES:
-                    return word
-                if fnmatch.fnmatchcase("approve", word):   # a glob bash may expand to it (review of 0.6.10, C2)
-                    return "approve"
-    return ""
+        for place, item in enumerate(rest):
+            if item != "work":
+                continue
+            for candidate in rest[place + 1:]:
+                if candidate in MOVES:
+                    found.append(candidate)
+                    break
+                if fnmatch.fnmatchcase("approve", candidate):   # a glob bash may expand to it (review of 0.6.10)
+                    found.append("approve")
+                    break
+    return found
+
+
+def _move(words: list[str]) -> str:
+    """The move of a `flotilla ... work <move>` in the segment - `approve` if any reading names it - or ""."""
+    moves = _moves(words)
+    return "approve" if "approve" in moves else (moves[0] if moves else "")
+
+
+def _runs_any_flotilla(words: list[str]) -> bool:
+    return any(_runs_flotilla(word, words[at - 1] if at else "") for at, word in enumerate(words))
 
 
 def check(segment) -> Finding | None:
-    if _move(list(segment.words)) != "approve":
+    words = list(segment.words)
+    text = segment.text
+    if _runs_any_flotilla(words) and (any(sign in text for sign in EXPANDS) or text.rstrip().endswith("\\")):
+        return Finding(GUARD, True, "flotilla: this flotilla command holds what bash expands or continues "
+                                    "(braces, $'...', $\"...\", an extglob, a trailing backslash), so the move it "
+                                    "runs cannot be read before it runs - and `approve` is the person's own move. "
+                                    "Write the command plainly.")
+    if _move(words) != "approve":
         return None
     return Finding(GUARD, True, "flotilla: approving work for trunk is the person's own move, and a Claude tool call "
                                 "is never the person's. Show the person the command; they type it with `!` in front "

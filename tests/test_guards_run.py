@@ -435,3 +435,25 @@ def test_a_checkout_of_another_repository_is_not_the_senders_tree(tmp_path, monk
     git(other, *IDENTITY, "commit", "-q", "--allow-empty", "-m", "carries no change")
     receipt(other, tmp_path / "state")
     assert not _allowed(ask(root, f"git -C {other} push origin HEAD:main", monkeypatch, tmp_path))
+
+
+@pytest.mark.parametrize("command", [
+    f"{CLI} work {{approve,feat}} x",                           # brace expansion: no file needed
+    f"{CLI} work $'approve' feat/x", f'{CLI} work $"approve" feat/x',   # ANSI-C and locale quoting
+    f"{CLI} work appro\\\nve feat/x",                            # a line continuation joins the word again
+    f"{CLI} work @(approve) feat/x",                             # extglob
+    f"env -C /tmp -u work -u show {CLI} work approve feat/x",    # a decoy `work` before flotilla's
+    f"{CLI} lane run --note work --for show -- {CLI} work approve feat/x",   # a decoy flotilla before the real one
+])
+def test_the_person_guard_reads_every_spelling_bash_turns_into_approve(tmp_path, monkeypatch, command):
+    """Third review of 0.6.10, I1: each of these reached `approve` in bash and passed the guard."""
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny" and "person" in answer["permissionDecisionReason"], \
+        (command, answer)
+
+
+def test_the_person_guard_still_lets_ordinary_moves_through(tmp_path, monkeypatch):
+    root = onboarded(tmp_path)
+    for command in (f"{CLI} work hand feat/x", f"{CLI} work show feat/approve-button", f"{CLI} status"):
+        answer = ask(root, command, monkeypatch, tmp_path, mode="default")
+        assert not answer or answer.get("permissionDecision") != "deny", (command, answer)
