@@ -11,8 +11,11 @@ each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2
 - **Skipping auto mode's classifier is opt-in.** flotilla answers "allow" for its own checked commands and the
   sender's checked push only with `[permissions] skip_classifier_for_checked = true` in the profile on trunk; off
   unless set. Not recommended for people new to Claude Code or auto mode.
+  Onboarding writes the key, off; the opt-in counts only as origin's trunk carries it (flotilla asks origin), and a
+  session is told once when only the missing opt-in keeps a command from the allow.
 - **A permission question keeps the call it asked about only while it waits.** The command or file content is
   dropped as soon as the asking session has its answer or stops waiting.
+- **No session transcript is read.** How a session was started comes from Claude Code's session registry.
 - Privacy policy ([PRIVACY.md](PRIVACY.md)), support ([SUPPORT.md](SUPPORT.md)) and security reporting
   ([SECURITY.md](SECURITY.md)); the plugin manifest links them for the directory listing.
 

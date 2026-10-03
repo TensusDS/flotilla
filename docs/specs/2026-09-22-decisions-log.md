@@ -1327,7 +1327,15 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    carried once the asking hook has its answer or stops waiting. PRIVACY.md, SUPPORT.md, SECURITY.md and a
    CHANGELOG are linked from the manifest's directory fields. Left to the person: turning on GitHub's private
    vulnerability reporting, and whether `ask` mode's automatic answer for flotilla's own commands needs the same
-   opt-in. (planner's decision, 2026-10-03)
+   opt-in. The branch's final review corrected four things, each reproduced first: the opt-in for flotilla's own
+   commands was read through the local ref or the tree's own profile, so a seat could switch it on - every allow now
+   asks origin for its default branch and that branch's revision and reads the profile there (a pushed branch naming
+   itself trunk, or a repointed `origin/HEAD`, counts for nothing); the README's snippet declared `[permissions]` a
+   second time, which made a profile unreadable - onboarding now writes the key off beside `mode`; how a session
+   was started was read from the first records of its transcript - it is read from Claude Code's session registry
+   now, since the policy forbids reading chat history; and PRIVACY.md claimed no network use while flotilla runs
+   `git ls-remote`, `fetch`, one `push` and `gh` - it lists each. A session is told once when only the missing
+   opt-in keeps a command from the allow. (planner's decision, 2026-10-03)
 
 ## Open questions (for the foundation spec)
 
