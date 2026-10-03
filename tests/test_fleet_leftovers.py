@@ -121,3 +121,13 @@ def test_the_cut_off_is_read_from_the_same_clock_as_process_starts(tmp_path):
     (proc / "uptime").write_text("123.45 99.00\n", encoding="utf-8")
     assert leftovers.now_ticks(proc) == int(123.45 * leftovers.CLK_TCK)
     assert leftovers.now_ticks(tmp_path / "nowhere") is None
+
+
+def test_a_leftovers_command_line_is_read_as_text_another_session_wrote(tmp_path):
+    """Scan of 0.7.0, F3: a seat chooses its processes' command lines (`exec -a`), and retire printed them among its
+    own lines - a newline forged one, an escape rewrote the terminal. They are made visible where /proc is read."""
+    proc, tree, other = world(tmp_path)
+    fake_proc(proc, 500, ppid=1, cwd=tree, command="node\nretired seat (stopped abcd)\x1b[2J")
+    found = leftovers.in_tree(tree, keep=set(), proc_root=proc, me=99999)
+    assert [item.pid for item in found] == [500]
+    assert "\n" not in found[0].command and "\x1b" not in found[0].command and "\\n" in found[0].command

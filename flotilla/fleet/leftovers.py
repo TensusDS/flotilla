@@ -28,6 +28,7 @@ import signal
 from dataclasses import dataclass
 from pathlib import Path
 
+from flotilla.core.text import visible
 from flotilla.lane.procs import CLK_TCK
 
 PROC_ROOT = Path("/proc")
@@ -108,7 +109,8 @@ def _table(proc_root: Path) -> dict[int, _Proc]:
             stat = (entry / "stat").read_text(encoding="utf-8", errors="replace")
             fields = stat[stat.rindex(")") + 2:].split()
             cwd = os.readlink(entry / "cwd")
-            command = (entry / "cmdline").read_bytes().replace(b"\0", b" ").decode("utf-8", "replace").strip()
+            command = visible((entry / "cmdline").read_bytes().replace(b"\0", b" ").decode("utf-8", "replace")
+                              .strip())   # the process chose it (`exec -a`): text another session wrote (scan F3)
             table[int(entry.name)] = _Proc(int(fields[1]), int(fields[4]), cwd, command, fields[19], _uid(entry),
                                            _service(entry))
         except (OSError, ValueError, IndexError):
