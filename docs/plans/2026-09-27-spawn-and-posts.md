@@ -19,7 +19,7 @@ Prior art read for this plan (Gas Town, multiclaude): names are prevented from c
 not), a post may carry its own permission mode (Gas Town's lead role cannot edit), and a retired session's left-over
 work is named before it is stopped.
 
-## Decisions (executor's, to be confirmed by Max when he reads the plan)
+## Decisions (executor's, to be confirmed by the person when they read the plan)
 
 1. **Permission modes from the questionnaire:** "they ask me" → `manual`; "allow rules exist" → `dontAsk` (a call
    the rules do not allow is refused, visibly, instead of stalling on a prompt nobody sees); "auto mode" → `auto`.
@@ -288,8 +288,8 @@ Expected: all pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /home/max/workspace/flotilla add flotilla/posts.py flotilla/fleet tests/test_posts.py tests/test_fleet_compose.py
-git -C /home/max/workspace/flotilla commit -m "feat(fleet): posts carry a model and a permission mode; the composition"
+git -C /home/user/workspace/flotilla add flotilla/posts.py flotilla/fleet tests/test_posts.py tests/test_fleet_compose.py
+git -C /home/user/workspace/flotilla commit -m "feat(fleet): posts carry a model and a permission mode; the composition"
 ```
 
 ---
@@ -424,8 +424,8 @@ record.
 - [ ] **Step 6: Commit**
 
 ```bash
-git -C /home/max/workspace/flotilla add flotilla/fleet/names.py tests/test_fleet_names.py
-git -C /home/max/workspace/flotilla commit -m "feat(fleet): names from a locked issued-numbers journal"
+git -C /home/user/workspace/flotilla add flotilla/fleet/names.py tests/test_fleet_names.py
+git -C /home/user/workspace/flotilla commit -m "feat(fleet): names from a locked issued-numbers journal"
 ```
 
 ---
@@ -612,8 +612,8 @@ Expected: all pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /home/max/workspace/flotilla add flotilla/fleet/launch.py tests/test_fleet_launch.py
-git -C /home/max/workspace/flotilla commit -m "feat(fleet): a seat per session and the claude --bg command that launches it"
+git -C /home/user/workspace/flotilla add flotilla/fleet/launch.py tests/test_fleet_launch.py
+git -C /home/user/workspace/flotilla commit -m "feat(fleet): a seat per session and the claude --bg command that launches it"
 ```
 
 ---
@@ -983,8 +983,8 @@ Restore, `cmp`, record both.
 - [ ] **Step 6: Commit**
 
 ```bash
-git -C /home/max/workspace/flotilla add flotilla/fleet/spawn.py tests/fleetkit.py tests/test_fleet_spawn.py
-git -C /home/max/workspace/flotilla commit -m "feat(fleet): spawn cuts and locks the home tree, records the post row, launches, finds the session"
+git -C /home/user/workspace/flotilla add flotilla/fleet/spawn.py tests/fleetkit.py tests/test_fleet_spawn.py
+git -C /home/user/workspace/flotilla commit -m "feat(fleet): spawn cuts and locks the home tree, records the post row, launches, finds the session"
 ```
 
 ---
@@ -1243,8 +1243,8 @@ Copy `retire.py` aside; replace the line `raise RetireRefused(f"`{name}` is stil
 - [ ] **Step 6: Commit**
 
 ```bash
-git -C /home/max/workspace/flotilla add flotilla/fleet/retire.py tests/test_fleet_retire.py
-git -C /home/max/workspace/flotilla commit -m "feat(fleet): the fleet view, and retire that stops, releases and names what is left"
+git -C /home/user/workspace/flotilla add flotilla/fleet/retire.py tests/test_fleet_retire.py
+git -C /home/user/workspace/flotilla commit -m "feat(fleet): the fleet view, and retire that stops, releases and names what is left"
 ```
 
 ---
@@ -1512,8 +1512,8 @@ Expected: all pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /home/max/workspace/flotilla add flotilla/fleet/commands.py flotilla/cli.py tests/test_fleet_cli.py
-git -C /home/max/workspace/flotilla commit -m "feat(cli): flotilla spawn, retire and fleet"
+git -C /home/user/workspace/flotilla add flotilla/fleet/commands.py flotilla/cli.py tests/test_fleet_cli.py
+git -C /home/user/workspace/flotilla commit -m "feat(cli): flotilla spawn, retire and fleet"
 ```
 
 ---
@@ -1695,6 +1695,6 @@ pass, same count. Run: `GIT_CONFIG_GLOBAL=/dev/null uv run --with pytest python 
 runners have no global git identity).
 
 ```bash
-git -C /home/max/workspace/flotilla add skills tests/test_skills.py README.md docs/specs
-git -C /home/max/workspace/flotilla commit -m "feat(skills): /flotilla:spawn, /flotilla:retire and the flotilla arrangement; spec records the fleet"
+git -C /home/user/workspace/flotilla add skills tests/test_skills.py README.md docs/specs
+git -C /home/user/workspace/flotilla commit -m "feat(skills): /flotilla:spawn, /flotilla:retire and the flotilla arrangement; spec records the fleet"
 ```

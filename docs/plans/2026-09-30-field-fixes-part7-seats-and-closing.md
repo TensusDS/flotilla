@@ -46,7 +46,7 @@ Decisions 146–151 in the decisions log (Track B holds 136–145).
 ## Global Constraints
 
 As Track B's plan: English only; stdlib; three suite runs; both validations; `template_version` + 1 on changed
-posts; worktree `/home/max/workspace/flotilla-part7a`, branch `fix/part7-seats-closing`.
+posts; worktree `/home/user/workspace/flotilla-part7a`, branch `fix/part7-seats-closing`.
 
 ## Tasks
 

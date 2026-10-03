@@ -14,7 +14,7 @@ their RSS, reports the other descendants apart (servers from the person's own MC
 removes the session.
 Before each launch it reads MemAvailable and waits while it is under the floor (every 60 s, at most 30 minutes).
 
-Usage: python3 tools/probe_seat_plugins.py [--cwd /home/max/workspace] [--floor-mb 3000] [--log FILE]
+Usage: python3 tools/probe_seat_plugins.py [--cwd /home/user/workspace] [--floor-mb 3000] [--log FILE]
 """
 
 from __future__ import annotations
@@ -193,7 +193,7 @@ def measure(variant: str, extra: list[str], cwd: str, add_dir: str, words: set[s
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--cwd", default="/home/max/workspace")
+    parser.add_argument("--cwd", default="/home/user/workspace")
     parser.add_argument("--floor-mb", type=int, default=3000)
     parser.add_argument("--log", default="")
     parser.add_argument("--variants", default="abc")

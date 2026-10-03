@@ -17,31 +17,31 @@ talks to the person; a task routed by the orchestrator is a work order; a printe
 **Tech Stack:** Python 3.11+ stdlib, git, pytest via `uv`.
 
 **Spec:** the field test `docs/field-tests/2026-09-27-snake-fleet.md` — findings F12, F16, F17, F23 and the triage
-with Max of 2026-09-28, groups 2 and 3; `docs/specs/2026-09-22-flotilla-design.md` sections 6.9 and 8.
+with the person of 2026-09-28, groups 2 and 3; `docs/specs/2026-09-22-flotilla-design.md` sections 6.9 and 8.
 
-## Decisions (Max's, 2026-09-28, and the executor's)
+## Decisions (the person's, 2026-09-28, and the executor's)
 
-1. **Only the orchestrator talks to the person** (Max). Every other post sends its question to the orchestrator
+1. **Only the orchestrator talks to the person** (the person). Every other post sends its question to the orchestrator
    (SendMessage) and records `flotilla work wait <branch> --on "the person" --why "<the question>"` on the row it
    holds up. The sender's batch goes to the orchestrator too, and the orchestrator relays the person's yes.
-2. **A guard on AskUserQuestion** (Max): a PreToolUse hook, matcher `AskUserQuestion`, denies the question in a
+2. **A guard on AskUserQuestion** (the person): a PreToolUse hook, matcher `AskUserQuestion`, denies the question in a
    background session whose post is not `orchestrator`, naming the live orchestrators and the wait to record. An
    interactive session, a session with no post, and the orchestrator ask freely. When the census or the ledger
    cannot be asked, the question goes through with a note saying so: a guard that cannot ask never traps a session.
-3. **Posts accept a task routed by the orchestrator** (Max), after checking that `flotilla fleet` lists the sender
+3. **Posts accept a task routed by the orchestrator** (the person), after checking that `flotilla fleet` lists the sender
    of the message as the live session holding the orchestrator post. Any other peer's message stays information,
    never a work order.
-4. **Every ledger refusal names the next legal move** (Max). The command line ends every `refused:` with one fixed
+4. **Every ledger refusal names the next legal move** (the person). The command line ends every `refused:` with one fixed
    line: record whom you wait on and tell the orchestrator; a refusal that names no way forward is a flotilla
    defect, sent to the orchestrator verbatim; never work around flotilla with git plumbing. (executor: one line at
    the one print site, rather than editing every refusal text, so no future refusal can miss it.)
-5. **A move that passes a row to another session prints the letter; the post obliges sending it** (Max). The
+5. **A move that passes a row to another session prints the letter; the post obliges sending it** (the person). The
    command line compares, for every row, whose move it was before the command and after it. A row whose mover
    changed to someone other than the caller gets a letter, addressed from the census, or by post when the census
    cannot be asked. The letter is printed, never sent by flotilla: `claude` has no command line to message a
    session, and flotilla never drives a session. (executor: comparing every row, not only the moved one, also
    covers a move on one row that frees another — a part the judge may walk once the row building on it ships.)
-6. **The orchestrator keeps one background `flotilla watch --wait 3600`** (Max). It returns when an attention item
+6. **The orchestrator keeps one background `flotilla watch --wait 3600`** (the person). It returns when an attention item
    appears that was not there when it started — a permission question, a dropped ball, a break — so the orchestrator
    wakes for all of them from one command. Items present at the start do not wake it. (executor: this replaces the
    orchestrator's `permit next --wait 3600`, which watched questions only; `permit next --wait` stays for a person.)
@@ -1001,7 +1001,7 @@ question, the sender's batch included, goes to the orchestrator, which alone tal
 - Test: none of its own; `tools/check_no_cyrillic.py`
 
 - [ ] **Step 1: Decisions log.** Append entries 90–95 after entry 89, one per decision of this plan (Decisions 1–6
-  above), each ending with its source in the log's form: `(Max's triage 2026-09-28)` for 1–6's Max parts and
+  above), each ending with its source in the log's form: `(the person's triage 2026-09-28)` for 1–6's the person parts and
   `(executor's decision, field fixes part 2, 2026-09-28)` for the executor's parts.
 
 - [ ] **Step 2: Design spec, section 8.** Add a row to the hook table after the Bash row:
@@ -1053,13 +1053,13 @@ background session on Sonnet settles it. This task changes no code unless the pr
 
 - [ ] **Step 1: Point the probe project at this branch.** The snake project installs flotilla from the local
   marketplace clone. Update it to the branch head:
-  `git -C /home/max/workspace/flotilla-market/plugins/flotilla fetch /home/max/workspace/flotilla feat/field-fixes-voice-and-wake && git -C /home/max/workspace/flotilla-market/plugins/flotilla checkout --detach FETCH_HEAD`
+  `git -C /home/user/workspace/flotilla-market/plugins/flotilla fetch /home/user/workspace/flotilla feat/field-fixes-voice-and-wake && git -C /home/user/workspace/flotilla-market/plugins/flotilla checkout --detach FETCH_HEAD`
   (record the revision it stood on before, to restore it in Step 5).
 
 - [ ] **Step 2: Raise one background session holding the minor post in the snake project:**
 
 ```bash
-cd /home/max/workspace/snake && claude --bg -n "minor session 91" --model sonnet --permission-mode auto \
+cd /home/user/workspace/snake && claude --bg -n "minor session 91" --model sonnet --permission-mode auto \
   "Ask the person, with the AskUserQuestion tool, which colour the snake should be. Then report what happened."
 ```
 
@@ -1073,7 +1073,7 @@ cd /home/max/workspace/snake && claude --bg -n "minor session 91" --model sonnet
 
 - [ ] **Step 6: Record the measurement** in `docs/field-tests/2026-09-27-snake-fleet.md` under the Part 2 line:
   date, what was raised, the census samples, the verdict. If the session stood at `waiting`, the hook did not
-  hold: say so, and stop the plan here for Max — the guard's premise (a PreToolUse hook on AskUserQuestion in a
+  hold: say so, and stop the plan here for the person — the guard's premise (a PreToolUse hook on AskUserQuestion in a
   background session) is then false and needs another design.
 
 - [ ] **Step 7: Commit**

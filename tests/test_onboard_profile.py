@@ -62,8 +62,8 @@ def test_guards_and_tracker(tmp_path):
 
 
 def test_typed_tracker_pattern_is_kept(tmp_path):
-    data = build_profile(detection(tmp_path), {**BASE_ANSWERS, "tracker": "^CURVE-\\d+(\\.\\d+)*$"})
-    assert data["evidence"]["close"]["pattern"] == "^CURVE-\\d+(\\.\\d+)*$"
+    data = build_profile(detection(tmp_path), {**BASE_ANSWERS, "tracker": "^PROJ-\\d+(\\.\\d+)*$"})
+    assert data["evidence"]["close"]["pattern"] == "^PROJ-\\d+(\\.\\d+)*$"
 
 
 def test_deployment_adds_the_judge_and_a_deploy_section(tmp_path):

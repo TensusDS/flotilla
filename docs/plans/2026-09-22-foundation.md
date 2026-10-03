@@ -102,8 +102,8 @@ flotilla/                         repository root = plugin root
 - [ ] **Step 1: Set the repository identity and write the metadata**
 
 ```bash
-git -C /home/max/workspace/flotilla config user.name tensusds
-git -C /home/max/workspace/flotilla config user.email tensusds@gmail.com
+git -C /home/user/workspace/flotilla config user.name tensusds
+git -C ~/workspace/flotilla config user.email <your email>
 ```
 
 `pyproject.toml`:
@@ -251,8 +251,8 @@ yet, so `git checkout` has nothing to restore from) and re-run: `4 passed` again
 - [ ] **Step 6: Commit**
 
 ```bash
-git -C /home/max/workspace/flotilla add pyproject.toml flotilla tools tests
-git -C /home/max/workspace/flotilla commit -m "build: repository skeleton and the English-only gate"
+git -C /home/user/workspace/flotilla add pyproject.toml flotilla tools tests
+git -C /home/user/workspace/flotilla commit -m "build: repository skeleton and the English-only gate"
 ```
 
 ---
@@ -366,7 +366,7 @@ if __name__ == "__main__":
 ```
 
 ```bash
-chmod +x /home/max/workspace/flotilla/scripts/flotilla
+chmod +x /home/user/workspace/flotilla/scripts/flotilla
 ```
 
 `flotilla/cli.py`:
@@ -409,8 +409,8 @@ Expected: `6 passed`.
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /home/max/workspace/flotilla add scripts/flotilla flotilla/cli.py tests/test_entry.py
-git -C /home/max/workspace/flotilla commit -m "feat(cli): entry point with an interpreter gate and a version command"
+git -C /home/user/workspace/flotilla add scripts/flotilla flotilla/cli.py tests/test_entry.py
+git -C /home/user/workspace/flotilla commit -m "feat(cli): entry point with an interpreter gate and a version command"
 ```
 
 ---
@@ -612,8 +612,8 @@ Expected: `12 passed`.
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /home/max/workspace/flotilla add flotilla/core/platform.py tests/test_platform.py
-git -C /home/max/workspace/flotilla commit -m "feat(core): platform capabilities and parent pid by capability"
+git -C /home/user/workspace/flotilla add flotilla/core/platform.py tests/test_platform.py
+git -C /home/user/workspace/flotilla commit -m "feat(core): platform capabilities and parent pid by capability"
 ```
 
 ---
@@ -1064,8 +1064,8 @@ Expected: `test_append_after_torn_tail_sets_fragment_aside` FAILS with `StorageC
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /home/max/workspace/flotilla add flotilla/core/paths.py flotilla/core/storage.py flotilla/core/repo.py tests/test_paths.py tests/test_storage.py tests/test_repo.py
-git -C /home/max/workspace/flotilla commit -m "feat(core): state directory, append-only log storage and repository identity"
+git -C /home/user/workspace/flotilla add flotilla/core/paths.py flotilla/core/storage.py flotilla/core/repo.py tests/test_paths.py tests/test_storage.py tests/test_repo.py
+git -C /home/user/workspace/flotilla commit -m "feat(core): state directory, append-only log storage and repository identity"
 ```
 
 ---
@@ -1243,8 +1243,8 @@ words it differently, the assert on `"line 2"` is the one to adjust, never remov
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /home/max/workspace/flotilla add flotilla/core/config.py tests/test_config.py
-git -C /home/max/workspace/flotilla commit -m "feat(core): project discovery, activation and schema-checked loading"
+git -C /home/user/workspace/flotilla add flotilla/core/config.py tests/test_config.py
+git -C /home/user/workspace/flotilla commit -m "feat(core): project discovery, activation and schema-checked loading"
 ```
 
 ---
@@ -1542,8 +1542,8 @@ Injection (plausible neighbour): in `parse_census`, change `pid=_int_or_none(row
 - [ ] **Step 6: Commit**
 
 ```bash
-git -C /home/max/workspace/flotilla add flotilla/core/census.py flotilla/core/identity.py tests/fixtures tests/test_census.py tests/test_identity.py
-git -C /home/max/workspace/flotilla commit -m "feat(core): census from claude agents --json and caller identity by pid"
+git -C /home/user/workspace/flotilla add flotilla/core/census.py flotilla/core/identity.py tests/fixtures tests/test_census.py tests/test_identity.py
+git -C /home/user/workspace/flotilla commit -m "feat(core): census from claude agents --json and caller identity by pid"
 ```
 
 ---
@@ -1832,15 +1832,15 @@ def main(argv: list[str]) -> int:
 Run: `uv run --with pytest python -m pytest tests/test_doctor.py`
 Expected: `13 passed`.
 
-Run: `/home/max/workspace/flotilla/scripts/flotilla doctor`
+Run: `/home/user/workspace/flotilla/scripts/flotilla doctor`
 Expected on this machine: `ok` for python, platform, git, claude (`2.1.280` or newer), census (`N live session(s)`),
 state; `info` for project (the repository itself is not onboarded). Exit code 0.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /home/max/workspace/flotilla add flotilla/doctor.py flotilla/cli.py tests/test_doctor.py
-git -C /home/max/workspace/flotilla commit -m "feat(doctor): machine and project findings with a Claude Code floor"
+git -C /home/user/workspace/flotilla add flotilla/doctor.py flotilla/cli.py tests/test_doctor.py
+git -C /home/user/workspace/flotilla commit -m "feat(doctor): machine and project findings with a Claude Code floor"
 ```
 
 ---
@@ -2067,7 +2067,7 @@ and the branch in `main`, before `return 2`:
 Run: `uv run --with pytest python -m pytest tests/test_manifest.py tests/test_hooks.py`
 Expected: `3 + 6 passed` (9).
 
-Run: `claude plugin validate /home/max/workspace/flotilla`
+Run: `claude plugin validate /home/user/workspace/flotilla`
 Expected: validation passes. If it reports that `hooks/hooks.json` is not discovered by default, add
 `"hooks": "./hooks/hooks.json"` to `plugin.json`, re-run, and keep the manifest test green.
 
@@ -2077,8 +2077,8 @@ Expected: `test_inactive_project_is_silent` FAILS (output appears outside a proj
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /home/max/workspace/flotilla add .claude-plugin hooks flotilla/hooks.py flotilla/cli.py tests/test_manifest.py tests/test_hooks.py
-git -C /home/max/workspace/flotilla commit -m "feat(plugin): manifest installed disabled and a SessionStart hook silent until onboarded"
+git -C /home/user/workspace/flotilla add .claude-plugin hooks flotilla/hooks.py flotilla/cli.py tests/test_manifest.py tests/test_hooks.py
+git -C /home/user/workspace/flotilla commit -m "feat(plugin): manifest installed disabled and a SessionStart hook silent until onboarded"
 ```
 
 ---
@@ -2187,14 +2187,14 @@ Expected: all tests pass (`101 passed` if the counts per task above hold; the nu
 Run: `uv run --python 3.11 --with pytest python -m pytest`
 Expected: the same count passes on 3.11.
 
-Run: `python3 tools/check_no_cyrillic.py && claude plugin validate /home/max/workspace/flotilla`
+Run: `python3 tools/check_no_cyrillic.py && claude plugin validate /home/user/workspace/flotilla`
 Expected: exit 0, validation passes.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git -C /home/max/workspace/flotilla add .github README.md
-git -C /home/max/workspace/flotilla commit -m "ci: test matrix on Linux and macOS, the language gate and plugin validation"
+git -C /home/user/workspace/flotilla add .github README.md
+git -C /home/user/workspace/flotilla commit -m "ci: test matrix on Linux and macOS, the language gate and plugin validation"
 ```
 
 ---

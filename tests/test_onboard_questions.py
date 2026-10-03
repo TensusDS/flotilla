@@ -135,7 +135,7 @@ def test_a_typed_tracker_pattern_must_compile():
     tracker = next(q for q in qs.all_questions(detection(), {}) if q["id"] == "tracker")
     with pytest.raises(qs.AnswerError, match="regular expression"):
         qs.validate_answer(tracker, ["[unclosed"])
-    assert qs.validate_answer(tracker, ["^CURVE-\\d+$"]) == "^CURVE-\\d+$"
+    assert qs.validate_answer(tracker, ["^PROJ-\\d+$"]) == "^PROJ-\\d+$"
 
 
 def test_own_register_needs_a_typed_pattern():

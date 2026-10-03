@@ -17,12 +17,12 @@ judge and orchestrator say the new sequences.
 **Tech Stack:** Python 3.11+ stdlib, git, pytest via `uv`.
 
 **Spec:** the field test `docs/field-tests/2026-09-27-snake-fleet.md` (findings F14, F15, F18, F21, F24, F26 and the
-triage with Max of 2026-09-28: `land` accepts origin; the judge waits for rows that require the one it walks, the
+triage with the person of 2026-09-28: `land` accepts origin; the judge waits for rows that require the one it walks, the
 orchestrator may override); `docs/specs/2026-09-22-flotilla-design.md` sections 6.2–6.4, 7.4.
 
-## Decisions (Max's, 2026-09-28, and the executor's)
+## Decisions (the person's, 2026-09-28, and the executor's)
 
-1. **`land` in direct-push mode accepts a merge reachable from `origin/<trunk>`** (Max). The local trunk, checked
+1. **`land` in direct-push mode accepts a merge reachable from `origin/<trunk>`** (the person). The local trunk, checked
    out in the main checkout that belongs to nobody, is not needed and is never moved. The sender merges in its own
    tree on a branch from `origin/<trunk>`, takes the push receipt, pushes `HEAD:<trunk>`, then records `land` and
    `ship`. Pushing before `land` is therefore the sequence, not a fault (F15).
@@ -35,7 +35,7 @@ orchestrator may override); `docs/specs/2026-09-22-flotilla-design.md` sections 
    "finished_not_handed" deviation never fires for it (F18).
 5. **`release --settled-by <branch|row>`** closes a row whose purpose another delivered row fulfilled (F26); the
    other row must be delivered; the reason defaults to "settled by <branch>".
-6. **The judge waits for the rows that build on a row** (Max): while an open row that `requires` this one is not
+6. **The judge waits for the rows that build on a row** (the person): while an open row that `requires` this one is not
    delivered, `who_moves` names nobody for the judge's move, and `walked` / `broke` refuse, naming those rows.
    **`flotilla work walkable <branch> --why`**, an annotation the orchestrator may make, lets that row be walked on
    its own.
@@ -780,7 +780,7 @@ Expected: FAIL on the new test.
 ```
 
 `docs/specs/2026-09-22-decisions-log.md`: append decisions 81–86, one per numbered item of this plan's Decisions
-section, each ending `(field test 2026-09-27; Max's triage 2026-09-28)` for 1 and 6 and `(executor's decision, field
+section, each ending `(field test 2026-09-27; the person's triage 2026-09-28)` for 1 and 6 and `(executor's decision, field
 fixes part 1, 2026-09-28)` for the rest, before `## Open questions`, no second number.
 
 `docs/field-tests/2026-09-27-snake-fleet.md`: append a line under the triage: "Part 1 (the ledger) fixes F14, F15,

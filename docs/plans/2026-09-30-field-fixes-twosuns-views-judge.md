@@ -19,7 +19,7 @@ H26b, H27, H30, H32a, H32b, H38, H39, H42; `docs/specs/2026-09-22-flotilla-desig
 Read each finding in the field-test file before its task: the finding is the spec's evidence, with times and
 quotes.
 
-## Decisions (the planner's, 2026-09-30; Max approved fixing the findings and splitting the work)
+## Decisions (the planner's, 2026-09-30; the person approved fixing the findings and splitting the work)
 
 1. **`broke` on a part is legal** (H38). The part gate ("walk a path, not a part") exists so a part is not
    *accepted* as the whole; a defect seen on a part is a defect whatever ships later. `walked` keeps the gate.
@@ -68,7 +68,7 @@ Record these as decisions 121–128 in `docs/specs/2026-09-22-flotilla-design-de
   sets it); read the `N passed` line.
 - A post template whose text changes gets its `template_version` raised by one.
 - Commit messages: Conventional Commits, English, one finished thing per commit.
-- Work in your own worktree of `/home/max/workspace/flotilla` on branch `fix/part6-views-judge`, cut from `main`.
+- Work in your own worktree of `/home/user/workspace/flotilla` on branch `fix/part6-views-judge`, cut from `main`.
   Never switch or write the main checkout.
 
 ## Review Focus

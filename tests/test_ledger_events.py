@@ -85,7 +85,7 @@ def test_annotations_fire_no_events(tmp_path):
     code = f"import pathlib; pathlib.Path({str(marker)!r}).write_text('x')"
     _, ledger = world_with(tmp_path, {})
     ledger.events = {"pre-claimed": script(code), "post-claimed": script(code)}
-    handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", on="Max", why="a decision")
+    handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", on="the person", why="a decision")
     assert not marker.exists()
 
 

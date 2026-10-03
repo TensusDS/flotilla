@@ -9,7 +9,7 @@ directory submission: the person-only moves (onboarding answers and write with `
 - Project: `worldcore`, a renderer-free physics core for generated worlds, seeded from twosuns `src/core` at
   `ac92dd4` (54 modules, 37 test files green, 458 tests); ten test files mixing core and game wiring set aside in
   `tests/twosuns-wiring/` as task 0. Brief: `docs/brief.md` in that repository.
-- Origin: a local bare repository `/home/max/workspace/worldcore-origin.git`.
+- Origin: a local bare repository `/home/user/workspace/worldcore-origin.git`.
 - Same machine as the running twosuns fleet (about 8.5 GB available at the start).
 
 ## Findings

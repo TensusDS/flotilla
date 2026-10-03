@@ -82,8 +82,8 @@ def test_moved_is_free_before_a_reader_takes_it(world):
 def test_wait_records_whom_and_why_then_clears(world):
     root, ledger = world
     claimed(root, ledger)
-    row = handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", on="Max", why="needs a decision")
-    assert (row.waiting_on, row.note, row.state) == ("Max", "needs a decision", "claimed")
+    row = handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", on="the person", why="needs a decision")
+    assert (row.waiting_on, row.note, row.state) == ("the person", "needs a decision", "claimed")
     assert handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", clear=True).waiting_on == ""
 
 
@@ -91,13 +91,13 @@ def test_only_the_owner_or_the_reader_waits(world):
     root, ledger = world
     claimed(root, ledger)
     with pytest.raises(MoveRefused, match="owner"):
-        handover.wait(ledger, actor(ledger, "minor session 1"), "feat/x", on="Max", why="x")
+        handover.wait(ledger, actor(ledger, "minor session 1"), "feat/x", on="the person", why="x")
 
 
 def test_a_state_change_ends_a_recorded_wait(world):
     root, ledger = world
     claimed(root, ledger)
-    handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", on="Max", why="needs a decision")
+    handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", on="the person", why="needs a decision")
     row = handover.hand(ledger, actor(ledger, "main session 1"), "feat/x")
     assert (row.waiting_on, row.note) == ("", "")
 

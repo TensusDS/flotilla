@@ -1,6 +1,6 @@
 """Reading handed work (spec, sections 6.3 and 6.9).
 
-`take` is the reader saying "I am reading this": a fact in the ledger, where the ai-os tool inferred it from
+`take` is the reader saying "I am reading this": a fact in the ledger, where an earlier tool inferred it from
 transcripts. An author never reads, returns or accepts their own work — enforced by the row, not only by the posts.
 A verdict stands over the handed tip only: the revision read must be that tip, and the branch must still be there.
 """

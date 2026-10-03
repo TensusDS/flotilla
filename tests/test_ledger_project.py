@@ -34,11 +34,11 @@ def test_a_session_in_the_main_checkout_is_of_this_project(tmp_path):
 
 
 def test_a_session_of_another_repo_with_a_matching_name_is_not():
-    assert project.members([at("acceptance judge 1", "/work/ai-os")], {}, ROOTS) == []
+    assert project.members([at("acceptance judge 1", "/work/other-project")], {}, ROOTS) == []
 
 
 def test_an_owner_elsewhere_on_disk_is_of_this_project():
-    mine = at("main session 7", "/home/max")
+    mine = at("main session 7", "/home/user")
     assert project.members([mine], rows(row(owner="main session 7")), ROOTS) == [mine]
 
 

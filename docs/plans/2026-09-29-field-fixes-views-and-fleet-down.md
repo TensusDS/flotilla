@@ -17,18 +17,18 @@ caller's own.
 **Tech Stack:** Python 3.11+ stdlib, git, pytest via `uv`.
 
 **Spec:** the field test `docs/field-tests/2026-09-27-snake-fleet.md` — findings F8, F9, F10, F13, F19, F20, F22,
-F27 and the triage with Max of 2026-09-28, groups 5 and 6 ("live sessions of this project are the holders of this
+F27 and the triage with the person of 2026-09-28, groups 5 and 6 ("live sessions of this project are the holders of this
 ledger's post rows, not every name matching a pattern"; "`flotilla fleet down`; a gone seat is one quiet line, not
 a mover alarm"); `docs/specs/2026-09-22-flotilla-design.md` sections 6.7, 6.9, 7.5 and 8.
 
-## Decisions (Max's, 2026-09-28, and the executor's)
+## Decisions (the person's, 2026-09-28, and the executor's)
 
-1. **The sessions of this project** (Max: "live sessions of this project are the holders of this ledger's post
+1. **The sessions of this project** (the person: "live sessions of this project are the holders of this ledger's post
    rows"). The executor widens it by two, so it holds before any spawn and for a person's own session: a live
    session belongs to this project when its name is an owner or reader of an open row of this ledger (post rows
    included), **or** its census `cwd` is inside the main checkout or a worktree of this repository. A post-named
    mover ("the sender", "the judge") resolves only among them; the greeting names them and counts the rest.
-2. **A gone seat is one quiet line, not a mover alarm** (Max). A `reserved` row whose session is not alive is the
+2. **A gone seat is one quiet line, not a mover alarm** (the person). A `reserved` row whose session is not alive is the
    deviation `seat_empty`, not `mover_gone`. The fleet view gathers every empty seat into one item that names them
    and the way out (`flotilla fleet down`).
 3. **The orchestrator is raised last** (executor, F8). Its session-start report then sees every seat already
@@ -37,7 +37,7 @@ a mover alarm"); `docs/specs/2026-09-22-flotilla-design.md` sections 6.7, 6.9, 7
    caught once at `waiting` or `blocked` is sampled again a few seconds later, and only a ball dropped in both
    samples is reported. The hooks do not sample twice (their budget is seconds); the prompt hook's throttle already
    repeats nothing that did not change.
-5. **`flotilla fleet down` retires every seat of this ledger** (Max), with the same steps as `flotilla retire`: stop,
+5. **`flotilla fleet down` retires every seat of this ledger** (the person), with the same steps as `flotilla retire`: stop,
    unlock, release, keep the tree, name the orphaned work. The caller's own seat is skipped and named, because
    stopping the session that runs the command stops the command. A census that cannot be asked refuses the whole
    command before anything is stopped. `/flotilla:down` is the person's command; it shows the fleet and asks first.
@@ -282,12 +282,12 @@ def test_a_session_in_the_main_checkout_is_of_this_project():
 
 
 def test_a_session_of_another_repo_with_a_matching_name_is_not():
-    other = at("acceptance judge 1", "/work/ai-os")
+    other = at("acceptance judge 1", "/work/other-project")
     assert project.members([other], {}, ROOTS) == []
 
 
 def test_an_owner_elsewhere_on_disk_is_of_this_project():
-    mine = at("main session 7", "/home/max")
+    mine = at("main session 7", "/home/user")
     assert project.members([mine], rows(row(owner="main session 7")), ROOTS) == [mine]
 
 
@@ -448,7 +448,7 @@ def members(sessions: list, rows: dict, roots: list[Path]) -> list:
 git add flotilla/ledger/project.py flotilla/ledger/core.py flotilla/watch/context.py flotilla/hooks.py flotilla/watch/ask.py flotilla/ledger/commands.py tests/test_ledger_project.py tests/test_hooks.py
 git commit -m "fix(watch): the fleet is this project's sessions, not every name on the machine
 
-The greeting listed ai-os sessions to the snake orchestrator (F9), and a post-named move was pinned on another
+The greeting listed other-project sessions to the snake orchestrator (F9), and a post-named move was pinned on another
 project's judges (F20). A session is of this project when this ledger names it or it works in this repository's
 checkout or worktrees; the hooks, watch, the ask guard and the letters use that."
 ```
@@ -827,7 +827,7 @@ shows the fleet and asks first."
   8), `docs/field-tests/2026-09-27-snake-fleet.md`
 
 - [ ] **Step 1: Decisions log** — entries 99–104 after entry 98, one per decision of this plan (Decisions 1–6), each
-  ending `(Max's triage 2026-09-28)` for Max's parts and `(executor's decision, field fixes part 3, 2026-09-29)`
+  ending `(the person's triage 2026-09-28)` for the person's parts and `(executor's decision, field fixes part 3, 2026-09-29)`
   for the executor's.
 
 - [ ] **Step 2: Design spec.** Section 6.7 (Views): one paragraph on the sessions of this project and on empty

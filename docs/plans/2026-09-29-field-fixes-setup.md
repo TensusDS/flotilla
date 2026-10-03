@@ -18,10 +18,10 @@ numbering continues from. Every hook records when it last ran, and `flotilla gua
 **Tech Stack:** Python 3.11+ stdlib, git, pytest via `uv`.
 
 **Spec:** the field test `docs/field-tests/2026-09-27-snake-fleet.md` — findings F1–F7 and F11 and the triage with
-Max of 2026-09-28, group 7 ("Setup"); `docs/specs/2026-09-22-flotilla-design.md` sections 5 (onboarding), 7.2
+The person of 2026-09-28, group 7 ("Setup"); `docs/specs/2026-09-22-flotilla-design.md` sections 5 (onboarding), 7.2
 (spawn) and 8 (hooks).
 
-## Decisions (Max's triage, 2026-09-28, and the executor's)
+## Decisions (the person's triage, 2026-09-28, and the executor's)
 
 1. **The flotilla repository is its own marketplace** (F1): `.claude-plugin/marketplace.json` lists one plugin,
    `flotilla`, sourced from the repository root, so `claude plugin marketplace add TensusDS/flotilla` then
@@ -131,11 +131,11 @@ checkout — the ones `flotilla spawn` raises included — loads flotilla. Then 
 - [ ] **Step 5: Validate and run** — `claude plugin validate .` → passed; the two tests pass; full suite.
 
 - [ ] **Step 6: Live check, cleaned up after.** In a scratch repository under the session's scratchpad (a
-  `git init` with one commit), run `claude plugin marketplace add /home/max/workspace/flotilla --scope project`,
+  `git init` with one commit), run `claude plugin marketplace add /home/user/workspace/flotilla --scope project`,
   then `claude plugin install flotilla@flotilla --scope project`, then `claude plugin list --json` there: the entry
   `flotilla@flotilla` is `enabled: true`. Clean up: `claude plugin uninstall flotilla@flotilla --scope project`,
   `claude plugin marketplace remove flotilla`, delete the scratch repository. Record what was run and seen in the
-  ledger. If the local add is refused, record the refusal verbatim and stop the task for Max: the manifest then
+  ledger. If the local add is refused, record the refusal verbatim and stop the task for the person: the manifest then
   needs another shape.
 
 - [ ] **Step 7: Commit**
@@ -632,7 +632,7 @@ def numbered_after(post, *, taken: set[str], live: set[str], store) -> str:
 git add flotilla/fleet/names.py flotilla/fleet/commands.py tests/test_fleet_names.py
 git commit -m "feat(fleet): spawn --dry-run says where each post's numbering continues from
 
-The snake's minor was number 38 because ai-os sessions held the lower numbers, which read as a bug (F7)."
+The snake's minor was number 38 because other-project sessions held the lower numbers, which read as a bug (F7)."
 ```
 
 ---
@@ -764,7 +764,7 @@ confirm they ran (F11)."
 `docs/field-tests/2026-09-27-snake-fleet.md`
 
 - [ ] **Step 1:** Decisions 107–113 after the last entry, one per decision of this plan, each ending with its
-  source (`(Max's triage 2026-09-28)` / `(executor's decision, field fixes part 4, 2026-09-29)`).
+  source (`(the person's triage 2026-09-28)` / `(executor's decision, field fixes part 4, 2026-09-29)`).
 - [ ] **Step 2:** Design spec — the onboarding section (judge for every project, trunk on origin, the fleet model,
   tier names), section 7.2 (spawn's two checks and the numbering note), section 8 (the hook trace and
   `guard status`). Read each section first and write where its subject is.

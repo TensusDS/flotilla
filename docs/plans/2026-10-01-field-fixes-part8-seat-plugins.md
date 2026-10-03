@@ -50,9 +50,9 @@ Decisions 153–158 in the decisions log (Track A holds 159 and up).
 - **Memory:** Task 1 raises one real background session. Before raising it, read `MemAvailable` from `/proc/meminfo`;
   if it is under 3000 MB, wait (poll every 60 s, up to 30 minutes) and say so in your report; stop the probe session
   (`claude stop <id>`) as soon as it is measured, and remove any worktree you made.
-- The probe session must start in a trusted directory: `/home/max/workspace` is trusted in `~/.claude.json`, a new
+- The probe session must start in a trusted directory: `/home/user/workspace` is trusted in `~/.claude.json`, a new
   worktree is not. Do not edit `~/.claude.json`.
-- Worktree `/home/max/workspace/flotilla-part8b`, branch `fix/part8-seat-plugins` from `main`. Never touch the main
+- Worktree `/home/user/workspace/flotilla-part8b`, branch `fix/part8-seat-plugins` from `main`. Never touch the main
   checkout. Do not merge, push, tag or delete branches.
 
 ## Review Focus
@@ -72,7 +72,7 @@ Decisions 153–158 in the decisions log (Track A holds 159 and up).
 ### Task 1: measure the mechanism on a real session
 
 - [ ] Write `tools/probe_seat_plugins.py` (not part of the plugin; kept for the record): it raises one `claude --bg`
-  session from `/home/max/workspace` with `--add-dir <a temp dir>` and a trivial prompt, three times in turn —
+  session from `/home/user/workspace` with `--add-dir <a temp dir>` and a trivial prompt, three times in turn —
   (a) no extra flags, (b) `--settings '{"enabledPlugins": {"<id>": false, ...}}'` for every enabled plugin with MCP
   servers except flotilla, (c) `--strict-mcp-config` alone — and for each counts the session's descendant processes
   whose command line names an MCP server (walk `/proc/*/stat` ppid from the session pid in the census), then stops it.

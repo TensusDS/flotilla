@@ -18,7 +18,7 @@ def test_every_session_above_the_caller_is_found_nearest_first():
 def test_only_an_interactive_session_with_no_background_session_above_it_is_a_person(monkeypatch):
     def chain(*sessions):
         monkeypatch.setattr(caller, "calling_sessions", lambda: list(sessions))
-    chain(session("ai-os-13", "interactive", 20))
+    chain(session("other-project-13", "interactive", 20))
     assert caller.person_refusal("does it") == ""
     chain(session("nested", "interactive", 20), session("main session 1", "background", 10))
     assert "`main session 1` is a background session" in caller.person_refusal("does it")

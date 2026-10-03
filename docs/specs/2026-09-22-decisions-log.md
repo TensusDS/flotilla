@@ -1,13 +1,13 @@
 # flotilla — decisions log (brainstorming, 2026-09-22)
 
-Working log of decisions taken with Max before the spec. Not a spec. Research sources beside it:
+Working log of decisions taken with the person before the spec. Not a spec. Research sources beside it:
 `research-skills.md`, `research-orchestration.md` (and the saved docs pages `*.md`).
 
 ## Decided
 
 1. **What**: a standalone, project-agnostic Claude Code **plugin** named `flotilla` — spawns a fleet of
    peer sessions with posts (orchestrator, sender, readers/reviewers, main, minor implementers) and ships
-   the machinery for work between sessions. Structure of our ai-os fleet is kept; everything ai-os-specific goes.
+   the machinery for work between sessions. Structure of our other-project fleet is kept; everything other-project-specific goes.
 2. **Audience**: public. Target listing: `claude-community` marketplace (third-party submissions land there
    after `claude plugin validate` + automated safety screening — plugins.md:362, :371). `claude-plugins-official`
    is curated by Anthropic; "Anthropic Verified" is a separate, non-guaranteed review.
@@ -25,12 +25,12 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    **Out of v1**: anything that parses transcripts (`session_inbox`, `fleet-probe`) — transcript format is internal
    (docs: sessions page, per research, not re-verified by me) and the directory policy restricts conversation-data
    collection (per research summary, not re-verified).
-7. **Dogfooding**: ai-os migrates onto flotilla. Hence **extension points in the config format from day one**:
+7. **Dogfooding**: other-project migrates onto flotilla. Hence **extension points in the config format from day one**:
    custom posts (judge, prod companion, triage holder live as custom posts), custom evidence fields on ledger moves
    (our register obligation code; someone else's Jira ticket; or nothing).
 8. **Fleet = one machine.** Ledger storage behind an interface. Shared ledger via a service → TODO (future).
    Shared ledger via git refs → considered, not chosen.
-9. **Approach 1**: one `flotilla` CLI + thin skills; code **ported** from ai-os `tools/` with its tests, not rewritten.
+9. **Approach 1**: one `flotilla` CLI + thin skills; code **ported** from other-project `tools/` with its tests, not rewritten.
    - CLI lives in `scripts/`, not `bin/` (bin/ is rejected by claude.ai org distribution — mkt.md:861);
      skills reference it via `${CLAUDE_PLUGIN_ROOT}` placeholder (skills.md:413); hooks get it as env (hooks.md:497);
      the spawner writes the absolute path into post prompts.
@@ -42,7 +42,7 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    - CI: GitHub Actions built in (via `gh`); other CI via a gate-status command in the project profile; absent →
      the sender asks the human, never assumes green.
 
-10. **Positioning against agent teams — layers, not rivals** (Max's correction): agent teams coordinate agents
+10. **Positioning against agent teams — layers, not rivals** (the person's correction): agent teams coordinate agents
     *inside* one lead session (one process tree, one lifetime); flotilla coordinates *independent* sessions, each
     in its own worktree, through the census and a ledger no session owns. A flotilla `main` session may itself
     lead an agent team or subagents; flotilla sees one branch and one ledger row. The comparison table is a list
@@ -117,9 +117,9 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
       sibling repo in a lockfile); versions and tags (tags `vX.Y.Z` or version files found); a deployment the fleet
       touches (`deploy/`, systemd units, compose → prod-companion and judge as custom posts); shared append-only
       files (CHANGELOG/TODO → file reservation); sequential numbers in files (migrations, ADRs → number claims —
-      the ai-os `claim-code` mechanism generalises to DB migration numbering); can two full runs fit (slow first run
+      the other-project `claim-code` mechanism generalises to DB migration numbering); can two full runs fit (slow first run
       or little memory); model per post (default one for all).
-    - Simple project: 8 core questions, no conditionals. ai-os: 8 + 6, answers become custom posts and evidence fields.
+    - Simple project: 8 core questions, no conditionals. other-project: 8 + 6, answers become custom posts and evidence fields.
 16. **Pull request is the default and recommended path**; direct push to trunk is offered with the note "for
     experienced users or simple projects — CI runs after the code is already in trunk". Consequences:
     - `shipped` in PR mode asks **the PR's state** (`gh pr view --json state,mergeCommit`), not ancestry — squash
@@ -137,19 +137,19 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
 
 17. **Design section 3 (ledger) — approved.** Event-sourced storage (append-only JSONL of moves per repo, current
     state = fold) → metrics, "what did I accept" and recovery by construction. Legal transitions computed from the
-    profile (review none/main-only/all; PR vs direct push; no origin). New doors vs ai-os: `handed` requires the
+    profile (review none/main-only/all; PR vs direct push; no origin). New doors vs other-project: `handed` requires the
     `handover` tiers green over the tip; `fixing` carries `--why` in the row; `accepted` refuses reviewer == owner;
     `closed` validates `[evidence]` from the profile. Dependencies: start any time (stacking allowed), but no
     `queued` until the dependency is `shipped`; roster shows "blocked on X"; the owner is told when unblocked.
-    **Duplicate `--ref` among open rows is refused** (override `--also "<why>"`, recorded) — ai-os's warning-only
+    **Duplicate `--ref` among open rows is refused** (override `--also "<why>"`, recorded) — other-project's warning-only
     door let three sessions write the same work in ~14 h.
-    - **A broken event script (crash / timeout) refuses the move and names the script** (Max: A) — and must be
+    - **A broken event script (crash / timeout) refuses the move and names the script** (the person: A) — and must be
       rare: `flotilla events check` (executable, shebang interpreter exists, sample-input run) at onboarding and
       `SessionStart`; versioned input contract `event_schema = 1`, generated by flotilla code; the refusal prints
       the tail and a reproduce command (`flotilla events run pre-accepted --row <branch>`); `pre-` runs before the
       write, so a fixed script just retries; emergency `--skip-event <name> --why` by a human decision, recorded;
       event failures counted in metrics.
-18. **Broken chain of responsibility** (Max's case: reader's run finished, reader silent, author and sender believe
+18. **Broken chain of responsibility** (the person's case: reader's run finished, reader silent, author and sender believe
     the run is still going, work stands). Three breaks, three cures, one shared computation — **"whose move"** per row:
     - **the run is a ledger fact**: `flotilla lane run --for <branch> -- <cmd>` ties start, end, exit code and
       revision to the row; roster says "reader's run finished green 12 min ago, waiting on the verdict";
@@ -193,7 +193,7 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
     - Life of the fleet: add with `flotilla spawn -r 1`; revive with native `claude respawn` (flotilla checks name
       and tree kept); `flotilla retire <name>` waits for the tree lock, frees the post row, leaves unfinished work
       orphaned → `adopt`.
-    - **Acceptance judge is a STANDARD template** (reverses the earlier "ai-os custom post"): the only post asking
+    - **Acceptance judge is a STANDARD template** (reverses the earlier "other-project custom post"): the only post asking
       "does it reach a human"; 0 by default, offered when onboarding finds a deployment or a dev server; new moves
       after `shipped`: `walked` (build revision, steps, observed) and `broke --where "<place in the UI>"` (refused
       without a place; spawns a linked fix row assigned to the author); `judge.required = true` → no `closed`
@@ -201,7 +201,7 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
       and a verdict names the build it walked; a walk spanning a restart is not recorded. "No reading code before
       the attempt" possibly enforceable via path-scoped deny rules (`Read(src/**)`) — unverified for spawned `--bg`
       sessions, open question. Tools by surface: browser (Playwright / Chrome MCP), terminal (CLI), curl (API).
-    - Remaining ai-os custom posts: prod companion, triage holder.
+    - Remaining other-project custom posts: prod companion, triage holder.
 
 22. **Design section 5 (lane, guards, verification) — approved.**
     - Lane ported from `lane.py`: honest "not a lock"; four questions (peer booking / a foreign run exists via
@@ -220,24 +220,24 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
       of several Claude Code versions; each guard seen red by removal and by a plausible neighbour; `claude plugin
       validate` in CI; `claude plugin eval` with baseline and a triggering eval (near-miss negatives) before release;
       a manual e2e smoke modelled on the 2026-09-22 probe before release; `flotilla doctor`.
-    - **Publication criterion**: ai-os runs on flotilla for several real shifts first (ledger imported, judge and
+    - **Publication criterion**: other-project runs on flotilla for several real shifts first (ledger imported, judge and
       triage holder as custom posts, register closing and the board as events).
-23. **English everywhere in flotilla** (Max): identifiers, comments, docstrings, CLI output, post templates, skills,
+23. **English everywhere in flotilla** (the person): identifiers, comments, docstrings, CLI output, post templates, skills,
     README, spec, examples, guard messages, commit messages. A CI check refuses Cyrillic (U+0400–U+04FF) in the repo.
-    Measured on ai-os `main` in the shared checkout: the 15 code files to port carry 6,572 Cyrillic lines of 12,412
+    Measured on other-project `main` in the shared checkout: the 15 code files to port carry 6,572 Cyrillic lines of 12,412
     (docstrings, comments, output, ~540 lines of Cyrillic identifiers by a rough heuristic); their 12 test files carry
     9,058 of 18,678, with ~1,220 asserts comparing Russian output; `fleet-roles.md` 30 of 227, and the spawner looks up
     sections by Russian titles. Consequences:
     - each module is ported in **two separate steps**: (1) move as is, tests green, behaviour unchanged; (2) translate
       output and its asserts **in one commit**, reviewed for meaning, not only by a green run;
-    - rationale docstrings are **rewritten** for a general reader; ai-os measured precedents move to
+    - rationale docstrings are **rewritten** for a general reader; other-project measured precedents move to
       `references/why.md` as the evidence base;
     - translation is a separate task per module in the plan, roughly the size of the port itself.
 
 24. **`inbatch` creates its own row, before the push.** Work born inside the sender's batch has no branch and no
    claim; `flotilla work inbatch <label> --commit <sha> --read-by <name> --why "<what>"` records a finished row
    whose commit must be on the local trunk and whose reader is not the sender. The land door then accounts that
-   commit. ai-os recorded it after the push, which left the push door unable to see it (its own docstring names the
+   commit. other-project recorded it after the push, which left the push door unable to see it (its own docstring names the
    gap); a commit that never reaches origin shows up as a finding instead. Direct push and local only: in PR mode
    every change reaches trunk through a PR. (executor's decision, ledger part B plan, 2026-09-26)
 25. **`broke` creates the linked fix row at once** (spec 6.3, literally): a `claimed` row on `fix/<branch>` owned by
@@ -257,7 +257,7 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
 29. **"Read after merge" is the `offledger` witness.** Work that reached trunk outside the ledger is recorded only
    with a named witness who is not its owner; the proof that the named commit carried the work is measured where
    git can say (the merge brought the tip; or the commit carries the same change, by `git patch-id`) and otherwise
-   recorded as `--attested` text, marked unmeasured. The ai-os "records ride without a reader" bypass stays dropped. (executor's decision, ledger part B plan, 2026-09-26)
+   recorded as `--attested` text, marked unmeasured. The other-project "records ride without a reader" bypass stays dropped. (executor's decision, ledger part B plan, 2026-09-26)
 30. **Absent CI never reads as green.** With no CI provider and no push tiers, `shipped` stands on origin alone and
    its gate says `none: no CI and no push tiers — nothing verified this commit`; `brief` prints it out loud. (executor's decision, ledger part B plan, 2026-09-26)
 31. **No thresholds in deviations; stalled is the only timed view.** Deviations are states from which the expected
@@ -287,7 +287,7 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    `state: blocked`, measured 2026-09-27 on 2.1.283 over eight background sessions). `flotilla fleet` prints the
    state as the census gives it; telling them apart belongs to the watchers part. (executor's decision, spawn and posts plan, 2026-09-27)
 
-40. **Tasks are taken in the home tree** (Max, 2026-09-27, after the spawn review): a spawned session may edit only
+40. **Tasks are taken in the home tree** (the person, 2026-09-27, after the spawn review): a spawned session may edit only
    the directory it was launched with, so `flotilla tree switch <branch>` moves its clean home tree to a new
    branch from trunk and claims it; reviewers read a handed tip there detached. A permission broker (the
    `PermissionRequest` hook queueing questions to the orchestrator, one at a time, oldest first) is planned for
@@ -302,7 +302,7 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    replaces with `[lane] run_patterns`. Processes whose argv0 is a shell are skipped (the run they wrap is its own
    process and is seen), as are the caller's own ancestors and the processes of live bookings. (executor's decision, lane plan, 2026-09-27)
 44. **"Computing"** = CPU time grew over a two-second sample, or the process is younger than 30 minutes (a suite
-   pausing on I/O is not idle). An older process that did not compute is reported and does not block: ai-os found
+   pausing on I/O is not idle). An older process that did not compute is reported and does not block: other-project found
    three stray runs alive for nine days on ten seconds of CPU. (executor's decision, lane plan, 2026-09-27)
 45. **Capacity** comes from `machine.toml` `lane_capacity` (default 1); computing foreign runs use slots; CI on this
    machine blocks outright, and a CI queue that could not be asked blocks too ("not asked is not free"). (executor's decision, lane plan, 2026-09-27)
@@ -347,7 +347,7 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
 58. **One process, cheap common path.** `PreToolUse` on `Bash` runs `flotilla hook guard` for every Bash call. A
    command that names none of `checkout restore reset clean sed push gh` exits before a project is looked up or a
    guard module imported; only a command that names one reads the rules. (executor's decision, guards plan, 2026-09-27)
-59. **The command line is matched, not parsed** (as in ai-os, where a real parser was measured to buy one command in
+59. **The command line is matched, not parsed** (as in other-project, where a real parser was measured to buy one command in
    1,941). Segments split at `&& || ; | &` and newlines, twice (plainly and respecting quotes), the union counting;
    heredoc bodies dropped; leading `NAME=value`, `env`, `sudo command nice nohup time exec` and shell keywords
    (`if then else elif do while until ! { (`) peeled; `cd <literal>` followed. A directory named through a variable
@@ -360,7 +360,7 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
 61. **The line-number guard refuses `sed`/`gsed` in place (`-i`, `-i.bak`, `-i ''`, `--in-place`, clusters) when a
    script command starts with a line number** (`12d`, `3,5s…`, `1~2p`, `10i…`, `5!d`, `7{`). `$`, `/regex/` and a
    digit inside a substitution pass. A script read with `-f` is not opened. (executor's decision, guards plan, 2026-09-27)
-62. **A push to a branch other than trunk needs no receipt** (ai-os, Max's decision of 2026-09-06): it lands nowhere,
+62. **A push to a branch other than trunk needs no receipt** (other-project, the person's decision of 2026-09-06): it lands nowhere,
    and the receipt is asked where it lands — a push to trunk or a tag, `gh pr create` (the PR head), `gh pr merge`
    (the head `gh pr view` names), `gh workflow run` (HEAD). A push the text cannot pin (`--all`, `--mirror`,
    `--tags`, `--follow-tags`) asks for HEAD, and the `pre-push` hook asks git for each ref. (executor's decision, guards plan, 2026-09-27)
@@ -432,7 +432,7 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
 78. **The orchestrator watches with a background command**: `flotilla permit next --wait 3600` run in the background
    returns when a question appears, which wakes the orchestrator; it asks the person with AskUserQuestion, records
    the answer with `flotilla permit answer`, and runs the wait again. A question that arrives while another is
-   being answered waits its turn (Max, 2026-09-27). (executor's decision, broker plan, 2026-09-27)
+   being answered waits its turn (the person, 2026-09-27). (executor's decision, broker plan, 2026-09-27)
 79. **The fleet view lists live questions first**, and a session with a live question is not reported as a dropped
    ball. A background session the census shows as `status: waiting` with no question queued is reported as "waiting
    on a permission prompt nobody answers". (executor's decision, broker plan, 2026-09-27)
@@ -440,10 +440,10 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    session means the hang the dropped-ball item reports. Denying on the hook's own failure could refuse a person
    at an interactive dialog. Final review: once a session is known to be a background one, a failure is a deny with its reason, and so are rules that cannot be read. (executor's decision, broker plan, 2026-09-27)
 
-81. **`land` in direct-push mode accepts a merge reachable from `origin/<trunk>`** (Max). The local trunk, checked
+81. **`land` in direct-push mode accepts a merge reachable from `origin/<trunk>`** (the person). The local trunk, checked
    out in the main checkout that belongs to nobody, is not needed and is never moved. The sender merges in its own
    tree on a branch from `origin/<trunk>`, takes the push receipt, pushes `HEAD:<trunk>`, then records `land` and
-   `ship`. Pushing before `land` is therefore the sequence, not a fault (F15). (field test 2026-09-27; Max's triage 2026-09-28)
+   `ship`. Pushing before `land` is therefore the sequence, not a fault (F15). (field test 2026-09-27; the person's triage 2026-09-28)
 82. **The unread-work check still runs for a merge already on origin**, counted from what origin held when the sender
    merged (the landed commit's first parent; the row's base only when it has none) up to origin's head: a push that
    carried work nobody read, below or above the merge it names, is refused at `land` with the `inbatch` fix, even
@@ -457,10 +457,10 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    "finished_not_handed" deviation never fires for it (F18). (executor's decision, field fixes part 1, 2026-09-28)
 85. **`release --settled-by <branch|row>`** closes a row whose purpose another delivered row fulfilled (F26); the
    other row must be delivered; the reason defaults to "settled by <branch>". (executor's decision, field fixes part 1, 2026-09-28)
-86. **The judge waits for the rows that build on a row** (Max): while an open row that `requires` this one, directly
+86. **The judge waits for the rows that build on a row** (the person): while an open row that `requires` this one, directly
    or through other rows, is not delivered, `who_moves` names nobody for the judge's move, and `walked` / `broke` refuse, naming those rows.
    **`flotilla work walkable <branch> --why`**, an annotation the orchestrator may make, lets that row be walked on
-   its own. (field test 2026-09-27; Max's triage 2026-09-28)
+   its own. (field test 2026-09-27; the person's triage 2026-09-28)
 87. **`land` without `--merge` in direct-push mode records the earliest commit on origin's first-parent line that
    carries the revision read**, not origin's head: a row landed after another row was pushed on top names its own
    merge, not a commit carrying both. (executor's decision after the branch review, field fixes part 1, 2026-09-28)
@@ -470,30 +470,30 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    part 1, 2026-09-28)
 89. **`walkable --clear` takes the orchestrator's word back**: the part waits for the rows building on it again;
    clearing a row that is not marked is refused. (executor's decision, R2 of the part-1 review, 2026-09-28)
-90. **Only the orchestrator talks to the person** (Max): every other post sends its question to the orchestrator
+90. **Only the orchestrator talks to the person** (the person): every other post sends its question to the orchestrator
    (SendMessage) and records `flotilla work wait <branch> --on "the person" --why "<the question>"` on the row it
    holds up; the sender's batch goes to the orchestrator too, which relays the person's yes (F12, F16, F17).
-   (Max's triage 2026-09-28)
-91. **A guard on AskUserQuestion** (Max): a PreToolUse hook, matcher `AskUserQuestion`, denies the question in a
+   (the person's triage 2026-09-28)
+91. **A guard on AskUserQuestion** (the person): a PreToolUse hook, matcher `AskUserQuestion`, denies the question in a
    background session whose post is not `orchestrator`, naming the live orchestrators and the wait to record. An
    interactive session, a session with no post, and the orchestrator ask freely; a census or ledger it could not
-   ask lets the question through with a note. (Max's triage 2026-09-28; the pass-through, executor's decision,
+   ask lets the question through with a note. (the person's triage 2026-09-28; the pass-through, executor's decision,
    field fixes part 2, 2026-09-28)
-92. **Posts accept a task routed by the orchestrator** (Max), after checking that `flotilla fleet` lists the sender
+92. **Posts accept a task routed by the orchestrator** (the person), after checking that `flotilla fleet` lists the sender
    of the message as the live holder of the orchestrator post; any other peer's message stays information.
-   (Max's triage 2026-09-28)
-93. **Every ledger refusal ends with the way forward** (Max): one fixed line after every `refused:` — record the
+   (the person's triage 2026-09-28)
+93. **Every ledger refusal ends with the way forward** (the person): one fixed line after every `refused:` — record the
    wait and tell the orchestrator; a refusal with no way forward is a flotilla defect, sent to the orchestrator
-   verbatim; never git plumbing. Printed at the one print site, so no future refusal can miss it. (Max's triage
+   verbatim; never git plumbing. Printed at the one print site, so no future refusal can miss it. (the person's triage
    2026-09-28; the single print site, executor's decision, field fixes part 2, 2026-09-28)
-94. **A move that passes work on prints the letter; the post obliges sending it** (Max): the command line compares
+94. **A move that passes work on prints the letter; the post obliges sending it** (the person): the command line compares
    whose move every row was before and after the command and prints a letter for each session a row passed to,
    addressed from the census or, when it cannot be asked, by post. flotilla never sends it: `claude` has no command
-   line to message a session. (Max's triage 2026-09-28; comparing every row, executor's decision, field fixes
+   line to message a session. (the person's triage 2026-09-28; comparing every row, executor's decision, field fixes
    part 2, 2026-09-28)
-95. **The orchestrator keeps one background `flotilla watch --wait 3600`** (Max): it returns when an attention item
+95. **The orchestrator keeps one background `flotilla watch --wait 3600`** (the person): it returns when an attention item
    appears that was not there at its start — a question, a dropped ball, a break, orphaned work — and replaces the
-   orchestrator's `permit next --wait`. (Max's triage 2026-09-28; one wait for all, executor's decision, field
+   orchestrator's `permit next --wait`. (the person's triage 2026-09-28; one wait for all, executor's decision, field
    fixes part 2, 2026-09-28)
 96. **A row waiting on "the person" is an attention item** for `flotilla watch` and the orchestrator's `watch --wait`,
    so a question a guarded session could not ask is carried even when its SendMessage was lost or no orchestrator
@@ -507,21 +507,21 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    onboarded, a damaged log, a ledger version) says flotilla cannot run here. A letter that cannot be computed
    after a recorded move is a note, never a refusal. (executor's decision after the branch review, field fixes
    part 2, 2026-09-29)
-99. **The sessions of this project** (Max: "live sessions of this project are the holders of this ledger's post
+99. **The sessions of this project** (the person: "live sessions of this project are the holders of this ledger's post
    rows"): a live session named in this ledger's open rows — owner or reader, post rows included — or working in
    this repository's main checkout or a worktree of it. A post-named mover resolves among them only; the greeting,
-   `watch`, the ask guard and the letters use them (F9, F20). (Max's triage 2026-09-28; the working-directory and
+   `watch`, the ask guard and the letters use them (F9, F20). (the person's triage 2026-09-28; the working-directory and
    row-owner widening, executor's decision, field fixes part 3, 2026-09-29)
-100. **A gone seat is one quiet line, not a mover alarm** (Max): a `reserved` row whose session is not alive is the
+100. **A gone seat is one quiet line, not a mover alarm** (the person): a `reserved` row whose session is not alive is the
    deviation `seat_empty`, and the fleet view gathers every empty seat into one item naming them and
-   `flotilla fleet down` (F8, F27). (Max's triage 2026-09-28)
+   `flotilla fleet down` (F8, F27). (the person's triage 2026-09-28)
 101. **Spawn raises the orchestrator last**, so its session-start report sees every seat already raised (F8).
    (executor's decision, field fixes part 3, 2026-09-29)
 102. **`watch` confirms a dropped ball with a second census sample** a few seconds on before it reports or wakes;
    the hooks do not sample twice (F10). (executor's decision, field fixes part 3, 2026-09-29)
-103. **`flotilla fleet down` retires every seat of this ledger but the caller's own** (Max), as `retire` does; a
+103. **`flotilla fleet down` retires every seat of this ledger but the caller's own** (the person), as `retire` does; a
    census that cannot be asked refuses the whole command; `/flotilla:down` is the person's command and asks first
-   (F27). (Max's triage 2026-09-28; skipping the caller's seat, executor's decision, field fixes part 3, 2026-09-29)
+   (F27). (the person's triage 2026-09-28; skipping the caller's seat, executor's decision, field fixes part 3, 2026-09-29)
 104. **Run summaries carry no terminal escapes**: stripped when recorded and again when shown (F19). (executor's
    decision, field fixes part 3, 2026-09-29)
 105. **A session is of this project by the repository it works in, not by a path prefix**: the nearest directory
@@ -535,19 +535,19 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
 107. **The flotilla repository is its own marketplace** (`.claude-plugin/marketplace.json`, one plugin sourced from
    the root); the README gives the two install commands. With a marketplace manifest present,
    `claude plugin validate .` checks only the marketplace, so CI validates `plugin.json` separately (F1).
-   (Max's triage 2026-09-28; the CI step, executor's decision, field fixes part 4, 2026-09-29)
+   (the person's triage 2026-09-28; the CI step, executor's decision, field fixes part 4, 2026-09-29)
 108. **`doctor` and `spawn` check the plugin is enabled and the main checkout trusted** — asked of
    `claude plugin list --json` run there and of `~/.claude.json`; spawn refuses on a known gap and warns on an
-   unknown; hooks skip both checks (F2, F3). (Max's triage 2026-09-28)
+   unknown; hooks skip both checks (F2, F3). (the person's triage 2026-09-28)
 109. **Every project is asked about the judge**; a surface chosen means `judge.required = true`, and a project with
-   no deployment found gets trunk on origin as its deployed build (F4). (Max's triage 2026-09-28; judge required,
+   no deployment found gets trunk on origin as its deployed build (F4). (the person's triage 2026-09-28; judge required,
    executor's decision, field fixes part 4, 2026-09-29)
-110. **`fleet.model` may name a model** that every post without its own runs on (F5). (Max's triage 2026-09-28)
+110. **`fleet.model` may name a model** that every post without its own runs on (F5). (the person's triage 2026-09-28)
 111. **A typed tier is named after its command** — the runner it calls, else its first word; clashes get `-2`
-   (F6). (Max's triage 2026-09-28)
-112. **`spawn --dry-run` says where each post's numbering continues from** (F7). (Max's triage 2026-09-28)
+   (F6). (the person's triage 2026-09-28)
+112. **`spawn --dry-run` says where each post's numbering continues from** (F7). (the person's triage 2026-09-28)
 113. **Every hook records when it last ran for the session**, and `flotilla guard status` shows it per live session
-   of this project; the Bash guard records only when a command reached the guards (F11). (Max's triage
+   of this project; the Bash guard records only when a command reached the guards (F11). (the person's triage
    2026-09-28; the per-session trace, executor's decision, field fixes part 4, 2026-09-29)
 114. **`doctor` checks the main checkout spawn launches from**, not the directory it runs in (a fleet worktree is
    never trusted itself); the fix it names installs from the marketplace flotilla is already listed from, or adds
@@ -684,7 +684,7 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    (the person's decision, 2026-09-30)
 
 153. **A seat's plugin set is narrowed by `--settings` with `enabledPlugins: false`**, chosen by measurement on a real
-   `claude --bg` session (Claude Code 2.1.286, `tools/probe_seat_plugins.py`, 2026-09-30, from `/home/max/workspace`
+   `claude --bg` session (Claude Code 2.1.286, `tools/probe_seat_plugins.py`, 2026-09-30, from `/home/user/workspace`
    with 17 enabled plugins that bring MCP servers). Processes under the session's pid, once its tree held still:
 
    | variant | plugin MCP processes | their RSS (MB) | other descendants | their RSS (MB) |

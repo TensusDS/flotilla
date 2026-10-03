@@ -10,7 +10,7 @@ Same shape as before: a local repository with a README task, a bare origin on th
 Opus** (the post's own `model`), the task given to the orchestrator by the person, the fleet watched every three
 minutes from outside.
 
-Repository `/home/max/workspace/twosuns`, origin `/home/max/workspace/twosuns-origin.git`; flotilla installed from
+Repository `/home/user/workspace/twosuns`, origin `/home/user/workspace/twosuns-origin.git`; flotilla installed from
 GitHub at `e9bb417`.
 
 ## Setup
@@ -87,7 +87,7 @@ H7. **obs — G8 recurred: a session named after a seat's tree appears among thi
 `guard status` listed `twosuns-main-3-11`, with no hook ever fired, next to the eight seats; the census counted 21
 live sessions (20 a tick before). The name is Claude Code's default for a session started in a directory
 (`<dir>-<n>`, like the person's own `game2048-57`), here main session 3's tree; the census lists it as
-`interactive / busy`, cwd `/home/max/workspace/twosuns-main-3`, with no short id. Who started it is not visible from
+`interactive / busy`, cwd `/home/user/workspace/twosuns-main-3`, with no short id. Who started it is not visible from
 outside — a person opening `claude` in that tree, or a seat running Claude there. flotilla counts it as this
 project's session (its cwd is in a worktree) though it holds no post; harmless so far, but a session no seat owns
 is invisible to the ledger.
@@ -145,7 +145,7 @@ command (`/flotilla:spawn`, not model-invoked) but which the CLI lets any seat r
 first is what makes it acceptable; the posts should say it, and H9's (b) should give it one move for it.
 
 H12. **design (the person, 20:58) — the orchestrator closes the task, and the fleet with it.** Some of the sessions
-still alive on the machine belong to fleets long finished (the snake's `acceptance judge 4`, seats of the ai-os
+still alive on the machine belong to fleets long finished (the snake's `acceptance judge 4`, seats of the other-project
 fleets), each holding memory — and memory pressure is what retired this fleet's seats (H9). The person's direction:
 when the task is done, the orchestrator asks the person to check the work; if it is accepted, it offers to close
 every session of the fleet (`fleet down`), and it lists the sessions that will stay alive if they are not closed —
@@ -318,7 +318,7 @@ r31, which waits on r32, which waits on the person.
 H24. **bug — in direct-push mode the repair move for batch work is a dead end: `inbatch` wants the commit on the local
 trunk and not yet on origin, while the flow has already pushed it.** At 22:19 r32 `feat/controls-settings` reads:
 "pushed as 9f851b9; land refused on unread b7513e3; inbatch refused: not on the local main (5904e24); needs git -C
-/home/max/workspace/twosuns pull --ff-only". origin/main is 9f851b9 "merge: feat/controls-settings", which carries
+/home/user/workspace/twosuns pull --ff-only". origin/main is 9f851b9 "merge: feat/controls-settings", which carries
 b7513e3 (the sender's hand-resolved merge from H21). `outside.inbatch` makes two checks in a row: the commit must be
 an ancestor of `refs/heads/main` (the main checkout's local main, 5904e24, which belongs to no session and is moved by
 nobody), and it must NOT be an ancestor of origin/main ("already on origin; … recorded with offledger"). The sender
@@ -489,7 +489,7 @@ row that has since moved on is the same stale-note shape as r33 at 22:43 yesterd
 H36. **bug — an adopted row cannot be taken into the new owner's tree: the retired session's worktree still holds
 the branch.** r33 `fix/resize-during-load` (minor session 42's work, retired at 21:59 on 09-29 by H22; its seat was
 released at 14:12, the row adopted by the orchestrator and handed on to main session 6). At 14:24:59 main session 6
-recorded: "tree switch refused: branch is checked out in /home/max/workspace/twosuns-minor-42 (no live session);
+recorded: "tree switch refused: branch is checked out in /home/user/workspace/twosuns-minor-42 (no live session);
 needs that tree released". `git worktree list` still shows `twosuns-minor-42 8d61b42 [fix/resize-during-load]`, clean,
 ahead 1 / behind 28. Git refuses a second checkout of a branch, and flotilla has no move that frees a dead seat's
 tree: `release` of the seat row and `adopt` of the work rows both leave the worktree as it was. The seat release (or
@@ -716,7 +716,7 @@ scope enables, whatever its post needs: a reviewer or a sender needs none of a P
 code index, and only the judge needs a browser. On top, the `security-guidance` plugin's edit hook starts a headless
 `claude` per edit in a seat's tree (seen: pid 1754421, 225 MB, parent `security_reminder_hook.py`, cwd
 `twosuns-main-12`). No dead session was found: every large Claude process maps to a live census entry except the
-daemon's pre-warmed spare (136 MB) and one interactive `claude` on pts/4 in `/home/max/workspace/twosuns` started
+daemon's pre-warmed spare (136 MB) and one interactive `claude` on pts/4 in `/home/user/workspace/twosuns` started
 09-29 20:03 with its own four MCP servers, which the census does not list. The fleet itself had grown back to seven
 implementers (main sessions 8–14; 13 and 14 raised at ~22:36). Fix direction: `flotilla spawn` launches seats with
 an MCP configuration per post (`--strict-mcp-config` with the servers the post declares, e.g. the judge's browser),
@@ -732,7 +732,7 @@ subreaper), and a background Claude session runs under its own pty host, so "has
 person's process from a session's. Fixed in 0.3.1 for every retire from then on: retire stops the orphans (parent
 pid 1) working in the seat's tree, with everything under them, and spares a subtree that holds a terminal or a live
 census session. Nothing goes back to the trees of seats retired before 0.3.1: the 27 found here were stopped by
-hand. The same machine shows why the mark cannot be the directory alone: the deployment's `curve-serving` and the CI
+hand. The same machine shows why the mark cannot be the directory alone: the deployment's `app-serving` and the CI
 runners are also orphans of the same user under pid 1, told apart only by their cgroup, a `.service` unit
 (review of the fix, 2026-10-01).
 A second form, found the same night (~01:00): `main session 12` had copied trunk into its own job directory and run

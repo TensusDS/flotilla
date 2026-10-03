@@ -16,7 +16,7 @@ worktree and does not touch these files; the only shared file is `transitions.py
 **Spec:** `docs/field-tests/2026-09-29-twosuns-fleet.md` — H20, H21, H24, H26c, H28, H29, H33, H35, H37, H43;
 `docs/specs/2026-09-22-flotilla-design.md` sections 6.2, 6.3.
 
-## Decisions (the planner's, 2026-09-30; Max approved fixing the findings)
+## Decisions (the planner's, 2026-09-30; the person approved fixing the findings)
 
 1. **A merge inside a reviewed row's read range is read** (H20): `batch.Accounting.account` looks a commit up in
    the read ranges before judging it as a merge. A conflict resolved by hand in a merge the reader read is exactly
@@ -49,7 +49,7 @@ track A, 2026-09-30").
   `--python 3.11`, with `GIT_CONFIG_GLOBAL=/dev/null`; `claude plugin validate .` and
   `claude plugin validate .claude-plugin/plugin.json`.
 - Post templates whose text changes get `template_version` + 1.
-- Worktree `/home/max/workspace/flotilla-part6a`, branch `fix/part6-delivery` from `main`.
+- Worktree `/home/user/workspace/flotilla-part6a`, branch `fix/part6-delivery` from `main`.
 
 ## Review Focus
 
@@ -123,4 +123,4 @@ Files: `flotilla/ledger/reading.py` (`accept`), `flotilla/ledger/gitq.py` (`merg
 ### Task 7: decisions 130–135 and the whole-branch review
 - [ ] Decisions log entries; commit.
 - [ ] Final review of the branch by a fresh reviewer on the most capable model; one fix pass; merge with Track B;
-  suite three ways; push under Max's standing ok for flotilla; report what shipped.
+  suite three ways; push under the person's standing ok for flotilla; report what shipped.

@@ -16,7 +16,7 @@ run in parallel by another session; do not edit those files.
 deferred minors (listed in Task 6); `docs/specs/2026-09-22-flotilla-design.md` sections 6.4 and 9 (the lane).
 Read each finding before its task.
 
-## Decisions (the planner's, 2026-09-30; Max approved fixing the findings)
+## Decisions (the planner's, 2026-09-30; the person approved fixing the findings)
 
 1. **The version moves with every release, and CI says when it did not** (T2). One source of truth:
    `.claude-plugin/plugin.json`; `pyproject.toml` and `flotilla/__init__.py` must carry the same string (a test
@@ -59,7 +59,7 @@ uses 146 and up.**
   with `--python 3.11` and with `GIT_CONFIG_GLOBAL=/dev/null`; `claude plugin validate .` and
   `claude plugin validate .claude-plugin/plugin.json`.
 - A post template whose text changes gets `template_version` + 1 (once per branch is enough).
-- Worktree `/home/max/workspace/flotilla-part7b`, branch `fix/part7-lane-order-release` from `main`. Never touch the
+- Worktree `/home/user/workspace/flotilla-part7b`, branch `fix/part7-lane-order-release` from `main`. Never touch the
   main checkout. Do not bump the version or tag — decision 1's bump is the coordinator's at merge.
 
 ## Review Focus

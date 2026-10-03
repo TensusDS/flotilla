@@ -43,7 +43,7 @@ def test_a_project_without_posts_refuses_every_move():
 
 def test_a_name_matching_no_post_is_refused():
     with pytest.raises(MoveRefused, match="matches no post"):
-        require_may(resolve_actor(POSTS, as_name="Max", census=lambda: []), "claim", POSTS)
+        require_may(resolve_actor(POSTS, as_name="someone", census=lambda: []), "claim", POSTS)
 
 
 def test_a_move_the_post_may_not_make_names_who_may():

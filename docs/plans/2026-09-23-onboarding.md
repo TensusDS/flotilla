@@ -34,7 +34,7 @@ used here: `flotilla.core.{platform, paths, repo, config}` and `flotilla.cli`.
   python -m pytest`. CI runs both platforms on every push.
 - Commits: Conventional Commits, English, one finished thing each, ending with the session's attribution lines.
 
-## Decisions this plan takes against the spec text (each reported to Max)
+## Decisions this plan takes against the spec text (each reported to the person)
 
 1. **Measured tier times are machine facts.** Spec 4.4 shows `measured_seconds` inside `project.toml`, but spec 4.5
    rule 3 says machine facts never go into the project: a suite that takes 212 s here takes 90 s on a colleague's
@@ -294,8 +294,8 @@ Expected: `test_strings_with_quotes_backslashes_controls_and_accents_round_trip`
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /home/max/workspace/flotilla add flotilla/onboard/__init__.py flotilla/onboard/tomlw.py tests/test_onboard_tomlw.py
-git -C /home/max/workspace/flotilla commit -m "feat(onboard): minimal TOML writer for flotilla's own files"
+git -C /home/user/workspace/flotilla add flotilla/onboard/__init__.py flotilla/onboard/tomlw.py tests/test_onboard_tomlw.py
+git -C /home/user/workspace/flotilla commit -m "feat(onboard): minimal TOML writer for flotilla's own files"
 ```
 
 ---
@@ -521,8 +521,8 @@ Expected: `13 passed`.
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /home/max/workspace/flotilla add flotilla/onboard/machine.py tests/test_onboard_machine.py
-git -C /home/max/workspace/flotilla commit -m "feat(onboard): machine profile measured into the state directory"
+git -C /home/user/workspace/flotilla add flotilla/onboard/machine.py tests/test_onboard_machine.py
+git -C /home/user/workspace/flotilla commit -m "feat(onboard): machine profile measured into the state directory"
 ```
 
 ---
@@ -726,8 +726,8 @@ Expected: `10 passed`.
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /home/max/workspace/flotilla add flotilla/onboard/detect_repo.py tests/test_onboard_detect_repo.py
-git -C /home/max/workspace/flotilla commit -m "feat(onboard): trunk, remote, release and commit-style detection"
+git -C /home/user/workspace/flotilla add flotilla/onboard/detect_repo.py tests/test_onboard_detect_repo.py
+git -C /home/user/workspace/flotilla commit -m "feat(onboard): trunk, remote, release and commit-style detection"
 ```
 
 ---
@@ -925,8 +925,8 @@ FAILS. Undo.
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /home/max/workspace/flotilla add flotilla/onboard/files.py flotilla/onboard/detect_tests.py tests/test_onboard_detect_tests.py
-git -C /home/max/workspace/flotilla commit -m "feat(onboard): detect declared test tiers, never npm's placeholder"
+git -C /home/user/workspace/flotilla add flotilla/onboard/files.py flotilla/onboard/detect_tests.py tests/test_onboard_detect_tests.py
+git -C /home/user/workspace/flotilla commit -m "feat(onboard): detect declared test tiers, never npm's placeholder"
 ```
 
 ---
@@ -1202,8 +1202,8 @@ Injection (plausible neighbour): change `UNVERIFIED` to `"workflow-files"`. Expe
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /home/max/workspace/flotilla add flotilla/onboard/detect_ci.py tests/test_onboard_detect_ci.py
-git -C /home/max/workspace/flotilla commit -m "feat(onboard): CI jobs from the last push run, files as an unverified fallback"
+git -C /home/user/workspace/flotilla add flotilla/onboard/detect_ci.py tests/test_onboard_detect_ci.py
+git -C /home/user/workspace/flotilla commit -m "feat(onboard): CI jobs from the last push run, files as an unverified fallback"
 ```
 
 ---
@@ -1399,8 +1399,8 @@ Expected: `6 passed`.
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /home/max/workspace/flotilla add flotilla/onboard/detect_signals.py flotilla/onboard/detect.py tests/test_onboard_detect.py
-git -C /home/max/workspace/flotilla commit -m "feat(onboard): signals for conditional questions and one whole detection"
+git -C /home/user/workspace/flotilla add flotilla/onboard/detect_signals.py flotilla/onboard/detect.py tests/test_onboard_detect.py
+git -C /home/user/workspace/flotilla commit -m "feat(onboard): signals for conditional questions and one whole detection"
 ```
 
 ---
@@ -1718,8 +1718,8 @@ Injection (plausible neighbour): change `detected[:MAX_PER_ROUND]` to `detected`
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /home/max/workspace/flotilla add flotilla/onboard/questions.py tests/test_onboard_questions.py
-git -C /home/max/workspace/flotilla commit -m "feat(onboard): questionnaire rounds within AskUserQuestion's limits"
+git -C /home/user/workspace/flotilla add flotilla/onboard/questions.py tests/test_onboard_questions.py
+git -C /home/user/workspace/flotilla commit -m "feat(onboard): questionnaire rounds within AskUserQuestion's limits"
 ```
 
 ---
@@ -1805,8 +1805,8 @@ def test_guards_and_tracker(tmp_path):
 
 
 def test_typed_tracker_pattern_is_kept(tmp_path):
-    data = build_profile(detection(tmp_path), {**BASE_ANSWERS, "tracker": "^CURVE-\\d+(\\.\\d+)*$"})
-    assert data["evidence"]["close"]["pattern"] == "^CURVE-\\d+(\\.\\d+)*$"
+    data = build_profile(detection(tmp_path), {**BASE_ANSWERS, "tracker": "^PROJ-\\d+(\\.\\d+)*$"})
+    assert data["evidence"]["close"]["pattern"] == "^PROJ-\\d+(\\.\\d+)*$"
 
 
 def test_deployment_adds_the_judge_and_a_deploy_section(tmp_path):
@@ -1967,8 +1967,8 @@ Injection (removal): delete the whole `if path.exists() and not force:` block. E
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /home/max/workspace/flotilla add flotilla/onboard/profile.py tests/test_onboard_profile.py
-git -C /home/max/workspace/flotilla commit -m "feat(onboard): build and write project.toml, never over an existing one"
+git -C /home/user/workspace/flotilla add flotilla/onboard/profile.py tests/test_onboard_profile.py
+git -C /home/user/workspace/flotilla commit -m "feat(onboard): build and write project.toml, never over an existing one"
 ```
 
 ---
@@ -2159,8 +2159,8 @@ pipe). Undo.
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /home/max/workspace/flotilla add flotilla/onboard/firstrun.py tests/test_onboard_firstrun.py docs/specs/2026-09-22-flotilla-design.md
-git -C /home/max/workspace/flotilla commit -m "feat(onboard): first run of each tier; run times are machine facts"
+git -C /home/user/workspace/flotilla add flotilla/onboard/firstrun.py tests/test_onboard_firstrun.py docs/specs/2026-09-22-flotilla-design.md
+git -C /home/user/workspace/flotilla commit -m "feat(onboard): first run of each tier; run times are machine facts"
 ```
 
 ---
@@ -2273,8 +2273,8 @@ Expected: `6 passed`.
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /home/max/workspace/flotilla add flotilla/onboard/check.py tests/test_onboard_check.py
-git -C /home/max/workspace/flotilla commit -m "feat(onboard): drift check against the last push run and this machine"
+git -C /home/user/workspace/flotilla add flotilla/onboard/check.py tests/test_onboard_check.py
+git -C /home/user/workspace/flotilla commit -m "feat(onboard): drift check against the last push run and this machine"
 ```
 
 ---
@@ -2691,7 +2691,7 @@ commit, and that guards and git hooks they chose are recorded but installed late
 Run: `uv run --with pytest python -m pytest tests/test_onboard_cli.py tests/test_onboard_skill.py`
 Expected: `9 passed`.
 
-Run: `claude plugin validate /home/max/workspace/flotilla`
+Run: `claude plugin validate /home/user/workspace/flotilla`
 Expected: validation passes and names the skill.
 
 Injection (plausible neighbour): in `SKILL.md` change one `flotilla onboard answer` to `flotilla onboard reply`.
@@ -2704,8 +2704,8 @@ Expected: all pass on both (`218 passed` = 116 foundation + 102 so far; report t
 Run: `python3 tools/check_no_cyrillic.py` → exit 0.
 
 ```bash
-git -C /home/max/workspace/flotilla add flotilla/onboard/answers.py flotilla/onboard/commands.py flotilla/cli.py skills tests/test_onboard_cli.py tests/test_onboard_skill.py
-git -C /home/max/workspace/flotilla commit -m "feat(onboard): onboard commands and the /flotilla:onboard skill"
+git -C /home/user/workspace/flotilla add flotilla/onboard/answers.py flotilla/onboard/commands.py flotilla/cli.py skills tests/test_onboard_cli.py tests/test_onboard_skill.py
+git -C /home/user/workspace/flotilla commit -m "feat(onboard): onboard commands and the /flotilla:onboard skill"
 ```
 
 ---
@@ -2834,7 +2834,7 @@ Injection (plausible neighbour): in `skills/doctor/SKILL.md` change `disable-mod
 `disable-model-invocation: false`. Expected: `test_person_only_commands_are_never_model_invoked` FAILS naming
 `doctor`. Undo.
 
-Run: `claude plugin validate /home/max/workspace/flotilla` → passes.
+Run: `claude plugin validate /home/user/workspace/flotilla` → passes.
 Run: `uv run --with pytest python -m pytest` and `uv run --python 3.11 --with pytest python -m pytest` → all pass
 on both (`224 passed` = 116 foundation + 108 here, if the counts hold; report the printed number).
 Run: `python3 tools/check_no_cyrillic.py` → exit 0.
@@ -2842,8 +2842,8 @@ Run: `python3 tools/check_no_cyrillic.py` → exit 0.
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /home/max/workspace/flotilla add skills/doctor skills/check tests/test_skills.py
-git -C /home/max/workspace/flotilla commit -m "feat(plugin): /flotilla:doctor and /flotilla:check, with a command-surface seam test"
+git -C /home/user/workspace/flotilla add skills/doctor skills/check tests/test_skills.py
+git -C /home/user/workspace/flotilla commit -m "feat(plugin): /flotilla:doctor and /flotilla:check, with a command-surface seam test"
 ```
 
 ---
@@ -2851,10 +2851,10 @@ git -C /home/max/workspace/flotilla commit -m "feat(plugin): /flotilla:doctor an
 ## Done when
 
 - `/flotilla:onboard`, `/flotilla:doctor` and `/flotilla:check` appear in `/help` under the plugin's namespace after
-  `claude --plugin-dir /home/max/workspace/flotilla`; `doctor` and `check` are absent from the model's skill list.
+  `claude --plugin-dir /home/user/workspace/flotilla`; `doctor` and `check` are absent from the model's skill list.
 - A fresh repository can be onboarded end to end through the CLI (`machine`, `next`/`answer` rounds, `write`,
   `check`), and the written profile loads through `config.load_project`.
 - No measured time is written into `project.toml`; the spec says so in 4.2 and 4.4.
 - Each injection named in Tasks 1, 4, 5, 7, 8, 9, 11 and 12 was seen red and undone.
 - The full suite passes on Python 3.11 and the newest local interpreter; CI is green on Linux and macOS after push.
-- Pushing needs Max's yes, as always.
+- Pushing needs the person's yes, as always.

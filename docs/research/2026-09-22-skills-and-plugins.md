@@ -285,7 +285,7 @@ All of this section comes from plugins-ref.md [D] and plugins.md [D].
 ### Update 2026-10-03 (re-read from the sources, for submitting flotilla)
 
 - FACT [S claude.com/docs/directory/publish]: one directory, "Anthropic's catalog of plugins and connectors that
-  people browse inside Claude". "Anyone on a paid Claude plan can submit, there's no partner program." Pro and Max
+  people browse inside Claude". "Anyone on a paid Claude plan can submit, there's no partner program." Pro and the person
   submit from their own account; on Team and Enterprise an Owner (or a role with the Directory permission). The
   first organization to submit a repository folder holds that listing.
   - The earlier Claude Console form "is no longer supported"; the `claude-community` / `claude-plugins-official`

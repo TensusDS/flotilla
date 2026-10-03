@@ -65,7 +65,7 @@ def test_a_machine_without_proc_is_not_asked(tmp_path):
 
 def test_a_systemd_service_or_another_users_process_is_never_a_leftover(tmp_path):
     proc, tree, other = world(tmp_path)
-    fake_proc(proc, 500, ppid=1, cwd=tree, command="python serving", cgroup="0::/system.slice/curve-serving.service\n")
+    fake_proc(proc, 500, ppid=1, cwd=tree, command="python serving", cgroup="0::/system.slice/app-serving.service\n")
     fake_proc(proc, 501, ppid=1, cwd=tree, command="runsvc.sh", uid=os.getuid() + 1)
     fake_proc(proc, 502, ppid=1, cwd=tree, command="node vite")
     assert [item.pid for item in leftovers.in_tree(tree, keep=set(), proc_root=proc, me=99999)] == [502]

@@ -1,9 +1,9 @@
 # Field test 2026-09-27: a seven-session fleet builds a console Snake
 
 A live test of flotilla at `302833c` on this machine (Claude Code 2.1.283, Linux). Repository
-`/home/max/workspace/snake` with a local bare origin; fleet: orchestrator 1, sender 1, review session 1 and 2,
+`/home/user/workspace/snake` with a local bare origin; fleet: orchestrator 1, sender 1, review session 1 and 2,
 acceptance judge 4, main session 1, minor session 38; all on Sonnet, permission mode `auto`, direct push, every
-branch reviewed, judge required. Findings are appended as they appear and walked through with Max afterwards.
+branch reviewed, judge required. Findings are appended as they appear and walked through with the person afterwards.
 
 Each finding: what was seen (evidence), why it matters, and a first idea of the fix. Kinds: **bug** (flotilla does
 something wrong), **gap** (a path flotilla does not cover), **noise** (true but unhelpful), **setup** (friction
@@ -23,7 +23,7 @@ planned seven sessions while the plugin was not installed at all. Fix: `doctor` 
 `flotilla@...` is enabled for the project, and refuse to spawn otherwise.
 
 F3. **gap — trust is not checked before spawning** (known from entry 70): `claude --bg` refuses a directory whose
-trust was never accepted, and trust is not inherited from a parent. Max had to run `claude` in the repository by
+trust was never accepted, and trust is not inherited from a parent. The person had to run `claude` in the repository by
 hand. Fix: `doctor`/`spawn` read the trust state and name the one command that fixes it.
 
 F4. **setup — a console project has no judge path in onboarding.** The deploy question appears only when a
@@ -40,7 +40,7 @@ F6. **noise — a typed tier command is named `custom-1`.** The handover and pus
 Fix: derive a name from the command (`pytest`), or ask for one.
 
 F7. **obs — names continue across projects.** The minor session is `minor session 38` and the judge
-`acceptance judge 4` because ai-os background sessions `minor session 37`, `acceptance judge 1` and `3` are alive on
+`acceptance judge 4` because other-project background sessions `minor session 37`, `acceptance judge 1` and `3` are alive on
 the machine (the census is machine-wide, and names are machine-wide addresses by design). Correct, but surprising.
 Fix: `spawn --dry-run` says why a number was chosen; the onboarding could offer a project prefix in name patterns.
 
@@ -53,8 +53,8 @@ report post rows of sessions the same spawn is still raising (e.g. a row younger
 `spawning` marker), or wait for the spawn to finish before the first report.
 
 F9. **noise — the session-start greeting lists peers from other projects.** "12 live peer(s): AI OS reformatting,
-acceptance judge 1, …, ai-os-ea, git orchestrator 4, …" — the census is machine-wide, so an orchestrator of this
-project is told about sessions of ai-os. Fix: name peers of this project (same repository key or cwd under the
+acceptance judge 1, …, other-project-ea, git orchestrator 4, …" — the census is machine-wide, so an orchestrator of this
+project is told about sessions of other-project. Fix: name peers of this project (same repository key or cwd under the
 project, or a post match) first, and count the rest in one number.
 
 F10. **obs — `status: waiting` can be momentary.** At 22:42:43 the census showed the orchestrator as
@@ -114,9 +114,9 @@ sessions whose post is not person-facing: deny with "send the question to the or
 talks to the person.
 
 F17. **gap — a flotilla refusal with no next move is escalated to the person with its internals.** The sender's
-question to Max (seen on Remote Control, 22:52): "How to close `flotilla work land` for feature/game-logic —
-origin/main is at 0076c5f but local main (checked out at /home/max/workspace/snake) has not moved?", with options
-"update the main checkout yourselves" / "allow me git update-ref" / "other". Max's reaction: why does the sender ask
+question to the person (seen on Remote Control, 22:52): "How to close `flotilla work land` for feature/game-logic —
+origin/main is at 0076c5f but local main (checked out at /home/user/workspace/snake) has not moved?", with options
+"update the main checkout yourselves" / "allow me git update-ref" / "other". The person's reaction: why does the sender ask
 the person about details of the tool's implementation, outside its work? Causes: (1) F14 — the tool leaves no legal
 path; (2) the refusal "0076c5f is not on the local `main`; land records work merged there" names the state, not the
 next move, so the session improvised git plumbing (`fetch main:main`, `update-ref`), hit the classifier, and asked
@@ -138,7 +138,7 @@ summary line are stored in the ledger and printed raw. Fix: strip ANSI escapes w
 
 F20. **bug — a post-named move is attributed to sessions of other projects.** `watch --once` at 22:58: "feature/
 game-logic: acceptance judge 1 holds the move (shipped) and is not working …" and the same for "acceptance judge 3"
-— both are ai-os background sessions (cwd /home/max/workspace/ai-os). The move "the judge" is resolved to every live
+— both are other-project background sessions (cwd /home/user/workspace/other-project). The move "the judge" is resolved to every live
 session whose name matches the judge post's pattern, machine-wide; this project's `acceptance judge 4` was busy and
 so not listed. Why it matters: the orchestrator is told to message sessions of another project, and a real dropped
 ball of this project's judge could hide behind them. Fix: resolve post-named movers only among sessions of this
@@ -212,7 +212,7 @@ finished fleet has no one-step way to stand down, and a stopped fleet looks like
 fleet down` (retire every post session of this project: stop it, free its post row, unlock its tree, report
 uncommitted work) and, in `watch`, a post row of a session that is gone is one "stale seat" line, not a mover alarm.
 
-## Triage with Max (2026-09-28)
+## Triage with the person (2026-09-28)
 
 Grouped by what stalled the fleet most; fixed in this order, in several small plans.
 

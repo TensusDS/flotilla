@@ -16,7 +16,7 @@ and provides the machinery that keeps their work honest: a **work ledger** whose
 **lane** that books the machine for long runs, **guards** on dangerous commands, and **watchers** that deliver
 "whose move is it" into the sessions themselves.
 
-It is extracted from the fleet tooling of the ai-os project, where up to twenty sessions ran a day on one machine.
+It is extracted from the fleet tooling of the other-project project, where up to twenty sessions ran a day on one machine.
 Everything project-specific is removed; the structure and the lessons stay.
 
 ### 1.1 Positioning
@@ -38,7 +38,7 @@ resources (trunk, version, CI queue), per-session worktrees, and state that surv
 
 1. **State lives in the ledger, not in letters.** Cross-session messages are lossy by documentation (receiver
    queue capped at 50, held-message store at 100, a 5-minute approval deadline, duplicate drops). A letter is a
-   notification of a ledger move, never the carrier of state. In the ai-os fleet 44 % of 1,599 letters in one
+   notification of a ledger move, never the carrier of state. In the other-project fleet 44 % of 1,599 letters in one
    shift carried nothing but state.
 2. **Every move costs the evidence that makes it true.** Handing over needs the tip; accepting needs the revision
    read, equal to the tip handed over; "shipped" is asked of origin or of the PR, never typed.
@@ -437,7 +437,7 @@ that row's walk (field test H44).
 ### 6.5 Duplicates
 
 A second claim with the same `--ref` while a row is open is **refused**, naming the holder. `--also "<why>"`
-overrides and is recorded. (A warning-only door let three ai-os sessions write the same work within ~14 hours.)
+overrides and is recorded. (A warning-only door let three other-project sessions write the same work within ~14 hours.)
 
 ### 6.6 Storage
 
@@ -769,16 +769,16 @@ session; its `comm` is `2.1.280`.
 
 ---
 
-## 14. Porting from ai-os
+## 14. Porting from other-project
 
 - Code is **ported, not rewritten**: its conditions encode real failures, and its tests move with it.
 - Out of v1: `session_inbox` and `fleet-probe` (they parse transcripts). Their roles are covered by the ledger
   (state), metrics (cost) and hooks (delivery).
 - Each module is ported in **two separate steps**: (1) move as is, tests green, behaviour unchanged; (2) translate
   output and its asserts **in one commit**, reviewed for meaning, not only by a green run.
-- Rationale docstrings are **rewritten** for a general reader; ai-os measured precedents move to
+- Rationale docstrings are **rewritten** for a general reader; other-project measured precedents move to
   `skills/flotilla/references/why.md`.
-- Measured on ai-os `main`: the 15 code files to port carry 6,572 Cyrillic lines of 12,412 (including ~540 lines of
+- Measured on other-project `main`: the 15 code files to port carry 6,572 Cyrillic lines of 12,412 (including ~540 lines of
   Cyrillic identifiers by a rough heuristic); their 12 test files 9,058 of 18,678, with ~1,220 asserts comparing
   Russian output. Translation is a task per module, roughly the size of the port.
 
@@ -800,7 +800,7 @@ Then: skill text and evals, the e2e smoke, README with three working example pro
 
 ## 16. Publication criterion and roadmap
 
-**Before submitting:** ai-os runs on flotilla for several real shifts — ledger imported, judge and triage holder as
+**Before submitting:** other-project runs on flotilla for several real shifts — ledger imported, judge and triage holder as
 custom posts, register closing and the board as events.
 
 **Roadmap:** OS schedules installed by onboarding (crontab / launchd); a machine resource broker (ports and database
