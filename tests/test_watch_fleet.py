@@ -261,10 +261,20 @@ def test_a_post_session_in_its_own_tree_is_no_stranger():
     assert [item for item in fleet.fleet(seats, PR, [mine], post_of=post_of) if item.kind == fleet.STRANGER] == []
 
 
+def _registered(config_dir, session, entrypoint):
+    """Claude Code's registry entry for a running session, `<config>/sessions/<pid>.json` (fields as on 2.1.288)."""
+    import json
+    folder = config_dir / "sessions"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / f"{session.pid}.json").write_text(json.dumps({
+        "pid": session.pid, "sessionId": session.session_id, "cwd": session.cwd, "kind": session.kind,
+        "entrypoint": entrypoint}), encoding="utf-8")
+
+
 def _transcript(config_dir, session, entrypoint, prompt="Review this change for security vulnerabilities."):
     import json
-    from flotilla.fleet import strangers
-    folder = config_dir / "projects" / strangers.project_slug(session.cwd)
+    import re
+    folder = config_dir / "projects" / re.sub(r"[^A-Za-z0-9]", "-", session.cwd)
     folder.mkdir(parents=True, exist_ok=True)
     lines = [{"type": "user", "entrypoint": entrypoint, "message": {"role": "user", "content": prompt}}]
     (folder / f"{session.session_id}.jsonl").write_text("\n".join(json.dumps(x) for x in lines) + "\n",
@@ -274,18 +284,35 @@ def _transcript(config_dir, session, entrypoint, prompt="Review this change for 
 def test_a_plugins_headless_review_in_a_seat_tree_is_no_alarm(tmp_path, monkeypatch):
     """Worldcore field test W6: security-guidance starts a headless review session in the tree after each commit;
     `watch` raised it as a stranger and the orchestrator went to find out what it was. The census does not say how
-    a session was started, but the session's own transcript does, in its first records."""
+    a session was started; Claude Code's registry entry for the session does (`entrypoint`: `cli` at a terminal,
+    `sdk-cli` for `claude -p`, measured on 2.1.288)."""
     import dataclasses
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
     seats = rows(row(id="r1", branch="fleet/main-1", owner="main session 1", state="reserved",
                      tree="/work/app-main-1"))
-    review = dataclasses.replace(sess("app-main-1-2f", kind="interactive"), cwd="/work/app-main-1")
-    person = dataclasses.replace(sess("app-main-1-77", kind="interactive"), cwd="/work/app-main-1")
-    _transcript(tmp_path / "claude", review, "sdk-py")
-    _transcript(tmp_path / "claude", person, "claude-vscode", prompt="let me look at this tree")   # a person's IDE
+    review = dataclasses.replace(sess("app-main-1-2f", kind="interactive", pid=4101), cwd="/work/app-main-1")
+    person = dataclasses.replace(sess("app-main-1-77", kind="interactive", pid=4102), cwd="/work/app-main-1")
+    _registered(tmp_path / "claude", review, "sdk-py")
+    _registered(tmp_path / "claude", person, "claude-vscode")   # a person's IDE
     found = fleet.fleet(seats, PR, [sess("main session 1"), review, person], post_of=post_of)
     named = [item.who for item in found if item.kind == fleet.STRANGER]
     assert named == ["app-main-1-77"]   # a session a person opened there is still named
+
+
+def test_how_a_session_started_is_never_read_from_its_conversation(tmp_path, monkeypatch):
+    """Directory readiness (Software Directory Policy: software must not "query or extract data from ... chat
+    history"): the entrypoint used to be read from the first records of the session's transcript. Only the registry
+    is asked now, and a registry entry for another session id counts for nothing."""
+    import dataclasses
+    from flotilla.fleet import strangers
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
+    review = dataclasses.replace(sess("app-main-1-2f", kind="interactive", pid=4101), cwd="/work/app-main-1")
+    _transcript(tmp_path / "claude", review, "sdk-py")
+    assert strangers.started_by(review) == ""
+    _registered(tmp_path / "claude", dataclasses.replace(review, session_id="someone-else"), "sdk-py")
+    assert strangers.started_by(review) == ""
+    _registered(tmp_path / "claude", review, "sdk-py")
+    assert strangers.started_by(review) == "sdk-py"
 
 
 def test_the_persons_own_session_waiting_on_them_is_no_alarm():
