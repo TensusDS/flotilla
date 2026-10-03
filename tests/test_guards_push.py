@@ -369,3 +369,40 @@ def test_a_global_gh_repo_does_not_block_work_outside_flotilla(tmp_path):
 def test_an_override_record_keeps_no_secret_in_any_common_form(tmp_path, command, secret):
     overrides.record_override(tmp_path / "state", "k", "push_receipt", "why", [command])
     assert secret not in json.dumps(overrides.recorded(tmp_path / "state", "k"))
+
+
+def test_a_foreign_repositorys_config_runs_nothing_before_its_push_is_allowed(tmp_path):
+    """Scan of 0.6.10, F3: the guard asked origin in a directory the command names - one nobody has allowed yet -
+    under that repository's own config, so a downloaded repository's `uploadpack` ran a program inside the hook
+    before the person said anything. Outside the session's own repository origin is asked only when the config is
+    plain; otherwise the push is refused, and the guard says why."""
+    (tmp_path / "downloads").mkdir()
+    (tmp_path / "mine").mkdir()
+    foreign = human_project(tmp_path / "downloads")
+    mine = onboarded(tmp_path / "mine")
+    marker = tmp_path / "ran"
+    git(foreign, "config", "remote.origin.uploadpack", f"touch {marker}; git-upload-pack")
+    found = judge(f"git -C {foreign} push origin main", mine, tmp_path)
+    assert not marker.exists()
+    assert found is not None and found.refuse and "asked safely" in found.text
+
+
+def test_a_foreign_repository_with_a_plain_config_is_still_judged(tmp_path):
+    (tmp_path / "downloads").mkdir()
+    (tmp_path / "mine").mkdir()
+    foreign = human_project(tmp_path / "downloads")
+    mine = onboarded(tmp_path / "mine")
+    found = judge(f"git -C {foreign} push origin main", mine, tmp_path)
+    assert found is not None and found.refuse and "not approved" in found.text
+
+
+def test_the_sessions_own_repository_is_asked_whatever_its_config_holds(tmp_path):
+    """Ordinary local keys (an editor's `branch.<name>.vscode-merge-base`, `pull.rebase`) would close every push
+    if the own repository's config had to be plain; its config is the person's, and the door is their own."""
+    root = human_project(tmp_path)
+    git(root, "config", "branch.main.vscode-merge-base", "origin/main")
+    other = tmp_path / "sibling"
+    git(root, "worktree", "add", "-q", "-b", "fleet/x", str(other), "main")
+    for command in ("git push origin main", f"git -C {other} push origin HEAD:main"):
+        found = judge(command, root, tmp_path)
+        assert found is not None and found.refuse and "not approved" in found.text, command

@@ -214,11 +214,22 @@ def _failures(pairs, *, directory, profile, state_dir, repo_key, run) -> list[st
     return found
 
 
-def _remote_trunk(root, trunk: str, run) -> str:
+def _remote_trunk(root, trunk: str, run, *, own: bool = True) -> str:
     """Trunk's revision as origin has it, asked of origin: the local `origin/<trunk>` is a ref any session can
-    repoint, and what goes to trunk is measured from it."""
-    done = run(["git", "-C", str(root), "ls-remote", "origin", f"refs/heads/{trunk}"], capture_output=True,
-               text=True, check=False, timeout=20)
+    repoint, and what goes to trunk is measured from it. A repository other than the session's own is named by a
+    command nobody has allowed yet, so its config must not get a program run (scan of 0.6.10, F3): origin is asked
+    there only by a plain URL, with a config that holds nothing that runs code, and with no repository hook."""
+    command = ["git", "-C", str(root), "ls-remote", "origin", f"refs/heads/{trunk}"]
+    if not own:
+        from flotilla.guards.run import _config_is_plain, _empty_hooks, _plain_url
+        urls = (_git(root, "config", "--get-all", "remote.origin.url", run=run) or "").splitlines()
+        if len(urls) != 1 or not _plain_url(urls[0]) or not _config_is_plain(Path(root), run):
+            raise Unknown(f"origin could not be asked safely: {root} is not this session's repository, and its own "
+                          "git config holds keys that can run a program or redirect git, or origin's URL is not a "
+                          "plain one, so it is not asked before the command is allowed")
+        command = ["git", "-C", str(root), "-c", f"core.hooksPath={_empty_hooks()}", "ls-remote", urls[0],
+                   f"refs/heads/{trunk}"]
+    done = run(command, capture_output=True, text=True, check=False, timeout=20)
     if done.returncode != 0:
         raise Unknown(f"origin could not be asked for `{trunk}` ({(done.stderr or '').strip()[:120]}), so what this "
                       "carries to trunk cannot be told")
@@ -263,6 +274,17 @@ def _home(d: Door, root, profile: dict, run):
     return found, rules_for(found, run=run)[0]
 
 
+def _own_repository(home_root, root) -> bool:
+    """Whether the door acts on the session's own repository - any checkout of it - rather than one the command
+    merely names."""
+    if root is None:
+        return False
+    if Path(home_root).resolve() == Path(root).resolve():
+        return True
+    from flotilla.broker.decide import _same_repository
+    return _same_repository(Path(home_root), Path(root))
+
+
 def _names_repo(d: Door, env) -> bool:
     """A gh door that names its repository acts on it whatever directory it runs in (F21)."""
     return d.kind.startswith("gh ") and (_value(list(d.segment.words[3:]), "-R", "--repo") is not None
@@ -297,7 +319,8 @@ def guard(segment, *, root, profile, env=os.environ, run=subprocess.run) -> Find
         landing = [(label, sha) for label, sha in pairs if d.kind == "gh pr merge" or label in (trunk, "HEAD")]
         if d.kind in ("git push", "gh pr merge") and landing and \
                 (home_profile.get("flow") or {}).get("merge_authorized_by") == "human":
-            unapproved = _unapproved(home_root, home_profile, landing, since=_remote_trunk(home_root, trunk, run))
+            unapproved = _unapproved(home_root, home_profile, landing,
+                                     since=_remote_trunk(home_root, trunk, run, own=_own_repository(home_root, root)))
     except Unknown as err:
         failures = [str(err)]
     except Exception as err:  # noqa: BLE001 - the push guard's own failure refuses (spec, section 10)
