@@ -180,18 +180,20 @@ class LedgerSession:
         return [self._write(item) for item in prepared]
 
 
-#: The characters a branch name may carry in the ledger. A name is a session's choice and travels into commands a
-#: person types (`! flotilla work approve <branch>`), and git allows `$`, `(`, `|`, braces and backticks in a ref
-#: name (scan of 0.6.10, F2).
-SAFE_BRANCH = re.compile(r"[A-Za-z0-9._/][A-Za-z0-9._/-]*")
+#: The characters a branch name may carry in the ledger: those a shell reads as themselves, unquoted (shlex's own
+#: set, less the `:` git refuses). A name is a session's choice and travels into commands a person types
+#: (`! flotilla work approve <branch>`), and git allows `$`, `(`, `|`, braces and backticks in a ref name (scan of
+#: 0.6.10, F2). A flotilla limit, not git's: non-ASCII letters are refused too.
+SAFE_BRANCH = re.compile(r"[A-Za-z0-9._/@%+=,][A-Za-z0-9._/@%+=,-]*")
 
 
 def check_claim(rows: dict[str, Row], branch: str, *, ref: str = "", also: str = "", requires=()) -> list[str]:
     if not branch.strip():
         raise MoveRefused("a claim names a branch")
     if not SAFE_BRANCH.fullmatch(branch):
-        raise MoveRefused(f"`{branch}` is not a branch name flotilla files: use letters, digits, `.`, `_`, `/` and "
-                          "`-` (not first), so the name is safe in a command a person types")
+        raise MoveRefused(f"`{branch}` is not a branch name flotilla files (its limit, not git's): use ASCII "
+                          "letters, digits and `._/@%+=,-` (`-` not first), so the name is safe in a command a "
+                          "person types")
     for row in rows.values():
         if row.is_open and row.branch == branch:
             raise MoveRefused(f"`{branch}` is already claimed by {row.owner} (row {row.id}, {row.state})")

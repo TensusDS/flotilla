@@ -205,13 +205,14 @@ def test_a_branch_name_a_shell_would_expand_is_refused_at_the_claim(tmp_path, na
     refused where it enters the ledger: claim, reserve, and every move that files a row."""
     root = repo_with_origin(tmp_path)
     ledger = make_ledger(root, tmp_path / "state")
-    with pytest.raises(MoveRefused, match="letters, digits"):
+    with pytest.raises(MoveRefused, match="ASCII letters, digits"):
         core.claim(ledger, actor(ledger, "main session 1"), name)
-    with pytest.raises(MoveRefused, match="letters, digits"):
+    with pytest.raises(MoveRefused, match="ASCII letters, digits"):
         core.reserve(ledger, actor(ledger, "main session 1"), name)
 
 
-@pytest.mark.parametrize("name", ["feat/x", "fleet/sender-1", "fix/a.b_c-2", "release/0.6.11", "UPPER/Case"])
+@pytest.mark.parametrize("name", ["feat/x", "fleet/sender-1", "fix/a.b_c-2", "release/0.6.11", "UPPER/Case",
+                                  "feat/a+b", "user@fix", "feat/50%", "feat/k=v,w"])
 def test_ordinary_branch_names_are_claimed(tmp_path, name):
     root = repo_with_origin(tmp_path)
     ledger = make_ledger(root, tmp_path / "state")

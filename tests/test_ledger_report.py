@@ -103,3 +103,19 @@ def test_where_the_sender_merges_the_brief_prints_no_approve_command(tmp_path):
     ledger = make_ledger(root, tmp_path / "state", profile=DIRECT)
     drive(root, ledger, "feat/a")
     assert "work approve" not in "\n".join(report.brief(ledger))
+
+
+def test_a_change_born_in_the_batch_gets_its_approve_line_too(tmp_path):
+    """Final review of the scan fixes, minor: a change born in the batch waits for the person's approve like any
+    other row where a person authorizes merges, and the orchestrator copies approve lines only from the brief - so
+    the brief prints one for it, and stops once it is approved."""
+    from flotilla.ledger import delivery, outside
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile=HUMAN)
+    fix = commit(root, "a fix inside the batch", "fix.txt")
+    outside.inbatch(ledger, actor(ledger, "sender 1"), "batch/fix", commit=fix, read_by="review session 1",
+                    why="a fix")
+    text = "\n".join(report.brief(ledger))
+    assert "`batch/fix` (inbatch)" in text and "approve: ! flotilla work approve batch/fix" in text
+    delivery.approve(ledger, "batch/fix")
+    assert "batch/fix" not in "\n".join(report.brief(ledger))

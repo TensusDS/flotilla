@@ -34,8 +34,8 @@ A letter is a notification of a move, never its carrier. Before you say "done", 
   `flotilla work hand <branch>`), close what shipped (`flotilla work close <branch>`);
 - reviewer: `flotilla work take <branch>`, read the handed tip in your home tree (`git switch --detach <tip>`), then `flotilla work accept <branch> --reviewed <sha>` or
   `flotilla work fix <branch> --why "<what must change>"`;
-- sender: `flotilla brief` sent to the orchestrator for the person's one yes, then `flotilla work queue`, `land`,
-  and `flotilla work reconcile` after every push;
+- sender: tells the orchestrator a batch waits for the person's one yes (it runs `flotilla brief` itself), then
+  `flotilla work queue`, `land`, and `flotilla work reconcile` after every push;
 - orchestrator: `flotilla work assign <branch> --reader "<session>"`, then send the letter it prints;
 - judge: `flotilla work walked` or `flotilla work broke` over the deployed build.
 

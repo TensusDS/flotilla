@@ -753,3 +753,18 @@ def test_a_vouch_after_the_approval_is_not_under_it(tmp_path):
     extra = commit(root, "a change made in the batch", "extra.txt")
     outside.vouch(ledger, actor(ledger, "review session 1"), "feat/x", commit=extra)
     assert extra in (batch.unaccounted(ledger, ledger.rows(), "main") or [])
+
+
+def test_the_queue_refusal_quotes_a_branch_name_an_older_flotilla_filed(tmp_path, monkeypatch):
+    """Final review of the scan fixes, minor: a row filed before branch names were checked can still carry `$(...)`;
+    the refusal that tells the person what to type quotes it for the shell."""
+    import re
+    from flotilla.ledger import core
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile=HUMAN)
+    with monkeypatch.context() as older:
+        older.setattr(core, "SAFE_BRANCH", re.compile(r".+"))
+        drive(root, ledger, "feat/x$(id)")
+    with pytest.raises(MoveRefused) as refused:
+        delivery.queue(ledger, actor(ledger, "sender 1"), "feat/x$(id)")
+    assert "work approve 'feat/x$(id)'" in str(refused.value)
