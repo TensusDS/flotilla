@@ -9,8 +9,8 @@ report one privately.
 Use GitHub's private reporting: **Security → Report a vulnerability** at
 <https://github.com/TensusDS/flotilla/security/advisories/new>. Do not open a public issue for it.
 
-Say what you ran, on which flotilla and Claude Code versions, and what happened. Every report is answered. A
-confirmed issue is fixed with a test that reproduces it, released as a new version, and credited in
+Say what you ran, on which flotilla and Claude Code versions, and what happened. Every report is answered within a
+week. A confirmed issue is fixed with a test that reproduces it, released as a new version, and credited in
 [CHANGELOG.md](CHANGELOG.md) unless you ask otherwise.
 
 ## Supported versions
