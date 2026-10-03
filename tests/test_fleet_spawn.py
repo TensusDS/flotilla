@@ -126,6 +126,8 @@ def test_a_number_whose_tree_an_earlier_fleet_left_is_skipped(tmp_path):
     run(ledger, store, fake, {"main": 1})
     assert [cmd[3] for cmd in fake.launched] == ["main session 2"]
     assert (tmp_path / "app-main-1" / "draft.txt").read_text(encoding="utf-8") == "an older fleet's\n"
+    seats, _ = spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False)
+    assert [seat.name for seat in seats] == ["main session 3"]   # the skipped number is never issued later
 
 
 def test_a_branch_made_after_the_plan_is_never_deleted(tmp_path):

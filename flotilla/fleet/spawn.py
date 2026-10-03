@@ -162,6 +162,17 @@ def _left_by_older_seats(ledger) -> set[str]:
     return found
 
 
+def tree_left_behind(main, post):
+    """Why a name's seat cannot be made here - its tree is already on disk, with no branch to number it by, as an
+    older fleet leaves it (twosuns, 2026-10-03) - or "". Numbering steps over such a number; nothing there is
+    touched."""
+    def occupied(name: str) -> str:
+        tree = launch.seat_for(main, post, name).tree
+        return (f"{tree} is already there; `flotilla fleet clean` says whether it is an earlier fleet's and can go"
+                if tree.exists() or tree.is_symlink() else "")
+    return occupied
+
+
 def plan(ledger, counts: dict, *, census, store, reserve: bool,
          strict: bool = True, anyway: bool = False) -> tuple[list[launch.Seat], list[str]]:
     try:
@@ -199,13 +210,8 @@ def plan(ledger, counts: dict, *, census, store, reserve: bool,
     skipped: list[str] = []
     for post_name in compose.raise_order(wanted):
         post = ledger.posts[post_name]
-
-        def occupied(name, post=post):   # a tree an earlier fleet left, with no branch to number it by (twosuns)
-            tree = launch.seat_for(main, post, name).tree
-            return (f"{tree} is already there (an earlier fleet's; `flotilla fleet clean` says whether it can go)"
-                    if tree.exists() or tree.is_symlink() else "")
         issued = names.next_names(post, wanted[post_name], taken=taken, store=store, reserve=reserve,
-                                  now=ledger.now(), occupied=occupied, skipped=skipped)
+                                  now=ledger.now(), occupied=tree_left_behind(main, post), skipped=skipped)
         taken |= set(issued)
         seats += [launch.seat_for(main, post, name) for name in issued]
     clashes = [f"{seat.tree} already exists" for seat in seats if seat.tree.exists() or seat.tree.is_symlink()]

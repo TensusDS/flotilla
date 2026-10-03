@@ -5,7 +5,7 @@ each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2
 
 ## Unreleased
 
-- **A seat number whose tree an earlier fleet left is skipped.** `spawn` stepped over the numbers of older seats'
+- **A seat number whose tree an earlier fleet left is skipped.** `spawn` and `helper raise` stepped over the numbers of older seats'
   branches, not of their trees: a tree left with no branch beside it (twosuns, after an older fleet named without the
   project) stopped the whole spawn. The number is skipped, the plan says so and points at `flotilla fleet clean`,
   and the tree is never touched.

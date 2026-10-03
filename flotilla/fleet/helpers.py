@@ -65,8 +65,10 @@ def raise_helper(ledger, actor: Actor, branch: str, *, task: str, census, store,
         raise MoveRefused(f"git could not resolve the tip of `{branch}`; a helper starts from a tip someone can name")
     taken = live | {name for row in rows.values() for name in (row.owner, row.reader) if name}
     taken |= spawn._left_by_older_seats(ledger)   # an older fleet's `fleet/helper-1` (review of 0.6.0, I3)
-    name = names.next_names(post, 1, taken=taken, store=store, reserve=True, now=ledger.now())[0]
-    seat = launch.seat_for(launch.main_checkout(ledger.root, run=ledger.run), post, name)
+    main = launch.main_checkout(ledger.root, run=ledger.run)
+    name = names.next_names(post, 1, taken=taken, store=store, reserve=True, now=ledger.now(),
+                            occupied=spawn.tree_left_behind(main, post))[0]   # a tree left with no branch
+    seat = launch.seat_for(main, post, name)
     try:
         return spawn.raise_seat(ledger, seat, caller=caller, census=census, wait=wait, poll=poll, sleep=sleep,
                                 base=tip, fields={"helper_of": parent.id},

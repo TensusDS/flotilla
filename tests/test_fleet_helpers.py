@@ -151,3 +151,13 @@ def test_a_helper_steps_over_a_seat_branch_left_by_an_older_fleet(tmp_path):
     git(root, "branch", "fleet/helper-1")
     raised = raise_one(ledger, fake)
     assert raised.seat.name == "helper 2" and raised.seat.branch == "fleet/helper-2"
+
+
+def test_a_helper_number_whose_tree_an_earlier_fleet_left_is_skipped(tmp_path):
+    """Review of the seat-number fix: `helper raise` numbered over older seats' branches only, so a helper tree left
+    with no branch beside it refused every helper with "already exists"."""
+    root, ledger, fake, row, tip = world(tmp_path)
+    left = root.parent / f"{root.name}-helper-1"
+    left.mkdir()
+    raised = raise_one(ledger, fake)
+    assert raised.seat.name == "helper 2" and left.is_dir()
