@@ -1,6 +1,7 @@
 import pytest
 
 from flotilla.ledger import core, findings, judging, outside
+from flotilla.ledger.errors import MoveRefused
 from ledgerkit import (PROFILE, actor, commit, drive, git, make_ledger, merge, repo_with_origin,
                        shipped_direct)
 
@@ -100,3 +101,50 @@ def test_after_close_is_quiet_when_another_open_row_carries_the_moved_tip(world)
     git(root, "branch", "feat/b", "feat/a")
     core.claim(ledger, actor(ledger, "main session 1"), "feat/b")
     assert kinds(ledger) == []
+
+
+def test_a_reader_closes_a_direct_commit_by_vouching_for_it_on_trunk(world):
+    """Twosuns field test of 0.6.7, W5: a profile commit straight to trunk was a finding no move closed - `vouch`
+    and `offledger` both wanted an open row, `inbatch` sent the sender to `offledger`, and trunk never has a row. The
+    reviewer's first try was right: a reader vouches for the commit on trunk, and that reading accounts it."""
+    root, ledger = world
+    drive(root, ledger)
+    merge(root, "feat/x")
+    stray = commit(root, "flotilla 0.6 profile", "stray.txt")
+    git(root, "push", "-q", "origin", "main")
+    said = [item for item in findings.findings(ledger) if item["kind"] == "direct_commit"]
+    assert said and "flotilla work vouch main --commit" in said[0]["why"]
+    row = outside.vouch(ledger, actor(ledger, "review session 1"), "main", commit=stray)
+    assert (row.state, row.reader, row.merge) == ("offledger", "review session 1", stray)
+    assert not [item for item in findings.findings(ledger) if item["kind"] == "direct_commit"]
+
+
+def test_a_vouch_on_trunk_is_for_an_unread_commit_on_trunk_by_a_reader(world):
+    root, ledger = world
+    drive(root, ledger)
+    merge(root, "feat/x")
+    git(root, "push", "-q", "origin", "main")
+    read = git(root, "rev-parse", "main")
+    with pytest.raises(MoveRefused, match="already accounted"):
+        outside.vouch(ledger, actor(ledger, "review session 1"), "main", commit=read)
+    git(root, "checkout", "-q", "-b", "side")
+    off = commit(root, "not on trunk", "off.txt")
+    with pytest.raises(MoveRefused, match="not on `"):
+        outside.vouch(ledger, actor(ledger, "review session 1"), "main", commit=off)
+    git(root, "checkout", "-q", "main")
+    stray = commit(root, "straight to trunk", "stray.txt")
+    git(root, "push", "-q", "origin", "main")
+    with pytest.raises(MoveRefused, match="may not `vouch`"):   # the one who merges reads nothing it merges
+        outside.vouch(ledger, actor(ledger, "sender 1"), "main", commit=stray)
+
+
+def test_the_refusals_around_a_direct_commit_point_to_the_reader_s_vouch(world):
+    """W5: inbatch sent the sender to offledger, and offledger refused for want of a row - a circle."""
+    root, ledger = world
+    stray = commit(root, "straight to trunk", "stray.txt")
+    git(root, "push", "-q", "origin", "main")
+    sender = actor(ledger, "sender 1")
+    with pytest.raises(MoveRefused, match="flotilla work vouch main --commit"):
+        outside.offledger(ledger, sender, "main", merge=stray, witness="review session 1")
+    with pytest.raises(MoveRefused, match="flotilla work vouch main --commit"):
+        outside.inbatch(ledger, sender, "chore/x", commit=stray, read_by="review session 1", why="x")

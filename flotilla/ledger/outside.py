@@ -57,7 +57,8 @@ def inbatch(ledger: Ledger, actor: Actor, label: str, *, commit: str, read_by: s
     if gitq.resolve(ledger.root, origin, run=ledger.run) and \
             gitq.is_ancestor(ledger.root, sha, origin, run=ledger.run) is True:
         raise MoveRefused(f"{sha[:7]} is already on origin; work that reached trunk outside the ledger is recorded "
-                          "with offledger")
+                          "with offledger on its row, and a commit with no row at all is read and recorded by a "
+                          f"reader: `flotilla work vouch {ledger.trunk} --commit {sha[:7]}`")
     merge = batch.is_merge(ledger, sha)
     if merge is None or (merge and batch.clean_merge(ledger, sha) is not False):
         raise MoveRefused(f"{sha[:7]} is a merge that adds nothing of its own, or git could not say; name the commit "
@@ -111,6 +112,9 @@ def offledger(ledger: Ledger, actor: Actor, branch: str, *, merge: str, witness:
     if gitq.is_ancestor(ledger.root, sha, trunk, run=ledger.run) is not True:
         raise MoveRefused(f"{sha[:7]} is not on `{trunk}`: the work has not reached trunk, so it is not offledger")
     with ledger.session() as s:
+        if branch == ledger.trunk and s.open_row(branch) is None:   # the circle of W5: say where it ends
+            raise MoveRefused(f"`{branch}` is trunk and has no row; a commit that reached it with no row is read and "
+                              f"recorded by a reader: `flotilla work vouch {branch} --commit {sha[:7]}`")
         row = s.need_open_row(branch)
         state = s.next_state(row, "offledger")
         if witness == row.owner:
@@ -124,6 +128,31 @@ def offledger(ledger: Ledger, actor: Actor, branch: str, *, merge: str, witness:
 VOUCHABLE = ("accepted", "queued", "landed", "inbatch")
 
 
+def _vouch_on_trunk(ledger: Ledger, actor: Actor, s, sha: str) -> Row:
+    """A reader vouches for a commit that reached trunk with no row at all - a person's or a planner's commit, a
+    profile change (twosuns field test of 0.6.7, W5). Nothing else closes that finding: vouch and offledger want an
+    open row, inbatch is for the batch, and trunk never has a row. The reading is recorded as a finished row on
+    trunk, so the commit is accounted the way any vouched commit is."""
+    if actor.post is not None and ("land" in actor.post.may or actor.post.writes_one_copy):
+        raise MoveRefused(f"{actor.name}'s post may land; the one who merges never vouches for a commit on trunk")
+    if (ledger.profile.get("flow") or {}).get("merge_authorized_by") == "human":
+        raise MoveRefused("where a person authorizes merges, a commit that reached trunk unapproved is the "
+                          "person's to settle; a reader's vouch does not account it")
+    trunk = gitq.trunk_ref(ledger.root, ledger.trunk, run=ledger.run)
+    if gitq.is_ancestor(ledger.root, sha, trunk, run=ledger.run) is not True:
+        raise MoveRefused(f"{sha[:7]} is not on `{trunk}`; a vouch on trunk is for a commit already there")
+    why = batch.account(ledger, s.rows, sha)
+    if why is not None:
+        raise MoveRefused(f"{sha[:7]} is already accounted for: {why}")
+    merge = batch.is_merge(ledger, sha)
+    if merge is None or (merge and batch.clean_merge(ledger, sha) is not False):
+        raise MoveRefused(f"{sha[:7]} is a merge that adds nothing of its own, or git could not say; name the commit "
+                          "that holds the change")
+    fields = {"branch": ledger.trunk, "owner": "", "merge": sha, "reader": actor.name, "vouched": [sha]}
+    return s.append(actor, next_row_id(s.rows), "vouch", "offledger", fields=fields,
+                    evidence={"commit": sha, "why": "a commit on trunk outside the ledger, read by its reader"})
+
+
 def vouch(ledger: Ledger, actor: Actor, branch: str, *, commit: str) -> Row:
     """A reader vouches for a commit the batch carries that no verdict covers: the sender's conflict resolution,
     read by someone who did not write it. The sender asks for it; it never writes a reader's name itself (H21)."""
@@ -134,7 +163,10 @@ def vouch(ledger: Ledger, actor: Actor, branch: str, *, commit: str) -> Row:
     with ledger.session() as s:
         row = s.open_row(branch) or next(   # batch work recorded with inbatch is a closed row under its label
             (item for item in reversed(list(s.rows.values())) if item.branch == branch and item.state == "inbatch"),
-            None) or s.need_open_row(branch)
+            None)
+        if row is None and branch == ledger.trunk:
+            return _vouch_on_trunk(ledger, actor, s, sha)
+        row = row or s.need_open_row(branch)
         if row.state not in VOUCHABLE:
             raise MoveRefused(f"`{branch}` is {row.state}; a vouch is for work on its way to trunk (accepted, "
                               "queued or landed)")

@@ -91,7 +91,9 @@ def findings(ledger, rows: dict[str, Row] | None = None) -> list[dict]:
             if accounting.account(sha) is None:
                 row = Row(id="", branch=ledger.trunk)
                 found.append(_item("direct_commit", row, sha, f"{sha[:7]} {batch.subject(ledger, sha)}: on "
-                                                              f"`{trunk}`, and no verdict covers it"))
+                                                              f"`{trunk}`, and no verdict covers it; a reader who read it records "
+                                                              f"`flotilla work vouch {ledger.trunk} --commit "
+                                                              f"{sha[:7]}`"))
     if origin:
         for row in rows.values():
             if row.state == "inbatch" and row.merge and \
