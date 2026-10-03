@@ -92,6 +92,15 @@ The permission question matters most:
 Auto mode is not offered for every model: Claude Code has said "auto mode unavailable for this model" for Haiku, and
 `flotilla spawn` warns when a seat would run auto mode on such a model.
 
+**What each seat may run without a question.** Whatever the answer, flotilla launches each background seat with
+allow rules for its own command line - every ledger move but `approve`, which is yours, plus its tree, receipt,
+lane, status and read-only commands - and the post that merges (the sender) with a push of trunk from its own tree.
+Nothing that raises or removes seats. Without them, Claude Code's auto-mode classifier judged these commands by the
+conversation around them and refused some: a sender's push of reviewed work as "Merge Without Review", then a plain
+ledger record. The rules pass Claude Code's permission check only. flotilla's own guards still run on every command,
+and a guard's refusal wins over an allow rule, so a push without a green receipt over the pushed revision is still
+refused and `approve` stays yours. `flotilla spawn --dry-run` names what each seat is allowed.
+
 You can change any answer later by editing `.flotilla/project.toml`; a change takes effect once it is on trunk.
 
 ### 2. Raise the fleet
