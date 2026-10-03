@@ -99,12 +99,15 @@ Auto mode is not offered for every model: Claude Code has said "auto mode unavai
 **Letting checked commands past auto mode's classifier - off unless you turn it on.** In auto mode Claude Code's
 classifier judged flotilla's own commands by the conversation around them and refused some - a sender's push of
 reviewed work as "Merge Without Review", then a plain ledger record. flotilla can answer "allow" for these itself,
-which skips the classifier for them. It does so only when you opt in, in the profile on trunk:
+which skips the classifier for them. It does so only when you opt in, in the profile on trunk: in the
+`[permissions]` table onboarding wrote, change
 
 ```toml
-[permissions]
-skip_classifier_for_checked = true
+skip_classifier_for_checked = false
 ```
+
+to `true` (a profile written before 0.7.0 has no such line: add it under `[permissions]`, beside `mode` - never a
+second `[permissions]` header, which makes the profile unreadable), commit, and bring it to trunk.
 
 **Not recommended if you are new to Claude Code or to auto mode.** The classifier is one of Claude Code's own
 safety checks; this replaces it, for these commands only, with flotilla's checks. Turn it on once you know what the

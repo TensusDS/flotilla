@@ -110,7 +110,8 @@ def build_profile(det: dict, answers: dict) -> dict:
             data["tests"]["setup_command"] = setup
     data["ci"] = _ci(det, answers)
     data["review"] = {"depth": answers.get("review", "every")}
-    data["permissions"] = {"mode": answers.get("permissions", "ask")}
+    # written off, so the person who turns it on changes a value instead of adding a table (README, permissions)
+    data["permissions"] = {"mode": answers.get("permissions", "ask"), "skip_classifier_for_checked": False}
     if answers.get("release") == "sender-semver":
         data["release"] = {"version_files": list((det.get("release") or {}).get("version_files") or []),
                            "tag": "v{version}", "annotated": True}

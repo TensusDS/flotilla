@@ -209,3 +209,15 @@ def test_the_profile_carries_the_tree_setup_and_shows_it_as_a_command(tmp_path):
                                "model": "one"})
     assert data["tests"]["setup_command"] == "npm ci"
     assert ("tests.setup_command", "npm ci") in commands_of(data)
+
+
+def test_the_opt_in_is_written_off_and_turned_on_where_it_stands(tmp_path):
+    """Review of the directory readiness work, I2: the README showed the opt-in as a `[permissions]` table of its
+    own, and onboarding already writes one - pasted, the profile declared the table twice and no session could read
+    its rules. Onboarding writes the key, off, where the README says to change it."""
+    from flotilla.guards.run import OPT_IN, opted_in
+    path = write_profile(tmp_path, build_profile(detection(tmp_path), BASE_ANSWERS))
+    text = path.read_text(encoding="utf-8")
+    assert f"{OPT_IN} = false" in text and not opted_in(config.load_project(tmp_path).data)
+    path.write_text(text.replace(f"{OPT_IN} = false", f"{OPT_IN} = true"), encoding="utf-8")   # the README's step
+    assert opted_in(config.load_project(tmp_path).data)
