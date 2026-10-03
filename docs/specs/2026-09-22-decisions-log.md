@@ -1202,6 +1202,32 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    Measuring is a side effect: written whole through a staged file, and an unreadable file or a failed write
    measures nothing rather than costing the receipt (review of 0.6.8, I1). (planner's decision, 2026-10-02)
 
+214. **A reader closes a direct commit on trunk by vouching for it there** (twosuns field test of 0.6.7, W5). A
+   profile commit straight to trunk was a `direct_commit` finding no move closed: `vouch` and `offledger` wanted an
+   open row, `inbatch` sent the sender to `offledger`, and trunk never has a row - ten messages and three sessions'
+   turns over two lines. Exempting `.flotilla/` was rejected: the profile and the posts are what every session
+   obeys, so a direct change to them is exactly what a reader should read. Instead `work vouch <trunk> --commit
+   <sha>`, by a reader, records the reading as a finished row on trunk (state `offledger`, the reader named, the
+   commit vouched), and the batch accounts it like any vouched commit; the finding names the move and the refusals
+   of `offledger` and `inbatch` point to it. Where a person authorizes merges it is refused - approval accounts
+   work there, and that path is not built. (planner's decision, 2026-10-03)
+
+215. **The fleet's rules are not the product the judge walks** (twosuns field test of 0.6.7, W6). `walked` accepts a
+   build that differs from the deployed revision only in `.flotilla/`, and its evidence says so; a difference
+   anywhere else is refused as before. (planner's decision, 2026-10-03)
+
+216. **A gone session's move comes with who can take it** (twosuns field test of 0.6.7; the person's proposal: "if it
+   is closed, tell the orchestrator, and a free session of this fleet - or a new one - adopts the work"). The
+   `mover_gone` alarm, the note a move prints when its letter has no live recipient, and `broke`'s own line now name
+   the live sessions of the gone session's post, least loaded first, and the `adopt` (or `assign --reader`) line,
+   or a `spawn` line when there is none; `broke` no longer tells a dead author to take the fix in its home tree. A
+   session of the fleet before its name is recognised by its former post for this question only. Ruling against
+   adopting automatically: "free" is not something flotilla knows - a seat may be waiting on the lane, or hold work
+   deferred by agreement - so the orchestrator chooses, in one move. (planner's decision, 2026-10-03)
+
+217. **`flotilla lane status` is the bare `flotilla lane`** (twosuns field test of 0.6.7, W7). (planner's decision,
+   2026-10-03)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
