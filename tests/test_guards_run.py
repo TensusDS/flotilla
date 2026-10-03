@@ -346,3 +346,12 @@ def test_the_allow_is_for_auto_mode_only(tmp_path, monkeypatch, mode):
     receipt(root, tmp_path / "state")
     assert not _allowed(ask(root, "git push origin HEAD:main", monkeypatch, tmp_path, mode=mode))
     assert not _allowed(ask(root, f"{CLI} status", monkeypatch, tmp_path, mode=mode))
+
+
+
+@pytest.mark.parametrize("move", ["approv[e]", "a*", "?pprove", "appro?e", "'approve'"])
+def test_the_person_guard_reads_a_glob_as_whatever_it_may_expand_to(tmp_path, monkeypatch, move):
+    """Review of 0.6.10, C2: `approv[e]` was no move the guard knew, and bash expands it to `approve` given a file
+    of that name in the cwd - the person's one move, made by a tool call."""
+    answer = ask(onboarded(tmp_path), f"{CLI} work {move} feat/x", monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny" and "person" in answer["permissionDecisionReason"]

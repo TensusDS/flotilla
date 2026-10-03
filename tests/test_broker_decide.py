@@ -247,6 +247,12 @@ def test_flotillas_own_commands_are_not_put_to_the_person(tmp_path, command):
     f"{OWN} work hand feat/x --skip-event pre-handed --skip-why ok", f"{OWN} work hand feat/x --as other",
     f"{OWN} helper raise --for b --task t --anyway", f"{OWN} tree cut b --tree /tmp/anywhere",
     f"{OWN} tree switch b", f"{OWN} lane take --note x", f"{OWN} status\nrm -rf x", f"{OWN} status\rrm -rf x",
+    # review of 0.6.10, C2: a glob the shell expands to a refused word, given a file of that name in the cwd
+    f"{OWN} work approv[e] feat/x", f"{OWN} fleet dow[n]", f"{OWN} work a*e feat/x", f"{OWN} work ?pprove feat/x",
+    f"{OWN} status\t--root /x", f"{OWN} status ~/x",
+    # review of 0.6.10, I3: argparse takes an option's unambiguous prefix
+    f"{OWN} work hand feat/x --a other", f"{OWN} work claim feat/x --tr /tmp/x", f"{OWN} work hand feat/x --as=other",
+    f"{OWN} work land feat/x --skip-e pre-landed --skip-w y",
 ])
 def test_anything_else_still_goes_to_the_person(tmp_path, command):
     payload = {"tool_name": "Bash", "tool_input": {"command": command}}

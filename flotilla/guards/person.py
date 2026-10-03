@@ -16,6 +16,7 @@ meets Claude Code's permission prompt in the person's session.
 
 from __future__ import annotations
 
+import fnmatch
 import os
 
 from flotilla.guards import Finding
@@ -38,7 +39,11 @@ def _move(words: list[str]) -> str:
             continue
         rest = words[at + 1:]
         if "work" in rest:
-            return next((w for w in rest[rest.index("work") + 1:] if w in MOVES), "")
+            for word in rest[rest.index("work") + 1:]:
+                if word in MOVES:
+                    return word
+                if fnmatch.fnmatchcase("approve", word):   # a glob bash may expand to it (review of 0.6.10, C2)
+                    return "approve"
     return ""
 
 

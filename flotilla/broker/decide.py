@@ -90,6 +90,13 @@ STEPS_AROUND = ("--skip", "--anyway", "--no-lane", "--as", "--tree")
 #: Any of these in the command line, quoted or not, and it is not passed: what the shell would read as another
 #: command, a redirect or a substitution.
 SHELL_SIGNS = set(";&|<>$`\\\n\r(){}*?!~")
+#: The only characters a passed command may carry (review of 0.6.10, C2): a blacklist missed `[`, and bash expanded
+#: `approv[e]` to the person's own move given a file of that name. Nothing here is a glob, an expansion or a
+#: separator the shell reads.
+SAFE_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 _./:=@%+,'\"-")
+#: What a parsed command may not carry: the options STEPS_AROUND names, by the destination argparse gives them, so
+#: an abbreviation (`--a` for `--as`, `--tr` for `--tree`) is caught as well (review of 0.6.10, I3).
+STEPPING = ("as_name", "skip_event", "skip_why", "tree", "anyway", "no_lane", "skip")
 
 
 def own_command(payload: dict) -> bool:
@@ -100,7 +107,7 @@ def own_command(payload: dict) -> bool:
     from flotilla.hooks import CLI
     tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
     command = tool_input.get("command") if payload.get("tool_name") == "Bash" else None
-    if not isinstance(command, str) or SHELL_SIGNS & set(command):
+    if not isinstance(command, str) or SHELL_SIGNS & set(command) or set(command) - SAFE_CHARS:
         return False
     try:
         words = shlex.split(command)
@@ -113,8 +120,31 @@ def own_command(payload: dict) -> bool:
         return False
     refused = OWN_SUBCOMMANDS[words[1]]
     if refused is None:   # bare only: `lane` and `lane --root <dir>`
-        return rest == [] or (len(rest) == 2 and rest[0] == "--root")
-    return not any(word in refused for word in rest)   # anywhere: an option's value would hide the word
+        if not (rest == [] or (len(rest) == 2 and rest[0] == "--root")):
+            return False
+    elif any(word in refused for word in rest):   # anywhere: an option's value would hide the word
+        return False
+    return _parsed_is_own(words[1:])
+
+
+def _parsed_is_own(args: list[str]) -> bool:
+    """Judge the command as flotilla itself will read it, not as a string: the move, the action, and every option
+    that steps around a check, however abbreviated."""
+    import contextlib
+    import io
+    from flotilla import cli
+    try:
+        with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+            parsed = cli.build_parser().parse_args(args)
+    except SystemExit:
+        return False
+    if any(getattr(parsed, name, None) for name in STEPPING):
+        return False
+    if parsed.command == "work" and getattr(parsed, "move", "") == "approve":
+        return False
+    if parsed.command in ("fleet", "lane") and getattr(parsed, "action", None):   # fleet and lane: bare only
+        return False
+    return True
 
 
 def _leads(ctx) -> set:
