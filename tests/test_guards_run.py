@@ -14,11 +14,11 @@ from guardkit import onboarded
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def ask(root, command, monkeypatch, tmp_path, cwd=None, mode="auto"):
+def ask(root, command, monkeypatch, tmp_path, cwd=None, mode="auto", session="sid-sender"):
     monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
     monkeypatch.delenv("FLOTILLA_GATE_OVERRIDE", raising=False)
-    payload = {"cwd": str(cwd or root), "tool_name": "Bash", "tool_input": {"command": command},
-               "permission_mode": mode}
+    payload = {"cwd": str(cwd or root), "tool_name": "Bash", "tool_input": {"command": command, "description": "d"},
+               "permission_mode": mode, "session_id": session}
     out = io.StringIO()
     assert hooks.run_hook("guard", io.StringIO(json.dumps(payload)), out=out) == 0
     return json.loads(out.getvalue())["hookSpecificOutput"] if out.getvalue() else None
@@ -268,6 +268,8 @@ def _sender_tree(tmp_path, monkeypatch):
     from ledgerkit import actor
     ledger = open_ledger(root)
     core.reserve(ledger, actor(ledger, "sender 1"), "fleet/sender-1", tree=str(root))
+    names = {"sid-sender": "sender 1", "sid-sender-2": "sender 2", "sid-main": "main session 1"}
+    monkeypatch.setattr("flotilla.guards.run._caller_name", lambda session_id: names.get(session_id, ""))
     return root
 
 
@@ -308,7 +310,8 @@ def test_a_push_from_a_tree_whose_owner_may_not_land_is_left_to_the_classifier(t
     other = tmp_path / "elsewhere"
     git(root, "worktree", "add", "-q", "-b", "fleet/main-1", str(other), "main")
     core.reserve(open_ledger(root), actor(open_ledger(root), "main session 1"), "fleet/main-1", tree=str(other))
-    assert not _allowed(ask(root, f"git -C {other} push origin HEAD:main", monkeypatch, tmp_path))
+    assert not _allowed(ask(root, f"git -C {other} push origin HEAD:main", monkeypatch, tmp_path,
+                            session="sid-main"))   # its owner calls, and that owner's post may not land
 
 
 def test_a_push_inside_a_compound_command_is_left_to_the_classifier(tmp_path, monkeypatch):
@@ -404,21 +407,47 @@ def test_a_push_whose_destination_or_hooks_were_changed_is_left_to_the_classifie
     assert not _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path))
 
 
-def test_a_pre_push_hook_that_is_not_flotillas_is_left_to_the_classifier(tmp_path, monkeypatch):
+def test_the_allowed_push_runs_no_repository_hook_and_pushes_the_checked_commit(tmp_path, monkeypatch):
+    """Third review of 0.6.10, I2, I3: a reference-transaction hook ran on the push, and the commit pushed was
+    whatever HEAD was when it ran. The allow now rewrites the command: no repository hook, the checked commit."""
     from guardkit import git
     root = _accounted_sender(tmp_path, monkeypatch)
-    hook = Path(git(root, "rev-parse", "--git-path", "hooks/pre-push"))
-    hook = hook if hook.is_absolute() else root / hook
-    from flotilla.core import paths
-    from flotilla.guards import githooks
-    link = paths.state_dir() / "bin" / "flotilla"   # the link flotilla's own hook calls, in place
-    link.parent.mkdir(parents=True, exist_ok=True)
-    link.symlink_to(hooks.CLI)
-    hook.write_text(githooks.script("pre-push"), encoding="utf-8")
-    assert _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path))   # flotilla's own
-    hook.write_text("#!/bin/sh\n# flotilla-hook: pre-push\ncurl evil\n", encoding="utf-8")
+    answer = ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path)
+    head = git(root, "rev-parse", "HEAD")
+    rewritten = answer["updatedInput"]["command"]
+    assert "core.hooksPath=" in rewritten and f"{head}:refs/heads/main" in rewritten and "HEAD:" not in rewritten
+    assert answer["updatedInput"].get("description") == "d"
+
+
+def test_only_the_owner_of_the_senders_tree_is_allowed_its_push(tmp_path, monkeypatch):
+    """Third review of 0.6.10, M1: any seat could push the sender's tree."""
+    root = _accounted_sender(tmp_path, monkeypatch)
+    assert not _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path, session="sid-main"))
+    assert not _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path, session="unknown"))
+
+
+@pytest.mark.parametrize("key, value", [
+    ("remote.origin.receivepack", "touch /tmp/x; git-receive-pack"),   # third review, I2 (c)
+    ("remote.origin.uploadpack", "touch /tmp/x; git-upload-pack"),
+    ("core.sshCommand", "touch /tmp/x; ssh"), ("credential.helper", "!touch /tmp/x"),
+    ("include.path", "/tmp/elsewhere.cfg"), ("push.recurseSubmodules", "on-demand"),
+])
+def test_repository_config_that_runs_code_or_redirects_the_push_is_left_to_the_classifier(tmp_path, monkeypatch,
+                                                                                         key, value):
+    from guardkit import git
+    root = _accounted_sender(tmp_path, monkeypatch)
+    git(root, "config", key, value)
     assert not _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path))
 
+
+def test_a_second_push_url_is_left_to_the_classifier(tmp_path, monkeypatch):
+    """Third review of 0.6.10, I2 (b): `get-url --push` printed only the first of two push URLs."""
+    from guardkit import git
+    root = _accounted_sender(tmp_path, monkeypatch)
+    url = git(root, "remote", "get-url", "origin")
+    git(root, "config", "--add", "remote.origin.pushurl", url)
+    git(root, "config", "--add", "remote.origin.pushurl", "/tmp/elsewhere.git")
+    assert not _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path))
 
 
 def test_a_checkout_of_another_repository_is_not_the_senders_tree(tmp_path, monkeypatch):
@@ -432,9 +461,10 @@ def test_a_checkout_of_another_repository_is_not_the_senders_tree(tmp_path, monk
     git(tmp_path, "clone", "-q", git(root, "remote", "get-url", "origin"), str(other))
     ledger = open_ledger(root)
     core.reserve(ledger, actor(ledger, "sender 2"), "fleet/sender-2", tree=str(other))
+    session = "sid-sender-2"   # its owner calls: only the other repository stands between it and an allow
     git(other, *IDENTITY, "commit", "-q", "--allow-empty", "-m", "carries no change")
     receipt(other, tmp_path / "state")
-    assert not _allowed(ask(root, f"git -C {other} push origin HEAD:main", monkeypatch, tmp_path))
+    assert not _allowed(ask(root, f"git -C {other} push origin HEAD:main", monkeypatch, tmp_path, session=session))
 
 
 @pytest.mark.parametrize("command", [

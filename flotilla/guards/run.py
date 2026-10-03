@@ -85,6 +85,13 @@ def _own(command: str, root) -> bool:
 
 #: The one push form the guard lets past the classifier: the tree named absolutely, nothing the shell would read.
 _PATH = r"/[^\s'\"\\$`;&|<>()*?\[\]{}~!#]+"
+#: The repository's own config (local and worktree scope) may hold only these keys for the push to be allowed: any
+#: other - a push URL, receive/upload pack, ssh command, hooks path, credential helper, include, url rewriting,
+#: submodule pushing - may run code or send the push elsewhere (third review of 0.6.10, I2). The person's global and
+#: system config are theirs, and trusted.
+_SAFE_CONFIG = (r"core\.(repositoryformatversion|filemode|bare|logallrefupdates|ignorecase|precomposeunicode|symlinks)",
+                r"remote\.origin\.(url|fetch)", r"branch\..+\.(remote|merge|rebase)", r"user\.(name|email)",
+                r"extensions\.(worktreeconfig|objectformat)")
 
 
 def _git_out(at, *args, run):
@@ -92,94 +99,109 @@ def _git_out(at, *args, run):
     return done.stdout.strip() if done.returncode == 0 else None
 
 
-def _own_hooks(tree: Path, run) -> bool:
-    """No hook but flotilla's own runs on this push: no core.hooksPath, and a pre-push hook - if any - is exactly the
-    script `flotilla guard install` writes, calling the command line it links to (review of 0.6.10, I2)."""
-    from flotilla.core import paths
-    from flotilla.guards import githooks
-    from flotilla.hooks import CLI
-    if _git_out(tree, "config", "core.hooksPath", run=run):
-        return False
-    found = _git_out(tree, "rev-parse", "--git-path", "hooks/pre-push", run=run)
-    if found is None:
-        return False
-    hook = Path(found) if Path(found).is_absolute() else tree / found
-    if not hook.exists():
-        return True
-    if hook.read_text(encoding="utf-8", errors="replace") != githooks.script("pre-push"):
-        return False
-    link = paths.state_dir() / "bin" / "flotilla"
-    return link.exists() and link.resolve() == CLI.resolve()
+def _caller_name(session_id: str) -> str:
+    """The census's name for the session that made the call, or ""."""
+    from flotilla.core.census import read_census
+    if not session_id:
+        return ""
+    try:
+        return next((item.name or "" for item in read_census() if item.session_id == session_id), "")
+    except Exception:  # noqa: BLE001 - who calls could not be asked, so nothing is allowed on its behalf
+        return ""
 
 
-def _senders_push(command: str, cwd, root, run) -> bool:
-    """Whether this is the sender's push of accounted work, as every check flotilla has says (twosuns field test of
-    0.6.7, W9; reviews of 0.6.10): exactly `git -C <absolute tree> push origin HEAD:<trunk>` and nothing else - no
-    `cd`, wrapper or option; a direct-flow project with the receipt guard on; the tree a checkout of the project's
-    repository and the home of an open row whose owner's post may land; origin pushing where the project's main
-    checkout fetches from, with no URL rewriting and no hook but flotilla's; and every commit the push carries past
-    origin's trunk - asked of origin, not of a local ref the seat could move - accounted for by the ledger. The push
-    guard itself has already run and found nothing to say."""
+def _config_is_plain(tree: Path, run) -> bool:
     import re
+    listed = _git_out(tree, "config", "--list", "--show-scope", run=run)
+    if listed is None:
+        return False
+    for line in listed.splitlines():
+        scope, _, entry = line.partition("\t")
+        if scope not in ("local", "worktree"):
+            continue
+        key = entry.split("=", 1)[0].lower()
+        if not any(re.fullmatch(pattern, key) for pattern in _SAFE_CONFIG):
+            return False
+    return True
+
+
+def _empty_hooks() -> Path:
+    from flotilla.core import paths
+    empty = paths.state_dir() / "no-hooks"
+    empty.mkdir(parents=True, exist_ok=True)
+    return empty
+
+
+def _senders_push(command: str, cwd, root, session_id: str, run) -> str:
+    """The sender's push of accounted work, rewritten so it pushes exactly what was checked, or "" (twosuns field test
+    of 0.6.7, W9; three reviews of 0.6.10). The typed command is exactly `git -C <absolute tree> push origin
+    HEAD:<trunk>`; the project's flow is direct with the receipt guard on; the tree is a checkout of the project's
+    repository and the home of an open row owned by the caller, whose post may land; the repository's own config
+    holds nothing that runs code or redirects the push; origin's trunk - asked of origin - is the base, and the ledger
+    accounts for every commit past it. The command run is then `git -C <tree> -c core.hooksPath=<an empty dir> push
+    origin <the checked commit>:refs/heads/<trunk>`: no repository hook runs, and a HEAD that moved after the check
+    pushes nothing else. The push guard itself has already run and found nothing to say. The origin URL anchors
+    itself: the ledger is keyed by it, so a repointed origin finds no row."""
+    import re
+    import shlex
+    from flotilla.broker.decide import _same_repository
     from flotilla.guards.rules import rules_for
     from flotilla.ledger import batch, gitq
     from flotilla.ledger.commands import open_ledger
     from flotilla.posts import post_for_session
     if root is None:
-        return False
+        return ""
     root = Path(root)
     profile, _ = rules_for(root, run=run)
     trunk = str((profile.get("trunk") or {}).get("branch") or "main")
     if (profile.get("flow") or {}).get("mode") != "direct" or not (profile.get("guards") or {}).get("push_receipt"):
-        return False
+        return ""
     match = re.fullmatch(rf"git -C ({_PATH}) push origin HEAD:{re.escape(trunk)}", command)
     if match is None:
-        return False
+        return ""
     tree = Path(match.group(1)).resolve()
+    if not _same_repository(tree, root):
+        return ""
+    caller = _caller_name(session_id)
     ledger = open_ledger(root)
     rows = ledger.rows()
-    home = [row for row in rows.values() if row.is_open and row.tree and Path(row.tree).resolve() == tree]
+    owned = [row for row in rows.values() if row.is_open and row.tree and Path(row.tree).is_absolute()
+             and Path(row.tree).resolve() == tree and caller and row.owner == caller]
     if not any((post := post_for_session(ledger.posts, row.owner)) is not None and "land" in post.may
-               for row in home):
-        return False
-
-    def common(at):
-        found = _git_out(at, "rev-parse", "--git-common-dir", run=run)
-        return (Path(found) if Path(found).is_absolute() else Path(at) / found).resolve() if found else None
-    if common(tree) is None or common(tree) != common(root):
-        return False
-    target = _git_out(tree, "remote", "get-url", "--push", "origin", run=run)
-    if not target or target != _git_out(root, "remote", "get-url", "origin", run=run):
-        return False
-    if _git_out(tree, "config", "--get-regexp", r"^url\..*insteadof$", run=run):
-        return False
-    if not _own_hooks(tree, run):
-        return False
-    listed = _git_out(tree, "ls-remote", "origin", f"refs/heads/{trunk}", run=run)
+               for row in owned):
+        return ""
+    if not _config_is_plain(tree, run):   # before any network call: nothing in the repo's config runs on it
+        return ""
+    listed = _git_out(tree, "-c", f"core.hooksPath={_empty_hooks()}", "ls-remote", "origin", f"refs/heads/{trunk}",
+                      run=run)
     base = listed.split()[0] if listed else ""
-    if not base or gitq.resolve(tree, base, run=run) is None:
-        return False
     head = gitq.resolve(tree, "HEAD", run=run)
-    return head is not None and batch.unaccounted(ledger, rows, head, since=base) == []
+    if not base or head is None or gitq.resolve(tree, base, run=run) is None:
+        return ""
+    if batch.unaccounted(ledger, rows, head, since=base) != []:
+        return ""
+    return (f"git -C {shlex.quote(str(tree))} -c core.hooksPath={shlex.quote(str(_empty_hooks()))} push origin "
+            f"{head}:refs/heads/{trunk}")
 
 
-def allowance(command: str, cwd, root, *, run=subprocess.run) -> str:
-    """Why flotilla lets this call past Claude Code's permission check, or "": its own command, or the sender's push
-    of accounted work. A PreToolUse allow passes auto mode's classifier (measured on Claude Code 2.1.288), so it is
-    given only where flotilla's own checks are the whole story; anything else stays the classifier's or the
-    person's."""
+def allowance(command: str, cwd, root, *, session_id: str = "", run=subprocess.run) -> tuple[str, str]:
+    """(why flotilla lets this call past Claude Code's permission check, the command to run instead) - or ("", "").
+    A PreToolUse allow passes auto mode's classifier (measured on Claude Code 2.1.288), so it is given only where
+    flotilla's own checks are the whole story; anything else stays the classifier's or the person's."""
     try:
         if _own(command, root):
-            return "flotilla's own command; flotilla checks the post, the state and the evidence itself"
-        if _senders_push(command, cwd, root, run):
-            return ("the sender's push of accounted work: the receipt is green over the pushed revision and the "
-                    "ledger accounts for every commit it carries")
+            return "flotilla's own command; flotilla checks the post, the state and the evidence itself", ""
+        rewritten = _senders_push(command, cwd, root, session_id, run)
+        if rewritten:
+            return ("the sender's push of accounted work, pinned to the checked commit with no repository hook: the "
+                    "receipt is green over it and the ledger accounts for every commit past origin's trunk"), rewritten
     except Exception:  # noqa: BLE001 - an allow that could not be justified is not given
-        return ""
-    return ""
+        return "", ""
+    return "", ""
 
 
-def guard_hook(command: str, cwd, root, out, *, env=os.environ, run=subprocess.run, mode: str = "") -> int:
+def guard_hook(command: str, cwd, root, out, *, env=os.environ, run=subprocess.run, mode: str = "",
+               session_id: str = "", tool_input: dict | None = None) -> int:
     try:
         findings = evaluate(command, cwd, root, env=env, run=run)
     except Exception as err:  # noqa: BLE001 - decided by reversibility: a command that may push is refused
@@ -192,12 +214,15 @@ def guard_hook(command: str, cwd, root, out, *, env=os.environ, run=subprocess.r
                                else "the command runs unchecked"))]
     refusals = [finding.text for finding in findings if finding.refuse]
     # the allow answers auto mode's classifier only: in ask mode the person sees what they chose to see
-    allowed = "" if findings or mode != "auto" else allowance(command, cwd, root, run=run)
+    allowed, rewritten = ("", "") if findings or mode != "auto" else \
+        allowance(command, cwd, root, session_id=session_id, run=run)
     if refusals:
         body = {"hookEventName": "PreToolUse", "permissionDecision": "deny",
                 "permissionDecisionReason": "\n\n".join(refusals)}
     elif allowed:
         body = {"hookEventName": "PreToolUse", "permissionDecision": "allow", "permissionDecisionReason": allowed}
+        if rewritten:   # the allow covers the pinned command, never the typed one
+            body["updatedInput"] = {**(tool_input or {}), "command": rewritten}
     elif findings:
         body = {"hookEventName": "PreToolUse", "additionalContext": "\n".join(f.text for f in findings)}
     else:
