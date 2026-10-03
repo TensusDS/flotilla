@@ -1287,6 +1287,22 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
 220. **`reconcile` names `land` without a placeholder** (twosuns field test of 0.6.7, W11): `land` finds the merge
    that carries a row itself, and "--merge <the commit>" made the sender ask. (planner's decision, 2026-10-03)
 
+221. **What the scan of 0.6.10 found is closed where it enters** (Claude Security scan of 0.6.10 at `0227f05`,
+   three findings, all read from code; the person chose to fix all three). F1: the sender's push allow read the rules
+   that grant it from the local `origin/<trunk>`, which any session can repoint - the allow now requires that ref to
+   be the revision `ls-remote` names, reads the profile and posts at that revision (`trunk_rules(at=)`), and builds
+   the accounting from them; the restrictive guards still read the local ref (a stated limit: they restrict, and the
+   classifier or the person still stands behind them). F2: a branch name is a session's choice and reached a command
+   the person types with `!` - the ledger now files only `[A-Za-z0-9._/-]` names (not `-` first) at every claim and
+   reserve, and the brief and the queue refusal print the approve command themselves, shell-quoted, through the stable
+   link to the running plugin; the orchestrator copies that line and never builds one (orchestrator post v12, sender
+   v9). F3, reproduced by a test before the fix: the push guard ran `ls-remote origin` in a directory a not yet allowed
+   command names, under that repository's config, so a downloaded repository's `uploadpack` ran inside the hook - a
+   repository other than the session's own (any checkout of it) is asked only by a plain URL, with a plain config and
+   no hooks, and otherwise the push is refused with the reason; the session's own repository is asked as before,
+   because a strict config check there would close every push of a person whose editor writes local keys. Not
+   reached by the scan: the fleet's tree and branch removal and process kills. (planner's decision, 2026-10-03)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
