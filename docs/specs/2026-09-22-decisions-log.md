@@ -1277,8 +1277,11 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    push and the base query (a second URL had received the push and answered the base); config judged by the file
    it comes from (a global includeIf could read a file inside the repository); no allow for a call that asks to
    leave the sandbox; and none over replaced, grafted or shallow history (the accounting reads replace refs, the
-   push sends real objects). Left as a known limit, outside the allow: rules are read from the local
-   remote-tracking ref of trunk. (planner's decision,
+   push sends real objects). A review of the push's invariants closed two more: only plain origin URL shapes are
+   pushed (the ledger's key read `evil.example:x@github.com:o/r` as github while git connects to evil.example), and
+   accounting diffs count a submodule pointer move whatever .gitmodules says, with no repository diff driver. Left as
+   known limits: rules are read from the local remote-tracking ref of trunk; ownership is by session name, which the
+   ledger does not hold unique. (planner's decision,
    2026-10-03; the person chose the exact-command allow over a prose classifier rule)
 
 220. **`reconcile` names `land` without a placeholder** (twosuns field test of 0.6.7, W11): `land` finds the merge
