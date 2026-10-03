@@ -73,9 +73,14 @@ def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run) -> 
     return findings
 
 
-def _own(command: str) -> bool:
+def _own(command: str, root) -> bool:
+    """One of flotilla's own commands, in this project, that runs nothing the profile names: not `lane`, whose bare
+    form may run the profile's queue command (third review of 0.6.10, C1); never outside a project."""
+    import shlex
     from flotilla.broker.decide import own_command
-    return own_command({"tool_name": "Bash", "tool_input": {"command": command}})
+    if root is None or not own_command({"tool_name": "Bash", "tool_input": {"command": command}}, root):
+        return False
+    return shlex.split(command)[1] != "lane"
 
 
 #: The one push form the guard lets past the classifier: the tree named absolutely, nothing the shell would read.
@@ -164,7 +169,7 @@ def allowance(command: str, cwd, root, *, run=subprocess.run) -> str:
     given only where flotilla's own checks are the whole story; anything else stays the classifier's or the
     person's."""
     try:
-        if _own(command):
+        if _own(command, root):
             return "flotilla's own command; flotilla checks the post, the state and the evidence itself"
         if _senders_push(command, cwd, root, run):
             return ("the sender's push of accounted work: the receipt is green over the pushed revision and the "

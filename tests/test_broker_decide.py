@@ -253,6 +253,8 @@ def test_flotillas_own_commands_are_not_put_to_the_person(tmp_path, command):
     # review of 0.6.10, I3: argparse takes an option's unambiguous prefix
     f"{OWN} work hand feat/x --a other", f"{OWN} work claim feat/x --tr /tmp/x", f"{OWN} work hand feat/x --as=other",
     f"{OWN} work land feat/x --skip-e pre-landed --skip-w y",
+    # third review of 0.6.10, C1: a root that is not this project's repository runs its profile's commands
+    f"{OWN} lane --root /tmp/made-by-a-seat", f"{OWN} work show feat/x --root /tmp/made-by-a-seat",
 ])
 def test_anything_else_still_goes_to_the_person(tmp_path, command):
     payload = {"tool_name": "Bash", "tool_input": {"command": command}}

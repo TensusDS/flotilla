@@ -227,7 +227,7 @@ def _allowed(answer) -> bool:
     return bool(answer) and answer.get("permissionDecision") == "allow"
 
 
-@pytest.mark.parametrize("command", [f"{CLI} work land feat/x", f"{CLI} status", f"{CLI} work reconcile --root /a"])
+@pytest.mark.parametrize("command", [f"{CLI} work land feat/x", f"{CLI} status", f"{CLI} work reconcile"])
 def test_flotillas_own_commands_pass_the_classifier(tmp_path, monkeypatch, command):
     """Twosuns field test of 0.6.7, W11: in auto mode Claude Code's classifier refused `work land` - a ledger record -
     as "Merge Without Review". The guard hook allows exactly what the broker's own-command check passes (decisions
@@ -457,3 +457,22 @@ def test_the_person_guard_still_lets_ordinary_moves_through(tmp_path, monkeypatc
     for command in (f"{CLI} work hand feat/x", f"{CLI} work show feat/approve-button", f"{CLI} status"):
         answer = ask(root, command, monkeypatch, tmp_path, mode="default")
         assert not answer or answer.get("permissionDecision") != "deny", (command, answer)
+
+
+def test_an_own_command_on_another_repository_is_left_to_the_classifier(tmp_path, monkeypatch):
+    """Third review of 0.6.10, C1: `--root` named any repository the seat made - its profile's commands and event
+    scripts then ran under the allow. Only a checkout of this project's own repository is passed; `lane` not at all
+    (bare `lane` may run the profile's queue command)."""
+    from guardkit import IDENTITY, git
+    root = onboarded(tmp_path)
+    other = tmp_path / "made-by-a-seat"
+    other.mkdir()
+    git(other, "init", "-q", "-b", "main")
+    git(other, *IDENTITY, "commit", "-q", "--allow-empty", "-m", "x")
+    assert not _allowed(ask(root, f"{CLI} work show feat/x --root {other}", monkeypatch, tmp_path))
+    assert not _allowed(ask(root, f"{CLI} status --root={other}", monkeypatch, tmp_path))
+    assert _allowed(ask(root, f"{CLI} work show feat/x --root {root}", monkeypatch, tmp_path))
+    assert not _allowed(ask(root, f"{CLI} lane", monkeypatch, tmp_path))
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    assert not _allowed(ask(root, f"{CLI} status", monkeypatch, tmp_path, cwd=outside))

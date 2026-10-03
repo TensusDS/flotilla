@@ -99,7 +99,7 @@ SAFE_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123
 STEPPING = ("as_name", "skip_event", "skip_why", "tree", "anyway", "no_lane", "skip")
 
 
-def own_command(payload: dict) -> bool:
+def own_command(payload: dict, root=None) -> bool:
     """Whether a Bash call is one of flotilla's own safe commands: the plugin's command line by its real path, one
     command, no assignment, redirect or substitution, a listed subcommand, no option that steps around a check
     (decisions 199, 200)."""
@@ -124,10 +124,26 @@ def own_command(payload: dict) -> bool:
             return False
     elif any(word in refused for word in rest):   # anywhere: an option's value would hide the word
         return False
-    return _parsed_is_own(words[1:])
+    return _parsed_is_own(words[1:], root)
 
 
-def _parsed_is_own(args: list[str]) -> bool:
+def _same_repository(a, b) -> bool:
+    """Whether two directories are checkouts of one repository: the same git common directory."""
+    import subprocess
+    from pathlib import Path
+
+    def common(at):
+        done = subprocess.run(["git", "-C", str(at), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                              capture_output=True, text=True, check=False, timeout=10)
+        return Path(done.stdout.strip()).resolve() if done.returncode == 0 and done.stdout.strip() else None
+    try:
+        first, second = common(a), common(b)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return first is not None and first == second
+
+
+def _parsed_is_own(args: list[str], root=None) -> bool:
     """Judge the command as flotilla itself will read it, not as a string: the move, the action, and every option
     that steps around a check, however abbreviated."""
     import contextlib
@@ -143,6 +159,9 @@ def _parsed_is_own(args: list[str]) -> bool:
     if parsed.command == "work" and getattr(parsed, "move", "") == "approve":
         return False
     if parsed.command in ("fleet", "lane") and getattr(parsed, "action", None):   # fleet and lane: bare only
+        return False
+    named = getattr(parsed, "root", None)   # another repository's profile commands and event scripts would run
+    if named not in (None, ".") and (root is None or not _same_repository(named, root)):   # (third review, C1)
         return False
     return True
 
@@ -173,7 +192,7 @@ def decide(payload: dict, ctx, *, clock=time.time, sleep=time.sleep, timer=time.
                      "to anyone")
     if not enabled(ctx.profile):
         return None
-    if own_command(payload):   # nothing a person's yes would add: flotilla checks each of these itself (W16)
+    if own_command(payload, ctx.root):   # nothing a person's yes would add: flotilla checks each of these itself (W16)
         return {"behavior": "allow"}
     me = ctx.me.name
     if ctx.post_of(me) == "orchestrator":
