@@ -92,10 +92,22 @@ The permission question matters most:
 Auto mode is not offered for every model: Claude Code has said "auto mode unavailable for this model" for Haiku, and
 `flotilla spawn` warns when a seat would run auto mode on such a model.
 
-**What flotilla lets past auto mode's classifier.** In auto mode Claude Code's classifier judged flotilla's own
-commands by the conversation around them and refused some - a sender's push of reviewed work as "Merge Without
-Review", then a plain ledger record. flotilla's guard hook, which runs before every Bash call, answers "allow" in
-auto mode only, after every guard has run and found nothing, and for two things:
+**Letting checked commands past auto mode's classifier - off unless you turn it on.** In auto mode Claude Code's
+classifier judged flotilla's own commands by the conversation around them and refused some - a sender's push of
+reviewed work as "Merge Without Review", then a plain ledger record. flotilla can answer "allow" for these itself,
+which skips the classifier for them. It does so only when you opt in, in the profile on trunk:
+
+```toml
+[permissions]
+skip_classifier_for_checked = true
+```
+
+**Not recommended if you are new to Claude Code or to auto mode.** The classifier is one of Claude Code's own
+safety checks; this replaces it, for these commands only, with flotilla's checks. Turn it on once you know what the
+fleet does and want it to run without those refusals. With it off, a refused command waits for you as before.
+
+When you have opted in, flotilla's guard hook, which runs before every Bash call, answers "allow" in auto mode only,
+after every guard has run and found nothing, and for two things:
 
 - one of flotilla's own commands, judged as flotilla's parser reads it: a listed subcommand on this project's own
   repository, no character a shell would expand, no option that steps around a check - never `approve`, `spawn`,
@@ -108,7 +120,8 @@ auto mode only, after every guard has run and found nothing, and for two things:
   under that same `.flotilla` (so work recorded before 0.6.11, or before the last change to `.flotilla`, is the
   classifier's to judge). It runs rewritten: the commit that was checked, pushed with no repository hook.
 
-Anything else is the classifier's to decide, as before; unreviewed work still meets it. Your own `deny` rules still
+Anything else is the classifier's to decide, as before; unreviewed work still meets it. For the push, the opt-in
+itself is read where origin names trunk, like the rest of the rules that grant it. Your own `deny` rules still
 win over this allow, and in `ask` mode nothing changes. This leans on Claude Code honouring a hook's allow, deny and
 rewritten input, measured on 2.1.288.
 

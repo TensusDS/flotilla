@@ -214,7 +214,7 @@ def _senders_push(command: str, cwd, root, session_id: str, run) -> str:
     if gitq.resolve(root, f"refs/remotes/origin/{trunk}^{{commit}}", run=run) != base:
         return ""
     rules = trunk_rules(root, at=base)
-    if (rules.profile.get("flow") or {}).get("mode") != "direct" \
+    if not opted_in(rules.profile) or (rules.profile.get("flow") or {}).get("mode") != "direct" \
             or not (rules.profile.get("guards") or {}).get("push_receipt") \
             or str((rules.profile.get("trunk") or {}).get("branch") or "main") != trunk:
         return ""
@@ -237,11 +237,25 @@ def _senders_push(command: str, cwd, root, session_id: str, run) -> str:
             f"{shlex.quote(url)} {head}:refs/heads/{trunk}")
 
 
+#: The person's opt-in, in `[permissions]` of the profile on trunk. Off unless set: the Software Directory Policy says
+#: software must not "evade or enable users to circumvent Claude's safety guardrails", so letting checked commands
+#: past auto mode's classifier is the person's own choice, never flotilla's default (directory readiness).
+OPT_IN = "skip_classifier_for_checked"
+
+
+def opted_in(profile: dict) -> bool:
+    return (profile.get("permissions") or {}).get(OPT_IN) is True
+
+
 def allowance(command: str, cwd, root, *, session_id: str = "", run=subprocess.run) -> tuple[str, str]:
     """(why flotilla lets this call past Claude Code's permission check, the command to run instead) - or ("", "").
-    A PreToolUse allow passes auto mode's classifier (measured on Claude Code 2.1.288), so it is given only where
-    flotilla's own checks are the whole story; anything else stays the classifier's or the person's."""
+    A PreToolUse allow passes auto mode's classifier (measured on Claude Code 2.1.288), so it is given only where the
+    person opted in and flotilla's own checks are the whole story; anything else stays the classifier's or the
+    person's."""
+    from flotilla.guards.rules import rules_for
     try:
+        if root is None or not opted_in(rules_for(Path(root), run=run)[0]):
+            return "", ""
         if _own(command, root):
             return "flotilla's own command; flotilla checks the post, the state and the evidence itself", ""
         rewritten = _senders_push(command, cwd, root, session_id, run)

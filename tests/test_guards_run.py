@@ -227,12 +227,24 @@ def _allowed(answer) -> bool:
     return bool(answer) and answer.get("permissionDecision") == "allow"
 
 
+#: The person's opt-in: without it nothing flotilla checks is let past auto mode's classifier (directory readiness).
+OPTED = '\n[permissions]\nskip_classifier_for_checked = true\n'
+
+
 @pytest.mark.parametrize("command", [f"{CLI} work land feat/x", f"{CLI} status", f"{CLI} work reconcile"])
 def test_flotillas_own_commands_pass_the_classifier(tmp_path, monkeypatch, command):
     """Twosuns field test of 0.6.7, W11: in auto mode Claude Code's classifier refused `work land` - a ledger record -
     as "Merge Without Review". The guard hook allows exactly what the broker's own-command check passes (decisions
     199, 200); a hook's allow passes the classifier (measured on Claude Code 2.1.288)."""
-    assert _allowed(ask(onboarded(tmp_path), command, monkeypatch, tmp_path))
+    assert _allowed(ask(onboarded(tmp_path, extra=OPTED), command, monkeypatch, tmp_path))
+
+
+@pytest.mark.parametrize("command", [f"{CLI} work land feat/x", f"{CLI} status"])
+def test_without_the_persons_opt_in_nothing_passes_the_classifier(tmp_path, monkeypatch, command):
+    """Directory readiness: the Software Directory Policy says software must not "evade or enable users to circumvent
+    Claude's safety guardrails". Letting checked commands past auto mode's classifier is the person's choice, made
+    in the profile on trunk (`[permissions] skip_classifier_for_checked`), and off unless they make it."""
+    assert not _allowed(ask(onboarded(tmp_path), command, monkeypatch, tmp_path))
 
 
 @pytest.mark.parametrize("command", [
@@ -245,10 +257,10 @@ def test_flotillas_own_commands_pass_the_classifier(tmp_path, monkeypatch, comma
     f"{CLI} receipt run --purpose push",
 ])
 def test_what_steps_around_a_check_is_left_to_the_classifier(tmp_path, monkeypatch, command):
-    assert not _allowed(ask(onboarded(tmp_path), command, monkeypatch, tmp_path))
+    assert not _allowed(ask(onboarded(tmp_path, extra=OPTED), command, monkeypatch, tmp_path))
 
 
-def _sender_tree(tmp_path, monkeypatch):
+def _sender_tree(tmp_path, monkeypatch, opted=True):
     """A direct-flow project whose main checkout is the sender's home tree, as the ledger records it."""
     from flotilla.ledger import core
     from flotilla.ledger.commands import open_ledger
@@ -256,7 +268,7 @@ def _sender_tree(tmp_path, monkeypatch):
     from guardkit import IDENTITY, git
     monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
     monkeypatch.setenv("FLOTILLA_NO_CENSUS", "1")
-    root = onboarded(tmp_path, extra='\n[flow2]\n', push=False)
+    root = onboarded(tmp_path, extra=OPTED if opted else "", push=False)
     text = (root / ".flotilla" / "project.toml").read_text(encoding="utf-8")
     (root / ".flotilla" / "project.toml").write_text(text.replace('mode = "direct"',
                                                                   'mode = "direct"\nmerge_authorized_by = "sender"'),
@@ -494,7 +506,7 @@ def test_an_own_command_on_another_repository_is_left_to_the_classifier(tmp_path
     scripts then ran under the allow. Only a checkout of this project's own repository is passed; `lane` not at all
     (bare `lane` may run the profile's queue command)."""
     from guardkit import IDENTITY, git
-    root = onboarded(tmp_path)
+    root = onboarded(tmp_path, extra=OPTED)
     other = tmp_path / "made-by-a-seat"
     other.mkdir()
     git(other, "init", "-q", "-b", "main")
@@ -537,7 +549,7 @@ def test_the_allowed_push_goes_to_the_one_origin_url_named_explicitly(tmp_path, 
 
 def test_a_request_to_leave_the_sandbox_gets_no_allow(tmp_path, monkeypatch):
     """Final review of 0.6.10, M1: the allow skipped the prompt dangerouslyDisableSandbox would cause."""
-    root = onboarded(tmp_path)
+    root = onboarded(tmp_path, extra=OPTED)
     monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
     payload = {"cwd": str(root), "tool_name": "Bash", "permission_mode": "auto", "session_id": "s",
                "tool_input": {"command": f"{CLI} status", "dangerouslyDisableSandbox": True}}
@@ -717,5 +729,27 @@ def test_the_receipt_the_allow_names_is_asked_under_origins_rules(tmp_path, monk
     forged = git(root, "rev-parse", "HEAD")
     git(root, "switch", "-q", "main")
     git(root, *IDENTITY, "commit", "-q", "--allow-empty", "-m", "no receipt over this one")
+    monkeypatch.setattr(gitq, "trunk_ref", lambda *a, **k: forged)
+    assert not _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path))
+
+
+def test_the_senders_push_waits_for_the_persons_opt_in(tmp_path, monkeypatch):
+    from guardkit import IDENTITY, git, receipt
+    root = _sender_tree(tmp_path, monkeypatch, opted=False)
+    git(root, *IDENTITY, "commit", "-q", "--allow-empty", "-m", "carries no change")
+    receipt(root, tmp_path / "state")
+    assert not _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path))
+
+
+def test_the_opt_in_is_read_where_origin_names_trunk(tmp_path, monkeypatch):
+    """The opt-in grants, so for the push it is read at the revision origin names (scan of 0.6.10, F1): a ref
+    repointed at a commit that opts in grants nothing where origin's trunk does not."""
+    from flotilla.ledger import gitq
+    from guardkit import git
+    root = _accounted_sender(tmp_path, monkeypatch)
+    forged = git(root, "rev-parse", "refs/remotes/origin/main")
+    _origin_moves(tmp_path, root, "skip_classifier_for_checked = true", "skip_classifier_for_checked = false",
+                  "the person takes the opt-in back")
+    git(root, "fetch", "-q", "origin")
     monkeypatch.setattr(gitq, "trunk_ref", lambda *a, **k: forged)
     assert not _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path))
