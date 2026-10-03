@@ -2,6 +2,17 @@
 
 Deferred findings, kept here until a plan takes them. Each names where it came from.
 
+## From the twosuns update to 0.7.1 (2026-10-03)
+
+- A refusal the person has to resolve must say what to run, not only that something was refused. When auto mode's
+  classifier, a permission rule or a flotilla guard refuses a seat something only the person can do - edit
+  `.claude/settings*.json`, approve, push with `--no-verify`, install hooks - the seat sends the orchestrator the
+  exact command or edit (file, what to remove or change, what to keep) ready to paste with `!`, and how to check it
+  worked; the orchestrator relays it verbatim. Seen in the update itself: the classifier refused removing the 0.6.7
+  allow rules from `.claude/settings.local.json` as self-modification, and the person had to ask for the command.
+  People new to Claude Code do not know what to ask for. Covers the post templates (orchestrator, main, minor,
+  sender, reviewer, judge, helper) and the refusal texts flotilla prints itself.
+
 ## From the broker final review (2026-09-27)
 
 - A background session the census cannot place (census down) is left to its dialog, which for it is the measured
