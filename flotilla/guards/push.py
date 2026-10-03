@@ -214,12 +214,12 @@ def _failures(pairs, *, directory, profile, state_dir, repo_key, run) -> list[st
     return found
 
 
-def _remote_trunk(root, trunk: str, run, *, own: bool = True) -> str:
-    """Trunk's revision as origin has it, asked of origin: the local `origin/<trunk>` is a ref any session can
-    repoint, and what goes to trunk is measured from it. A repository other than the session's own is named by a
-    command nobody has allowed yet, so its config must not get a program run (scan of 0.6.10, F3): origin is asked
-    there only by a plain URL, with a config that holds nothing that runs code, and with no repository hook."""
-    command = ["git", "-C", str(root), "ls-remote", "origin", f"refs/heads/{trunk}"]
+def _ask_origin(root, refs: list[str], run, *, own: bool = True) -> str:
+    """What origin answers to `git ls-remote --symref <origin> <refs>`. A repository other than the session's own
+    is named by a command nobody has allowed yet, so its config must not get a program run (scan of 0.6.10, F3):
+    origin is asked there only by a plain URL, with a config that holds nothing that runs code, and with no
+    repository hook."""
+    command = ["git", "-C", str(root), "ls-remote", "--symref", "origin", *refs]
     if not own:
         from flotilla.guards.run import _config_is_plain, _empty_hooks, _plain_url
         urls = (_git(root, "config", "--get-all", "remote.origin.url", run=run) or "").splitlines()
@@ -227,14 +227,61 @@ def _remote_trunk(root, trunk: str, run, *, own: bool = True) -> str:
             raise Unknown(f"origin could not be asked safely: {root} is not this session's repository, and its own "
                           "git config holds keys that can run a program or redirect git, or origin's URL is not a "
                           "plain one, so it is not asked before the command is allowed")
-        command = ["git", "-C", str(root), "-c", f"core.hooksPath={_empty_hooks()}", "ls-remote", urls[0],
-                   f"refs/heads/{trunk}"]
+        command = ["git", "-C", str(root), "-c", f"core.hooksPath={_empty_hooks()}", "ls-remote", "--symref", urls[0],
+                   *refs]
     done = run(command, capture_output=True, text=True, check=False, timeout=20)
     if done.returncode != 0:
-        raise Unknown(f"origin could not be asked for `{trunk}` ({(done.stderr or '').strip()[:120]}), so what this "
-                      "carries to trunk cannot be told")
-    words = done.stdout.split()
-    return words[0] if words else ""
+        raise Unknown(f"origin could not be asked ({(done.stderr or '').strip()[:120]}), so the rules this push is "
+                      "judged by cannot be read")
+    return done.stdout
+
+
+@dataclass(frozen=True)
+class OriginRules:
+    profile: dict
+    trunk: str
+    base: str   # origin's trunk revision; "" where origin has no trunk yet
+    note: str
+
+
+def origin_rules(root, run=subprocess.run, *, own: bool = True) -> OriginRules:
+    """The rules a push is judged by (scan of 0.7.0, F1): trunk is origin's default branch, asked of origin, and the
+    profile is the one that branch carries - never the tree's own file or a local ref, which a session can edit or
+    repoint. Until trunk carries a profile (the onboarding's own first push) or where there is no origin, the tree's
+    profile is obeyed, with trunk still origin's default branch, and the note says so. Raises Unknown when origin
+    cannot be asked or names a revision this checkout has not fetched: rules nobody can read decide nothing."""
+    from flotilla.core import config
+    found = config.find_project(Path(root))
+    if found is None:
+        raise Unknown(f"not onboarded: no .flotilla/project.toml at or above {Path(root).resolve()}")
+    local = config.load_project(found).data
+    if not _git(found, "config", "--get-all", "remote.origin.url", run=run):
+        return OriginRules(local, str((local.get("trunk") or {}).get("branch") or "main"), "",
+                           "no origin: this tree's .flotilla/project.toml is obeyed")
+    default = base = ""
+    for line in _ask_origin(found, ["HEAD"], run, own=own).splitlines():
+        words = line.split()
+        if len(words) == 3 and words[0] == "ref:" and words[2] == "HEAD" and words[1].startswith("refs/heads/"):
+            default = words[1].removeprefix("refs/heads/")
+        elif len(words) == 2 and words[1] == "HEAD":
+            base = words[0]
+    if not default or not base:   # an empty origin: nothing on trunk to judge by yet
+        return OriginRules(local, str((local.get("trunk") or {}).get("branch") or "main"), "",
+                           "origin has no trunk yet: this tree's .flotilla/project.toml is obeyed")
+    if not _resolve(found, base, run):
+        raise Unknown(f"origin's trunk `{default}` is at {base[:7]}, which this checkout has not fetched; "
+                      "`git fetch origin` and push again")
+    shown = run(["git", "-C", str(found), "show", f"{base}:.flotilla/project.toml"], capture_output=True,
+                text=True, check=False, timeout=10)
+    if shown.returncode != 0:
+        return OriginRules({**local, "trunk": {**(local.get("trunk") or {}), "branch": default}}, default, base,
+                           f"origin's `{default}` carries no profile yet: this tree's .flotilla/project.toml is "
+                           "obeyed")
+    try:
+        profile = tomllib.loads(shown.stdout)
+    except tomllib.TOMLDecodeError as err:
+        raise Unknown(f"the profile on origin's `{default}` cannot be read ({err})") from err
+    return OriginRules({**profile, "trunk": {**(profile.get("trunk") or {}), "branch": default}}, default, base, "")
 
 
 def _unapproved(root, profile: dict, pairs, since: str = "") -> list[str]:
@@ -301,7 +348,7 @@ def guard(segment, *, root, profile, env=os.environ, run=subprocess.run) -> Find
     d = door(segment)
     if d is None:
         return None
-    state, key, unapproved = paths.state_dir(env), "unknown", []
+    state, key, unapproved, closed = paths.state_dir(env), "unknown", [], []
     try:
         home = _home(d, root, profile, run)
         if home is None:
@@ -312,27 +359,30 @@ def guard(segment, *, root, profile, env=os.environ, run=subprocess.run) -> Find
                 return None
             raise Unknown("names a repository with -R/--repo or GH_REPO from outside any project, so which "
                           "project's receipts it needs cannot be told; run it from that repository's tree")
-        home_root, home_profile = home
+        home_root = home[0]
+        try:
+            got = origin_rules(home_root, run, own=_own_repository(home_root, root, run))
+        except Unknown as err:   # rules nobody can read decide nothing, and have no override (scan of 0.7.0, F1)
+            closed = [str(err)]
+            raise
+        home_profile, trunk = got.profile, got.trunk
         if not (home_profile.get("guards") or {}).get(GUARD):
             return None
         key = repo.identify(Path(home_root)).key
-        trunk = (home_profile.get("trunk") or {}).get("branch", "main")
         pairs = revisions(d, trunk, run=run)
         failures = _failures(pairs, directory=d.directory, profile=home_profile, state_dir=state, repo_key=key,
                              run=run)
         landing = [(label, sha) for label, sha in pairs if d.kind == "gh pr merge" or label in (trunk, "HEAD")]
         if d.kind in ("git push", "gh pr merge") and landing and \
                 (home_profile.get("flow") or {}).get("merge_authorized_by") == "human":
-            try:
-                since = _remote_trunk(home_root, trunk, run, own=_own_repository(home_root, root, run))
-            except Unknown as err:   # what stands in for the person's approval has no override either
-                unapproved = [f"{err}; which commits the person approved cannot be told"]
-            else:
-                unapproved = _unapproved(home_root, home_profile, landing, since=since)
+            unapproved = _unapproved(home_root, home_profile, landing, since=got.base)
     except Unknown as err:
         failures = [str(err)]
     except Exception as err:  # noqa: BLE001 - the push guard's own failure refuses (spec, section 10)
         failures = [f"the guard failed: {err}"]
+    if closed:
+        return Finding(GUARD, True, f"flotilla push: `{segment.text}` is closed: the rules it is judged by could not "
+                                    "be read from origin.\n" + "\n".join(f"  {item}" for item in closed))
     if unapproved:   # the person's approval has no override: a session cannot waive what only a person gives
         return Finding(GUARD, True, f"flotilla push: `{segment.text}` is closed: it carries work the person has "
                                     "not approved.\n" + "\n".join(f"  {item}" for item in unapproved))
@@ -354,11 +404,13 @@ def pre_push(root, stdin_text: str, *, env=os.environ, run=subprocess.run) -> tu
     """The second barrier: git names what is pushed, so a push hidden from the command line is judged too."""
     from flotilla.core import paths, repo
     from flotilla.guards.overrides import record_override
-    from flotilla.guards.rules import rules_for
-    profile, _ = rules_for(root, run=run)
+    try:
+        got = origin_rules(root, run)   # trunk and its rules as origin has them (scan of 0.7.0, F1)
+    except Unknown as err:
+        return 1, f"flotilla pre-push: the push is closed: the rules it is judged by could not be read.\n  {err}"
+    profile, trunk = got.profile, got.trunk
     if not (profile.get("guards") or {}).get(GUARD):
         return 0, ""
-    trunk = (profile.get("trunk") or {}).get("branch", "main")
     pairs, remote_had = [], ""
     for line in (stdin_text or "").splitlines():
         fields = line.split()

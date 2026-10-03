@@ -443,3 +443,27 @@ def test_a_directory_pointing_its_git_dir_at_the_sessions_repository_is_not_its_
     found = judge(f"git -C {evil} push origin main", root, tmp_path)
     assert not marker.exists()
     assert found is not None and found.refuse
+
+
+@pytest.mark.parametrize("edit", ['branch = "nope"', 'branch = "main-old"'])
+def test_a_tree_that_renames_trunk_does_not_switch_off_the_push_guard(tmp_path, edit):
+    """Scan of 0.7.0, F1: the guards took trunk's name from the tree's own profile, and when the local ref of that
+    name carried no profile they obeyed the tree's file - so a session renamed trunk in an uncommitted edit, and a
+    push to the real trunk was judged as a push to some other branch: no receipt, no person's approval. Trunk is
+    origin's default branch, and the rules are the profile it carries."""
+    root = human_project(tmp_path)   # origin: a person approves merges; the tree carries unapproved work
+    profile = root / ".flotilla" / "project.toml"
+    profile.write_text(profile.read_text(encoding="utf-8").replace('branch = "main"', edit), encoding="utf-8")
+    found = judge("git push origin main", root, tmp_path)
+    assert found is not None and found.refuse
+    head = git(root, "rev-parse", "HEAD")
+    code, _ = push.pre_push(root, lines(root, ("refs/heads/main", head, "refs/heads/main")), env=env(tmp_path))
+    assert code == 1
+
+
+def test_before_trunk_carries_a_profile_the_trees_own_is_obeyed(tmp_path):
+    """The first push of an onboarding has no rules on origin to be judged by: the tree's profile counts, and says
+    so - but trunk is still origin's default branch, whatever the tree names."""
+    root = onboarded(tmp_path, push=False)
+    found = judge("git push origin main", root, tmp_path)
+    assert found is not None and found.refuse and "receipt" in found.text   # the tree's push_receipt guard is on

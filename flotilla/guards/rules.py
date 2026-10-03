@@ -3,6 +3,11 @@
 Trunk's rules are the ones that count (an uncommitted edit in a branch must not switch off the guard that judges
 it). Until the onboarding commit reaches trunk there are no rules there at all, and the push that brings them would
 be judged by nothing, so the tree's own profile is obeyed and the note says so.
+
+This reads trunk's name from the tree and trunk itself through a local ref, both of which a session can change, so
+nothing that decides a push uses it: the push guard, the pre-push hook and the person's approval read
+`push.origin_rules`, which asks origin (scan of 0.7.0, F1). The guards that stay here keep a session from damaging
+its own tree; README, "Known limitations", says what that leaves open.
 """
 
 from __future__ import annotations

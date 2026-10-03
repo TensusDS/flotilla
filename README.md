@@ -464,10 +464,12 @@ What flotilla does not do yet, or does only partly. Each one was met in a field 
 - **Auto mode is not offered for every model.** Claude Code has refused it for some (seen with Haiku);
   `flotilla spawn --dry-run` warns about such a seat, and `flotilla spawn` warns again after raising it - pick
   another model or `ask` mode for that post.
-- **A project's rules are read from origin's trunk as this checkout last fetched it** - the local
-  `refs/remotes/origin/<trunk>`. A session that moves that ref by hand changes the rules the next flotilla command
-  reads, event scripts included. The classifier sees the command that moves it. The sender's push allow does not
-  rest on that ref: it asks origin and reads the rules there.
+- **Most of a project's rules are read from origin's trunk as this checkout last fetched it** - the local
+  `refs/remotes/origin/<trunk>`, or the tree's own profile before onboarding reaches trunk. A session that moves
+  that ref, or renames trunk in its own profile, changes the rules the next flotilla command reads: the revert and
+  line-number guards, the lane, file reservations, event scripts. The classifier sees the command that does it.
+  What decides a push does not rest on either: the push guard, the `pre-push` hook, the person's approval and every
+  allow ask origin for its default branch and read the profile that branch carries.
 - **It does not isolate sessions from you or from each other** - see the next section.
 
 ## Security model and its limits
