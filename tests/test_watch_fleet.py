@@ -308,4 +308,4 @@ def test_a_gone_owner_of_a_past_fleet_comes_with_the_live_session_to_take_it():
     found = fleet.fleet(rows(row(state="claimed", owner="main session 19", branch="fix/thunder")), PR,
                         [sess("twosuns-main session 1", state="working")], post_of=now, former_of=former)
     assert [item.kind for item in found] == ["deviation"]
-    assert 'flotilla work adopt fix/thunder --to "twosuns-main session 1"' in found[0].text, found[0].text
+    assert "flotilla work adopt fix/thunder --to 'twosuns-main session 1'" in found[0].text, found[0].text

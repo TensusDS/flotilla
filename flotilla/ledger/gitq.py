@@ -40,8 +40,9 @@ def same_revision(root: Path, a: str, b: str, run=subprocess.run) -> bool | None
 def differs_only_in(root: Path, a: str, b: str, prefix: str, run=subprocess.run) -> bool | None:
     """Whether two revisions differ, and only in files under `prefix` (a directory, ending in "/"); None when git
     cannot say."""
-    done = run(["git", "-C", str(root), "diff", "--name-only", "-z", a, b], capture_output=True, text=True,
-               check=False)
+    # --no-renames: a rename out of the product into `prefix` must list the name it left, not only where it went
+    done = run(["git", "-C", str(root), "diff", "--no-renames", "--no-ext-diff", "--name-only", "-z", a, b],
+               capture_output=True, text=True, check=False)
     if done.returncode != 0:
         return None
     names = [name for name in done.stdout.split("\0") if name]

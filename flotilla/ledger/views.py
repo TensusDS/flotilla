@@ -189,10 +189,13 @@ def handover_hint(row: Row, mover: str, rows: dict[str, Row], live: set[str], po
     post = post_of(mover) if post_of else None
     if not post:
         return ""
+    import shlex   # the orchestrator copies the line into a shell, and git allows `$(...)` in a branch name
     if mover == row.owner:
-        move = f'flotilla work adopt {row.branch} --to "{{}}"'
+        def move(name: str) -> str:
+            return "flotilla work adopt " + shlex.quote(row.branch) + " --to " + shlex.quote(name)
     elif mover == row.reader:
-        move = f'flotilla work assign {row.branch} --reader "{{}}"'
+        def move(name: str) -> str:
+            return "flotilla work assign " + shlex.quote(row.branch) + " --reader " + shlex.quote(name)
     else:
         return ""
     load: dict[str, int] = {}
@@ -202,9 +205,9 @@ def handover_hint(row: Row, mover: str, rows: dict[str, Row], live: set[str], po
     peers = sorted((name for name in live if name != mover and post_of(name) == post),
                    key=lambda name: (load.get(name, 0), name))
     if not peers:
-        return f"; no live {post} session: raise one (`flotilla spawn --post {post}=1`), then `{move.format('<name>')}`"
+        return f"; no live {post} session: raise one (`flotilla spawn --post {post}=1`), then `{move('<name>')}`"
     listed = ", ".join(f"{name} ({load.get(name, 0)} open)" for name in peers)
-    return f"; live {post} sessions: {listed} - `{move.format(peers[0])}`"
+    return f"; live {post} sessions: {listed} - `{move(peers[0])}`"
 
 
 def deviations(rows: dict[str, Row], profile: dict, live: set[str] | None = None, finished=None,

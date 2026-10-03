@@ -224,12 +224,27 @@ def test_a_gone_mover_comes_with_who_can_take_the_move():
                  row("r3", branch="feat/y", owner="main session 1", state="handed", reader="review session 9"))
     live = {"main session 1", "main session 2", "review session 1"}
     why = {item["branch"]: item["why"] for item in views.deviations(table, PR, live, post_of=_post_of)}
-    assert 'flotilla work adopt fix/thunder --to "main session 2"' in why["fix/thunder"], why
+    assert "flotilla work adopt fix/thunder --to 'main session 2'" in why["fix/thunder"], why
     assert "main session 1 (2 open)" in why["fix/thunder"] and "main session 2 (0 open)" in why["fix/thunder"]
-    assert 'flotilla work assign feat/y --reader "review session 1"' in why["feat/y"], why
+    assert "flotilla work assign feat/y --reader 'review session 1'" in why["feat/y"], why
 
 
 def test_a_gone_mover_with_no_live_peer_names_raising_one():
     table = rows(row("r1", branch="fix/thunder", owner="main session 19"))
     found = views.deviations(table, PR, {"review session 1"}, post_of=_post_of)
     assert "flotilla spawn --post main=1" in found[0]["why"], found
+
+
+def test_a_branch_name_with_braces_does_not_break_the_hint():
+    """Review of 0.6.9, I3: the hint built its command with str.format, and `fix/{x}` - a legal branch name -
+    raised out of `work status` and every orchestrator hook."""
+    table = rows(row("r1", branch="fix/{x}-{0}", owner="main session 19"))
+    found = views.deviations(table, PR, {"main session 2"}, post_of=_post_of)
+    assert "fix/{x}-{0}" in found[0]["why"] and "main session 2" in found[0]["why"]
+
+
+def test_the_hint_quotes_a_branch_name_a_shell_would_read():
+    """Review of 0.6.9, M8: the orchestrator copies the printed line into Bash."""
+    table = rows(row("r1", branch="fix/$(touch x)", owner="main session 19"))
+    found = views.deviations(table, PR, {"main session 2"}, post_of=_post_of)
+    assert "adopt 'fix/$(touch x)' --to 'main session 2'" in found[0]["why"], found[0]["why"]

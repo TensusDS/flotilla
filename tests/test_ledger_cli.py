@@ -534,5 +534,5 @@ def test_broke_for_an_author_who_is_gone_hands_the_fix_to_the_orchestrator(tmp_p
     code, out = run_cli("work", "broke", "feat/x", "--where", "Settings > Export", "--saw", "nothing happens",
                         "--root", str(root), "--as", "acceptance judge 1")
     assert code == 0 and "main session 1 is not alive" in out, out
-    assert 'flotilla work adopt fix/x --to "main session 2"' in out and "tree switch" not in out
+    assert "flotilla work adopt fix/x --to 'main session 2'" in out and "tree switch" not in out
     assert "letter for main session 1" not in out

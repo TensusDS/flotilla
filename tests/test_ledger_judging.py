@@ -349,3 +349,19 @@ def test_a_build_that_differs_from_the_deployed_in_the_product_is_still_refused(
     path.write_text(git(root, "rev-parse", "main"), encoding="utf-8")
     with pytest.raises(MoveRefused, match="walk what is deployed"):
         judging.walked(ledger, actor(ledger, JUDGE), "feat/x", build=walked_on, steps="s", saw="s")
+
+
+def test_a_product_file_renamed_into_the_rules_is_not_rules_only(tmp_path):
+    """Review of 0.6.9, I2: git's rename detection listed only `.flotilla/app.txt` for a rename out of the product,
+    and the walk passed a build whose product had lost a file."""
+    root, ledger, path = _deployed_from_file(tmp_path)
+    (root / "app.txt").write_text("the product\n" * 20, encoding="utf-8")
+    git(root, "add", "app.txt")
+    commit(root, "product file")
+    path.write_text(git(root, "rev-parse", "main"), encoding="utf-8")   # deployed: the product has app.txt
+    (root / ".flotilla").mkdir(exist_ok=True)
+    git(root, "mv", "app.txt", ".flotilla/app.txt")
+    commit(root, "move it out of the product")
+    walked_on = git(root, "rev-parse", "main")                          # walked: the product lost it
+    with pytest.raises(MoveRefused, match="walk what is deployed"):
+        judging.walked(ledger, actor(ledger, JUDGE), "feat/x", build=walked_on, steps="s", saw="s")
