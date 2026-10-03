@@ -429,7 +429,8 @@ def _status(ledger: core.Ledger, args) -> int:
     from flotilla.posts import post_or_former
     for title, items in (("deviations", views.deviations(rows, ledger.profile, live,
                                                          finished=lambda row: _finished(ledger, row),
-                                                         post_of=lambda name: post_or_former(ledger.posts, name))),
+                                                         post_of=lambda name: _strict_post(ledger, name),
+                                                         former_of=lambda name: post_or_former(ledger.posts, name))),
                          ("findings", findings.findings(ledger, rows))):
         print(f"{title}:" if items else f"{title}: none")
         for item in items:
@@ -521,6 +522,15 @@ def run_ledger_command(args) -> int:
     _letters(ledger, caller, before)
     _notices(ledger)
     return 0
+
+
+def _strict_post(ledger: core.Ledger, name: str) -> str:
+    from flotilla.posts import PostError, post_for_session
+    try:
+        found = post_for_session(ledger.posts, name)
+    except PostError:
+        return ""
+    return found.name if found is not None else ""
 
 
 def _letters(ledger: core.Ledger, caller, before: dict) -> None:

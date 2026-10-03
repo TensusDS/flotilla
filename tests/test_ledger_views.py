@@ -248,3 +248,33 @@ def test_the_hint_quotes_a_branch_name_a_shell_would_read():
     table = rows(row("r1", branch="fix/$(touch x)", owner="main session 19"))
     found = views.deviations(table, PR, {"main session 2"}, post_of=_post_of)
     assert "adopt 'fix/$(touch x)' --to 'main session 2'" in found[0]["why"], found[0]["why"]
+
+
+def _strict(name):
+    return {"twosuns-main session 1": "main", "twosuns-review session 1": "reviewer",
+            "twosuns-review session 2": "reviewer"}.get(name, "")
+
+
+def _former(name):
+    return _strict(name) or _post_of(name)
+
+
+def test_the_hint_offers_only_this_projects_sessions(tmp_path):
+    """Review of 0.6.9, I4: the former-name mapping was used for every live name, so `main session 3` - another
+    project's, or an older fleet's - was offered first, and adopt would refuse it."""
+    table = rows(row("r1", branch="fix/a", owner="main session 19"))
+    found = views.deviations(table, PR, {"main session 3", "twosuns-main session 1"}, post_of=_strict,
+                             former_of=_former)
+    why = found[0]["why"]
+    assert "twosuns-main session 1" in why and "main session 3" not in why, why
+
+
+def test_a_gone_readers_successors_are_ordered_by_what_they_read():
+    """Review of 0.6.9, M7: readers own only their seat row, so counting owned rows ordered them by name."""
+    table = rows(row("r1", branch="feat/a", owner="twosuns-main session 1", state="handed", reader="review session 9"),
+                 row("r2", branch="feat/b", owner="twosuns-main session 1", state="handed",
+                     reader="twosuns-review session 1"))
+    live = {"twosuns-main session 1", "twosuns-review session 1", "twosuns-review session 2"}
+    found = [item for item in views.deviations(table, PR, live, post_of=_strict, former_of=_former)
+             if item["branch"] == "feat/a"]
+    assert "--reader 'twosuns-review session 2'" in found[0]["why"], found[0]["why"]

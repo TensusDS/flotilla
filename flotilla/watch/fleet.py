@@ -59,7 +59,7 @@ def fleet(rows: dict, profile: dict, sessions, *, post_of, former_of=None, break
     for session, _ in outside:
         by_name.pop(session.name, None)   # counted nowhere a seat is counted
     live = set(by_name)
-    found_all = views.deviations(rows, profile, live, post_of=former_of or post_of)
+    found_all = views.deviations(rows, profile, live, post_of=post_of, former_of=former_of)
     items = [Item(DEVIATION, found["branch"], f"{found['kind']}: {found['why']}", since_of(rows, found["branch"]),
                   who=found["kind"])
              for found in found_all if found["kind"] != "seat_empty"]

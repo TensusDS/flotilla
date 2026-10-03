@@ -182,11 +182,13 @@ def fix_arrived(rows: dict[str, Row], row: Row, profile: dict) -> bool:
     return any(other.fixes == row.id and fix_delivery(rows, other, profile) for other in rows.values())
 
 
-def handover_hint(row: Row, mover: str, rows: dict[str, Row], live: set[str], post_of) -> str:
+def handover_hint(row: Row, mover: str, rows: dict[str, Row], live: set[str], post_of, former_of=None) -> str:
     """Who can take a gone session's move, and the move that hands it over (twosuns field test of 0.6.7 and the
     person's proposal): the live sessions of the same post, least loaded first, and the adopt or assign line - the
     orchestrator chooses; flotilla only spares it the working out."""
-    post = post_of(mover) if post_of else None
+    if not post_of:
+        return ""
+    post = (former_of or post_of)(mover)   # a former name (before the fleet's name) says only whose post it held
     if not post:
         return ""
     import shlex   # the orchestrator copies the line into a shell, and git allows `$(...)` in a branch name
@@ -198,11 +200,14 @@ def handover_hint(row: Row, mover: str, rows: dict[str, Row], live: set[str], po
             return "flotilla work assign " + shlex.quote(row.branch) + " --reader " + shlex.quote(name)
     else:
         return ""
+    reading = mover == row.reader
     load: dict[str, int] = {}
-    for other in rows.values():
-        if other.is_open and other.owner:
-            load[other.owner] = load.get(other.owner, 0) + 1
-    peers = sorted((name for name in live if name != mover and post_of(name) == post),
+    for other in rows.values():   # a reader's load is what it reads; an owner's, what it owns
+        who = other.reader if reading else other.owner
+        if other.is_open and who and not (other.state == "reserved"):
+            load[who] = load.get(who, 0) + 1
+    peers = sorted((name for name in live if name not in (mover, row.owner if reading else "")
+                    and post_of(name) == post),   # strict: only this project's seats are offered (0.6.9, I4)
                    key=lambda name: (load.get(name, 0), name))
     if not peers:
         return f"; no live {post} session: raise one (`flotilla spawn --post {post}=1`), then `{move('<name>')}`"
@@ -211,7 +216,7 @@ def handover_hint(row: Row, mover: str, rows: dict[str, Row], live: set[str], po
 
 
 def deviations(rows: dict[str, Row], profile: dict, live: set[str] | None = None, finished=None,
-               post_of=None) -> list[dict]:
+               post_of=None, former_of=None) -> list[dict]:
     found = []
     for row in rows.values():
         if not row.is_open:
@@ -243,5 +248,5 @@ def deviations(rows: dict[str, Row], profile: dict, live: set[str] | None = None
                 add("seat_empty", mover, f"the post seat is held for {mover}, and that session is not alive")
             else:
                 add("mover_gone", mover, f"the move is {mover}'s, and that session is not alive"
-                                         + handover_hint(row, mover, rows, live, post_of))
+                                         + handover_hint(row, mover, rows, live, post_of, former_of))
     return found

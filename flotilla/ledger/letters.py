@@ -76,7 +76,8 @@ def changed(before: dict[str, Row], after: dict[str, Row], profile: dict, posts:
         if post is None:
             to = (mover,) if names is None or mover in names else ()
             if not to:   # a session of a past fleet: say who of this one could take it (twosuns 0.6.7)
-                hint = views.handover_hint(row, mover, after, names, lambda name: post_or_former(posts, name))
+                hint = views.handover_hint(row, mover, after, names, lambda name: _post_of(posts, name),
+                                           lambda name: post_or_former(posts, name))
         elif names is None:
             to = (f"the session holding the {post} post",)
         else:
