@@ -49,6 +49,26 @@ def differs_only_in(root: Path, a: str, b: str, prefix: str, run=subprocess.run)
     return bool(names) and all(name.startswith(prefix) for name in names)
 
 
+#: Reflog actions that create a commit where they ran; a fast-forward or a reset only moves to someone else's.
+_MADE = ("commit", "cherry-pick", "revert")
+
+
+def made_at(root: Path, ref: str, sha: str, run=subprocess.run) -> bool:
+    """Whether `sha` was created at `ref` (a branch, or HEAD of the worktree `root`), as its reflog records."""
+    done = run(["git", "-C", str(root), "reflog", "show", "--format=%H%x09%gs", ref, "--"], capture_output=True,
+               text=True, check=False)
+    if done.returncode != 0:
+        return False
+    for line in done.stdout.splitlines():
+        found, _, action = line.partition("\t")
+        if found != sha:
+            continue
+        verb = action.split(":", 1)[0].strip()
+        if verb.startswith(_MADE) or "(pick)" in verb or "Merge made by" in action:
+            return True
+    return False
+
+
 def branch_tip(root: Path, branch: str, run=subprocess.run) -> str | None:
     return resolve(root, f"refs/heads/{branch}", run=run)
 

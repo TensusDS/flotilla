@@ -148,3 +148,25 @@ def test_the_refusals_around_a_direct_commit_point_to_the_reader_s_vouch(world):
         outside.offledger(ledger, sender, "main", merge=stray, witness="review session 1")
     with pytest.raises(MoveRefused, match="flotilla work vouch main --commit"):
         outside.inbatch(ledger, sender, "chore/x", commit=stray, read_by="review session 1", why="x")
+
+
+def test_a_reader_never_vouches_for_a_commit_it_made(world, tmp_path):
+    """Review of 0.6.9, I1: the trunk vouch had no owner to compare with, so a reader could push a commit straight to
+    trunk and clear the only trace of it by vouching for it itself. Its seat's tree and branches say what it made."""
+    root, ledger = world
+    reviewer = actor(ledger, "review session 1")
+    home = tmp_path / "reviewer-1"
+    git(root, "worktree", "add", "-q", "-b", "fleet/reviewer-1", str(home), "main")
+    core.reserve(ledger, reviewer, "fleet/reviewer-1", tree=str(home))
+    git(home, "checkout", "-q", "--detach")
+    mine = commit(home, "a reader's own change", "mine.txt")
+    git(home, "push", "-q", "origin", "HEAD:main")
+    git(root, "pull", "-q", "origin", "main")
+    with pytest.raises(MoveRefused, match="made it"):
+        outside.vouch(ledger, reviewer, "main", commit=mine)
+    stray = commit(root, "someone else's", "stray.txt")   # made in the main checkout, not the reader's tree
+    git(root, "push", "-q", "origin", "main")
+    git(home, "fetch", "-q", "origin")
+    git(home, "checkout", "-q", "--detach", "origin/main")   # moved to it, not made there: still someone else's
+    row = outside.vouch(ledger, reviewer, "main", commit=stray)
+    assert row.history[-1]["evidence"]["author"]

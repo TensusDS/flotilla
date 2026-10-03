@@ -128,6 +128,21 @@ def offledger(ledger: Ledger, actor: Actor, branch: str, *, merge: str, witness:
 VOUCHABLE = ("accepted", "queued", "landed", "inbatch")
 
 
+def _made_by(ledger: Ledger, rows: dict, name: str, sha: str) -> str:
+    """Where `name` made `sha`, if its own branches or its trees' HEAD record creating it; "" when nowhere. The git
+    author name is not the gate: anyone can write any name there."""
+    from pathlib import Path
+    for row in rows.values():
+        if row.owner != name:
+            continue
+        if row.branch and row.branch != ledger.trunk and \
+                gitq.made_at(ledger.root, f"refs/heads/{row.branch}", sha, run=ledger.run):
+            return f"`{row.branch}`"
+        if row.tree and Path(row.tree).is_dir() and gitq.made_at(Path(row.tree), "HEAD", sha, run=ledger.run):
+            return f"the tree {row.tree}"
+    return ""
+
+
 def _vouch_on_trunk(ledger: Ledger, actor: Actor, s, sha: str) -> Row:
     """A reader vouches for a commit that reached trunk with no row at all - a person's or a planner's commit, a
     profile change (twosuns field test of 0.6.7, W5). Nothing else closes that finding: vouch and offledger want an
@@ -144,13 +159,21 @@ def _vouch_on_trunk(ledger: Ledger, actor: Actor, s, sha: str) -> Row:
     why = batch.account(ledger, s.rows, sha)
     if why is not None:
         raise MoveRefused(f"{sha[:7]} is already accounted for: {why}")
+    made = _made_by(ledger, s.rows, actor.name, sha)
+    if made:   # the only trace of a direct commit must not be cleared by its author (review of 0.6.9, I1)
+        raise MoveRefused(f"{sha[:7]} was made in {made}, where {actor.name} works: it made it, and someone else "
+                          "reads it and vouches for it")
     merge = batch.is_merge(ledger, sha)
     if merge is None or (merge and batch.clean_merge(ledger, sha) is not False):
         raise MoveRefused(f"{sha[:7]} is a merge that adds nothing of its own, or git could not say; name the commit "
                           "that holds the change")
     fields = {"branch": ledger.trunk, "owner": "", "merge": sha, "reader": actor.name, "vouched": [sha]}
+    done = ledger.run(["git", "-C", str(ledger.root), "log", "-1", "--format=%an <%ae>%x09%cn <%ce>", sha],
+                      capture_output=True, text=True, check=False)
+    author, _, committer = (done.stdout.strip() if done.returncode == 0 else "").partition("\t")
     return s.append(actor, next_row_id(s.rows), "vouch", "offledger", fields=fields,
-                    evidence={"commit": sha, "why": "a commit on trunk outside the ledger, read by its reader"})
+                    evidence={"commit": sha, "why": "a commit on trunk outside the ledger, read by its reader",
+                              "author": author or "unknown", "committer": committer or "unknown"})
 
 
 def vouch(ledger: Ledger, actor: Actor, branch: str, *, commit: str) -> Row:
