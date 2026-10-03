@@ -202,3 +202,20 @@ def test_lane_status_is_the_bare_lane(tmp_path, monkeypatch):
     root = onboarded(tmp_path, monkeypatch)
     code, out = run_cli("lane", "status", "--root", str(root))
     assert code == 0 and "capacity: 1" in out and "held: nobody" in out, out
+
+
+def test_a_peers_booking_note_cannot_forge_lines_or_move_the_cursor(tmp_path, monkeypatch):
+    """Scan of 0.7.0, F2: a note (or `--for`) is text another session writes into the shared booking log, and the
+    lane printed it as it was - a newline forged status lines, an escape rewrote the terminal. Every booking field a
+    caller wrote is made visible where the log is read, so every place that prints it is covered."""
+    root = onboarded(tmp_path, monkeypatch)
+    note = "tests\n  waiting: nobody\nmachine:\x1b[2J\x1b]0;owned\x07"
+    code, _ = run_cli("lane", "take", "--note", note, "--root", str(root), "--as", "main session 1")
+    assert code == 0
+    _, out = run_cli("lane", "--root", str(root))
+    held = [line for line in out.splitlines() if "main session 1" in line]
+    assert len(held) == 1 and "\\n  waiting: nobody" in held[0]
+    assert "\x1b" not in out and "\x07" not in out
+    code, out = run_cli("lane", "take", "--root", str(root), "--as", "review session 1")   # the refusal names it too
+    refused = [line for line in out.splitlines() if "held by main session 1" in line]
+    assert code == 2 and "\x1b" not in out and len(refused) == 1 and "\\n  waiting: nobody" in refused[0]

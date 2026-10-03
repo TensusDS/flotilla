@@ -15,9 +15,14 @@ from __future__ import annotations
 import datetime as dt
 from dataclasses import dataclass
 
+from flotilla.core.text import visible
+
 KEY = "lane"
 HELD, RELEASED, WAITING, EXPIRED, LEFT = "held", "released", "waiting", "expired", "left"
 FIELDS = ("who", "note", "pid", "mark", "run_for", "why")
+#: What a caller wrote: another session's text, made visible where the log is read, so no place that prints a
+#: booking can forge a line or move the cursor (scan of 0.7.0, F2).
+TEXT = ("who", "note", "run_for", "why")
 
 
 @dataclass
@@ -40,7 +45,8 @@ def fold(records) -> dict[str, Booking]:
         item = found.get(event["booking"]) or Booking(id=event["booking"])
         for key in FIELDS:
             if key in event:
-                setattr(item, key, event[key])
+                value = event[key]
+                setattr(item, key, visible(value) if key in TEXT and isinstance(value, str) else value)
         item.state = event["state"]
         if item.state in (HELD, WAITING):
             item.since = event["at"]
