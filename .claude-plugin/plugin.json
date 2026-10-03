@@ -1,6 +1,6 @@
 {
   "name": "flotilla",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "Claude Code only. Coordinate independent peer Claude Code sessions: named posts, per-session worktrees, an evidence-backed work ledger, a machine lane and command guards.",
   "author": {
     "name": "TensusDS"
