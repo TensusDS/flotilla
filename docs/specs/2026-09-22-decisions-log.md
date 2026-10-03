@@ -1301,7 +1301,18 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    repository other than the session's own (any checkout of it) is asked only by a plain URL, with a plain config and
    no hooks, and otherwise the push is refused with the reason; the session's own repository is asked as before,
    because a strict config check there would close every push of a person whose editor writes local keys. Not
-   reached by the scan: the fleet's tree and branch removal and process kills. (planner's decision, 2026-10-03)
+   reached by the scan: the fleet's tree and branch removal and process kills. The final review of these fixes
+   closed five more, each reproduced first: moves recorded while the ref was forged (a queue without review under a
+   forged `depth = "none"`) survived putting the ref back - every event now records the git tree id of the
+   `.flotilla` its rules came from, and the allow counts only rows every move of which was made under the tree at
+   origin's trunk (content, so a forged commit with the same rules changes nothing and any other changes
+   everything; rows from before 0.6.11 or before a `.flotilla` change go to the classifier); the receipt is asked
+   again under origin's rules; origin that cannot be asked safely about approval refuses without an override,
+   because the person's approval has none; "own repository" is a worktree the session's repository lists, not a
+   shared common dir (`.git/commondir` let a foreign directory read its own `config.worktree`); and the orchestrator
+   runs `flotilla brief` itself and copies approve lines only from its own output, never from a message. Branch
+   names take shlex's unquoted set, and a change born in the batch gets its approve line too.
+   (planner's decision, 2026-10-03)
 
 ## Open questions (for the foundation spec)
 
