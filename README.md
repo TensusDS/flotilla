@@ -97,11 +97,13 @@ commands by the conversation around them and refused some - a sender's push of r
 Review", then a plain ledger record. flotilla's guard hook, which runs before every Bash call, now answers "allow" in
 auto mode for exactly two things, and only after every guard has run and found nothing: one of flotilla's own
 commands the broker's check passes (a listed subcommand, no shell sign, no option that steps around a check, never
-`approve`, `spawn`, `fleet down` or a run of an arbitrary command), and the sender's push of accounted work (one
-exact `git -C <its tree> push origin HEAD:<trunk>`, a green receipt over that revision, every commit it carries
-accounted for by the ledger). Anything else is the classifier's to decide, as before; unreviewed work still meets
-it. In `ask` mode nothing changes: you see what you chose to see. This leans on Claude Code honouring a hook's
-allow and deny, measured on 2.1.288; a mod that overrides plugin hooks would change it.
+`approve`, `spawn`, `fleet down` or a run of an arbitrary command; judged as flotilla parses it, with no character
+a shell would expand), and the sender's push of accounted work (exactly `git -C <its tree> push origin HEAD:<trunk>`
+from a checkout of this repository, origin pushing where your main checkout fetches from, no hook but flotilla's, a
+green receipt over that revision, and every commit past origin's trunk accounted for by the ledger). Anything else
+is the classifier's to decide, as before; unreviewed work still meets it. Your own `deny` rules still win over this
+allow, and in `ask` mode nothing changes: you see what you chose to see. This leans on Claude Code honouring a
+hook's allow and deny, measured on 2.1.288; a mod that overrides plugin hooks would change it.
 
 You can change any answer later by editing `.flotilla/project.toml`; a change takes effect once it is on trunk.
 

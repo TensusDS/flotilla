@@ -1257,8 +1257,16 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    own-command check passes (decisions 199, 200), and the sender's push of accounted work (one exact push of HEAD to
    trunk, optionally with `-C`, no option; a direct-flow project with the receipt guard on; the tree the home of an
    open row whose owner's post may land; the ledger accounting for every commit it carries). Unreviewed commits still
-   meet the classifier, a recorded override gives no allow, and `ask` mode is untouched. (planner's decision,
-   2026-10-03; the person chose the exact-command allow over a prose classifier rule)
+   meet the classifier, a recorded override gives no allow, and `ask` mode is untouched. A second review hardened
+   both: an own command may carry only characters no shell expands and is judged on the namespace flotilla's parser
+   makes of it (a glob like `approv[e]` and an abbreviation like `--a` had passed; the person guard now reads a glob
+   that may expand to `approve` as `approve`); the push must be exactly `git -C <absolute tree> push origin
+   HEAD:<trunk>` (a `cd` in front had moved it to another tree), from a checkout of the project's repository, origin
+   pushing where the main checkout fetches from, no hook but flotilla's own, and the accounting base asked of origin
+   (a seat can move its local remote-tracking ref). Measured too: a user's own `deny` rule wins over the hook's
+   allow. Known and accepted: the exact push of the sender's tree is allowed whoever runs it - its content is
+   accounted either way. (planner's decision, 2026-10-03; the person chose the exact-command allow over a prose
+   classifier rule)
 
 220. **`reconcile` names `land` without a placeholder** (twosuns field test of 0.6.7, W11): `land` finds the merge
    that carries a row itself, and "--merge <the commit>" made the sender ask. (planner's decision, 2026-10-03)
