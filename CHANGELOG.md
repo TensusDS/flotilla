@@ -3,6 +3,16 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.7.1 - 2026-10-03
+
+Closes the findings of a scan of the fleet, lane, onboarding and guard code:
+- **A push is judged by origin's trunk.** The push guard, the `pre-push` hook and the person's approval took trunk's
+  name from the tree's own profile and fell back to that file when the ref carried none, so an uncommitted edit
+  could turn a push to the real trunk into a push "to another branch". Trunk is now origin's default branch and the
+  rules are the profile it carries; when origin cannot be asked, the push is refused with no override.
+- **Text another session wrote cannot forge lines.** A lane booking's note, name and `--for`, and a leftover
+  process's command line in `retire`, are shown with control characters made visible.
+
 ## 0.7.0 - 2026-10-03
 
 - **Claude Code only, said and enforced.** The command line moves from `scripts/flotilla` to `bin/flotilla`, which

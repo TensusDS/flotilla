@@ -1340,6 +1340,19 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    to the person like any other call - noisier, but no permission decision is made on the person's behalf by
    default. (planner's decision, 2026-10-03)
 
+223. **What decides a push is read from origin, not from the tree** (Claude Security scan of the fleet, lane,
+   onboarding and guard code at `36bf495`, three findings, all read from code). F1: `rules_for` took trunk's name
+   from the tree's own profile and, when the local ref of that name carried no profile, obeyed the tree's file - so
+   a session renamed trunk in an uncommitted edit and its push to the real trunk was judged as a push elsewhere: no
+   receipt, no person's approval. The push guard, the pre-push hook and the approval check now read
+   `push.origin_rules`: trunk is origin's default branch (`ls-remote --symref`), the profile is the one it carries;
+   the tree's profile counts only where origin has no trunk or trunk carries no profile yet (the onboarding's first
+   push), still with origin's trunk name; and when origin cannot be asked, or names a revision not fetched here, the
+   push is refused with no override, because rules nobody can read decide nothing. The other guards still read
+   through the local ref - they keep a session from damaging its own tree, and asking origin on every command would
+   put a network call before every Bash call; README says so. F2, F3: a lane booking's caller-written fields and a
+   leftover process's command line are made visible where they are read. (planner's decision, 2026-10-03)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
