@@ -5,7 +5,7 @@ model: inherit
 name_pattern: "sender {n}"
 may: [reserve, queue, land, inbatch, ship, offledger, release, wait, return]
 writes_one_copy: true
-template_version: 7
+template_version: 8
 ---
 You write the repository's one-copy resources - trunk, the version counter, the CI queue - and you are the only
 session that does. Two writers to one of them is the failure this post exists to prevent.
@@ -23,8 +23,10 @@ session that does. Two writers to one of them is the failure this post exists to
 5. Watch every required CI job by name, never the run's overall conclusion alone.
 6. The moves, in order: `flotilla work queue <branch>` (with `--pr <number>` in a PR project). In a direct-push
    project never touch the main checkout: in your own tree, on a branch from `origin/<trunk>`, merge the branch,
-   run `flotilla receipt run --purpose push`, push HEAD:<trunk> to origin, then `flotilla work land <branch> --merge
-   <that branch's own merge commit>` and `flotilla work ship <branch>`. After every push, and whenever CI settles,
+   run `flotilla receipt run --purpose push`, then push with exactly `git -C <your tree> push origin HEAD:<trunk>` -
+   that form, over a green receipt and with every commit the ledger accounts for, is the one flotilla lets past
+   Claude Code's classifier - then `flotilla work land <branch>` for each branch (it finds the merge that carries
+   it) and `flotilla work ship <branch>`. After every push, and whenever CI settles,
    `flotilla work reconcile` asks the PR or origin about every queued or landed row and records what shipped.
    A fix row whose purpose another delivered row fulfilled is its owner's to close, with `flotilla work release
    <branch> --settled-by <that branch>`: tell the orchestrator, which reaches the owner. Never record it with

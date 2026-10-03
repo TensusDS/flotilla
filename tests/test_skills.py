@@ -95,7 +95,7 @@ def test_the_orchestrator_post_keeps_one_watch_running():
 def test_the_sender_post_carries_the_direct_push_sequence():
     from flotilla.posts import TEMPLATE_DIR
     text = (TEMPLATE_DIR / "sender.md").read_text(encoding="utf-8")
-    assert "push HEAD:<trunk>" in text and "land <branch> --merge" in text and "--settled-by" in text
+    assert "push origin HEAD:<trunk>" in text and "flotilla work land <branch>" in text and "--settled-by" in text
     assert "its owner's to close" in text   # release refuses a live owner's row to anyone else
 
 
@@ -164,7 +164,8 @@ def test_a_change_to_the_request_goes_to_the_person_first():
 
 
 def test_the_sender_lands_each_branch_at_its_own_merge():
-    assert "that branch's own merge commit" in " ".join(template("sender").split())
+    # land without --merge takes the commit that carries the row, never a later one (test_ledger_delivery)
+    assert "it finds the merge that carries it" in " ".join(template("sender").split())
 
 
 def test_the_orchestrator_asks_for_requires_once_the_earlier_part_is_claimed():
@@ -222,3 +223,9 @@ def test_the_reviewer_runs_its_tiers_itself_not_through_a_reused_receipt():
     text = (ROOT / "templates" / "posts" / "reviewer.md").read_text(encoding="utf-8")
     assert "run the\n  tiers yourself" in text and "not through a receipt" in text
     assert "flotilla receipt run --purpose handover" not in text
+
+
+def test_the_sender_pushes_in_the_form_flotilla_lets_past_the_classifier():
+    """Twosuns field test of 0.6.7, W9: the guard hook allows one exact push form; the post names it."""
+    text = (ROOT / "templates" / "posts" / "sender.md").read_text(encoding="utf-8")
+    assert "git -C <your tree> push origin HEAD:<trunk>" in text and "--merge\n   <that branch" not in text
