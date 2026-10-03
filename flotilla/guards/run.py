@@ -95,7 +95,8 @@ _SAFE_CONFIG = (r"core\.(repositoryformatversion|filemode|bare|logallrefupdates|
 
 
 def _git_out(at, *args, run):
-    done = run(["git", "-C", str(at), *args], capture_output=True, text=True, check=False, timeout=30)
+    done = run(["git", "-C", str(at), *args], capture_output=True, text=True, check=False, timeout=8)   # the hook
+    # itself has 30 s; a slow call fails safe - no allow - but should not take the whole budget (final review, I1)
     return done.stdout.strip() if done.returncode == 0 else None
 
 
@@ -105,19 +106,28 @@ def _caller_name(session_id: str) -> str:
     if not session_id:
         return ""
     try:
-        return next((item.name or "" for item in read_census() if item.session_id == session_id), "")
+        return next((item.name or "" for item in read_census(timeout=8) if item.session_id == session_id), "")
     except Exception:  # noqa: BLE001 - who calls could not be asked, so nothing is allowed on its behalf
         return ""
 
 
 def _config_is_plain(tree: Path, run) -> bool:
+    """The repository's own config holds only plain keys - judged by where an entry comes from, not by the scope git
+    names: a global includeIf may read a file inside the repository (final review of 0.6.10, M2)."""
     import re
-    listed = _git_out(tree, "config", "--list", "--show-scope", run=run)
-    if listed is None:
+    listed = _git_out(tree, "config", "--list", "--show-scope", "--show-origin", run=run)
+    common = _git_out(tree, "rev-parse", "--path-format=absolute", "--git-common-dir", run=run)
+    if listed is None or not common:
         return False
+    inside = (tree.resolve(), Path(common).resolve())
     for line in listed.splitlines():
-        scope, _, entry = line.partition("\t")
-        if scope not in ("local", "worktree"):
+        scope, _, rest = line.partition("\t")
+        origin, _, entry = rest.partition("\t")
+        source = Path(origin.split(":", 1)[1]) if origin.startswith("file:") else None
+        if source is not None and not source.is_absolute():
+            source = tree / source
+        ours = source is not None and any(source.resolve().is_relative_to(place) for place in inside)
+        if scope not in ("local", "worktree") and not ours:
             continue
         key = entry.split("=", 1)[0].lower()
         if not any(re.fullmatch(pattern, key) for pattern in _SAFE_CONFIG):
@@ -172,7 +182,13 @@ def _senders_push(command: str, cwd, root, session_id: str, run) -> str:
         return ""
     if not _config_is_plain(tree, run):   # before any network call: nothing in the repo's config runs on it
         return ""
-    listed = _git_out(tree, "-c", f"core.hooksPath={_empty_hooks()}", "ls-remote", "origin", f"refs/heads/{trunk}",
+    # one origin URL, the project's own: a second one received the push too, and the first answered ls-remote (C1)
+    urls = (_git_out(tree, "config", "--show-scope", "--get-all", "remote.origin.url", run=run) or "").splitlines()
+    own = (_git_out(root, "config", "--get-all", "remote.origin.url", run=run) or "").splitlines()
+    if len(urls) != 1 or len(own) != 1 or urls[0] != f"local\t{own[0]}":
+        return ""
+    url = own[0]
+    listed = _git_out(tree, "-c", f"core.hooksPath={_empty_hooks()}", "ls-remote", url, f"refs/heads/{trunk}",
                       run=run)
     base = listed.split()[0] if listed else ""
     head = gitq.resolve(tree, "HEAD", run=run)
@@ -180,8 +196,8 @@ def _senders_push(command: str, cwd, root, session_id: str, run) -> str:
         return ""
     if batch.unaccounted(ledger, rows, head, since=base) != []:
         return ""
-    return (f"git -C {shlex.quote(str(tree))} -c core.hooksPath={shlex.quote(str(_empty_hooks()))} push origin "
-            f"{head}:refs/heads/{trunk}")
+    return (f"git -C {shlex.quote(str(tree))} -c core.hooksPath={shlex.quote(str(_empty_hooks()))} push "
+            f"{shlex.quote(url)} {head}:refs/heads/{trunk}")
 
 
 def allowance(command: str, cwd, root, *, session_id: str = "", run=subprocess.run) -> tuple[str, str]:
@@ -214,7 +230,8 @@ def guard_hook(command: str, cwd, root, out, *, env=os.environ, run=subprocess.r
                                else "the command runs unchecked"))]
     refusals = [finding.text for finding in findings if finding.refuse]
     # the allow answers auto mode's classifier only: in ask mode the person sees what they chose to see
-    allowed, rewritten = ("", "") if findings or mode != "auto" else \
+    sandboxed = not (tool_input or {}).get("dangerouslyDisableSandbox")   # its prompt stays (final review, M1)
+    allowed, rewritten = ("", "") if findings or mode != "auto" or not sandboxed else \
         allowance(command, cwd, root, session_id=session_id, run=run)
     if refusals:
         body = {"hookEventName": "PreToolUse", "permissionDecision": "deny",

@@ -506,3 +506,53 @@ def test_an_own_command_on_another_repository_is_left_to_the_classifier(tmp_path
     outside = tmp_path / "outside"
     outside.mkdir()
     assert not _allowed(ask(root, f"{CLI} status", monkeypatch, tmp_path, cwd=outside))
+
+
+def test_a_second_origin_url_is_left_to_the_classifier(tmp_path, monkeypatch):
+    """Final review of 0.6.10, C1: two local url values passed the key check; `git push origin` pushed to both, and
+    `ls-remote origin` asked the first - a decoy that could report any base."""
+    from guardkit import IDENTITY, git, receipt
+    root = _accounted_sender(tmp_path, monkeypatch)
+    (root / "own.txt").write_text("unreviewed\n", encoding="utf-8")
+    git(root, "add", "own.txt")
+    git(root, *IDENTITY, "commit", "-q", "-m", "unreviewed")
+    receipt(root, tmp_path / "state")
+    decoy = tmp_path / "decoy.git"
+    git(tmp_path, "init", "-q", "--bare", str(decoy))
+    git(root, "push", "-q", str(decoy), "HEAD:refs/heads/main")   # the decoy says origin's trunk is HEAD already
+    url = git(root, "remote", "get-url", "origin")
+    git(root, "config", "--unset-all", "remote.origin.url")
+    git(root, "config", "--add", "remote.origin.url", str(decoy))
+    git(root, "config", "--add", "remote.origin.url", url)
+    assert not _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path))
+
+
+def test_the_allowed_push_goes_to_the_one_origin_url_named_explicitly(tmp_path, monkeypatch):
+    from guardkit import git
+    root = _accounted_sender(tmp_path, monkeypatch)
+    url = git(root, "remote", "get-url", "origin")
+    rewritten = ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path)["updatedInput"]["command"]
+    assert f" push {url} " in rewritten and " push origin " not in rewritten
+
+
+def test_a_request_to_leave_the_sandbox_gets_no_allow(tmp_path, monkeypatch):
+    """Final review of 0.6.10, M1: the allow skipped the prompt dangerouslyDisableSandbox would cause."""
+    root = onboarded(tmp_path)
+    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
+    payload = {"cwd": str(root), "tool_name": "Bash", "permission_mode": "auto", "session_id": "s",
+               "tool_input": {"command": f"{CLI} status", "dangerouslyDisableSandbox": True}}
+    out = io.StringIO()
+    hooks.run_hook("guard", io.StringIO(json.dumps(payload)), out=out)
+    assert not _allowed(json.loads(out.getvalue())["hookSpecificOutput"] if out.getvalue() else None)
+
+
+def test_config_a_global_include_reads_from_inside_the_repository_is_not_trusted(tmp_path, monkeypatch):
+    """Final review of 0.6.10, M2: a global includeIf pointing into the repository reported its entries as global."""
+    from guardkit import git
+    root = _accounted_sender(tmp_path, monkeypatch)
+    inside = root / ".git" / "extra.cfg"
+    inside.write_text("[remote \"origin\"]\n\tpushurl = /tmp/elsewhere.git\n", encoding="utf-8")
+    global_cfg = tmp_path / "global.cfg"
+    global_cfg.write_text(f'[includeIf "gitdir:{root}/"]\n\tpath = {inside}\n', encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(global_cfg))
+    assert not _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path))

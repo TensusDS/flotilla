@@ -134,7 +134,7 @@ def _same_repository(a, b) -> bool:
 
     def common(at):
         done = subprocess.run(["git", "-C", str(at), "rev-parse", "--path-format=absolute", "--git-common-dir"],
-                              capture_output=True, text=True, check=False, timeout=10)
+                              capture_output=True, text=True, check=False, timeout=5)
         return Path(done.stdout.strip()).resolve() if done.returncode == 0 and done.stdout.strip() else None
     try:
         first, second = common(a), common(b)
