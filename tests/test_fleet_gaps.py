@@ -119,3 +119,14 @@ def test_gaps_count_a_live_reviewer_under_its_alias(tmp_path, monkeypatch):
     _census(monkeypatch, _a_session("orchestrator 1", root), _a_session("review session 1", root))
     code, out = run_cli("spawn", "--fill", "--root", str(root))
     assert code == 0 and "nothing to raise" in out and "gap:" not in out, out
+
+
+def test_the_dry_run_says_what_each_seat_is_allowed(tmp_path, monkeypatch):
+    """0.6.10: seats are launched with allow rules; the person sees them before raising anything."""
+    root = _onboarded(tmp_path, monkeypatch, {"orchestrator": 1, "sender": 1, "main": 1},
+                      flow={"mode": "direct", "merge_authorized_by": "sender"})
+    _census(monkeypatch)
+    code, out = run_cli("spawn", "--default", "--dry-run", "--root", str(root))
+    allows = [line for line in out.splitlines() if "allows:" in line]
+    assert code == 0 and len(allows) == 3, out
+    assert sum("a push of `main`" in line for line in allows) == 1

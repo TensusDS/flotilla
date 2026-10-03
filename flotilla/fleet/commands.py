@@ -188,6 +188,8 @@ def _spawn(ledger, args) -> int:
                   + f"  (from {main})")
             off = ", ".join(narrow.turned_off(post)) or "none"
             print(f"    turns off: {off if narrow.entries is not None else 'unknown, ' + plugins.NOT_NARROWED}")
+            push = f", and a push of `{ledger.trunk}` from its tree" if "land" in post.may else ""
+            print(f"    allows: flotilla's own moves but the person's{push} - flotilla's hooks still judge each")
         print(f"dry run: {len(seats)} session(s) planned; nothing was changed")
         for line in _gaps(ledger, counts):
             print(f"gap: {line}")
