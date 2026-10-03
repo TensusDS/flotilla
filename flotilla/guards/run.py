@@ -78,43 +78,84 @@ def _own(command: str) -> bool:
     return own_command({"tool_name": "Bash", "tool_input": {"command": command}})
 
 
+#: The one push form the guard lets past the classifier: the tree named absolutely, nothing the shell would read.
+_PATH = r"/[^\s'\"\\$`;&|<>()*?\[\]{}~!#]+"
+
+
+def _git_out(at, *args, run):
+    done = run(["git", "-C", str(at), *args], capture_output=True, text=True, check=False, timeout=30)
+    return done.stdout.strip() if done.returncode == 0 else None
+
+
+def _own_hooks(tree: Path, run) -> bool:
+    """No hook but flotilla's own runs on this push: no core.hooksPath, and a pre-push hook - if any - is exactly the
+    script `flotilla guard install` writes, calling the command line it links to (review of 0.6.10, I2)."""
+    from flotilla.core import paths
+    from flotilla.guards import githooks
+    from flotilla.hooks import CLI
+    if _git_out(tree, "config", "core.hooksPath", run=run):
+        return False
+    found = _git_out(tree, "rev-parse", "--git-path", "hooks/pre-push", run=run)
+    if found is None:
+        return False
+    hook = Path(found) if Path(found).is_absolute() else tree / found
+    if not hook.exists():
+        return True
+    if hook.read_text(encoding="utf-8", errors="replace") != githooks.script("pre-push"):
+        return False
+    link = paths.state_dir() / "bin" / "flotilla"
+    return link.exists() and link.resolve() == CLI.resolve()
+
+
 def _senders_push(command: str, cwd, root, run) -> bool:
     """Whether this is the sender's push of accounted work, as every check flotilla has says (twosuns field test of
-    0.6.7, W9; review of 0.6.10, I2, I3): one exact push of HEAD to trunk, no option; a direct-flow project with the
-    receipt guard on; the tree is the home of an open row whose owner's post may land; and the ledger accounts for
-    every commit the push carries. The push guard itself has already run and found nothing to say."""
-    from flotilla.guards import shell
+    0.6.7, W9; reviews of 0.6.10): exactly `git -C <absolute tree> push origin HEAD:<trunk>` and nothing else - no
+    `cd`, wrapper or option; a direct-flow project with the receipt guard on; the tree a checkout of the project's
+    repository and the home of an open row whose owner's post may land; origin pushing where the project's main
+    checkout fetches from, with no URL rewriting and no hook but flotilla's; and every commit the push carries past
+    origin's trunk - asked of origin, not of a local ref the seat could move - accounted for by the ledger. The push
+    guard itself has already run and found nothing to say."""
+    import re
     from flotilla.guards.rules import rules_for
     from flotilla.ledger import batch, gitq
     from flotilla.ledger.commands import open_ledger
     from flotilla.posts import post_for_session
     if root is None:
         return False
-    profile, _ = rules_for(Path(root), run=run)
+    root = Path(root)
+    profile, _ = rules_for(root, run=run)
     trunk = str((profile.get("trunk") or {}).get("branch") or "main")
     if (profile.get("flow") or {}).get("mode") != "direct" or not (profile.get("guards") or {}).get("push_receipt"):
         return False
-    segments = shell.segments(command, Path(cwd) if cwd else None)
-    if len(segments) != 1 or segments[0].assignments:
+    match = re.fullmatch(rf"git -C ({_PATH}) push origin HEAD:{re.escape(trunk)}", command)
+    if match is None:
         return False
-    words = list(segments[0].words)
-    if words == ["git", "push", "origin", f"HEAD:{trunk}"]:
-        tree = Path(cwd)
-    elif len(words) == 6 and words[:2] == ["git", "-C"] and words[3:] == ["push", "origin", f"HEAD:{trunk}"]:
-        tree = Path(words[2])
-    else:
-        return False
-    tree = tree.resolve()
-    ledger = open_ledger(Path(root))
+    tree = Path(match.group(1)).resolve()
+    ledger = open_ledger(root)
     rows = ledger.rows()
     home = [row for row in rows.values() if row.is_open and row.tree and Path(row.tree).resolve() == tree]
     if not any((post := post_for_session(ledger.posts, row.owner)) is not None and "land" in post.may
                for row in home):
         return False
+
+    def common(at):
+        found = _git_out(at, "rev-parse", "--git-common-dir", run=run)
+        return (Path(found) if Path(found).is_absolute() else Path(at) / found).resolve() if found else None
+    if common(tree) is None or common(tree) != common(root):
+        return False
+    target = _git_out(tree, "remote", "get-url", "--push", "origin", run=run)
+    if not target or target != _git_out(root, "remote", "get-url", "origin", run=run):
+        return False
+    if _git_out(tree, "config", "--get-regexp", r"^url\..*insteadof$", run=run):
+        return False
+    if not _own_hooks(tree, run):
+        return False
+    listed = _git_out(tree, "ls-remote", "origin", f"refs/heads/{trunk}", run=run)
+    base = listed.split()[0] if listed else ""
+    if not base or gitq.resolve(tree, base, run=run) is None:
+        return False
     head = gitq.resolve(tree, "HEAD", run=run)
-    remote = gitq.resolve(tree, f"refs/remotes/origin/{trunk}", run=run) or ""
-    loose = batch.unaccounted(ledger, rows, head, since=remote) if head else None
-    return loose == []
+    return head is not None and batch.unaccounted(ledger, rows, head, since=base) == []
 
 
 def allowance(command: str, cwd, root, *, run=subprocess.run) -> str:

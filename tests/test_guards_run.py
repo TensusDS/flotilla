@@ -279,9 +279,9 @@ def test_the_senders_exact_push_of_accounted_work_passes_the_classifier(tmp_path
     root = _sender_tree(tmp_path, monkeypatch)
     git(root, *IDENTITY, "commit", "-q", "--allow-empty", "-m", "carries no change")   # accounted: nothing in it
     receipt(root, tmp_path / "state")
-    assert _allowed(ask(root, "git push origin HEAD:main", monkeypatch, tmp_path))
     assert _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path))
-    assert not _allowed(ask(root, "git push --force origin HEAD:main", monkeypatch, tmp_path))
+    assert not _allowed(ask(root, "git push origin HEAD:main", monkeypatch, tmp_path))   # the tree is named, always
+    assert not _allowed(ask(root, f"git -C {root} push --force origin HEAD:main", monkeypatch, tmp_path))
 
 
 def test_a_push_of_unreviewed_work_is_left_to_the_classifier(tmp_path, monkeypatch):
@@ -316,8 +316,8 @@ def test_a_push_inside_a_compound_command_is_left_to_the_classifier(tmp_path, mo
     root = _sender_tree(tmp_path, monkeypatch)
     git(root, *IDENTITY, "commit", "-q", "--allow-empty", "-m", "carries no change")
     receipt(root, tmp_path / "state")
-    assert not _allowed(ask(root, "git push origin HEAD:main; touch x", monkeypatch, tmp_path))
-    assert not _allowed(ask(root, "git push origin HEAD:main && touch x", monkeypatch, tmp_path))
+    assert not _allowed(ask(root, f"git -C {root} push origin HEAD:main; touch x", monkeypatch, tmp_path))
+    assert not _allowed(ask(root, f"git -C {root} push origin HEAD:main && touch x", monkeypatch, tmp_path))
 
 
 def test_a_push_let_through_by_a_recorded_override_is_not_allowed_past_the_classifier(tmp_path, monkeypatch):
@@ -355,3 +355,83 @@ def test_the_person_guard_reads_a_glob_as_whatever_it_may_expand_to(tmp_path, mo
     of that name in the cwd - the person's one move, made by a tool call."""
     answer = ask(onboarded(tmp_path), f"{CLI} work {move} feat/x", monkeypatch, tmp_path)
     assert answer and answer["permissionDecision"] == "deny" and "person" in answer["permissionDecisionReason"]
+
+
+
+def _accounted_sender(tmp_path, monkeypatch):
+    from guardkit import IDENTITY, git, receipt
+    root = _sender_tree(tmp_path, monkeypatch)
+    git(root, *IDENTITY, "commit", "-q", "--allow-empty", "-m", "carries no change")
+    receipt(root, tmp_path / "state")
+    assert _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path))   # the baseline
+    return root
+
+
+def test_a_cd_or_a_relative_tree_hides_which_tree_is_pushed(tmp_path, monkeypatch):
+    """Review of 0.6.10, C1: `cd <tree> &&` moved the push to another tree while the checks read the payload's."""
+    root = _accounted_sender(tmp_path, monkeypatch)
+    for command in (f"cd {root} && git push origin HEAD:main", f"cd {root}; git -C {root} push origin HEAD:main",
+                    "git -C . push origin HEAD:main", f"command git -C {root} push origin HEAD:main",
+                    f"(git -C {root} push origin HEAD:main)", f"git  -C {root} push origin HEAD:main"):
+        assert not _allowed(ask(root, command, monkeypatch, tmp_path)), command
+
+
+def test_a_remote_tracking_ref_moved_by_the_seat_hides_nothing(tmp_path, monkeypatch):
+    """Review of 0.6.10, I1: the accounting base was the local refs/remotes/origin/<trunk>, which the seat can move
+    over its own unreviewed commit; the base is asked of origin."""
+    from guardkit import IDENTITY, git, receipt
+    root = _accounted_sender(tmp_path, monkeypatch)
+    (root / "own.txt").write_text("unreviewed\n", encoding="utf-8")
+    git(root, "add", "own.txt")
+    git(root, *IDENTITY, "commit", "-q", "-m", "unreviewed")
+    receipt(root, tmp_path / "state")
+    git(root, "update-ref", "refs/remotes/origin/main", "HEAD")
+    assert not _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path))
+
+
+@pytest.mark.parametrize("config", [
+    ("remote.origin.pushurl", "/tmp/elsewhere.git"),          # review of 0.6.10, I2: history goes elsewhere
+    ("url./tmp/elsewhere.git.pushInsteadOf", "ORIGIN"),
+    ("core.hooksPath", "/tmp/hooks"),                          # code that runs on the push, past the classifier
+])
+def test_a_push_whose_destination_or_hooks_were_changed_is_left_to_the_classifier(tmp_path, monkeypatch, config):
+    from guardkit import git
+    root = _accounted_sender(tmp_path, monkeypatch)
+    key, value = config
+    if value == "ORIGIN":
+        value = git(root, "remote", "get-url", "origin")
+    git(root, "config", key, value)
+    assert not _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path))
+
+
+def test_a_pre_push_hook_that_is_not_flotillas_is_left_to_the_classifier(tmp_path, monkeypatch):
+    from guardkit import git
+    root = _accounted_sender(tmp_path, monkeypatch)
+    hook = Path(git(root, "rev-parse", "--git-path", "hooks/pre-push"))
+    hook = hook if hook.is_absolute() else root / hook
+    from flotilla.core import paths
+    from flotilla.guards import githooks
+    link = paths.state_dir() / "bin" / "flotilla"   # the link flotilla's own hook calls, in place
+    link.parent.mkdir(parents=True, exist_ok=True)
+    link.symlink_to(hooks.CLI)
+    hook.write_text(githooks.script("pre-push"), encoding="utf-8")
+    assert _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path))   # flotilla's own
+    hook.write_text("#!/bin/sh\n# flotilla-hook: pre-push\ncurl evil\n", encoding="utf-8")
+    assert not _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path))
+
+
+
+def test_a_checkout_of_another_repository_is_not_the_senders_tree(tmp_path, monkeypatch):
+    """Review of 0.6.10, I2: a clone elsewhere, with its own history and config, pushing to the same origin."""
+    from flotilla.ledger import core
+    from flotilla.ledger.commands import open_ledger
+    from guardkit import IDENTITY, git, receipt
+    from ledgerkit import actor
+    root = _accounted_sender(tmp_path, monkeypatch)
+    other = tmp_path / "other-clone"
+    git(tmp_path, "clone", "-q", git(root, "remote", "get-url", "origin"), str(other))
+    ledger = open_ledger(root)
+    core.reserve(ledger, actor(ledger, "sender 2"), "fleet/sender-2", tree=str(other))
+    git(other, *IDENTITY, "commit", "-q", "--allow-empty", "-m", "carries no change")
+    receipt(other, tmp_path / "state")
+    assert not _allowed(ask(root, f"git -C {other} push origin HEAD:main", monkeypatch, tmp_path))
