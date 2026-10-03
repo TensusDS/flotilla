@@ -182,6 +182,13 @@ def _senders_push(command: str, cwd, root, session_id: str, run) -> str:
         return ""
     if not _config_is_plain(tree, run):   # before any network call: nothing in the repo's config runs on it
         return ""
+    # the accounting reads history through replace refs and grafts; a push sends the real objects (review after the
+    # final one): with any of them, or a shallow history, what is counted may not be what is pushed
+    common = _git_out(tree, "rev-parse", "--path-format=absolute", "--git-common-dir", run=run)
+    if not common or _git_out(tree, "for-each-ref", "--count=1", "refs/replace/", run=run) != "" \
+            or (Path(common) / "info" / "grafts").exists() \
+            or _git_out(tree, "rev-parse", "--is-shallow-repository", run=run) != "false":
+        return ""
     # one origin URL, the project's own: a second one received the push too, and the first answered ls-remote (C1)
     urls = (_git_out(tree, "config", "--show-scope", "--get-all", "remote.origin.url", run=run) or "").splitlines()
     own = (_git_out(root, "config", "--get-all", "remote.origin.url", run=run) or "").splitlines()

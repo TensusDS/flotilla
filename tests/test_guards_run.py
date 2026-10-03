@@ -556,3 +556,18 @@ def test_config_a_global_include_reads_from_inside_the_repository_is_not_trusted
     global_cfg.write_text(f'[includeIf "gitdir:{root}/"]\n\tpath = {inside}\n', encoding="utf-8")
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(global_cfg))
     assert not _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path))
+
+
+def test_a_replaced_history_is_left_to_the_classifier(tmp_path, monkeypatch):
+    """The ledger's accounting reads history through refs/replace (git honours them by default), while a push sends
+    the real objects: a replace ref could dress an unreviewed commit as an accounted one. Any replace ref, graft or
+    shallow history and the classifier decides."""
+    from guardkit import IDENTITY, git, receipt
+    root = _accounted_sender(tmp_path, monkeypatch)
+    accounted = git(root, "rev-parse", "HEAD")
+    (root / "own.txt").write_text("unreviewed\n", encoding="utf-8")
+    git(root, "add", "own.txt")
+    git(root, *IDENTITY, "commit", "-q", "-m", "unreviewed")
+    receipt(root, tmp_path / "state")
+    git(root, "replace", "-f", git(root, "rev-parse", "HEAD"), accounted)
+    assert not _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path))
