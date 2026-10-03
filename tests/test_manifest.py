@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -55,3 +56,25 @@ def test_the_readme_says_how_to_install():
 def test_the_readme_says_what_project_scope_commits():
     text = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
     assert "commits a marketplace entry that points at this repository" in text
+
+
+def test_the_listing_names_privacy_support_and_documentation():
+    """Directory readiness, p.3 (Software Directory Policy: a privacy policy link, verified support channels,
+    documentation). The directory reads these fields from plugin.json; each points at a file in this repository."""
+    manifest = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    base = "https://github.com/TensusDS/flotilla"
+    assert manifest["privacyPolicyUrl"] == f"{base}/blob/main/PRIVACY.md"
+    assert manifest["supportUrl"] == f"{base}/blob/main/SUPPORT.md"
+    assert manifest["documentationUrl"] == f"{base}/blob/main/USER_MANUAL.md"
+    for name in ("PRIVACY.md", "SUPPORT.md", "SECURITY.md", "USER_MANUAL.md", "CHANGELOG.md"):
+        assert (ROOT / name).is_file(), name
+    assert "Claude Code only" in manifest["description"]
+
+
+def test_the_readme_gives_at_least_three_examples():
+    """The policy asks for "at least three working examples of prompts or use cases"; each names a skill that exists."""
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    section = text.split("## Examples", 1)[1].split("\n## ", 1)[0]
+    used = set(re.findall(r"/flotilla:([a-z-]+)", section))
+    assert len(re.findall(r"^\d+\. ", section, re.M)) >= 3
+    assert used and all((ROOT / "skills" / name / "SKILL.md").is_file() for name in used)

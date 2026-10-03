@@ -2,6 +2,10 @@
 
 Run a fleet of Claude Code sessions on one project, on one machine, without them stepping on each other.
 
+**Claude Code only.** flotilla needs the Bash tool, git worktrees and background sessions (`claude --bg`), so it
+runs in the Claude Code CLI, the IDE extensions and the desktop app's Code tab. claude.ai chat and Cowork do not
+install it.
+
 flotilla gives each session a **post** (a role with a name and a fixed set of moves), its own **git worktree**, and a
 shared **work ledger** where every handover, review verdict and merge is recorded with the evidence that makes it
 true. It books the machine for long test runs so two suites do not starve each other, guards a few commands that do
@@ -186,6 +190,24 @@ origin's trunk (or a squash whose exact tip the ledger shipped), no commit only 
 stays, and says why. `flotilla fleet clean` sweeps the same way for what a forced stop or an older fleet left - only
 what the fleet made, never a tree or branch of your own: a plan first, `--yes` to act.
 
+## Examples
+
+Four things to try once the repository is onboarded. Each is typed in Claude Code; what happens is what flotilla
+does today.
+
+1. **Raise a fleet.** Type `/flotilla:spawn`. It asks who leads - this session or a background orchestrator - shows
+   the plan first (seat names, worktrees, branches, the permission mode, any warning), asks about anyone the fleet
+   would lack, and raises the seats on your yes. Each gets its own worktree and its post's instructions.
+2. **Hand the fleet a feature.** To the orchestrator: *"Add CSV export to the reports page. Build the API and the UI
+   in parallel, and have each reviewed by a session that did not write it."* It assigns the parts; each builder
+   claims a branch in its own tree, hands it over with the revision it handed, a reviewer reads exactly that
+   revision, and the sender ships what was accepted. Every step lands in the ledger with its evidence.
+3. **Ask where things stand.** Type `/flotilla:status`, or ask the orchestrator *"Who is waiting on whom?"*. You get
+   each session's state - idle, working, waiting and on whom, blocked - and whose move each open piece of work is.
+4. **Answer once for a batch.** Type `/flotilla:brief`. It shows every piece of work ready to ship, who accepted it
+   over which revision, what is held back and why, and what verifies it. Answer yes once; where your profile has
+   you approve merges, each branch's approve command is printed ready to type.
+
 ---
 
 ## Contents
@@ -205,7 +227,8 @@ Setup is above. The rest of this file:
 11. [Security model and its limits](#security-model-and-its-limits)
 12. [Updating, and removing flotilla](#updating-and-removing-flotilla)
 13. [Development](#development)
-14. [License](#license)
+14. [Support, privacy and security](#support-privacy-and-security)
+15. [License](#license)
 
 ---
 
@@ -460,7 +483,7 @@ The 2026-10-01 security review, its 25 findings and how each was fixed are recor
     claude plugin update flotilla@flotilla --scope project
 
 Restart the sessions so they load the new version, and bring `.flotilla/posts/` up to the new templates (see
-[The posts](#the-posts)). Release notes are the tagged commits on GitHub.
+[The posts](#the-posts)). What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 
 **Remove.**
 
@@ -483,6 +506,12 @@ claude plugin validate .                                                        
 
 The design is in `docs/specs/2026-09-22-flotilla-design.md`; every decision since, with its reason, is in
 `docs/specs/2026-09-22-decisions-log.md`.
+
+## Support, privacy and security
+
+- Questions and defects: [GitHub issues](https://github.com/TensusDS/flotilla/issues) - see [SUPPORT.md](SUPPORT.md).
+- What flotilla reads and stores, and that it sends nothing anywhere: [PRIVACY.md](PRIVACY.md).
+- A vulnerability: report it privately - see [SECURITY.md](SECURITY.md).
 
 ## License
 
