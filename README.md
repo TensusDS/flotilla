@@ -104,8 +104,9 @@ auto mode only, after every guard has run and found nothing, and for two things:
   that owns that tree, in a repository whose own git config holds nothing that runs code or sends a push elsewhere,
   with a green receipt and every commit past origin's trunk accounted for by the ledger. The rules that grant it -
   the flow, the posts, whether a person approves merges - are read at the revision origin names as its trunk, and
-  the checkout's `origin/<trunk>` must be that revision. It runs rewritten: the commit that was checked, pushed with
-  no repository hook.
+  the checkout's `origin/<trunk>` must be that revision. A reviewed row counts only if every move on it was made
+  under that same `.flotilla` (so work recorded before 0.6.11, or before the last change to `.flotilla`, is the
+  classifier's to judge). It runs rewritten: the commit that was checked, pushed with no repository hook.
 
 Anything else is the classifier's to decide, as before; unreviewed work still meets it. Your own `deny` rules still
 win over this allow, and in `ask` mode nothing changes. This leans on Claude Code honouring a hook's allow, deny and

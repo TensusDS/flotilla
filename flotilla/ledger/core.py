@@ -27,7 +27,7 @@ from flotilla.posts import PostError, post_for_session
 
 class Ledger:
     def __init__(self, *, store, root, repo_key: str, profile: dict, posts: dict, state_dir, run=subprocess.run,
-                 census=None, clock=None, version: str = __version__, rules: str = "",
+                 census=None, clock=None, version: str = __version__, rules: str = "", rules_tree: str = "",
                  events: dict | None = None, skip_events: dict | None = None):
         self.store = store
         self.root = Path(root)
@@ -40,6 +40,7 @@ class Ledger:
         self.clock = clock
         self.version = version
         self.rules = rules
+        self.rules_tree = rules_tree
         self.events = events or {}
         self.skip_events = skip_events or {}
         self.notices: list[str] = []
@@ -160,7 +161,7 @@ class LedgerSession:
         event = make_event(row=row_id, move=move, state=state, by=actor.name,
                            post=actor.post.name if actor.post else "", via=actor.via, fields=fields,
                            evidence=evidence, at=self.ledger.now(), plugin=self.ledger.version,
-                           caller=actor.caller, rules=self.ledger.rules)
+                           caller=actor.caller, rules=self.ledger.rules, rules_tree=self.ledger.rules_tree)
         self.tx.append(event)
         self.rows = fold(self.tx.read().records)
         if changes:

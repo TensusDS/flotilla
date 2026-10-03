@@ -134,7 +134,7 @@ def _patch_ids(ledger, *log_args: str) -> list[str]:
 class Accounting:
     """What the reviewed rows and the batch rows vouch for, read from git once per question."""
 
-    def __init__(self, ledger, rows: dict[str, Row]):
+    def __init__(self, ledger, rows: dict[str, Row], *, rules_tree: str = ""):
         self.ledger = ledger
         self.read: dict[str, Row] = {}
         self.squashes: dict[str, Row] = {}
@@ -144,6 +144,8 @@ class Accounting:
         profile = ledger.profile
         human = (profile.get("flow") or {}).get("merge_authorized_by") == "human"
         for row in rows.values():
+            if rules_tree and any(step.get("rules_tree") != rules_tree for step in row.history):
+                continue   # a move checked against other rules - a repointed trunk ref - vouches for nothing here
             if human and not approved(row):   # where a person authorizes merges, only work they approved counts (F24)
                 continue
             if row.is_open or delivered(row, profile):   # a released row's vouch accounts for nothing
@@ -207,10 +209,12 @@ def account(ledger, rows: dict[str, Row], sha: str) -> str | None:
     return Accounting(ledger, rows).account(sha)
 
 
-def unaccounted(ledger, rows: dict[str, Row], upto: str, *, base: str = "", since: str = "") -> list[str] | None:
-    """The commits `upto` would carry that no verdict covers; None when what it carries cannot be told."""
+def unaccounted(ledger, rows: dict[str, Row], upto: str, *, base: str = "", since: str = "",
+                rules_tree: str = "") -> list[str] | None:
+    """The commits `upto` would carry that no verdict covers; None when what it carries cannot be told. With
+    `rules_tree`, only rows every move of which was checked against that `.flotilla` tree count (the push allow)."""
     commits = outgoing(ledger, upto, base=base, since=since)
     if commits is None:
         return None
-    accounting = Accounting(ledger, rows)
+    accounting = Accounting(ledger, rows, rules_tree=rules_tree)
     return [sha for sha in commits if accounting.account(sha) is None]

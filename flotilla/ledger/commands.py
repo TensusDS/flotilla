@@ -34,6 +34,7 @@ class Rules:
     posts: dict
     events: dict
     label: str
+    tree: str = ""   # the git tree id of `.flotilla` they were read from: what a move was checked against, by content
 
 
 def _show_bytes(root: Path, sha: str, path: str) -> bytes:
@@ -132,7 +133,9 @@ def trunk_rules(root: Path, *, at: str = "") -> Rules:
     if (profile.get("trunk") or {}).get("branch", "main") != trunk:
         raise config.ConfigError(f"this tree names trunk `{trunk}`, but `{ref}` names another; the rules on trunk "
                                  "are the ones that count")
-    return Rules(profile, posts, scripts, f"{ref}@{sha[:12]}")
+    tree = subprocess.run(["git", "-C", str(local.root), "rev-parse", "--verify", "--quiet", f"{sha}:.flotilla"],
+                          capture_output=True, text=True, check=False).stdout.strip()
+    return Rules(profile, posts, scripts, f"{ref}@{sha[:12]}", tree)
 
 
 def fleet_name(root: Path, profile: dict) -> str:
@@ -162,6 +165,7 @@ def open_ledger(root: Path, *, skip_events: dict | None = None, rules: Rules | N
     state = paths.state_dir()
     return core.Ledger(store=LocalLogStore(state / "ledger"), root=ident.root, repo_key=ident.key,
                        profile=rules.profile, posts=rules.posts, state_dir=state, rules=rules.label,
+                       rules_tree=rules.tree,
                        events=rules.events, skip_events=skip_events)
 
 

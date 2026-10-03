@@ -666,3 +666,56 @@ def test_the_accounting_counts_by_the_rules_origin_named(tmp_path, monkeypatch):
     git(root, "fetch", "-q", "origin")
     monkeypatch.setattr(gitq, "trunk_ref", lambda *a, **k: forged)
     assert not _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path))
+
+
+def test_moves_made_under_a_forged_trunk_ref_account_for_nothing(tmp_path, monkeypatch):
+    """Final review of the scan fixes, C1: the allow read its rules at origin's trunk, but the ledger moves it counts
+    had been made under whatever the local ref said then. A session points the ref at a commit saying review depth
+    `none`, queues unreviewed work through flotilla's own (auto-allowed) moves, puts the ref back and pushes: every
+    move a counted row rests on must have been made under the rules origin's trunk carries."""
+    from flotilla.ledger import core, delivery
+    from flotilla.ledger.commands import open_ledger
+    from guardkit import IDENTITY, git, receipt
+    from ledgerkit import actor
+    root = _accounted_sender(tmp_path, monkeypatch)
+    real = git(root, "rev-parse", "refs/remotes/origin/main")
+    git(root, "switch", "-q", "-c", "forge", real)
+    profile = root / ".flotilla" / "project.toml"
+    profile.write_text(profile.read_text(encoding="utf-8") + '\n[review]\ndepth = "none"\n', encoding="utf-8")
+    git(root, *IDENTITY, "commit", "-q", "-am", "review nothing")
+    forged = git(root, "rev-parse", "HEAD")
+    git(root, "switch", "-q", "main")
+    git(root, "branch", "-q", "-D", "forge")
+    git(root, "update-ref", "refs/remotes/origin/main", forged)
+    git(root, "switch", "-q", "-c", "feat/evil", "main")
+    (root / "evil.txt").write_text("nobody read this\n", encoding="utf-8")
+    git(root, "add", "evil.txt")
+    git(root, *IDENTITY, "commit", "-q", "-m", "unreviewed")
+    git(root, "switch", "-q", "main")
+    ledger = open_ledger(root)
+    core.claim(ledger, actor(ledger, "main session 1"), "feat/evil")
+    delivery.queue(ledger, actor(ledger, "sender 1"), "feat/evil")   # no review asked: the forged depth says none
+    git(root, "update-ref", "refs/remotes/origin/main", real)
+    git(root, "merge", "-q", "--ff-only", "feat/evil")
+    receipt(root, tmp_path / "state")
+    assert not _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path))
+
+
+def test_the_receipt_the_allow_names_is_asked_under_origins_rules(tmp_path, monkeypatch):
+    """Final review of the scan fixes, I1: the allow says the receipt is green, but it took that from the push guard,
+    which read its tiers from the local ref; a ref repointed while the guard ran made "no tier applies to push" pass.
+    The allow asks for the receipt again, under the rules read at origin's trunk."""
+    from flotilla.ledger import gitq
+    from guardkit import IDENTITY, git
+    root = _accounted_sender(tmp_path, monkeypatch)
+    real = git(root, "rev-parse", "refs/remotes/origin/main")
+    git(root, "switch", "-q", "-c", "forge", real)
+    profile = root / ".flotilla" / "project.toml"
+    profile.write_text(profile.read_text(encoding="utf-8").replace('required_for = ["push"]', 'required_for = []'),
+                       encoding="utf-8")
+    git(root, *IDENTITY, "commit", "-q", "-am", "no tier for push")
+    forged = git(root, "rev-parse", "HEAD")
+    git(root, "switch", "-q", "main")
+    git(root, *IDENTITY, "commit", "-q", "--allow-empty", "-m", "no receipt over this one")
+    monkeypatch.setattr(gitq, "trunk_ref", lambda *a, **k: forged)
+    assert not _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path))

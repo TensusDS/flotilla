@@ -225,7 +225,13 @@ def _senders_push(command: str, cwd, root, session_id: str, run) -> str:
     if not any((post := post_for_session(rules.posts, row.owner)) is not None and "land" in post.may
                for row in owned):
         return ""
-    if batch.unaccounted(ledger, rows, head, since=base) != []:
+    if not rules.tree or batch.unaccounted(ledger, rows, head, since=base, rules_tree=rules.tree) != []:
+        return ""
+    # the push guard judged the receipt by the rules it read from the local ref; the allow asks again under origin's
+    from flotilla.core import paths, repo
+    from flotilla.guards import push
+    if push._failures([(trunk, head)], directory=tree, profile=rules.profile, state_dir=paths.state_dir(),
+                      repo_key=repo.identify(root).key, run=run):
         return ""
     return (f"git -C {shlex.quote(str(tree))} -c core.hooksPath={shlex.quote(str(_empty_hooks()))} push "
             f"{shlex.quote(url)} {head}:refs/heads/{trunk}")

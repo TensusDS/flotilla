@@ -90,15 +90,15 @@ def now_iso(now: dt.datetime | None = None) -> str:
 
 
 def make_event(*, row: str, move: str, state: str, by: str, post: str, via: str, fields: dict,
-               evidence: dict, at: str, plugin: str, caller: str = "", rules: str = "") -> dict:
+               evidence: dict, at: str, plugin: str, caller: str = "", rules: str = "", rules_tree: str = "") -> dict:
     unknown = sorted(set(fields) - set(ROW_FIELDS))
     if unknown:
         raise ValueError(f"unknown row fields: {', '.join(unknown)}")
     if state not in STATES:
         raise ValueError(f"unknown state: {state}")
     return {"v": EVENT_VERSION, "at": at, "row": row, "move": move, "state": state, "by": by, "post": post,
-            "via": via, "caller": caller, "rules": rules, "fields": dict(fields), "evidence": dict(evidence),
-            "plugin": plugin}
+            "via": via, "caller": caller, "rules": rules, "rules_tree": rules_tree, "fields": dict(fields),
+            "evidence": dict(evidence), "plugin": plugin}
 
 
 def fold(records) -> dict[str, Row]:
@@ -116,7 +116,7 @@ def fold(records) -> dict[str, Row]:
         row.state = event["state"]
         row.updated_at = event["at"]
         row.history.append({"at": event["at"], "move": event["move"], "by": event["by"],
-                            "caller": event.get("caller", ""),
+                            "caller": event.get("caller", ""), "rules_tree": event.get("rules_tree", ""),
                             "state": event["state"], "evidence": event.get("evidence") or {}})
         rows[row.id] = row
     return rows
