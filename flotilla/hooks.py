@@ -51,12 +51,12 @@ def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime
     if root is None:
         if event == "guard":   # outside every project, a door into one is still that project's to judge (F18)
             from flotilla.guards.run import guard_hook
-            return guard_hook(command, cwd, None, out)
+            return guard_hook(command, cwd, None, out, mode=str(payload.get("permission_mode") or ""))
         return 0
     _trace(event, payload, root, now)
     if event == "guard":
         from flotilla.guards.run import guard_hook
-        return guard_hook(command, cwd, root, out)
+        return guard_hook(command, cwd, root, out, mode=str(payload.get("permission_mode") or ""))
 
     try:
         if gather is None:

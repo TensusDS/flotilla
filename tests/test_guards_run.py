@@ -14,10 +14,11 @@ from guardkit import onboarded
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def ask(root, command, monkeypatch, tmp_path, cwd=None):
+def ask(root, command, monkeypatch, tmp_path, cwd=None, mode="auto"):
     monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
     monkeypatch.delenv("FLOTILLA_GATE_OVERRIDE", raising=False)
-    payload = {"cwd": str(cwd or root), "tool_name": "Bash", "tool_input": {"command": command}}
+    payload = {"cwd": str(cwd or root), "tool_name": "Bash", "tool_input": {"command": command},
+               "permission_mode": mode}
     out = io.StringIO()
     assert hooks.run_hook("guard", io.StringIO(json.dumps(payload)), out=out) == 0
     return json.loads(out.getvalue())["hookSpecificOutput"] if out.getvalue() else None
@@ -326,9 +327,22 @@ def test_a_push_let_through_by_a_recorded_override_is_not_allowed_past_the_class
     root = _sender_tree(tmp_path, monkeypatch)
     git(root, *IDENTITY, "commit", "-q", "--allow-empty", "-m", "carries no change")   # no receipt run
     monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
-    payload = {"cwd": str(root), "tool_name": "Bash", "tool_input": {"command": "git push origin HEAD:main"}}
+    payload = {"cwd": str(root), "tool_name": "Bash", "tool_input": {"command": "git push origin HEAD:main"},
+               "permission_mode": "auto"}
     monkeypatch.setenv("FLOTILLA_GATE_OVERRIDE", "the person said so")
     out = io.StringIO()
     hooks.run_hook("guard", io.StringIO(json.dumps(payload)), out=out)
     answer = json.loads(out.getvalue())["hookSpecificOutput"] if out.getvalue() else None
     assert answer is not None and "override" in json.dumps(answer) and not _allowed(answer)
+
+
+@pytest.mark.parametrize("mode", ["default", "acceptEdits", "dontAsk", "plan", ""])
+def test_the_allow_is_for_auto_mode_only(tmp_path, monkeypatch, mode):
+    """The allow answers auto mode's classifier. In `ask` mode the person sees every command they promised to see,
+    and the person's own session is asked as before; the hook input names the mode (measured on 2.1.288)."""
+    from guardkit import IDENTITY, git, receipt
+    root = _sender_tree(tmp_path, monkeypatch)
+    git(root, *IDENTITY, "commit", "-q", "--allow-empty", "-m", "carries no change")
+    receipt(root, tmp_path / "state")
+    assert not _allowed(ask(root, "git push origin HEAD:main", monkeypatch, tmp_path, mode=mode))
+    assert not _allowed(ask(root, f"{CLI} status", monkeypatch, tmp_path, mode=mode))

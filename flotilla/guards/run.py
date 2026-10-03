@@ -133,7 +133,7 @@ def allowance(command: str, cwd, root, *, run=subprocess.run) -> str:
     return ""
 
 
-def guard_hook(command: str, cwd, root, out, *, env=os.environ, run=subprocess.run) -> int:
+def guard_hook(command: str, cwd, root, out, *, env=os.environ, run=subprocess.run, mode: str = "") -> int:
     try:
         findings = evaluate(command, cwd, root, env=env, run=run)
     except Exception as err:  # noqa: BLE001 - decided by reversibility: a command that may push is refused
@@ -145,7 +145,8 @@ def guard_hook(command: str, cwd, root, out, *, env=os.environ, run=subprocess.r
                                'FLOTILLA_GATE_OVERRIDE="<why>"' if may_push and not knowingly
                                else "the command runs unchecked"))]
     refusals = [finding.text for finding in findings if finding.refuse]
-    allowed = "" if findings else allowance(command, cwd, root, run=run)
+    # the allow answers auto mode's classifier only: in ask mode the person sees what they chose to see
+    allowed = "" if findings or mode != "auto" else allowance(command, cwd, root, run=run)
     if refusals:
         body = {"hookEventName": "PreToolUse", "permissionDecision": "deny",
                 "permissionDecisionReason": "\n\n".join(refusals)}
