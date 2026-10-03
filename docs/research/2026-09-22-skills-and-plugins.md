@@ -278,6 +278,49 @@ All of this section comes from plugins-ref.md [D] and plugins.md [D].
     because SessionStart and UserPromptSubmit add plain stdout to the model's context.
 
 ## 4. Public distribution
+
+> **Superseded on 2026-10-03 by the update below.** The facts under this note were read on 2026-09-22 and the
+> submission process has changed since; they stay as the record of what was known then.
+
+### Update 2026-10-03 (re-read from the sources, for submitting flotilla)
+
+- FACT [S claude.com/docs/directory/publish]: one directory, "Anthropic's catalog of plugins and connectors that
+  people browse inside Claude". "Anyone on a paid Claude plan can submit, there's no partner program." Pro and Max
+  submit from their own account; on Team and Enterprise an Owner (or a role with the Directory permission). The
+  first organization to submit a repository folder holds that listing.
+  - The earlier Claude Console form "is no longer supported"; the `claude-community` / `claude-plugins-official`
+    split read on 2026-09-22 no longer describes the process.
+- FACT [S claude.com/docs/plugins/submit]: submission is in the developer portal, `claude.ai/directory/manage`,
+  "Plugin bundle", from a GitHub repository; GitHub connected on claude.ai with push access. Steps: Source and
+  **Validate** (runs more checks than `claude plugin validate`), Listing details (read from `plugin.json` and the
+  README), **Data handling** (personal data read or stored, data sent elsewhere, retention, under-18 use),
+  Compliance (contact email, four acknowledgements), Review and submit (push webhook or scheduled check; the
+  tracked branch or tag). Each version is validated and security-scanned; "a person reviews a new listing before
+  it goes live". A first submission that fails the security scan is rejected. Raise `version` with every release.
+- FACT [S claude.com/docs/plugins/pre-submission-checklist]: results are Blocks / Policy hold (a reviewer reads it)
+  / Warning / Note. What applies to flotilla, measured on 0.6.11:
+  - passes: folder with `.claude-plugin/plugin.json` at the repository root; README of 40+ words; license; 268
+    files (hold above 512); no file above 256 KiB; no symlink, submodule, LFS or `.gitattributes`; text files only;
+    lowercase `name`; hook commands are `${CLAUDE_PLUGIN_ROOT}/...` paths; no package launcher in what a hook runs.
+  - a hook running a non-shell program is held only when the plugin folder is a subfolder; flotilla's is the root.
+  - possible hold: "Name matches a known brand" - Flotilla is also an open-source project of another company
+    (Stitch Fix's containerized-job service, github.com/stitchfix/flotilla-os, Apache-2.0); the portal decides.
+  - security scan: "looks for behavior that a plugin doesn't disclose, such as sending data elsewhere, running hidden
+    code, or changing Claude's permission settings". "A complete README doesn't make a behavior allowed."
+- FACT [S support.claude.com Software Directory Policy, last updated 2026-04-15, unchanged since 2026-09-22]:
+  must not "evade or enable users to circumvent Claude's safety guardrails, system instructions, or sandbox
+  environments"; collect only what the function needs, "not ... extraneous conversation data, even for logging";
+  a privacy policy link for software "that collects user data or connects to a remote service"; "verified contact
+  information and support channels for users with product or security concerns"; documentation of how it works
+  and how to troubleshoot; "a standard testing account with sample data" and "at least three working examples of
+  prompts or use cases"; maintenance; no hidden, obfuscated or encoded instructions; no ads.
+- FACT [S claude.com/docs/plugins/platform-support]: a listing appears on every surface that loads what the plugin
+  contains, and the portal derives those surfaces. Skills load in chat, Cowork and Claude Code; hooks in Cowork and
+  Claude Code; "Executables in a top-level `bin/` directory" make chat and Cowork refuse the whole plugin. flotilla
+  works only in Claude Code (Bash, `claude --bg`, git worktrees), so as it stands it would be listed where it
+  cannot work.
+
+### What was known on 2026-09-22
 - **FACT, the key correction [D plugins.md L360–375; S discover-plugins]:** `claude-plugins-official` is "curated
   separately. Anthropic decides which plugins to include at its discretion. **There is no application process, and
   the submission form does not add plugins to the official marketplace.**"
