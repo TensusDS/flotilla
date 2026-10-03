@@ -312,3 +312,40 @@ def test_unbroke_with_a_delivered_fix_row_says_release_or_close_it(tmp_path):
     delivery.ship(ledger, actor(ledger, SENDER), "fix/x")
     with pytest.raises(MoveRefused, match=r"fix/x.*release or close it"):
         judging.unbroke(ledger, actor(ledger, JUDGE), "feat/x", why="false")
+
+
+def _deployed_from_file(tmp_path):
+    path = tmp_path / "deployed.txt"
+    command = f"{sys.executable} -c \"print(open(r'{path}').read().strip())\""
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile={**DIRECT, "deploy": {"revision_command": command}})
+    path.write_text(first_commit(root), encoding="utf-8")
+    shipped_direct(root, ledger)
+    return root, ledger, path
+
+
+def test_a_build_that_differs_from_the_deployed_only_in_the_fleets_rules_is_the_same_build(tmp_path):
+    """Twosuns field test of 0.6.7, W6: a profile commit moved trunk, and the judge's walk of the build before it was
+    refused - one rebuild and one walk spent on two lines of `.flotilla/project.toml`."""
+    root, ledger, path = _deployed_from_file(tmp_path)
+    walked_on = git(root, "rev-parse", "main")
+    (root / ".flotilla").mkdir(exist_ok=True)
+    (root / ".flotilla" / "project.toml").write_text("schema = 1\n", encoding="utf-8")
+    git(root, "add", ".flotilla")
+    commit(root, "profile")
+    path.write_text(git(root, "rev-parse", "main"), encoding="utf-8")
+    row = judging.walked(ledger, actor(ledger, JUDGE), "feat/x", build=walked_on, steps="s", saw="s")
+    assert row.state == "walked" and ".flotilla/" in row.history[-1]["evidence"]["deployed"]
+
+
+def test_a_build_that_differs_from_the_deployed_in_the_product_is_still_refused(tmp_path):
+    root, ledger, path = _deployed_from_file(tmp_path)
+    walked_on = git(root, "rev-parse", "main")
+    (root / ".flotilla").mkdir(exist_ok=True)
+    (root / ".flotilla" / "project.toml").write_text("schema = 1\n", encoding="utf-8")
+    (root / "app.txt").write_text("changed\n", encoding="utf-8")
+    git(root, "add", ".")
+    commit(root, "profile and product")
+    path.write_text(git(root, "rev-parse", "main"), encoding="utf-8")
+    with pytest.raises(MoveRefused, match="walk what is deployed"):
+        judging.walked(ledger, actor(ledger, JUDGE), "feat/x", build=walked_on, steps="s", saw="s")

@@ -69,9 +69,12 @@ def walked(ledger: Ledger, actor: Actor, branch: str, *, build: str, steps: str,
         same = gitq.same_revision(ledger.root, deployed, built, run=ledger.run)
         if same is None:
             raise MoveRefused(f"the deployed revision {deployed} is unknown to git here; fetch it first")
-        if not same:
-            raise MoveRefused(f"the deployed build is {deployed[:7]}, but --build is {built[:7]}; walk what is "
-                              "deployed")
+        rules_only = False
+        if not same:   # the fleet's rules are not the product: a profile commit does not change what is walked (W6)
+            rules_only = gitq.differs_only_in(ledger.root, deployed, built, ".flotilla/", run=ledger.run) is True
+            if not rules_only:
+                raise MoveRefused(f"the deployed build is {deployed[:7]}, but --build is {built[:7]}; walk what is "
+                                  "deployed")
     with ledger.session() as s:
         row = s.need_open_row(branch)
         _whole_or_walkable(ledger, s.rows, row)
@@ -89,8 +92,10 @@ def walked(ledger: Ledger, actor: Actor, branch: str, *, build: str, steps: str,
                        gitq.is_ancestor(ledger.root, other.merge, built, run=ledger.run) is not True]
             if missing:
                 raise MoveRefused(f"build {built[:7]} does not contain the fix ({', '.join(missing)})")
-        evidence = {"build": built, "steps": steps.strip(), "saw": saw.strip(),
-                    "deployed": deployed or "not asked: the profile has no deploy.revision_command"}
+        shown = deployed or "not asked: the profile has no deploy.revision_command"
+        if deployed and rules_only:
+            shown = f"{deployed} (differs from the build only in .flotilla/, the fleet's rules)"
+        evidence = {"build": built, "steps": steps.strip(), "saw": saw.strip(), "deployed": shown}
         return s.append(actor, row.id, "walked", state, fields={"broken": ""}, evidence=evidence)
 
 

@@ -37,6 +37,17 @@ def same_revision(root: Path, a: str, b: str, run=subprocess.run) -> bool | None
     return first == second
 
 
+def differs_only_in(root: Path, a: str, b: str, prefix: str, run=subprocess.run) -> bool | None:
+    """Whether two revisions differ, and only in files under `prefix` (a directory, ending in "/"); None when git
+    cannot say."""
+    done = run(["git", "-C", str(root), "diff", "--name-only", "-z", a, b], capture_output=True, text=True,
+               check=False)
+    if done.returncode != 0:
+        return None
+    names = [name for name in done.stdout.split("\0") if name]
+    return bool(names) and all(name.startswith(prefix) for name in names)
+
+
 def branch_tip(root: Path, branch: str, run=subprocess.run) -> str | None:
     return resolve(root, f"refs/heads/{branch}", run=run)
 
