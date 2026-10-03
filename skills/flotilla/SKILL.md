@@ -2,6 +2,7 @@
 name: flotilla
 description: The arrangement every session in a flotilla fleet follows - who you are, how you start, how work moves through the ledger, whose move it is, and what never to do. Use when your system prompt says you hold a flotilla post, when you start as a flotilla session, or before any flotilla ledger move.
 user-invocable: false
+compatibility: Claude Code only (CLI, IDE or desktop Code tab) - needs the Bash tool, git worktrees and claude --bg; not claude.ai chat or Cowork.
 ---
 
 # Working in a flotilla fleet

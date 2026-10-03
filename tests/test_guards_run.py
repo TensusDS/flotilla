@@ -104,7 +104,7 @@ def test_a_long_run_outside_the_lane_is_warned_about(tmp_path, monkeypatch, comm
 
 
 @pytest.mark.parametrize("command", ["flotilla lane run --for x -- npm test",
-                                     "/opt/flotilla/scripts/flotilla lane run --for x -- uv run pytest",
+                                     "/opt/flotilla/bin/flotilla lane run --for x -- uv run pytest",
                                      "flotilla receipt run --purpose push",
                                      'echo "run npm test later"', 'git commit -m "npm test passes"',
                                      "npm install", "uv run python tools/check_version.py"])
@@ -159,7 +159,7 @@ def test_the_suggested_lane_run_starts_the_same_run(tmp_path, monkeypatch, comma
     assert words[words.index("--") + 1:] == booked
 
 
-CLI_PATH = str(ROOT / "scripts" / "flotilla")
+CLI_PATH = str(ROOT / "bin" / "flotilla")
 
 
 @pytest.mark.parametrize("command", [

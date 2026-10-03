@@ -15,7 +15,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-CODE_PATHS = ("flotilla", "templates", "skills", "hooks", "scripts", ".claude-plugin")   # what a hook runs
+CODE_PATHS = ("flotilla", "templates", "skills", "hooks", "bin", ".claude-plugin")   # what a hook runs
 
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess:

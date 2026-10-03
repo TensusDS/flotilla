@@ -134,8 +134,8 @@ def test_one_run_is_counted_once_however_many_processes_it_has():
 
 
 def test_waiting_runs_are_not_foreign_runs_to_each_other(tmp_path):
-    procs = [Proc(1, 0, "init"), Proc(40, 1, "python3 /p/scripts/flotilla lane run -- pytest -q"),
-             Proc(41, 1, "python3 /p/scripts/flotilla lane run -- pytest -q"), Proc(42, 40, "pytest -q")]
+    procs = [Proc(1, 0, "init"), Proc(40, 1, "python3 /p/bin/flotilla lane run -- pytest -q"),
+             Proc(41, 1, "python3 /p/bin/flotilla lane run -- pytest -q"), Proc(42, 40, "pytest -q")]
     table = Table(procs, growing={40, 41, 42})
     lanes = book.Book(LocalLogStore(tmp_path), table)
     lanes.enqueue("a", "", pid=40, mark="m")

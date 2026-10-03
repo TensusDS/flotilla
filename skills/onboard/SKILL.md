@@ -1,8 +1,9 @@
 ---
 name: onboard
 description: Set up flotilla in a repository — measure this machine, show what the repository already declares (test commands, CI, releases), take the recommended settings or ask the few questions only a person can answer, run each test tier once, write .flotilla/project.toml, publish it to trunk, and offer to raise the fleet with this session as its orchestrator. Use when someone asks to onboard, set up, configure or initialize flotilla, to prepare a repository for a fleet of Claude Code sessions, or to re-check an existing flotilla profile for drift.
-allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla onboard check), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla onboard machine), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla onboard detect), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla onboard next)
+allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/bin/flotilla onboard check), Bash(${CLAUDE_PLUGIN_ROOT}/bin/flotilla onboard machine), Bash(${CLAUDE_PLUGIN_ROOT}/bin/flotilla onboard detect), Bash(${CLAUDE_PLUGIN_ROOT}/bin/flotilla onboard next)
 disable-model-invocation: true
+compatibility: Claude Code only (CLI, IDE or desktop Code tab) - needs the Bash tool, git worktrees and claude --bg; not claude.ai chat or Cowork.
 ---
 
 # Onboard a repository to flotilla
@@ -11,7 +12,7 @@ flotilla stays inactive in a repository until `.flotilla/project.toml` is on ori
 person from nothing to a working fleet. The command line decides which questions apply and checks every answer;
 your job is to ask, faithfully, and to report what the commands print.
 
-Run every command from the repository root. The CLI is `${CLAUDE_PLUGIN_ROOT}/scripts/flotilla`.
+Run every command from the repository root. The CLI is `${CLAUDE_PLUGIN_ROOT}/bin/flotilla`.
 
 `answer`, `quick`, `write`, `publish` and `reset` are not pre-approved: Claude Code asks the person before each one
 runs, on purpose - a `tiers` answer is a shell command that `write` runs. They are refused from a background

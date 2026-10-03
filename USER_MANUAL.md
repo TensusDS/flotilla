@@ -25,7 +25,7 @@ You run these in an interactive Claude Code session in the project's main checko
 
 ## Command line
 
-The CLI is `${CLAUDE_PLUGIN_ROOT}/scripts/flotilla`. Every command takes `--help`.
+The CLI is `${CLAUDE_PLUGIN_ROOT}/bin/flotilla`. Every command takes `--help`.
 
 **Fleet**
 

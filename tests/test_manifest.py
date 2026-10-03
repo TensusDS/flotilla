@@ -25,8 +25,16 @@ def test_every_hook_command_points_at_the_executable_entry():
     commands = [h["command"] for groups in hooks.values() for group in groups for h in group["hooks"]]
     assert commands, "no hook commands declared"
     for command in commands:
-        assert command.startswith('"${CLAUDE_PLUGIN_ROOT}/scripts/flotilla" hook ')
-    assert os.access(ROOT / "scripts" / "flotilla", os.X_OK)
+        assert command.startswith('"${CLAUDE_PLUGIN_ROOT}/bin/flotilla" hook ')
+    assert os.access(ROOT / "bin" / "flotilla", os.X_OK)
+
+
+def test_the_command_line_lives_in_bin_so_only_claude_code_installs_the_plugin():
+    """Directory readiness: flotilla works only in Claude Code (Bash, `claude --bg`, git worktrees). `bin/` puts the
+    command line on the Bash tool's PATH there, and claude.ai chat and Cowork do not install a plugin that has it
+    (plugin manifest reference, standard layout). One copy: no `bin/flotilla` beside it."""
+    assert (ROOT / "bin" / "flotilla").is_file() and not (ROOT / "bin" / "flotilla").is_symlink()
+    assert not (ROOT / "scripts").exists()
 
 
 def test_the_repository_is_its_own_marketplace():

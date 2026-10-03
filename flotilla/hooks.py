@@ -21,7 +21,7 @@ STARTED = time.monotonic()
 #: hooks/hooks.json, or Claude Code kills the hook before it can say "unknown".
 HOOK_CHECK_TIMEOUT = 3
 EVENTS = ("session-start", "prompt", "stop", "guard", "permission", "ask")
-CLI = Path(__file__).resolve().parent.parent / "scripts" / "flotilla"
+CLI = Path(__file__).resolve().parent.parent / "bin" / "flotilla"
 PEERS_SHOWN = 8
 #: A Bash command naming none of these reaches no guard, so the hook answers before looking anything up. The last
 #: group lets a long run reach the lane guard: the lane's default run patterns and the launchers that run them. A

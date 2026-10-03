@@ -67,9 +67,9 @@ def test_code_changed_since_the_tag_asks_for_a_bump(tmp_path, capsys):
 def test_the_launcher_script_is_code_too(tmp_path, capsys):
     root = plugin_repo(tmp_path)
     git(root, "tag", "v1.2.3")
-    commit(root, "launcher", "scripts/flotilla")
+    commit(root, "launcher", "bin/flotilla")
     assert check_version.main(root) == 1
-    assert "scripts/flotilla" in capsys.readouterr().err
+    assert "bin/flotilla" in capsys.readouterr().err
 
 
 def test_docs_changed_since_the_tag_pass(tmp_path):

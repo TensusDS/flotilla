@@ -2,17 +2,18 @@
 name: spawn
 description: Raise flotilla sessions - background Claude Code sessions, each with a post (orchestrator, sender, reviewer, judge, main, minor), a name given at birth and its own home worktree - from a composition such as "-r 1 -M 2" or the profile's default.
 disable-model-invocation: true
-allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla spawn*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla fleet)
+allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/bin/flotilla spawn*), Bash(${CLAUDE_PLUGIN_ROOT}/bin/flotilla fleet)
+compatibility: Claude Code only (CLI, IDE or desktop Code tab) - needs the Bash tool, git worktrees and claude --bg; not claude.ai chat or Cowork.
 ---
 
 0. **With no arguments, find out first whether the fleet has a leader.** Run
-   `${CLAUDE_PLUGIN_ROOT}/scripts/flotilla fleet`. If it lists a live orchestrator or a session that leads the fleet,
+   `${CLAUDE_PLUGIN_ROOT}/bin/flotilla fleet`. If it lists a live orchestrator or a session that leads the fleet,
    do not ask: the person is topping the fleet up - go on with step 1 and `--fill`. Otherwise AskUserQuestion, header
    "Fleet", question "Who leads the fleet?":
    - "This session leads it (Recommended)" - "You talk to the fleet here; the rest starts in the background."
    - "A background orchestrator" - "Every seat starts in the background; you attach to the orchestrator to talk."
 
-   **This session leads it:** run `${CLAUDE_PLUGIN_ROOT}/scripts/flotilla spawn --lead` and show what it prints: the
+   **This session leads it:** run `${CLAUDE_PLUGIN_ROOT}/bin/flotilla spawn --lead` and show what it prints: the
    orchestrator's name this session will carry. If it refuses because another session already leads, show that
    and stop. Claude Code shows the name with the person's next message - nobody renames anything; only if it says
    it could not tell which session runs it, tell the person to type `/rename <the name>`, and before raising
@@ -27,7 +28,7 @@ allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/flotilla spawn*), Bash(${CLAUD
    **A background orchestrator:** go on with step 1 and `--default`; if the dry run says nobody leads, the answer is
    already given - plan `flotilla spawn -o 1` after this spawn without asking again.
 
-1. Show the plan first: run `${CLAUDE_PLUGIN_ROOT}/scripts/flotilla spawn $ARGUMENTS --dry-run` from the repository
+1. Show the plan first: run `${CLAUDE_PLUGIN_ROOT}/bin/flotilla spawn $ARGUMENTS --dry-run` from the repository
    root (with no arguments, `--default` or `--fill` as step 0 decided). Show every line it prints: names, trees,
    branches, the permission mode, the warnings and the gaps.
 2. **A `gap:` line in the dry run is a question for the person, not a remark** - unless step 0 already answered

@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/flotilla\" hook session-start",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/flotilla\" hook session-start",
             "timeout": 20
           }
         ]
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/flotilla\" hook prompt",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/flotilla\" hook prompt",
             "timeout": 10
           }
         ]
@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/flotilla\" hook stop",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/flotilla\" hook stop",
             "timeout": 10
           }
         ]
@@ -39,7 +39,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/flotilla\" hook guard",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/flotilla\" hook guard",
             "timeout": 30
           }
         ]
@@ -49,7 +49,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/flotilla\" hook ask",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/flotilla\" hook ask",
             "timeout": 20
           }
         ]
@@ -60,7 +60,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/flotilla\" hook permission",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/flotilla\" hook permission",
             "timeout": 600
           }
         ]

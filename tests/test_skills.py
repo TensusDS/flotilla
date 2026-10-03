@@ -13,7 +13,7 @@ SKILLS = sorted((ROOT / "skills").glob("*/SKILL.md"))
 PERSON_ONLY = {"doctor", "check", "status", "brief", "spawn", "retire", "lane", "watch", "guard", "down", "onboard"}
 MODEL_INVOCABLE = {"permit"}
 MODEL_ONLY = {"flotilla"}
-CALL = re.compile(r"`(?:\$\{CLAUDE_PLUGIN_ROOT\}/scripts/)?flotilla ([a-z-]+)(?: ([a-z-]+))?")
+CALL = re.compile(r"`(?:\$\{CLAUDE_PLUGIN_ROOT\}/bin/)?flotilla ([a-z-]+)(?: ([a-z-]+))?")
 
 
 def frontmatter(path):
@@ -176,7 +176,7 @@ def allowed(name):
     return frontmatter(ROOT / "skills" / name / "SKILL.md").get("allowed-tools", "")
 
 
-CLI = "${CLAUDE_PLUGIN_ROOT}/scripts/flotilla"
+CLI = "${CLAUDE_PLUGIN_ROOT}/bin/flotilla"
 #: commands that run whatever they are given, or act for the person: no skill's rule may cover any of them
 ACTS = [f"{CLI} permit answer 7 allow", f"{CLI} permit answer 7 session", f"{CLI} onboard answer tiers sh",
         f"{CLI} onboard write --confirm 1", f"{CLI} onboard reset", f"{CLI} lane --root . run -- sh -c x",
@@ -229,3 +229,11 @@ def test_the_sender_pushes_in_the_form_flotilla_lets_past_the_classifier():
     """Twosuns field test of 0.6.7, W9: the guard hook allows one exact push form; the post names it."""
     text = (ROOT / "templates" / "posts" / "sender.md").read_text(encoding="utf-8")
     assert "git -C <your tree> push origin HEAD:<trunk>" in text and "--merge\n   <that branch" not in text
+
+
+@pytest.mark.parametrize("path", SKILLS, ids=lambda p: p.parent.name)
+def test_every_skill_says_it_needs_claude_code(path):
+    """Directory readiness: a listing appears on every surface that loads a plugin's skills, and flotilla's work only
+    in Claude Code. `compatibility` (Agent Skills spec, up to 500 characters) says so where the skill is read."""
+    said = frontmatter(path).get("compatibility", "")
+    assert "Claude Code" in said and len(said) <= 500

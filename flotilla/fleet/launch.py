@@ -17,7 +17,7 @@ from flotilla.fleet.names import number_of
 
 PERMISSION = {"ask": "manual", "rules": "dontAsk", "auto": "auto"}
 STRONGEST = "opus"
-CLI = Path(__file__).resolve().parents[2] / "scripts" / "flotilla"
+CLI = Path(__file__).resolve().parents[2] / "bin" / "flotilla"
 FIRST_PROMPT = ("Use the flotilla:flotilla skill: take the census, announce yourself to the live peers, report what "
                 "you inherited, then wait for a task.")
 

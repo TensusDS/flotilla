@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-ENTRY = ROOT / "scripts" / "flotilla"
+ENTRY = ROOT / "bin" / "flotilla"
 
 
 def run(entry, *args, cwd=None):

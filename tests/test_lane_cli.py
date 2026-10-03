@@ -164,7 +164,7 @@ def test_lane_stop_stops_the_holders_own_run(tmp_path, monkeypatch):
     import time
     root = onboarded(tmp_path, monkeypatch)
     env = {**os.environ, "FLOTILLA_STATE_DIR": str(tmp_path / "state"), "FLOTILLA_NO_CENSUS": "1"}
-    cli_path = os.path.join(os.path.dirname(__file__), "..", "scripts", "flotilla")
+    cli_path = os.path.join(os.path.dirname(__file__), "..", "bin", "flotilla")
     runner = subprocess.Popen([sys.executable, cli_path, "lane", "run", "--tree", str(root), "--as", "main session 7",
                                "--", sys.executable, "-c", "import time; time.sleep(60)"], env=env,
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)

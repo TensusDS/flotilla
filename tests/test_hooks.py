@@ -12,7 +12,7 @@ from flotilla.watch import fleet
 from watchkit import NOW, PR, context, onboarded, row, rows, sess
 
 ROOT = Path(__file__).resolve().parent.parent
-ENTRY = ROOT / "scripts" / "flotilla"
+ENTRY = ROOT / "bin" / "flotilla"
 
 
 def hook(cwd, env_state):
