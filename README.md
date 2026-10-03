@@ -102,8 +102,10 @@ auto mode only, after every guard has run and found nothing, and for two things:
   `fleet down`, `lane` or a run of an arbitrary command;
 - the sender's push of accounted work: typed as exactly `git -C <its tree> push origin HEAD:<trunk>` by the session
   that owns that tree, in a repository whose own git config holds nothing that runs code or sends a push elsewhere,
-  with a green receipt and every commit past origin's trunk accounted for by the ledger. It runs rewritten: the
-  commit that was checked, pushed with no repository hook.
+  with a green receipt and every commit past origin's trunk accounted for by the ledger. The rules that grant it -
+  the flow, the posts, whether a person approves merges - are read at the revision origin names as its trunk, and
+  the checkout's `origin/<trunk>` must be that revision. It runs rewritten: the commit that was checked, pushed with
+  no repository hook.
 
 Anything else is the classifier's to decide, as before; unreviewed work still meets it. Your own `deny` rules still
 win over this allow, and in `ask` mode nothing changes. This leans on Claude Code honouring a hook's allow, deny and
@@ -415,7 +417,8 @@ What flotilla does not do yet, or does only partly. Each one was met in a field 
   another model or `ask` mode for that post.
 - **A project's rules are read from origin's trunk as this checkout last fetched it** - the local
   `refs/remotes/origin/<trunk>`. A session that moves that ref by hand changes the rules the next flotilla command
-  reads, event scripts included. The classifier sees the command that moves it; flotilla does not check it yet.
+  reads, event scripts included. The classifier sees the command that moves it. The sender's push allow does not
+  rest on that ref: it asks origin and reads the rules there.
 - **It does not isolate sessions from you or from each other** - see the next section.
 
 ## Security model and its limits

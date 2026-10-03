@@ -79,8 +79,10 @@ def _trunk_named_on(root: Path, ref: str) -> str:
         return ""
 
 
-def trunk_rules(root: Path) -> Rules:
-    """The profile and posts as trunk carries them, and the label `<ref>@<sha>` they were read at."""
+def trunk_rules(root: Path, *, at: str = "") -> Rules:
+    """The profile and posts as trunk carries them, and the label `<ref>@<sha>` they were read at. `at` is a revision
+    origin named as its trunk: rules that grant are read there, never at the local ref, which any session can repoint
+    (scan of 0.6.10, F1)."""
     local = _project(root)
     trunk = (local.data.get("trunk") or {}).get("branch", "main")
     # the tree's own profile names trunk, and a seat edits its tree: origin's default branch has the last word, so a
@@ -93,8 +95,8 @@ def trunk_rules(root: Path) -> Rules:
                                  f"`{default[len('origin/'):]}` and its profile does not name `{trunk}`; the rules are "
                                  "read from the real trunk. If the default branch moved, `git remote set-head origin "
                                  "-a`; if trunk is another branch, name it in the profile on the default branch too")
-    ref = gitq.trunk_ref(local.root, trunk)
-    sha = gitq.resolve(local.root, f"{ref}^{{commit}}")
+    ref = f"origin/{trunk}" if at else gitq.trunk_ref(local.root, trunk)
+    sha = gitq.resolve(local.root, f"{at or ref}^{{commit}}")
     if sha is None:
         raise config.ConfigError(f"git could not resolve trunk `{ref}`; the ledger reads its rules from trunk")
     listing = subprocess.run(["git", "-C", str(local.root), "ls-tree", "-r", sha, "--", ".flotilla/"],
@@ -154,8 +156,8 @@ def fleet_note(root: Path, profile: dict) -> str:
     return project_name.resolve(store, repo.identify(Path(root)).key, wanted)[1]
 
 
-def open_ledger(root: Path, *, skip_events: dict | None = None) -> core.Ledger:
-    rules = trunk_rules(Path(root))
+def open_ledger(root: Path, *, skip_events: dict | None = None, rules: Rules | None = None) -> core.Ledger:
+    rules = rules or trunk_rules(Path(root))
     ident = repo.identify(Path(root))
     state = paths.state_dir()
     return core.Ledger(store=LocalLogStore(state / "ledger"), root=ident.root, repo_key=ident.key,

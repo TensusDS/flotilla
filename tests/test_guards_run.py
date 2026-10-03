@@ -584,3 +584,85 @@ def test_only_plain_origin_urls_are_pushed_past_the_classifier(url, plain):
     """Review of the sender's push allow, I3: the ledger's key and git's connection target parsed one URL apart."""
     from flotilla.guards import run as guard_run
     assert guard_run._plain_url(url) is plain
+
+
+def _origin_moves(tmp_path, root, old, new, message):
+    """origin's trunk gets a commit replacing `old` with `new` in the profile, made in a clone of its own: what the
+    real trunk says, which the session's tree has not been told."""
+    from guardkit import IDENTITY, git
+    clone = tmp_path / "another-clone"
+    git(tmp_path, "clone", "-q", git(root, "config", "--get", "remote.origin.url"), str(clone))
+    path = clone / ".flotilla" / "project.toml"
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace(old, new) if old else text + new, encoding="utf-8")
+    git(clone, *IDENTITY, "commit", "-q", "-am", message)
+    git(clone, "push", "-q", "origin", "main")
+    return git(clone, "rev-parse", "HEAD")
+
+
+def test_rules_on_a_repointed_trunk_ref_grant_no_allow(tmp_path, monkeypatch):
+    """Scan of 0.6.10, F1: the profile and posts that grant the allow were read from the local `origin/<trunk>`, a
+    ref any session can repoint. Origin's trunk moved off the direct flow; the session points its ref back at the
+    commit that still says direct, and the rules that grant must be origin's, not the ref's."""
+    from guardkit import git
+    root = _accounted_sender(tmp_path, monkeypatch)
+    forged = git(root, "rev-parse", "refs/remotes/origin/main")
+    _origin_moves(tmp_path, root, 'mode = "direct"', 'mode = "pr"', "the person moves trunk to pull requests")
+    git(root, "fetch", "-q", "origin")
+    git(root, "update-ref", "refs/remotes/origin/main", forged)
+    assert not _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path))
+
+
+def test_a_trunk_ref_that_disagrees_with_origin_grants_no_allow(tmp_path, monkeypatch):
+    """Scan of 0.6.10, F1: the local `origin/<trunk>` is what the guards and the accounting read; where it is not
+    origin's trunk, what they judged is not what the push lands on, whatever the profile says."""
+    from guardkit import git
+    root = _accounted_sender(tmp_path, monkeypatch)
+    stale = git(root, "rev-parse", "refs/remotes/origin/main")
+    _origin_moves(tmp_path, root, "", "# a comment the person added\n", "a comment on trunk")
+    git(root, "fetch", "-q", "origin")
+    git(root, "update-ref", "refs/remotes/origin/main", stale)
+    assert not _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path))
+
+
+def test_rules_are_read_at_the_revision_origin_named(tmp_path, monkeypatch):
+    """Scan of 0.6.10, F1: a ref checked against origin and then read again may have moved in between (another
+    session repoints it in that window). The rules that grant are read at the revision origin named, never at the
+    ref."""
+    from flotilla.ledger import gitq
+    from guardkit import git
+    root = _accounted_sender(tmp_path, monkeypatch)
+    forged = git(root, "rev-parse", "refs/remotes/origin/main")
+    _origin_moves(tmp_path, root, 'mode = "direct"', 'mode = "pr"', "the person moves trunk to pull requests")
+    git(root, "fetch", "-q", "origin")   # the ref is origin's at the check ...
+    monkeypatch.setattr(gitq, "trunk_ref", lambda *a, **k: forged)   # ... and is read again after it moved
+    assert not _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path))
+
+
+def test_the_accounting_counts_by_the_rules_origin_named(tmp_path, monkeypatch):
+    """Scan of 0.6.10, F1: the ledger that accounts for the pushed commits reads the profile too (whether a person
+    approves merges); it is built from the rules read at origin's trunk, not from a ref read again afterwards."""
+    from flotilla.ledger import core, gitq, handover, reading
+    from flotilla.ledger.commands import open_ledger
+    from guardkit import IDENTITY, git, receipt
+    from ledgerkit import actor
+    root = _accounted_sender(tmp_path, monkeypatch)
+    git(root, "switch", "-q", "-c", "feat/x")
+    (root / "x.txt").write_text("reviewed work\n", encoding="utf-8")
+    git(root, "add", "x.txt")
+    git(root, *IDENTITY, "commit", "-q", "-m", "reviewed work")
+    git(root, "switch", "-q", "main")
+    ledger = open_ledger(root)
+    core.claim(ledger, actor(ledger, "main session 1"), "feat/x")
+    row = handover.hand(ledger, actor(ledger, "main session 1"), "feat/x")
+    reading.take(ledger, actor(ledger, "review session 1"), "feat/x")
+    reading.accept(ledger, actor(ledger, "review session 1"), "feat/x", reviewed=row.tip)
+    git(root, "merge", "-q", "--ff-only", "feat/x")
+    receipt(root, tmp_path / "state")
+    assert _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path))   # accepted, so accounted
+    forged = git(root, "rev-parse", "refs/remotes/origin/main")
+    _origin_moves(tmp_path, root, 'merge_authorized_by = "sender"', 'merge_authorized_by = "human"',
+                  "the person approves every merge now")
+    git(root, "fetch", "-q", "origin")
+    monkeypatch.setattr(gitq, "trunk_ref", lambda *a, **k: forged)
+    assert not _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path))

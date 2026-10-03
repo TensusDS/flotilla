@@ -159,7 +159,8 @@ def _senders_push(command: str, cwd, root, session_id: str, run) -> str:
     of 0.6.7, W9; three reviews of 0.6.10). The typed command is exactly `git -C <absolute tree> push origin
     HEAD:<trunk>`; the project's flow is direct with the receipt guard on; the tree is a checkout of the project's
     repository and the home of an open row owned by the caller, whose post may land; the repository's own config
-    holds nothing that runs code or redirects the push; origin's trunk - asked of origin - is the base, and the ledger
+    holds nothing that runs code or redirects the push; origin's trunk - asked of origin - is the base, the local
+    `origin/<trunk>` is that revision, the rules that grant (flow, posts, approval) are read at it, and the ledger
     accounts for every commit past it. The command run is then `git -C <tree> -c core.hooksPath=<an empty dir> push
     origin <the checked commit>:refs/heads/<trunk>`: no repository hook runs, and a HEAD that moved after the check
     pushes nothing else. The push guard itself has already run and found nothing to say. The origin URL anchors
@@ -169,7 +170,7 @@ def _senders_push(command: str, cwd, root, session_id: str, run) -> str:
     from flotilla.broker.decide import _same_repository
     from flotilla.guards.rules import rules_for
     from flotilla.ledger import batch, gitq
-    from flotilla.ledger.commands import open_ledger
+    from flotilla.ledger.commands import open_ledger, trunk_rules
     from flotilla.posts import post_for_session
     if root is None:
         return ""
@@ -185,14 +186,7 @@ def _senders_push(command: str, cwd, root, session_id: str, run) -> str:
     if not _same_repository(tree, root):
         return ""
     caller = _caller_name(session_id)
-    ledger = open_ledger(root)
-    rows = ledger.rows()
-    owned = [row for row in rows.values() if row.is_open and row.tree and Path(row.tree).is_absolute()
-             and Path(row.tree).resolve() == tree and caller and row.owner == caller]
-    if not any((post := post_for_session(ledger.posts, row.owner)) is not None and "land" in post.may
-               for row in owned):
-        return ""
-    if not _config_is_plain(tree, run):   # before any network call: nothing in the repo's config runs on it
+    if not caller or not _config_is_plain(tree, run):   # before any network call: nothing in its config runs on it
         return ""
     # the accounting reads history through replace refs and grafts; a push sends the real objects (review after the
     # final one): with any of them, or a shallow history, what is counted may not be what is pushed
@@ -214,6 +208,22 @@ def _senders_push(command: str, cwd, root, session_id: str, run) -> str:
     base = listed.split()[0] if listed else ""
     head = gitq.resolve(tree, "HEAD", run=run)
     if not base or head is None or gitq.resolve(tree, base, run=run) is None:
+        return ""
+    # what grants is origin's own trunk (scan of 0.6.10, F1): the local `origin/<trunk>` is a ref any session can
+    # repoint, so it must be the revision origin named, and the rules are read at that revision, never at the ref
+    if gitq.resolve(root, f"refs/remotes/origin/{trunk}^{{commit}}", run=run) != base:
+        return ""
+    rules = trunk_rules(root, at=base)
+    if (rules.profile.get("flow") or {}).get("mode") != "direct" \
+            or not (rules.profile.get("guards") or {}).get("push_receipt") \
+            or str((rules.profile.get("trunk") or {}).get("branch") or "main") != trunk:
+        return ""
+    ledger = open_ledger(root, rules=rules)
+    rows = ledger.rows()
+    owned = [row for row in rows.values() if row.is_open and row.tree and Path(row.tree).is_absolute()
+             and Path(row.tree).resolve() == tree and row.owner == caller]
+    if not any((post := post_for_session(rules.posts, row.owner)) is not None and "land" in post.may
+               for row in owned):
         return ""
     if batch.unaccounted(ledger, rows, head, since=base) != []:
         return ""
