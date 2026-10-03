@@ -274,15 +274,19 @@ def _home(d: Door, root, profile: dict, run):
     return found, rules_for(found, run=run)[0]
 
 
-def _own_repository(home_root, root) -> bool:
-    """Whether the door acts on the session's own repository - any checkout of it - rather than one the command
-    merely names."""
+def _own_repository(home_root, root, run=subprocess.run) -> bool:
+    """Whether the door acts on the session's own repository - a checkout its repository lists as a worktree - rather
+    than one the command merely names. Asked of the session's repository, never of the named directory: a directory
+    whose `.git/commondir` names the session's repository shares its common dir and still reads its own
+    `config.worktree` (final review of the scan fixes, I4)."""
     if root is None:
         return False
-    if Path(home_root).resolve() == Path(root).resolve():
+    home = Path(home_root).resolve()
+    if home == Path(root).resolve():
         return True
-    from flotilla.broker.decide import _same_repository
-    return _same_repository(Path(home_root), Path(root))
+    listed = _git(root, "worktree", "list", "--porcelain", run=run) or ""
+    return home in {Path(line[len("worktree "):]).resolve() for line in listed.splitlines()
+                    if line.startswith("worktree ")}
 
 
 def _names_repo(d: Door, env) -> bool:
@@ -319,8 +323,12 @@ def guard(segment, *, root, profile, env=os.environ, run=subprocess.run) -> Find
         landing = [(label, sha) for label, sha in pairs if d.kind == "gh pr merge" or label in (trunk, "HEAD")]
         if d.kind in ("git push", "gh pr merge") and landing and \
                 (home_profile.get("flow") or {}).get("merge_authorized_by") == "human":
-            unapproved = _unapproved(home_root, home_profile, landing,
-                                     since=_remote_trunk(home_root, trunk, run, own=_own_repository(home_root, root)))
+            try:
+                since = _remote_trunk(home_root, trunk, run, own=_own_repository(home_root, root, run))
+            except Unknown as err:   # what stands in for the person's approval has no override either
+                unapproved = [f"{err}; which commits the person approved cannot be told"]
+            else:
+                unapproved = _unapproved(home_root, home_profile, landing, since=since)
     except Unknown as err:
         failures = [str(err)]
     except Exception as err:  # noqa: BLE001 - the push guard's own failure refuses (spec, section 10)

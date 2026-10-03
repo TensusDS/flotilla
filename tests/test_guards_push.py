@@ -405,4 +405,41 @@ def test_the_sessions_own_repository_is_asked_whatever_its_config_holds(tmp_path
     git(root, "worktree", "add", "-q", "-b", "fleet/x", str(other), "main")
     for command in ("git push origin main", f"git -C {other} push origin HEAD:main"):
         found = judge(command, root, tmp_path)
-        assert found is not None and found.refuse and "not approved" in found.text, command
+        assert found is not None and found.refuse and "unapproved work" in found.text, command   # the commit, named
+        assert "asked safely" not in found.text, command
+
+
+def test_an_override_never_waives_the_approval_that_could_not_be_asked(tmp_path):
+    """Final review of the scan fixes, I2: where origin could not be asked safely, which commits a person approved
+    could not be told - and that refusal came through as an ordinary failure, which FLOTILLA_GATE_OVERRIDE lets past.
+    The person's approval has no override, so neither has the question that stands in for it."""
+    (tmp_path / "downloads").mkdir()
+    (tmp_path / "mine").mkdir()
+    foreign = human_project(tmp_path / "downloads")
+    mine = onboarded(tmp_path / "mine")
+    git(foreign, "config", "pull.rebase", "true")   # an ordinary key, but not a plain one
+    profile, _ = rules.rules_for(mine)
+    found = push.guard(first(f"git -C {foreign} push origin main", mine), root=mine, profile=profile,
+                       env={**env(tmp_path), "FLOTILLA_GATE_OVERRIDE": "the session says so"})
+    assert found is not None and found.refuse and "asked safely" in found.text
+
+
+def test_a_directory_pointing_its_git_dir_at_the_sessions_repository_is_not_its_own(tmp_path):
+    """Final review of the scan fixes, I4: "own" was judged by the git common directory, and a downloaded directory
+    whose `.git/commondir` names the session's repository shares it - while its own `config.worktree` (read where
+    the repository sets extensions.worktreeConfig, as sparse-checkout does) ran a pack command inside the hook. Own
+    is a checkout the session's repository lists as its worktree."""
+    import shutil
+    root = human_project(tmp_path)
+    git(root, "config", "extensions.worktreeConfig", "true")
+    marker = tmp_path / "ran"
+    evil = tmp_path / "evil"
+    (evil / ".git").mkdir(parents=True)
+    (evil / ".git" / "commondir").write_text(f"{root / '.git'}\n", encoding="utf-8")
+    (evil / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    (evil / ".git" / "config.worktree").write_text(
+        f'[remote "origin"]\n\tuploadpack = touch {marker}; git-upload-pack\n', encoding="utf-8")
+    shutil.copytree(root / ".flotilla", evil / ".flotilla")
+    found = judge(f"git -C {evil} push origin main", root, tmp_path)
+    assert not marker.exists()
+    assert found is not None and found.refuse
