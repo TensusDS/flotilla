@@ -215,8 +215,10 @@ def test_spawn_turns_a_gap_into_a_question():
     assert "flotilla spawn -o 1" in text and "flotilla spawn -s 1" in text
 
 
-def test_the_reviewer_runs_its_tiers_through_a_receipt():
-    """Twosuns field test of 0.6.7, W8: told to "run the tiers yourself", the reviewer ran the suite by hand outside
-    a receipt, so the green the author's receipt measured over the same files was run again from nothing."""
+def test_the_reviewer_runs_its_tiers_itself_not_through_a_reused_receipt():
+    """Twosuns field test of 0.6.7, W8, and the review of 0.6.9, I5: told to run the tiers through a receipt, the
+    reviewer would reuse the author's green - recorded with no runner, in the author's tree - and the one run that is
+    not the author's would not happen. The reviewer runs the tiers itself, in the lane."""
     text = (ROOT / "templates" / "posts" / "reviewer.md").read_text(encoding="utf-8")
-    assert "flotilla receipt run --purpose handover --tree" in text
+    assert "run the\n  tiers yourself" in text and "not through a receipt" in text
+    assert "flotilla receipt run --purpose handover" not in text
