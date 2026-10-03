@@ -1243,21 +1243,22 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    still reuses the author's cached green (decision 201) - a cached green should name its runner, and a push
    receipt should reuse a green the reader made, not the author's. (planner's decision, 2026-10-03)
 
-219. **Seats are launched allowed flotilla's own moves; the sender, its push of trunk** (twosuns field test of 0.6.7,
-   W9-W11; the person chose the exact-command allow over a prose classifier rule, 2026-10-03). In auto mode Claude
-   Code's classifier judged flotilla's commands by the conversation around them: it refused the sender's push of
-   reviewed work as "Merge Without Review", then `work land` - a ledger record - the same way, and after one refusal
-   it grew suspicious of read-only calls too. A session's own attempt to widen its permissions was refused, rightly.
-   Auto mode reads rules from the user's settings, managed settings and `--settings`, not the project's; a seat
-   already takes `--settings` for its plugins. So each seat's `--settings` now also carries allow rules: every
-   `work` move but `approve`; tree, receipt, lane, status, watch and the read-only commands; `fleet` bare only (its
-   arguments are `down` and `clean`); and, for the post that may land, `git push origin HEAD:<trunk>` from its own
-   tree. Nothing that raises or removes seats, nothing the person answers. A drift guard pins the moves to the CLI's
-   own list. The rules pass Claude Code's permission check, not flotilla's hooks: measured on Claude Code 2.1.288, a
-   PreToolUse deny wins over an allow rule, so the push guard still asks for a receipt and the person guard keeps
-   `approve`. Ruled against the prose `autoMode.allow` rule: it keeps the classifier in the loop but can still refuse
-   a delivery, and the person had already chosen the exact rule by hand in twosuns. The dry run names what each seat
-   is allowed. (planner's decision, 2026-10-03)
+219. **flotilla's guard hook lets past auto mode's classifier exactly what flotilla's own checks pass** (twosuns
+   field test of 0.6.7, W9-W11). In auto mode Claude Code's classifier judged flotilla's commands by the
+   conversation around them: it refused the sender's push of reviewed work as "Merge Without Review", then `work
+   land` - a ledger record - the same way, and after one refusal it grew suspicious of read-only calls too; a
+   session's own attempt to widen its permissions was refused, rightly. The first answer - allow rules in each
+   seat's `--settings` - was reviewed and reverted before release: prefix rules cannot hold flotilla's boundaries
+   (`lane *` covered `lane run -- <anything>`, which hid a force push of trunk from flotilla's own guards; `events
+   check *` ran scripts a seat wrote; every `work <move> *` carried `--skip-event`; the push rule ignored the flow
+   and the receipt guard's switch). Instead the PreToolUse guard hook answers "allow" - measured on Claude Code
+   2.1.288: a hook's allow passes the classifier, a hook's deny wins over an allow - in auto mode only (the hook
+   input names the mode), after every guard has run and said nothing, for two things: a command the broker's
+   own-command check passes (decisions 199, 200), and the sender's push of accounted work (one exact push of HEAD to
+   trunk, optionally with `-C`, no option; a direct-flow project with the receipt guard on; the tree the home of an
+   open row whose owner's post may land; the ledger accounting for every commit it carries). Unreviewed commits still
+   meet the classifier, a recorded override gives no allow, and `ask` mode is untouched. (planner's decision,
+   2026-10-03; the person chose the exact-command allow over a prose classifier rule)
 
 220. **`reconcile` names `land` without a placeholder** (twosuns field test of 0.6.7, W11): `land` finds the merge
    that carries a row itself, and "--merge <the commit>" made the sender ask. (planner's decision, 2026-10-03)

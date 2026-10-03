@@ -92,14 +92,16 @@ The permission question matters most:
 Auto mode is not offered for every model: Claude Code has said "auto mode unavailable for this model" for Haiku, and
 `flotilla spawn` warns when a seat would run auto mode on such a model.
 
-**What each seat may run without a question.** Whatever the answer, flotilla launches each background seat with
-allow rules for its own command line - every ledger move but `approve`, which is yours, plus its tree, receipt,
-lane, status and read-only commands - and the post that merges (the sender) with a push of trunk from its own tree.
-Nothing that raises or removes seats. Without them, Claude Code's auto-mode classifier judged these commands by the
-conversation around them and refused some: a sender's push of reviewed work as "Merge Without Review", then a plain
-ledger record. The rules pass Claude Code's permission check only. flotilla's own guards still run on every command,
-and a guard's refusal wins over an allow rule, so a push without a green receipt over the pushed revision is still
-refused and `approve` stays yours. `flotilla spawn --dry-run` names what each seat is allowed.
+**What flotilla lets past auto mode's classifier.** In auto mode Claude Code's classifier judged flotilla's own
+commands by the conversation around them and refused some - a sender's push of reviewed work as "Merge Without
+Review", then a plain ledger record. flotilla's guard hook, which runs before every Bash call, now answers "allow" in
+auto mode for exactly two things, and only after every guard has run and found nothing: one of flotilla's own
+commands the broker's check passes (a listed subcommand, no shell sign, no option that steps around a check, never
+`approve`, `spawn`, `fleet down` or a run of an arbitrary command), and the sender's push of accounted work (one
+exact `git -C <its tree> push origin HEAD:<trunk>`, a green receipt over that revision, every commit it carries
+accounted for by the ledger). Anything else is the classifier's to decide, as before; unreviewed work still meets
+it. In `ask` mode nothing changes: you see what you chose to see. This leans on Claude Code honouring a hook's
+allow and deny, measured on 2.1.288; a mod that overrides plugin hooks would change it.
 
 You can change any answer later by editing `.flotilla/project.toml`; a change takes effect once it is on trunk.
 
