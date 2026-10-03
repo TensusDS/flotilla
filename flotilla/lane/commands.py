@@ -277,7 +277,7 @@ def _stop_run(args) -> int:
 
 def run_lane_command(args) -> int:
     try:
-        return {None: _status, "take": _take, "release": _release, "run": _run, "sweep": _sweep,
+        return {None: _status, "status": _status, "take": _take, "release": _release, "run": _run, "sweep": _sweep,
                 "stop": _stop_run}[args.action](args)
     except (StorageCorrupt, config.ConfigError, MoveRefused) as err:
         print(f"refused: {err}")

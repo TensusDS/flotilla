@@ -194,3 +194,11 @@ def test_lane_stop_does_not_take_another_sessions_word(tmp_path, monkeypatch):
     for action in (["stop"], ["release"]):
         code, out = run_cli("lane", *action, "--root", str(root), "--as", "seat B")
         assert code == 2 and "cannot act as" in out
+
+
+def test_lane_status_is_the_bare_lane(tmp_path, monkeypatch):
+    """Twosuns field test of 0.6.7, W7: a judge waiting for the lane guessed `flotilla lane status` and met argparse's
+    "invalid choice"; the status is the bare `flotilla lane`."""
+    root = onboarded(tmp_path, monkeypatch)
+    code, out = run_cli("lane", "status", "--root", str(root))
+    assert code == 0 and "capacity: 1" in out and "held: nobody" in out, out
