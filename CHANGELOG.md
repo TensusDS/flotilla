@@ -3,7 +3,7 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
-## Unreleased
+## 0.7.0 - 2026-10-03
 
 - **Claude Code only, said and enforced.** The command line moves from `scripts/flotilla` to `bin/flotilla`, which
   Claude Code puts on the Bash tool's PATH; claude.ai chat and Cowork do not install a plugin with `bin/`. Every
