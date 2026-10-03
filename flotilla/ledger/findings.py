@@ -87,13 +87,14 @@ def findings(ledger, rows: dict[str, Row] | None = None) -> list[dict]:
         done = ledger.run(["git", "-C", str(ledger.root), "rev-list", "--no-merges", "--reverse", f"-{SCAN}",
                            trunk, f"^{horizon}"], capture_output=True, text=True, check=False)
         accounting = batch.Accounting(ledger, rows)
+        human = (ledger.profile.get("flow") or {}).get("merge_authorized_by") == "human"
         for sha in (done.stdout.split() if done.returncode == 0 else []):
             if accounting.account(sha) is None:
                 row = Row(id="", branch=ledger.trunk)
+                settle = ("the person, who authorizes merges here, settles it" if human else   # 0.6.9 review, M3
+                          f"a reader who read it records `flotilla work vouch {ledger.trunk} --commit {sha[:7]}`")
                 found.append(_item("direct_commit", row, sha, f"{sha[:7]} {batch.subject(ledger, sha)}: on "
-                                                              f"`{trunk}`, and no verdict covers it; a reader who read it records "
-                                                              f"`flotilla work vouch {ledger.trunk} --commit "
-                                                              f"{sha[:7]}`"))
+                                                              f"`{trunk}`, and no verdict covers it; {settle}"))
     if origin:
         for row in rows.values():
             if row.state == "inbatch" and row.merge and \

@@ -170,3 +170,25 @@ def test_a_reader_never_vouches_for_a_commit_it_made(world, tmp_path):
     git(home, "checkout", "-q", "--detach", "origin/main")   # moved to it, not made there: still someone else's
     row = outside.vouch(ledger, reviewer, "main", commit=stray)
     assert row.history[-1]["evidence"]["author"]
+
+
+def test_where_a_person_authorizes_merges_the_finding_names_the_person(tmp_path):
+    """Review of 0.6.9, M3: the finding pointed to a move refused in such projects."""
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state",
+                         profile={**DIRECT, "flow": {"mode": "direct", "merge_authorized_by": "human"}})
+    drive(root, ledger)
+    merge(root, "feat/x")
+    commit(root, "straight to trunk", "stray.txt")
+    git(root, "push", "-q", "origin", "main")
+    said = [item["why"] for item in findings.findings(ledger) if item["kind"] == "direct_commit"]
+    assert said and "work vouch" not in said[0] and "the person" in said[0], said
+
+
+def test_an_inbatch_label_is_never_the_trunk(world):
+    """Review of 0.6.9, M5: a batch row labelled with the trunk's name would intercept `vouch <trunk>`."""
+    root, ledger = world
+    fix = commit(root, "fix a typo while merging", "typo.txt")
+    with pytest.raises(MoveRefused, match="trunk"):
+        outside.inbatch(ledger, actor(ledger, "sender 1"), "main", commit=fix, read_by="review session 1",
+                        why="typo")

@@ -28,6 +28,8 @@ def inbatch(ledger: Ledger, actor: Actor, label: str, *, commit: str, read_by: s
         raise MoveRefused("in a pull-request project every change reaches trunk through a PR; hand it over and "
                           "queue it")
     read_by, why = read_by.strip(), why.strip()
+    if label.strip() == ledger.trunk:   # it would answer for `vouch <trunk>` (review of 0.6.9, M5)
+        raise MoveRefused(f"`{label}` is the trunk; label batch work with a name of its own")
     if not why:
         raise MoveRefused("say what the change is (--why)")
     if not read_by:
