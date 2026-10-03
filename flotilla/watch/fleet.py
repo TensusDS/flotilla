@@ -52,14 +52,14 @@ def movers(row, profile: dict, live: set[str], post_of, rows: dict | None = None
     return set()
 
 
-def fleet(rows: dict, profile: dict, sessions, *, post_of, breaks=(), asking=(), claimers=frozenset(),
+def fleet(rows: dict, profile: dict, sessions, *, post_of, former_of=None, breaks=(), asking=(), claimers=frozenset(),
           now: dt.datetime | None = None) -> list[Item]:
     outside = strangers.in_seat_trees(sessions, rows, post_of)   # in a seat's tree, holding no post (H7)
     by_name = {session.name: session for session in sessions if session.name}
     for session, _ in outside:
         by_name.pop(session.name, None)   # counted nowhere a seat is counted
     live = set(by_name)
-    found_all = views.deviations(rows, profile, live)
+    found_all = views.deviations(rows, profile, live, post_of=former_of or post_of)
     items = [Item(DEVIATION, found["branch"], f"{found['kind']}: {found['why']}", since_of(rows, found["branch"]),
                   who=found["kind"])
              for found in found_all if found["kind"] != "seat_empty"]

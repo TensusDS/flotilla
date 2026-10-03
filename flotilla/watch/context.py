@@ -50,6 +50,10 @@ class Context:
         except PostError:
             return None
 
+    def post_or_former(self, name: str) -> str:
+        from flotilla.posts import post_or_former
+        return post_or_former(self.posts, name)
+
     def post_of(self, name: str) -> str:
         found = self.post(name)
         return found.name if found is not None else ""
@@ -76,7 +80,7 @@ class Context:
                                    self.post_of)
         return fleet.question_items(questions) + fleet.fleet(
             self.rows, self.profile, self.project if self.project is not None else self.sessions,
-            post_of=self.post_of, breaks=breaks,
+            post_of=self.post_of, former_of=self.post_or_former, breaks=breaks,
             asking={asked.session for asked in questions},
             claimers={post.name for post in (self.ledger.posts or {}).values() if "claim" in post.may})
 

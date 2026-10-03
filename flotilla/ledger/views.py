@@ -182,7 +182,33 @@ def fix_arrived(rows: dict[str, Row], row: Row, profile: dict) -> bool:
     return any(other.fixes == row.id and fix_delivery(rows, other, profile) for other in rows.values())
 
 
-def deviations(rows: dict[str, Row], profile: dict, live: set[str] | None = None, finished=None) -> list[dict]:
+def handover_hint(row: Row, mover: str, rows: dict[str, Row], live: set[str], post_of) -> str:
+    """Who can take a gone session's move, and the move that hands it over (twosuns field test of 0.6.7 and the
+    person's proposal): the live sessions of the same post, least loaded first, and the adopt or assign line - the
+    orchestrator chooses; flotilla only spares it the working out."""
+    post = post_of(mover) if post_of else None
+    if not post:
+        return ""
+    if mover == row.owner:
+        move = f'flotilla work adopt {row.branch} --to "{{}}"'
+    elif mover == row.reader:
+        move = f'flotilla work assign {row.branch} --reader "{{}}"'
+    else:
+        return ""
+    load: dict[str, int] = {}
+    for other in rows.values():
+        if other.is_open and other.owner:
+            load[other.owner] = load.get(other.owner, 0) + 1
+    peers = sorted((name for name in live if name != mover and post_of(name) == post),
+                   key=lambda name: (load.get(name, 0), name))
+    if not peers:
+        return f"; no live {post} session: raise one (`flotilla spawn --post {post}=1`), then `{move.format('<name>')}`"
+    listed = ", ".join(f"{name} ({load.get(name, 0)} open)" for name in peers)
+    return f"; live {post} sessions: {listed} - `{move.format(peers[0])}`"
+
+
+def deviations(rows: dict[str, Row], profile: dict, live: set[str] | None = None, finished=None,
+               post_of=None) -> list[dict]:
     found = []
     for row in rows.values():
         if not row.is_open:
@@ -213,5 +239,6 @@ def deviations(rows: dict[str, Row], profile: dict, live: set[str] | None = None
             if row.state == "reserved":   # a post seat, not a move anyone owes (F8, F27)
                 add("seat_empty", mover, f"the post seat is held for {mover}, and that session is not alive")
             else:
-                add("mover_gone", mover, f"the move is {mover}'s, and that session is not alive")
+                add("mover_gone", mover, f"the move is {mover}'s, and that session is not alive"
+                                         + handover_hint(row, mover, rows, live, post_of))
     return found

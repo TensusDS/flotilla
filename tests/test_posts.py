@@ -185,3 +185,16 @@ def test_only_the_judge_template_keeps_a_plugin_and_it_is_the_browser():
     assert posts["judge"].plugins == ("playwright@claude-plugins-official",)
     assert posts["judge"].template_version == 6
     assert all(post.plugins == () for name, post in posts.items() if name != "judge")
+
+
+def test_a_session_of_a_fleet_before_its_name_is_known_by_its_former_post(tmp_path):
+    """Twosuns field test of 0.6.7: rows owned by `main session 19`, raised before the profile named the fleet,
+    matched no post once the patterns read `twosuns-main session {n}` - so nobody could say whose post the gone owner
+    held. The former name is recognised for that question only."""
+    P.install_templates(tmp_path)
+    posts = P.load_posts(tmp_path, project="twosuns")
+    assert P.post_for_session(posts, "main session 19") is None            # a former name holds no post now
+    assert P.post_or_former(posts, "main session 19") == "main"
+    assert P.post_or_former(posts, "twosuns-main session 2") == "main"
+    assert P.post_or_former(posts, "worldcore-main session 2") == ""        # another project's seat is not ours
+    assert P.post_or_former(P.load_posts(tmp_path), "main session 19") == "main"

@@ -294,3 +294,18 @@ def test_the_persons_own_session_waiting_on_them_is_no_alarm():
     assert fleet.fleet({}, PR, [leading], post_of=post_of) == []
     seat = sess("main session 1", state="blocked", status="waiting")
     assert [item.kind for item in fleet.fleet({}, PR, [seat], post_of=post_of)] == [fleet.PERSON]
+
+
+def test_a_gone_owner_of_a_past_fleet_comes_with_the_live_session_to_take_it():
+    """Twosuns field test of 0.6.7: a fix row filed for `main session 19` of the past fleet; the watch now names who
+    of this fleet can take it, recognising the former name's post."""
+    def now(name):
+        return {"twosuns-main session 1": "main"}.get(name, "")
+
+    def former(name):
+        return now(name) or ("main" if name.startswith("main session") else "")
+
+    found = fleet.fleet(rows(row(state="claimed", owner="main session 19", branch="fix/thunder")), PR,
+                        [sess("twosuns-main session 1", state="working")], post_of=now, former_of=former)
+    assert [item.kind for item in found] == ["deviation"]
+    assert 'flotilla work adopt fix/thunder --to "twosuns-main session 1"' in found[0].text, found[0].text

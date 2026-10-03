@@ -206,3 +206,30 @@ def test_a_broken_part_whose_fix_arrived_does_not_wait_on_that_fix():
     table["r3"] = row("r3", branch="feat/whole", state="claimed", requires=["r1"])   # the part gate holds r1
     assert views.who_moves(table["r1"], JUDGED, table) == ""
     assert "fix/x" not in views.waits_on(table["r1"], table, JUDGED)
+
+
+def _post_of(name):
+    for prefix, post in (("main session", "main"), ("review session", "reviewer")):
+        if name.startswith(prefix):
+            return post
+    return None
+
+
+def test_a_gone_mover_comes_with_who_can_take_the_move():
+    """Twosuns field test of 0.6.7 and the person's proposal: a fix row filed for a session of a past fleet was an
+    alarm the orchestrator had to work out each time - whose post, who is free, which move. The alarm now names the
+    live sessions of that post, least loaded first, and the move that hands the work over."""
+    table = rows(row("r1", branch="fix/thunder", owner="main session 19"),
+                 row("r2", branch="feat/far", owner="main session 1"),
+                 row("r3", branch="feat/y", owner="main session 1", state="handed", reader="review session 9"))
+    live = {"main session 1", "main session 2", "review session 1"}
+    why = {item["branch"]: item["why"] for item in views.deviations(table, PR, live, post_of=_post_of)}
+    assert 'flotilla work adopt fix/thunder --to "main session 2"' in why["fix/thunder"], why
+    assert "main session 1 (2 open)" in why["fix/thunder"] and "main session 2 (0 open)" in why["fix/thunder"]
+    assert 'flotilla work assign feat/y --reader "review session 1"' in why["feat/y"], why
+
+
+def test_a_gone_mover_with_no_live_peer_names_raising_one():
+    table = rows(row("r1", branch="fix/thunder", owner="main session 19"))
+    found = views.deviations(table, PR, {"review session 1"}, post_of=_post_of)
+    assert "flotilla spawn --post main=1" in found[0]["why"], found

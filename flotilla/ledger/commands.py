@@ -333,6 +333,13 @@ def _events(args) -> int:
 def _broke(ledger, caller, args) -> tuple[Row, str]:
     broken, fix = judging.broke(ledger, caller, args.branch, where=args.where, saw=args.saw,
                                 fix_branch=args.fix_branch)
+    try:
+        gone = fix.owner not in ledger.live_names()
+    except MoveRefused:
+        gone = False   # liveness unknown: the author may well be there
+    if gone:   # a session of a past fleet takes nothing in a home tree (twosuns field test of 0.6.7)
+        return broken, (f"fix row {fix.id} `{fix.branch}` filed; its author {fix.owner} is not alive, so the "
+                        "orchestrator gives it an owner")
     return broken, (f"fix row {fix.id} `{fix.branch}` filed for {fix.owner}: take it in the home tree with "
                     f"`flotilla tree switch {fix.branch}`")
 
@@ -419,8 +426,10 @@ def _status(ledger: core.Ledger, args) -> int:
         held = f" (held until {row.held_until}: {row.held_why})" if row.held_until else ""
         ran = f" (last run: {strip_ansi(row.last_run)})" if row.last_run else ""
         print(f"  {row.id} {row.branch}: {row.state} -> {mover}{wait}{held}{ran}")
+    from flotilla.posts import post_or_former
     for title, items in (("deviations", views.deviations(rows, ledger.profile, live,
-                                                         finished=lambda row: _finished(ledger, row))),
+                                                         finished=lambda row: _finished(ledger, row),
+                                                         post_of=lambda name: post_or_former(ledger.posts, name))),
                          ("findings", findings.findings(ledger, rows))):
         print(f"{title}:" if items else f"{title}: none")
         for item in items:

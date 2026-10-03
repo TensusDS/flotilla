@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from flotilla.core.text import visible
 from flotilla.ledger import views
 from flotilla.ledger.model import Row
-from flotilla.posts import PostError, post_for_session
+from flotilla.posts import PostError, post_for_session, post_or_former
 
 WHAT = {"reserved": "reserved for you", "claimed": "yours to build", "fixing": "returned to you for fixes",
         "accepted": "accepted by its reader", "queued": "queued", "landed": "landed", "shipped": "shipped",
@@ -28,6 +28,7 @@ class Letter:
     to: tuple[str, ...]
     branch: str
     text: str
+    hint: str = ""   # who could take a gone session's move, and the line that hands it over
 
 
 def _post_of(posts: dict, name: str) -> str:
@@ -71,19 +72,22 @@ def changed(before: dict[str, Row], after: dict[str, Row], profile: dict, posts:
     found = []
     for mover, row in due:
         post = views.POST_OF_MOVER.get(mover)
+        hint = ""
         if post is None:
             to = (mover,) if names is None or mover in names else ()
+            if not to:   # a session of a past fleet: say who of this one could take it (twosuns 0.6.7)
+                hint = views.handover_hint(row, mover, after, names, lambda name: post_or_former(posts, name))
         elif names is None:
             to = (f"the session holding the {post} post",)
         else:
             to = tuple(sorted(name for name in names if _post_of(posts, name) == post))
-        found.append(Letter(mover=mover, to=to, branch=row.branch, text=_body(row)))
+        found.append(Letter(mover=mover, to=to, branch=row.branch, text=_body(row), hint=hint))
     return found
 
 
 def render(letter: Letter) -> list[str]:
     if not letter.to:
         return [f"note: `{letter.branch}` is now {letter.mover}'s move and no live session can make it; "
-                "tell the orchestrator"]
+                f"tell the orchestrator{letter.hint}"]
     return [f"letter for {', '.join(letter.to)} - send it with SendMessage; an idle background session is woken "
             "only by a message:", *(f"  {line}" for line in letter.text.splitlines())]

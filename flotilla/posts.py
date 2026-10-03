@@ -150,3 +150,22 @@ def install_templates(root: Path, *, template_dir: Path = TEMPLATE_DIR) -> list[
         target.write_text(template.read_text(encoding="utf-8"), encoding="utf-8")
         written.append(target)
     return written
+
+
+def post_or_former(posts: dict[str, Post], session_name: str) -> str:
+    """The post a session holds - or held under its former name, before the profile named the fleet
+    (`main session 19` in a fleet now called `twosuns`). For saying who can take a gone session's move only: a
+    former name holds no post today (twosuns field test of 0.6.7)."""
+    try:
+        found = post_for_session(posts, session_name)
+    except PostError:
+        return ""
+    if found is not None:
+        return found.name
+    for post in posts.values():
+        prefix = f"{post.project}-" if post.project else ""
+        if prefix and post.name_pattern.startswith(prefix):
+            former = dataclasses.replace(post, name_pattern=post.name_pattern[len(prefix):])
+            if former.matches(session_name):
+                return post.name
+    return ""

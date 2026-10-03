@@ -509,3 +509,30 @@ def test_a_red_receipt_prints_why(tmp_path, monkeypatch):
     assert run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")[0] == 0
     code, out = run_cli("receipt", "run", "--purpose", "handover", "--tree", str(tree), "--no-lane")
     assert code == 1 and "exit 127" in out and "vitest: not found" in out
+
+
+def test_broke_for_an_author_who_is_gone_hands_the_fix_to_the_orchestrator(tmp_path, monkeypatch):
+    """Twosuns field test of 0.6.7: `broke` filed a fix row for `main session 19` of a past fleet and told it to
+    take the row in its home tree - a letter to nobody. With its author gone it says so, names the live session of
+    that post who could take it, and the adopt line the orchestrator runs."""
+    root = onboarded(tmp_path, monkeypatch, DIRECT_PLAIN)
+    tree = tmp_path / "app-main-1"
+    run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")
+    tip = commit(tree, "work", "work.txt")
+    run_cli("work", "hand", "feat/x", "--root", str(tree), "--as", "main session 1")
+    run_cli("work", "take", "feat/x", "--root", str(root), "--as", "review session 1")
+    run_cli("work", "accept", "feat/x", "--reviewed", tip, "--root", str(root), "--as", "review session 1")
+    run_cli("work", "queue", "feat/x", "--root", str(root), "--as", "sender 1")
+    merge(root, "feat/x")
+    run_cli("work", "land", "feat/x", "--root", str(root), "--as", "sender 1")
+    git(root, "push", "-q", "origin", "main")
+    run_cli("work", "ship", "feat/x", "--root", str(root), "--as", "sender 1")
+    from flotilla.core.census import Session
+    alive = [Session(name=name, session_id=f"sid-{name}", kind="background", pid=None, short_id="x", status=None,
+                     state="idle", cwd=str(root), started_at_ms=None) for name in ("main session 2", "acceptance judge 1")]
+    monkeypatch.setattr("flotilla.ledger.core.Ledger.live_sessions", lambda self: alive)
+    code, out = run_cli("work", "broke", "feat/x", "--where", "Settings > Export", "--saw", "nothing happens",
+                        "--root", str(root), "--as", "acceptance judge 1")
+    assert code == 0 and "main session 1 is not alive" in out, out
+    assert 'flotilla work adopt fix/x --to "main session 2"' in out and "tree switch" not in out
+    assert "letter for main session 1" not in out
