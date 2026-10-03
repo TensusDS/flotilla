@@ -386,6 +386,7 @@ def test_reconcile_names_land_for_a_queued_row_already_on_origin(direct):
     pushed_from_a_side_tree(root)
     lines = delivery.reconcile(ledger, actor(ledger, SENDER))
     assert any("feat/x" in line and "flotilla work land feat/x" in line for line in lines)
+    assert not any("<the commit>" in line for line in lines)   # land finds it; a placeholder made the sender ask (W11)
 
 
 def test_reconcile_stays_quiet_about_a_queued_row_not_on_origin(direct):

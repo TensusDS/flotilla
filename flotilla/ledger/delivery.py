@@ -311,7 +311,7 @@ def reconcile(ledger: Ledger, actor: Actor) -> list[str]:
             read = batch.revision_of(row)
             if read and _on_origin(ledger, read) is True:   # pushed from the sender's tree, never recorded
                 lines.append(f"pushed, not landed {row.branch}: origin's `{ledger.trunk}` carries {read[:7]}; "
-                             f"record it with `flotilla work land {row.branch} --merge <the commit>`")
+                             f"record it with `flotilla work land {row.branch}` - it finds the merge that carries it")
             continue
         try:
             shipped = ship(ledger, actor, row.branch)
