@@ -80,3 +80,28 @@ def test_is_clean(tmp_path):
     assert gitq.is_clean(root) is True
     (root / "dirty.txt").write_text("x", encoding="utf-8")
     assert gitq.is_clean(root) is False
+
+
+def test_a_submodule_pointer_move_is_a_change_whatever_gitmodules_says(tmp_path):
+    """Review of the sender's push allow, I2: with `ignore = all` in .gitmodules, a commit that only moves a
+    submodule pointer had an empty diff and was accounted as carrying no change."""
+    import subprocess
+    from flotilla.ledger import gitq
+
+    def g(*args):
+        return subprocess.run(["git", "-C", str(tmp_path), "-c", "user.name=t", "-c", "user.email=t@x", *args],
+                              capture_output=True, text=True, check=True).stdout.strip()
+    g("init", "-q", "-b", "main")
+    g("commit", "-q", "--allow-empty", "-m", "a")
+    first = g("rev-parse", "HEAD")
+    g("commit", "-q", "--allow-empty", "-m", "b")
+    second = g("rev-parse", "HEAD")
+    (tmp_path / ".gitmodules").write_text('[submodule "sub"]\n\tpath = sub\n\turl = ./x\n\tignore = all\n',
+                                          encoding="utf-8")
+    g("add", ".gitmodules")
+    g("update-index", "--add", "--cacheinfo", f"160000,{first},sub")
+    g("commit", "-q", "-m", "submodule")
+    base = g("rev-parse", "HEAD")
+    g("update-index", "--cacheinfo", f"160000,{second},sub")
+    g("commit", "-q", "-m", "move the pointer")
+    assert gitq.patch_fingerprint(tmp_path, base, g("rev-parse", "HEAD")) not in (None, "empty")

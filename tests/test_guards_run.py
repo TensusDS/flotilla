@@ -571,3 +571,16 @@ def test_a_replaced_history_is_left_to_the_classifier(tmp_path, monkeypatch):
     receipt(root, tmp_path / "state")
     git(root, "replace", "-f", git(root, "rev-parse", "HEAD"), accounted)
     assert not _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path))
+
+
+@pytest.mark.parametrize("url, plain", [
+    ("git@github.com:o/r.git", True), ("https://github.com/o/r.git", True), ("ssh://git@host.example/o/r", True),
+    ("/srv/git/r.git", True),
+    ("evil.example:x@github.com:o/r", False),          # git connects to evil.example; the ledger key said github
+    ("https://user:pass@github.com/o/r", False), ("ext::sh -c x", False), ("file://./r", False),
+    ("git@github.com:o/r with space", False), ("-uhost:o/r", False),
+])
+def test_only_plain_origin_urls_are_pushed_past_the_classifier(url, plain):
+    """Review of the sender's push allow, I3: the ledger's key and git's connection target parsed one URL apart."""
+    from flotilla.guards import run as guard_run
+    assert guard_run._plain_url(url) is plain

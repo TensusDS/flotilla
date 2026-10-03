@@ -80,7 +80,8 @@ def is_release(ledger, sha: str) -> bool:
     if not paths <= files | LOCK_COMPANIONS or not paths & files:
         return False
     for path in paths:
-        body = _git(ledger, "show", "--format=", "-U0", sha, "--", path)
+        body = _git(ledger, "show", "--format=", "-U0", "--ignore-submodules=none", "--no-ext-diff", "--no-textconv",
+                    sha, "--", path)
         if body is None:
             return False
         bare = path.rsplit("/", 1)[-1] == "VERSION"

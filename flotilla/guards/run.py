@@ -94,6 +94,18 @@ _SAFE_CONFIG = (r"core\.(repositoryformatversion|filemode|bare|logallrefupdates|
                 r"extensions\.(worktreeconfig|objectformat)")
 
 
+#: The origin URL shapes the push allow accepts: what git and the ledger's key read alike. Anything else - userinfo
+#: with a colon (`evil.example:x@github.com:o/r` keyed as github, connected to evil.example), credentials, a
+#: transport helper, a relative file URL, whitespace, a leading dash - is the classifier's to judge.
+_URLS = (r"git@[A-Za-z0-9.-]+:[A-Za-z0-9._/-]+", r"https://[A-Za-z0-9.-]+(:[0-9]+)?/[A-Za-z0-9._/-]+",
+         r"ssh://git@[A-Za-z0-9.-]+(:[0-9]+)?/[A-Za-z0-9._/-]+", r"/[A-Za-z0-9._/-]+")
+
+
+def _plain_url(url: str) -> bool:
+    import re
+    return any(re.fullmatch(shape, url) for shape in _URLS)
+
+
 def _git_out(at, *args, run):
     done = run(["git", "-C", str(at), *args], capture_output=True, text=True, check=False, timeout=8)   # the hook
     # itself has 30 s; a slow call fails safe - no allow - but should not take the whole budget (final review, I1)
@@ -195,6 +207,8 @@ def _senders_push(command: str, cwd, root, session_id: str, run) -> str:
     if len(urls) != 1 or len(own) != 1 or urls[0] != f"local\t{own[0]}":
         return ""
     url = own[0]
+    if not _plain_url(url):
+        return ""
     listed = _git_out(tree, "-c", f"core.hooksPath={_empty_hooks()}", "ls-remote", url, f"refs/heads/{trunk}",
                       run=run)
     base = listed.split()[0] if listed else ""
