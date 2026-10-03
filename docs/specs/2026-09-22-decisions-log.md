@@ -1272,8 +1272,13 @@ Working log of decisions taken with Max before the spec. Not a spec. Research so
    rewritten (updatedInput, measured): its caller must own the tree, the repository's own git config may hold only
    plain keys (no push URL, pack command, ssh command, hooks path, credential helper, include, URL rewrite), origin's
    trunk is asked with hooks off, and the command run is `git -C <tree> -c core.hooksPath=<an empty dir> push origin
-   <checked sha>:refs/heads/<trunk>` - no repository hook, and no other commit than the one checked. Left as a known
-   limit, outside the allow: rules are read from the local remote-tracking ref of trunk. (planner's decision,
+   <checked sha>:refs/heads/<trunk>` - no repository hook, and no other commit than the one checked. The final
+   review and the one after it closed four more: exactly one origin URL, local, the project's own, named in the
+   push and the base query (a second URL had received the push and answered the base); config judged by the file
+   it comes from (a global includeIf could read a file inside the repository); no allow for a call that asks to
+   leave the sandbox; and none over replaced, grafted or shallow history (the accounting reads replace refs, the
+   push sends real objects). Left as a known limit, outside the allow: rules are read from the local
+   remote-tracking ref of trunk. (planner's decision,
    2026-10-03; the person chose the exact-command allow over a prose classifier rule)
 
 220. **`reconcile` names `land` without a placeholder** (twosuns field test of 0.6.7, W11): `land` finds the merge
