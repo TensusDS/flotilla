@@ -124,8 +124,11 @@ after every guard has run and found nothing, and for two things:
   under that same `.flotilla` (so work recorded before 0.6.11, or before the last change to `.flotilla`, is the
   classifier's to judge). It runs rewritten: the commit that was checked, pushed with no repository hook.
 
-Anything else is the classifier's to decide, as before; unreviewed work still meets it. For the push, the opt-in
-itself is read where origin names trunk, like the rest of the rules that grant it. Your own `deny` rules still
+Anything else is the classifier's to decide, as before; unreviewed work still meets it. The opt-in counts only as
+origin's trunk carries it: before each such allow flotilla asks origin for its default branch and that branch's
+revision (`git ls-remote`, with no repository hook) and reads the profile there, so a session cannot switch it on by
+editing its own tree or moving a local ref. Offline, or with a repository config that could run code on that call,
+nothing is allowed and the classifier decides. Your own `deny` rules still
 win over this allow, and in `ask` mode nothing changes. This leans on Claude Code honouring a hook's allow, deny and
 rewritten input, measured on 2.1.288.
 

@@ -753,3 +753,44 @@ def test_the_opt_in_is_read_where_origin_names_trunk(tmp_path, monkeypatch):
     git(root, "fetch", "-q", "origin")
     monkeypatch.setattr(gitq, "trunk_ref", lambda *a, **k: forged)
     assert not _allowed(ask(root, f"git -C {root} push origin HEAD:main", monkeypatch, tmp_path))
+
+
+def _opt_in_locally(root):
+    from guardkit import IDENTITY, git
+    profile = root / ".flotilla" / "project.toml"
+    profile.write_text(profile.read_text(encoding="utf-8") + OPTED, encoding="utf-8")
+    git(root, *IDENTITY, "commit", "-q", "-am", "opt in, here only")
+
+
+def test_an_opt_in_the_session_wrote_in_its_tree_grants_nothing(tmp_path, monkeypatch):
+    """Review of the directory readiness work, I1: the opt-in for flotilla's own commands was read through the local
+    trunk ref - or, where that ref carried no profile, the tree's own. A seat edits its tree's profile, or repoints
+    the ref, and its moves skip the classifier without the person choosing it. The opt-in is read where origin
+    names trunk, for every allow."""
+    from guardkit import git
+    root = onboarded(tmp_path)   # origin's trunk: no opt-in
+    _opt_in_locally(root)
+    assert not _allowed(ask(root, f"{CLI} status", monkeypatch, tmp_path))   # committed, not on origin
+    git(root, "update-ref", "refs/remotes/origin/main", "HEAD")
+    assert not _allowed(ask(root, f"{CLI} status", monkeypatch, tmp_path))   # the ref repointed at it
+    profile = root / ".flotilla" / "project.toml"
+    profile.write_text(profile.read_text(encoding="utf-8").replace('branch = "main"', 'branch = "nope"'),
+                       encoding="utf-8")
+    assert not _allowed(ask(root, f"{CLI} status", monkeypatch, tmp_path))   # trunk renamed: the tree's profile
+
+
+def test_a_branch_on_origin_that_calls_itself_trunk_grants_nothing(tmp_path, monkeypatch):
+    """A feature branch can reach origin without any check; it names itself trunk in its own profile and opts in.
+    Trunk is origin's default branch, asked of origin."""
+    from guardkit import git
+    root = onboarded(tmp_path)
+    git(root, "switch", "-q", "-c", "evil")
+    profile = root / ".flotilla" / "project.toml"
+    profile.write_text(profile.read_text(encoding="utf-8").replace('branch = "main"', 'branch = "evil"') + OPTED,
+                       encoding="utf-8")
+    from guardkit import IDENTITY
+    git(root, *IDENTITY, "commit", "-q", "-am", "evil is trunk now")
+    git(root, "push", "-q", "origin", "evil")
+    assert not _allowed(ask(root, f"{CLI} status", monkeypatch, tmp_path))
+    git(root, "remote", "set-head", "origin", "evil")   # the local idea of origin's default branch, repointed
+    assert not _allowed(ask(root, f"{CLI} status", monkeypatch, tmp_path))

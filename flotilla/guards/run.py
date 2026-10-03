@@ -154,6 +154,39 @@ def _empty_hooks() -> Path:
     return empty
 
 
+def _origin_trunk(root: Path, trunk: str, run):
+    """(origin's trunk revision, the rules read at it) - or None. What an allow grants is read here, never from a
+    ref or a file a session can change (scan of 0.6.10, F1; review of the directory readiness work, I1): origin is
+    asked, by the one plain URL this repository names and with no repository hook, for its default branch and that
+    branch's revision; trunk must be the default branch, the local `origin/<trunk>` must be that revision, and the
+    rules are read at it."""
+    from flotilla.ledger import gitq
+    from flotilla.ledger.commands import trunk_rules
+    if not _config_is_plain(root, run):   # before any network call: nothing in the config runs on it
+        return None
+    urls = (_git_out(root, "config", "--show-scope", "--get-all", "remote.origin.url", run=run) or "").splitlines()
+    if len(urls) != 1 or not urls[0].startswith("local\t") or not _plain_url(urls[0][len("local\t"):]):
+        return None
+    url = urls[0][len("local\t"):]
+    listed = _git_out(root, "-c", f"core.hooksPath={_empty_hooks()}", "ls-remote", "--symref", url, "HEAD",
+                      f"refs/heads/{trunk}", run=run) or ""
+    default = base = ""
+    for line in listed.splitlines():
+        words = line.split()
+        if len(words) == 3 and words[0] == "ref:" and words[2] == "HEAD":
+            default = words[1]
+        elif len(words) == 2 and words[1] == f"refs/heads/{trunk}":
+            base = words[0]
+    if default != f"refs/heads/{trunk}" or not base:   # a branch that names itself trunk is not origin's trunk
+        return None
+    if gitq.resolve(root, f"refs/remotes/origin/{trunk}^{{commit}}", run=run) != base:
+        return None
+    rules = trunk_rules(root, at=base)
+    if str((rules.profile.get("trunk") or {}).get("branch") or "main") != trunk:
+        return None
+    return base, rules
+
+
 def _senders_push(command: str, cwd, root, session_id: str, run) -> str:
     """The sender's push of accounted work, rewritten so it pushes exactly what was checked, or "" (twosuns field test
     of 0.6.7, W9; three reviews of 0.6.10). The typed command is exactly `git -C <absolute tree> push origin
@@ -170,7 +203,7 @@ def _senders_push(command: str, cwd, root, session_id: str, run) -> str:
     from flotilla.broker.decide import _same_repository
     from flotilla.guards.rules import rules_for
     from flotilla.ledger import batch, gitq
-    from flotilla.ledger.commands import open_ledger, trunk_rules
+    from flotilla.ledger.commands import open_ledger
     from flotilla.posts import post_for_session
     if root is None:
         return ""
@@ -201,22 +234,13 @@ def _senders_push(command: str, cwd, root, session_id: str, run) -> str:
     if len(urls) != 1 or len(own) != 1 or urls[0] != f"local\t{own[0]}":
         return ""
     url = own[0]
-    if not _plain_url(url):
-        return ""
-    listed = _git_out(tree, "-c", f"core.hooksPath={_empty_hooks()}", "ls-remote", url, f"refs/heads/{trunk}",
-                      run=run)
-    base = listed.split()[0] if listed else ""
+    got = _origin_trunk(root, trunk, run)   # origin's trunk and the rules there: what grants (F1)
     head = gitq.resolve(tree, "HEAD", run=run)
-    if not base or head is None or gitq.resolve(tree, base, run=run) is None:
+    if got is None or head is None or gitq.resolve(tree, got[0], run=run) is None:
         return ""
-    # what grants is origin's own trunk (scan of 0.6.10, F1): the local `origin/<trunk>` is a ref any session can
-    # repoint, so it must be the revision origin named, and the rules are read at that revision, never at the ref
-    if gitq.resolve(root, f"refs/remotes/origin/{trunk}^{{commit}}", run=run) != base:
-        return ""
-    rules = trunk_rules(root, at=base)
+    base, rules = got
     if not opted_in(rules.profile) or (rules.profile.get("flow") or {}).get("mode") != "direct" \
-            or not (rules.profile.get("guards") or {}).get("push_receipt") \
-            or str((rules.profile.get("trunk") or {}).get("branch") or "main") != trunk:
+            or not (rules.profile.get("guards") or {}).get("push_receipt"):
         return ""
     ledger = open_ledger(root, rules=rules)
     rows = ledger.rows()
@@ -254,9 +278,15 @@ def allowance(command: str, cwd, root, *, session_id: str = "", run=subprocess.r
     person's."""
     from flotilla.guards.rules import rules_for
     try:
-        if root is None or not opted_in(rules_for(Path(root), run=run)[0]):
+        if root is None:
+            return "", ""
+        profile = rules_for(Path(root), run=run)[0]
+        if not opted_in(profile):   # where nobody opted in, origin is not even asked
             return "", ""
         if _own(command, root):
+            got = _origin_trunk(Path(root), str((profile.get("trunk") or {}).get("branch") or "main"), run)
+            if got is None or not opted_in(got[1].profile):   # the opt-in that counts is on origin's trunk
+                return "", ""
             return "flotilla's own command; flotilla checks the post, the state and the evidence itself", ""
         rewritten = _senders_push(command, cwd, root, session_id, run)
         if rewritten:
