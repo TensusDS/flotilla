@@ -196,10 +196,16 @@ def plan(ledger, counts: dict, *, census, store, reserve: bool,
     if refusals and strict:
         raise SpawnRefused("; ".join(refusals) + "; nothing was raised")
     seats: list[launch.Seat] = []
+    skipped: list[str] = []
     for post_name in compose.raise_order(wanted):
         post = ledger.posts[post_name]
+
+        def occupied(name, post=post):   # a tree an earlier fleet left, with no branch to number it by (twosuns)
+            tree = launch.seat_for(main, post, name).tree
+            return (f"{tree} is already there (an earlier fleet's; `flotilla fleet clean` says whether it can go)"
+                    if tree.exists() or tree.is_symlink() else "")
         issued = names.next_names(post, wanted[post_name], taken=taken, store=store, reserve=reserve,
-                                  now=ledger.now())
+                                  now=ledger.now(), occupied=occupied, skipped=skipped)
         taken |= set(issued)
         seats += [launch.seat_for(main, post, name) for name in issued]
     clashes = [f"{seat.tree} already exists" for seat in seats if seat.tree.exists() or seat.tree.is_symlink()]
@@ -211,7 +217,7 @@ def plan(ledger, counts: dict, *, census, store, reserve: bool,
     if (ledger.profile.get("judge") or {}).get("required") and not wanted.get("judge") and not held.get("judge"):
         unwalked.append("the profile requires a judge and the fleet will hold none: shipped rows wait for a walk "
                         "nobody makes; add one (`--post judge=1`)")
-    return seats, memory_settings(ledger)[2] + ([short] if short else []) + \
+    return seats, memory_settings(ledger)[2] + ([short] if short else []) + skipped + \
         compose.warnings(wanted, ledger.posts, held) + unwalked + refusals + setup_warnings
 
 

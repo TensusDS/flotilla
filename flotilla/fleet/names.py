@@ -28,7 +28,10 @@ def _same_series(record: dict, post) -> bool:
     return record.get("post") == post.name and not getattr(post, "project", "")
 
 
-def next_names(post, count: int, *, taken: set[str], store, reserve: bool, now: str = "") -> list[str]:
+def next_names(post, count: int, *, taken: set[str], store, reserve: bool, now: str = "", occupied=None,
+               skipped: list | None = None) -> list[str]:
+    """`occupied(name)` says why a name's seat cannot be made here (its tree is already on disk), or ""; such a
+    number is stepped over and noted in `skipped` - never reused for a seat, never touched (twosuns, 2026-10-03)."""
     with store.transaction(KEY) as tx:
         issued = [record.get("n", 0) for record in tx.read().records if _same_series(record, post)]
         known = [number_of(post, name) or 0 for name in taken]
@@ -38,6 +41,11 @@ def next_names(post, count: int, *, taken: set[str], store, reserve: bool, now: 
             number += 1
             name = post.name_pattern.replace("{n}", str(number))
             if name in taken:
+                continue
+            why = occupied(name) if occupied else ""
+            if why:
+                if skipped is not None:
+                    skipped.append(f"skipped `{name}`: {why}")
                 continue
             found.append(name)
             if reserve:

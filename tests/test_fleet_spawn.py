@@ -111,13 +111,21 @@ def test_a_dry_run_plans_names_and_changes_nothing(tmp_path):
     assert seats[0].name == "main session 1"
 
 
-def test_a_seat_whose_tree_already_exists_is_refused_before_anything_starts(tmp_path):
+def test_a_number_whose_tree_an_earlier_fleet_left_is_skipped(tmp_path):
+    """twosuns, 2026-10-03: spawn stopped on `twosuns-main-3`, a tree an older fleet left with no branch beside it -
+    numbering stepped over branches (W11) but not over trees. A number whose tree is already there is skipped, the
+    plan says why, and what was left is never touched."""
     fake = FakeClaude()
     root, ledger, store = world(tmp_path, fake)
     (tmp_path / "app-main-1").mkdir()
-    with pytest.raises(spawn.SpawnRefused, match="app-main-1 already exists"):
-        run(ledger, store, fake, {"main": 1})
-    assert fake.launched == []
+    (tmp_path / "app-main-1" / "draft.txt").write_text("an older fleet's\n", encoding="utf-8")
+    seats, notes = spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False)
+    assert [seat.name for seat in seats] == ["main session 2"]
+    said = "\n".join(notes)
+    assert "main session 1" in said and "app-main-1" in said and "fleet clean" in said
+    run(ledger, store, fake, {"main": 1})
+    assert [cmd[3] for cmd in fake.launched] == ["main session 2"]
+    assert (tmp_path / "app-main-1" / "draft.txt").read_text(encoding="utf-8") == "an older fleet's\n"
 
 
 def test_a_branch_made_after_the_plan_is_never_deleted(tmp_path):

@@ -3,6 +3,13 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## Unreleased
+
+- **A seat number whose tree an earlier fleet left is skipped.** `spawn` stepped over the numbers of older seats'
+  branches, not of their trees: a tree left with no branch beside it (twosuns, after an older fleet named without the
+  project) stopped the whole spawn. The number is skipped, the plan says so and points at `flotilla fleet clean`,
+  and the tree is never touched.
+
 ## 0.7.1 - 2026-10-03
 
 Closes the findings of a scan of the fleet, lane, onboarding and guard code:
