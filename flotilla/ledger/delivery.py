@@ -26,6 +26,7 @@ from flotilla.ledger.core import Ledger
 from flotilla.ledger.errors import MoveRefused, NotYet
 from flotilla.ledger.model import Row, blocked_by
 from flotilla.ledger.transitions import moves_from, next_state
+from flotilla.ledger.views import approve_command
 
 
 def pr_view(ledger: Ledger, pr: int, fields: str) -> dict:
@@ -111,7 +112,7 @@ def queue(ledger: Ledger, actor: Actor, branch: str, *, pr: int | None = None) -
                               "owner records it with `flotilla work moved` and the reader accepts again")
         if (ledger.profile.get("flow") or {}).get("merge_authorized_by") == "human" and row.approved != current:
             raise MoveRefused(f"a person authorizes every merge into trunk here, and nobody approved `{branch}` at "
-                              f"{current[:7]}: the person types `! flotilla work approve {branch}` in their own "
+                              f"{current[:7]}: the person types `! {approve_command(ledger, branch)}` in their own "
                               f"session, or runs it in a terminal; record the wait with `flotilla work wait {branch} --on "
                               "\"the person\" --why \"approve before queue\"`")
         evidence = _check_pr(ledger, pr, branch, current) if pr is not None else {}

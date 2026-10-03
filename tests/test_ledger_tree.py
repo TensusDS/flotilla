@@ -195,3 +195,24 @@ def test_a_tree_another_session_made_at_the_same_moment_is_never_removed(tmp_pat
         tree_mod.cut(ledger, actor(ledger, "main session 1"), "feat/x", tree)
     assert (tree / "theirs.txt").exists()
     assert git(root, "rev-parse", "--verify", "-q", "refs/heads/theirs")
+
+
+@pytest.mark.parametrize("name", ["feat/x$(touch pwned)", "feat/`id`", "feat/x;rm", "feat/a|b", "feat/{a,b}",
+                                  "-feat", "feat/x y", "feat/x'y", "feat/ü"])
+def test_a_branch_name_a_shell_would_expand_is_refused_at_the_claim(tmp_path, name):
+    """Scan of 0.6.10, F2: git allows `$`, `(`, `|`, braces and backticks in a ref name, and a branch name travels
+    into commands a person types (`! flotilla work approve <branch>`). A name is chosen by a session, so it is
+    refused where it enters the ledger: claim, reserve, and every move that files a row."""
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state")
+    with pytest.raises(MoveRefused, match="letters, digits"):
+        core.claim(ledger, actor(ledger, "main session 1"), name)
+    with pytest.raises(MoveRefused, match="letters, digits"):
+        core.reserve(ledger, actor(ledger, "main session 1"), name)
+
+
+@pytest.mark.parametrize("name", ["feat/x", "fleet/sender-1", "fix/a.b_c-2", "release/0.6.11", "UPPER/Case"])
+def test_ordinary_branch_names_are_claimed(tmp_path, name):
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state")
+    assert core.claim(ledger, actor(ledger, "main session 1"), name).branch == name

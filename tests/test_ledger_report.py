@@ -71,3 +71,35 @@ def test_without_origin_landed_work_is_delivered_not_ready_to_ship(tmp_path):
     merge(root, "feat/x")
     delivery.land(ledger, actor(ledger, "sender 1"), "feat/x")
     assert "  nothing is ready to ship" in report.brief(ledger)
+
+
+HUMAN = {**PROFILE, "flow": {"mode": "direct", "merge_authorized_by": "human"}}
+
+
+def test_where_a_person_approves_the_brief_prints_each_approve_command_ready_to_type(tmp_path):
+    """Scan of 0.6.10, F2: the orchestrator assembled `<flotilla> work approve <branch>` from a branch name a session
+    chose, and the person ran it with `!` in their own shell. The CLI prints the command itself, shell-quoted, so
+    the orchestrator relays a line instead of building one - an older row's name with `$(...)` in it included."""
+    import dataclasses
+    import shlex
+    from flotilla.guards.githooks import link_path
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile=HUMAN)
+    drive(root, ledger, "feat/a")
+    rows = ledger.rows()
+    row_id = next(key for key, row in rows.items() if row.branch == "feat/a")
+    text = "\n".join(report.brief(ledger, rows))
+    assert "approve: ! flotilla work approve feat/a" in text   # no stable link yet: the name on PATH
+    link = link_path(ledger.state_dir)
+    link.parent.mkdir(parents=True)
+    link.symlink_to("/bin/true")
+    rows[row_id] = dataclasses.replace(rows[row_id], branch="feat/x$(touch pwned)")
+    text = "\n".join(report.brief(ledger, rows))
+    assert f"approve: ! {shlex.quote(str(link))} work approve 'feat/x$(touch pwned)'" in text
+
+
+def test_where_the_sender_merges_the_brief_prints_no_approve_command(tmp_path):
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile=DIRECT)
+    drive(root, ledger, "feat/a")
+    assert "work approve" not in "\n".join(report.brief(ledger))

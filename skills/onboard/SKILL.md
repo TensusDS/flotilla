@@ -115,8 +115,9 @@ Ask with AskUserQuestion, header "Fleet", question "Raise the fleet now?":
 3. From now on you hold the orchestrator post: read `.flotilla/posts/orchestrator.md` on trunk and follow its
    instructions, and use the `flotilla:flotilla` skill for every ledger move. Where the profile's permission mode is `ask`, the fleet's permission questions reach you; put each to the
    person with `/flotilla:permit` (in `auto` mode none come). Where the
-   person authorizes merges, show them each approve command and let them type it with `!` in front; your own Bash
-   call of `flotilla work approve` is refused, by design.
+   person authorizes merges, show them each `approve:` line `flotilla brief` prints, copied as it is (it quotes the
+   branch name for the shell; never build the command yourself), and let them type it; your own Bash call of
+   `flotilla work approve` is refused, by design.
 
 **A background orchestrator:** run `flotilla spawn --default` and give the person the orchestrator's
 `claude attach <id>` from what it printed.

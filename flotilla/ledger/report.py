@@ -15,6 +15,7 @@ from collections import Counter, defaultdict
 
 from flotilla.ledger import batch, gitq, receipts
 from flotilla.ledger.model import Row, blocked_by
+from flotilla.ledger.views import approve_command
 
 READY = ("accepted", "queued", "landed")
 
@@ -57,6 +58,7 @@ def brief(ledger, rows: dict[str, Row] | None = None) -> list[str]:
     if not ready:
         lines.append("  nothing is ready to ship")
     push_tiers = bool(receipts.tiers_for(ledger.profile, "push"))
+    human = (ledger.profile.get("flow") or {}).get("merge_authorized_by") == "human"
     for number, (row, _) in enumerate(ready, 1):
         read = batch.revision_of(row)
         who = (f"accepted by {row.reader} over {row.verdict[:7]}" if row.verdict else
@@ -74,6 +76,8 @@ def brief(ledger, rows: dict[str, Row] | None = None) -> list[str]:
                      + (f"; {'; '.join(extras)}" if extras else ""))
         if row.urgent_at:
             lines.append(f"     urgent since {row.urgent_at}: {row.urgent_why or 'no reason given'}")
+        if human and not (read and row.approved == read):
+            lines.append(f"     approve: ! {approve_command(ledger, row.branch)}")
     if held:
         lines.append("Not in this batch:")
         lines.extend(f"  `{row.branch}` ({row.state}): {'; '.join(reasons)}" for row, reasons in held)

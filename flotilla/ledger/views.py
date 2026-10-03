@@ -250,3 +250,13 @@ def deviations(rows: dict[str, Row], profile: dict, live: set[str] | None = None
                 add("mover_gone", mover, f"the move is {mover}'s, and that session is not alive"
                                          + handover_hint(row, mover, rows, live, post_of, former_of))
     return found
+
+
+def approve_command(ledger, branch: str) -> str:
+    """The person's approve move as they type it, shell-quoted, through the stable link to the running plugin when
+    there is one: the orchestrator relays this line and never builds it from a branch name (scan of 0.6.10, F2)."""
+    import shlex
+    from flotilla.guards.githooks import link_path
+    link = link_path(ledger.state_dir)
+    cli = str(link) if link.is_symlink() or link.exists() else "flotilla"
+    return f"{shlex.quote(cli)} work approve {shlex.quote(branch)}"
