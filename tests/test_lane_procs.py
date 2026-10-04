@@ -1,6 +1,8 @@
 import os
 import subprocess
 
+import pytest
+
 from flotilla.lane import procs
 
 
@@ -108,3 +110,14 @@ def test_an_unreaped_process_is_not_alive_where_ps_answers_too():
     assert table.alive(42, mark)
     state["stat"] = "Z+"
     assert not table.alive(42, mark)
+
+
+@pytest.mark.parametrize("source", ["procfs", "ps"])
+def test_a_process_table_says_whether_a_pid_exists(source):
+    import os
+    from pathlib import Path
+    if source == "procfs" and not Path("/proc/self").is_dir():
+        pytest.skip("no /proc here")
+    table = procs.ProcessTable(source)
+    assert table.exists(os.getpid()) is True
+    assert table.exists(2 ** 22 + 12345) is False   # above any pid_max this machine allows

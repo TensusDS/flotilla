@@ -164,7 +164,11 @@ def split_computing(table, runs, *, sleep, sample: float = SAMPLE, young: float 
     for proc in runs:
         before, after = first[proc.pid], table.cpu_seconds(proc.pid)
         if after is None and before is not None:
-            continue   # it ended during the sample
+            exists = getattr(table, "exists", None)
+            if exists is not None and exists(proc.pid) is False:
+                continue   # it ended during the sample
+            busy.append(proc)   # the sample failed (`ps` did not answer), the run did not: unknown is computing
+            continue
         if before is None or after is None or after > before:
             busy.append(proc)   # growing, or unreadable: unknown counts as computing
             continue
@@ -198,6 +202,9 @@ def _queue(command: str, root, run) -> Answer:
         return Answer("ci", False, f"the CI queue command says CI is not using this machine{detail}")
     if done.returncode == 1:
         return Answer("ci", True, f"the CI queue command says CI is using this machine{detail}")
+    if done.returncode == 127:   # the shell found no such command: waiting cannot change that
+        return Answer("ci", None, f"the CI queue command `{command}` was not found (exit 127); fix `[ci] "
+                                  "queue_command`", lasting=True)
     return Answer("ci", None, f"the CI queue command exited {done.returncode}: not asked is not free")
 
 
@@ -205,7 +212,12 @@ def ci_here(profile: dict, *, run=subprocess.run, root) -> Answer:
     ci = profile.get("ci") or {}
     if ci.get("runs_on") != "this-machine":
         return Answer("ci", False, "CI does not run on this machine")
-    command = (ci.get("queue_command") or "").strip()
+    raw = ci.get("queue_command")
+    if raw is not None and not isinstance(raw, str):
+        return Answer("ci", None, f"`[ci] queue_command` is not a command line ({type(raw).__name__}); waiting cannot "
+                                  "change that. Set it to the command that answers (exit 0 idle, 1 busy)",
+                      lasting=True)
+    command = (raw or "").strip()
     if command:
         return _queue(command, root, run)
     if ci.get("provider") != "github":
@@ -213,9 +225,12 @@ def ci_here(profile: dict, *, run=subprocess.run, root) -> Answer:
                                   "set, so its queue cannot be asked; waiting cannot change that. Set queue_command "
                                   "(exit 0 idle, 1 busy), or take the lane knowingly: receipts with --no-lane",
                       lasting=True)
-    rows = _gh_json(run, root, "run", "list", "--limit", "10", "--json", "status,databaseId")
-    if not isinstance(rows, list):
-        return Answer("ci", None, "GitHub's CI queue could not be asked: not asked is not free")
+    rows = []   # asked by status, not by recency: an old run still going hides behind ten newer ones (TODO, lane)
+    for status in IN_PROGRESS:
+        found = _gh_json(run, root, "run", "list", "--status", status, "--limit", "20", "--json", "status,databaseId")
+        if not isinstance(found, list):
+            return Answer("ci", None, "GitHub's CI queue could not be asked: not asked is not free")
+        rows += found
     running = [row for row in rows if row.get("status") in IN_PROGRESS]
     if not running:
         return Answer("ci", False, "no CI run in progress")
