@@ -145,24 +145,12 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 
 ## From the ledger part B final review (2026-09-26)
 
-- GitHub unreachable at the PR step exits 2 ("refused"), not 3 ("not yet"): an instrument that could not ask says
-  unknown. *(checked 2026-10-04 on 0.7.8: still [B] - ledger/delivery.py:35-36, ledger/commands.py:521-524)*
-- `_fetch` ignores its own failure, so "(fetched)" can be untrue; a None from `_on_origin` also reads "does not have".
-  *(checked 2026-10-04 on 0.7.8: still [B] - ledger/delivery.py:233-235, 262-272)*
-- A PR closed without merging advises "queue it again", which is not legal from `queued`; say release and re-claim.
-  *(checked 2026-10-04 on 0.7.8: still [P] - ledger/delivery.py:250-251)*
-- The `vanished` finding fires for shipped or walked rows whose branch was cleaned up, and for auto-deleted PR branches,
-  advising moves that are not legal there. *(checked 2026-10-04 on 0.7.8: still [B] - ledger/findings.py:58-64)*
-- `reconcile` always exits 0, and its parser has no `--skip-event` although a `pre-shipped` refusal advises it.
-  *(checked 2026-10-04 on 0.7.8: still [B] - ledger/commands.py:494-498, cli.py:120-122)*
 - A `pre-` script that calls a `flotilla work` move deadlocks on the ledger lock until the 30 s timeout; say so in
   `docs/events/schema.json`'s documentation. *(checked 2026-10-04 on 0.7.8: still [P] - docs only -
   docs/events/schema.json)*
 - An accepted row the brief holds back still counts as read when its commits ride in with another row's land. *(checked
   2026-10-04 on 0.7.8: still [B] - its read commits land before what it depends on; nothing unread reaches trunk -
   ledger/batch.py:158-163, ledger/report.py:36-45)*
-- In the brief, an accepted row whose branch git cannot resolve reads as ready. *(checked 2026-10-04 on 0.7.8: still [B]
-  - ledger/report.py:42-44)*
 
 ## From the ledger part A final review (2026-09-24)
 
@@ -176,8 +164,6 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
   0.7.8: still [P] - ledger/reading.py:98)*
 - An unknown owner post counts as "not main" in the transition rules; refuse instead. *(checked 2026-10-04 on 0.7.8:
   still [P] - errs towards review - ledger/core.py:62-67)*
-- `receipt show` always exits 0; exit non-zero when no purpose has a green receipt. *(checked 2026-10-04 on 0.7.8: still
-  [B] - ledger/commands.py:299-303)*
 - `--agreed-by` on `moved` is only the owner's word; part B may ask the named reader. *(checked 2026-10-04 on 0.7.8:
   open, design)*
 - Test gaps: `assign` with the census unreachable; `hand`/`moved` with an unresolvable tip; malformed `may` forms in a
@@ -198,6 +184,13 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 
 ## Done
 
+- 0.7.10: GitHub that could not be asked is "not yet", not "refused" (decision 227)
+- 0.7.10: a failed fetch is said, and "could not tell" is not "does not have" (decision 227)
+- 0.7.10: a PR closed without merging names release and a new claim (decision 227)
+- 0.7.10: `vanished` spares work that reached trunk (decision 227)
+- 0.7.10: `reconcile` exits by its worst line and takes --skip-event (decision 227)
+- 0.7.10: the brief holds back an accepted row whose branch git cannot find (decision 227)
+- 0.7.10: `receipt show` exits 1 when no tiered purpose holds, and takes --purpose (decision 227)
 - 0.7.9: `git switch -f` / `--discard-changes` meet the revert guard (decision 226)
 - 0.7.9: a guard hook that fails before judging refuses a push (decision 226)
 - 0.7.9: a receipt vouches only for the revision and purpose written in it (decision 226)
