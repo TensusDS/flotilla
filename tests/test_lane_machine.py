@@ -339,22 +339,23 @@ def test_a_failed_second_sample_of_a_live_run_is_not_read_as_its_end():
     assert busy == [] and idle == []   # it really ended
 
 
-def test_an_old_run_still_in_progress_is_found_behind_newer_ones(tmp_path):
+def test_an_old_run_still_in_progress_is_found_behind_newer_ones_in_one_call(tmp_path):
+    """Ten newest runs hid an older one still going (TODO, lane); asking per status cost five calls a poll, and the
+    lane polls every 15 s (review of 0.7.11): one call over a hundred runs, and no jobs call past the first run that
+    uses this machine."""
     asked = []
     def run(cmd, **kwargs):
+        asked.append(cmd[:3])
         if cmd[:3] == ["gh", "run", "list"]:
-            asked.append(cmd)
-            if "--status" in cmd:
-                status = cmd[cmd.index("--status") + 1]
-                old = [{"status": "in_progress", "databaseId": 1}] if status == "in_progress" else []
-                return subprocess.CompletedProcess(cmd, 0, json.dumps(old), "")
-            ten = [{"status": "completed", "databaseId": n} for n in range(2, 12)]
-            return subprocess.CompletedProcess(cmd, 0, json.dumps(ten), "")
+            limit = int(cmd[cmd.index("--limit") + 1])
+            runs = [{"status": "completed", "databaseId": n} for n in range(2, 12)]
+            runs += [{"status": "in_progress", "databaseId": 1}, {"status": "queued", "databaseId": 0}]
+            return subprocess.CompletedProcess(cmd, 0, json.dumps(runs[:limit]), "")
         if cmd[:2] == ["gh", "api"]:
             return subprocess.CompletedProcess(cmd, 0, json.dumps({"jobs": [{"labels": ["self-hosted"]}]}), "")
         return subprocess.CompletedProcess(cmd, 1, "", "no")
     assert machine.ci_here(HERE, run=run, root=tmp_path).blocks is True
-    assert all("--status" in cmd for cmd in asked)
+    assert asked.count(["gh", "run", "list"]) == 1 and asked.count(["gh", "api", asked[-1][2]]) == 1
 
 
 @pytest.mark.parametrize("command", [5, ["ci-busy"], {"x": 1}])

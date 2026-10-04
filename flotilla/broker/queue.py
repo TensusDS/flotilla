@@ -120,7 +120,12 @@ def _forget_closed(base: Path, now: float) -> None:
     for answered in base.glob("a-*.json"):
         record = _read(answered)
         at = record.get("at") if isinstance(record, dict) else None
-        if isinstance(at, (int, float)) and now - at > KEEP_CLOSED:
+        if not isinstance(at, (int, float)):   # unreadable, or torn by a killed writer: its age is its file's
+            try:
+                at = answered.stat().st_mtime
+            except OSError:
+                continue
+        if now - at > KEEP_CLOSED:
             qid = answered.name[2:-5]
             (base / f"q-{qid}.json").unlink(missing_ok=True)
             answered.unlink(missing_ok=True)
@@ -169,8 +174,12 @@ def _create_once(path: Path, record) -> bool:
         return False
     except OSError as err:
         raise QueueRefused(f"could not write the answer: {err}") from err
-    with os.fdopen(fd, "w", encoding="utf-8") as out:
-        out.write(json.dumps(record))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as out:
+            out.write(json.dumps(record))
+    except OSError as err:   # an empty answer would close the question for good (review of 0.7.11)
+        path.unlink(missing_ok=True)
+        raise QueueRefused(f"could not write the answer: {err}") from err
     return True
 
 
