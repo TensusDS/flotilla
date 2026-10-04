@@ -522,3 +522,18 @@ def test_a_symlinked_workflow_inside_the_repository_gives_both_sides_one_digest(
     git(root, *IDENTITY, "commit", "-q", "-m", "ci")
     sha = git(root, "rev-parse", "HEAD")
     assert push.workflow_at(root, sha) == fingerprint(root, workflow_files(root))
+
+
+def test_disabling_auto_merge_merges_nothing_and_asks_for_no_receipt(tmp_path):
+    root = onboarded(tmp_path)
+    head = git(root, "rev-parse", "HEAD")
+    assert judge("gh pr merge 12 --disable-auto", root, tmp_path, run=fake_gh((0, f"{head} main\n"))) is None
+
+
+def test_a_merge_into_a_base_other_than_trunk_lands_on_no_trunk(tmp_path):
+    root = onboarded(tmp_path)
+    head = git(root, "rev-parse", "HEAD")
+    pinned = f"gh pr merge 12 --squash --match-head-commit {head}"
+    assert judge(pinned, root, tmp_path, run=fake_gh((0, f"{head} release/1.2\n"))) is None
+    assert judge(pinned, root, tmp_path, run=fake_gh((0, f"{head} main\n"))).refuse   # into trunk: a receipt
+    assert judge(pinned, root, tmp_path, run=fake_gh((0, f"{head}\n"))).refuse        # base not said: as trunk
