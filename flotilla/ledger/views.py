@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import datetime as dt
 import re
+import shlex
 
 from flotilla.ledger.model import Row, blocked_by, delivered
 
@@ -166,6 +167,28 @@ def hold_lifted(row: Row, rows: dict[str, Row], live: set[str] | None = None) ->
     return not any(other.reader == until and other.state in READING and other.is_open for other in rows.values())
 
 
+def clear_wait(branch: str) -> str:
+    """The line that clears a wait, as a session copies it into a shell: git allows `$(...)` in a branch (F2)."""
+    return "flotilla work wait " + shlex.quote(branch) + " --clear"
+
+
+def wait_over(row: Row, rows: dict[str, Row], live: set[str] | None = None) -> str:
+    """Whether a recorded wait still has something to wait on, asked of the ledger and the census like a hold:
+    "lifted" when the branch it names has rows and none of them is open, "gone" when it names a session the ledger
+    knows and the census does not list; "" otherwise - still waiting, or a wait nobody can ask (the person, the
+    lane, a name no row carries). A wait silences the watch, so one whose object is gone must not stay quiet."""
+    on = row.waiting_on.strip()
+    if not on:
+        return ""
+    named = [other for other in rows.values() if other.branch == on and other.id != row.id]
+    if named:
+        return "" if any(other.is_open for other in named) else "lifted"
+    if live is None or on in live:
+        return ""
+    known = any(on in (other.owner, other.reader, other.held_by) for other in rows.values())
+    return "gone" if known else ""
+
+
 def fix_delivery(rows: dict[str, Row], fix: Row, profile: dict) -> Row | None:
     """The delivered row that carries a fix: the fix row itself, or the delivered row it was settled by (G9)."""
     if delivered(fix, profile):
@@ -236,6 +259,14 @@ def deviations(rows: dict[str, Row], profile: dict, live: set[str] | None = None
             elif lifted is None:
                 add("hold_unknown", row.held_by, f"the hold waits on `{row.held_until}`, which cannot be asked: "
                                                  "gone, or unknown to the ledger")
+        over = wait_over(row, rows, live)
+        clear = clear_wait(row.branch)
+        if over == "lifted":
+            add("wait_lifted", row.waiting_on, f"waits on `{row.waiting_on}`, which has no open row left: make the "
+                                               f"move, or clear the wait (`{clear}`)")
+        elif over == "gone":
+            add("wait_gone", row.waiting_on, f"waits on {row.waiting_on}, and that session is not alive: ask "
+                                             f"someone else, or clear the wait (`{clear}`)")
         if row.broken and not any(other.fixes == row.id and (other.is_open or fix_delivery(rows, other, profile))
                                   for other in rows.values()):
             add("broken_unfixed", row.owner, f"broke at {row.broken}, and no fix row is open")

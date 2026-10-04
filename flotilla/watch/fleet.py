@@ -19,8 +19,9 @@ from flotilla.watch.whose import POST_OF_MOVER, Item, holds_move, since_of
 
 DEVIATION, DROPPED, NOBODY, BREAK, QUESTION, PERSON = ("deviation", "dropped", "nobody", "break", "question",
                                                      "person")
-IDLE, DONE, HELPER, STRANGER = "idle", "done", "helper", "stranger"
+IDLE, DONE, HELPER, STRANGER, PILE = "idle", "done", "helper", "stranger", "pile"
 IDLE_SEAT_MINUTES = 60
+PILE_MOVES = 3   # this many moves of one seat nobody waits on, while a peer of its post holds none
 SEATS = "seats"
 THE_PERSON = "the person"
 
@@ -72,7 +73,7 @@ def fleet(rows: dict, profile: dict, sessions, *, post_of, former_of=None, break
         if row.is_open and row.waiting_on.strip().lower() == THE_PERSON:
             items.append(Item(PERSON, row.branch, f"waits on the person: {row.note or 'no question recorded'}"
                                                   f"{views.since_then(rows, row)}", row.updated_at, who=row.note))
-        if not row.is_open or row.state == "reserved" or row.waiting_on or row.held_until:
+        if not row.is_open or row.state == "reserved" or _waits(row, rows, live) or row.held_until:
             continue   # a post row is the post held, not a move anyone owes
         mover = views.who_moves(row, profile, rows)
         named = movers(row, profile, live, post_of, rows) & live
@@ -99,6 +100,7 @@ def fleet(rows: dict, profile: dict, sessions, *, post_of, former_of=None, break
                  for session, tree in outside if not strangers.started_by(session))   # a hook's review: no alarm (W6)
     items.extend(breaks)
     items.extend(idle_seats(rows, profile, live, post_of, claimers, now))
+    items.extend(piled(rows, profile, live, post_of, claimers))
     items.extend(drained(rows, live))
     items.extend(helpers(rows, live))
     return items
@@ -125,6 +127,36 @@ def idle_seats(rows: dict, profile: dict, live: set[str], post_of, claimers, now
         age = f"{hours} h" if hours else f"{int((now - last).total_seconds() // 60)} min"
         items.append(Item(IDLE, "", f"{name} has held no work for {age}: give it a row, or retire it", "",
                           who=name))
+    return items
+
+
+def _waits(row, rows: dict, live: set[str] | None = None) -> bool:
+    """A recorded wait that still has something to wait on; one whose object is gone silences nothing."""
+    return bool(row.waiting_on) and not views.wait_over(row, rows, live)
+
+
+def piled(rows: dict, profile: dict, live: set[str], post_of, claimers) -> list[Item]:
+    """Moves piling up on one seat while a live seat of the same post has none: the fleet runs at that one seat's
+    speed (twosuns, 2026-10-03: three rows in fixing on one main session, another with nothing to move). Nobody's
+    work is taken from a live session (`adopt` refuses), so this only names the pile to the orchestrator."""
+    own: dict[str, list] = {}
+    for row in rows.values():
+        if not row.is_open or row.state == "reserved" or row.held_until or _waits(row, rows, live):
+            continue
+        mover = views.who_moves(row, profile, rows)
+        if mover in live and post_of(mover) in claimers:
+            own.setdefault(mover, []).append(row)
+    items = []
+    for name in sorted(own):
+        if len(own[name]) < PILE_MOVES:
+            continue
+        free = sorted(peer for peer in live if peer != name and post_of(peer) == post_of(name) and not own.get(peer))
+        if not free:
+            continue
+        branches = ", ".join(row.branch for row in own[name])
+        items.append(Item(PILE, "", f"{name} holds {len(own[name])} moves ({branches}) while {', '.join(free)} "
+                                    f"hold{'s' if len(free) == 1 else ''} none: ask {name} to hand over work it has "
+                                    f"not started, or give {free[0]} the next row", "", who=name))
     return items
 
 
@@ -178,7 +210,7 @@ def open_breaks(state_dir, repo_key: str, rows: dict, profile: dict, post_of) ->
         stopped, moved = _moment(at), _moment(row.updated_at) if row is not None else None
         if row is None or stopped is None or moved is None or moved > stopped:
             continue
-        if row.waiting_on or row.held_until or not holds_move(row, profile, name, post_of(name), rows):
+        if _waits(row, rows) or row.held_until or not holds_move(row, profile, name, post_of(name), rows):
             continue
         items.append(Item(BREAK, branch, f"{name} stopped twice while holding this move ({row.state}), and "
                                          "nothing has moved since", at, who=f"{name} {at}"))

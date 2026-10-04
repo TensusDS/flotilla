@@ -278,3 +278,42 @@ def test_a_gone_readers_successors_are_ordered_by_what_they_read():
     found = [item for item in views.deviations(table, PR, live, post_of=_strict, former_of=_former)
              if item["branch"] == "feat/a"]
     assert "--reader 'twosuns-review session 2'" in found[0]["why"], found[0]["why"]
+
+
+def test_a_wait_on_a_branch_is_over_only_once_that_branch_has_no_open_row():
+    waiting = row("r1", state="accepted", waiting_on="feat/y", note="y ships first")
+    assert views.wait_over(waiting, rows(waiting, row("r2", branch="feat/y", state="shipped"))) == ""
+    assert views.wait_over(waiting, rows(waiting, row("r2", branch="feat/y", state="closed"))) == "lifted"
+    reopened = rows(waiting, row("r2", branch="feat/y", state="closed"), row("r3", branch="feat/y", state="claimed"))
+    assert views.wait_over(waiting, reopened) == ""   # the branch came back under a new row: still waited on
+
+
+def test_a_wait_on_a_session_is_over_when_that_session_is_gone():
+    known = row("r2", branch="feat/y", owner="main session 2")
+    waiting = row("r1", state="claimed", waiting_on="main session 2", note="asked")
+    assert views.wait_over(waiting, rows(waiting, known), {"main session 1", "main session 2"}) == ""
+    assert views.wait_over(waiting, rows(waiting, known), {"main session 1"}) == "gone"
+    assert views.wait_over(waiting, rows(waiting, known), None) == ""   # no census: nothing is asserted
+
+
+def test_a_wait_the_ledger_cannot_ask_stays_a_wait():
+    for on in ("the person", "the lane", "CI on origin", "main session 9"):   # the last is a name nobody has used
+        waiting = row("r1", state="claimed", waiting_on=on, note="x")
+        assert views.wait_over(waiting, rows(waiting), {"main session 1"}) == ""
+    assert views.wait_over(row(), rows(row())) == ""
+
+
+def test_an_over_wait_is_a_deviation_that_names_the_way_out():
+    table = rows(row("r1", branch="a", state="accepted", waiting_on="feat/y", note="first"),
+                 row("r2", branch="feat/y", state="closed"),
+                 row("r3", branch="b", state="claimed", waiting_on="main session 2", note="asked"),
+                 row("r4", branch="c", owner="main session 2", state="closed"))
+    found = {item["branch"]: item for item in views.deviations(table, PR, live={"main session 1"})}
+    assert found["a"]["kind"] == "wait_lifted" and "`feat/y`" in found["a"]["why"]
+    assert "flotilla work wait a --clear" in found["a"]["why"]
+    assert found["b"]["kind"] == "wait_gone" and "main session 2" in found["b"]["why"]
+
+
+def test_the_clear_wait_line_is_shell_quoted():
+    assert views.clear_wait("feat/x") == "flotilla work wait feat/x --clear"
+    assert views.clear_wait("feat/$(touch pwned)") == "flotilla work wait 'feat/$(touch pwned)' --clear"
