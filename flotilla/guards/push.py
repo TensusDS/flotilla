@@ -173,9 +173,11 @@ def revisions(d: Door, trunk: str, *, run=subprocess.run) -> list[tuple[str, str
 
 def workflow_at(directory, sha, *, run=subprocess.run) -> str | None:
     """The workflow digest at a revision, computed exactly as onboarding computes it from the working tree."""
-    listing = _git(directory, "ls-tree", "--full-tree", sha, "--", ".github/workflows/", run=run)
+    listing = _git(directory, "ls-tree", "-z", "--full-tree", sha, "--", ".github/workflows/", run=run)
     files = []
-    for line in (listing or "").splitlines():
+    for line in (listing or "").split("\0"):   # -z: a path is never quoted, non-ASCII ones included (0.7.9)
+        if not line:
+            continue
         meta, _, path = line.partition("\t")
         mode, kind, obj = meta.split()
         if kind == "blob" and mode != "120000" and path.endswith((".yml", ".yaml")):

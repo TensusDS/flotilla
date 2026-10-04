@@ -551,3 +551,18 @@ def test_a_merge_into_another_base_still_asks_for_a_receipt(tmp_path):
                   run=fake_gh((0, f"{head} release/1.2\n")))
     assert found.refuse
 
+
+
+def test_a_workflow_with_a_non_ascii_name_gives_both_sides_one_digest(tmp_path):
+    """git quotes a path with non-ASCII bytes in `ls-tree` unless asked for NUL-terminated output, so the guard
+    skipped `sjekk-é.yml` while onboarding counted it: every push read as a workflow drift (review of 0.7.9)."""
+    from flotilla.onboard.detect_ci import fingerprint, workflow_files
+    root = onboarded(tmp_path)
+    folder = root / ".github" / "workflows"
+    folder.mkdir(parents=True)
+    (folder / "ci.yml").write_text("on: push\n", encoding="utf-8")
+    (folder / "sjekk-é.yml").write_text("on: push\njobs:\n  check:\n    runs-on: x\n", encoding="utf-8")
+    git(root, "add", ".github")
+    git(root, *IDENTITY, "commit", "-q", "-m", "ci")
+    sha = git(root, "rev-parse", "HEAD")
+    assert push.workflow_at(root, sha) == fingerprint(root, workflow_files(root))
