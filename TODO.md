@@ -24,6 +24,15 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 - Onboarding a repository whose only workflows are symlinks now records no CI and reads no job ids from them; it matters
   only if GitHub Actions runs a symlinked workflow, which nobody measured. *(checked 2026-10-04 on 0.7.9: measure)*
 
+## From the review of 0.7.12 (2026-10-04)
+
+- A project's post files are copied at onboarding and never overwritten, and nothing says when one is behind the shipped
+  template: `fleet/plugins.py` notices only a post older than the `plugins:` key. `flotilla doctor` (or `check`) should
+  name each post whose `template_version` is below the shipped one. *(checked 2026-10-04 on 0.7.12: still [B] - posts.py
+  install_templates, fleet/plugins.py:128)*
+- The refusal texts flotilla prints itself were spot-checked, not audited: each one a person must resolve should name
+  what to run. *(checked 2026-10-04 on 0.7.12: open, audit)*
+
 ## From the review of 0.7.11 (2026-10-04)
 
 - `flotilla spawn --fill` stops at the first one-copy refusal under the lock and raises none of the posts after it;
@@ -35,15 +44,6 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 
 ## From the twosuns update to 0.7.1 (2026-10-03)
 
-- A refusal the person has to resolve must say what to run, not only that something was refused. When auto mode's
-  classifier, a permission rule or a flotilla guard refuses a seat something only the person can do - edit
-  `.claude/settings*.json`, approve, push with `--no-verify`, install hooks - the seat sends the orchestrator the exact
-  command or edit (file, what to remove or change, what to keep) ready to paste with `!`, and how to check it worked;
-  the orchestrator relays it verbatim. Seen in the update itself: the classifier refused removing the 0.6.7 allow rules
-  from `.claude/settings.local.json` as self-modification, and the person had to ask for the command. People new to
-  Claude Code do not know what to ask for. Covers the post templates (orchestrator, main, minor, sender, reviewer,
-  judge, helper) and the refusal texts flotilla prints itself. *(checked 2026-10-04 on 0.7.8: still [B] - only the
-  approve refusal names its command - guards/person.py:82; templates/posts/)*
 
 ## From the broker final review (2026-09-27)
 
@@ -179,6 +179,8 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 
 ## Done
 
+- 0.7.12: a refusal the person can lift reaches them as a session's proposal with its check; the orchestrator labels and
+  judges it (decision 229)
 - 0.7.11: a failed second CPU sample no longer drops a live run (decision 228)
 - 0.7.11: the CI queue is one call over a hundred runs, stopping at the first on this machine (decision 228)
 - 0.7.11: a `queue_command` that is not text or not found is a lasting unknown (decision 228)

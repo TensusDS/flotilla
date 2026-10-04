@@ -3,6 +3,15 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.7.12 - 2026-10-04
+
+- **A refusal only you can lift reaches you with what to run.** A seat refused by auto mode's classifier or a
+  permission rule sends the orchestrator the refusal's text and a proposal - the command, ready to paste with `!`,
+  and the command that checks it worked. The orchestrator shows it as that session's proposal, says what it changes,
+  and does not recommend one that widens a permission, disables a guard or skips a check; an approve still comes
+  only from its own brief. **Existing projects:** copy the new `orchestrator.md` (template v13) over
+  `.flotilla/posts/orchestrator.md` on trunk - post files are copied at onboarding and never overwritten.
+
 ## 0.7.11 - 2026-10-04
 
 - **The lane no longer drops a live run when a CPU sample fails**, finds an older CI run still going behind newer
