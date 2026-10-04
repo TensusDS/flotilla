@@ -163,3 +163,82 @@ def test_doctor_in_a_fleet_worktree_checks_the_main_checkout(tmp_path):
         "hasTrustDialogAccepted": True}}}), encoding="utf-8")
     found = collect(tree, run=plugin_run(True), home=tmp_path)
     assert found["trust"].status == "ok" and str(root.resolve()) in found["trust"].detail
+
+
+def shapes_collect(tmp_path, census_rows, registry_entries=None, claude_json=None, setup=True):
+    import json as _json
+    config = tmp_path / "config"
+    (config / "sessions").mkdir(parents=True)
+    for pid, entry in (registry_entries or {}).items():
+        (config / "sessions" / f"{pid}.json").write_text(_json.dumps(entry), encoding="utf-8")
+    if claude_json is not None:
+        (tmp_path / ".claude.json").write_text(_json.dumps(claude_json), encoding="utf-8")
+    env = {"FLOTILLA_STATE_DIR": str(tmp_path / "state"), "CLAUDE_CONFIG_DIR": str(config)}
+    return collect(tmp_path, env=env, home=tmp_path, read_rows=lambda: census_rows, setup=setup)
+
+
+LIVE = [{"sessionId": "s1", "name": "session 1", "kind": "interactive", "cwd": "/p", "pid": 1001, "status": "busy"},
+        {"sessionId": "s2", "id": "a0000002", "name": "session 2", "kind": "background", "cwd": "/p", "pid": 1002,
+         "status": "idle", "state": "working"}]
+
+
+def test_doctor_checks_claude_codes_records_against_their_measured_shape(tmp_path):
+    found = shapes_collect(tmp_path, LIVE, {1001: {"sessionId": "s1", "entrypoint": "cli"}}, {"projects": {}})
+    assert found["census-shape"].status == "ok" and "2.1.289" in found["census-shape"].detail
+    assert found["registry"].status == "ok" and found["trust-record"].status == "ok"
+
+
+def test_doctor_warns_and_names_what_stops_when_a_record_drifts(tmp_path):
+    drifted = [{**row, "state": "paused"} if row["kind"] == "background" else row for row in LIVE]
+    found = shapes_collect(tmp_path, drifted, {}, {"workspaces": {}})
+    assert found["census-shape"].status == "warn" and "`state`" in found["census-shape"].detail
+    assert found["registry"].status == "warn" and "stranger" in found["registry"].detail
+    assert found["trust-record"].status == "warn" and "spawn" in found["trust-record"].detail
+    assert all(found[check].fix for check in ("census-shape", "registry", "trust-record"))
+
+
+def test_a_hook_skips_the_record_checks(tmp_path):
+    found = shapes_collect(tmp_path, LIVE, setup=False)
+    assert not {"census-shape", "registry", "trust-record"} & set(found)
+
+
+def test_a_census_that_cannot_be_asked_is_not_measured(tmp_path):
+    def down():
+        raise CensusUnavailable("`claude` is not on PATH")
+    found = collect(tmp_path, read_rows=down, home=tmp_path)
+    assert found["census-shape"].status == "info" and "not on PATH" in found["census-shape"].detail
+
+
+def counting_run(answer="[]", fail=False):
+    seen = []
+    def run(argv, **kwargs):
+        seen.append(argv[1])
+        if argv[1] == "agents" and fail:
+            return subprocess.CompletedProcess(argv, 1, stdout="", stderr="daemon down")
+        out = "2.1.289 (Claude Code)" if argv[1] == "--version" else answer
+        return subprocess.CompletedProcess(argv, 0, stdout=out, stderr="")
+    return run, seen
+
+
+def test_one_census_call_answers_the_count_and_the_shape(tmp_path):
+    import json as _json
+    run, seen = counting_run(_json.dumps(LIVE))
+    found = collect(tmp_path, run=run, home=tmp_path, read=None)
+    assert seen.count("agents") == 1
+    assert found["census"].status == "ok" and found["census-shape"].status == "ok"
+    assert "2 listed" in found["census-shape"].detail
+
+
+def test_a_census_that_fails_once_fails_both_lines_without_a_second_call(tmp_path):
+    import json as _json
+    (tmp_path / ".claude.json").write_text(_json.dumps({"projects": {}}), encoding="utf-8")
+    run, seen = counting_run(fail=True)
+    found = collect(tmp_path, run=run, home=tmp_path, read=None)
+    assert seen.count("agents") == 1
+    assert found["census"].status == "fail" and found["census-shape"].status == "info"
+    assert found["trust-record"].status == "ok"   # the trust record does not depend on the census
+
+
+def test_an_empty_census_is_not_called_measured(tmp_path):
+    found = collect(tmp_path, read_rows=lambda: [], home=tmp_path)
+    assert found["census-shape"].status == "info"

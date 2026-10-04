@@ -87,6 +87,21 @@ def drop_gone(sessions: list[Session], pid_alive=_pid_alive) -> list[Session]:
 
 def read_census(run=subprocess.run, claude: str = "claude", timeout: float = 30,
                 pid_alive=_pid_alive) -> list[Session]:
+    return drop_gone(parse_census(read_text(run, claude, timeout)), pid_alive)
+
+
+def rows_of(text: str, claude: str = "claude") -> list:
+    """The census rows as Claude Code wrote them, for checking their shape (`flotilla doctor`)."""
+    try:
+        rows = json.loads(text)
+    except ValueError as err:
+        raise CensusUnavailable(f"`{claude} agents --json` did not return JSON: {err}") from err
+    if not isinstance(rows, list):
+        raise CensusUnavailable(f"`{claude} agents --json` did not return a list")
+    return rows
+
+
+def read_text(run=subprocess.run, claude: str = "claude", timeout: float = 30) -> str:
     try:
         done = run([claude, "agents", "--json"], capture_output=True, text=True,
                    timeout=timeout, check=False)
@@ -99,4 +114,4 @@ def read_census(run=subprocess.run, claude: str = "claude", timeout: float = 30,
     if done.returncode != 0:
         raise CensusUnavailable(
             f"`{claude} agents --json` exited {done.returncode}: {done.stderr.strip()[:200]}")
-    return drop_gone(parse_census(done.stdout), pid_alive)
+    return done.stdout

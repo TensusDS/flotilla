@@ -43,11 +43,24 @@ def _dotted(version) -> str:
 def collect(*, cwd: Path, env=os.environ, run=subprocess.run, which=shutil.which,
             read=None, os_name: str = sys.platform,
             python=tuple(sys.version_info[:3]), timeout: float = 30, setup: bool = True,
-            home: Path | None = None) -> list[Finding]:
+            home: Path | None = None, read_rows=None) -> list[Finding]:
     """`timeout` bounds each external call; a hook passes a short one so its findings are printed
     before Claude Code kills it."""
+    asked: dict = {}
+
+    def text() -> str:   # one `claude agents --json` answers both the count and the shape
+        if "text" not in asked:
+            try:
+                asked["text"] = census_mod.read_text(run=run, timeout=timeout)
+            except census_mod.CensusUnavailable as err:
+                asked["text"] = err
+        if isinstance(asked["text"], Exception):
+            raise asked["text"]
+        return asked["text"]
     if read is None:
-        read = lambda: census_mod.read_census(run=run, timeout=timeout)  # noqa: E731
+        read = lambda: census_mod.drop_gone(census_mod.parse_census(text()))  # noqa: E731
+    if read_rows is None:
+        read_rows = lambda: census_mod.rows_of(text())  # noqa: E731
     findings: list[Finding] = []
 
     if tuple(python[:2]) >= MIN_PYTHON:
@@ -89,6 +102,9 @@ def collect(*, cwd: Path, env=os.environ, run=subprocess.run, which=shutil.which
     except census_mod.CensusUnavailable as err:
         findings.append(Finding("fail", "census", f"unknown: {err}"))
 
+    if setup:   # a hook skips them: one more call to `claude`, and a drift is no news at every session's start
+        findings += _records(env=env, home=home, read_rows=read_rows)
+
     state = paths.state_dir(env)
     try:
         state.mkdir(parents=True, exist_ok=True)
@@ -111,6 +127,51 @@ def collect(*, cwd: Path, env=os.environ, run=subprocess.run, which=shutil.which
             findings += _setup(root, run=run, timeout=timeout, home=home)
 
     return findings
+
+
+def _records(*, env, home: Path | None, read_rows) -> list[Finding]:
+    """Claude Code's own records flotilla reads, against the shape measured on real versions: a drift does not
+    break flotilla, it blinds one of its checks without an error, so it is a warning that names what goes blind."""
+    from flotilla.core import claude_state
+    after = "update flotilla, or report it at https://github.com/TensusDS/flotilla/issues with `claude --version`"
+    found = []
+    try:
+        rows = read_rows()
+    except census_mod.CensusUnavailable as err:
+        rows = []
+        found.append(Finding("info", "census-shape", f"not measured: {err}"))
+    else:
+        problems = claude_state.census_problems(rows)
+        if not rows:
+            found.append(Finding("info", "census-shape", "no session is listed to compare with the measured shape"))
+        elif problems:
+            found.append(Finding("warn", "census-shape", "`claude agents --json` changed shape since Claude Code "
+                                                         f"{claude_state.MEASURED_ON}: " + "; ".join(problems), after))
+        else:
+            found.append(Finding("ok", "census-shape", f"as measured on Claude Code {claude_state.MEASURED_ON} "
+                                                       f"({len(rows)} listed)"))
+    config = claude_state.config_dir(env, home)
+    readable = claude_state.registry_readable(rows, config)
+    if readable:
+        found.append(Finding("ok", "registry", f"{config / 'sessions'} says how each session was started"))
+    elif readable is False:
+        found.append(Finding("warn", "registry", f"no live session has its entry in {config / 'sessions'} (or it "
+                                                 "no longer says how the session was started): a review a plugin "
+                                                 "hook starts in a seat's tree will be named a stranger", after))
+    else:
+        found.append(Finding("info", "registry", "no session of yours is listed with a pid to look its entry up by"))
+    record = claude_state.trust_record(home)
+    if record:
+        found.append(Finding("ok", "trust-record", "~/.claude.json keeps trust as "
+                                                   "`projects[<path>].hasTrustDialogAccepted`"))
+    elif record is False:
+        found.append(Finding("warn", "trust-record", "~/.claude.json no longer keeps `projects[<path>]."
+                                                     "hasTrustDialogAccepted`: whether a directory is "
+                                                     "trusted cannot be read, so a spawn there may fail unwarned",
+                             after))
+    else:
+        found.append(Finding("info", "trust-record", "no ~/.claude.json to read"))
+    return found
 
 
 def _setup(root: Path, *, run, timeout: float, home: Path | None) -> list[Finding]:

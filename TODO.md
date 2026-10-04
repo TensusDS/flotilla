@@ -7,9 +7,6 @@ Deferred findings, kept here until a plan takes them. Each names where it came f
 - **The way in is too heavy for a first try.** Posts, seats, lane, receipts, a ledger of ten states, 13 skills and a
   540-line README stand between a newcomer and "one session writes, another reviews". A light mode - author and
   reviewer only, no sender, no lane - that starts in minutes, and a README whose opening says only that.
-- **It leans on Claude Code internals.** `claude agents --json` and `~/.claude/sessions/<pid>.json` are not a
-  published contract; a CLI release can change them. `flotilla doctor` should check their shape and say plainly
-  which feature stops when it moved.
 
 ## From the twosuns update to 0.7.1 (2026-10-03)
 
