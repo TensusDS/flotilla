@@ -503,3 +503,22 @@ def test_a_branch_push_needs_neither_a_reachable_origin_nor_a_fetched_trunk(tmp_
     assert judge("git push -u origin feat/x", root, tmp_path) is None
     git(root, "config", "remote.origin.url", str(tmp_path / "gone.git"))   # origin out of reach
     assert judge("git push -u origin feat/x", root, tmp_path) is None
+
+
+@pytest.mark.parametrize("target", ["ci.yml", "../../ci/shared.yml"])
+def test_a_symlinked_workflow_inside_the_repository_gives_both_sides_one_digest(tmp_path, target):
+    """Onboarding reads the working tree and the push guard reads a revision; a workflow that is a symlink inside
+    the repository was counted by the first and skipped by the second, so the digests never matched and every push
+    was refused as a workflow drift (TODO, guards final review)."""
+    from flotilla.onboard.detect_ci import fingerprint, workflow_files
+    root = onboarded(tmp_path)
+    folder = root / ".github" / "workflows"
+    folder.mkdir(parents=True)
+    (folder / "ci.yml").write_text("on: push\n", encoding="utf-8")
+    (root / "ci").mkdir()
+    (root / "ci" / "shared.yml").write_text("on: push\njobs:\n  shared:\n    runs-on: x\n", encoding="utf-8")
+    (folder / "alias.yml").symlink_to(target)
+    git(root, "add", ".github", "ci")
+    git(root, *IDENTITY, "commit", "-q", "-m", "ci")
+    sha = git(root, "rev-parse", "HEAD")
+    assert push.workflow_at(root, sha) == fingerprint(root, workflow_files(root))
