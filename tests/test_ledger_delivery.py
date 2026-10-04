@@ -814,3 +814,51 @@ def test_a_commit_git_cannot_place_is_unknown_not_absent(pr_world):
     with pytest.raises(NotYet) as caught:
         delivery.ship(ledger, actor(ledger, SENDER), "feat/x")
     assert "could not tell whether" in str(caught.value) and "does not have" not in str(caught.value)
+
+
+@pytest.mark.parametrize("answer", ["not json", "[1, 2]"])
+def test_an_unreadable_github_answer_is_not_yet(tmp_path, answer):
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", run=fake_gh(lambda args: (0, answer)))
+    drive(root, ledger)
+    with pytest.raises(NotYet):
+        delivery.queue(ledger, actor(ledger, SENDER), "feat/x", pr=12)
+
+
+def test_gh_missing_or_hanging_is_not_yet(tmp_path):
+    root = repo_with_origin(tmp_path)
+    def run(cmd, **kwargs):
+        if cmd[0] == "gh":
+            raise FileNotFoundError("gh")
+        return subprocess.run(cmd, **kwargs)
+    ledger = make_ledger(root, tmp_path / "state", run=run)
+    drive(root, ledger)
+    with pytest.raises(NotYet, match="gh"):
+        delivery.queue(ledger, actor(ledger, SENDER), "feat/x", pr=12)
+    def hang(cmd, **kwargs):
+        if cmd[0] == "gh":
+            raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout") or 0)
+        return subprocess.run(cmd, **kwargs)
+    ledger.run = hang
+    with pytest.raises(NotYet, match="did not answer"):
+        delivery.queue(ledger, actor(ledger, SENDER), "feat/x", pr=12)
+
+
+def test_a_pr_ship_after_a_failed_fetch_says_so(pr_world):
+    root, ledger, answers = pr_world
+    row = drive(root, ledger)
+    answers["pr"] = open_pr("feat/x", row.tip)
+    delivery.queue(ledger, actor(ledger, SENDER), "feat/x", pr=12)
+    answers["pr"] = {"state": "MERGED", "headRefOid": row.tip, "mergeCommit": {"oid": row.tip}}
+    git(root, "remote", "set-url", "origin", str(root.parent / "no-such-origin"))
+    with pytest.raises(NotYet) as caught:
+        delivery.ship(ledger, actor(ledger, SENDER), "feat/x")
+    assert "fetch failed" in str(caught.value) and "(fetched)" not in str(caught.value)
+
+
+def test_reconcile_says_its_fetch_failed(direct):
+    root, ledger = direct
+    queued(root, ledger)
+    git(root, "remote", "set-url", "origin", str(root.parent / "no-such-origin"))
+    lines = delivery.reconcile(ledger, actor(ledger, SENDER))
+    assert any(line.startswith("not yet") and "fetch failed" in line for line in lines), lines

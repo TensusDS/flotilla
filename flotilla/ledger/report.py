@@ -41,7 +41,12 @@ def _held_back(ledger, rows: dict[str, Row], row: Row) -> list[str]:
                                                  for other in waiting))
     current = gitq.branch_tip(ledger.root, row.branch, run=ledger.run)
     if row.state == "accepted" and current is None:   # nothing to merge it from (TODO, ledger part B)
-        reasons.append(f"git cannot find the branch `{row.branch}` here (deleted, or never fetched)")
+        import shlex
+        if gitq.resolve(ledger.root, f"refs/remotes/origin/{row.branch}", run=ledger.run):
+            command = "git branch " + shlex.quote(row.branch) + " " + shlex.quote(f"origin/{row.branch}")
+            reasons.append(f"git has no local branch `{row.branch}`, only origin's: `{command}`")
+        else:
+            reasons.append(f"git cannot find the branch `{row.branch}`, here or on origin (deleted)")
     if row.state == "accepted" and row.verdict and current and current != row.verdict:
         reasons.append(f"moved since acceptance ({row.verdict[:7]} -> {current[:7]})")
     return reasons

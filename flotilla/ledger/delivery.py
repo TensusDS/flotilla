@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import shlex
+import subprocess
 
 from flotilla.ledger import batch, gitq
 from flotilla.ledger import gate as gates
@@ -35,9 +36,17 @@ from flotilla.ledger.views import approve_command
 NO_SUCH_PR = ("Could not resolve to a PullRequest", "no pull requests found")
 
 
+GH_TIMEOUT = 30
+
+
 def pr_view(ledger: Ledger, pr: int, fields: str) -> dict:
-    done = ledger.run(["gh", "pr", "view", str(pr), "--json", fields], cwd=str(ledger.root), capture_output=True,
-                      text=True, check=False)
+    try:
+        done = ledger.run(["gh", "pr", "view", str(pr), "--json", fields], cwd=str(ledger.root),
+                          capture_output=True, text=True, check=False, timeout=GH_TIMEOUT)
+    except subprocess.TimeoutExpired as err:
+        raise NotYet(f"gh did not answer about PR #{pr} within {GH_TIMEOUT} s; ask again") from err
+    except OSError as err:   # gh not installed, or not runnable: GitHub was not asked
+        raise NotYet(f"could not run gh to ask about PR #{pr}: {err}") from err
     if done.returncode != 0:
         said = (done.stderr or done.stdout).strip()
         if any(words in said for words in NO_SUCH_PR):
@@ -323,18 +332,20 @@ def reconcile(ledger: Ledger, actor: Actor) -> list[str]:
     """Ask origin (or the PR) about every queued or landed row; ship what is proved, report the rest."""
     require_may(actor, "ship", ledger.posts)
     lines = []
-    fetched = False
+    fetched = None
     for row in list(ledger.rows().values()):
         if not row.is_open or row.state not in ("queued", "landed") or ledger.mode == "local":
             continue
         if ledger.mode == "direct" and row.state == "queued":
-            if not fetched:
-                _fetch(ledger)
-                fetched = True
+            if fetched is None:
+                fetched = _fetch(ledger)
             read = batch.revision_of(row)
             if read and _on_origin(ledger, read) is True:   # pushed from the sender's tree, never recorded
                 lines.append(f"pushed, not landed {row.branch}: origin's `{ledger.trunk}` carries {read[:7]}; "
                              f"record it with `flotilla work land {row.branch}` - it finds the merge that carries it")
+            elif not fetched:   # a pushed row would be missed in silence (review of 0.7.10)
+                lines.append(f"not yet {row.branch}: the fetch failed, so whether origin's `{ledger.trunk}` has "
+                             "it is read as origin was last fetched here")
             continue
         try:
             shipped = ship(ledger, actor, row.branch)

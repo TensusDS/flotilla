@@ -129,3 +129,13 @@ def test_an_accepted_row_whose_branch_is_gone_is_held_not_ready(tmp_path):
     git(root, "branch", "-q", "-D", "feat/a")
     text = "\n".join(report.brief(ledger))
     assert "nothing is ready to ship" in text and "`feat/a` (accepted): git cannot find the branch" in text
+
+
+def test_an_accepted_row_whose_branch_is_only_on_origin_names_the_command(tmp_path):
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile=DIRECT)
+    drive(root, ledger, "feat/a")
+    git(root, "push", "-q", "origin", "feat/a")
+    git(root, "fetch", "-q", "origin")
+    git(root, "branch", "-q", "-D", "feat/a")
+    assert "git branch feat/a origin/feat/a" in "\n".join(report.brief(ledger))

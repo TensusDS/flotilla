@@ -296,13 +296,16 @@ def _receipt(args) -> int:
     if sha is None:
         print(f"git could not resolve `{args.rev}`")
         return 2
-    held = False
-    for purpose in receipts.PURPOSES:
+    asked = [args.purpose] if args.purpose else list(receipts.PURPOSES)
+    tiered = held = 0
+    for purpose in asked:
         ok, why = receipts.check_receipt(state=state, repo_key=ident.key, sha=sha, purpose=purpose,
                                          profile=profile)
         print(f"{'ok' if ok else 'no':<3} {why}")
-        held = held or ok
-    return 0 if held else 1   # a script reads the code: no green receipt over this revision is a failure
+        if receipts.tiers_for(profile, purpose):   # "no tiers configured" is valid, and is no receipt
+            tiered += 1
+            held += ok
+    return 0 if held or not tiered else 1   # a script reads the code: nothing green where tiers are set is a failure
 
 
 def _events(args) -> int:
@@ -353,10 +356,11 @@ def _broke(ledger, caller, args) -> tuple[Row, str]:
 
 
 def reconcile_exit(lines: list[str]) -> int:
-    """The worst of what reconcile found: a refusal (2) outweighs a row not proved yet (3), which outweighs none."""
-    if any(line.startswith("refused ") for line in lines):
+    """The worst of what reconcile found: a move owed - a refusal, or a pushed row to `land` - (2) outweighs a row not
+    proved yet (3), which outweighs none."""
+    if any(line.startswith(("refused ", "pushed, not landed ")) for line in lines):   # the second needs `land`
         return 2
-    if any(line.startswith(("not yet ", "pushed, not landed ")) for line in lines):
+    if any(line.startswith("not yet ") for line in lines):
         return 3
     return 0
 

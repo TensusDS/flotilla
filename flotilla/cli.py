@@ -160,6 +160,8 @@ def build_parser() -> argparse.ArgumentParser:
     show = receipt_actions.add_parser("show", help="which receipts hold over a revision")
     show.add_argument("--tree", default=".")
     show.add_argument("--rev", default="HEAD")
+    show.add_argument("--purpose", choices=["handover", "push"], default=None,
+                      help="ask about one purpose; the exit code then answers only for it")
 
     events_ = sub.add_parser("events", help="the project's event scripts")
     event_actions = events_.add_subparsers(dest="action", required=True)
