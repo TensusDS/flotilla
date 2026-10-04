@@ -2,13 +2,15 @@
 
 Deferred findings, kept here until a plan takes them. Each names where it came from.
 
-## From watching the twosuns fleet on 0.7.1 (2026-10-03, night)
+## From watching the twosuns fleet on 0.7.1 (2026-10-03, night; corrected 2026-10-04)
 
-- **A wait on something already closed.** The sender held two accepted rows (`feat/real-starfield`,
-  `fix/flash-antipode-nan`) "waiting on feat/sky-cache" for over half an hour after `feat/sky-cache` had left the
-  status list; nobody moved them and the sender sat idle. `status` (and the brief) should flag a wait whose object
-  is already closed or shipped - a row's `waiting on <branch>` where that branch's row is terminal - and name who
-  can move it.
+- **A wait on something already closed (a guard, no observed case).** A recorded wait silences the watch: a row
+  that waits is skipped by the dropped-ball and break checks, and nothing asks whether what it waits on is still
+  there - holds have that check (`hold_lifted`), waits do not. `status` and the watch should flag a wait whose
+  branch has no open row left, or whose session is gone. *Correction, 2026-10-04:* the case first recorded here
+  (the sender holding two rows "waiting on feat/sky-cache" after it had closed) did not happen - the watcher cut
+  `status` to its last 12 lines and `feat/sky-cache`, the first row, fell off the screen; the ledger shows it
+  queued at 01:07 and the sender queued the next row a minute later. The guard stays, as a guard.
 - **Load piled on one seat.** For an hour one seat (`main session 4`) held five rows (two in fixing, three claimed)
   while both reviewers, the sender and the judge were idle; the fleet ran at the speed of that one seat. `status`
   should say when one seat holds several open rows while others are idle, so the orchestrator can hand work over.
