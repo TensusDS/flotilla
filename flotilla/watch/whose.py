@@ -19,7 +19,7 @@ HOLD = "hold"          # a hold you placed, or a wait you recorded, whose object
 UNREAD = "unread"      # your handed work names no reader
 HELD_BY_ME = (BALL, WORKING)
 POST_OF_MOVER = views.POST_OF_MOVER
-HIDDEN_MOVES = ("run",)   # recorded by the lane, never made by a person
+HIDDEN_MOVES = ("run", "launched")   # recorded by the lane and by spawn, never made by a person
 
 
 @dataclass(frozen=True)

@@ -259,17 +259,37 @@ def _take_back(ledger, seat: launch.Seat, actor: Actor, row_id: str, cause: str)
     return SpawnRefused(cause)
 
 
+def _record_session(ledger, actor: Actor, row_id: str, session_id: str) -> None:
+    """Keep the seat's session id on its post row: `claude --bg` ignores --session-id (measured on 2.1.289), so it is
+    learned here, and with it the broker knows a seat when the census is down. Only an id no other open row carries
+    is written - one session is one seat - and a failure to write it costs nothing but that knowledge."""
+    if not session_id:
+        return
+    try:
+        with ledger.session() as s:
+            if any(other.is_open and other.session_id == session_id and other.id != row_id
+                   for other in s.rows.values()):
+                return
+            row = s.rows.get(row_id)
+            if row is None or not row.is_open:
+                return
+            s.append(actor, row_id, "launched", s.next_state(row, "launched"), fields={"session_id": session_id})
+    except Exception:  # noqa: BLE001 - the seat is raised; failing to note its id must not lose that (review of 0.7.13)
+        return
+
+
 def _find(census, name: str, *, wait: float, poll: float, sleep):
-    """The session with this name in the census: (session or None, whether the census answered at all)."""
-    waited, answered = 0.0, False
+    """The session with this name in the census: (session or None, whether the census answered at all, how many
+    sessions the census listed under the name)."""
+    waited, answered, named = 0.0, False, 0
     while True:
         try:
-            found = next((item for item in census() if item.name == name), None)
-            answered = True
+            listed = [item for item in census() if item.name == name]
+            found, named, answered = (listed[0] if listed else None), len(listed), True
         except CensusUnavailable:
             found = None
         if found is not None or waited >= wait:
-            return found, answered
+            return found, answered, named
         sleep(poll)
         waited += poll
 
@@ -378,8 +398,10 @@ def raise_seat(ledger, seat: launch.Seat, *, caller: str, census, wait: float = 
             problem = f"`claude --bg` timed out after 180 s for {seat.name}"
         except OSError as err:
             problem = f"`claude --bg` could not be run for {seat.name}: {err}"
-    found, answered = _find(census, seat.name, wait=wait, poll=poll, sleep=sleep)
+    found, answered, named = _find(census, seat.name, wait=wait, poll=poll, sleep=sleep)
     if found is not None:
+        if named == 1:
+            _record_session(ledger, actor, row.id, found.session_id)
         return Raised(seat, found.short_id, f"{problem}, but the session is in the census" if problem else "")
     if problem and answered:
         raise _take_back(ledger, seat, actor, row.id, problem)

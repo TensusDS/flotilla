@@ -89,3 +89,8 @@ def test_a_wait_on_a_gone_session_wakes_its_holder():
     read = row(id="r2", branch="feat/y", owner="main session 2", state="closed", reader="review session 1")
     found = whose.mine(rows(waiting, read), PR, "main session 1", live={"main session 1"})
     assert kinds(found) == [("hold", "feat/x")] and "is not alive" in found[0].text
+
+
+def test_spawns_launched_note_is_no_move_a_post_is_offered():
+    assert "launched" in whose.HIDDEN_MOVES
+    assert "launched" not in whose.next_moves(row(state="reserved"), PR)

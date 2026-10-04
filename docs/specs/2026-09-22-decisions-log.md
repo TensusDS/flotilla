@@ -1449,6 +1449,19 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    reported verbatim, never worked around. Orchestrator template v13; a project's copy of it is updated by hand.
    (planner's decision, 2026-10-04)
 
+230. **A seat is known by its session id; a post older than its template is named** (Claude Code session,
+   2026-10-04). A background seat asking a permission question while the census is down was left to its dialog,
+   which for it is the measured hang; telling a seat from the person needs a census-free mark. `claude --bg`
+   ignores `--session-id` - measured live on Claude Code 2.1.289: census, session registry and transcript all named
+   the session's own id - so the id cannot be chosen at launch; spawn learns it once the seat shows in the census
+   and keeps it on the seat's post row (`launched`, an annotation only spawn records), only when one session carries
+   the seat's name and no other open row holds the id. The person proposed a per-project list of participants'
+   ids; the ledger is that list already - one per repository, under its lock - so no second file holds it. The
+   broker then refuses a known seat's question with the census down, and leaves everyone else to the dialog. Post
+   files are copied at onboarding and never overwritten, so a project that updates the plugin keeps its old posts
+   unawares; `flotilla doctor` now names each post older than the template shipped under its name.
+   (planner's decision, 2026-10-04)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

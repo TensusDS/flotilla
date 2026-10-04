@@ -193,6 +193,7 @@ def _setup(root: Path, *, run, timeout: float, home: Path | None) -> list[Findin
     else:
         found.append(Finding("warn", "plugin", "could not tell whether flotilla is enabled here "
                                                "(`claude plugin list` did not answer)"))
+    found += _posts(root)
     trust = claude_state.trusted(root, home=home)
     if trust:
         found.append(Finding("ok", "trust", f"{root} is trusted"))
@@ -203,6 +204,25 @@ def _setup(root: Path, *, run, timeout: float, home: Path | None) -> list[Findin
         found.append(Finding("warn", "trust", f"could not tell whether {root} is trusted (no entry in "
                                               "~/.claude.json)", "run `claude` here once and accept the trust dialog"))
     return found
+
+
+def _posts(root: Path) -> list[Finding]:
+    """The posts the fleet reads - trunk's, as the ledger loads them - against the templates flotilla ships: the
+    files on disk may hold an edit not published yet, or lag behind a trunk that moved (review of 0.7.13)."""
+    from flotilla.ledger.commands import trunk_rules
+    from flotilla.posts import TEMPLATE_DIR, behind
+    try:
+        posts = trunk_rules(root).posts
+    except Exception as err:  # noqa: BLE001 - a check that could not ask says so; it never reports ok by default
+        return [Finding("warn", "posts", f"the posts on trunk could not be read: {err}")]
+    old = behind(posts)
+    if not old:
+        return [Finding("ok", "posts", f"every post on trunk is at the template flotilla ships ({len(posts)} read)")]
+    named = ", ".join(f"{name} (v{have}, shipped v{shipped})" for name, have, shipped in old)
+    return [Finding("warn", "posts", f"older than the template flotilla ships: {named}; a copy keeps the rules it was "
+                                     "made with",
+                    f"compare {TEMPLATE_DIR}/<post>.md with .flotilla/posts/<post>.md, take the new text keeping "
+                    "your own edits, then `flotilla onboard publish`")]
 
 
 def render(findings: list[Finding], quiet: bool) -> list[str]:

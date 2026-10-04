@@ -190,6 +190,9 @@ def decide(payload: dict, ctx, *, clock=time.time, sleep=time.sleep, timer=time.
     to be a background one, every failure is a deny with its reason: no decision there is the measured hang.
     """
     started = timer() if started is None else started
+    if ctx.sessions is None and ctx.ledger is not None and enabled(ctx.profile) and _a_seat(payload, ctx, parent):
+        return _deny(f"the census could not be asked ({ctx.census_error}), so this question cannot be put to the "
+                     "orchestrator; a seat's call is refused rather than left to a dialog nobody sees")
     if ctx.sessions is None or ctx.me is None or ctx.me.kind != "background":
         return None   # a person may be in front of it, or who asks is unknown: the dialog decides
     if ctx.ledger is None:
@@ -217,6 +220,20 @@ def decide(payload: dict, ctx, *, clock=time.time, sleep=time.sleep, timer=time.
                      pid=pid)
     except Exception as err:  # noqa: BLE001 - a background session with no decision hangs (entry 70)
         return _deny(f"the broker failed ({err}), so this call is refused")
+
+
+def _a_seat(payload: dict, ctx, parent=os.getppid) -> bool:
+    """Whether the asking session is a fleet seat of this project, known from its post row's session id - not from
+    the census, which is down, and not from the question's cwd, which for a seat is the main checkout. A session
+    Claude Code's own registry calls anything but background is not refused: the person may have resumed a seat's
+    conversation, which keeps its id (review of 0.7.13)."""
+    sid = payload.get("session_id")
+    if not (isinstance(sid, str) and sid and any(
+            row.is_open and row.state == "reserved" and row.session_id == sid for row in ctx.rows.values())):
+        return False
+    from flotilla.core.claude_state import session_entry
+    entry = session_entry(parent(), sid)
+    return entry is None or entry.get("kind") == "bg"   # unreadable: a seat's row says background
 
 
 def _wait(payload, ctx, *, clock, sleep, timer, poll, started, parent, pid) -> dict:

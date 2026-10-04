@@ -8,6 +8,38 @@ something through, B a bug a user meets, P polish, tests or docs), or `open, des
 run). A later triage re-checks only items whose named files changed since that version. An item that is done -
 fixed by a release, or found fixed - leaves its section for **Done** at the bottom, one line with the version.
 
+## From the README's known limitations (2026-10-04)
+
+Each is a limitation README states today, judged fixable in principle; none is planned yet.
+
+- **Windows.** Linux and macOS only. Claude Code runs natively on Windows; what flotilla would need is a process table,
+  process groups and signals, file locking and path handling for it, and CI on `windows-latest`. Large. *(checked
+  2026-10-04 on 0.7.12: open, design)*
+- **macOS skips two protections.** The memory floor reads `/proc/meminfo` and stopping a retired seat's leftover
+  processes reads `/proc`; on macOS `sysctl hw.memsize` with `vm_stat`, and `ps -g` / process groups, would answer the
+  same questions. *(checked 2026-10-04 on 0.7.12: open, design)*
+- **One lane per machine, shared by every project's fleet.** Two fleets wait for each other's long runs; a per-project
+  share of `lane_capacity`, or fair queueing between projects, would split the machine. *(checked 2026-10-04 on 0.7.12:
+  open, design)*
+- **Long-lived seats get slower, and nothing replaces one.** flotilla reads no transcript (policy), so it cannot see a
+  seat's context size; it can count what a seat has done - rows closed, hours held - and offer to retire an idle seat
+  and raise a fresh one past a threshold the profile sets. *(checked 2026-10-04 on 0.7.12: open, design)*
+- **In `ask` mode a late answer is lost.** When the orchestrator is the person's own session and is busy, a seat's
+  question times out (about nine minutes) and the person's later answer is not kept; keeping it for the same call's re-
+  ask, for a short while, would spare asking twice. *(checked 2026-10-04 on 0.7.12: open, design)*
+- **The leading session's name hook was measured on Claude Code 2.1.287 only.** `flotilla doctor` could check that the
+  hook still names the session, as it now checks the census shape (0.7.7). *(checked 2026-10-04 on 0.7.12: open,
+  design)*
+- **Most guards read the rules from the local `refs/remotes/origin/<trunk>`**, which a session can move; only the push
+  guard, `pre-push`, approvals and allows ask origin. The rest could ask origin too, through a cached `ls-remote`
+  refreshed every few seconds, so a moved ref cannot change them. *(checked 2026-10-04 on 0.7.12: open, design)*
+- **A broken profile on trunk closes trunk, the fix included.** The fix is pushed with `--no-verify`. A push whose only
+  change makes `.flotilla/project.toml` readable again - checked by parsing the pushed profile - could be let through
+  without the override. *(checked 2026-10-04 on 0.7.12: open, design)*
+- **The push guards are no lock, and flotilla does not say whether the lock is there.** `flotilla doctor` could ask
+  GitHub (`gh api repos/<o>/<r>/rules/branches/<trunk>` or branch protection) whether trunk is protected, and warn when
+  it is not, naming the setting. *(checked 2026-10-04 on 0.7.12: open, design)*
+
 ## From watching the twosuns fleet on 0.7.1 (2026-10-03, night; corrected 2026-10-04)
 
 - **The way in is too heavy for a first try.** Posts, seats, lane, receipts, a ledger of ten states, 13 skills and a
@@ -24,12 +56,17 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 - Onboarding a repository whose only workflows are symlinks now records no CI and reads no job ids from them; it matters
   only if GitHub Actions runs a symlinked workflow, which nobody measured. *(checked 2026-10-04 on 0.7.9: measure)*
 
+## From the review of 0.7.13 (2026-10-04)
+
+- A seat seen in the census only after spawn's wait never gets its session id recorded, and a helper still running after
+  `helper done` has a released row: both keep the dialog with the census down. A hook-side fill-in - on a census hit, an
+  open reserved row of that name with no id gets it - would cover both. *(checked 2026-10-04 on 0.7.13: still [P] -
+  fleet/spawn.py raise_seat)*
+- The "Legal from here" refusal lists every annotation, `launched` included, which only spawn records; it should list
+  the moves a post may make. *(checked 2026-10-04 on 0.7.13: still [P] - ledger/transitions.py next_state)*
+
 ## From the review of 0.7.12 (2026-10-04)
 
-- A project's post files are copied at onboarding and never overwritten, and nothing says when one is behind the shipped
-  template: `fleet/plugins.py` notices only a post older than the `plugins:` key. `flotilla doctor` (or `check`) should
-  name each post whose `template_version` is below the shipped one. *(checked 2026-10-04 on 0.7.12: still [B] - posts.py
-  install_templates, fleet/plugins.py:128)*
 - The refusal texts flotilla prints itself were spot-checked, not audited: each one a person must resolve should name
   what to run. *(checked 2026-10-04 on 0.7.12: open, audit)*
 
@@ -47,11 +84,6 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 
 ## From the broker final review (2026-09-27)
 
-- A background session the census cannot place (census down) is left to its dialog, which for it is the measured hang.
-  Not by the question's cwd: seats run with the main checkout as their cwd and their tree through `--add-dir`, so cwd
-  does not tell a seat from the person (0.7.11, tried and withdrawn on review). What would: the seat's session id
-  written into its post row when spawn first sees it in the census, matched against the hook payload's `session_id` - a
-  new ledger field. *(checked 2026-10-04 on 0.7.11: still [B], design - broker/decide.py, fleet/spawn.py)*
 - `status: waiting` may also mean prompts other than permissions; a waiting session is reported only when it holds a
   ledger move. *(checked 2026-10-04 on 0.7.8: still [P] - watch/fleet.py:38-39)*
 - A background orchestrator counts as live: questions then wait the full budget instead of naming `claude attach`.
@@ -179,6 +211,9 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 
 ## Done
 
+- 0.7.13: a seat is known by its session id, kept on its post row, and refused rather than left hanging when the census
+  is down (decision 230)
+- 0.7.13: `flotilla doctor` names each post older than the shipped template (decision 230)
 - 0.7.12: a refusal the person can lift reaches them as a session's proposal with its check; the orchestrator labels and
   judges it (decision 229)
 - 0.7.11: a failed second CPU sample no longer drops a live run (decision 228)
