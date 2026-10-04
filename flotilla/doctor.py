@@ -193,6 +193,7 @@ def _setup(root: Path, *, run, timeout: float, home: Path | None) -> list[Findin
     else:
         found.append(Finding("warn", "plugin", "could not tell whether flotilla is enabled here "
                                                "(`claude plugin list` did not answer)"))
+    found += _posts(root)
     trust = claude_state.trusted(root, home=home)
     if trust:
         found.append(Finding("ok", "trust", f"{root} is trusted"))
@@ -203,6 +204,21 @@ def _setup(root: Path, *, run, timeout: float, home: Path | None) -> list[Findin
         found.append(Finding("warn", "trust", f"could not tell whether {root} is trusted (no entry in "
                                               "~/.claude.json)", "run `claude` here once and accept the trust dialog"))
     return found
+
+
+def _posts(root: Path) -> list[Finding]:
+    from flotilla.posts import TEMPLATE_DIR, PostError, behind
+    try:
+        old = behind(root)
+    except PostError as err:
+        return [Finding("warn", "posts", f"a post file cannot be read: {err}")]
+    if not old:
+        return [Finding("ok", "posts", "every post is at the template flotilla ships")]
+    named = ", ".join(f"{name} (v{have}, shipped v{shipped})" for name, have, shipped in old)
+    return [Finding("warn", "posts", f"older than the template flotilla ships: {named}; a copy keeps the rules it was "
+                                     "made with",
+                    f"compare {TEMPLATE_DIR}/<post>.md with .flotilla/posts/<post>.md, take the new text keeping "
+                    "your own edits, then `flotilla onboard publish`")]
 
 
 def render(findings: list[Finding], quiet: bool) -> list[str]:

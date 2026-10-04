@@ -139,6 +139,22 @@ def post_for_session(posts: dict[str, Post], session_name: str) -> Post | None:
     return hits[0] if hits else None
 
 
+def behind(root: Path, *, template_dir: Path = TEMPLATE_DIR) -> list[tuple[str, int, int]]:
+    """(post, its template_version, the shipped one) for each post of the project older than the template flotilla
+    ships under the same name. Post files are copied at onboarding and never overwritten, so nothing else says when
+    one falls behind (review of 0.7.12). A post with no shipped template - the project's own - is not compared."""
+    folder = _folder(root)
+    found = []
+    for template in sorted(Path(template_dir).glob("*.md")):
+        copy = folder / template.name
+        if not copy.is_file():
+            continue
+        have, shipped = load_post(copy).template_version, load_post(template).template_version
+        if have < shipped:
+            found.append((template.stem, have, shipped))
+    return found
+
+
 def install_templates(root: Path, *, template_dir: Path = TEMPLATE_DIR) -> list[Path]:
     folder = _folder(root)
     folder.mkdir(parents=True, exist_ok=True)

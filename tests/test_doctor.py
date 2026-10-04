@@ -242,3 +242,38 @@ def test_a_census_that_fails_once_fails_both_lines_without_a_second_call(tmp_pat
 def test_an_empty_census_is_not_called_measured(tmp_path):
     found = collect(tmp_path, read_rows=lambda: [], home=tmp_path)
     assert found["census-shape"].status == "info"
+
+
+def posts_here(tmp_path, *, behind=()):
+    from flotilla.posts import TEMPLATE_DIR
+    folder = tmp_path / ".flotilla" / "posts"
+    folder.mkdir(parents=True, exist_ok=True)
+    for template in TEMPLATE_DIR.glob("*.md"):
+        text = template.read_text(encoding="utf-8")
+        if template.stem in behind:
+            import re
+            text = re.sub(r"(?m)^template_version: (\d+)$", lambda m: f"template_version: {int(m.group(1)) - 1}", text)
+        (folder / template.name).write_text(text, encoding="utf-8")
+
+
+def test_doctor_names_a_post_older_than_the_shipped_template(tmp_path):
+    """Post files are copied at onboarding and never overwritten, and nothing said when one fell behind (review of
+    0.7.12): an orchestrator copy without the v13 refusal rule ran on in a project that updated the plugin."""
+    from flotilla.posts import TEMPLATE_DIR, load_post
+    onboard_here(tmp_path)
+    posts_here(tmp_path, behind=("orchestrator",))
+    shipped = load_post(TEMPLATE_DIR / "orchestrator.md").template_version
+    found = collect(tmp_path, run=plugin_run(True), home=tmp_path)
+    assert found["posts"].status == "warn"
+    assert f"orchestrator (v{shipped - 1}, shipped v{shipped})" in found["posts"].detail
+    assert "flotilla onboard publish" in found["posts"].fix
+
+
+def test_doctor_is_quiet_about_current_and_custom_posts(tmp_path):
+    onboard_here(tmp_path)
+    posts_here(tmp_path)
+    (tmp_path / ".flotilla" / "posts" / "release-captain.md").write_text(
+        "---\nname: release-captain\nname_pattern: \"release captain {n}\"\nmay: []\ntemplate_version: 1\n---\nbody\n",
+        encoding="utf-8")
+    found = collect(tmp_path, run=plugin_run(True), home=tmp_path)
+    assert found["posts"].status == "ok"
