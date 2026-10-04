@@ -325,3 +325,15 @@ def test_a_receipt_file_under_another_name_is_not_green_for_it(tmp_path, field, 
     ok, why = receipts.check_receipt(state=tmp_path / "s", repo_key=KEY, sha=wanted["sha"],
                                      purpose=wanted["purpose"], profile=profile(GREEN))
     assert not ok and "another" in why
+
+
+def test_a_green_receipt_records_the_tiers_peak_memory(tmp_path):
+    """Fleet sizing, section 2.1: how many test runs fit beside the seats is read from each tier's peak memory, and
+    receipts are where tiers run day to day - onboarding measures once, the receipt keeps the worst run seen."""
+    from flotilla.onboard.firstrun import load_peaks
+    state = tmp_path / "s"
+    heavy = f'"{sys.executable}" -c "import time; b = bytearray(60_000_000); time.sleep(1.5)"'
+    data = {"schema": 1, "tests": {"tier": [{"name": "unit", "command": heavy, "required_for": ["handover"]}]}}
+    root = repo_with_origin(tmp_path)
+    receipts.run_receipt(root, state=state, repo_key=KEY, purpose="handover", profile=data, timeout=60)
+    assert load_peaks(state, KEY).get("unit", 0) >= 45

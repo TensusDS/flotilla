@@ -14,7 +14,7 @@ from pathlib import Path
 
 from flotilla.ledger import gitq
 from flotilla.ledger.model import now_iso
-from flotilla.onboard.firstrun import measure_once, run_tier
+from flotilla.onboard.firstrun import measure_once, measure_peaks, run_tier
 
 PURPOSES = ("handover", "push")
 
@@ -140,7 +140,7 @@ def run_receipt(tree: Path, *, state: Path, repo_key: str, purpose: str, profile
     # file is the files the author's receipt already tested. A green answer is reused; a red one runs again.
     files = gitq.files_of(tree, sha, run=run)
     known = _green_over(state, repo_key, files)
-    results, learned, ran_green = [], {}, {}
+    results, learned, ran_green, ran_peaks = [], {}, {}, {}
     for tier in tiers:
         seen = known.get(_tier_key(tier))
         if seen:
@@ -157,6 +157,7 @@ def run_receipt(tree: Path, *, state: Path, repo_key: str, purpose: str, profile
                                      "again)").strip()
         else:
             ran_green[r.name] = r.seconds
+            ran_peaks[r.name] = r.peak_mb
             learned[_tier_key(tier)] = {"sha": sha, "summary": r.summary or "", "seconds": r.seconds,
                                         "at": now_iso()}
         results.append(result)
@@ -173,6 +174,7 @@ def run_receipt(tree: Path, *, state: Path, repo_key: str, purpose: str, profile
         known_path.write_text(json.dumps({**_green_over(state, repo_key, files), **learned}, indent=2,
                                          sort_keys=True), encoding="utf-8")
     measure_once(state, repo_key, ran_green)   # only tiers that ran here: a reused green measured nothing (M5)
+    measure_peaks(state, repo_key, ran_peaks)
     path = _path(state, repo_key, sha, purpose)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(receipt, indent=2, sort_keys=True), encoding="utf-8")

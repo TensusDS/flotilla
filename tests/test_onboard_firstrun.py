@@ -73,3 +73,19 @@ def test_a_tier_reading_stdin_gets_end_of_file(tmp_path):
         os.close(write_end)
     status, seconds = out.split()
     assert status == "green" and int(seconds) < 10
+
+
+def test_a_green_run_records_its_peak_memory(tmp_path):
+    hold = f"{sys.executable} -c \"x = bytearray(80_000_000); import time; time.sleep(1.5); print('1 passed')\""
+    run = firstrun.run_tier("unit", hold, tmp_path, timeout=30)
+    assert run.status == "green" and run.peak_mb is not None and run.peak_mb >= 60
+
+
+def test_peaks_keep_the_larger_and_survive_the_seconds_writer(tmp_path):
+    firstrun.measure_peaks(tmp_path, "k", {"unit": 900, "e2e": None})
+    firstrun.measure_peaks(tmp_path, "k", {"unit": 400})
+    firstrun.measure_once(tmp_path, "k", {"unit": 12.5})
+    assert firstrun.load_peaks(tmp_path, "k") == {"unit": 900}
+    assert firstrun.load_measurements(tmp_path, "k") == {"unit": 12.5}
+    firstrun.measure_peaks(tmp_path, "k", {"unit": 1200})
+    assert firstrun.load_peaks(tmp_path, "k") == {"unit": 1200} and firstrun.load_measurements(tmp_path, "k")
