@@ -1,6 +1,6 @@
 [project]
 name = "flotilla"
-version = "0.7.12"
+version = "0.7.13"
 description = "Coordinate independent peer Claude Code sessions: posts, an evidence-backed work ledger, a lane and guards."
 requires-python = ">=3.11"
 license = "MIT"

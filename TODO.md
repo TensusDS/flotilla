@@ -56,12 +56,17 @@ Each is a limitation README states today, judged fixable in principle; none is p
 - Onboarding a repository whose only workflows are symlinks now records no CI and reads no job ids from them; it matters
   only if GitHub Actions runs a symlinked workflow, which nobody measured. *(checked 2026-10-04 on 0.7.9: measure)*
 
+## From the review of 0.7.13 (2026-10-04)
+
+- A seat seen in the census only after spawn's wait never gets its session id recorded, and a helper still running after
+  `helper done` has a released row: both keep the dialog with the census down. A hook-side fill-in - on a census hit, an
+  open reserved row of that name with no id gets it - would cover both. *(checked 2026-10-04 on 0.7.13: still [P] -
+  fleet/spawn.py raise_seat)*
+- The "Legal from here" refusal lists every annotation, `launched` included, which only spawn records; it should list
+  the moves a post may make. *(checked 2026-10-04 on 0.7.13: still [P] - ledger/transitions.py next_state)*
+
 ## From the review of 0.7.12 (2026-10-04)
 
-- A project's post files are copied at onboarding and never overwritten, and nothing says when one is behind the shipped
-  template: `fleet/plugins.py` notices only a post older than the `plugins:` key. `flotilla doctor` (or `check`) should
-  name each post whose `template_version` is below the shipped one. *(checked 2026-10-04 on 0.7.12: still [B] - posts.py
-  install_templates, fleet/plugins.py:128)*
 - The refusal texts flotilla prints itself were spot-checked, not audited: each one a person must resolve should name
   what to run. *(checked 2026-10-04 on 0.7.12: open, audit)*
 
@@ -79,11 +84,6 @@ Each is a limitation README states today, judged fixable in principle; none is p
 
 ## From the broker final review (2026-09-27)
 
-- A background session the census cannot place (census down) is left to its dialog, which for it is the measured hang.
-  Not by the question's cwd: seats run with the main checkout as their cwd and their tree through `--add-dir`, so cwd
-  does not tell a seat from the person (0.7.11, tried and withdrawn on review). What would: the seat's session id
-  written into its post row when spawn first sees it in the census, matched against the hook payload's `session_id` - a
-  new ledger field. *(checked 2026-10-04 on 0.7.11: still [B], design - broker/decide.py, fleet/spawn.py)*
 - `status: waiting` may also mean prompts other than permissions; a waiting session is reported only when it holds a
   ledger move. *(checked 2026-10-04 on 0.7.8: still [P] - watch/fleet.py:38-39)*
 - A background orchestrator counts as live: questions then wait the full budget instead of naming `claude attach`.
@@ -211,6 +211,9 @@ Each is a limitation README states today, judged fixable in principle; none is p
 
 ## Done
 
+- 0.7.13: a seat is known by its session id, kept on its post row, and refused rather than left hanging when the census
+  is down (decision 230)
+- 0.7.13: `flotilla doctor` names each post older than the shipped template (decision 230)
 - 0.7.12: a refusal the person can lift reaches them as a session's proposal with its check; the orchestrator labels and
   judges it (decision 229)
 - 0.7.11: a failed second CPU sample no longer drops a live run (decision 228)

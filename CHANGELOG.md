@@ -3,6 +3,13 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.7.13 - 2026-10-04
+
+- **A seat asking a permission question while the census is down is refused with the reason, not left hanging.**
+  Spawn now keeps each seat's Claude Code session id on its post row, so the broker knows a seat without the census.
+- **`flotilla doctor` names each post older than the template flotilla ships** under its name, with both versions
+  and where the new text is.
+
 ## 0.7.12 - 2026-10-04
 
 - **A refusal only you can lift reaches you with what to run.** A seat refused by auto mode's classifier or a
