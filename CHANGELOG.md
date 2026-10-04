@@ -3,6 +3,10 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.7.5 - 2026-10-03
+
+- The listing icon stands in a terminal window and has four legs.
+
 ## 0.7.4 - 2026-10-03
 
 - A listing icon: `.claude-plugin/icon.png`, a brain in an admiral's bicorne, named in `plugin.json`.
