@@ -176,3 +176,23 @@ def test_a_switch_that_keeps_changes_or_has_none_to_lose_passes(tmp_path):
 def test_every_revert_verb_reaches_the_guard_through_the_hooks_fast_path():
     from flotilla import hooks
     assert all(any(word in verb for word in hooks.GUARD_TRIGGERS) for verb in revert.VERBS)
+
+
+@pytest.mark.parametrize("command", ["git checkout -qf main", "git checkout -fq main", "git checkout --for main",
+                                     "git checkout --forc main"])
+def test_a_forced_checkout_is_read_in_every_spelling_git_takes(tmp_path, command):
+    """git takes a cluster (`-qf`) and any unambiguous prefix of `--force`; checkout has no `--force-create` to make
+    `--for` ambiguous (review of 0.7.9)."""
+    root = plain_repo(tmp_path)
+    git(root, "switch", "-q", "-c", "other")
+    git(root, "switch", "-q", "main")
+    (root / "f.txt").write_text("changed\n", encoding="utf-8")
+    found = check(command.replace("main", "other"), root)
+    assert found is not None and found.refuse and "f.txt" in found.text
+
+
+@pytest.mark.parametrize("command", ["git switch -cfoo", "git switch -Cfix", "git switch -cf"])
+def test_a_switch_creating_a_branch_named_like_flags_is_not_a_force(tmp_path, command):
+    root = plain_repo(tmp_path)
+    (root / "f.txt").write_text("changed\n", encoding="utf-8")
+    assert check(command, root) is None
