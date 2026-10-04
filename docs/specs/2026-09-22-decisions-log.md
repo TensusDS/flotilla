@@ -1377,6 +1377,19 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    only told. The branch's review found the watch sees the project's members, not the census, so a session alive
    in another repository read as gone: waits are asked of the whole census. (planner's decision, 2026-10-04)
 
+225. **`flotilla doctor` checks the shape of the Claude Code records flotilla reads** (Claude Code session,
+   2026-10-04). Three records: the rows of `claude agents --json` (published), the session registry
+   `<config>/sessions/<pid>.json` and the trust record in `~/.claude.json` (neither published). A change in their
+   shape does not break flotilla with an error - the census parser turns a missing field into an empty one - it
+   blinds a check. `doctor`, run by hand, compares each with the shapes measured on Claude Code 2.1.280 and 2.1.289
+   (`tests/fixtures/agents-json/`) and warns naming what goes blind; one `claude agents --json` call answers both the
+   census count and its shape, and a hook skips these checks. What counts as drift was set by measurement, not by
+   the field list: a daemon-retired background row has no pid and no status, so pid is required only of running
+   sessions; a registry entry is required only where it was measured (an interactive session). The branch's review
+   added `id` and the types of pid, cwd, name and id, and the trust flag itself rather than its parent object. The
+   registry is read through one door, `claude_state.session_entry`, which `strangers.started_by` uses too.
+   (planner's decision, 2026-10-04)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

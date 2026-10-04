@@ -3,6 +3,13 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.7.7 - 2026-10-04
+
+- **`flotilla doctor` says when Claude Code changed a record flotilla reads.** Three new lines - `census-shape`,
+  `registry`, `trust-record` - compare `claude agents --json`, the session registry and the trust record in
+  `~/.claude.json` with the shapes measured on Claude Code 2.1.280 and 2.1.289, and name what goes blind when one
+  drifts. Run `flotilla doctor` after updating Claude Code.
+
 ## 0.7.6 - 2026-10-04
 
 - **A wait whose object is gone no longer silences the watch.** A row waiting on a branch with no open row left, or
