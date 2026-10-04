@@ -138,14 +138,18 @@ def _records(*, env, home: Path | None, read_rows) -> list[Finding]:
     try:
         rows = read_rows()
     except census_mod.CensusUnavailable as err:
-        return [Finding("info", "census-shape", f"not measured: {err}")]
-    problems = claude_state.census_problems(rows)
-    if problems:
-        found.append(Finding("warn", "census-shape", "`claude agents --json` changed shape since Claude Code "
-                                                     f"{claude_state.MEASURED_ON}: " + "; ".join(problems), after))
+        rows = []
+        found.append(Finding("info", "census-shape", f"not measured: {err}"))
     else:
-        found.append(Finding("ok", "census-shape", f"as measured on Claude Code {claude_state.MEASURED_ON} "
-                                                   f"({len(rows)} session(s))"))
+        problems = claude_state.census_problems(rows)
+        if not rows:
+            found.append(Finding("info", "census-shape", "no session is listed to compare with the measured shape"))
+        elif problems:
+            found.append(Finding("warn", "census-shape", "`claude agents --json` changed shape since Claude Code "
+                                                         f"{claude_state.MEASURED_ON}: " + "; ".join(problems), after))
+        else:
+            found.append(Finding("ok", "census-shape", f"as measured on Claude Code {claude_state.MEASURED_ON} "
+                                                       f"({len(rows)} listed)"))
     config = claude_state.config_dir(env, home)
     readable = claude_state.registry_readable(rows, config)
     if readable:
@@ -155,12 +159,14 @@ def _records(*, env, home: Path | None, read_rows) -> list[Finding]:
                                                  "no longer says how the session was started): a review a plugin "
                                                  "hook starts in a seat's tree will be named a stranger", after))
     else:
-        found.append(Finding("info", "registry", "no live session carries a pid to look its entry up by"))
+        found.append(Finding("info", "registry", "no session of yours is listed with a pid to look its entry up by"))
     record = claude_state.trust_record(home)
     if record:
-        found.append(Finding("ok", "trust-record", "~/.claude.json keeps trust under `projects`"))
+        found.append(Finding("ok", "trust-record", "~/.claude.json keeps trust as "
+                                                   "`projects[<path>].hasTrustDialogAccepted`"))
     elif record is False:
-        found.append(Finding("warn", "trust-record", "~/.claude.json keeps no `projects`: whether a directory is "
+        found.append(Finding("warn", "trust-record", "~/.claude.json no longer keeps `projects[<path>]."
+                                                     "hasTrustDialogAccepted`: whether a directory is "
                                                      "trusted cannot be read, so a spawn there may fail unwarned",
                              after))
     else:

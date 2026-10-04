@@ -87,3 +87,32 @@ def test_the_trust_record_shape(tmp_path):
     assert claude_state.trust_record(tmp_path) is True
     (tmp_path / ".claude.json").write_text(json.dumps({"workspaces": {}}), encoding="utf-8")
     assert claude_state.trust_record(tmp_path) is False
+
+
+def test_only_retired_seats_listed_is_no_drift():
+    retired = [row for row in rows() if "pid" not in row]
+    assert retired and claude_state.census_problems(retired) == []
+
+
+@pytest.mark.parametrize("broken, says", [
+    ([{k: v for k, v in row.items() if k != "id"} for row in rows()], "`id`"),
+    ([{**row, "pid": str(row["pid"])} if "pid" in row else row for row in rows()], "`pid`"),
+    ([{**row, "cwd": ["/home/user/project"]} for row in rows()], "`cwd`"),
+    ([{**row, "name": 7} for row in rows()], "`name`"),
+])
+def test_a_missing_id_or_a_new_type_is_drift(broken, says):
+    found = claude_state.census_problems(broken)
+    assert len(found) == 1 and says in found[0], found
+
+
+def test_the_trust_record_must_still_carry_the_trust_flag(tmp_path):
+    (tmp_path / ".claude.json").write_text(json.dumps({"projects": {"/p": {"trusted": True}}}), encoding="utf-8")
+    assert claude_state.trust_record(tmp_path) is False
+    (tmp_path / ".claude.json").write_text(json.dumps({"projects": {"/p": {"hasTrustDialogAccepted": False}}}),
+                                           encoding="utf-8")
+    assert claude_state.trust_record(tmp_path) is True
+
+
+def test_only_background_seats_without_entries_are_not_called_drift(tmp_path):
+    seats = [row for row in rows() if row["kind"] == "background"]
+    assert claude_state.registry_readable(seats, registry(tmp_path, {})) is None

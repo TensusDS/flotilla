@@ -109,17 +109,26 @@ def census_problems(rows: list) -> list[str]:
     states = [row.get("state") for row in background]
     if background and odd(states, STATES):
         drift("state", f"of a background session is missing or new ({', '.join(odd(states, STATES))})",
-              "the watch cannot tell a stopped seat from a working one")
+              "the watch cannot tell a seat that stopped (blocked or done) from one at work")
     interactive = [row.get("status") for row in rows if row.get("kind") == "interactive"]
     statuses = interactive + [row["status"] for row in background if row.get("status") is not None]
     if odd(statuses, STATUSES):
         drift("status", f"is missing or new ({', '.join(odd(statuses, STATUSES))})",
               "a session waiting on a prompt cannot be told from one that is idle")
-    for field, stops in (("cwd", "a session cannot be placed in its project or its seat's tree"),
-                         ("name", "sessions cannot be matched to their posts"),
-                         ("pid", "the session running a command cannot be found, so ledger moves are refused")):
-        if not any(field in row for row in rows):
+    running = [row for row in rows if row.get("kind") == "interactive" or row.get("status") is not None]
+    checked = (   # field, its type, rows that must carry it somewhere (a retired seat has no pid), what goes blind
+        ("cwd", str, rows, "a session cannot be placed in its project or its seat's tree"),
+        ("name", str, rows, "sessions cannot be matched to their posts"),
+        ("pid", int, running, "the session running a command cannot be found, so ledger moves are refused"),
+        ("id", str, background, "a seat cannot be stopped or attached to by its id"))
+    for field, kind_of, where, stops in checked:
+        if not where:
+            continue
+        carried = [row[field] for row in where if field in row]
+        if not carried:
             drift(field, "is missing from every session", stops)
+        elif not any(isinstance(value, kind_of) and not isinstance(value, bool) for value in carried):
+            drift(field, f"is no longer a {kind_of.__name__}", stops)
     return found
 
 
@@ -138,18 +147,24 @@ def session_entry(pid, session_id: str, config: Path | None = None) -> dict | No
 
 
 def registry_readable(rows: list, config: Path | None = None) -> bool | None:
-    """Whether a live session's registry entry carries how it was started; None when no session carries a pid."""
+    """Whether a live session's registry entry carries how it was started. Measured only for interactive sessions,
+    so its absence is drift only when one of them is listed with a pid; None when none is."""
     live = [row for row in rows if isinstance(row, dict) and isinstance(row.get("pid"), int) and row.get("sessionId")]
-    if not live:
-        return None
-    return any(isinstance((session_entry(row["pid"], row["sessionId"], config) or {}).get("entrypoint"), str)
-               for row in live)
+    if any(isinstance((session_entry(row["pid"], row["sessionId"], config) or {}).get("entrypoint"), str)
+           for row in live):
+        return True
+    return False if any(row.get("kind") == "interactive" for row in live) else None
 
 
 def trust_record(home: Path | None = None) -> bool | None:
-    """Whether `~/.claude.json` still keeps trust under `projects`; None when there is no file to read."""
+    """Whether `~/.claude.json` still keeps trust as `projects[<path>].hasTrustDialogAccepted`; None when there is
+    no file to read. A file with projects of which none carries the flag has moved it."""
     try:
         data = json.loads(((home or Path.home()) / ".claude.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-    return isinstance(data, dict) and isinstance(data.get("projects"), dict)
+    projects = data.get("projects") if isinstance(data, dict) else None
+    if not isinstance(projects, dict):
+        return False
+    entries = [entry for entry in projects.values() if isinstance(entry, dict)]
+    return not entries or any(isinstance(entry.get("hasTrustDialogAccepted"), bool) for entry in entries)
