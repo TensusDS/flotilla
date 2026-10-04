@@ -82,3 +82,10 @@ def test_a_wait_whose_object_is_gone_wakes_its_holder():
     other = row(id="r2", branch="feat/y", owner="main session 2", state="handed", reader="review session 1")
     still = whose.mine(rows(waiting, other), PR, "main session 1")
     assert kinds(still) == [("waiting", "feat/x")]
+
+
+def test_a_wait_on_a_gone_session_wakes_its_holder():
+    waiting = row(state="fixing", waiting_on="review session 1", note="asked")
+    read = row(id="r2", branch="feat/y", owner="main session 2", state="closed", reader="review session 1")
+    found = whose.mine(rows(waiting, read), PR, "main session 1", live={"main session 1"})
+    assert kinds(found) == [("hold", "feat/x")] and "is not alive" in found[0].text

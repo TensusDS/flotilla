@@ -54,13 +54,14 @@ def movers(row, profile: dict, live: set[str], post_of, rows: dict | None = None
 
 
 def fleet(rows: dict, profile: dict, sessions, *, post_of, former_of=None, breaks=(), asking=(), claimers=frozenset(),
-          now: dt.datetime | None = None) -> list[Item]:
+          now: dt.datetime | None = None, census: set[str] | None = None) -> list[Item]:
     outside = strangers.in_seat_trees(sessions, rows, post_of)   # in a seat's tree, holding no post (H7)
     by_name = {session.name: session for session in sessions if session.name}
     for session, _ in outside:
         by_name.pop(session.name, None)   # counted nowhere a seat is counted
     live = set(by_name)
-    found_all = views.deviations(rows, profile, live, post_of=post_of, former_of=former_of)
+    everyone = census if census is not None else live   # waits are asked of the whole census, not the project
+    found_all = views.deviations(rows, profile, live, post_of=post_of, former_of=former_of, census=everyone)
     items = [Item(DEVIATION, found["branch"], f"{found['kind']}: {found['why']}", since_of(rows, found["branch"]),
                   who=found["kind"])
              for found in found_all if found["kind"] != "seat_empty"]
@@ -73,7 +74,7 @@ def fleet(rows: dict, profile: dict, sessions, *, post_of, former_of=None, break
         if row.is_open and row.waiting_on.strip().lower() == THE_PERSON:
             items.append(Item(PERSON, row.branch, f"waits on the person: {row.note or 'no question recorded'}"
                                                   f"{views.since_then(rows, row)}", row.updated_at, who=row.note))
-        if not row.is_open or row.state == "reserved" or _waits(row, rows, live) or row.held_until:
+        if not row.is_open or row.state == "reserved" or _waits(row, rows, everyone) or row.held_until:
             continue   # a post row is the post held, not a move anyone owes
         mover = views.who_moves(row, profile, rows)
         named = movers(row, profile, live, post_of, rows) & live
@@ -100,7 +101,7 @@ def fleet(rows: dict, profile: dict, sessions, *, post_of, former_of=None, break
                  for session, tree in outside if not strangers.started_by(session))   # a hook's review: no alarm (W6)
     items.extend(breaks)
     items.extend(idle_seats(rows, profile, live, post_of, claimers, now))
-    items.extend(piled(rows, profile, live, post_of, claimers))
+    items.extend(piled(rows, profile, live, post_of, claimers, everyone))
     items.extend(drained(rows, live))
     items.extend(helpers(rows, live))
     return items
@@ -135,16 +136,17 @@ def _waits(row, rows: dict, live: set[str] | None = None) -> bool:
     return bool(row.waiting_on) and not views.wait_over(row, rows, live)
 
 
-def piled(rows: dict, profile: dict, live: set[str], post_of, claimers) -> list[Item]:
-    """Moves piling up on one seat while a live seat of the same post has none: the fleet runs at that one seat's
-    speed (twosuns, 2026-10-03: three rows in fixing on one main session, another with nothing to move). Nobody's
-    work is taken from a live session (`adopt` refuses), so this only names the pile to the orchestrator."""
+def piled(rows: dict, profile: dict, live: set[str], post_of, claimers, census: set[str] | None = None) -> list[Item]:
+    """Work piling up on one seat while a live seat of the same post has none: the fleet runs at that one seat's
+    speed (twosuns, 2026-10-03: three rows in fixing on one main session, another with nothing to move). Only work
+    in its author's hands counts - claimed, or returned for fixes - and nobody's work is taken from a live session
+    (`adopt` refuses), so this only names the pile to the orchestrator."""
     own: dict[str, list] = {}
     for row in rows.values():
-        if not row.is_open or row.state == "reserved" or row.held_until or _waits(row, rows, live):
+        if not row.is_open or row.state not in views.WORKING or row.held_until or _waits(row, rows, census):
             continue
         mover = views.who_moves(row, profile, rows)
-        if mover in live and post_of(mover) in claimers:
+        if mover == row.owner and mover in live and post_of(mover) in claimers:
             own.setdefault(mover, []).append(row)
     items = []
     for name in sorted(own):
@@ -154,9 +156,14 @@ def piled(rows: dict, profile: dict, live: set[str], post_of, claimers) -> list[
         if not free:
             continue
         branches = ", ".join(row.branch for row in own[name])
-        items.append(Item(PILE, "", f"{name} holds {len(own[name])} moves ({branches}) while {', '.join(free)} "
-                                    f"hold{'s' if len(free) == 1 else ''} none: ask {name} to hand over work it has "
-                                    f"not started, or give {free[0]} the next row", "", who=name))
+        claimed = sum(row.state == "claimed" for row in own[name])
+        states = ", ".join(part for part in (f"{claimed} claimed" if claimed else "",
+                                             f"{len(own[name]) - claimed} returned for fixes"
+                                             if len(own[name]) > claimed else "") if part)
+        items.append(Item(PILE, "", f"{name} holds {len(own[name])} rows in work ({states}: {branches}) while "
+                                    f"{', '.join(free)} hold{'s' if len(free) == 1 else ''} none: ask {name} to hand "
+                                    f"over a claimed row it has not started, or give {free[0]} the next row", "",
+                          who=name))
     return items
 
 
@@ -210,7 +217,7 @@ def open_breaks(state_dir, repo_key: str, rows: dict, profile: dict, post_of) ->
         stopped, moved = _moment(at), _moment(row.updated_at) if row is not None else None
         if row is None or stopped is None or moved is None or moved > stopped:
             continue
-        if _waits(row, rows) or row.held_until or not holds_move(row, profile, name, post_of(name), rows):
+        if row.waiting_on or row.held_until or not holds_move(row, profile, name, post_of(name), rows):
             continue
         items.append(Item(BREAK, branch, f"{name} stopped twice while holding this move ({row.state}), and "
                                          "nothing has moved since", at, who=f"{name} {at}"))

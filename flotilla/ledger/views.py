@@ -178,7 +178,7 @@ def wait_over(row: Row, rows: dict[str, Row], live: set[str] | None = None) -> s
     knows and the census does not list; "" otherwise - still waiting, or a wait nobody can ask (the person, the
     lane, a name no row carries). A wait silences the watch, so one whose object is gone must not stay quiet."""
     on = row.waiting_on.strip()
-    if not on:
+    if not on or on == row.branch:   # a row waiting on its own branch names nothing the ledger can ask
         return ""
     named = [other for other in rows.values() if other.branch == on and other.id != row.id]
     if named:
@@ -239,7 +239,9 @@ def handover_hint(row: Row, mover: str, rows: dict[str, Row], live: set[str], po
 
 
 def deviations(rows: dict[str, Row], profile: dict, live: set[str] | None = None, finished=None,
-               post_of=None, former_of=None) -> list[dict]:
+               post_of=None, former_of=None, census: set[str] | None = None) -> list[dict]:
+    """`census` is every live session, for asking whether a waited-on session is gone; `live` may be narrowed to
+    the project's members, and a session alive in another repository is not gone (review of 0.7.6, I1)."""
     found = []
     for row in rows.values():
         if not row.is_open:
@@ -259,7 +261,7 @@ def deviations(rows: dict[str, Row], profile: dict, live: set[str] | None = None
             elif lifted is None:
                 add("hold_unknown", row.held_by, f"the hold waits on `{row.held_until}`, which cannot be asked: "
                                                  "gone, or unknown to the ledger")
-        over = wait_over(row, rows, live)
+        over = wait_over(row, rows, census if census is not None else live)
         clear = clear_wait(row.branch)
         if over == "lifted":
             add("wait_lifted", row.waiting_on, f"waits on `{row.waiting_on}`, which has no open row left: make the "

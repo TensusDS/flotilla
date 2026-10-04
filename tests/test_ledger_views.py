@@ -317,3 +317,8 @@ def test_an_over_wait_is_a_deviation_that_names_the_way_out():
 def test_the_clear_wait_line_is_shell_quoted():
     assert views.clear_wait("feat/x") == "flotilla work wait feat/x --clear"
     assert views.clear_wait("feat/$(touch pwned)") == "flotilla work wait 'feat/$(touch pwned)' --clear"
+
+
+def test_a_wait_on_its_own_branch_is_never_over():
+    waiting = row("r2", branch="feat/x", state="claimed", waiting_on="feat/x", note="odd")
+    assert views.wait_over(waiting, rows(row("r1", branch="feat/x", state="closed"), waiting)) == ""
