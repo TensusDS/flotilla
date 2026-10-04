@@ -190,6 +190,9 @@ def decide(payload: dict, ctx, *, clock=time.time, sleep=time.sleep, timer=time.
     to be a background one, every failure is a deny with its reason: no decision there is the measured hang.
     """
     started = timer() if started is None else started
+    if ctx.sessions is None and ctx.ledger is not None and enabled(ctx.profile) and _from_a_seat(payload, ctx):
+        return _deny(f"the census could not be asked ({ctx.census_error}), so this question cannot be put to the "
+                     "orchestrator; a seat's call is refused rather than left to a dialog nobody sees")
     if ctx.sessions is None or ctx.me is None or ctx.me.kind != "background":
         return None   # a person may be in front of it, or who asks is unknown: the dialog decides
     if ctx.ledger is None:
@@ -217,6 +220,18 @@ def decide(payload: dict, ctx, *, clock=time.time, sleep=time.sleep, timer=time.
                      pid=pid)
     except Exception as err:  # noqa: BLE001 - a background session with no decision hangs (entry 70)
         return _deny(f"the broker failed ({err}), so this call is refused")
+
+
+def _from_a_seat(payload: dict, ctx) -> bool:
+    """Whether the call comes from a fleet seat's own tree: a background session even when the census is down, and
+    for it no decision is the measured hang (TODO, broker final review). The person's checkout is no seat's."""
+    from pathlib import Path
+    from flotilla.fleet.strangers import seat_trees
+    cwd = payload.get("cwd")
+    if not isinstance(cwd, str) or not cwd:
+        return False
+    here = Path(cwd).resolve()
+    return any(here == tree or here.is_relative_to(tree) for tree in seat_trees(ctx.rows))
 
 
 def _wait(payload, ctx, *, clock, sleep, timer, poll, started, parent, pid) -> dict:

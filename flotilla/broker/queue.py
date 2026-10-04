@@ -10,6 +10,7 @@ never shown, because an answer nobody waits for would read as applied.
 from __future__ import annotations
 
 import dataclasses
+import errno
 import json
 import os
 import time
@@ -49,6 +50,8 @@ def _read(path: Path):
 
 
 def is_alive(pid: int) -> bool:
+    if not isinstance(pid, int) or pid <= 0:   # os.kill(0, 0) signals the whole process group, and succeeds
+        return False
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -67,10 +70,18 @@ def ask(state_dir, repo_key: str, *, session: str, session_id: str, tool: str, t
     base = folder(state_dir, repo_key)
     base.mkdir(parents=True, exist_ok=True)
     _forget_closed(base, now)
-    staged = base / f".q-{asked.id}.tmp"
-    staged.write_text(json.dumps(dataclasses.asdict(asked)), encoding="utf-8")
-    os.replace(staged, base / f"q-{asked.id}.json")
+    _write(base / f".q-{asked.id}.tmp", base / f"q-{asked.id}.json", dataclasses.asdict(asked))
     return asked
+
+
+def _write(staged: Path, path: Path, record) -> None:
+    """Stage, then rename into place; a write that fails leaves no staged file behind (TODO, broker final review)."""
+    try:
+        staged.write_text(json.dumps(record), encoding="utf-8")
+        os.replace(staged, path)
+    except BaseException:
+        staged.unlink(missing_ok=True)
+        raise
 
 
 KEEP_CLOSED = 86400   # a closed question's file is kept a day, without the call it carried (F16)
@@ -83,9 +94,7 @@ def _drop_call(path: Path) -> None:
     if not isinstance(record, dict) or (not record.get("tool_input") and not record.get("suggestions")):
         return
     record["tool_input"], record["suggestions"] = {}, []
-    staged = path.with_name(f".{path.stem}-{os.getpid()}.tmp")
-    staged.write_text(json.dumps(record), encoding="utf-8")
-    os.replace(staged, path)
+    _write(path.with_name(f".{path.stem}-{os.getpid()}.tmp"), path, record)
 
 
 def forget_call(state_dir, repo_key: str, qid: str) -> None:
@@ -95,6 +104,12 @@ def forget_call(state_dir, repo_key: str, qid: str) -> None:
 
 
 def _forget_closed(base: Path, now: float) -> None:
+    for staged in base.glob(".*.tmp"):   # left by a process killed between staging and renaming
+        try:
+            if now - staged.stat().st_mtime > KEEP_CLOSED:
+                staged.unlink(missing_ok=True)
+        except OSError:
+            continue
     for asked in base.glob("q-*.json"):   # never answered: its hook was killed; a day past its deadline it goes
         record = _read(asked)
         deadline = record.get("deadline") if isinstance(record, dict) else None
@@ -128,14 +143,35 @@ def _close(state_dir, repo_key: str, qid: str, record: dict) -> bool:
     base = folder(state_dir, repo_key)
     base.mkdir(parents=True, exist_ok=True)
     staged = base / f".a-{qid}-{os.getpid()}.tmp"
-    staged.write_text(json.dumps(record), encoding="utf-8")
+    final = base / f"a-{qid}.json"
     try:
-        os.link(staged, base / f"a-{qid}.json")
+        staged.write_text(json.dumps(record), encoding="utf-8")
+        os.link(staged, final)
         return True
     except FileExistsError:
         return False
+    except OSError as err:
+        if err.errno not in NO_LINKS:
+            raise QueueRefused(f"could not write the answer to `{qid}`: {err}") from err
+        return _create_once(final, record)   # FUSE, SMB, exFAT: no hard links (TODO, broker final review)
     finally:
         staged.unlink(missing_ok=True)
+
+
+NO_LINKS = {errno.EPERM, errno.ENOTSUP, errno.EOPNOTSUPP, errno.EXDEV, errno.EMLINK}
+
+
+def _create_once(path: Path, record) -> bool:
+    """The answer written where hard links are refused: an exclusive create keeps "the first answer wins"."""
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        return False
+    except OSError as err:
+        raise QueueRefused(f"could not write the answer: {err}") from err
+    with os.fdopen(fd, "w", encoding="utf-8") as out:
+        out.write(json.dumps(record))
+    return True
 
 
 def live(state_dir, repo_key: str, *, now: float | None = None, alive=is_alive) -> list[Question]:

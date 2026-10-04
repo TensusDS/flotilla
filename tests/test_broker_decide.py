@@ -345,3 +345,17 @@ def test_the_broker_asks_the_guards_question_about_the_opt_in(monkeypatch):
     asked = []
     monkeypatch.setattr(run, "opt_in_counts", lambda root, **kw: asked.append(root) or True)
     assert decide._opted_in("/w") is True and asked == ["/w"]
+
+
+def test_a_seat_asking_while_the_census_is_down_is_refused_not_left_hanging(tmp_path):
+    """Without the census the broker cannot tell a background seat from the person's session and left the dialog,
+    which for a background seat is the measured hang (TODO, broker final review). A question asked from a seat's
+    own tree is a seat's."""
+    from watchkit import row, rows
+    tree = tmp_path / "app-main-1"
+    (tree / "src").mkdir(parents=True)
+    seat = row("r1", branch="fleet/main-1", owner="main session 1", state="reserved", tree=str(tree))
+    ctx = context(tmp_path, me=None, census_error="claude agents timed out", profile=ASK, rows_=rows(seat))
+    found = decide.decide({**TOUCH, "cwd": str(tree / "src")}, ctx)
+    assert found and found.get("behavior") == "deny" and "census" in found["message"]
+    assert decide.decide({**TOUCH, "cwd": str(tmp_path)}, ctx) is None   # the person's checkout: the dialog decides

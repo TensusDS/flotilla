@@ -133,3 +133,37 @@ def test_an_abandoned_question_loses_its_call_when_the_queue_is_next_read(tmp_pa
     queue.live(tmp_path, KEY, now=1600.0)
     kept = json.loads((queue.folder(tmp_path, KEY) / f"q-{old.id}.json").read_text(encoding="utf-8"))
     assert kept["tool_input"] == {} and kept["suggestions"] == []
+
+
+@pytest.mark.parametrize("errno_name", ["EPERM", "ENOTSUP"])
+def test_a_filesystem_without_hard_links_still_answers_once(tmp_path, monkeypatch, errno_name):
+    """FUSE, SMB and exFAT mounts refuse `os.link` with EPERM or ENOTSUP, not FileExistsError: the answer was a
+    traceback (TODO, broker final review). An exclusive create keeps "the first answer wins"."""
+    import errno
+    def no_links(src, dst):
+        raise OSError(getattr(errno, errno_name), "links not supported")
+    monkeypatch.setattr(os, "link", no_links)
+    q = ask(tmp_path)
+    queue.answer(tmp_path, KEY, q.id, queue.DENY, why="no", now=1001)
+    assert queue.answer_of(tmp_path, KEY, q.id)["choice"] == queue.DENY
+    with pytest.raises(queue.QueueRefused, match="already closed"):
+        queue.answer(tmp_path, KEY, q.id, queue.DENY, why="again", now=1002)
+    assert not list(queue.folder(tmp_path, KEY).glob(".*.tmp"))
+
+
+def test_pid_zero_or_less_is_not_alive():
+    assert queue.is_alive(0) is False and queue.is_alive(-1) is False
+
+
+def test_a_failed_write_leaves_no_staged_file_and_old_ones_are_swept(tmp_path, monkeypatch):
+    base = queue.folder(tmp_path, KEY)
+    base.mkdir(parents=True)
+    stale = base / ".q-old-1.tmp"
+    stale.write_text("{}", encoding="utf-8")
+    os.utime(stale, (1000.0 - queue.KEEP_CLOSED - 10,) * 2)
+    def full_disk(*args, **kwargs):
+        raise OSError(28, "No space left on device")
+    monkeypatch.setattr(os, "replace", full_disk)
+    with pytest.raises(OSError):
+        ask(tmp_path, now=1000.0)
+    assert sorted(path.name for path in base.glob(".*.tmp")) == []   # the stale one swept, the new one removed
