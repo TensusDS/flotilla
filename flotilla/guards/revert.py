@@ -5,7 +5,7 @@ added is gone, with no reflog and no stash to bring it back. `git add` first mak
 the same command then reverts only what changed after it. A command that names a source (`git checkout HEAD --
 f`, `git restore --source=X f`, `git restore --staged --worktree f`) overwrites the index too, so there `git add`
 saves nothing: the work has to be committed or stashed. `git reset --hard`, `git checkout -f <branch>` and `git
-clean -f` are the same for the whole tree and for untracked files.
+clean -f` are the same for the whole tree and for untracked files, and so is `git switch -f` (`--discard-changes`).
 
 The guard refuses only when git says there is something to lose, names the fix that works for that form, and
 never makes the save point itself. Its own failure, and a tree it cannot name, let the command run with a
@@ -19,7 +19,7 @@ import subprocess
 from flotilla.guards import Finding
 
 GUARD = "revert"
-VERBS = ("checkout", "restore", "reset", "clean")
+VERBS = ("checkout", "restore", "reset", "clean", "switch")
 SHOWN = 5
 
 
@@ -104,6 +104,11 @@ def _plan(verb, args, directory, run):
         return "paths", paths, source is None and not staged
     if verb == "reset":
         return ("tracked", None, False) if "--hard" in args else None
+    if verb == "switch":   # -f, --force and --discard-changes drop every change to tracked files, as checkout -f
+        longs = [arg.split("=", 1)[0] for arg in args if arg.startswith("--")]
+        force = "f" in _letters(args) or any(_long(name, "--force") or _long(name, "--discard-changes")
+                                             for name in longs if name != "--force-create")
+        return ("tracked", None, False) if force else None
     return _clean(args)
 
 

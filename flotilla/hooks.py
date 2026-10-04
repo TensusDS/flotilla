@@ -27,7 +27,7 @@ PEERS_SHOWN = 8
 #: group lets a long run reach the lane guard: the lane's default run patterns and the launchers that run them. A
 #: tier whose program is none of these (`make test`, `./run-tests.sh`) is not warned about unless the line names one.
 #: `flotilla` lets the person guard see its CLI however the word `approve` is quoted.
-GUARD_TRIGGERS = ("checkout", "restore", "reset", "clean", "sed", "push", "gh", "approve", "flotilla",
+GUARD_TRIGGERS = ("checkout", "restore", "reset", "clean", "switch", "sed", "push", "gh", "approve", "flotilla",
                   "pytest", "py.test", "playwright", "vitest", "jest", "cargo", "go test", "npm", "pnpm", "yarn",
                   "npx", "bun", "tox", "nox")
 
