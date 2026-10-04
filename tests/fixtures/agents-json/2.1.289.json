@@ -1,0 +1,73 @@
+[
+ {
+  "cwd": "/home/user/project",
+  "kind": "interactive",
+  "startedAt": 1790000000001,
+  "sessionId": "00000000-0000-4000-8000-000000000001",
+  "name": "session 1",
+  "pid": 1001,
+  "status": "busy"
+ },
+ {
+  "cwd": "/home/user/project",
+  "kind": "interactive",
+  "startedAt": 1790000000002,
+  "sessionId": "00000000-0000-4000-8000-000000000002",
+  "name": "session 2",
+  "pid": 1002,
+  "status": "idle"
+ },
+ {
+  "cwd": "/home/user/project",
+  "kind": "background",
+  "startedAt": 1790000000003,
+  "sessionId": "00000000-0000-4000-8000-000000000003",
+  "name": "session 3",
+  "id": "a0000003",
+  "pid": 1003,
+  "status": "busy",
+  "state": "working"
+ },
+ {
+  "cwd": "/home/user/project",
+  "kind": "background",
+  "startedAt": 1790000000004,
+  "sessionId": "00000000-0000-4000-8000-000000000004",
+  "name": "session 4",
+  "id": "a0000004",
+  "pid": 1004,
+  "status": "idle",
+  "state": "blocked"
+ },
+ {
+  "cwd": "/home/user/project",
+  "kind": "background",
+  "startedAt": 1790000000005,
+  "sessionId": "00000000-0000-4000-8000-000000000005",
+  "name": "session 5",
+  "id": "a0000005",
+  "pid": 1005,
+  "status": "busy",
+  "state": "done"
+ },
+ {
+  "cwd": "/home/user/project",
+  "kind": "background",
+  "startedAt": 1790000000006,
+  "sessionId": "00000000-0000-4000-8000-000000000006",
+  "name": "session 6",
+  "id": "a0000006",
+  "pid": 1006,
+  "status": "idle",
+  "state": "working"
+ },
+ {
+  "cwd": "/home/user/project",
+  "kind": "background",
+  "startedAt": 1790000000007,
+  "sessionId": "00000000-0000-4000-8000-000000000007",
+  "name": "session 7",
+  "id": "a0000007",
+  "state": "blocked"
+ }
+]

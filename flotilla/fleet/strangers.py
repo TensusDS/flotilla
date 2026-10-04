@@ -7,8 +7,6 @@ post: it is named for what it is and counted nowhere a seat is counted.
 
 from __future__ import annotations
 
-import json
-import os
 from pathlib import Path
 
 def label(tree: str, started: str = "") -> str:
@@ -26,14 +24,9 @@ def started_by(session) -> str:
     the session's transcript, which holds the conversation (Software Directory Policy: no reading chat history)."""
     if not session.pid or not session.session_id:
         return ""
-    home = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
-    try:
-        entry = json.loads((home / "sessions" / f"{int(session.pid)}.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError, TypeError):
-        return ""
-    if not isinstance(entry, dict) or entry.get("sessionId") != session.session_id:
-        return ""   # a reused pid names another session
-    started = entry.get("entrypoint")
+    from flotilla.core.claude_state import session_entry
+    entry = session_entry(session.pid, session.session_id)   # None for a reused pid naming another session
+    started = (entry or {}).get("entrypoint")
     return started[:20] if isinstance(started, str) and started.startswith("sdk") else ""
 
 

@@ -461,6 +461,11 @@ What flotilla does not do yet, or does only partly. Each one was met in a field 
   routes no such questions.
 - **The leading session's name comes through a hook** that measured working on Claude Code 2.1.287. If your version
   does not show the name after three messages, flotilla tells the session to ask you for `/rename <name>`.
+- **flotilla reads three of Claude Code's own records**: the session list of `claude agents --json` (a published
+  interface), and two files that are not - the session registry in `~/.claude/sessions/` and the trust record in
+  `~/.claude.json`. A Claude Code release that changes one of them does not break flotilla with an error; it blinds
+  one of its checks. After updating Claude Code, run `flotilla doctor`: its `census-shape`, `registry` and
+  `trust-record` lines compare each record with the shape measured on Claude Code 2.1.289 and name what goes blind.
 - **Auto mode is not offered for every model.** Claude Code has refused it for some (seen with Haiku);
   `flotilla spawn --dry-run` warns about such a seat, and `flotilla spawn` warns again after raising it - pick
   another model or `ask` mode for that post.
