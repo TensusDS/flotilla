@@ -139,19 +139,19 @@ def post_for_session(posts: dict[str, Post], session_name: str) -> Post | None:
     return hits[0] if hits else None
 
 
-def behind(root: Path, *, template_dir: Path = TEMPLATE_DIR) -> list[tuple[str, int, int]]:
-    """(post, its template_version, the shipped one) for each post of the project older than the template flotilla
-    ships under the same name. Post files are copied at onboarding and never overwritten, so nothing else says when
-    one falls behind (review of 0.7.12). A post with no shipped template - the project's own - is not compared."""
-    folder = _folder(root)
+def behind(posts: dict, *, template_dir: Path = TEMPLATE_DIR) -> list[tuple[str, int, int]]:
+    """(post, its template_version, the shipped one) for each post older than the template flotilla ships under the
+    same name. `posts` are the ones the fleet reads - trunk's, not the files on disk. Post files are copied at
+    onboarding and never overwritten, so nothing else says when one falls behind (review of 0.7.12); a post with no
+    shipped template - the project's own - is not compared."""
     found = []
     for template in sorted(Path(template_dir).glob("*.md")):
-        copy = folder / template.name
-        if not copy.is_file():
+        post = posts.get(template.stem)
+        if post is None:
             continue
-        have, shipped = load_post(copy).template_version, load_post(template).template_version
-        if have < shipped:
-            found.append((template.stem, have, shipped))
+        shipped = load_post(template).template_version
+        if post.template_version < shipped:
+            found.append((template.stem, post.template_version, shipped))
     return found
 
 

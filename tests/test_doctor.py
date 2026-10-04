@@ -244,36 +244,56 @@ def test_an_empty_census_is_not_called_measured(tmp_path):
     assert found["census-shape"].status == "info"
 
 
-def posts_here(tmp_path, *, behind=()):
+def published(tmp_path, *, behind=()):
+    """A repository whose trunk on origin carries a profile and the shipped posts, some made older."""
+    import re
+    from ledgerkit import commit, git, repo_with_origin
     from flotilla.posts import TEMPLATE_DIR
-    folder = tmp_path / ".flotilla" / "posts"
-    folder.mkdir(parents=True, exist_ok=True)
+    root = repo_with_origin(tmp_path)
+    folder = root / ".flotilla" / "posts"
+    folder.mkdir(parents=True)
+    (root / ".flotilla" / "project.toml").write_text('schema = 1\n[trunk]\nbranch = "main"\n', encoding="utf-8")
     for template in TEMPLATE_DIR.glob("*.md"):
         text = template.read_text(encoding="utf-8")
         if template.stem in behind:
-            import re
             text = re.sub(r"(?m)^template_version: (\d+)$", lambda m: f"template_version: {int(m.group(1)) - 1}", text)
         (folder / template.name).write_text(text, encoding="utf-8")
+    git(root, "add", ".flotilla")
+    commit(root, "onboard")
+    git(root, "push", "-q", "origin", "main")
+    return root
+
+
+def posts_finding(root, tmp_path):
+    return collect(root, run=plugin_run(True), home=tmp_path)["posts"]
 
 
 def test_doctor_names_a_post_older_than_the_shipped_template(tmp_path):
     """Post files are copied at onboarding and never overwritten, and nothing said when one fell behind (review of
-    0.7.12): an orchestrator copy without the v13 refusal rule ran on in a project that updated the plugin."""
+    0.7.12). What counts is trunk's copy, which the fleet reads - not the file on disk (review of 0.7.13)."""
     from flotilla.posts import TEMPLATE_DIR, load_post
-    onboard_here(tmp_path)
-    posts_here(tmp_path, behind=("orchestrator",))
+    root = published(tmp_path, behind=("orchestrator",))
     shipped = load_post(TEMPLATE_DIR / "orchestrator.md").template_version
-    found = collect(tmp_path, run=plugin_run(True), home=tmp_path)
-    assert found["posts"].status == "warn"
-    assert f"orchestrator (v{shipped - 1}, shipped v{shipped})" in found["posts"].detail
-    assert "flotilla onboard publish" in found["posts"].fix
+    found = posts_finding(root, tmp_path)
+    assert found.status == "warn" and f"orchestrator (v{shipped - 1}, shipped v{shipped})" in found.detail
+    assert "flotilla onboard publish" in found.fix
+    (root / ".flotilla" / "posts" / "orchestrator.md").write_text(
+        (TEMPLATE_DIR / "orchestrator.md").read_text(encoding="utf-8"), encoding="utf-8")   # edited, not published
+    assert posts_finding(root, tmp_path).status == "warn"
 
 
-def test_doctor_is_quiet_about_current_and_custom_posts(tmp_path):
-    onboard_here(tmp_path)
-    posts_here(tmp_path)
-    (tmp_path / ".flotilla" / "posts" / "release-captain.md").write_text(
+def test_doctor_is_quiet_about_current_newer_and_custom_posts(tmp_path):
+    import re
+    from ledgerkit import commit, git
+    root = published(tmp_path)
+    folder = root / ".flotilla" / "posts"
+    main = folder / "main.md"
+    main.write_text(re.sub(r"(?m)^template_version: (\d+)$", lambda m: f"template_version: {int(m.group(1)) + 5}",
+                           main.read_text(encoding="utf-8")), encoding="utf-8")   # a project's newer copy
+    (folder / "release-captain.md").write_text(
         "---\nname: release-captain\nname_pattern: \"release captain {n}\"\nmay: []\ntemplate_version: 1\n---\nbody\n",
         encoding="utf-8")
-    found = collect(tmp_path, run=plugin_run(True), home=tmp_path)
-    assert found["posts"].status == "ok"
+    git(root, "add", ".flotilla")
+    commit(root, "posts of our own")
+    git(root, "push", "-q", "origin", "main")
+    assert posts_finding(root, tmp_path).status == "ok"

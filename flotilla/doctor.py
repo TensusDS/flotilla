@@ -207,13 +207,17 @@ def _setup(root: Path, *, run, timeout: float, home: Path | None) -> list[Findin
 
 
 def _posts(root: Path) -> list[Finding]:
-    from flotilla.posts import TEMPLATE_DIR, PostError, behind
+    """The posts the fleet reads - trunk's, as the ledger loads them - against the templates flotilla ships: the
+    files on disk may hold an edit not published yet, or lag behind a trunk that moved (review of 0.7.13)."""
+    from flotilla.ledger.commands import trunk_rules
+    from flotilla.posts import TEMPLATE_DIR, behind
     try:
-        old = behind(root)
-    except PostError as err:
-        return [Finding("warn", "posts", f"a post file cannot be read: {err}")]
+        posts = trunk_rules(root).posts
+    except Exception as err:  # noqa: BLE001 - a check that could not ask says so; it never reports ok by default
+        return [Finding("warn", "posts", f"the posts on trunk could not be read: {err}")]
+    old = behind(posts)
     if not old:
-        return [Finding("ok", "posts", "every post is at the template flotilla ships")]
+        return [Finding("ok", "posts", f"every post on trunk is at the template flotilla ships ({len(posts)} read)")]
     named = ", ".join(f"{name} (v{have}, shipped v{shipped})" for name, have, shipped in old)
     return [Finding("warn", "posts", f"older than the template flotilla ships: {named}; a copy keeps the rules it was "
                                      "made with",

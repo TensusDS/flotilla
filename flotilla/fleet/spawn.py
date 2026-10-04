@@ -274,7 +274,7 @@ def _record_session(ledger, actor: Actor, row_id: str, session_id: str) -> None:
             if row is None or not row.is_open:
                 return
             s.append(actor, row_id, "launched", s.next_state(row, "launched"), fields={"session_id": session_id})
-    except MoveRefused:
+    except Exception:  # noqa: BLE001 - the seat is raised; failing to note its id must not lose that (review of 0.7.13)
         return
 
 

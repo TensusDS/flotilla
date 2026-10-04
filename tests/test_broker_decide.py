@@ -358,3 +358,32 @@ def test_a_seat_known_by_its_session_id_is_refused_while_the_census_is_down(tmp_
     assert found and found["behavior"] == "deny" and "census" in found["message"]
     assert decide.decide({**TOUCH, "session_id": "sid-person"}, ctx) is None   # the person's: the dialog decides
     assert decide.decide({**TOUCH, "session_id": "sid-gone"}, ctx) is None     # a seat row no longer open
+
+
+def seat_ctx(tmp_path, **more):
+    from watchkit import row, rows
+    seat = row("r1", branch="fleet/main-1", owner="main session 1", state="reserved", session_id="sid-seat")
+    return context(tmp_path, rows_=rows(seat), **more)
+
+
+def test_a_known_seat_is_refused_only_while_the_census_is_down(tmp_path):
+    """With the census up the seat's question goes to the orchestrator; with the broker off the dialog decides
+    (review of 0.7.13: neither condition was tested)."""
+    asker = sess("main session 1", kind="background")
+    up = seat_ctx(tmp_path, me=asker, sessions=[asker, sess("orchestrator 1", state="working")], profile=ASK)
+    clock = Clock(on_sleep=lambda now: None)
+    found = decide.decide({**TOUCH, "session_id": "sid-seat"}, up, clock=clock, sleep=clock.sleep, timer=clock,
+                          poll=60.0)
+    assert "census could not be asked" not in (found or {}).get("message", "")
+    off = seat_ctx(tmp_path / "off", me=None, census_error="down", profile={"permissions": {"mode": "auto"}})
+    assert decide.decide({**TOUCH, "session_id": "sid-seat"}, off) is None
+
+
+def test_a_session_the_registry_calls_interactive_keeps_its_dialog(tmp_path, monkeypatch):
+    """The person may resume a seat's conversation, which keeps its id: Claude Code's registry says which it is."""
+    from flotilla.core import claude_state
+    ctx = seat_ctx(tmp_path, me=None, census_error="down", profile=ASK)
+    monkeypatch.setattr(claude_state, "session_entry", lambda pid, sid, config=None: {"kind": "interactive"})
+    assert decide.decide({**TOUCH, "session_id": "sid-seat"}, ctx) is None
+    monkeypatch.setattr(claude_state, "session_entry", lambda pid, sid, config=None: {"kind": "bg"})
+    assert decide.decide({**TOUCH, "session_id": "sid-seat"}, ctx)["behavior"] == "deny"
