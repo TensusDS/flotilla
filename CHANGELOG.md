@@ -3,6 +3,10 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.7.8 - 2026-10-04
+
+- README says, on its first screen, how flotilla differs from Claude Code's agent teams.
+
 ## 0.7.7 - 2026-10-04
 
 - **`flotilla doctor` says when Claude Code changed a record flotilla reads.** Three new lines - `census-shape`,
