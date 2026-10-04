@@ -113,6 +113,21 @@ class ProcessTable:
             return fields[19] if fields and len(fields) > 19 else None
         return self._ps(pid, "lstart")
 
+    def exists(self, pid: int) -> bool | None:
+        """Whether a process with this pid exists at all; None when that cannot be asked. Unlike a CPU sample, it
+        does not depend on `ps` answering (TODO, lane final review)."""
+        if self.source == "procfs":
+            return (self.proc_root / str(pid)).is_dir()
+        try:
+            os.kill(int(pid), 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True   # someone else's: it exists
+        except (OSError, ValueError, TypeError):
+            return None
+        return True
+
     def alive(self, pid: int | None, mark: str) -> bool:
         """Whether this is still the same process. No pid or no mark means unknown, which reads as alive."""
         if pid is None or not mark:

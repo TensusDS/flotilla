@@ -3,6 +3,14 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.7.11 - 2026-10-04
+
+- **The lane no longer drops a live run when a CPU sample fails**, finds an older CI run still going behind newer
+  ones, and reads a `queue_command` that is not text or not found as a lasting unknown instead of crashing or waiting.
+- **The permission broker works where hard links are refused** (FUSE, SMB, exFAT): an answer is still written once.
+  A pid of 0 is not read as alive, and staged files a killed process left are swept.
+- **Two `flotilla spawn` at once raise one sender**: a one-copy post is checked again under the ledger's lock.
+
 ## 0.7.10 - 2026-10-04
 
 Delivery says only what it asked:

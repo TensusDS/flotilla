@@ -312,3 +312,60 @@ def test_another_processes_command_line_reaches_the_answer_as_data(tmp_path):
     reading = machine.read(lanes, table, {}, own_pid=999, root=tmp_path, sleep=lambda s: None, meminfo=lambda: None)
     runs = next(a for a in reading.answers if a.question == "foreign run")
     assert "\n" not in runs.text and "\x1b" not in runs.text and "\\nlane: free" in runs.text
+
+
+class Flaky(Table):
+    """The `ps` path: the second CPU sample fails although the process is still there (or is gone)."""
+
+    def __init__(self, procs, *, still_there):
+        super().__init__(procs)
+        self.still_there = still_there
+        self.asked = set()
+
+    def cpu_seconds(self, pid):
+        if pid in self.asked:
+            return None
+        self.asked.add(pid)
+        return 1.0
+
+    def exists(self, pid):
+        return self.still_there
+
+
+def test_a_failed_second_sample_of_a_live_run_is_not_read_as_its_end():
+    busy, _ = machine.split_computing(Flaky(PROCS, still_there=True), [PROCS[2]], sleep=lambda s: None)
+    assert [p.pid for p in busy] == [11]
+    busy, idle = machine.split_computing(Flaky(PROCS, still_there=False), [PROCS[2]], sleep=lambda s: None)
+    assert busy == [] and idle == []   # it really ended
+
+
+def test_an_old_run_still_in_progress_is_found_behind_newer_ones_in_one_call(tmp_path):
+    """Ten newest runs hid an older one still going (TODO, lane); asking per status cost five calls a poll, and the
+    lane polls every 15 s (review of 0.7.11): one call over a hundred runs, and no jobs call past the first run that
+    uses this machine."""
+    asked = []
+    def run(cmd, **kwargs):
+        asked.append(cmd[:3])
+        if cmd[:3] == ["gh", "run", "list"]:
+            limit = int(cmd[cmd.index("--limit") + 1])
+            runs = [{"status": "completed", "databaseId": n} for n in range(2, 12)]
+            runs += [{"status": "in_progress", "databaseId": 1}, {"status": "queued", "databaseId": 0}]
+            return subprocess.CompletedProcess(cmd, 0, json.dumps(runs[:limit]), "")
+        if cmd[:2] == ["gh", "api"]:
+            return subprocess.CompletedProcess(cmd, 0, json.dumps({"jobs": [{"labels": ["self-hosted"]}]}), "")
+        return subprocess.CompletedProcess(cmd, 1, "", "no")
+    assert machine.ci_here(HERE, run=run, root=tmp_path).blocks is True
+    assert asked.count(["gh", "run", "list"]) == 1 and asked.count(["gh", "api", asked[-1][2]]) == 1
+
+
+@pytest.mark.parametrize("command", [5, ["ci-busy"], {"x": 1}])
+def test_a_queue_command_that_is_not_text_is_a_lasting_unknown(tmp_path, command):
+    profile = {"ci": {"provider": "command", "runs_on": "this-machine", "queue_command": command}}
+    answer = machine.ci_here(profile, run=None, root=tmp_path)
+    assert answer.blocks is None and answer.lasting and "queue_command" in answer.text
+
+
+def test_a_queue_command_that_is_not_found_is_a_lasting_unknown(tmp_path):
+    run, _ = queue(127, "")
+    answer = machine.ci_here(COMMAND_HERE, run=run, root=tmp_path)
+    assert answer.blocks is None and answer.lasting and "not found" in answer.text

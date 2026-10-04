@@ -380,3 +380,51 @@ def test_auto_mode_on_a_model_that_may_not_have_it_is_warned(tmp_path):
     root2, ledger2, store2 = world(tmp_path / "b", fake, profile={**profile, "fleet": {"model": "one"}})
     _, warnings = spawn.plan(ledger2, {"main": 1}, census=fake.census, store=store2, reserve=False)
     assert not any("auto mode" in line for line in warnings)
+
+
+def test_two_spawns_planning_at_once_raise_one_sender(tmp_path):
+    """The one-copy check ran at plan time, against the census; a sender another spawn is still launching is not
+    in the census yet, so two spawns at once raised two senders (TODO, spawn and posts final review)."""
+    fake = FakeClaude(appear=False)   # a launch the census does not list yet
+    root, ledger, store = world(tmp_path, fake)
+    first, _ = spawn.plan(ledger, {"sender": 1}, census=fake.census, store=store, reserve=True)
+    second, _ = spawn.plan(ledger, {"sender": 1}, census=fake.census, store=store, reserve=True)
+    spawn.raise_seat(ledger, first[0], caller=CALLER, census=fake.census, wait=0.1, poll=0.05,
+                     sleep=lambda seconds: None)
+    with pytest.raises(spawn.SpawnRefused, match="one-copy"):
+        spawn.raise_seat(ledger, second[0], caller=CALLER, census=fake.census, wait=0.1, poll=0.05,
+                         sleep=lambda seconds: None)
+    assert not second[0].tree.exists() and len(fake.launched) == 1
+
+
+def test_a_sender_row_left_by_a_dead_seat_long_ago_does_not_block_a_new_one(tmp_path):
+    import datetime as dt
+    fake = FakeClaude(appear=False)
+    root, ledger, store = world(tmp_path, fake)
+    first, _ = spawn.plan(ledger, {"sender": 1}, census=fake.census, store=store, reserve=True)
+    spawn.raise_seat(ledger, first[0], caller=CALLER, census=fake.census, wait=0.1, poll=0.05,
+                     sleep=lambda seconds: None)
+    later = dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=1)
+    ledger.clock = lambda: later
+    second, _ = spawn.plan(ledger, {"sender": 1}, census=fake.census, store=store, reserve=True)
+    spawn.raise_seat(ledger, second[0], caller=CALLER, census=fake.census, wait=0.1, poll=0.05,
+                     sleep=lambda seconds: None)
+    assert len(fake.launched) == 2
+
+
+@pytest.mark.parametrize("census_down", [False, True])
+def test_an_old_sender_row_still_blocks_when_its_session_lives_or_cannot_be_ruled_out(tmp_path, census_down):
+    import datetime as dt
+    fake = FakeClaude(appear=True)   # the first sender shows in the census
+    root, ledger, store = world(tmp_path, fake)
+    first, _ = spawn.plan(ledger, {"sender": 1}, census=fake.census, store=store, reserve=True)
+    spawn.raise_seat(ledger, first[0], caller=CALLER, census=fake.census, wait=0.1, poll=0.05,
+                     sleep=lambda seconds: None)
+    later = dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=1)
+    ledger.clock = lambda: later
+    second = spawn.launch.seat_for(spawn.launch.main_checkout(ledger.root), ledger.posts["sender"], "sender 2")
+    fake.reachable = not census_down
+    with pytest.raises(spawn.SpawnRefused, match="is alive" if not census_down else "cannot be ruled out"):
+        spawn.raise_seat(ledger, second, caller=CALLER, census=fake.census, wait=0.1, poll=0.05,
+                         sleep=lambda seconds: None)
+    assert len(fake.launched) == 1

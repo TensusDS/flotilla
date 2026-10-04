@@ -1421,6 +1421,20 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    landed, shipped, walked, a queued PR row, or a queued row whose read revision is on origin - because "release
    it" there would drop delivered work. (planner's decision, 2026-10-04)
 
+228. **The lane, the broker and spawn read their instruments honestly** (Claude Code session, 2026-10-04; the
+   triaged backlog). The lane read a second CPU sample that failed (`ps` did not answer) as the run's end and dropped
+   a live run; it now asks the process table whether the pid exists, an unknown counting as computing. GitHub's CI
+   queue was the ten newest runs, behind which an older run still going hid; it is one call over a hundred, and
+   stops at the first run on this machine - a call per status, built first, cost five a poll against GitHub's
+   hourly quota at one poll every 15 s. A `queue_command` that is not text, or that the shell cannot find, is a
+   lasting unknown. The broker answers once where hard links are refused (an exclusive create, first still wins,
+   a failed write removed), reads pid 0 as gone and sweeps what killed writers left. Spawn re-checks a one-copy post
+   under the ledger's lock, against the census read just before it: another seat row of the post blocks when its
+   session lives or it was reserved within the launch window, so two spawns at once raise one sender. A deny for a
+   seat asking while the census is down was built and withdrawn: seats run with the main checkout as their cwd, so
+   a question's cwd does not tell a seat from the person; the seat's session id in its row would, and is open.
+   (planner's decision, 2026-10-04)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

@@ -274,6 +274,58 @@ def _find(census, name: str, *, wait: float, poll: float, sleep):
         waited += poll
 
 
+#: How long a just-reserved seat may still be launching, unseen by the census: `claude --bg`'s 180 s and the wait
+#: for its name, with room. A one-copy post's row younger than this blocks a second copy even when nobody is listed.
+LAUNCH_WINDOW = 600
+
+
+def _census_names(census) -> set[str] | None:
+    try:
+        return {item.name for item in census()}
+    except CensusUnavailable:
+        return None   # unknown: every rival counts
+
+
+def _one_copy_rival(ledger, rows: dict, seat: launch.Seat, live: set[str] | None) -> str:
+    """Why this seat would be a second copy of a one-copy post: another open seat row of the post whose session is
+    alive (`live`, the census read before the lock; None when it could not be asked), or was reserved so recently
+    that it may still be launching. Run under the ledger's lock, where the plan's census check could not see a spawn
+    running beside it."""
+    if not ledger.posts[seat.post].writes_one_copy:
+        return ""
+    from flotilla.posts import PostError, post_for_session
+    rivals = []
+    for row in rows.values():
+        if not row.is_open or row.state != "reserved" or not row.owner or row.owner == seat.name:
+            continue
+        try:
+            post = post_for_session(ledger.posts, row.owner)
+        except PostError:
+            continue
+        if post and post.name == seat.post:
+            rivals.append(row)
+    if not rivals:
+        return ""
+    now = _moment(ledger.now())
+    for row in rivals:
+        reserved = _moment((row.history[0].get("at") if row.history else "") or row.updated_at)
+        fresh = now is None or reserved is None or (now - reserved).total_seconds() < LAUNCH_WINDOW
+        if live is None or row.owner in live or fresh:
+            why = "is alive" if live and row.owner in live else ("was reserved moments ago and may still be "
+                                                                 "launching" if fresh else "cannot be ruled out")
+            return (f"post `{seat.post}` writes one-copy resources, and {row.owner} {why}; {seat.name} would be a "
+                    "second copy. Retire the other first, or wait for it to show in `claude agents`")
+    return ""
+
+
+def _moment(value):
+    import datetime as dt
+    try:
+        return dt.datetime.fromisoformat(value) if value else None
+    except (TypeError, ValueError):
+        return None
+
+
 def raise_seat(ledger, seat: launch.Seat, *, caller: str, census, wait: float = 30.0, poll: float = 1.0,
                sleep=time.sleep, base: str = "", fields: dict | None = None, prompt: str = "",
                settings_json: str | None = None) -> Raised:
@@ -299,9 +351,13 @@ def raise_seat(ledger, seat: launch.Seat, *, caller: str, census, wait: float = 
             _git(ledger, "branch", "-D", seat.branch)   # git made the branch before failing; it holds no work
         raise SpawnRefused(f"git worktree add failed for {seat.name}: {done.stderr.strip()}")
     _git(ledger, "worktree", "lock", "--reason", f"flotilla: {seat.name}", str(seat.tree))
+    live = _census_names(census) if post.writes_one_copy else set()   # asked before the lock: it may take 30 s
     try:
         with ledger.session() as s:
             core.check_claim(s.rows, seat.branch)
+            rival = _one_copy_rival(ledger, s.rows, seat, live)   # under the lock: two spawns at once (TODO)
+            if rival:
+                raise MoveRefused(rival)
             row = s.append(actor, next_row_id(s.rows), "reserve", "reserved",
                            fields={"branch": seat.branch, "owner": seat.name, "tree": str(seat.tree),
                                    **(fields or {})})
