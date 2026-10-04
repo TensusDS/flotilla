@@ -82,7 +82,8 @@ class Context:
             self.rows, self.profile, self.project if self.project is not None else self.sessions,
             post_of=self.post_of, former_of=self.post_or_former, breaks=breaks,
             asking={asked.session for asked in questions},
-            claimers={post.name for post in (self.ledger.posts or {}).values() if "claim" in post.may})
+            claimers={post.name for post in (self.ledger.posts or {}).values() if "claim" in post.may},
+            census={session.name for session in self.sessions if session.name})
 
 
 def this_session(sessions, session_id: str, *, parent_of=None, start_pid: int | None = None):

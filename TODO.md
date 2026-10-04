@@ -2,16 +2,8 @@
 
 Deferred findings, kept here until a plan takes them. Each names where it came from.
 
-## From watching the twosuns fleet on 0.7.1 (2026-10-03, night)
+## From watching the twosuns fleet on 0.7.1 (2026-10-03, night; corrected 2026-10-04)
 
-- **A wait on something already closed.** The sender held two accepted rows (`feat/real-starfield`,
-  `fix/flash-antipode-nan`) "waiting on feat/sky-cache" for over half an hour after `feat/sky-cache` had left the
-  status list; nobody moved them and the sender sat idle. `status` (and the brief) should flag a wait whose object
-  is already closed or shipped - a row's `waiting on <branch>` where that branch's row is terminal - and name who
-  can move it.
-- **Load piled on one seat.** For an hour one seat (`main session 4`) held five rows (two in fixing, three claimed)
-  while both reviewers, the sender and the judge were idle; the fleet ran at the speed of that one seat. `status`
-  should say when one seat holds several open rows while others are idle, so the orchestrator can hand work over.
 - **The way in is too heavy for a first try.** Posts, seats, lane, receipts, a ledger of ten states, 13 skills and a
   540-line README stand between a newcomer and "one session writes, another reviews". A light mode - author and
   reviewer only, no sender, no lane - that starts in minutes, and a README whose opening says only that.

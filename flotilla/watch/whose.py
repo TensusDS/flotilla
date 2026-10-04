@@ -15,7 +15,7 @@ from flotilla.ledger.transitions import moves_from
 BALL = "ball"          # the move is yours, and nothing you recorded says you wait
 WORKING = "working"    # claimed work in your hands: handing it over is your move
 WAITING = "waiting"    # the move is yours, and you recorded whom you wait on (or the row is held)
-HOLD = "hold"          # a hold you placed whose condition is met, or cannot be asked
+HOLD = "hold"          # a hold you placed, or a wait you recorded, whose object is gone or unaskable
 UNREAD = "unread"      # your handed work names no reader
 HELD_BY_ME = (BALL, WORKING)
 POST_OF_MOVER = views.POST_OF_MOVER
@@ -70,7 +70,13 @@ def mine(rows: dict[str, Row], profile: dict, name: str, *, post: str = "", may=
             continue
         if not holds_move(row, profile, name, post, rows):
             continue
-        if row.waiting_on:
+        over = views.wait_over(row, rows, live) if row.waiting_on else ""
+        if over:
+            gone = "has no open row left" if over == "lifted" else "is not alive"
+            items.append(Item(HOLD, row.branch, f"your wait on `{row.waiting_on}` is over: it {gone}; make your "
+                                                f"move, or clear the wait (`{views.clear_wait(row.branch)}`)",
+                              row.updated_at))
+        elif row.waiting_on:
             items.append(Item(WAITING, row.branch, f"you wait on {row.waiting_on}: {row.note}"
                                                    f"{views.since_then(rows, row)}", row.updated_at))
         elif row.held_until:

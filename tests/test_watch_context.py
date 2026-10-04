@@ -71,3 +71,14 @@ def test_gather_narrows_the_fleet_to_this_projects_sessions(tmp_path):
     ctx = context.gather(root, "aaa", census=lambda: [here, there], open_ledger=lambda r: ledger,
                          parent_of=no_parent)
     assert [s.name for s in ctx.project] == ["main session 1"] and ctx.project_live == {"main session 1"}
+
+
+def test_a_wait_is_asked_of_the_whole_census_not_the_projects_members(tmp_path):
+    me = sess("orchestrator 1", state="working")
+    elsewhere = sess("main session 2", state="working")   # alive, in another repository
+    waiting = row("r1", state="handed", reader="review session 1", waiting_on="main session 2", note="asked")
+    theirs = row("r2", branch="feat/y", owner="main session 2", state="closed")
+    ctx = make_context(tmp_path, me=me, sessions=[me, sess("review session 1"), elsewhere],
+                       rows_=rows(waiting, theirs))
+    ctx.project = [me, ctx.sessions[1]]   # what project.members keeps: main session 2 holds nothing open here
+    assert not any("wait_gone" in item.text or item.kind == "dropped" for item in ctx.fleet())

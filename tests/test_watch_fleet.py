@@ -1,5 +1,5 @@
 from flotilla.watch import fleet
-from watchkit import PR, row, rows, sess
+from watchkit import PR, kinds, row, rows, sess
 
 POSTS = {"sender 1": "sender", "main session 1": "main", "review session 1": "reviewer",
          "orchestrator 1": "orchestrator"}
@@ -336,3 +336,82 @@ def test_a_gone_owner_of_a_past_fleet_comes_with_the_live_session_to_take_it():
                         [sess("twosuns-main session 1", state="working")], post_of=now, former_of=former)
     assert [item.kind for item in found] == ["deviation"]
     assert "flotilla work adopt fix/thunder --to 'twosuns-main session 1'" in found[0].text, found[0].text
+
+
+def test_a_wait_on_a_closed_branch_no_longer_hides_a_dropped_ball():
+    waiting = row("r1", state="accepted", waiting_on="feat/y", note="y first")
+    still = fleet.fleet(rows(waiting, row("r2", branch="feat/y", state="fixing")), PR,
+                        [sess("sender 1"), sess("main session 1", state="working")], post_of=post_of)
+    assert ("dropped", "feat/x") not in kinds(still)
+    over = fleet.fleet(rows(waiting, row("r2", branch="feat/y", state="closed")), PR,
+                       [sess("sender 1"), sess("main session 1", state="working")], post_of=post_of)
+    assert ("dropped", "feat/x") in kinds(over)
+    assert any(item.kind == "deviation" and item.text.startswith("wait_lifted") for item in over)
+
+
+MAINS = {"main session 1": "main", "main session 2": "main", "review session 1": "reviewer"}
+
+
+def piles(table, sessions):
+    found = fleet.fleet(table, PR, sessions, post_of=lambda name: MAINS.get(name, ""), claimers={"main"})
+    return [item for item in found if item.kind == fleet.PILE]
+
+
+def three(**fields):
+    return [row(f"r{i}", branch=f"feat/{i}", owner="main session 1", state="fixing", **fields) for i in (1, 2, 3)]
+
+
+WORKING_PAIR = [sess("main session 1", state="working"), sess("main session 2", state="working")]
+
+
+def test_moves_piled_on_one_seat_while_a_peer_holds_none_are_named():
+    found = piles(rows(*three()), WORKING_PAIR)
+    assert len(found) == 1 and found[0].who == "main session 1"
+    assert found[0].text.startswith(
+        "main session 1 holds 3 rows in work (3 returned for fixes: feat/1, feat/2, feat/3)")
+    assert "main session 2" in found[0].text
+
+
+def test_no_pile_below_the_threshold_or_when_every_peer_has_a_move():
+    assert piles(rows(*three()[:2]), WORKING_PAIR) == []
+    peer_busy = row("r9", branch="feat/9", owner="main session 2", state="claimed")
+    assert piles(rows(*three(), peer_busy), WORKING_PAIR) == []
+
+
+def test_a_pile_counts_only_moves_nobody_waits_on_and_peers_of_the_same_post():
+    waited = three(waiting_on="the person", note="asked")
+    assert piles(rows(*waited), WORKING_PAIR) == []
+    other_post = [sess("main session 1", state="working"), sess("review session 1", state="working")]
+    assert piles(rows(*three()), other_post) == []
+    assert piles(rows(*three()), [sess("main session 1", state="working")]) == []   # the peer is not alive
+
+
+def test_a_wait_on_a_live_session_outside_the_project_is_not_gone():
+    waiting = row("r1", state="handed", reader="review session 1", waiting_on="main session 2", note="asked")
+    theirs = row("r2", branch="feat/y", owner="main session 2", state="closed")
+    found = fleet.fleet(rows(waiting, theirs), PR, [sess("review session 1"), sess("main session 1", state="working")],
+                        post_of=post_of, census={"review session 1", "main session 1", "main session 2"})
+    assert found == []   # alive in the census, only working elsewhere: still waited on
+    gone = fleet.fleet(rows(waiting, theirs), PR, [sess("review session 1"), sess("main session 1", state="working")],
+                       post_of=post_of, census={"review session 1", "main session 1"})
+    assert ("dropped", "feat/x") in kinds(gone)
+
+
+def test_finished_or_read_work_is_no_pile():
+    for state, extra in (("shipped", {}), ("walked", {}), ("handed", {"reader": "main session 1",
+                                                                       "owner": "main session 9"})):
+        done = [row(f"r{i}", branch=f"feat/{i}", **{"owner": "main session 1", "state": state, **extra})
+                for i in (1, 2, 3)]
+        assert piles(rows(*done), WORKING_PAIR) == [], state
+
+
+def test_claimed_and_returned_work_together_make_a_pile_that_says_which():
+    work = [row("r1", branch="feat/1", owner="main session 1", state="claimed"),
+            row("r2", branch="feat/2", owner="main session 1", state="fixing"),
+            row("r3", branch="feat/3", owner="main session 1", state="fixing")]
+    found = piles(rows(*work), WORKING_PAIR)
+    assert len(found) == 1 and "1 claimed, 2 returned for fixes" in found[0].text
+
+
+def test_a_held_row_is_no_part_of_a_pile():
+    assert piles(rows(*three(held_by="orchestrator 1", held_until="feat/9", held_why="stacked")), WORKING_PAIR) == []
