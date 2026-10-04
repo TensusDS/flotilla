@@ -52,19 +52,12 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
   does not tell a seat from the person (0.7.11, tried and withdrawn on review). What would: the seat's session id
   written into its post row when spawn first sees it in the census, matched against the hook payload's `session_id` - a
   new ledger field. *(checked 2026-10-04 on 0.7.11: still [B], design - broker/decide.py, fleet/spawn.py)*
-- On some mounts (FUSE, SMB, exFAT) `os.link` raises EPERM/ENOTSUP, not FileExistsError: the hook denies with the error,
-  but `permit answer` prints a traceback. Map it to a refusal naming the filesystem. *(checked 2026-10-04 on 0.7.8:
-  still [B] - reproduced - broker/queue.py:133-136, broker/commands.py:75)*
 - `status: waiting` may also mean prompts other than permissions; a waiting session is reported only when it holds a
   ledger move. *(checked 2026-10-04 on 0.7.8: still [P] - watch/fleet.py:38-39)*
 - A background orchestrator counts as live: questions then wait the full budget instead of naming `claude attach`.
   *(checked 2026-10-04 on 0.7.8: still [P] - broker/decide.py:211-212)*
 - The skill asks the model to read a typed answer as allow or deny; make "Other" always a deny with the words. *(checked
   2026-10-04 on 0.7.8: still [P] - skills/permit/SKILL.md:16)*
-- A reused pid can keep an abandoned question looking alive (bounded by its deadline); `os.kill(0, 0)` on a pid 0.
-  *(checked 2026-10-04 on 0.7.8: still [P] - is_alive(0) is True - broker/queue.py:51-58)*
-- Staged `.q-*.tmp` / `.a-*.tmp` files are left when a write fails. *(checked 2026-10-04 on 0.7.8: still [P] -
-  broker/queue.py:70-72, 86-88)*
 - Measure live: whether Claude Code kills a hook's process when its session is stopped (the hook now also withdraws when
   its parent changes). *(checked 2026-10-04 on 0.7.8: measure)*
 
@@ -109,9 +102,6 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
   *(checked 2026-10-04 on 0.7.8: still [P] - hooks.py:173, 74-79)*
 - `HOOK_CHECK_TIMEOUT` is defined in both `hooks.py` and `watch/context.py`; no test pins the 10 s prompt/stop budget.
   *(checked 2026-10-04 on 0.7.8: still [P] - hooks.py:22, watch/context.py:14)*
-- `queue_command`: a command that is not found (shell exit 127) or not a string is an unknown the lane waits on; a
-  lasting unknown would refuse at once. *(checked 2026-10-04 on 0.7.8: still [B] - a non-string crashes -
-  lane/machine.py:142, 149)*
 - The claimed-work summary line is appended last and is the first cut past 20 items. *(checked 2026-10-04 on 0.7.8:
   still [P] - watch/render.py:43-48)*
 - The breaks log is never pruned; `stop_hook_active` set by another plugin's Stop hook is recorded as a flotilla break.
@@ -125,10 +115,6 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 
 ## From the lane final review (2026-09-27)
 
-- On the `ps` path a failed second CPU sample reads as "the run ended". *(checked 2026-10-04 on 0.7.8: still [B] -
-  lane/procs.py:135, lane/machine.py:107-108)*
-- `gh run list --limit 10` can miss an older in-progress run behind ten newer ones; ask by status instead. *(checked
-  2026-10-04 on 0.7.8: still [B] - lane/machine.py:157)*
 - A `run` annotation resets `updated_at`, so `status --stalled` never shows a row whose owner keeps re-running tests.
   *(checked 2026-10-04 on 0.7.8: still [P] - ledger/model.py:117)*
 - A hand holder's own `pytest` counts twice (the booking and a foreign run) when `lane_capacity` is 2 or more. *(checked
@@ -138,8 +124,6 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 
 ## From the spawn and posts final review (2026-09-27)
 
-- The one-copy check is check-then-act: two `flotilla spawn -s 1` at the same moment could raise two senders. *(checked
-  2026-10-04 on 0.7.8: still [B] - fleet/spawn.py:197, 299)*
 - A dry run without the census skips the one-copy check, and its warning speaks only of names. *(checked 2026-10-04 on
   0.7.8: still [P] - fleet/commands.py:164-167)*
 - The dry-run command is not shell-quoted; print it with `shlex.join`. *(checked 2026-10-04 on 0.7.8: still [P] -
@@ -195,6 +179,13 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 
 ## Done
 
+- 0.7.11: a failed second CPU sample no longer drops a live run (decision 228)
+- 0.7.11: the CI queue is one call over a hundred runs, stopping at the first on this machine (decision 228)
+- 0.7.11: a `queue_command` that is not text or not found is a lasting unknown (decision 228)
+- 0.7.11: the broker answers once where hard links are refused (decision 228)
+- 0.7.11: pid 0 is not alive; a reused pid is still bounded by the question's deadline (decision 228)
+- 0.7.11: staged files go on a failed write and are swept with age (decision 228)
+- 0.7.11: two spawns at once raise one copy of a one-copy post (decision 228)
 - 0.7.10: GitHub that could not be asked is "not yet", not "refused" (decision 227)
 - 0.7.10: a failed fetch is said, and "could not tell" is not "does not have" (decision 227)
 - 0.7.10: a PR closed without merging names release and a new claim (decision 227)
