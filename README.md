@@ -17,6 +17,14 @@ silent damage, and routes the questions only a person can answer to one place.
 - **What it is not:** a framework for agents inside your product, a CI system, or a sandbox. Every session is an
   ordinary Claude Code session running as you.
 
+**Why not Claude Code's agent teams?** Agent teams (experimental, off by default as of Claude Code 2.1.289) are
+teammates spawned by one lead session: they share its working tree, in-process teammates are not brought back when
+the lead is resumed, and a session has one team. flotilla coordinates **independent sessions** instead - each started on its own
+with `claude --bg`, in its own git worktree, with its own permission mode, settings and plugins - through the work
+ledger and Claude Code's cross-session messaging. A seat outlives the orchestrator, can be attached to and talked to
+directly, and keeps the project context it built up over many tasks. Its post is enforced by the ledger, not only
+described in a prompt: nobody accepts their own work, and nothing reaches trunk unaccepted.
+
 Short reference of every command and skill: [USER_MANUAL.md](USER_MANUAL.md).
 
 **Status:** pre-1.0. It has run three field fleets on real projects, the largest about a dozen sessions over two
