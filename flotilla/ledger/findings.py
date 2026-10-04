@@ -58,7 +58,10 @@ def findings(ledger, rows: dict[str, Row] | None = None) -> list[dict]:
         if not row.is_open or row.state == "reserved":
             continue
         local = gitq.branch_tip(ledger.root, row.branch, run=ledger.run)
-        if not (row.fixes and not row.tree) and local is None and \
+        # a merged branch is deleted on GitHub, and from these states release and offledger are not legal anyway;
+        # a queued PR's branch is the PR's to answer for, through `ship` (TODO, ledger part B)
+        delivered = row.state in ("landed", "shipped", "walked") or (row.state == "queued" and row.pr)
+        if not delivered and not (row.fixes and not row.tree) and local is None and \
                 gitq.resolve(ledger.root, f"refs/remotes/origin/{row.branch}", run=ledger.run) is None:
             found.append(_item("vanished", row, "", f"row {row.id} is {row.state}, and its branch is gone locally "
                                                     "and on origin; release it, or record it with offledger"))

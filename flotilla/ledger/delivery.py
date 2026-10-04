@@ -18,6 +18,7 @@ required CI jobs, the gate command, or a push receipt. Anything not proved yet r
 from __future__ import annotations
 
 import json
+import shlex
 
 from flotilla.ledger import batch, gitq
 from flotilla.ledger import gate as gates
@@ -29,17 +30,25 @@ from flotilla.ledger.transitions import moves_from, next_state
 from flotilla.ledger.views import approve_command
 
 
+#: What gh says when the pull request does not exist: an answer, so a refusal; any other failure is an instrument
+#: that could not ask, so unknown - "not yet", ask again (TODO, ledger part B).
+NO_SUCH_PR = ("Could not resolve to a PullRequest", "no pull requests found")
+
+
 def pr_view(ledger: Ledger, pr: int, fields: str) -> dict:
     done = ledger.run(["gh", "pr", "view", str(pr), "--json", fields], cwd=str(ledger.root), capture_output=True,
                       text=True, check=False)
     if done.returncode != 0:
-        raise MoveRefused(f"could not ask GitHub about PR #{pr}: {(done.stderr or done.stdout).strip()}")
+        said = (done.stderr or done.stdout).strip()
+        if any(words in said for words in NO_SUCH_PR):
+            raise MoveRefused(f"GitHub has no PR #{pr}: {said}")
+        raise NotYet(f"could not ask GitHub about PR #{pr}: {said}")
     try:
         answer = json.loads(done.stdout)
     except ValueError as err:
-        raise MoveRefused(f"GitHub's answer about PR #{pr} is not JSON") from err
+        raise NotYet(f"GitHub's answer about PR #{pr} is not JSON; ask again") from err
     if not isinstance(answer, dict):
-        raise MoveRefused(f"GitHub's answer about PR #{pr} is not an object")
+        raise NotYet(f"GitHub's answer about PR #{pr} is not an object; ask again")
     return answer
 
 
@@ -230,9 +239,19 @@ def _squash_on_trunk(ledger: Ledger, row: Row, read: str, commit: str) -> bool:
     return any(batch.carries_change(ledger, sha, row.base, read) for sha in candidates)
 
 
-def _fetch(ledger: Ledger) -> None:
-    ledger.run(["git", "-C", str(ledger.root), "fetch", "--quiet", "origin", ledger.trunk], capture_output=True,
-               text=True, check=False)
+def _fetch(ledger: Ledger) -> bool:
+    done = ledger.run(["git", "-C", str(ledger.root), "fetch", "--quiet", "origin", ledger.trunk],
+                      capture_output=True, text=True, check=False)
+    return done.returncode == 0
+
+
+def _not_on_origin(ledger: Ledger, sha: str, fetched: bool, on: bool | None, tail: str = "") -> str:
+    """Why a commit is not proved on origin, saying only what was asked: git that could not place the commit is not
+    "does not have", and a fetch that failed is not "(fetched)" (TODO, ledger part B)."""
+    where = f"origin's `{ledger.trunk}`"
+    said = (f"git could not tell whether {where} has {sha[:7]}" if on is None
+            else f"{where} does not have {sha[:7]}{tail}")
+    return said + (" (fetched)" if fetched else " (the fetch failed; origin is read as last fetched here)")
 
 
 def _on_origin(ledger: Ledger, sha: str) -> bool | None:
@@ -247,8 +266,9 @@ def _shipped_pr(ledger: Ledger, row: Row) -> tuple[str, dict, list[str]]:
     if status == "OPEN":
         raise NotYet(f"PR #{row.pr} is still open")
     if status != "MERGED":
-        raise MoveRefused(f"PR #{row.pr} is {status}; a PR closed without merging did not ship. Release the row, "
-                          "or queue it again with a new PR")
+        release = "flotilla work release " + shlex.quote(row.branch) + ' --why "<why>"'
+        raise MoveRefused(f"PR #{row.pr} is {status}; a PR closed without merging did not ship. Release the row "
+                          f"(`{release}`), and claim the work again to ship it through a new PR")
     read = batch.revision_of(row)
     head = view.get("headRefOid") or ""
     if head != read:
@@ -258,18 +278,20 @@ def _shipped_pr(ledger: Ledger, row: Row) -> tuple[str, dict, list[str]]:
     merged = (view.get("mergeCommit") or {}).get("oid") or ""
     if not merged:
         raise NotYet(f"GitHub names no merge commit for PR #{row.pr} yet")
-    _fetch(ledger)
-    if _on_origin(ledger, merged) is not True:
-        raise NotYet(f"origin's `{ledger.trunk}` does not have {merged[:7]} yet (fetched)")
+    fetched = _fetch(ledger)
+    on = _on_origin(ledger, merged)
+    if on is not True:
+        raise NotYet(_not_on_origin(ledger, merged, fetched, on, " yet"))
     return merged, {"pr": row.pr, "pr_head": head}, [read]
 
 
 def _shipped_direct(ledger: Ledger, row: Row) -> tuple[str, dict, list[str]]:
     if not row.merge:
         raise MoveRefused(f"`{row.branch}` has no landed commit recorded")
-    _fetch(ledger)
-    if _on_origin(ledger, row.merge) is not True:
-        raise NotYet(f"origin's `{ledger.trunk}` does not have {row.merge[:7]}: landed, not pushed")
+    fetched = _fetch(ledger)
+    on = _on_origin(ledger, row.merge)
+    if on is not True:
+        raise NotYet(_not_on_origin(ledger, row.merge, fetched, on, ": landed, not pushed"))
     later = ledger.run(["git", "-C", str(ledger.root), "rev-list", "--ancestry-path",
                         f"{row.merge}..refs/remotes/origin/{ledger.trunk}"], capture_output=True, text=True,
                        check=False)

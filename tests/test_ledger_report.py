@@ -93,9 +93,10 @@ def test_where_a_person_approves_the_brief_prints_each_approve_command_ready_to_
     link = link_path(ledger.state_dir)
     link.parent.mkdir(parents=True)
     link.symlink_to("/bin/true")
-    rows[row_id] = dataclasses.replace(rows[row_id], branch="feat/x$(touch pwned)")
+    git(root, "branch", "feat/x$(touch-pwned)", "feat/a")   # a real branch: one git cannot find is held back
+    rows[row_id] = dataclasses.replace(rows[row_id], branch="feat/x$(touch-pwned)")
     text = "\n".join(report.brief(ledger, rows))
-    assert f"approve: ! {shlex.quote(str(link))} work approve 'feat/x$(touch pwned)'" in text
+    assert f"approve: ! {shlex.quote(str(link))} work approve 'feat/x$(touch-pwned)'" in text
 
 
 def test_where_the_sender_merges_the_brief_prints_no_approve_command(tmp_path):
@@ -119,3 +120,12 @@ def test_a_change_born_in_the_batch_gets_its_approve_line_too(tmp_path):
     assert "`batch/fix` (inbatch)" in text and "approve: ! flotilla work approve batch/fix" in text
     delivery.approve(ledger, "batch/fix")
     assert "batch/fix" not in "\n".join(report.brief(ledger))
+
+
+def test_an_accepted_row_whose_branch_is_gone_is_held_not_ready(tmp_path):
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile=DIRECT)
+    drive(root, ledger, "feat/a")
+    git(root, "branch", "-q", "-D", "feat/a")
+    text = "\n".join(report.brief(ledger))
+    assert "nothing is ready to ship" in text and "`feat/a` (accepted): git cannot find the branch" in text

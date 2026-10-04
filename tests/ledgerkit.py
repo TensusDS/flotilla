@@ -104,9 +104,11 @@ def fake_gh(handler, calls=None):
         if isinstance(cmd, list) and cmd and cmd[0] == "gh":
             if calls is not None:
                 calls.append(list(cmd[1:]))
-            code, out = handler(list(cmd[1:]))
+            answer = handler(list(cmd[1:]))
+            code, out = answer[0], answer[1]
+            err = answer[2] if len(answer) > 2 else ("" if code == 0 else "gh: request failed")
             text = out if isinstance(out, str) else _json.dumps(out)
-            return subprocess.CompletedProcess(cmd, code, text, "" if code == 0 else "gh: request failed")
+            return subprocess.CompletedProcess(cmd, code, text, err)
         return subprocess.run(cmd, **kwargs)
     return run
 

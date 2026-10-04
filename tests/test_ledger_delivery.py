@@ -67,12 +67,24 @@ def test_a_pr_for_another_branch_is_refused(pr_world):
         delivery.queue(ledger, actor(ledger, SENDER), "feat/x", pr=12)
 
 
-def test_github_unreachable_refuses_the_queue(tmp_path):
+def test_github_unreachable_is_not_yet_known_not_refused(tmp_path):
+    """An instrument that could not ask says unknown (exit 3, ask again), never "refused" (exit 2)."""
     root = repo_with_origin(tmp_path)
-    ledger = make_ledger(root, tmp_path / "state", run=fake_gh(lambda args: (1, "")))
+    unreachable = fake_gh(lambda args: (1, "", "error connecting to api.github.com"))
+    ledger = make_ledger(root, tmp_path / "state", run=unreachable)
     drive(root, ledger)
-    with pytest.raises(MoveRefused, match="could not ask GitHub"):
+    with pytest.raises(NotYet, match="could not ask GitHub"):
         delivery.queue(ledger, actor(ledger, SENDER), "feat/x", pr=12)
+
+
+def test_a_pr_github_says_does_not_exist_is_refused(tmp_path):
+    root = repo_with_origin(tmp_path)
+    missing = "GraphQL: Could not resolve to a PullRequest with the number of 12. (repository.pullRequest)"
+    ledger = make_ledger(root, tmp_path / "state", run=fake_gh(lambda args: (1, "", missing)))
+    drive(root, ledger)
+    with pytest.raises(MoveRefused, match="no PR #12") as caught:
+        delivery.queue(ledger, actor(ledger, SENDER), "feat/x", pr=12)
+    assert not isinstance(caught.value, NotYet)
 
 
 def test_direct_mode_refuses_a_pr_number(tmp_path):
@@ -768,3 +780,37 @@ def test_the_queue_refusal_quotes_a_branch_name_an_older_flotilla_filed(tmp_path
     with pytest.raises(MoveRefused) as refused:
         delivery.queue(ledger, actor(ledger, "sender 1"), "feat/x$(id)")
     assert "work approve 'feat/x$(id)'" in str(refused.value)
+
+
+def test_a_pr_closed_without_merging_names_only_legal_moves(pr_world):
+    root, ledger, answers = pr_world
+    row = drive(root, ledger)
+    answers["pr"] = open_pr("feat/x", row.tip)
+    delivery.queue(ledger, actor(ledger, SENDER), "feat/x", pr=12)
+    answers["pr"] = {"state": "CLOSED", "headRefOid": row.tip}
+    with pytest.raises(MoveRefused) as caught:
+        delivery.ship(ledger, actor(ledger, SENDER), "feat/x")
+    text = str(caught.value)
+    assert "queue it again" not in text and "flotilla work release feat/x" in text and "claim" in text
+
+
+def test_a_failed_fetch_is_said_not_hidden_behind_fetched(direct):
+    root, ledger = direct
+    queued(root, ledger)
+    merge(root, "feat/x")
+    delivery.land(ledger, actor(ledger, SENDER), "feat/x")
+    git(root, "remote", "set-url", "origin", str(root.parent / "no-such-origin"))
+    with pytest.raises(NotYet) as caught:
+        delivery.ship(ledger, actor(ledger, SENDER), "feat/x")
+    assert "(fetched)" not in str(caught.value) and "fetch failed" in str(caught.value)
+
+
+def test_a_commit_git_cannot_place_is_unknown_not_absent(pr_world):
+    root, ledger, answers = pr_world
+    row = drive(root, ledger)
+    answers["pr"] = open_pr("feat/x", row.tip)
+    delivery.queue(ledger, actor(ledger, SENDER), "feat/x", pr=12)
+    answers["pr"] = {"state": "MERGED", "headRefOid": row.tip, "mergeCommit": {"oid": "f" * 40}}
+    with pytest.raises(NotYet) as caught:
+        delivery.ship(ledger, actor(ledger, SENDER), "feat/x")
+    assert "could not tell whether" in str(caught.value) and "does not have" not in str(caught.value)

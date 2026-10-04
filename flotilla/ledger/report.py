@@ -40,6 +40,8 @@ def _held_back(ledger, rows: dict[str, Row], row: Row) -> list[str]:
         reasons.append("blocked on " + ", ".join(f"`{other.branch or other.id}` ({other.state or 'unknown'})"
                                                  for other in waiting))
     current = gitq.branch_tip(ledger.root, row.branch, run=ledger.run)
+    if row.state == "accepted" and current is None:   # nothing to merge it from (TODO, ledger part B)
+        reasons.append(f"git cannot find the branch `{row.branch}` here (deleted, or never fetched)")
     if row.state == "accepted" and row.verdict and current and current != row.verdict:
         reasons.append(f"moved since acceptance ({row.verdict[:7]} -> {current[:7]})")
     return reasons
