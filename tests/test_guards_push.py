@@ -548,8 +548,8 @@ def test_a_merge_into_another_base_still_asks_for_a_receipt(tmp_path):
     root = onboarded(tmp_path)
     head = git(root, "rev-parse", "HEAD")
     found = judge(f"gh pr merge 12 --squash --match-head-commit {head}", root, tmp_path,
-                  run=fake_gh((0, f"{head} release/1.2\n")))
-    assert found.refuse
+                  run=fake_gh((0, f"{head}\n")))
+    assert found.refuse and "no push receipt" in found.text
 
 
 

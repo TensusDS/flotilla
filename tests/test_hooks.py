@@ -385,3 +385,17 @@ def test_a_guard_hook_that_crashes_before_judging_refuses_a_push(tmp_path, monke
 def test_the_hooks_last_resort_push_words_are_the_guards():
     from flotilla import guards
     assert hooks.LAST_RESORT_PUSH_WORDS == guards.PUSH_WORDS
+
+
+def test_when_even_the_guards_rule_cannot_be_read_the_last_resort_decides(tmp_path, monkeypatch):
+    import flotilla.guards
+    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setitem(sys.modules, "flotilla.guards.run", None)
+    def unreadable(*args, **kwargs):
+        raise RuntimeError("the rule itself is broken")
+    monkeypatch.setattr(flotilla.guards, "on_failure", unreadable)
+    code, body = guard_answer(tmp_path, "git push origin main")
+    assert code == 0 and body.get("permissionDecision") == "deny"
+    monkeypatch.setenv("FLOTILLA_GATE_OVERRIDE", "hotfix")
+    code, body = guard_answer(tmp_path, "git push origin main")
+    assert code == 0 and body.get("permissionDecision") != "deny" and "unchecked" in body.get("additionalContext", "")

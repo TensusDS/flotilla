@@ -6,6 +6,33 @@ import os
 import sys
 
 MINIMUM = (3, 11)
+#: flotilla.guards.PUSH_WORDS, for a guard hook that fails before flotilla can be imported (a test keeps them equal)
+PUSH_WORDS = ("push", "gh")
+
+
+def guard_answer(data, why):
+    """The guard hook's answer when flotilla itself cannot judge: a command that may push is refused, unless the
+    gate was overridden knowingly; anything else runs, and the session is told. A message on stdout alone, or an
+    exit code, is no refusal to Claude Code (review of 0.7.9)."""
+    import json
+    command = ""
+    try:
+        payload = json.loads(data or "{}")
+        tool_input = payload.get("tool_input") if isinstance(payload, dict) else None
+        if isinstance(tool_input, dict) and isinstance(tool_input.get("command"), str):
+            command = tool_input["command"]
+    except Exception:
+        command = ""
+    knowingly = "FLOTILLA_GATE_OVERRIDE=" in command or bool(os.environ.get("FLOTILLA_GATE_OVERRIDE", "").strip())
+    refuse = any(word in command for word in PUSH_WORDS) and not knowingly
+    text = "flotilla guards could not run (" + why.strip() + "); " + (
+        'a command that may push is refused. Knowingly: FLOTILLA_GATE_OVERRIDE="<why>"' if refuse
+        else "the command runs unchecked")
+    if refuse:
+        body = {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": text}
+    else:
+        body = {"hookEventName": "PreToolUse", "additionalContext": text}
+    return json.dumps({"hookSpecificOutput": body}) + "\n"
 
 
 def project_found(start):
@@ -21,6 +48,8 @@ def project_found(start):
 
 
 def main():
+    guard = sys.argv[1:3] == ["hook", "guard"]
+    data = sys.stdin.read() if guard else None
     if sys.version_info < MINIMUM:
         found = "%d.%d.%d" % tuple(sys.version_info[:3])
         message = (
@@ -33,12 +62,15 @@ def main():
             cwd = None
             try:
                 import json
-                payload = json.load(sys.stdin)
+                payload = json.loads(data) if guard else json.load(sys.stdin)
                 if isinstance(payload, dict) and isinstance(payload.get("cwd"), str):
                     cwd = payload["cwd"]
             except Exception:
                 cwd = None
             if not project_found(cwd or os.getcwd()):
+                return 0
+            if guard:
+                sys.stdout.write(guard_answer(data, message))
                 return 0
             sys.stdout.write("flotilla: " + message)
             return 0
@@ -46,8 +78,17 @@ def main():
         return 3
     root = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
     sys.path.insert(0, root)
-    from flotilla.cli import main as cli_main
-    return cli_main(sys.argv[1:])
+    if not guard:
+        from flotilla.cli import main as cli_main
+        return cli_main(sys.argv[1:])
+    import io
+    sys.stdin = io.StringIO(data)
+    try:
+        from flotilla.cli import main as cli_main
+        return cli_main(sys.argv[1:])
+    except Exception as err:   # an import or a crash the hook could not catch itself: decided here, not lost
+        sys.stdout.write(guard_answer(data, "%s: %s" % (type(err).__name__, err)))
+        return 0
 
 
 if __name__ == "__main__":
