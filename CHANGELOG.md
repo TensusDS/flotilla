@@ -3,6 +3,14 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.7.6 - 2026-10-04
+
+- **A wait whose object is gone no longer silences the watch.** A row waiting on a branch with no open row left, or
+  on a session that is no longer alive, is a deviation with the line that clears the wait, its holder is told, and
+  the orchestrator's watch reads it as an ordinary row again.
+- **Work piled on one seat is named.** When a live session holds three or more rows in its own hands (claimed, or
+  returned for fixes) and a live session of the same post holds none, the orchestrator's watch says so.
+
 ## 0.7.5 - 2026-10-03
 
 - The listing icon stands in a terminal window and has four legs.

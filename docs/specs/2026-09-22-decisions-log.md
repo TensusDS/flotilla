@@ -1363,6 +1363,20 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    default branch names, a branch push asks origin nothing, and a push to trunk whose rules or approval cannot be
    read is refused with no override. Booking names compare as stored. (planner's decision, 2026-10-03)
 
+224. **A wait whose object is gone stops silencing the watch; work piled on one seat is named** (Claude Code
+   session, 2026-10-04; from watching the twosuns fleet on 0.7.1). A recorded wait makes the watch skip its row in
+   the dropped-ball check, and nothing asked whether what it waited on was still there - holds had that check
+   (`hold_lifted`), waits did not. `views.wait_over` asks it: a branch with rows and none open lifts the wait, a
+   session the ledger knows and the census does not list is gone; the person, the lane, free text, a name no row
+   carries and the row's own branch stay a wait nobody can ask. Such a row is a deviation (`wait_lifted`,
+   `wait_gone`) carrying the shell-quoted line that clears it, its holder sees a hold item, and the watch reads it as
+   an ordinary row again. The case that prompted it did not happen - the watcher cut `status` to its last lines and
+   the waited-on branch, the first row, fell off the screen - so it stands as a guard. The watch also names a pile:
+   a live seat holding three or more rows in its own hands (claimed, or returned for fixes) that nobody waits on,
+   while a live seat of the same post holds none; work is never taken from a live session, so the orchestrator is
+   only told. The branch's review found the watch sees the project's members, not the census, so a session alive
+   in another repository read as gone: waits are asked of the whole census. (planner's decision, 2026-10-04)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
