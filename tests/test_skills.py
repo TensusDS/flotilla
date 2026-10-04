@@ -237,3 +237,9 @@ def test_every_skill_says_it_needs_claude_code(path):
     in Claude Code. `compatibility` (Agent Skills spec, up to 500 characters) says so where the skill is read."""
     said = frontmatter(path).get("compatibility", "")
     assert "Claude Code" in said and len(said) <= 500
+
+
+def test_the_orchestrator_relays_a_refusals_command_and_its_check_verbatim():
+    text = " ".join(template("orchestrator").split())
+    assert "the command and its check exactly as the session sent them" in text
+    assert "a refusal of your own" in text

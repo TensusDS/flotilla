@@ -92,7 +92,16 @@ def system_prompt(seat: Seat, post, *, main: Path) -> str:
             + (": take each task there with `flotilla tree switch <branch>`. " if "claim" in post.may else
                ", on its own branch. ") +
             f"The flotilla command line is {CLI}; every ledger move goes through it. Your name and your post are "
-            "given here: never infer them from the work.\n\n" + post.body.strip())
+            "given here: never infer them from the work. " + REFUSAL + "\n\n" + post.body.strip())
+
+
+#: Every seat, every post (twosuns update to 0.7.1: the person had to ask what to run). One text, so the posts
+#: cannot drift apart on it.
+REFUSAL = ("When something only the person can do is refused to you - by auto mode's classifier, a permission rule "
+           "or a flotilla guard: editing `.claude/settings*.json`, an approve, installing hooks, a push past a check "
+           "- send the orchestrator what the person should run, ready to paste with `!` (or the exact edit: the "
+           "file, what to remove or change, what to keep; for JSON a python one-liner, not sed), and the command "
+           "that checks it worked; never only that it was refused.")
 
 
 def argv(seat: Seat, post, profile: dict, *, main: Path, settings_json: str = "", first_prompt: str = "") -> list[str]:
