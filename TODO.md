@@ -24,6 +24,15 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 - Onboarding a repository whose only workflows are symlinks now records no CI and reads no job ids from them; it matters
   only if GitHub Actions runs a symlinked workflow, which nobody measured. *(checked 2026-10-04 on 0.7.9: measure)*
 
+## From the review of 0.7.11 (2026-10-04)
+
+- `flotilla spawn --fill` stops at the first one-copy refusal under the lock and raises none of the posts after it;
+  skipping that post with a warning would raise the rest. *(checked 2026-10-04 on 0.7.11: still [P] - fleet/spawn.py
+  spawn)*
+- A `queue_command` that exits 126 (not executable) is waited on like a passing failure; like 127 it will not change by
+  waiting. A clock that steps back keeps a seat row "fresh" past the 600 s launch window. *(checked 2026-10-04 on
+  0.7.11: still [P] - lane/machine.py _queue, fleet/spawn.py LAUNCH_WINDOW)*
+
 ## From the twosuns update to 0.7.1 (2026-10-03)
 
 - A refusal the person has to resolve must say what to run, not only that something was refused. When auto mode's
@@ -38,9 +47,11 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 
 ## From the broker final review (2026-09-27)
 
-- A background session the census cannot place (census down) is left to its dialog, which for it is the measured hang;
-  `spawn` could export a marker (`FLOTILLA_SESSION_KIND=background`) so the hook knows without the census. *(checked
-  2026-10-04 on 0.7.8: still [B] - broker/decide.py:193; no FLOTILLA_SESSION_KIND)*
+- A background session the census cannot place (census down) is left to its dialog, which for it is the measured hang.
+  Not by the question's cwd: seats run with the main checkout as their cwd and their tree through `--add-dir`, so cwd
+  does not tell a seat from the person (0.7.11, tried and withdrawn on review). What would: the seat's session id
+  written into its post row when spawn first sees it in the census, matched against the hook payload's `session_id` - a
+  new ledger field. *(checked 2026-10-04 on 0.7.11: still [B], design - broker/decide.py, fleet/spawn.py)*
 - On some mounts (FUSE, SMB, exFAT) `os.link` raises EPERM/ENOTSUP, not FileExistsError: the hook denies with the error,
   but `permit answer` prints a traceback. Map it to a refusal naming the filesystem. *(checked 2026-10-04 on 0.7.8:
   still [B] - reproduced - broker/queue.py:133-136, broker/commands.py:75)*
