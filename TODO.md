@@ -8,6 +8,38 @@ something through, B a bug a user meets, P polish, tests or docs), or `open, des
 run). A later triage re-checks only items whose named files changed since that version. An item that is done -
 fixed by a release, or found fixed - leaves its section for **Done** at the bottom, one line with the version.
 
+## From the README's known limitations (2026-10-04)
+
+Each is a limitation README states today, judged fixable in principle; none is planned yet.
+
+- **Windows.** Linux and macOS only. Claude Code runs natively on Windows; what flotilla would need is a process table,
+  process groups and signals, file locking and path handling for it, and CI on `windows-latest`. Large. *(checked
+  2026-10-04 on 0.7.12: open, design)*
+- **macOS skips two protections.** The memory floor reads `/proc/meminfo` and stopping a retired seat's leftover
+  processes reads `/proc`; on macOS `sysctl hw.memsize` with `vm_stat`, and `ps -g` / process groups, would answer the
+  same questions. *(checked 2026-10-04 on 0.7.12: open, design)*
+- **One lane per machine, shared by every project's fleet.** Two fleets wait for each other's long runs; a per-project
+  share of `lane_capacity`, or fair queueing between projects, would split the machine. *(checked 2026-10-04 on 0.7.12:
+  open, design)*
+- **Long-lived seats get slower, and nothing replaces one.** flotilla reads no transcript (policy), so it cannot see a
+  seat's context size; it can count what a seat has done - rows closed, hours held - and offer to retire an idle seat
+  and raise a fresh one past a threshold the profile sets. *(checked 2026-10-04 on 0.7.12: open, design)*
+- **In `ask` mode a late answer is lost.** When the orchestrator is the person's own session and is busy, a seat's
+  question times out (about nine minutes) and the person's later answer is not kept; keeping it for the same call's re-
+  ask, for a short while, would spare asking twice. *(checked 2026-10-04 on 0.7.12: open, design)*
+- **The leading session's name hook was measured on Claude Code 2.1.287 only.** `flotilla doctor` could check that the
+  hook still names the session, as it now checks the census shape (0.7.7). *(checked 2026-10-04 on 0.7.12: open,
+  design)*
+- **Most guards read the rules from the local `refs/remotes/origin/<trunk>`**, which a session can move; only the push
+  guard, `pre-push`, approvals and allows ask origin. The rest could ask origin too, through a cached `ls-remote`
+  refreshed every few seconds, so a moved ref cannot change them. *(checked 2026-10-04 on 0.7.12: open, design)*
+- **A broken profile on trunk closes trunk, the fix included.** The fix is pushed with `--no-verify`. A push whose only
+  change makes `.flotilla/project.toml` readable again - checked by parsing the pushed profile - could be let through
+  without the override. *(checked 2026-10-04 on 0.7.12: open, design)*
+- **The push guards are no lock, and flotilla does not say whether the lock is there.** `flotilla doctor` could ask
+  GitHub (`gh api repos/<o>/<r>/rules/branches/<trunk>` or branch protection) whether trunk is protected, and warn when
+  it is not, naming the setting. *(checked 2026-10-04 on 0.7.12: open, design)*
+
 ## From watching the twosuns fleet on 0.7.1 (2026-10-03, night; corrected 2026-10-04)
 
 - **The way in is too heavy for a first try.** Posts, seats, lane, receipts, a ledger of ten states, 13 skills and a
