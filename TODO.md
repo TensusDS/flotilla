@@ -15,6 +15,15 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
   only, no sender, no lane - that starts in minutes, and a README whose opening says only that. *(checked 2026-10-04 on
   0.7.8: open, design - needs a spec)*
 
+## From the review of 0.7.9 (2026-10-04)
+
+- When the guards fail, an override anywhere in the command line counts (`echo FLOTILLA_GATE_OVERRIDE=x; git push`):
+  `flotilla.guards.on_failure`, the hook's last resort and `bin/flotilla` read it as a substring, while the push guard
+  counts it only at the head of the door's segment. *(checked 2026-10-04 on 0.7.9: still [P] - guards/__init__.py
+  on_failure)*
+- Onboarding a repository whose only workflows are symlinks now records no CI and reads no job ids from them; it matters
+  only if GitHub Actions runs a symlinked workflow, which nobody measured. *(checked 2026-10-04 on 0.7.9: measure)*
+
 ## From the twosuns update to 0.7.1 (2026-10-03)
 
 - A refusal the person has to resolve must say what to run, not only that something was refused. When auto mode's
@@ -67,22 +76,13 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 - `git checkout -- $(git diff --name-only)` passes silently; paths from a substitution are unknown and should warn.
   *(checked 2026-10-04 on 0.7.8: still [B] - inside the stated ceiling (`$( )`); a warning is what is asked -
   guards/revert.py:67-91)*
-- `git switch -f` / `--discard-changes` are not guarded and not named in the ceiling. *(checked 2026-10-04 on 0.7.8:
-  still [S] - the same loss as `git checkout -f`, guarded there - guards/revert.py:22)*
 - `diff --numstat` without `-z`: a quoted non-ASCII path never matches a reservation pattern. *(checked 2026-10-04 on
   0.7.8: still [B] - guards/reserve.py:38-42)*
 - The line printed for `core.hooksPath` has no missing-link branch, so a pre-commit added there fails closed. *(checked
   2026-10-04 on 0.7.8: still [B] - guards/githooks.py:204-205)*
 - The budget test asserts 1 s, not ~200 ms (measured: 0.0 / 24 / 52 ms in process, ~89 ms process start). *(checked
   2026-10-04 on 0.7.8: still [P] - tests/test_guards_run.py:89)*
-- `find_project` and the `guard_hook` import sit outside any try in `run_hook`: a crash there lets a push through.
-  *(checked 2026-10-04 on 0.7.8: still [S, low] - find_project, the guards import and no_rewrites() run unguarded;
-  _trace and guard_hook are guarded - hooks.py:46-60)*
 - `guard install` ignores a failed `refresh_link`. *(checked 2026-10-04 on 0.7.8: still [P] - guards/githooks.py:236)*
-- A symlinked workflow file is counted by onboarding and skipped by `workflow_at`: permanent drift. *(checked 2026-10-04
-  on 0.7.8: still [B] - refuses every push while it exists - onboard/detect_ci.py:26-30, guards/push.py:173-175)*
-- `gh pr merge --disable-auto`, and merges into a base other than trunk, ask for a receipt though nothing lands.
-  *(checked 2026-10-04 on 0.7.8: still [B] - guards/push.py:79-81, 469)*
 
 ## From the guards plan (2026-09-27)
 
@@ -178,8 +178,6 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
   still [P] - errs towards review - ledger/core.py:62-67)*
 - `receipt show` always exits 0; exit non-zero when no purpose has a green receipt. *(checked 2026-10-04 on 0.7.8: still
   [B] - ledger/commands.py:299-303)*
-- `check_receipt` never compares the sha stored inside the receipt with the one it was asked about. *(checked 2026-10-04
-  on 0.7.8: still [S, low] - forging needs write access to the 0700 state dir - ledger/receipts.py:182-201)*
 - `--agreed-by` on `moved` is only the owner's word; part B may ask the named reader. *(checked 2026-10-04 on 0.7.8:
   open, design)*
 - Test gaps: `assign` with the census unreachable; `hand`/`moved` with an unresolvable tip; malformed `may` forms in a
@@ -200,6 +198,14 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 
 ## Done
 
+- 0.7.9: `git switch -f` / `--discard-changes` meet the revert guard (decision 226)
+- 0.7.9: a guard hook that fails before judging refuses a push (decision 226)
+- 0.7.9: a receipt vouches only for the revision and purpose written in it (decision 226)
+- 0.7.9: a symlinked workflow no longer refuses every push as a drift (decision 226)
+- 0.7.9 (review): `git checkout -qf` / `--for` meet the revert guard; a non-ASCII workflow name gives both sides one
+  digest; a guard hook that fails before flotilla loads (old Python, import error) still refuses a push.
+- 0.7.9: `gh pr merge [<pr>] --disable-auto` asks no receipt; a merge into another base still does, by decision - its
+  base cannot be pinned (decision 226)
 - 0.7.7: `flotilla doctor` checks the shape of the Claude Code records flotilla reads (decision 225; was "It leans on
   Claude Code internals").
 - 0.7.6: a wait whose object is gone no longer silences the watch, and work piled on one seat is named (decision 224).

@@ -3,6 +3,17 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.7.9 - 2026-10-04
+
+- **`git switch -f` and `--discard-changes` meet the revert guard**, like `git checkout -f <branch>`: they drop
+  every change to tracked files. A forced checkout is now read in every spelling git takes (`-qf`, `--for`).
+- **A guard hook that fails before judging refuses a push** instead of letting it run unchecked - inside the hook,
+  and before flotilla even loads (an interpreter below the floor, an import error).
+- **A receipt vouches only for the revision and purpose written in it**, not for whatever its file is named.
+- **A symlinked workflow file, or one with a non-ASCII name, no longer refuses every push as a workflow drift.**
+  Projects onboarded with one: run `/flotilla:check` once to record the workflow digest again.
+- **`gh pr merge [<pr>] --disable-auto` asks no receipt**: it merges nothing.
+
 ## 0.7.8 - 2026-10-04
 
 - README says, on its first screen, how flotilla differs from Claude Code's agent teams.
