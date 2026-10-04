@@ -14,9 +14,8 @@ import os
 import subprocess
 from pathlib import Path
 
-from flotilla.guards import Finding
+from flotilla.guards import PUSH_WORDS, Finding, on_failure
 
-PUSH_WORDS = ("push", "gh")
 
 
 def _safely(name: str, check) -> list[Finding]:
@@ -334,13 +333,7 @@ def guard_hook(command: str, cwd, root, out, *, env=os.environ, run=subprocess.r
     try:
         findings = evaluate(command, cwd, root, env=env, run=run)
     except Exception as err:  # noqa: BLE001 - decided by reversibility: a command that may push is refused
-        may_push = any(word in command for word in PUSH_WORDS)
-        knowingly = "FLOTILLA_GATE_OVERRIDE=" in command or bool(env.get("FLOTILLA_GATE_OVERRIDE", "").strip())
-        findings = [Finding("guards", may_push and not knowingly,
-                            f"flotilla guards failed ({err}); "
-                            + ("a command that may push is refused on failure. Knowingly: "
-                               'FLOTILLA_GATE_OVERRIDE="<why>"' if may_push and not knowingly
-                               else "the command runs unchecked"))]
+        findings = [on_failure(command, err, env)]
     refusals = [finding.text for finding in findings if finding.refuse]
     # the allow answers auto mode's classifier only: in ask mode the person sees what they chose to see
     sandboxed = not (tool_input or {}).get("dangerouslyDisableSandbox")   # its prompt stays (final review, M1)
