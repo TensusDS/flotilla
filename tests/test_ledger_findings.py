@@ -192,3 +192,34 @@ def test_an_inbatch_label_is_never_the_trunk(world):
     with pytest.raises(MoveRefused, match="trunk"):
         outside.inbatch(ledger, actor(ledger, "sender 1"), "main", commit=fix, read_by="review session 1",
                         why="typo")
+
+
+@pytest.mark.parametrize("state", ["shipped", "walked", "landed"])
+def test_a_delivered_row_whose_branch_was_deleted_is_no_finding(world, state):
+    """GitHub deletes a merged branch; release and offledger are not legal from these states anyway."""
+    from flotilla.ledger.model import Row
+    root, ledger = world
+    gone = Row(id="r9", branch="feat/merged-and-deleted", owner="main session 1", state=state)
+    assert findings.findings(ledger, {"r9": gone}) == []
+
+
+def test_a_queued_row_with_a_pr_whose_branch_was_deleted_is_left_to_ship(world):
+    from flotilla.ledger.model import Row
+    root, ledger = world
+    gone = Row(id="r9", branch="feat/merged-and-deleted", owner="main session 1", state="queued", pr="12")
+    assert findings.findings(ledger, {"r9": gone}) == []
+
+
+def test_a_queued_direct_row_whose_read_revision_is_on_origin_is_lands_not_vanished(world):
+    """The author deleted the branch after the sender pushed it: the move left is `land`, which uses the revision
+    read, not the branch; "release it" would drop delivered work (review of 0.7.10)."""
+    from flotilla.ledger import delivery
+    from ledgerkit import drive
+    root, ledger = world
+    drive(root, ledger, "feat/pushed")
+    delivery.queue(ledger, actor(ledger, "sender 1"), "feat/pushed")
+    git(root, "push", "-q", "origin", "feat/pushed:main")
+    git(root, "fetch", "-q", "origin")
+    git(root, "branch", "-q", "-D", "feat/pushed")
+    found = [item for item in findings.findings(ledger) if item["branch"] == "feat/pushed"]
+    assert [item["kind"] for item in found] != ["vanished"]

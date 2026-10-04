@@ -58,7 +58,13 @@ def findings(ledger, rows: dict[str, Row] | None = None) -> list[dict]:
         if not row.is_open or row.state == "reserved":
             continue
         local = gitq.branch_tip(ledger.root, row.branch, run=ledger.run)
-        if not (row.fixes and not row.tree) and local is None and \
+        # a branch deleted once its work reached trunk is no loss: GitHub deletes a merged branch, a landed row
+        # has its merge, a queued PR's branch is the PR's to answer for through `ship`, and a queued row whose
+        # revision is on origin is the sender's to `land` - "release it" would drop delivered work (review of 0.7.10)
+        read = batch.revision_of(row) if row.state == "queued" and not row.pr else ""
+        delivered = row.state in ("landed", "shipped", "walked") or (row.state == "queued" and row.pr) or \
+            bool(read and origin and gitq.is_ancestor(ledger.root, read, origin, run=ledger.run) is True)
+        if not delivered and not (row.fixes and not row.tree) and local is None and \
                 gitq.resolve(ledger.root, f"refs/remotes/origin/{row.branch}", run=ledger.run) is None:
             found.append(_item("vanished", row, "", f"row {row.id} is {row.state}, and its branch is gone locally "
                                                     "and on origin; release it, or record it with offledger"))

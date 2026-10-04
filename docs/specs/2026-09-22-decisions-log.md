@@ -1408,6 +1408,19 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    `git ls-tree` quotes, and a guard hook that fails before flotilla even loads (an old interpreter, an import error)
    - `bin/flotilla` now answers that one with a decision too. (planner's decision, 2026-10-04)
 
+227. **Delivery says only what it asked** (Claude Code session, 2026-10-04; the triaged backlog, ledger parts A and
+   B). The ledger's exit codes mean 0 done, 2 refused - a move is owed or illegal - and 3 not yet, ask again; the
+   delivery code blurred them. GitHub that could not be asked (no gh, a hang, a network or auth failure, an answer
+   that is not JSON) is now "not yet", while a PR GitHub says does not exist stays refused; a failed fetch is said,
+   never "(fetched)"; a commit git cannot place is "could not tell", not "does not have"; a PR closed without
+   merging names release and a new claim, the moves that are legal; `reconcile` exits by its worst line - a refusal
+   or a pushed row owing `land` is 2, a row not proved yet is 3 - and takes the `--skip-event` it advises;
+   `receipt show` exits 1 when no purpose that has tiers holds a green receipt (a purpose with none is valid, not a
+   receipt), and takes `--purpose`; the brief holds back an accepted row whose branch git cannot find and names
+   `git branch <b> origin/<b>` when only origin has it; `vanished` spares a row whose work already reached trunk -
+   landed, shipped, walked, a queued PR row, or a queued row whose read revision is on origin - because "release
+   it" there would drop delivered work. (planner's decision, 2026-10-04)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

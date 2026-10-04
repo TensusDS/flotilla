@@ -536,3 +536,45 @@ def test_broke_for_an_author_who_is_gone_hands_the_fix_to_the_orchestrator(tmp_p
     assert code == 0 and "main session 1 is not alive" in out, out
     assert "flotilla work adopt fix/x --to 'main session 2'" in out and "tree switch" not in out
     assert "letter for main session 1" not in out
+
+
+def test_receipt_show_exits_1_when_no_purpose_holds(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch, {**PLAIN, "tests": {"tier": [
+        {"name": "unit", "command": GREEN, "required_for": ["handover", "push"]}]}})
+    code, out = run_cli("receipt", "show", "--tree", str(root))
+    assert code == 1 and "no handover receipt" in out
+    assert run_cli("receipt", "run", "--purpose", "handover", "--tree", str(root))[0] == 0
+    code, out = run_cli("receipt", "show", "--tree", str(root))
+    assert code == 0 and "handover receipt green" in out
+
+
+def test_reconcile_exits_by_its_worst_line():
+    from flotilla.ledger.commands import reconcile_exit
+    assert reconcile_exit([]) == 0
+    assert reconcile_exit(["shipped feat/a (green)"]) == 0
+    assert reconcile_exit(["shipped feat/a (green)", "not yet feat/b: open"]) == 3
+    assert reconcile_exit(["pushed, not landed feat/c: record it"]) == 2   # it needs `land`, not another ask
+    assert reconcile_exit(["not yet feat/b: open", "refused feat/c: closed"]) == 2
+
+
+def test_reconcile_takes_the_skip_event_it_advises():
+    args = cli.build_parser().parse_args(["work", "reconcile", "--skip-event", "pre-shipped", "--skip-why", "x"])
+    assert (args.skip_event, args.skip_why) == ("pre-shipped", "x")
+
+
+@pytest.mark.parametrize("lines, code", [(["shipped feat/a (green)"], 0), (["not yet feat/b: open"], 3),
+                                         (["refused feat/c: closed"], 2), (["pushed, not landed feat/d: land"], 2)])
+def test_reconcile_through_the_cli_exits_by_its_lines(tmp_path, monkeypatch, lines, code):
+    from flotilla.ledger import delivery
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    monkeypatch.setattr(delivery, "reconcile", lambda ledger, actor: list(lines))
+    assert run_cli("work", "reconcile", "--root", str(root), "--as", "sender 1")[0] == code
+
+
+def test_receipt_show_counts_only_purposes_with_tiers(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch, {**PLAIN, "tests": {"tier": [
+        {"name": "unit", "command": GREEN, "required_for": ["handover"]}]}})
+    code, out = run_cli("receipt", "show", "--tree", str(root))
+    assert code == 1 and "no push tiers configured" in out   # "no tiers" is no receipt
+    assert run_cli("receipt", "show", "--tree", str(root), "--purpose", "push")[0] == 0   # nothing to hold
+    assert run_cli("receipt", "show", "--tree", str(root), "--purpose", "handover")[0] == 1

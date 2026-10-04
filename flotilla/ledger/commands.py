@@ -296,11 +296,16 @@ def _receipt(args) -> int:
     if sha is None:
         print(f"git could not resolve `{args.rev}`")
         return 2
-    for purpose in receipts.PURPOSES:
+    asked = [args.purpose] if args.purpose else list(receipts.PURPOSES)
+    tiered = held = 0
+    for purpose in asked:
         ok, why = receipts.check_receipt(state=state, repo_key=ident.key, sha=sha, purpose=purpose,
                                          profile=profile)
         print(f"{'ok' if ok else 'no':<3} {why}")
-    return 0
+        if receipts.tiers_for(profile, purpose):   # "no tiers configured" is valid, and is no receipt
+            tiered += 1
+            held += ok
+    return 0 if held or not tiered else 1   # a script reads the code: nothing green where tiers are set is a failure
 
 
 def _events(args) -> int:
@@ -348,6 +353,16 @@ def _broke(ledger, caller, args) -> tuple[Row, str]:
                         "orchestrator gives it an owner")
     return broken, (f"fix row {fix.id} `{fix.branch}` filed for {fix.owner}: take it in the home tree with "
                     f"`flotilla tree switch {fix.branch}`")
+
+
+def reconcile_exit(lines: list[str]) -> int:
+    """The worst of what reconcile found: a move owed - a refusal, or a pushed row to `land` - (2) outweighs a row not
+    proved yet (3), which outweighs none."""
+    if any(line.startswith(("refused ", "pushed, not landed ")) for line in lines):   # the second needs `land`
+        return 2
+    if any(line.startswith("not yet ") for line in lines):
+        return 3
+    return 0
 
 
 def _skips(args) -> dict:
@@ -495,7 +510,7 @@ def run_ledger_command(args) -> int:
             lines = delivery.reconcile(ledger, caller)
             print("\n".join(lines) if lines else "nothing is queued or landed")
             _letters(ledger, caller, before)
-            return 0
+            return reconcile_exit(lines)
         if args.command == "tree" and args.action == "switch":
             row = tree_mod.switch(ledger, caller, args.branch, ref=args.ref, requires=args.requires,
                                   after=args.after, also=args.also)

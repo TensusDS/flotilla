@@ -3,6 +3,22 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.7.10 - 2026-10-04
+
+Delivery says only what it asked:
+- **GitHub that could not be asked is "not yet" (exit 3), not "refused".** A PR GitHub says does not exist is still
+  refused; gh missing or hanging is "not yet" too.
+- **A failed fetch is said, never "(fetched)"**, and a commit git cannot place is "could not tell", not "does not
+  have".
+- **A PR closed without merging names the legal moves**: release the row, claim the work again.
+- **`flotilla work reconcile` exits by its worst line** - 2 for a refusal or a pushed row to `land`, 3 for one not
+  proved yet - and takes the `--skip-event` it advises.
+- **`flotilla receipt show` exits 1** when no purpose that has tiers holds a green receipt, and takes `--purpose`.
+- **The brief holds back an accepted row whose branch git cannot find**, and names `git branch <b> origin/<b>` when
+  only origin has it.
+- **`vanished` no longer fires for work that reached trunk** (landed, shipped, walked, queued and on origin), where
+  its advice would have dropped delivered work.
+
 ## 0.7.9 - 2026-10-04
 
 - **`git switch -f` and `--discard-changes` meet the revert guard**, like `git checkout -f <branch>`: they drop

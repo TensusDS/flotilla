@@ -120,6 +120,9 @@ def build_parser() -> argparse.ArgumentParser:
     reconcile = moves.add_parser("reconcile", help="ask the PR or origin about every queued or landed row")
     reconcile.add_argument("--root", default=".")
     reconcile.add_argument("--as", dest="as_name", default=None, help="act as this session (recorded)")
+    reconcile.add_argument("--skip-event", dest="skip_event", default=None,
+                           help="skip one event script, on a person's decision (recorded); needs --skip-why")
+    reconcile.add_argument("--skip-why", dest="skip_why", default="")
     move_parser("show", "print a row and its history")
 
     tree = sub.add_parser("tree", help="worktrees filed in the ledger")
@@ -157,6 +160,8 @@ def build_parser() -> argparse.ArgumentParser:
     show = receipt_actions.add_parser("show", help="which receipts hold over a revision")
     show.add_argument("--tree", default=".")
     show.add_argument("--rev", default="HEAD")
+    show.add_argument("--purpose", choices=["handover", "push"], default=None,
+                      help="ask about one purpose; the exit code then answers only for it")
 
     events_ = sub.add_parser("events", help="the project's event scripts")
     event_actions = events_.add_subparsers(dest="action", required=True)
