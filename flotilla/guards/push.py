@@ -81,8 +81,10 @@ def door(segment) -> Door | None:
         if kind in ("gh pr create", "gh pr merge", "gh workflow run"):
             if any(arg in ("-h", "--help", "--dry-run") for arg in words[3:]):
                 return None
-            if kind == "gh pr merge" and "--disable-auto" in words[3:]:
-                return None   # turns auto-merge off and merges nothing
+            flags = [word for word in words[3:] if word.startswith("-")]
+            if kind == "gh pr merge" and flags == ["--disable-auto"] and len(words[3:]) <= 2:
+                return None   # `gh pr merge [<pr>] --disable-auto` turns auto-merge off and merges nothing; beside
+                #               any other flag, or as an option's value, it frees nothing (0.7.9 security review)
             return Door(kind, segment, segment.cwd)
     return None
 
@@ -150,17 +152,15 @@ def revisions(d: Door, trunk: str, *, run=subprocess.run) -> list[tuple[str, str
             if not rest[i].startswith("-") and target is None:
                 target = rest[i]
             i += 1
-        argv = ["gh", "pr", "view", *([target] if target else []), "--json", "headRefOid,baseRefName",
-                "-q", '.headRefOid + " " + .baseRefName']
+        # every merge is judged as landing on trunk: its base cannot be pinned as its head is, and trunk's name can
+        # come from a tree the session edits (0.7.9 security review)
+        argv = ["gh", "pr", "view", *([target] if target else []), "--json", "headRefOid", "-q", ".headRefOid"]
         try:
             done = run(argv, cwd=str(d.directory), capture_output=True, text=True, check=False, timeout=10)
-            answer = done.stdout.split() if done.returncode == 0 else []
+            sha = done.stdout.strip() if done.returncode == 0 else ""
         except (OSError, subprocess.SubprocessError):
-            answer = []
-        sha = _need(answer[0] if answer else "", "the pull request's head (gh pr view)")
-        if len(answer) > 1 and answer[1] != trunk:
-            return []   # merges into another branch, as a push to it would: no trunk is landed on
-        # a base gh did not name is read as trunk: in doubt, the receipt is asked
+            sha = ""
+        sha = _need(sha, "the pull request's head (gh pr view)")
         if sum(1 for word in rest if word.split("=", 1)[0] == "--match-head-commit") > 1:
             raise Unknown("names --match-head-commit more than once; gh takes the last, so name it once")
         pinned = _value(rest, "--match-head-commit")

@@ -527,13 +527,27 @@ def test_a_symlinked_workflow_inside_the_repository_gives_both_sides_one_digest(
 def test_disabling_auto_merge_merges_nothing_and_asks_for_no_receipt(tmp_path):
     root = onboarded(tmp_path)
     head = git(root, "rev-parse", "HEAD")
-    assert judge("gh pr merge 12 --disable-auto", root, tmp_path, run=fake_gh((0, f"{head} main\n"))) is None
+    assert judge("gh pr merge 12 --disable-auto", root, tmp_path, run=fake_gh((0, head + "\n"))) is None
+    assert judge("gh pr merge --disable-auto", root, tmp_path, run=fake_gh((0, head + "\n"))) is None
 
 
-def test_a_merge_into_a_base_other_than_trunk_lands_on_no_trunk(tmp_path):
+@pytest.mark.parametrize("command", ["gh pr merge 12 --squash --subject --disable-auto",
+                                     "gh pr merge 12 --body --disable-auto", "gh pr merge 12 --squash --disable-auto",
+                                     "gh pr merge 12 --disable-auto --admin"])
+def test_disable_auto_frees_only_its_own_form(tmp_path, command):
+    """`--disable-auto` as the value of another option, or beside a merge flag, does not stop gh merging: only
+    `gh pr merge [<pr>] --disable-auto` is let by (commit security review of 0.7.9)."""
     root = onboarded(tmp_path)
     head = git(root, "rev-parse", "HEAD")
-    pinned = f"gh pr merge 12 --squash --match-head-commit {head}"
-    assert judge(pinned, root, tmp_path, run=fake_gh((0, f"{head} release/1.2\n"))) is None
-    assert judge(pinned, root, tmp_path, run=fake_gh((0, f"{head} main\n"))).refuse   # into trunk: a receipt
-    assert judge(pinned, root, tmp_path, run=fake_gh((0, f"{head}\n"))).refuse        # base not said: as trunk
+    assert judge(command, root, tmp_path, run=fake_gh((0, head + "\n"))).refuse
+
+
+def test_a_merge_into_another_base_still_asks_for_a_receipt(tmp_path):
+    """A pull request's base cannot be pinned the way its head is (--match-head-commit), and trunk's name can come
+    from a tree the session edits: a base gh names is no reason to skip the receipt (commit security review)."""
+    root = onboarded(tmp_path)
+    head = git(root, "rev-parse", "HEAD")
+    found = judge(f"gh pr merge 12 --squash --match-head-commit {head}", root, tmp_path,
+                  run=fake_gh((0, f"{head} release/1.2\n")))
+    assert found.refuse
+
