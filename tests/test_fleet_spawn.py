@@ -1,3 +1,5 @@
+import subprocess
+
 import pytest
 
 from flotilla.core.storage import LocalLogStore
@@ -428,3 +430,50 @@ def test_an_old_sender_row_still_blocks_when_its_session_lives_or_cannot_be_rule
         spawn.raise_seat(ledger, second, caller=CALLER, census=fake.census, wait=0.1, poll=0.05,
                          sleep=lambda seconds: None)
     assert len(fake.launched) == 1
+
+
+def seat_row(ledger, name):
+    return next(row for row in ledger.rows().values() if row.owner == name and row.state == "reserved")
+
+
+def test_a_raised_seat_carries_its_session_id(tmp_path):
+    """`claude --bg` ignores --session-id (measured on 2.1.289), so the id is learned once the seat shows in the
+    census, and kept on its post row: the broker can know a seat with the census down."""
+    fake = FakeClaude()
+    root, ledger, store = world(tmp_path, fake)
+    raised, _ = run(ledger, store, fake, {"main": 1})
+    assert seat_row(ledger, "main session 1").session_id == "sid-" + raised[0].short_id
+
+
+def test_a_session_id_is_not_recorded_when_the_name_is_not_one_sessions(tmp_path):
+    from fleetkit import session
+    fake = FakeClaude()
+    root, ledger, store = world(tmp_path, fake)
+    original = fake.__call__
+    def twin(cmd, **kwargs):   # another session of the machine takes the same name as the seat launches
+        done = original(cmd, **kwargs)
+        if isinstance(cmd, list) and cmd[:2] == ["claude", "--bg"]:
+            fake.sessions.append(session(cmd[cmd.index("-n") + 1], "ffffff"))
+        return done
+    fake.__call__ = twin
+    ledger.run = twin
+    run(ledger, store, fake, {"main": 1})
+    assert seat_row(ledger, "main session 1").session_id == ""
+
+
+def test_a_session_id_already_on_another_open_row_is_not_recorded_twice(tmp_path):
+    from fleetkit import session
+    fake = FakeClaude()
+    root, ledger, store = world(tmp_path, fake)
+    run(ledger, store, fake, {"main": 1})
+    first = seat_row(ledger, "main session 1").session_id
+    original = fake.__call__
+    def same_id(cmd, **kwargs):   # the census names the new seat with the first seat's session id
+        if isinstance(cmd, list) and cmd[:2] == ["claude", "--bg"]:
+            fake.launched.append(list(cmd))
+            fake.sessions.append(session(cmd[cmd.index("-n") + 1], first[len("sid-"):]))
+            return subprocess.CompletedProcess(cmd, 0, "backgrounded", "")
+        return original(cmd, **kwargs)
+    ledger.run = same_id
+    run(ledger, store, fake, {"main": 1})
+    assert seat_row(ledger, "main session 2").session_id == ""

@@ -63,6 +63,7 @@
       "reader": "string",
       "ref": "string",
       "requires": "array",
+      "session_id": "string",
       "taken": "boolean",
       "tip": "string",
       "tree": "string",
