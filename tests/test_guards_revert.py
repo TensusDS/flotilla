@@ -153,3 +153,46 @@ def test_a_tree_named_with_an_equals_sign_is_not_mistaken_for_the_shells(tmp_pat
     (root / "new.txt").write_text("unsaved\n", encoding="utf-8")
     found = check(f"git {option} clean -fd", root)
     assert found is not None and "could not tell which tree" in found.text
+
+
+@pytest.mark.parametrize("command", ["git switch -f main", "git switch --force main",
+                                     "git switch --discard-changes main", "git switch --disc main",
+                                     "git switch -fc topic"])
+def test_a_switch_that_discards_changes_is_refused_like_checkout_f(tmp_path, command):
+    root = plain_repo(tmp_path)
+    (root / "f.txt").write_text("changed\n", encoding="utf-8")
+    found = check(command, root)
+    assert found is not None and found.refuse and "f.txt" in found.text
+
+
+def test_a_switch_that_keeps_changes_or_has_none_to_lose_passes(tmp_path):
+    root = plain_repo(tmp_path)
+    assert check("git switch -f main", root) is None   # nothing uncommitted
+    (root / "f.txt").write_text("changed\n", encoding="utf-8")
+    assert check("git switch main", root) is None       # git itself refuses to overwrite, or carries the change
+    assert check("git switch -c topic", root) is None
+
+
+def test_every_revert_verb_reaches_the_guard_through_the_hooks_fast_path():
+    from flotilla import hooks
+    assert all(any(word in verb for word in hooks.GUARD_TRIGGERS) for verb in revert.VERBS)
+
+
+@pytest.mark.parametrize("command", ["git checkout -qf main", "git checkout -fq main", "git checkout --for main",
+                                     "git checkout --forc main"])
+def test_a_forced_checkout_is_read_in_every_spelling_git_takes(tmp_path, command):
+    """git takes a cluster (`-qf`) and any unambiguous prefix of `--force`; checkout has no `--force-create` to make
+    `--for` ambiguous (review of 0.7.9)."""
+    root = plain_repo(tmp_path)
+    git(root, "switch", "-q", "-c", "other")
+    git(root, "switch", "-q", "main")
+    (root / "f.txt").write_text("changed\n", encoding="utf-8")
+    found = check(command.replace("main", "other"), root)
+    assert found is not None and found.refuse and "f.txt" in found.text
+
+
+@pytest.mark.parametrize("command", ["git switch -cfoo", "git switch -Cfix", "git switch -cf"])
+def test_a_switch_creating_a_branch_named_like_flags_is_not_a_force(tmp_path, command):
+    root = plain_repo(tmp_path)
+    (root / "f.txt").write_text("changed\n", encoding="utf-8")
+    assert check(command, root) is None

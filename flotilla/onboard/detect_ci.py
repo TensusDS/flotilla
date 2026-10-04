@@ -22,13 +22,16 @@ PUSH_EVENTS = ("push", "pull_request", "pull_request_target")
 
 
 def workflow_files(root: Path) -> list[Path]:
-    """Workflow files that really live inside the repository: a symlink out of it is not read."""
+    """Workflow files that are files in the repository. A symlink is not read, out of the repository or inside it:
+    the push guard digests the workflows at a revision from git's tree, where a symlink is a link and not the file
+    it names, and both digests must be one (a symlink counted here alone refused every push as a drift)."""
     folder = root / ".github" / "workflows"
     if not folder.is_dir():
         return []
     inside = root.resolve()
     return sorted(p for p in folder.iterdir()
-                  if p.suffix in (".yml", ".yaml") and p.is_file() and p.resolve().is_relative_to(inside))
+                  if p.suffix in (".yml", ".yaml") and not p.is_symlink() and p.is_file()
+                  and p.resolve().is_relative_to(inside))
 
 
 def fingerprint(root: Path, files: list[Path]) -> str | None:

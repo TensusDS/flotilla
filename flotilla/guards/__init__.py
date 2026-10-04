@@ -19,3 +19,17 @@ class Finding:
     guard: str
     refuse: bool     # False: the command runs, and the session is told
     text: str
+
+
+PUSH_WORDS = ("push", "gh")
+
+
+def on_failure(command: str, err: Exception, env) -> Finding:
+    """What the guards say when they could not judge: decided by reversibility, so a command that may push is
+    refused, unless the person overrode the gate knowingly; anything else runs, and the session is told."""
+    may_push = any(word in command for word in PUSH_WORDS)
+    knowingly = "FLOTILLA_GATE_OVERRIDE=" in command or bool(env.get("FLOTILLA_GATE_OVERRIDE", "").strip())
+    return Finding("guards", may_push and not knowingly,
+                   f"flotilla guards failed ({err}); "
+                   + ('a command that may push is refused on failure. Knowingly: FLOTILLA_GATE_OVERRIDE="<why>"'
+                      if may_push and not knowingly else "the command runs unchecked"))

@@ -27,7 +27,7 @@ PEERS_SHOWN = 8
 #: group lets a long run reach the lane guard: the lane's default run patterns and the launchers that run them. A
 #: tier whose program is none of these (`make test`, `./run-tests.sh`) is not warned about unless the line names one.
 #: `flotilla` lets the person guard see its CLI however the word `approve` is quoted.
-GUARD_TRIGGERS = ("checkout", "restore", "reset", "clean", "sed", "push", "gh", "approve", "flotilla",
+GUARD_TRIGGERS = ("checkout", "restore", "reset", "clean", "switch", "sed", "push", "gh", "approve", "flotilla",
                   "pytest", "py.test", "playwright", "vitest", "jest", "cargo", "go test", "npm", "pnpm", "yarn",
                   "npx", "bun", "tox", "nox")
 
@@ -45,22 +45,16 @@ def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime
         command = tool_input.get("command") if isinstance(tool_input.get("command"), str) else ""
         if not any(word in command for word in GUARD_TRIGGERS):
             return 0
-        from flotilla.guards.push import no_rewrites
-        no_rewrites()   # every git the guards start reads what a push really sends (review of the scan of 0.7.0, C1)
+        try:   # an exception here exits non-zero, which Claude Code does not read as a refusal: the push would run
+            return _guard(command, cwd, payload, out, now)
+        except Exception as err:  # noqa: BLE001 - the guards' own rule for a failure, decided here when they fell
+            return _guard_failed(command, err, out)
 
     from flotilla.core.config import find_project
     root = find_project(cwd)
     if root is None:
-        if event == "guard":   # outside every project, a door into one is still that project's to judge (F18)
-            from flotilla.guards.run import guard_hook
-            return guard_hook(command, cwd, None, out, mode=str(payload.get("permission_mode") or ""),
-                              session_id=str(payload.get("session_id") or ""), tool_input=payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else None)
         return 0
     _trace(event, payload, root, now)
-    if event == "guard":
-        from flotilla.guards.run import guard_hook
-        return guard_hook(command, cwd, root, out, mode=str(payload.get("permission_mode") or ""),
-                              session_id=str(payload.get("session_id") or ""), tool_input=payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else None)
 
     try:
         if gather is None:
@@ -77,6 +71,41 @@ def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime
         else:
             print(f"flotilla: the {event} hook failed: {err}", file=out)
         return 0
+
+
+def _guard(command: str, cwd: Path, payload: dict, out, now) -> int:
+    from flotilla.core.config import find_project
+    from flotilla.guards.push import no_rewrites
+    from flotilla.guards.run import guard_hook
+    no_rewrites()   # every git the guards start reads what a push really sends (review of the scan of 0.7.0, C1)
+    root = find_project(cwd)   # outside every project, a door into one is still that project's to judge (F18)
+    if root is not None:
+        _trace("guard", payload, root, now)
+    tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else None
+    return guard_hook(command, cwd, root, out, mode=str(payload.get("permission_mode") or ""),
+                      session_id=str(payload.get("session_id") or ""), tool_input=tool_input)
+
+
+#: `flotilla.guards.PUSH_WORDS`, for a failure in which even that module cannot be imported (a test keeps them equal)
+LAST_RESORT_PUSH_WORDS = ("push", "gh")
+
+
+def _guard_failed(command: str, err: Exception, out) -> int:
+    import os
+    try:
+        from flotilla.guards import on_failure
+        finding = on_failure(command, err, os.environ)
+        refuse, text = finding.refuse, finding.text
+    except Exception:  # noqa: BLE001 - the plugin cannot even read its own rule; refuse what may push
+        refuse = any(word in command for word in LAST_RESORT_PUSH_WORDS) and \
+            "FLOTILLA_GATE_OVERRIDE=" not in command and not os.environ.get("FLOTILLA_GATE_OVERRIDE", "").strip()
+        text = f"flotilla guards failed ({err}); " + ("a command that may push is refused on failure. Knowingly: "
+                                                     'FLOTILLA_GATE_OVERRIDE="<why>"' if refuse
+                                                     else "the command runs unchecked")
+    body = ({"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": text}
+            if refuse else {"hookEventName": "PreToolUse", "additionalContext": text})
+    print(json.dumps({"hookSpecificOutput": body}), file=out)
+    return 0
 
 
 def _trace(event: str, payload: dict, root: Path, now: dt.datetime | None) -> None:

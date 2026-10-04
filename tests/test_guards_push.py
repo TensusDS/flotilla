@@ -503,3 +503,66 @@ def test_a_branch_push_needs_neither_a_reachable_origin_nor_a_fetched_trunk(tmp_
     assert judge("git push -u origin feat/x", root, tmp_path) is None
     git(root, "config", "remote.origin.url", str(tmp_path / "gone.git"))   # origin out of reach
     assert judge("git push -u origin feat/x", root, tmp_path) is None
+
+
+@pytest.mark.parametrize("target", ["ci.yml", "../../ci/shared.yml"])
+def test_a_symlinked_workflow_inside_the_repository_gives_both_sides_one_digest(tmp_path, target):
+    """Onboarding reads the working tree and the push guard reads a revision; a workflow that is a symlink inside
+    the repository was counted by the first and skipped by the second, so the digests never matched and every push
+    was refused as a workflow drift (TODO, guards final review)."""
+    from flotilla.onboard.detect_ci import fingerprint, workflow_files
+    root = onboarded(tmp_path)
+    folder = root / ".github" / "workflows"
+    folder.mkdir(parents=True)
+    (folder / "ci.yml").write_text("on: push\n", encoding="utf-8")
+    (root / "ci").mkdir()
+    (root / "ci" / "shared.yml").write_text("on: push\njobs:\n  shared:\n    runs-on: x\n", encoding="utf-8")
+    (folder / "alias.yml").symlink_to(target)
+    git(root, "add", ".github", "ci")
+    git(root, *IDENTITY, "commit", "-q", "-m", "ci")
+    sha = git(root, "rev-parse", "HEAD")
+    assert push.workflow_at(root, sha) == fingerprint(root, workflow_files(root))
+
+
+def test_disabling_auto_merge_merges_nothing_and_asks_for_no_receipt(tmp_path):
+    root = onboarded(tmp_path)
+    head = git(root, "rev-parse", "HEAD")
+    assert judge("gh pr merge 12 --disable-auto", root, tmp_path, run=fake_gh((0, head + "\n"))) is None
+    assert judge("gh pr merge --disable-auto", root, tmp_path, run=fake_gh((0, head + "\n"))) is None
+
+
+@pytest.mark.parametrize("command", ["gh pr merge 12 --squash --subject --disable-auto",
+                                     "gh pr merge 12 --body --disable-auto", "gh pr merge 12 --squash --disable-auto",
+                                     "gh pr merge 12 --disable-auto --admin"])
+def test_disable_auto_frees_only_its_own_form(tmp_path, command):
+    """`--disable-auto` as the value of another option, or beside a merge flag, does not stop gh merging: only
+    `gh pr merge [<pr>] --disable-auto` is let by (commit security review of 0.7.9)."""
+    root = onboarded(tmp_path)
+    head = git(root, "rev-parse", "HEAD")
+    assert judge(command, root, tmp_path, run=fake_gh((0, head + "\n"))).refuse
+
+
+def test_a_merge_into_another_base_still_asks_for_a_receipt(tmp_path):
+    """A pull request's base cannot be pinned the way its head is (--match-head-commit), and trunk's name can come
+    from a tree the session edits: a base gh names is no reason to skip the receipt (commit security review)."""
+    root = onboarded(tmp_path)
+    head = git(root, "rev-parse", "HEAD")
+    found = judge(f"gh pr merge 12 --squash --match-head-commit {head}", root, tmp_path,
+                  run=fake_gh((0, f"{head}\n")))
+    assert found.refuse and "no push receipt" in found.text
+
+
+
+def test_a_workflow_with_a_non_ascii_name_gives_both_sides_one_digest(tmp_path):
+    """git quotes a path with non-ASCII bytes in `ls-tree` unless asked for NUL-terminated output, so the guard
+    skipped `sjekk-é.yml` while onboarding counted it: every push read as a workflow drift (review of 0.7.9)."""
+    from flotilla.onboard.detect_ci import fingerprint, workflow_files
+    root = onboarded(tmp_path)
+    folder = root / ".github" / "workflows"
+    folder.mkdir(parents=True)
+    (folder / "ci.yml").write_text("on: push\n", encoding="utf-8")
+    (folder / "sjekk-é.yml").write_text("on: push\njobs:\n  check:\n    runs-on: x\n", encoding="utf-8")
+    git(root, "add", ".github")
+    git(root, *IDENTITY, "commit", "-q", "-m", "ci")
+    sha = git(root, "rev-parse", "HEAD")
+    assert push.workflow_at(root, sha) == fingerprint(root, workflow_files(root))

@@ -1390,6 +1390,24 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    registry is read through one door, `claude_state.session_entry`, which `strangers.started_by` uses too.
    (planner's decision, 2026-10-04)
 
+226. **The guards' backlog, first batch: what still let a destructive or unverified command through** (Claude Code
+   session, 2026-10-04). A triage of the whole TODO against 0.7.8 (each open item now carries its last check) found
+   three guard holes and two guard false refusals. `git switch -f` / `--discard-changes` drop every change to
+   tracked files as `git checkout -f <branch>` does and met no guard - `switch` was not even a word the hook's fast
+   path let reach the guards; a test now ties every revert verb to those words. The guard hook's steps before
+   judging (finding the project, importing the guards, turning replace refs off) raised out of the hook, which
+   Claude Code reads as no answer, so a push ran unchecked; they now fail by the guards' rule, kept in
+   `flotilla.guards.on_failure`. `check_receipt` trusted a receipt's file name and now reads the revision and
+   purpose inside it. Onboarding counted a symlinked workflow the push guard skips, so every push read as a workflow
+   drift; both sides now skip it, under a seam test. `gh pr merge [<pr>] --disable-auto` merges nothing and asks no
+   receipt - only that exact form, after the commit security review showed `--disable-auto` as another option's
+   value still merging. Skipping the receipt for a merge into a base other than trunk was built and withdrawn in
+   the same batch: a pull request's base cannot be pinned as its head is, and when origin cannot be asked trunk's
+   name comes from a tree the session edits - the hole 0.7.1 closed for `git push`. The batch's review found the same
+   holes one step further: a forced checkout in spellings git takes (`-qf`, `--for`), a workflow whose non-ASCII name
+   `git ls-tree` quotes, and a guard hook that fails before flotilla even loads (an old interpreter, an import error)
+   - `bin/flotilla` now answers that one with a decision too. (planner's decision, 2026-10-04)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

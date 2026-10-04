@@ -81,6 +81,10 @@ def door(segment) -> Door | None:
         if kind in ("gh pr create", "gh pr merge", "gh workflow run"):
             if any(arg in ("-h", "--help", "--dry-run") for arg in words[3:]):
                 return None
+            flags = [word for word in words[3:] if word.startswith("-")]
+            if kind == "gh pr merge" and flags == ["--disable-auto"] and len(words[3:]) <= 2:
+                return None   # `gh pr merge [<pr>] --disable-auto` turns auto-merge off and merges nothing; beside
+                #               any other flag, or as an option's value, it frees nothing (0.7.9 security review)
             return Door(kind, segment, segment.cwd)
     return None
 
@@ -148,6 +152,8 @@ def revisions(d: Door, trunk: str, *, run=subprocess.run) -> list[tuple[str, str
             if not rest[i].startswith("-") and target is None:
                 target = rest[i]
             i += 1
+        # every merge is judged as landing on trunk: its base cannot be pinned as its head is, and trunk's name can
+        # come from a tree the session edits (0.7.9 security review)
         argv = ["gh", "pr", "view", *([target] if target else []), "--json", "headRefOid", "-q", ".headRefOid"]
         try:
             done = run(argv, cwd=str(d.directory), capture_output=True, text=True, check=False, timeout=10)
@@ -167,9 +173,11 @@ def revisions(d: Door, trunk: str, *, run=subprocess.run) -> list[tuple[str, str
 
 def workflow_at(directory, sha, *, run=subprocess.run) -> str | None:
     """The workflow digest at a revision, computed exactly as onboarding computes it from the working tree."""
-    listing = _git(directory, "ls-tree", "--full-tree", sha, "--", ".github/workflows/", run=run)
+    listing = _git(directory, "ls-tree", "-z", "--full-tree", sha, "--", ".github/workflows/", run=run)
     files = []
-    for line in (listing or "").splitlines():
+    for line in (listing or "").split("\0"):   # -z: a path is never quoted, non-ASCII ones included (0.7.9)
+        if not line:
+            continue
         meta, _, path = line.partition("\t")
         mode, kind, obj = meta.split()
         if kind == "blob" and mode != "120000" and path.endswith((".yml", ".yaml")):

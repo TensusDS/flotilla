@@ -308,3 +308,20 @@ def test_measurements_are_written_whole_or_not_at_all(tmp_path, monkeypatch):
     firstrun.measure_once(tmp_path, KEY, {"unit": 3.0})
     assert seen and seen[-1][1] == str(firstrun._path(tmp_path, KEY))
     assert firstrun.load_measurements(tmp_path, KEY) == {"unit": 3.0}
+
+
+@pytest.mark.parametrize("field, other", [("sha", "b" * 40), ("purpose", "push")])
+def test_a_receipt_file_under_another_name_is_not_green_for_it(tmp_path, field, other):
+    """The file name is where a receipt is looked up; what it vouches for is the revision and purpose written in
+    it. A copy under another revision's or purpose's name vouches for nothing there (TODO, ledger part A)."""
+    root = repo_with_origin(tmp_path)
+    sha = git(root, "rev-parse", "HEAD")
+    receipts.run_receipt(root, state=tmp_path / "s", repo_key=KEY, purpose="handover", profile=profile(GREEN),
+                         timeout=60)
+    source = receipts._path(tmp_path / "s", KEY, sha, "handover")
+    wanted = {"sha": sha, "purpose": "handover", field: other}
+    receipts._path(tmp_path / "s", KEY, wanted["sha"], wanted["purpose"]).write_text(source.read_text("utf-8"),
+                                                                                       encoding="utf-8")
+    ok, why = receipts.check_receipt(state=tmp_path / "s", repo_key=KEY, sha=wanted["sha"],
+                                     purpose=wanted["purpose"], profile=profile(GREEN))
+    assert not ok and "another" in why

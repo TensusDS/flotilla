@@ -190,6 +190,9 @@ def check_receipt(*, state: Path, repo_key: str, sha: str, purpose: str, profile
                        "in the branch's tree")
     except (ValueError, OSError):
         return False, f"the {purpose} receipt over {sha[:7]} cannot be read; run it again"
+    if not isinstance(receipt, dict) or receipt.get("sha") != sha or receipt.get("purpose") != purpose:
+        return False, (f"the {purpose} receipt file over {sha[:7]} was written for another revision or purpose; "
+                       "run it again")
     if receipt.get("tiers_fingerprint") != tiers_fingerprint(tiers):
         return False, f"the {purpose} tiers changed since the receipt over {sha[:7]}; run it again"
     ran = receipt.get("tiers")

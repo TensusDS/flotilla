@@ -76,3 +76,62 @@ def test_old_interpreter_hook_in_a_project_tells_the_session(tmp_path):
     done = run_old_hook(tmp_path, project / "src")
     assert done.returncode == 0
     assert "flotilla needs Python 99.0 or newer" in done.stdout
+
+
+def guard_through(entry, cwd, command, env=None):
+    import json
+    payload = json.dumps({"cwd": str(cwd), "tool_input": {"command": command}})
+    return subprocess.run([sys.executable, str(entry), "hook", "guard"], input=payload, capture_output=True,
+                          text=True, env={**os.environ, **(env or {})})
+
+
+def decision(done):
+    import json
+    try:
+        return json.loads(done.stdout)["hookSpecificOutput"].get("permissionDecision", "")
+    except (ValueError, KeyError):
+        return ""
+
+
+def onboarded_dir(tmp_path):
+    project = tmp_path / "app"
+    (project / ".flotilla").mkdir(parents=True)
+    (project / ".flotilla" / "project.toml").write_text("schema = 1\n", encoding="utf-8")
+    return project
+
+
+def test_an_old_interpreter_refuses_a_push_in_a_project(tmp_path):
+    """A plain message on stdout is no refusal: the push ran unchecked (review of 0.7.9)."""
+    fake = tmp_path / "flotilla"
+    fake.write_text(ENTRY.read_text(encoding="utf-8").replace("MINIMUM = (3, 11)", "MINIMUM = (99, 0)"),
+                    encoding="utf-8")
+    project = onboarded_dir(tmp_path)
+    done = guard_through(fake, project, "git push origin main")
+    assert done.returncode == 0 and decision(done) == "deny" and "99.0" in done.stdout
+    assert decision(guard_through(fake, project, "git status")) == ""
+    overridden = guard_through(fake, project, "git push origin main", {"FLOTILLA_GATE_OVERRIDE": "hotfix"})
+    assert decision(overridden) == ""
+
+
+def test_a_package_that_cannot_be_imported_refuses_a_push(tmp_path):
+    """An import error before the hook's own code ran exited 1 with a traceback, which Claude Code does not read
+    as a refusal (review of 0.7.9)."""
+    (tmp_path / "bin").mkdir()
+    entry = tmp_path / "bin" / "flotilla"
+    entry.write_text(ENTRY.read_text(encoding="utf-8"), encoding="utf-8")
+    (tmp_path / "flotilla").mkdir()
+    (tmp_path / "flotilla" / "__init__.py").write_text("raise ImportError('broken install')\n", encoding="utf-8")
+    done = guard_through(entry, tmp_path, "gh pr merge 12 --squash")
+    assert done.returncode == 0 and decision(done) == "deny" and "broken install" in done.stdout
+    calm = guard_through(entry, tmp_path, "ls -la")
+    assert calm.returncode == 0 and decision(calm) == ""
+
+
+def test_the_entrys_push_words_are_the_guards():
+    import importlib.machinery
+    import importlib.util
+    from flotilla import guards
+    loader = importlib.machinery.SourceFileLoader("flotilla_entry", str(ENTRY))
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader("flotilla_entry", loader))
+    loader.exec_module(module)
+    assert module.PUSH_WORDS == guards.PUSH_WORDS
