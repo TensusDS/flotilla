@@ -92,7 +92,20 @@ def system_prompt(seat: Seat, post, *, main: Path) -> str:
             + (": take each task there with `flotilla tree switch <branch>`. " if "claim" in post.may else
                ", on its own branch. ") +
             f"The flotilla command line is {CLI}; every ledger move goes through it. Your name and your post are "
-            "given here: never infer them from the work.\n\n" + post.body.strip())
+            "given here: never infer them from the work. " + REFUSAL + "\n\n" + post.body.strip())
+
+
+#: Every seat, every post (twosuns update to 0.7.1: the person had to ask what to run). One text, so the posts
+#: cannot drift apart on it.
+REFUSAL = ("When a call is refused to you and only the person can allow it - auto mode's classifier or a permission "
+           "rule - send the orchestrator (a helper: the session that raised it; the orchestrator: the person) the "
+           "refusal's text verbatim and your proposal: what the person could run, ready to paste with `!`, or the "
+           "exact edit (the file, what to change, what to keep), and the command that checks it worked; never only "
+           "that it was refused. Record the wait: `flotilla work wait <branch> --on \"the person\" --why \"...\"`. "
+           "Never propose skipping or overriding a check (`--no-verify`, an override variable), disabling a guard or "
+           "a hook, or a permission wider than the one call refused: a push a check refused is fixed by running the "
+           "check, not by passing it, and a flotilla guard's refusal is reported verbatim, never worked around. An "
+           "approve is never yours to propose: say the batch waits for the person's yes.")
 
 
 def argv(seat: Seat, post, profile: dict, *, main: Path, settings_json: str = "", first_prompt: str = "") -> list[str]:

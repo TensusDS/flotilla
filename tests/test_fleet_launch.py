@@ -106,3 +106,24 @@ def test_a_posts_default_mode_is_the_asking_mode():
     import dataclasses
     post = dataclasses.replace(POSTS["main"], permission_mode="default")
     assert launch.permission_mode({"permissions": {"mode": "ask"}}, post) == "default"
+
+
+def post_names():
+    from flotilla.posts import TEMPLATE_DIR
+    return sorted(path.stem for path in TEMPLATE_DIR.glob("*.md"))
+
+
+@pytest.mark.parametrize("post_name", post_names())
+def test_every_seat_is_told_to_hand_the_person_a_refusal_and_a_safe_proposal(tmp_path, post_name):
+    """A refusal only the person can resolve came back as "it was refused" (twosuns update to 0.7.1); what replaces
+    it is the refusal's text and a proposal the person can run - never one that skips a check, disables a guard or
+    widens a permission, and never an approve (review of 0.7.12)."""
+    from types import SimpleNamespace
+    seat = launch.Seat(post_name, f"{post_name} session 1", 1, tmp_path / "tree", f"fleet/{post_name}-1")
+    post = SimpleNamespace(name=post_name, may=["claim"] if post_name in ("main", "minor") else [], body="Body.")
+    text = launch.system_prompt(seat, post, main=tmp_path)
+    assert "the refusal's text verbatim and your proposal" in text and "ready to paste with `!`" in text
+    assert "the command that checks it worked; never only that it was refused" in text
+    assert "Never propose skipping or overriding a check (`--no-verify`, an override variable)" in text
+    assert "An approve is never yours to propose" in text and "never worked around" in text
+    assert "the orchestrator: the person" in text and "a helper: the session that raised it" in text

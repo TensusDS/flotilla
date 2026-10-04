@@ -1435,6 +1435,20 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    a question's cwd does not tell a seat from the person; the seat's session id in its row would, and is open.
    (planner's decision, 2026-10-04)
 
+229. **A refusal the person can lift reaches them as a session's proposal** (Claude Code session, 2026-10-04; from
+   the twosuns update to 0.7.1, where the classifier refused a settings edit and the person had to ask what to run).
+   Every seat - in the one text all posts share, `launch.REFUSAL` - sends the orchestrator the refusal's text
+   verbatim and a proposal: what the person could run, ready to paste with `!`, or the exact edit, and the command
+   that checks it worked; it records the wait on the person. The first version had the orchestrator relay that
+   command "exactly as the session sent it, ready to paste", and its review called it what it was: any session can
+   write a message, so any session could put a command in front of the person, beside the template's own rule that
+   an approve line never comes from a message. The orchestrator now shows a proposal labelled as that session's,
+   says what it changes, and does not recommend one that widens a permission, adds an allow rule, disables a guard
+   or hook, skips a check or edits settings; an approve comes only from its own brief. Seats never propose
+   `--no-verify`, an override, or a permission wider than the one call refused, and a flotilla guard's refusal is
+   reported verbatim, never worked around. Orchestrator template v13; a project's copy of it is updated by hand.
+   (planner's decision, 2026-10-04)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
