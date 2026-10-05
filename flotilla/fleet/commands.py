@@ -42,8 +42,11 @@ def counts_from(args, profile: dict) -> dict:
         if not sep or not value.strip().isdigit():
             raise MoveRefused(f"--post {item}: write NAME=N, for example --post minor=2")
         flags[name.strip()] = flags.get(name.strip(), 0) + int(value)
-    if (args.default or args.fill) and flags:
-        raise MoveRefused("either --default, --fill or counts, not both")
+    recommended = getattr(args, "recommended", False)
+    if sum(map(bool, (args.default, args.fill, recommended, flags))) > 1:
+        raise MoveRefused("either --default, --fill, --recommended or counts, not more than one")
+    if recommended:
+        return {}   # computed by _spawn from `fleet size`, where the census and the machine are read
     if args.default or args.fill:
         return dict((profile.get("fleet") or {}).get("default") or {})
     return flags
@@ -54,7 +57,7 @@ def _lead(ledger, args) -> int:
     interactive session, so flotilla can only issue the name - from the journal, never reissued (review of 0.5.0, I3)."""
     from flotilla.core import caller
     from flotilla.ledger import project
-    if counts_from(args, {}) or args.default or args.fill or args.dry_run:
+    if counts_from(args, {}) or args.default or args.fill or getattr(args, "recommended", False) or args.dry_run:
         raise MoveRefused("--lead takes nothing else: it names this session the orchestrator; "
                           "`flotilla spawn --fill` raises the rest afterwards")
     refused = caller.person_refusal("leads the fleet from their own session")
@@ -141,22 +144,35 @@ def _spawn(ledger, args) -> int:
     if getattr(args, "lead", False):
         return _lead(ledger, args)
     counts = counts_from(args, ledger.profile)
-    if args.fill:   # the default, less the posts this project's live sessions already hold
+    recommended = getattr(args, "recommended", False)
+    if (args.tasks is not None or args.tasks_file) and not recommended:
+        raise MoveRefused("--tasks and --tasks-file size a --recommended fleet; with counts, name the counts")
+    if args.fill or recommended:   # the default, or the recommendation, less the posts live sessions already hold
         from flotilla.ledger import project
+        flag = "--recommended" if recommended else "--fill"
         try:
             mine = project.members(census(), ledger.rows(), project.roots(ledger.root))   # the census is the
             held = dict(spawn._live_posts(ledger, mine))                                   # machine's (M3)
         except CensusUnavailable as err:
-            raise MoveRefused(f"--fill needs the census to see who is alive ({err}); name the counts instead") from err
+            raise MoveRefused(f"{flag} needs the census to see who is alive ({err}); name the counts instead") from err
+        if recommended:
+            from flotilla.fleet import sizing
+            rec = sizing.gather(ledger, tasks=args.tasks, tasks_file=args.tasks_file, census=census, run=ledger.run)
+            for line in sizing.render(rec):
+                print(line)
+            if rec.raise_nothing and not args.anyway:
+                raise MoveRefused(f"{rec.raise_nothing}; `--anyway` raises it all the same")
+            counts = {post: n for post, n in rec.counts.items() if post != "orchestrator" and n}
         unnamed = _unnamed_leads(ledger, mine)
         if unnamed:
             now_, coming = unnamed[0]
             raise MoveRefused(f"the leading session `{now_}` does not carry its name `{coming}` yet, and seats raised "
-                              "now would learn the old one; run --fill after the person's next message, which "
+                              f"now would learn the old one; run {flag} after the person's next message, which "
                               f"brings the name (or after they type `/rename {coming}`)")
         counts = compose.fill(counts, held)
         if not counts:
-            print("nothing to raise: the live sessions already hold the default composition")
+            print(f"nothing to raise: the live sessions already hold the {'recommended' if recommended else 'default'} "
+                  "composition")
             for line in _gaps(ledger, {}):   # an old default may be whole and still lack a leader (0.6.8, M1)
                 print(f"gap: {line}")
             return 0
@@ -250,6 +266,8 @@ def _fleet(ledger, args) -> int:
         return _down(ledger)
     if getattr(args, "action", None) == "clean":
         return _clean(ledger, act=args.yes)
+    if getattr(args, "action", None) == "size":
+        return _size(ledger, args)
     try:
         sessions = census()
     except CensusUnavailable as err:
@@ -274,6 +292,23 @@ def _fleet(ledger, args) -> int:
         lock = "locked" if item["locked"] else "not locked"
         work = ", ".join(f"{row.branch} ({row.state})" for row in item["work"]) or "no open work"
         print(f"{item['name']}  ({item['post'] or 'no post'})  {live}\n    tree {tree}{dirty}, {lock}; {work}")
+    return 0
+
+
+def _size(ledger, args) -> int:
+    """The fleet this machine and this backlog call for, and the cap that set it; raises nothing (fleet sizing)."""
+    import json
+
+    from flotilla.fleet import sizing
+    rec = sizing.gather(ledger, tasks=args.tasks, tasks_file=args.tasks_file, census=census, run=ledger.run)
+    if args.json:
+        print(json.dumps({"counts": rec.counts, "authors": rec.authors, "caps": rec.caps, "binding": rec.binding,
+                          "lines": rec.lines, "raise_nothing": rec.raise_nothing}, indent=2))
+        return 0
+    for line in sizing.render(rec):
+        print(line)
+    if not rec.raise_nothing:
+        print("raise it: `flotilla spawn --recommended --dry-run` shows the seats, without --dry-run raises them")
     return 0
 
 

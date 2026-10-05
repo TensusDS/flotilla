@@ -134,3 +134,21 @@ def test_a_wholly_unknown_backlog_is_no_cap():
     b = Backlog([Source("GitHub issues", None, None, "gh is not installed")])
     rec = recommend(machine(), b, PACE, {})
     assert "backlog" not in rec.caps and rec.binding != "backlog"
+
+
+def test_a_seat_tree_is_measured_where_one_exists(tmp_path, monkeypatch):
+    """A seat tree shares the objects; the main checkout carries them all. An existing seat tree is what a new one
+    will cost, so it is measured first; the main checkout's tracked files only stand in when there is none."""
+    from types import SimpleNamespace
+
+    from flotilla.core import resources
+    from flotilla.fleet import sizing
+    main, seat = tmp_path / "app", tmp_path / "app-main-1"
+    main.mkdir()
+    seat.mkdir()
+    asked = []
+    monkeypatch.setattr(resources, "tree_mb", lambda path, **kw: asked.append(path) or 42)
+    rows = {"r1": SimpleNamespace(tree=str(main)), "r2": SimpleNamespace(tree=str(seat))}
+    ledger = SimpleNamespace(rows=lambda: rows, run=None)
+    size, note = sizing._tree_size(ledger, main)
+    assert size == 42 and asked == [seat] and str(seat) in note

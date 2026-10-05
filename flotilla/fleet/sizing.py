@@ -12,7 +12,9 @@ no cap (ruling of Task 5).
 from __future__ import annotations
 
 import math
+import subprocess
 from dataclasses import dataclass, field
+from pathlib import Path
 
 SEARCH = 200   # no cap allows more authors than this; past it the sizing says "at least"
 DISK_SHARE = 0.5
@@ -168,3 +170,107 @@ def recommend(machine: Machine, backlog, pace, profile) -> Recommendation:
     lines.append("code: not measured in this version")
     lines.append("money: not measured in this version")
     return Recommendation(counts, authors, dict(caps), binding, lines, raise_nothing)
+
+
+def handover_cost(profile, seconds: dict, peaks: dict) -> tuple[float | None, int | None, str]:
+    """(seconds, peak MB, note) of one handover's run: the tiers required for a handover, run one after another, so
+    their seconds add up and the heaviest one's peak is the run's. A tier never measured makes the time unknown -
+    never zero (design, section 2.1); the peak is the largest measured one, said when some are missing."""
+    tiers = [tier.get("name") for tier in ((profile.get("tests") or {}).get("tier") or [])
+             if "handover" in (tier.get("required_for") or [])]
+    if not tiers:
+        return None, None, "no tier is required for a handover"
+    missing = [name for name in tiers if seconds.get(name) is None]
+    total = None if missing else float(sum(seconds[name] for name in tiers))
+    known = [peaks[name] for name in tiers if peaks.get(name) is not None]
+    peak = max(known) if known else None
+    notes = []
+    if missing:
+        notes.append(f"never run green here: {', '.join(missing)}")
+    if peak is None:
+        notes.append("peak memory never measured (a receipt run records it)")
+    elif len(known) < len(tiers):
+        notes.append("peak memory measured for some tiers only")
+    return total, peak, "; ".join(notes)
+
+
+def _tree_size(ledger, main) -> tuple[int | None, str]:
+    """A seat tree's size: an existing seat tree measured with du (its `.git` is a file, the objects are shared);
+    with none yet, the main checkout's tracked files - build artefacts not counted, and said so."""
+    from flotilla.core import resources
+    main = Path(main).resolve()
+    for row in ledger.rows().values():
+        tree = Path(row.tree) if row.tree else None
+        if tree is not None and tree.is_dir() and tree.resolve() != main:
+            size = resources.tree_mb(tree)
+            if size is not None:
+                return size, f"measured on {tree}"
+    try:
+        listed = ledger.run(["git", "-C", str(main), "ls-files", "-z"], capture_output=True, text=True,
+                            check=False, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return None, "no seat tree yet and git ls-files could not be asked"
+    if listed.returncode != 0:
+        return None, "no seat tree yet and git ls-files failed"
+    total = 0
+    for name in filter(None, listed.stdout.split("\0")):
+        try:
+            total += (main / name).lstat().st_size
+        except OSError:
+            continue
+    return max(1, -(-total // 2**20)), "no seat tree yet: the checkout's tracked files, build artefacts not counted"
+
+
+def gather(ledger, *, tasks=None, tasks_file=None, census=None, run=subprocess.run, now=None) -> Recommendation:
+    """Read this machine and this repository, then recommend: one census call, the measurements file, the ledger,
+    the backlog sources the profile names (gh only when a tracker is set)."""
+    import datetime as dt
+
+    from flotilla.core import resources
+    from flotilla.fleet import backlog as backlog_
+    from flotilla.fleet import launch, spawn
+    from flotilla.fleet import pace as pace_
+    from flotilla.lane.commands import capacity
+    from flotilla.onboard.firstrun import load_measurements, load_peaks
+
+    floor, seat, setting_notes = spawn.memory_settings(ledger)
+    main = launch.main_checkout(ledger.root, run=ledger.run)
+    notes = list(setting_notes)
+    live = None
+    if census is not None:
+        try:
+            from flotilla.ledger import project
+            mine = project.members(census(), ledger.rows(), project.roots(ledger.root))
+            live = sum(spawn._live_posts(ledger, mine).values())
+        except Exception as err:  # noqa: BLE001 - the census is one signal; the sizing stands without it
+            notes.append(f"census: unknown ({err})")
+    try:
+        seconds = load_measurements(ledger.state_dir, ledger.repo_key)
+    except (OSError, ValueError):
+        seconds = {}
+    run_seconds, run_mb, run_note = handover_cost(ledger.profile, seconds, load_peaks(ledger.state_dir,
+                                                                                       ledger.repo_key))
+    if run_note:
+        notes.append(f"test runs: {run_note}")
+    tree, tree_note = _tree_size(ledger, main)
+    notes.append(f"tree size: {tree_note}")
+    machine = Machine(free_mb=resources.available_mb(), floor_mb=floor, seat_mb=seat, live_seats=live,
+                      run_mb=run_mb, run_seconds=run_seconds, lane_capacity=capacity(),
+                      free_disk_mb=resources.free_disk_mb(Path(main).parent), tree_mb=tree)
+    rows = ledger.rows()
+    work = backlog_.gather(main, ledger.profile, rows, tasks=tasks, tasks_file=tasks_file, run=run)
+    measured = pace_.pace(rows, now=now or dt.datetime.now(dt.timezone.utc))
+    rec = recommend(machine, work, measured, ledger.profile)
+    rec.lines.extend(f"  note: {line}" for line in notes)
+    return rec
+
+
+def render(rec: Recommendation) -> list[str]:
+    """The recommendation as the person reads it: the counts first, then why."""
+    order = ("orchestrator", "main", "minor", "reviewer", "sender", "judge")
+    parts = [f"{post} {rec.counts[post]}" + (" (this session)" if post == "orchestrator" else "")
+             for post in order if rec.counts.get(post)]
+    out = [f"recommended: {', '.join(parts)}", *rec.lines]
+    if rec.raise_nothing:
+        out.append(rec.raise_nothing)
+    return out

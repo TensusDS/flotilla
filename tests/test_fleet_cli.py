@@ -57,7 +57,7 @@ def test_spawn_needs_a_composition_and_refuses_both_kinds_at_once(tmp_path, monk
     code, out = run_cli("spawn", "--dry-run", "--root", str(root))
     assert code == 2 and "name a composition" in out
     code, out = run_cli("spawn", "--default", "-r", "1", "--dry-run", "--root", str(root))
-    assert code == 2 and "either --default, --fill or counts" in out
+    assert code == 2 and "either --default, --fill, --recommended or counts" in out
 
 
 def test_spawn_without_the_census_refuses_to_launch(tmp_path, monkeypatch):
@@ -258,3 +258,85 @@ def test_fleet_clean_needs_the_census(tmp_path, monkeypatch):
     root = onboarded(tmp_path, monkeypatch)
     code, out = run_cli("fleet", "clean", "--yes", "--root", str(root))
     assert code == 2 and "census" in out
+
+
+def roomy(monkeypatch):
+    from flotilla.core import resources
+    monkeypatch.setattr(resources, "available_mb", lambda **kw: 64_000)
+    monkeypatch.setattr(resources, "free_disk_mb", lambda path: 500_000)
+
+    def never(*a, **kw):
+        raise AssertionError("fleet size must raise nothing")
+    monkeypatch.setattr("flotilla.fleet.spawn.spawn", never)
+    monkeypatch.setattr("flotilla.fleet.launch.launch", never, raising=False)
+
+
+def test_fleet_size_prints_the_recommendation_and_its_cap(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    roomy(monkeypatch)
+    code, out = run_cli("fleet", "size", "--root", str(root))
+    assert code == 0, out
+    assert out.startswith("recommended: orchestrator 1 (this session), main 1")
+    assert "limited by backlog" in out and "code: not measured in this version" in out
+
+
+def test_fleet_size_json_and_named_tasks_move_the_backlog_cap(tmp_path, monkeypatch):
+    import json
+    root = onboarded(tmp_path, monkeypatch)
+    roomy(monkeypatch)
+    code, out = run_cli("fleet", "size", "--json", "--tasks", "4", "--root", str(root))
+    assert code == 0, out
+    data = json.loads(out)
+    assert {"counts", "caps", "binding", "authors", "lines", "raise_nothing"} <= set(data)
+    assert data["caps"]["backlog"] == 4 and data["counts"]["main"] == 4
+
+
+def test_fleet_size_reads_a_tasks_file(tmp_path, monkeypatch):
+    import json
+    root = onboarded(tmp_path, monkeypatch)
+    roomy(monkeypatch)
+    tasks = tmp_path / "tasks.txt"
+    tasks.write_text("one\ntwo\n[minor] three\n")
+    code, out = run_cli("fleet", "size", "--json", "--tasks-file", str(tasks), "--root", str(root))
+    data = json.loads(out)
+    assert (data["counts"]["main"], data["counts"]["minor"]) == (2, 1)
+
+
+def test_spawn_recommended_plans_the_recommendation_beside_the_posts_held(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    roomy(monkeypatch)
+    monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [])
+    code, out = run_cli("spawn", "--recommended", "--tasks", "2", "--dry-run", "--root", str(root))
+    assert code == 0, out
+    assert "recommended: orchestrator 1 (this session), main 2" in out
+    assert "main session 1" in out and "main session 2" in out and "review session 1" in out
+    assert "sender session 1" in out or "sender" in out
+    assert "orchestrator session" not in out.split("recommended:")[1].split("\n", 1)[1]
+    assert "dry run: 4 session(s) planned" in out
+
+
+def test_spawn_recommended_takes_no_counts_beside_it(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    roomy(monkeypatch)
+    monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [])   # so only the mix can refuse it
+    code, out = run_cli("spawn", "--recommended", "-M", "1", "--dry-run", "--root", str(root))
+    assert code == 2 and "--recommended or counts, not more than one" in out
+
+
+def test_spawn_recommended_without_the_census_refuses(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    roomy(monkeypatch)
+    code, out = run_cli("spawn", "--recommended", "--dry-run", "--root", str(root))
+    assert code == 2 and "census" in out
+
+
+def test_spawn_recommended_with_no_room_refuses_unless_anyway(tmp_path, monkeypatch):
+    from flotilla.core import resources
+    root = onboarded(tmp_path, monkeypatch)
+    roomy(monkeypatch)
+    monkeypatch.setattr(resources, "available_mb", lambda **kw: 2100)
+    monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [])
+    code, out = run_cli("spawn", "--recommended", "--dry-run", "--root", str(root))
+    assert code == 2 and "raise nothing now" in out
+    code, out = run_cli("spawn", "--recommended", "--dry-run", "--anyway", "--root", str(root))
+    assert code == 0 and "dry run:" in out
