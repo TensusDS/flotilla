@@ -37,6 +37,7 @@ class TierRun:
     peak_mb: int | None = None   # the process group's largest resident memory, green runs only (fleet sizing)
     cores: float | None = None   # CPU seconds over wall seconds, green runs only (lane admission, stage 1)
     busy: float | None = None    # the machine's busy share meanwhile, green runs only
+    elapsed: float | None = None  # wall time whatever the outcome: a red or timed-out tier still held the lane
 
 
 def _tail(text: str) -> str:
@@ -69,7 +70,8 @@ def run_tier(name: str, command: str, cwd: Path, *, timeout: float) -> TierRun:
             proc.stdout.close()
             proc.wait()
             output = ""
-        return TierRun(name, "timed-out", None, None, _tail(output or ""))
+        return TierRun(name, "timed-out", None, None, _tail(output or ""),
+                       elapsed=round(time.monotonic() - started, 2))
     except BaseException:
         # stopped (`flotilla lane stop`, the session ending): the tier's whole group goes with it, never left
         # computing unbooked (review of 0.6.2, I3)
@@ -93,7 +95,7 @@ def run_tier(name: str, command: str, cwd: Path, *, timeout: float) -> TierRun:
     usage = sampler.usage if status == "green" else None
     return TierRun(name, status, seconds if status == "green" else None, _summary(output), _tail(output),
                    proc.returncode, usage.peak_mb if usage else None, usage.cores if usage else None,
-                   usage.busy if usage else None)
+                   usage.busy if usage else None, seconds)
 
 
 def _path(state: Path, repo_key: str) -> Path:

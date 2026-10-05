@@ -23,7 +23,7 @@ HELD, RELEASED, WAITING, EXPIRED, LEFT = "held", "released", "waiting", "expired
 #: or a later one: a seat on an older plugin counts slots and knows nothing of reservations (lane admission, section 3).
 RULE = 1
 FIELDS = ("who", "note", "pid", "mark", "run_for", "why", "command", "ladder", "will_run", "project", "rule",
-          "seconds", "peak_mb", "cores", "busy", "verdict", "ran", "cut")
+          "seconds", "peak_mb", "cores", "busy", "verdict", "ran", "cut", "inside")
 MEASURED = ("seconds", "peak_mb", "cores", "busy", "verdict", "ran")
 LISTS = ("ladder", "will_run")
 MAX_TEXT = 2048   # a command and each of its signatures: every session folds the whole journal, so text is bounded
@@ -42,8 +42,10 @@ def _figure(key, value):
 def _tier(value) -> dict | None:
     if not isinstance(value, dict) or not isinstance(value.get("name"), str):
         return None
-    tier = {"name": visible(value["name"])[:200], "status": value.get("status") if isinstance(value.get("status"), str)
+    tier = {"name": visible(value["name"][:200]), "status": value.get("status") if isinstance(value.get("status"), str)
             else ""}
+    if value.get("kind") == "setup":
+        tier["kind"] = "setup"
     for key in BOUNDS:
         tier[key] = _figure(key, value.get(key))
     return tier
@@ -61,6 +63,8 @@ def _clean(key, value):
         return value is True
     if key in ("verdict", "project", "command"):
         return visible(value[:MAX_TEXT]) if isinstance(value, str) else ""   # cut first: visible walks every char
+    if key == "inside":
+        return visible(value[:40]) if isinstance(value, str) else ""
     if key == "rule":
         return value if isinstance(value, int) and not isinstance(value, bool) else None
     return visible(value) if key in TEXT and isinstance(value, str) else value
@@ -100,6 +104,7 @@ class Booking:
     verdict: str = ""
     ran: list = field(default_factory=list)          # a receipt's tiers as they ran
     cut: bool = False                                # swept: its process died, nothing was measured
+    inside: str = ""                                 # a run inside this booking, recorded beside it, never booked
 
 
 def fold(records) -> dict[str, Booking]:
@@ -160,6 +165,17 @@ class Book:
                                run_for=run_for, command=command[:MAX_TEXT],
                                ladder=[step[:MAX_TEXT] for step in ladder], will_run=list(will_run),
                                project=project, rule=RULE)
+
+    def record(self, inside: str, *, who: str, note: str, command: str = "", ladder=(), will_run=(),
+               project: str = "", measured: dict | None = None) -> Booking:
+        """A run inside a held booking: written once, already released, so it teaches its command's history and
+        holds nothing. Never a new state - a flotilla before stage 1 folding this journal sees a released booking."""
+        fields = {k: v for k, v in (measured or {}).items() if k in MEASURED and v is not None}
+        with self.store.transaction(KEY) as tx:
+            found = fold(tx.read().records)
+            return self._write(tx, f"b{len(found) + 1}", RELEASED, who=who, note=note, command=command[:MAX_TEXT],
+                               ladder=[step[:MAX_TEXT] for step in ladder], will_run=list(will_run),
+                               project=project, rule=RULE, inside=inside, **fields)
 
     def grant(self, booking_id: str, *, slots: int, by_hand: bool = False) -> Booking | None:
         with self.store.transaction(KEY) as tx:

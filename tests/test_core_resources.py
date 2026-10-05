@@ -183,10 +183,12 @@ def test_spawn_and_the_lane_see_the_container_limit_too(monkeypatch):
         spec.loader.exec_module(copy)
         return copy
     monkeypatch.setattr(resources, "cgroup_room_mb", lambda **kw: (500, "the memory limit of 600 MB on cgroup /x"))
-    assert pristine(spawn).available_mb() == 500
+    host = pristine(spawn)
+    host.read_available_mb = lambda *a, **kw: 9000   # the host's figure fixed: live memory moves between two reads
+    assert host.available_mb() == 500
     assert pristine(machine)._meminfo() == 500 * 1024
     monkeypatch.setattr(resources, "cgroup_room_mb", lambda **kw: (None, ""))
-    assert pristine(spawn).available_mb() == pristine(spawn).read_available_mb()
+    assert host.available_mb() == 9000
 
 
 def _container(tmp_path, leaf):

@@ -3,6 +3,13 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.7.16 - 2026-10-05
+
+- **The lane measures what it held but did not record**: a receipt's setup and its red and timed-out tiers count in
+  how long it held the lane; a run stopped mid-way is recorded as killed with its time; a receipt run inside a
+  `lane run` teaches its tiers' history; an estimate whose exact command never ran green takes its duration from a
+  coarser match and says so.
+
 ## 0.7.15 - 2026-10-05
 
 - **Every run in the lane is measured** - its time, peak memory (every process it started), the cores it used and

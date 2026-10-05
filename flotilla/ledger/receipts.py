@@ -89,7 +89,8 @@ def _setup_path(state: Path, repo_key: str, tree: Path) -> Path:
     return Path(state) / "receipts" / repo_key / f"setup-{where}.json"
 
 
-def set_up(tree: Path, *, state: Path, repo_key: str, profile: dict, timeout: float, force: bool = False) -> str:
+def set_up(tree: Path, *, state: Path, repo_key: str, profile: dict, timeout: float, force: bool = False,
+           report: dict | None = None) -> str:
     """Run the profile's tree setup in `tree` when its lockfiles changed since the last one there, or it never ran
     (worldcore field test W24: a sender's fresh tree had no node_modules, and its push receipt read as red tests).
     Returns what was done; a failed setup refuses the receipt, naming it."""
@@ -104,6 +105,8 @@ def set_up(tree: Path, *, state: Path, repo_key: str, profile: dict, timeout: fl
     except (OSError, ValueError):
         pass
     done = run_tier("setup", command, Path(tree), timeout=timeout)
+    if report is not None:   # setup holds the lane too: the lane's journal measures it (lane admission, stage 1)
+        report.update(_tier_result(done))
     if done.status != "green":
         code = f"exit {done.exit}" if done.exit is not None else "stopped for its time"
         raise ReceiptRefused(f"not run: the tree setup `{command}` failed in {tree} ({code}); its last lines:\n"
@@ -133,9 +136,10 @@ def run_receipt(tree: Path, *, state: Path, repo_key: str, purpose: str, profile
         raise ReceiptRefused(f"{tree} has uncommitted changes, or git could not say; a receipt describes one "
                              "revision, so commit first")
     tiers = tiers_for(profile, purpose)
-    prepared = ""
+    prepared, setup_report = "", {}
     if to_run(tree, state=state, repo_key=repo_key, purpose=purpose, profile=profile, run=run):
-        prepared = set_up(tree, state=state, repo_key=repo_key, profile=profile, timeout=timeout, force=setup)
+        prepared = set_up(tree, state=state, repo_key=repo_key, profile=profile, timeout=timeout, force=setup,
+                          report=setup_report)
     # A tier's answer depends on the files it tests, not on the commit that carries them: a merge that changes no
     # file is the files the author's receipt already tested. A green answer is reused; a red one runs again.
     files = gitq.files_of(tree, sha, run=run)
@@ -149,8 +153,7 @@ def run_receipt(tree: Path, *, state: Path, repo_key: str, purpose: str, profile
                                        f"({seen.get('summary', '')})"})
             continue
         r = run_tier(tier["name"], tier["command"], Path(tree), timeout=timeout)
-        result = {"name": r.name, "status": r.status, "summary": r.summary or "", "seconds": r.seconds,
-                  "peak_mb": r.peak_mb, "cores": r.cores, "busy": r.busy}
+        result = _tier_result(r)
         if r.status != "green":   # why it is not green travels with it (worldcore field test W23)
             result.update({"exit": r.exit, "tail": r.tail})
             if prepared.startswith("skipped"):   # a tree whose dependencies went missing reads as red tests
@@ -168,6 +171,7 @@ def run_receipt(tree: Path, *, state: Path, repo_key: str, purpose: str, profile
         raise ReceiptRefused(f"{tree} changed while its tiers ran (a commit, or uncommitted changes); what ran is "
                              "not what is committed, so there is no receipt - run it again on a tree nobody edits")
     receipt = {"sha": sha, "purpose": purpose, "at": now_iso(), "tiers_fingerprint": tiers_fingerprint(tiers),
+               **({"setup": setup_report} if setup_report else {}),
                "tiers": results}
     if files and learned:
         known_path = _files_path(state, repo_key, files)
@@ -182,22 +186,37 @@ def run_receipt(tree: Path, *, state: Path, repo_key: str, purpose: str, profile
     return receipt
 
 
+def _tier_result(r) -> dict:
+    return {"name": r.name, "status": r.status, "summary": r.summary or "", "seconds": r.seconds,
+            "elapsed": r.elapsed, "peak_mb": r.peak_mb, "cores": r.cores, "busy": r.busy}
+
+
 def measured_of(result: dict) -> dict:
-    """What a receipt's booking took, for the lane's journal: the tiers that ran (a reused green ran nothing) - their
-    seconds summed, as they ran one after another, and the largest peak, cores and busy share of any of them."""
+    """What a receipt's booking took, for the lane's journal. Its seconds are how long it held the lane: the setup and
+    every tier that ran, red and timed-out ones included (a reused green ran nothing). Each tier's own record keeps
+    its duration only where one means something: a green tier's time, a timed-out tier's as "at least", a red tier's
+    none - it ended early."""
     ran = [tier for tier in result.get("tiers") or [] if not str(tier.get("summary") or "").startswith("reused:")]
+    if result.get("setup"):
+        ran = [{**result["setup"], "kind": "setup"}, *ran]
     if not ran:
         return {}
 
     def most(key):
         values = [tier[key] for tier in ran if tier.get(key) is not None]
         return max(values) if values else None
-    seconds = [tier["seconds"] for tier in ran if tier.get("seconds") is not None]
-    return {"seconds": round(sum(seconds), 2) if len(seconds) == len(ran) else None, "peak_mb": most("peak_mb"),
-            "cores": most("cores"), "busy": most("busy"),
+
+    def own(tier):
+        seconds = tier.get("seconds") if tier.get("status") == "green" else \
+            tier.get("elapsed") if tier.get("status") == "timed-out" else None
+        return {"name": tier.get("name"), "status": tier.get("status"), "seconds": seconds,
+                **{key: tier.get(key) for key in ("peak_mb", "cores", "busy")},
+                **({"kind": "setup"} if tier.get("kind") == "setup" else {})}
+    held = [tier.get("elapsed") if tier.get("elapsed") is not None else tier.get("seconds") for tier in ran]
+    return {"seconds": round(sum(held), 2) if all(h is not None for h in held) else None,
+            "peak_mb": most("peak_mb"), "cores": most("cores"), "busy": most("busy"),
             "verdict": "green" if all(tier.get("status") == "green" for tier in ran) else "red",
-            "ran": [{key: tier.get(key) for key in ("name", "status", "seconds", "peak_mb", "cores", "busy")}
-                    for tier in ran]}
+            "ran": [own(tier) for tier in ran]}
 
 
 def check_receipt(*, state: Path, repo_key: str, sha: str, purpose: str, profile: dict) -> tuple[bool, str]:
