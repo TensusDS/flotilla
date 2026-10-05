@@ -182,6 +182,29 @@ configured outside plugins still start in every seat. `flotilla spawn` refuses t
 memory would fall below `fleet.memory_floor_mb` (2000 MB by default), counting about 800 MB per seat it is about to
 raise; `--anyway` overrides.
 
+**How big a fleet.** `flotilla fleet size` recommends one from this machine and this project, and names the cap that
+set it; `/flotilla:spawn` with no composition shows it and asks before raising anything:
+
+```
+recommended: orchestrator 1 (this session), main 2, minor 1, reviewer 1, sender 1
+authors 3 = max(1, min(backlog 3, memory 3, test runs 3, disk 200)) - limited by backlog
+```
+
+Authors are the smallest of five caps: the **backlog** (ledger rows claimed or being fixed, tasks the orchestrator
+names with `--tasks N` or `--tasks-file`, open GitHub issues when `[fleet.sizing] tracker = "github"`, and open items
+in TODO files), **memory** (free memory above the floor, a seat's cost for each seat the fleet brings, and room for
+one test run), **test runs** (how many handovers the lane can verify in an hour - from the time and peak memory the
+receipts recorded on this machine - against how fast an author hands over, measured from the ledger), **disk** (half
+the free disk, in seat trees) and `max_seats`. Reviewers grow with the authors and the measured review time; a judge
+comes when the profile requires one or has a deploy target. A signal that could not be read is named and left out,
+never guessed. An item counts as minor only where its source says so (a `[minor]` prefix, a `size:small` label).
+`flotilla spawn --recommended` raises the recommendation, less the posts live sessions already hold. Not measured
+yet: how the code splits into independent areas, and subscription limits - later releases.
+
+`[fleet.sizing]` in the profile: `tracker` (`"github"`), `labels` (issues with any of them), `minor_labels`
+(`["size:small"]`), `backlog_files` (globs from the repository root, `["TODO.md"]` by default, `[]` for none),
+`minor_prefix` (`"[minor]"`), `max_seats` (a ceiling never exceeded).
+
 ### 3. Talk to the orchestrator
 
 If this session leads the fleet, you are already talking to it. Otherwise:

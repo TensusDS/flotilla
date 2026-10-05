@@ -1462,6 +1462,17 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    unawares; `flotilla doctor` now names each post older than the template shipped under its name.
    (planner's decision, 2026-10-04)
 
+231. **A fleet is sized by its smallest cap, and the cap is named** (Claude Code session, 2026-10-04; design
+   `docs/specs/2026-10-04-fleet-sizing-design.md`, stage 1). People raised nine seats with five idle, or too few, and
+   nothing said how many this project wants on this machine. `flotilla fleet size` recommends authors as the
+   smallest of the backlog, memory, test runs, disk and `max_seats`, each solved for the whole fleet the authors
+   bring (reviewers grow with them), and prints which cap set the number; a signal that could not be read is named
+   and left out. The test-run cap rests on a new measurement: the lane samples a tier's process group once a second
+   and receipts keep each tier's worst peak beside its time. The orchestrator is the person's own session and counts
+   in no cap; seats already running are inside the free memory and are never subtracted again. When the smallest
+   fleet does not fit, the answer is "raise nothing now", and `spawn --recommended` refuses without `--anyway`. Code
+   coupling and money are later stages; this version says so in its output. (planner's decision, 2026-10-04)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
