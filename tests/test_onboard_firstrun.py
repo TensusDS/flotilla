@@ -153,3 +153,11 @@ def test_a_torn_file_is_repaired_even_when_nothing_new_was_measured(tmp_path):
     _bad(tmp_path, "[seconds]\nunit = ")
     firstrun.measure_peaks(tmp_path, "k", {"unit": None})
     assert firstrun.measurements_problem(tmp_path, "k") == ""
+
+
+def test_a_tier_records_the_cores_it_used(tmp_path):
+    import sys
+    code = "import time\nend = time.process_time() + 0.6\nwhile time.process_time() < end:\n    pass\n"
+    (tmp_path / "burn.py").write_text(code)
+    run = firstrun.run_tier("unit", f'"{sys.executable}" burn.py', tmp_path, timeout=30)
+    assert run.status == "green" and run.cores is not None and run.cores > 0.3

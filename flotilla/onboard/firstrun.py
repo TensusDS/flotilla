@@ -35,6 +35,8 @@ class TierRun:
     tail: str
     exit: int | None = None   # the command's exit code; None when it was stopped for its time
     peak_mb: int | None = None   # the process group's largest resident memory, green runs only (fleet sizing)
+    cores: float | None = None   # CPU seconds over wall seconds, green runs only (lane admission, stage 1)
+    busy: float | None = None    # the machine's busy share meanwhile, green runs only
 
 
 def _tail(text: str) -> str:
@@ -53,8 +55,8 @@ def run_tier(name: str, command: str, cwd: Path, *, timeout: float) -> TierRun:
     proc = subprocess.Popen(["/bin/sh", "-c", command], cwd=cwd, stdin=subprocess.DEVNULL,
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                             encoding="utf-8", errors="replace", start_new_session=True)
-    from flotilla.lane.peak import GroupPeak
-    sampler = GroupPeak(proc.pid)
+    from flotilla.lane.measure import Measurer
+    sampler = Measurer(proc.pid)
     try:
         with sampler:
             output, _ = proc.communicate(timeout=timeout)
@@ -88,8 +90,10 @@ def run_tier(name: str, command: str, cwd: Path, *, timeout: float) -> TierRun:
         status = "green"
     else:
         status = "red"
+    usage = sampler.usage if status == "green" else None
     return TierRun(name, status, seconds if status == "green" else None, _summary(output), _tail(output),
-                   proc.returncode, sampler.peak_mb if status == "green" else None)
+                   proc.returncode, usage.peak_mb if usage else None, usage.cores if usage else None,
+                   usage.busy if usage else None)
 
 
 def _path(state: Path, repo_key: str) -> Path:

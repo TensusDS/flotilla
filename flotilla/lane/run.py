@@ -19,6 +19,7 @@ from collections import deque
 from dataclasses import dataclass
 
 from flotilla.core.text import strip_ansi
+from flotilla.lane.measure import Measurer, Usage
 
 SUMMARY = re.compile(r"\b\d+ (?:passed|failed|errors?|skipped|xfailed|xpassed|deselected)\b")
 WRAPPER = re.compile(r"^(?:ba|z|)sh: |^kill: |^/bin/(?:ba)?sh: ")   # a shell's own error, not the command's
@@ -31,6 +32,7 @@ class RunResult:
     verdict: str
     summary: str
     signal: int | None
+    usage: Usage | None = None   # what the run took (lane admission, stage 1); None when it never started
 
 
 def summarize(lines) -> str:
@@ -75,6 +77,7 @@ def execute(command: list[str], *, cwd=None, popen=subprocess.Popen, out=None, c
                         errors="replace", bufsize=1, start_new_session=True)
     except OSError as err:
         return RunResult(127, "red", f"could not start: {err}", None)
+    measurer = Measurer(process.pid).__enter__()
     tail: deque = deque(maxlen=200)
     over = threading.Event()
 
@@ -92,15 +95,18 @@ def execute(command: list[str], *, cwd=None, popen=subprocess.Popen, out=None, c
             tail.append(line.rstrip("\n"))
     except BaseException:
         _stop(process)   # the booking is about to be released; the command must not go on computing under it
+        measurer.__exit__(None, None, None)
         raise
     finally:
         if timer is not None:
             timer.cancel()
     verdict, signal_number, code = verdict_of(process.wait())
+    measurer.__exit__(None, None, None)
+    usage = measurer.usage
     summary = summarize(tail)
     if over.is_set():
         return RunResult(code if code else 124, "killed",
-                         f"stopped at the ceiling of {ceiling:g} s - no verdict (last line: {summary})", signal_number)
+                         f"stopped at the ceiling of {ceiling:g} s - no verdict (last line: {summary})", signal_number, usage)
     if verdict == "killed":
         summary = f"killed by signal {signal_number} - no verdict (last line: {summary})"
-    return RunResult(code, verdict, summary, signal_number)
+    return RunResult(code, verdict, summary, signal_number, usage)

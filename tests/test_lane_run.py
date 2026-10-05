@@ -107,3 +107,14 @@ def test_a_run_past_its_ceiling_is_stopped_with_everything_it_started(tmp_path):
 def test_a_run_under_its_ceiling_is_untouched():
     result = run.execute([sys.executable, "-c", "print('3 passed')"], out=io.StringIO(), ceiling=30)
     assert result.verdict == "green" and result.summary == "3 passed"
+
+
+def test_a_run_carries_its_usage():
+    result, _ = execute("import time; b = bytearray(50_000_000); time.sleep(1.2); print('1 passed')")
+    assert result.usage is not None and result.usage.seconds >= 1.0
+    assert result.usage.peak_mb is None or result.usage.peak_mb >= 40
+
+
+def test_a_run_that_could_not_start_has_no_usage():
+    result = run.execute(["/no/such/program"], out=io.StringIO())
+    assert result.usage is None
