@@ -3,6 +3,15 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.7.15 - 2026-10-05
+
+- **Every run in the lane is measured** - its time, peak memory (every process it started), the cores it used and
+  how busy the machine was meanwhile - and `flotilla lane` shows each booking's estimate and where it comes from.
+  Runs of one command are joined across seat trees and wrappers (`timeout`, `sh -c "cd X && ..."`, `env`). This is
+  the first stage of admitting runs by a budget of cores and memory; admission itself is unchanged.
+- **The lane's journal survives a bad line**: a hand-written entry of the wrong type no longer stops `flotilla lane`
+  for every session, and a command's text is bounded.
+
 ## 0.7.14 - 2026-10-05
 
 - **`flotilla fleet size` recommends a fleet for this machine and this backlog, and names the cap that set it.**

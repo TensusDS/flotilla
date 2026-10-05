@@ -56,6 +56,24 @@ Each is a limitation README states today, judged fixable in principle; none is p
 - Onboarding a repository whose only workflows are symlinks now records no CI and reads no job ids from them; it matters
   only if GitHub Actions runs a symlinked workflow, which nobody measured. *(checked 2026-10-04 on 0.7.9: measure)*
 
+## From lane admission, stage 1, and its reviews (2026-10-05)
+
+- Stages 2-4 of `docs/specs/2026-10-05-lane-resource-admission-design.md`: budget admission (CPU 1.5x cores, memory
+  read under the lock with reservations), overtaking with the shadow guard, fleet size reading the lane. Stage 2 must
+  treat an estimate as a hint with a ceiling, never as a hard refusal: any session can write the journal.
+  *(open, design)*
+- A receipt's setup (`npm ci`) holds the lane but is not measured; a tier stopped at its timeout records no seconds
+  (the spec counts a ceiling run as "at least" its time). *(checked 2026-10-05 on 0.7.15: still [P] -
+  ledger/receipts.py run_receipt)*
+- A run that raises (Ctrl-C, `lane stop`) is released with no measurement and no cut flag. *(checked 2026-10-05 on
+  0.7.15: still [P] - lane/commands.py _run)*
+- A receipt nested inside a `lane run` never writes its tier history (the outer booking has none). *(checked
+  2026-10-05 on 0.7.15: still [P] - lane/acquire.py held)*
+- A signature step with three samples and no green run shadows a coarser step with green durations ("? s").
+  *(checked 2026-10-05 on 0.7.15: still [P] - lane/estimate.py estimate)*
+- The journal is folded whole on every write and never compacted. *(checked 2026-10-05 on 0.7.15: still [P] -
+  lane/book.py fold)*
+
 ## From the research on AI coding in large codebases (2026-10-05)
 
 - **A write lease on an area of the code.** Two seats writing the same files conflict: 19.8% of overlapping PRs by one
