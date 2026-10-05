@@ -92,51 +92,43 @@ def test_a_sampler_that_cannot_start_measures_nothing_and_raises_nothing(monkeyp
     assert sampler.peak_mb is None
 
 
-def test_a_costly_read_slows_the_sampling_down():
+def _waits(monkeypatch, *, sample, cost):
+    """The waits the sampler asks for, read without waiting: each read costs `cost` seconds of this thread's CPU,
+    by a clock that advances only when told to - real timing on a shared CI runner is not what is tested."""
+    clock = {"now": 0.0, "calls": 0}
+
+    def thread_time():
+        clock["calls"] += 1
+        if clock["calls"] % 2 == 0:   # every second call ends a read
+            clock["now"] += cost
+        return clock["now"]
+    monkeypatch.setattr(peak.time, "thread_time", thread_time)
+    sampler = peak.GroupPeak(7, sample=sample, read=lambda pgid: 100 * 1024, rusage=lambda: None)
+    waits, stop = [], sampler._stop.set
+
+    def record(timeout=None):
+        waits.append(round(timeout, 6))
+        if len(waits) >= 3:
+            stop()
+        return False
+    sampler._stop.wait = record
+    with sampler:
+        sampler._thread.join(timeout=5)
+    return waits
+
+
+def test_a_costly_read_slows_the_sampling_down(monkeypatch):
     """Review of 0.7.14: on a machine with thousands of processes one /proc scan costs tens of milliseconds; the
-    sampler keeps its own cost near 5% of a core by waiting twenty times as long as a read took."""
-    import time
-    reads = []
-
-    def slow(pgid):   # costs CPU, as a /proc scan does
-        reads.append(time.monotonic())
-        end = time.thread_time() + 0.02
-        while time.thread_time() < end:
-            pass
-        return 100 * 1024
-    sampler = peak.GroupPeak(7, sample=0.1, read=slow, rusage=lambda: None)
-    with sampler:
-        time.sleep(0.75)
-    assert 1 <= len(reads) <= 3, len(reads)   # 0.02 s of CPU a read -> 0.4 s between reads, not 0.1 s
+    sampler keeps its own cost near 5% of a core by waiting twenty times the CPU a read took."""
+    assert _waits(monkeypatch, sample=0.1, cost=0.02) == [0.4, 0.4, 0.4]
 
 
-def test_the_stretched_wait_has_a_ceiling():
-    """A read slowed by a loaded machine must not open gaps long enough to miss a whole tier."""
-    import time
-    reads = []
-
-    def very_slow(pgid):
-        reads.append(time.monotonic())
-        end = time.thread_time() + 0.05   # 20 x 0.05 = 1 s uncapped; the ceiling is 5 x the 0.02 s sample
-        while time.thread_time() < end:
-            pass
-        return 100 * 1024
-    sampler = peak.GroupPeak(7, sample=0.02, read=very_slow, rusage=lambda: None)
-    with sampler:
-        time.sleep(0.6)
-    assert len(reads) >= 3, len(reads)
+def test_the_stretched_wait_has_a_ceiling(monkeypatch):
+    """Never past five samples, so a gap never swallows a whole short tier."""
+    assert _waits(monkeypatch, sample=0.02, cost=0.05) == [0.1, 0.1, 0.1]
 
 
-def test_waiting_for_a_cpu_does_not_stretch_the_gap():
-    """Wall time spent off the CPU on a loaded machine is not the read's cost (review of 0.7.14)."""
-    import time
-    reads = []
-
-    def blocked(pgid):
-        reads.append(time.monotonic())
-        time.sleep(0.03)   # off the CPU: 20 x 0.03 = 0.6 s if wall time counted
-        return 100 * 1024
-    sampler = peak.GroupPeak(7, sample=0.02, read=blocked, rusage=lambda: None)
-    with sampler:
-        time.sleep(0.5)
-    assert len(reads) >= 5, len(reads)
+def test_waiting_for_a_cpu_does_not_stretch_the_gap(monkeypatch):
+    """Wall time a read spends off the CPU on a loaded machine is not its cost (review of 0.7.14): only CPU counts.
+    (A wall-clock version of this test failed on a slow macOS runner - CI of 0.7.14.)"""
+    assert _waits(monkeypatch, sample=0.02, cost=0.0) == [0.02, 0.02, 0.02]
