@@ -12,7 +12,7 @@ from __future__ import annotations
 import contextlib
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 POLL = 15.0
 #: Answers that hold the lane whatever the capacity: CI on this machine, and memory under the floor.
@@ -29,6 +29,7 @@ class Grant:
     booking: object | None
     reading: object
     why: str
+    measured: dict = field(default_factory=dict)   # what the holder's run took; `held` records it on release
 
 
 def _order(item) -> int:
@@ -52,8 +53,9 @@ def in_the_way(lanes, reading, capacity: int, mine: str = "") -> str:
 
 def acquire(lanes, read_machine, *, who: str, note: str, capacity: int, wait: float, pid: int | None = None,
             mark: str = "", run_for: str = "", by_hand: bool = False, poll: float = POLL, clock=time.monotonic,
-            sleep=time.sleep, say=None) -> Grant:
-    mine = lanes.enqueue(who, note, pid=pid, mark=mark, run_for=run_for)
+            sleep=time.sleep, say=None, command: str = "", ladder=(), will_run=(), project: str = "") -> Grant:
+    mine = lanes.enqueue(who, note, pid=pid, mark=mark, run_for=run_for, command=command, ladder=ladder,
+                         will_run=will_run, project=project)
     deadline = clock() + max(wait, 0)
     said = ""
     try:
@@ -83,15 +85,18 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int, wait: fl
 
 @contextlib.contextmanager
 def held(lanes, read_machine, *, who: str, note: str, capacity: int, wait: float, table, run_for: str = "",
-         poll: float = POLL, clock=time.monotonic, sleep=time.sleep, say=None):
+         poll: float = POLL, clock=time.monotonic, sleep=time.sleep, say=None, command: str = "", ladder=(),
+         will_run=(), project: str = ""):
     outer = lanes.bookings().get(os.environ.get(ENV, ""))
     if outer is not None and outer.state == "held" and lanes.live(outer) and \
             (outer.pid is None or outer.pid in set(table.ancestors(os.getpid()))):
+        # a run inside a booking is part of it: the owner releases and measures it, never this caller
         yield Grant(outer, None, f"inside booking {outer.id}")
         return
     pid = os.getpid()
     grant = acquire(lanes, read_machine, who=who, note=note, capacity=capacity, wait=wait, pid=pid,
-                    mark=table.start_mark(pid) or "", run_for=run_for, poll=poll, clock=clock, sleep=sleep, say=say)
+                    mark=table.start_mark(pid) or "", run_for=run_for, poll=poll, clock=clock, sleep=sleep, say=say,
+                    command=command, ladder=ladder, will_run=will_run, project=project)
     if grant.booking is None:
         raise LaneRefused(grant.why)
     previous = os.environ.get(ENV)
@@ -99,7 +104,7 @@ def held(lanes, read_machine, *, who: str, note: str, capacity: int, wait: float
     try:
         yield grant
     finally:
-        lanes.release(grant.booking.id)
+        lanes.release(grant.booking.id, measured=grant.measured)
         if previous is None:
             os.environ.pop(ENV, None)
         else:
