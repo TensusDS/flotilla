@@ -90,3 +90,19 @@ def test_a_sampler_that_cannot_start_measures_nothing_and_raises_nothing(monkeyp
     with sampler:
         pass
     assert sampler.peak_mb is None
+
+
+def test_a_costly_read_slows_the_sampling_down():
+    """Review of 0.7.14: on a machine with thousands of processes one /proc scan costs tens of milliseconds; the
+    sampler keeps its own cost near 5% of a core by waiting twenty times as long as a read took."""
+    import time
+    reads = []
+
+    def slow(pgid):
+        reads.append(time.monotonic())
+        time.sleep(0.02)
+        return 100 * 1024
+    sampler = peak.GroupPeak(7, sample=0.01, read=slow, rusage=lambda: None)
+    with sampler:
+        time.sleep(0.5)
+    assert 1 <= len(reads) <= 2, len(reads)   # 0.02 s a read -> 0.4 s between reads, not 0.01 s

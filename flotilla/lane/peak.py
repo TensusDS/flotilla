@@ -13,9 +13,11 @@ import os
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
 SAMPLE = 1.0
+COST_SHARE = 20   # wait at least this many times as long as the last read took
 
 
 def _page_kb() -> int:
@@ -119,12 +121,14 @@ class GroupPeak:
 
     def _loop(self) -> None:
         while not self._stop.is_set():
+            began = time.monotonic()
             try:
                 kb = self.read(self.pgid)
             except Exception:  # noqa: BLE001 - a sample that failed measures nothing; the run goes on
                 kb = None
             self._keep(kb)
-            self._stop.wait(self.sample)
+            # a read that cost much (thousands of processes) stretches the wait: the sampler keeps near 5% of a core
+            self._stop.wait(max(self.sample, COST_SHARE * (time.monotonic() - began)))
 
     def _keep(self, kb) -> None:
         if kb is not None and (self.peak_kb is None or kb > self.peak_kb):
