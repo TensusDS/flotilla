@@ -268,3 +268,33 @@ def test_a_nested_run_is_not_measured_twice(tmp_path, monkeypatch):
     assert code == 0, out
     measured = [b for b in _journal(tmp_path).values() if b.seconds is not None]
     assert len(measured) == 1 and len(_journal(tmp_path)) == 1
+
+
+def test_the_lane_shows_each_bookings_estimate(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    for _ in range(3):
+        run_cli("lane", "run", "--tree", str(root), "--", sys.executable, "-c", "print('1 passed')")
+    from flotilla.core.storage import LocalLogStore
+    from flotilla.lane import book
+
+    class Alive:
+        def alive(self, pid, mark):
+            return True
+    lanes = book.Book(LocalLogStore(tmp_path / "state" / "lane"), Alive())
+    known = next(b for b in lanes.bookings().values() if b.command)
+    lanes.enqueue("main session 2", "again", pid=None, mark="", command=known.command, ladder=known.ladder,
+                  project=known.project)
+    code, out = run_cli("lane", "--root", str(root))
+    waiting = out.split("waiting:", 1)[1]
+    assert "estimate:" in waiting and "3 runs (exact match)" in waiting, out
+
+
+def test_an_older_booking_says_it_has_no_estimate():
+    from flotilla.lane import book, commands
+    assert commands.describe_estimate(book.Booking(id="b1"), {}) == "estimate: none (an older flotilla booked it)"
+
+
+def test_an_estimate_names_unknown_parts():
+    from flotilla.lane import book, commands
+    item = book.Booking(id="b2", ladder=["exact:x", "project:q"], project="q")
+    assert commands.describe_estimate(item, {}) == "estimate: ? s, 4 cores, 2.0 GB (fixed prior: 4 cores, 2 GB)"

@@ -15,7 +15,7 @@ from flotilla.core import config, paths, repo
 from flotilla.core.storage import LocalLogStore, StorageCorrupt
 from flotilla.core.text import visible
 from flotilla.lane import acquire as acq
-from flotilla.lane import book, machine, signature
+from flotilla.lane import book, estimate, machine, signature
 from flotilla.lane import run as runner
 from flotilla.lane.procs import ProcessTable
 from flotilla.ledger import gitq, runs
@@ -140,23 +140,44 @@ def _for_how_long(since: str) -> str:
     return f" ({minutes} min)"
 
 
+def _size(mb) -> str:
+    if mb is None:
+        return "? memory"
+    return f"{mb / 1024:.1f} GB" if mb >= 1024 else f"{mb} MB"
+
+
+def describe_estimate(item, hist) -> str:
+    """A booking's estimate as the person reads it, with where it comes from (lane admission, stage 1)."""
+    if not item.ladder and not item.will_run:
+        return "estimate: none (an older flotilla booked it)"
+    if item.will_run:
+        found = estimate.receipt_estimate(list(item.will_run), hist, project=item.project)
+    else:
+        found = estimate.estimate(list(item.ladder), hist, project=item.project)
+    seconds = "? s" if found.seconds is None else f"{found.seconds:.0f} s"
+    cores = "? cores" if found.cores is None else f"{found.cores:g} cores"
+    return f"estimate: {seconds}, {cores}, {_size(found.peak_mb)} ({found.source})"
+
+
 def _status(args) -> int:
     table = ProcessTable.for_machine()
     lanes = _lanes(table)
     profile, top, problem = _profile(args.root)
     print(f"capacity: {capacity()} long run(s) at a time (machine.toml lane_capacity)")
     held, waiting = lanes.holders(), lanes.waiters()
+    hist = estimate.history(lanes.bookings(), now=dt.datetime.now(dt.timezone.utc))
     print("held:" if held else "held: nobody")
     for item in held:
         state = "alive" if lanes.live(item) else "its process is gone - `flotilla lane sweep`"
         by = f"pid {item.pid}" if item.pid else "taken by hand - `flotilla lane release`"
         target = f", for {item.run_for}" if item.run_for else ""
         print(f"  {item.id} {item.who} ({item.note or 'no note'}) since {item.since}{_for_how_long(item.since)}"
-              f"{target}; {by}; {state}")
+              f"{target}; {by}; {state}; {describe_estimate(item, hist)}")
     print("waiting:" if waiting else "waiting: nobody")
     for item in waiting:
         gone = "" if lanes.live(item) else "; its process is gone - `flotilla lane sweep`"
-        print(f"  {item.id} {item.who} ({item.note or 'no note'}) since {item.since}{gone}")
+        print(f"  {item.id} {item.who} ({item.note or 'no note'}) since {item.since}{gone}; "
+              f"{describe_estimate(item, hist)}")
     print("machine:")
     for answer in _reader(lanes, table, profile, top, problem)().answers:
         flag = {True: "busy", False: "ok", None: "unknown"}[answer.blocks]
