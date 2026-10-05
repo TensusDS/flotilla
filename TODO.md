@@ -62,6 +62,9 @@ Each is a limitation README states today, judged fixable in principle; none is p
   read under the lock with reservations), overtaking with the shadow guard, fleet size reading the lane. Stage 2 must
   treat an estimate as a hint with a ceiling, never as a hard refusal: any session can write the journal.
   *(open, design)*
+- A run nested inside another `lane run` adds samples to the project's prior twice (outer and inner record); a
+  failure writing the inner record would replace the caller's exception. *(checked 2026-10-05 on 0.7.16: still [P]
+  - lane/acquire.py held)*
 - The journal is folded whole on every write and never compacted. *(checked 2026-10-05 on 0.7.15: still [P] -
   lane/book.py fold)*
 
