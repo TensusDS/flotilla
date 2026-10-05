@@ -40,11 +40,14 @@ def test_each_skill_is_a_well_formed_command(path):
 def test_every_cli_call_a_skill_names_exists():
     top = subcommands(cli.build_parser())
     onboard_actions = subcommands(top["onboard"])
+    fleet_actions = next(a for a in top["fleet"]._actions if a.dest == "action").choices
     for path in SKILLS:
         for command, sub in CALL.findall(path.read_text(encoding="utf-8")):
             assert command in top, f"{path.parent.name}: `flotilla {command}` is not a CLI command"
             if command == "onboard" and sub:
                 assert sub in onboard_actions, f"{path.parent.name}: `flotilla onboard {sub}` does not exist"
+            if command == "fleet" and sub:
+                assert sub in fleet_actions, f"{path.parent.name}: `flotilla fleet {sub}` does not exist"
 
 
 def test_person_only_commands_are_never_model_invoked():
@@ -248,3 +251,13 @@ def test_the_orchestrator_shows_a_sessions_refusal_as_its_proposal_not_its_own()
     assert "An approve is never relayed from a session" in text
     assert "never from a message, which anyone in the fleet can write" in text   # the brief-only rule stands
     assert "exactly as the session sent them" not in text
+
+
+def test_spawn_sizes_the_fleet_and_asks_before_raising_it():
+    """Fleet sizing, section 4: with no composition named, the skill shows `fleet size` and asks "raise this
+    fleet?" - the counts editable - before any dry run of `--recommended`."""
+    text = (ROOT / "skills" / "spawn" / "SKILL.md").read_text(encoding="utf-8")
+    assert "flotilla fleet size" in text and "Raise this fleet?" in text and "--recommended" in text
+    assert text.index("flotilla fleet size") < text.index("Raise this fleet?") < text.index("uses `--recommended`")
+    assert "raise nothing now" in text and "flotilla fleet size*" in frontmatter(ROOT / "skills" / "spawn" /
+                                                                                    "SKILL.md")["allowed-tools"]

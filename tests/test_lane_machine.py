@@ -127,6 +127,25 @@ def test_a_run_is_known_by_its_program_not_by_a_word_in_its_arguments():
     assert sorted(p.pid for p in runs) == [5, 6, 7]
 
 
+def test_a_browser_an_mcp_server_opened_is_a_tool_not_a_run():
+    """Twosuns, 2026-10-05: a session's Playwright MCP server keeps a headless browser for as long as the session
+    lives; counted as a run, it holds the lane while young or busy, though it has no end to wait for. Anything under
+    an MCP server is a session's tool; a test run's own browser still counts. A Claude session started with
+    `--strict-mcp-config` is not an MCP server: the runs under it still count."""
+    table = Table([Proc(1, 0, "init"),
+                   Proc(10, 1, "npm exec @playwright/mcp@latest"),
+                   Proc(11, 10, "sh -c mcp-server-playwright"),
+                   Proc(12, 11, "node /c/node_modules/@playwright/mcp/cli.js"),
+                   Proc(13, 12, "/ms-playwright/chromium_headless_shell-1179/chrome-linux/headless_shell --headless"),
+                   Proc(14, 1, "npx chrome-devtools-mcp@latest"),
+                   Proc(15, 14, "/opt/chrome/chrome-headless-shell --remote-debugging-port=0"),
+                   Proc(20, 1, "claude --bg --strict-mcp-config --mcp-config {} --allow-mcp"),
+                   Proc(21, 20, "node /app/node_modules/.bin/playwright test"),
+                   Proc(22, 21, "/ms-playwright/chromium_headless_shell-1179/chrome-linux/headless_shell")])
+    runs = machine.foreign_runs(table, machine.DEFAULT_PATTERNS, exclude=set())
+    assert [p.pid for p in runs] == [21]
+
+
 def test_one_run_is_counted_once_however_many_processes_it_has():
     table = Table([Proc(1, 0, "init"), Proc(2, 1, "pytest -n 2"), Proc(3, 2, "python -m pytest --worker 1"),
                    Proc(4, 2, "python -m pytest --worker 2")])
@@ -369,3 +388,20 @@ def test_a_queue_command_that_is_not_found_is_a_lasting_unknown(tmp_path):
     run, _ = queue(127, "")
     answer = machine.ci_here(COMMAND_HERE, run=run, root=tmp_path)
     assert answer.blocks is None and answer.lasting and "not found" in answer.text
+
+
+def test_the_floor_of_a_limited_cgroup_is_a_quarter_of_its_limit(monkeypatch):
+    """Review of 0.7.14: the room came from the cgroup but the total from the host, so a 2 GB container on a 64 GB
+    host got the 1500 MB floor and its lane closed in its ordinary state."""
+    import importlib.util
+    import sys
+
+    from flotilla.core import resources
+    spec = importlib.util.spec_from_file_location("lane_machine_pristine", machine.__file__)
+    copy = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, spec.name, copy)
+    spec.loader.exec_module(copy)
+    monkeypatch.setattr(copy, "read_meminfo", lambda path=None, field="MemAvailable": 64 * 1024 * 1024)
+    monkeypatch.setattr(resources, "cgroup_limit_mb", lambda **kw: 2048)
+    assert copy._memtotal() == 2048 * 1024
+    assert copy.memory_floor_mb({}, copy._memtotal()) == 512

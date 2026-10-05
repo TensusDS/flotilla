@@ -77,3 +77,28 @@ def test_measure_this_machine_has_the_shape():
     data = machine.measure_machine()
     assert data["os"] in ("linux", "darwin")
     assert "version" in data["python3"] or "error" in data["python3"]
+
+
+def test_measuring_again_keeps_what_the_person_set(tmp_path):
+    """`lane_capacity` and `max_seats` are the person's own limits in machine.toml; re-measuring the machine
+    rewrote the file and silently put both back to their defaults (review of 0.7.14)."""
+    machine.write_machine(tmp_path, {"schema": 1, "os": "linux", "lane_capacity": 3, "max_seats": 20})
+    machine.write_machine(tmp_path, {"schema": 1, "os": "linux"})
+    data = machine.read_machine(tmp_path)
+    assert data["lane_capacity"] == 3 and data["max_seats"] == 20
+
+
+def test_a_torn_machine_file_leaves_the_ceiling_at_its_default(tmp_path, monkeypatch):
+    from flotilla.fleet import sizing
+    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path))
+    (tmp_path / machine.MACHINE_FILE).write_text("max_seats = ", encoding="utf-8")
+    value, note = sizing._machine_ceiling()
+    assert value == sizing.CEILING and "could not be read" in note
+
+
+def test_a_torn_machine_file_leaves_the_lane_at_one_slot(tmp_path, monkeypatch):
+    """`lane run` read machine.toml unguarded: a torn file raised out of every run until fixed by hand."""
+    from flotilla.lane import commands
+    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path))
+    (tmp_path / machine.MACHINE_FILE).write_text("lane_capacity = ", encoding="utf-8")
+    assert commands.capacity() == 1

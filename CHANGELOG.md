@@ -3,6 +3,23 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.7.14 - 2026-10-05
+
+- **`flotilla fleet size` recommends a fleet for this machine and this backlog, and names the cap that set it.**
+  Authors are the smallest of the backlog (ledger rows in flight, tasks the orchestrator names with `--tasks`, open
+  GitHub issues when `[fleet.sizing] tracker = "github"`, open items in TODO files), memory, how many handovers the
+  lane can verify in an hour, disk, and a ceiling of 12 seats (`max_seats` in `machine.toml`; a profile may only lower
+  it). Reviewers follow the authors and the measured review time, never more than the authors. A signal that could
+  not be read is named, never guessed. `flotilla spawn --recommended` raises it, less the posts already held, and
+  `/flotilla:spawn` with no composition shows it and asks first.
+- **Receipts record each tier's peak memory beside its time**, counting every process the tier starts - a browser in
+  a process group of its own included.
+- **Free memory is the room under a container's or systemd slice's memory limit** where that is smaller than the
+  host's, for the sizing, spawn's seat check and the lane's floor alike.
+- **The lane no longer waits on a browser an MCP server opened** - a session's tool, not a run with an end - and a
+  torn `machine.toml` leaves it at one slot instead of failing every run. Re-measuring the machine keeps the
+  `lane_capacity` and `max_seats` you set.
+
 ## 0.7.13 - 2026-10-04
 
 - **A seat asking a permission question while the census is down is refused with the reason, not left hanging.**

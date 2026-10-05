@@ -89,11 +89,20 @@ def read_meminfo(path: Path = MEMINFO, field: str = "MemAvailable") -> int | Non
 
 
 def _meminfo() -> int | None:
-    return read_meminfo(MEMINFO)
+    """MemAvailable in kB, or the room under a container's memory limit where smaller (review of 0.7.14)."""
+    from flotilla.core import resources
+    host = read_meminfo(MEMINFO)
+    room, _ = resources.cgroup_room_mb()
+    return room * 1024 if room is not None and (host is None or room * 1024 < host) else host
 
 
 def _memtotal() -> int | None:
-    return read_meminfo(MEMINFO, "MemTotal")
+    """MemTotal in kB, or a container's memory limit where smaller: the floor is a quarter of what this process may
+    use, not of the host (review of 0.7.14)."""
+    from flotilla.core import resources
+    host = read_meminfo(MEMINFO, "MemTotal")
+    limit = resources.cgroup_limit_mb()
+    return limit * 1024 if limit is not None and (host is None or limit * 1024 < host) else host
 
 
 def memory_floor(profile: dict, total_kb: int | None = None) -> tuple[int, str]:
@@ -129,6 +138,15 @@ def memory(profile: dict, meminfo, memtotal=None) -> Answer:
     return Answer("memory", False, f"{megabytes} MB available (floor {floor} MB){said}")
 
 
+#: A word naming an MCP server package: `@playwright/mcp@latest`, `mcp-server-playwright`, `chrome-devtools-mcp`.
+#: Never a flag - a Claude session's `--strict-mcp-config` is not a server.
+MCP_SERVER = re.compile(r"(?:^|/)(?:@[\w.-]+/mcp|mcp-server-[\w.-]+|[\w.-]+-mcp)(?:@[\w.-]+)?$")
+
+
+def _is_mcp_server(command: str) -> bool:
+    return any(MCP_SERVER.search(word) for word in command.split() if not word.startswith("-"))
+
+
 def foreign_runs(table, patterns, exclude: set[int]) -> list | None:
     """Unbooked runs, known by their program (never by a word in their arguments), counted once per process tree."""
     listed = table.list()
@@ -143,6 +161,19 @@ def foreign_runs(table, patterns, exclude: set[int]) -> list | None:
         if any(regex.fullmatch(name) for regex in regexes for name in program_of(proc.command)):
             matched[proc.pid] = proc
     parents = {proc.pid: proc.ppid for proc in listed}
+    commands = {proc.pid: proc.command for proc in listed}
+
+    def under_a_tool(pid: int) -> bool:
+        """A browser an MCP server opened lives as long as the session that uses it: a tool, not a run with an end
+        to wait for (twosuns, 2026-10-05)."""
+        seen = set()
+        while pid and pid not in seen:
+            if _is_mcp_server(commands.get(pid, "")):
+                return True
+            seen.add(pid)
+            pid = parents.get(pid)
+        return False
+    matched = {pid: proc for pid, proc in matched.items() if not under_a_tool(pid)}
 
     def under_a_match(pid: int) -> bool:
         seen, pid = set(), parents.get(pid)

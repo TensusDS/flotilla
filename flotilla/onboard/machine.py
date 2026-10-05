@@ -86,9 +86,18 @@ def measure_machine(*, os_name: str = sys.platform, proc_root: Path = Path("/pro
     return data
 
 
+#: Keys the person sets by hand; measuring the machine again keeps them (review of 0.7.14).
+PERSON_KEYS = ("lane_capacity", "max_seats")
+
+
 def write_machine(state: Path, data: dict) -> Path:
     state.mkdir(parents=True, exist_ok=True)
     path = state / MACHINE_FILE
+    try:
+        old = read_machine(state) or {}
+    except (OSError, ValueError):
+        old = {}
+    data = {**{key: old[key] for key in PERSON_KEYS if key in old}, **data}
     header = "Measured by `flotilla onboard machine`. Facts about this computer only; re-run to refresh."
     path.write_text(render_toml(data, header=header), encoding="utf-8")
     return path

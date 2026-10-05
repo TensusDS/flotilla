@@ -2,13 +2,13 @@
 name: spawn
 description: Raise flotilla sessions - background Claude Code sessions, each with a post (orchestrator, sender, reviewer, judge, main, minor), a name given at birth and its own home worktree - from a composition such as "-r 1 -M 2" or the profile's default.
 disable-model-invocation: true
-allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/bin/flotilla spawn*), Bash(${CLAUDE_PLUGIN_ROOT}/bin/flotilla fleet)
+allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/bin/flotilla spawn*), Bash(${CLAUDE_PLUGIN_ROOT}/bin/flotilla fleet), Bash(${CLAUDE_PLUGIN_ROOT}/bin/flotilla fleet size*)
 compatibility: Claude Code only (CLI, IDE or desktop Code tab) - needs the Bash tool, git worktrees and claude --bg; not claude.ai chat or Cowork.
 ---
 
 0. **With no arguments, find out first whether the fleet has a leader.** Run
    `${CLAUDE_PLUGIN_ROOT}/bin/flotilla fleet`. If it lists a live orchestrator or a session that leads the fleet,
-   do not ask: the person is topping the fleet up - go on with step 1 and `--fill`. Otherwise AskUserQuestion, header
+   do not ask: the person is topping the fleet up - go on with the sizing below and step 1. Otherwise AskUserQuestion, header
    "Fleet", question "Who leads the fleet?":
    - "This session leads it (Recommended)" - "You talk to the fleet here; the rest starts in the background."
    - "A background orchestrator" - "Every seat starts in the background; you attach to the orchestrator to talk."
@@ -19,17 +19,28 @@ compatibility: Claude Code only (CLI, IDE or desktop Code tab) - needs the Bash 
    it could not tell which session runs it, tell the person to type `/rename <the name>`, and before raising
    anything check that `flotilla fleet` lists this session under that name. Do not raise the rest yet: seats raised
    now would learn this session's old name. Tell the person: "Tell me what to build." On their next message, before
-   anything else, raise the rest - `flotilla spawn --fill`, or the composition the person named
-   (`flotilla spawn $ARGUMENTS`) if they named one - through steps 1-4 below, dry run first; if it refuses because
+   anything else, raise the rest - the sizing below with `--tasks N` for the parts their message breaks into, then
+   `flotilla spawn --recommended --tasks N` (or `flotilla spawn --fill` for the profile's default, or the composition
+   the person named, `flotilla spawn $ARGUMENTS`) - through steps 1-4 below, dry run first; if it refuses because
    the name has not shown yet, say so and run it after the person's following message. From then on this session
    holds the orchestrator post: read `.flotilla/posts/orchestrator.md` on trunk and follow it, and use the
    `flotilla:flotilla` skill for every ledger move.
 
-   **A background orchestrator:** go on with step 1 and `--default`; if the dry run says nobody leads, the answer is
+   **A background orchestrator:** go on with the sizing below; if the dry run says nobody leads, the answer is
    already given - plan `flotilla spawn -o 1` after this spawn without asking again.
 
+   **Size the fleet** (no composition named): run `${CLAUDE_PLUGIN_ROOT}/bin/flotilla fleet size` - with
+   `--tasks N` when you have broken the person's request into N parts - and show every line it prints: the
+   recommended counts, the cap that set them (memory, test runs, disk, backlog), and each signal it could not read.
+   Then AskUserQuestion, header "Fleet size", question "Raise this fleet?":
+   - "The recommended fleet (Recommended)" - the counts it printed; step 1 uses `--recommended` (with the same
+     `--tasks N`).
+   - "The profile's default" - step 1 uses `--fill` (or `--default` with a background orchestrator).
+   The person may type other counts instead ("2 main, 1 reviewer"): step 1 uses them as flags (`-M 2 -r 1`). If it
+   printed `raise nothing now`, say why and offer nothing to raise; only when the person insists, add `--anyway`.
+
 1. Show the plan first: run `${CLAUDE_PLUGIN_ROOT}/bin/flotilla spawn $ARGUMENTS --dry-run` from the repository
-   root (with no arguments, `--default` or `--fill` as step 0 decided). Show every line it prints: names, trees,
+   root (with no arguments, `--recommended`, `--fill` or `--default` as step 0 decided). Show every line it prints: names, trees,
    branches, the permission mode, the warnings and the gaps.
 2. **A `gap:` line in the dry run is a question for the person, not a remark** - unless step 0 already answered
    it. The fleet would lack someone, and a person new to flotilla will not know what is missing.

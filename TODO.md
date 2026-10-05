@@ -56,6 +56,32 @@ Each is a limitation README states today, judged fixable in principle; none is p
 - Onboarding a repository whose only workflows are symlinks now records no CI and reads no job ids from them; it matters
   only if GitHub Actions runs a symlinked workflow, which nobody measured. *(checked 2026-10-04 on 0.7.9: measure)*
 
+## From fleet sizing, stage 1, and its reviews (2026-10-05)
+
+- Stages 2-4 of `docs/specs/2026-10-04-fleet-sizing-design.md`: the code's independent areas and hotspots from one
+  `git log`; money (first measure whether a `--bg` session runs its status line); the watch's grow and shrink
+  questions. *(open, design)*
+- Claimed rows of sessions no longer alive still count as work in flight and inflate the backlog; ask the census
+  whether the owner lives. *(checked 2026-10-05 on 0.7.14: still [P] - fleet/backlog.py from_ledger)*
+- Measurements carry no date, so a peak months old reads as today's (spec section 2, "when it was taken").
+  *(checked 2026-10-05 on 0.7.14: still [P] - onboard/firstrun.py measure_peaks)*
+- TODO parsing: a heading such as "Done criteria" swallows its items, a fence opened by ``` is closed by ~~~ or a
+  shorter fence, `1. [ ]` items are not counted. *(checked 2026-10-05 on 0.7.14: still [P] - fleet/backlog.py
+  todo_items)*
+- The `ps` path of the peak sampler (no /proc, macOS) is untested on a real Mac. *(measure)*
+- cgroup v1: only the leaf's limit is read (a parent slice's is missed; `hierarchical_memory_limit` would give it),
+  and a combined `cpu,memory` mount without a `memory` link is not found. The cgroup read is flotilla's own, while
+  seats run wherever the Claude daemon lives. *(checked 2026-10-05 on 0.7.14: still [P] - core/resources.py
+  _cgroup_limits)*
+- Two orchestrators at once (one interactive, one background, or two background) count as one seat or none; the
+  ceiling may overshoot by one. *(checked 2026-10-05 on 0.7.14: still [P] - fleet/sizing.py _leader_kind)*
+- A torn `machine.toml` drops a configured `lane_capacity` to 1 without saying so in `flotilla lane`. *(checked
+  2026-10-05 on 0.7.14: still [P] - lane/commands.py capacity)*
+- The peak's `ru_maxrss` backstop holds the largest single child, not a group's sum (pytest-xdist workers, node and
+  its browser). *(checked 2026-10-05 on 0.7.14: still [P] - lane/peak.py children_max_rss_kb)*
+- The pace note says "too few samples" when three or more rounds have a median of 0. *(checked 2026-10-05 on
+  0.7.14: still [P] - fleet/pace.py pace)*
+
 ## From the review of 0.7.13 (2026-10-04)
 
 - A seat seen in the census only after spawn's wait never gets its session id recorded, and a helper still running after

@@ -188,6 +188,12 @@ def build_parser() -> argparse.ArgumentParser:
     spawn_.add_argument("--default", action="store_true", help="the profile's fleet.default composition")
     spawn_.add_argument("--fill", action="store_true",
                         help="the default composition, less the posts this project's live sessions already hold")
+    spawn_.add_argument("--recommended", action="store_true",
+                        help="the fleet `flotilla fleet size` recommends, less the posts live sessions already hold")
+    spawn_.add_argument("--tasks", type=int, default=None, metavar="N",
+                        help="with --recommended: the tasks you broke the request into, for the backlog")
+    spawn_.add_argument("--tasks-file", default=None, metavar="PATH",
+                        help="with --recommended: those tasks, one per line (`[minor]` marks a small one)")
     spawn_.add_argument("--lead", action="store_true",
                         help="reserve the orchestrator's name for your own session (you type /rename); raises nothing")
     spawn_.add_argument("--dry-run", action="store_true", help="show names, trees and commands; change nothing")
@@ -197,9 +203,13 @@ def build_parser() -> argparse.ArgumentParser:
     retire_.add_argument("name")
     retire_.add_argument("--root", default=".")
     fleet_ = sub.add_parser("fleet", help="the fleet's sessions, their trees and their work; `down` retires them")
-    fleet_.add_argument("action", nargs="?", choices=["down", "clean"],
+    fleet_.add_argument("action", nargs="?", choices=["down", "clean", "size"],
                         help="down: retire every seat but your own; clean: remove trees and branches whose work is "
-                             "surely on trunk (a plan unless --yes)")
+                             "surely on trunk (a plan unless --yes); size: the fleet this machine and this backlog "
+                             "call for, and why (raises nothing)")
+    fleet_.add_argument("--tasks", type=int, default=None, metavar="N", help="with size: tasks you named")
+    fleet_.add_argument("--tasks-file", default=None, metavar="PATH", help="with size: those tasks, one per line")
+    fleet_.add_argument("--json", action="store_true", help="with size: the recommendation as JSON")
     fleet_.add_argument("--yes", action="store_true", help="with clean: remove what the plan names")
     fleet_.add_argument("--root", default=".")
     helper_ = sub.add_parser("helper", help="raise a helper session for a piece of your work, or finish as one")

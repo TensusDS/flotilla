@@ -1462,6 +1462,22 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    unawares; `flotilla doctor` now names each post older than the template shipped under its name.
    (planner's decision, 2026-10-04)
 
+231. **A fleet is sized by its smallest cap, and the cap is named** (Claude Code session, 2026-10-04; design
+   `docs/specs/2026-10-04-fleet-sizing-design.md`, stage 1). People raised nine seats with five idle, or too few, and
+   nothing said how many this project wants on this machine. `flotilla fleet size` recommends authors as the
+   smallest of the backlog, memory, test runs, disk and `max_seats`, each solved for the whole fleet the authors
+   bring (reviewers grow with them), and prints which cap set the number; a signal that could not be read is named
+   and left out. The test-run cap rests on a new measurement: the lane samples a tier's process group once a second
+   and receipts keep each tier's worst peak beside its time; the sample counts every descendant of the tier, since
+   Playwright starts Chromium in a group of its own, and the largest child the kernel reaped backs it. The
+   recommendation is the whole fleet: the orchestrator is the person's own session and counts in no cap, and the
+   project's running seats count back into the memory and disk they already hold, because spawn subtracts their posts.
+   Three limits come from the review of the branch: reviewers never outnumber authors (a pace written by sessions once
+   asked for sixty), a ceiling of 12 seats that only the person's `machine.toml` raises and a profile may only lower,
+   and no `spawn --recommended` with free memory unknown unless `--anyway`. When the smallest fleet does not fit, the
+   answer leads with "raise nothing now". Code coupling and money are later stages; this version says so in its
+   output. (planner's decision, 2026-10-04)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
