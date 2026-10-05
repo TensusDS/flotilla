@@ -56,6 +56,21 @@ Each is a limitation README states today, judged fixable in principle; none is p
 - Onboarding a repository whose only workflows are symlinks now records no CI and reads no job ids from them; it matters
   only if GitHub Actions runs a symlinked workflow, which nobody measured. *(checked 2026-10-04 on 0.7.9: measure)*
 
+## From the research on AI coding in large codebases (2026-10-05)
+
+- **A write lease on an area of the code.** Two seats writing the same files conflict: 19.8% of overlapping PRs by one
+  agent and 41.7% by different agents hit textual conflicts (arXiv 2607.04697, 33,596 PRs); Cognition moved to
+  "writes stay single-threaded". flotilla routes work by rows, not by files: a claim could name the paths (or
+  directories) it writes, the orchestrator would refuse or queue a second claim on the same paths, and `fleet size`
+  could count independent areas as writers (stage 2's `K_eff`). Needs: how a seat declares paths before it knows
+  them, and what a lease does when work spills over. *(open, design)*
+- **The cost of always-loaded instructions, per seat.** Every seat pays the project's CLAUDE.md, rules without
+  `paths:` and the post file on every turn; long context files raised cost by 20-23% without a significant gain in
+  success (arXiv 2602.11988), and Claude Code's docs advise CLAUDE.md under 200 lines, path-scoped rules and skills
+  loaded on demand. `flotilla doctor` could measure what a seat loads before its first word (bytes and lines, by
+  file) and name the largest, and onboarding could warn above a threshold; discipline that a hook can hold belongs
+  in a hook, not in the always-loaded text. *(open, design)*
+
 ## From fleet sizing, stage 1, and its reviews (2026-10-05)
 
 - Stages 2-4 of `docs/specs/2026-10-04-fleet-sizing-design.md`: the code's independent areas and hotspots from one
