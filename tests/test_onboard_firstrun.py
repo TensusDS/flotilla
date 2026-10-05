@@ -161,3 +161,12 @@ def test_a_tier_records_the_cores_it_used(tmp_path):
     (tmp_path / "burn.py").write_text(code)
     run = firstrun.run_tier("unit", f'"{sys.executable}" burn.py', tmp_path, timeout=30)
     assert run.status == "green" and run.cores is not None and run.cores > 0.3
+
+
+def test_every_tier_run_carries_its_elapsed_time(tmp_path):
+    """A red or timed-out tier still held the lane: its wall time is known even where its duration says nothing."""
+    green = firstrun.run_tier("unit", "true", tmp_path, timeout=30)
+    red = firstrun.run_tier("unit", "exit 3", tmp_path, timeout=30)
+    slow = firstrun.run_tier("unit", "sleep 5", tmp_path, timeout=0.5)
+    assert green.elapsed is not None and red.elapsed is not None and red.seconds is None
+    assert slow.status == "timed-out" and slow.elapsed >= 0.5

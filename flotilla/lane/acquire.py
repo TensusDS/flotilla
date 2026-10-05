@@ -90,8 +90,15 @@ def held(lanes, read_machine, *, who: str, note: str, capacity: int, wait: float
     outer = lanes.bookings().get(os.environ.get(ENV, ""))
     if outer is not None and outer.state == "held" and lanes.live(outer) and \
             (outer.pid is None or outer.pid in set(table.ancestors(os.getpid()))):
-        # a run inside a booking is part of it: the owner releases and measures it, never this caller
-        yield Grant(outer, None, f"inside booking {outer.id}")
+        # a run inside a booking is part of it: the owner releases it; what this run measured is recorded beside
+        # it, already released, so the inner command's history learns without booking twice
+        grant = Grant(outer, None, f"inside booking {outer.id}")
+        try:
+            yield grant
+        finally:
+            if grant.measured:
+                lanes.record(outer.id, who=who, note=note, command=command, ladder=ladder, will_run=will_run,
+                             project=project, measured=grant.measured)
         return
     pid = os.getpid()
     grant = acquire(lanes, read_machine, who=who, note=note, capacity=capacity, wait=wait, pid=pid,

@@ -276,7 +276,12 @@ def _run(args) -> int:
             where = _where(Path(args.tree))
             started = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
             limit = args.max if args.max else ceiling_for(args.tree, _profile(args.tree)[0])
-            result = runner.execute(command, cwd=args.tree, ceiling=limit)
+            began = time.monotonic()
+            try:
+                result = runner.execute(command, cwd=args.tree, ceiling=limit)
+            except BaseException:   # stopped: it held the lane all the same, and says so on release
+                grant.measured.update({"seconds": round(time.monotonic() - began, 2), "verdict": "killed"})
+                raise
             if result.usage is not None:
                 grant.measured.update({"seconds": result.usage.seconds, "peak_mb": result.usage.peak_mb,
                                        "cores": result.usage.cores, "busy": result.usage.busy,

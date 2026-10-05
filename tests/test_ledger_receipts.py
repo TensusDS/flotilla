@@ -348,3 +348,30 @@ def test_a_receipts_measurement_counts_only_the_tiers_that_ran():
     measured = receipts.measured_of(result)
     assert measured["seconds"] == 40.0 and [t["name"] for t in measured["ran"]] == ["unit"]
     assert receipts.measured_of({"tiers": [result["tiers"][0]]}) == {}
+
+
+def test_a_receipts_hold_time_counts_setup_and_every_tier_that_ran():
+    """Review of stage 1: setup held the lane unmeasured, and a red or timed-out tier left the hold unknown."""
+    result = {"setup": {"name": "setup", "status": "green", "seconds": 20.0, "elapsed": 20.0, "peak_mb": 900,
+                        "cores": 2.0, "busy": 0.3, "summary": ""},
+              "tiers": [
+                  {"name": "unit", "status": "green", "seconds": 40.0, "elapsed": 40.0, "peak_mb": 1700, "cores": 6.8,
+                   "busy": 0.9, "summary": "12 passed"},
+                  {"name": "e2e", "status": "red", "seconds": None, "elapsed": 5.0, "summary": "1 failed"},
+                  {"name": "slow", "status": "timed-out", "seconds": None, "elapsed": 600.0, "summary": ""}]}
+    measured = receipts.measured_of(result)
+    assert measured["seconds"] == 665.0 and measured["verdict"] == "red" and measured["peak_mb"] == 1700
+    by = {t["name"]: t for t in measured["ran"]}
+    assert set(by) == {"setup", "unit", "e2e", "slow"}
+    assert by["slow"]["seconds"] == 600.0 and by["slow"]["status"] == "timed-out"   # at least its time
+    assert by["e2e"]["seconds"] is None                                            # an early end says nothing
+
+
+def test_a_receipt_reports_its_setup_run(tmp_path):
+    data = {"schema": 1, "tests": {"setup_command": "true",
+                                   "tier": [{"name": "unit", "command": GREEN, "required_for": ["handover"]}]}}
+    root = repo_with_origin(tmp_path)
+    result = receipts.run_receipt(root, state=tmp_path / "s", repo_key=KEY, purpose="handover", profile=data,
+                                  timeout=60)
+    assert result["setup"]["name"] == "setup" and result["setup"]["status"] == "green"
+    assert [t["name"] for t in receipts.measured_of(result)["ran"]] == ["setup", "unit"]

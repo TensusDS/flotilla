@@ -61,7 +61,8 @@ def history(bookings: dict, *, now: dt.datetime, days: int = 30) -> dict[str, li
             if isinstance(tier, dict) and tier.get("name") and tier.get("seconds") is not None:
                 found.setdefault(tier_signature(tier["name"], project=item.project), []).append(Sample(
                     tier.get("seconds"), tier.get("peak_mb"), tier.get("cores"), tier.get("busy"),
-                    "green" if tier.get("status") == "green" else str(tier.get("status") or ""), item.ended))
+                    {"green": "green", "timed-out": "ceiling"}.get(tier.get("status"), str(tier.get("status") or "")),
+                    item.ended))
     return {step: samples[-KEEP:] for step, samples in found.items()}
 
 
@@ -97,14 +98,19 @@ def _p90(values: list) -> float | int | None:
 
 def estimate(ladder: list[str], hist: dict[str, list[Sample]], *, project: str, cpus: int | None = None) -> Estimate:
     cpus = cpus or os.cpu_count() or 1
-    for step in ladder:
-        if step.startswith("project:"):
-            break
-        samples = hist.get(step, [])
-        if len(samples) >= ENOUGH:
-            kind = step.split(":", 1)[0]
-            return Estimate(_duration(samples), _cores(samples, cpus), _peak(samples),
-                            f"{len(samples)} runs ({kind} match)")
+    steps = [(step, hist.get(step, [])) for step in ladder if not step.startswith("project:")]
+    steps = [(step, samples) for step, samples in steps if len(samples) >= ENOUGH]
+    if steps:
+        step, samples = steps[0]
+        source = f"{len(samples)} runs ({step.split(':', 1)[0]} match)"
+        seconds = _duration(samples)
+        if seconds is None:   # three red runs of the exact command must not hide the green ones a step down
+            for coarser, more in steps[1:]:
+                seconds = _duration(more)
+                if seconds is not None:
+                    source += f"; duration from {len(more)} runs ({coarser.split(':', 1)[0]} match)"
+                    break
+        return Estimate(seconds, _cores(samples, cpus), _peak(samples), source)
     samples = hist.get(f"project:{project}", [])
     if len(samples) >= ENOUGH:
         return Estimate(None, _p90([s.cores for s in samples]), _p90([s.peak_mb for s in samples]),

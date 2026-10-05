@@ -130,3 +130,20 @@ def test_a_runs_own_load_is_not_the_machines_saturation():
 def test_events_from_the_future_feed_nothing():
     future = [done(i, LADDER, seconds=999, days_ago=-3650) for i in range(10)]
     assert est.history(bookings(*future), now=NOW) == {}
+
+
+def test_a_timed_out_tier_counts_as_at_least_its_time():
+    ran = [{"name": "slow", "status": "timed-out", "seconds": 600.0}]
+    runs = [done(i, ["receipt:p:handover:slow", "project:p"], ran=ran, verdict="red") for i in range(3)]
+    hist = est.history(bookings(*runs), now=NOW)
+    assert est.receipt_estimate(["slow"], hist, project="p").seconds == 600.0
+
+
+def test_a_step_with_no_green_run_borrows_its_duration_from_a_coarser_one():
+    """Review of stage 1: three red runs of the exact command hid the green durations of the program step."""
+    exact = ["exact:p:npx vitest run a", "prog:p:vitest run", "project:p"]
+    reds = [done(i, exact, seconds=2.0, verdict="red", cores=3.0, peak=800) for i in range(3)]
+    greens = [done(10 + i, ["exact:p:other", "prog:p:vitest run", "project:p"], seconds=40.0 + i) for i in range(3)]
+    e = est.estimate(exact, est.history(bookings(*reds, *greens), now=NOW), project="p")
+    assert e.seconds == 41.0 and e.cores == 3.0 and e.peak_mb == 800
+    assert "exact match" in e.source and "duration from" in e.source and "prog match" in e.source

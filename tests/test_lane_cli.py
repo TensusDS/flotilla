@@ -266,8 +266,11 @@ def test_a_nested_run_is_not_measured_twice(tmp_path, monkeypatch):
     inner = f"{flotilla} lane run --tree {root} --wait 5 -- {sys.executable} -c pass"   # a broken rule waits, not hangs
     code, out = run_cli("lane", "run", "--tree", str(root), "--", "sh", "-c", inner)
     assert code == 0, out
-    measured = [b for b in _journal(tmp_path).values() if b.seconds is not None]
-    assert len(measured) == 1 and len(_journal(tmp_path)) == 1
+    journal = _journal(tmp_path)
+    [outer] = [b for b in journal.values() if not b.inside]
+    nested = [b for b in journal.values() if b.inside]
+    assert outer.seconds is not None and all(b.inside == outer.id and b.state == "released" for b in nested)
+    assert len(nested) == 1   # the inner run is recorded beside its parent, never booked a second time
 
 
 def test_the_lane_shows_each_bookings_estimate(tmp_path, monkeypatch):
@@ -303,3 +306,60 @@ def test_an_estimate_names_unknown_parts():
 def test_a_booking_taken_by_hand_says_so():
     from flotilla.lane import book, commands
     assert commands.describe_estimate(book.Booking(id="b1", rule=1), {}) == "estimate: none (taken by hand)"
+
+
+def test_an_interrupted_run_records_that_it_was_killed(tmp_path, monkeypatch):
+    """Review of stage 1: a run stopped by Ctrl-C or `lane stop` was released with nothing - it held the lane."""
+    root = onboarded(tmp_path, monkeypatch)
+    from flotilla.lane import run as runner
+
+    def stopped(*a, **kw):
+        raise SystemExit(143)
+    monkeypatch.setattr(runner, "execute", stopped)
+    run_cli("lane", "run", "--tree", str(root), "--", sys.executable, "-c", "pass")
+    [item] = list(_journal(tmp_path).values())
+    assert item.verdict == "killed" and item.seconds is not None
+
+
+def test_an_interrupted_receipt_records_that_it_was_killed(tmp_path, monkeypatch):
+    import pytest
+    tier = {"name": "unit", "command": f"{sys.executable} -c \"print('1 passed')\"", "required_for": ["handover"]}
+    root = onboarded(tmp_path, monkeypatch, {**PROFILE, "tests": {"tier": [tier]}})
+    from flotilla.ledger import receipts
+
+    def stopped(*a, **kw):
+        raise SystemExit(143)
+    monkeypatch.setattr(receipts, "run_receipt", stopped)
+    with pytest.raises(SystemExit):
+        run_cli("receipt", "run", "--purpose", "handover", "--tree", str(root))
+    [item] = list(_journal(tmp_path).values())
+    assert item.verdict == "killed" and item.seconds is not None
+
+
+def test_a_receipt_inside_a_lane_run_records_its_tiers(tmp_path, monkeypatch):
+    """Review of stage 1: a receipt nested in a booking wrote nothing, so its tiers never learned."""
+    from pathlib import Path
+    tier = {"name": "unit", "command": f"{sys.executable} -c \"print('1 passed')\"", "required_for": ["handover"]}
+    root = onboarded(tmp_path, monkeypatch, {**PROFILE, "tests": {"tier": [tier]}})
+    flotilla = Path(__file__).resolve().parent.parent / "bin" / "flotilla"
+    inner = f"{flotilla} receipt run --purpose handover --tree {root} --lane-wait 5"
+    code, out = run_cli("lane", "run", "--tree", str(root), "--", "sh", "-c", inner)
+    assert code == 0, out
+    journal = _journal(tmp_path)
+    [outer] = [b for b in journal.values() if not b.inside]
+    [nested] = [b for b in journal.values() if b.inside]
+    assert nested.inside == outer.id and nested.state == "released"
+    assert [t["name"] for t in nested.ran] == ["unit"] and nested.ladder[0].startswith("receipt:")
+
+
+def test_a_receipt_refused_mid_way_says_refused_not_killed(tmp_path, monkeypatch):
+    tier = {"name": "unit", "command": f"{sys.executable} -c \"print('1 passed')\"", "required_for": ["handover"]}
+    root = onboarded(tmp_path, monkeypatch, {**PROFILE, "tests": {"tier": [tier]}})
+    from flotilla.ledger import receipts
+
+    def refused(*a, **kw):
+        raise receipts.ReceiptRefused("the tree changed while its tiers ran")
+    monkeypatch.setattr(receipts, "run_receipt", refused)
+    run_cli("receipt", "run", "--purpose", "handover", "--tree", str(root))
+    [item] = list(_journal(tmp_path).values())
+    assert item.verdict == "refused"

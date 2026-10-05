@@ -280,8 +280,17 @@ def _receipt(args) -> int:
             from flotilla.lane.commands import booked
             with booked(tree, note=f"{args.purpose} receipt", wait=args.lane_wait, will_run=planned,
                         purpose=args.purpose) as grant:
-                result = receipts.run_receipt(ident.root, state=state, repo_key=ident.key, purpose=args.purpose,
-                                              profile=profile, timeout=args.timeout, setup=args.setup)
+                import time
+                began = time.monotonic()
+                try:
+                    result = receipts.run_receipt(ident.root, state=state, repo_key=ident.key,
+                                                  purpose=args.purpose, profile=profile, timeout=args.timeout,
+                                                  setup=args.setup)
+                except BaseException as err:   # stopped, or refused mid-way: it held the lane all the same
+                    grant.measured.update({"seconds": round(time.monotonic() - began, 2),
+                                           "verdict": "refused" if isinstance(err, receipts.ReceiptRefused)
+                                           else "killed"})
+                    raise
                 grant.measured.update(receipts.measured_of(result))
         for tier in result["tiers"]:
             print(f"{tier['status']:<9} {tier['name']}: {tier['summary']}")
