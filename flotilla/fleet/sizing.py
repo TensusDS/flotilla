@@ -43,6 +43,7 @@ class Recommendation:
     binding: str
     lines: list[str] = field(default_factory=list)
     raise_nothing: str = ""
+    orchestrator: str = "person"
 
 
 def _reviewers(authors: int, pace) -> int:
@@ -81,13 +82,16 @@ def _split(authors: int, backlog) -> tuple[int, int]:
     return main, minor
 
 
-def recommend(machine: Machine, backlog, pace, profile) -> Recommendation:
+def recommend(machine: Machine, backlog, pace, profile, *, orchestrator: str = "person") -> Recommendation:
+    """`orchestrator`: "person" (the person's session leads: it costs nothing new), "background" (a background seat
+    leads: a seat like any other) or "none" (nobody leads yet: the person is asked, as spawn's gap line does)."""
     sizing = ((profile or {}).get("fleet") or {}).get("sizing") or {}
     judge = _judge(profile or {})
     live = max(0, machine.live_seats or 0)
+    lead_seat = 1 if orchestrator == "background" else 0
 
     def seats(a: int) -> int:
-        return a + _reviewers(a, pace) + 1 + judge
+        return a + _reviewers(a, pace) + 1 + judge + lead_seat
 
     caps: dict[str, int] = {}
     detail: dict[str, str] = {}
@@ -184,7 +188,7 @@ def recommend(machine: Machine, backlog, pace, profile) -> Recommendation:
                                        "no judge required and no deploy target"))
     lines.append("code: not measured in this version")
     lines.append("money: not measured in this version")
-    return Recommendation(counts, authors, dict(caps), binding, lines, raise_nothing)
+    return Recommendation(counts, authors, dict(caps), binding, lines, raise_nothing, orchestrator)
 
 
 def handover_cost(profile, seconds: dict, peaks: dict, *, problem: str = "") -> tuple[float | None, int | None, str]:
@@ -268,6 +272,23 @@ def _machine_ceiling() -> tuple[int, str]:
     return CEILING, f"machine.toml max_seats = {value!r} is not a whole number: {CEILING} stands"
 
 
+def _leader_kind(ledger, sessions) -> str:
+    """Who leads this project's fleet now: "background" when a background session holds the orchestrator post,
+    "person" when an interactive one does, "none" when no live session holds it."""
+    from flotilla.posts import PostError, post_for_session
+    kinds = []
+    for item in sessions:
+        try:
+            post = post_for_session(ledger.posts, item.name) if item.name else None
+        except PostError:
+            post = None
+        if post is not None and post.name == "orchestrator":
+            kinds.append(item.kind)
+    if not kinds:
+        return "none"
+    return "person" if any(kind != "background" for kind in kinds) else "background"
+
+
 def gather(ledger, *, tasks=None, tasks_file=None, census=None, run=subprocess.run, now=None) -> Recommendation:
     """Read this machine and this repository, then recommend: one census call, the measurements file, the ledger,
     the backlog sources the profile names (gh only when a tracker is set)."""
@@ -283,7 +304,7 @@ def gather(ledger, *, tasks=None, tasks_file=None, census=None, run=subprocess.r
     floor, seat, setting_notes = spawn.memory_settings(ledger)
     main = launch.main_checkout(ledger.root, run=ledger.run)
     notes = list(setting_notes)
-    live = None
+    live, lead = None, "person"
     if census is not None:
         from flotilla.core.census import CensusUnavailable
         from flotilla.ledger import project
@@ -293,7 +314,8 @@ def gather(ledger, *, tasks=None, tasks_file=None, census=None, run=subprocess.r
             notes.append(f"census: unknown ({err}); running seats not counted back into memory")
         else:
             held = spawn._live_posts(ledger, mine)
-            live = sum(n for post, n in held.items() if post != "orchestrator")
+            lead = _leader_kind(ledger, mine)
+            live = sum(n for post, n in held.items() if post != "orchestrator") + (lead == "background")
     problem = measurements_problem(ledger.state_dir, ledger.repo_key)
     run_seconds, run_mb, run_note = handover_cost(ledger.profile, load_measurements(ledger.state_dir, ledger.repo_key),
                                                   load_peaks(ledger.state_dir, ledger.repo_key), problem=problem)
@@ -310,7 +332,7 @@ def gather(ledger, *, tasks=None, tasks_file=None, census=None, run=subprocess.r
     rows = ledger.rows()
     work = backlog_.gather(main, ledger.profile, rows, tasks=tasks, tasks_file=tasks_file, run=run)
     measured = pace_.pace(rows, now=now or dt.datetime.now(dt.timezone.utc))
-    rec = recommend(machine, work, measured, ledger.profile)
+    rec = recommend(machine, work, measured, ledger.profile, orchestrator=lead)
     rec.lines.extend(f"  note: {line}" for line in notes)
     return rec
 
@@ -318,7 +340,9 @@ def gather(ledger, *, tasks=None, tasks_file=None, census=None, run=subprocess.r
 def render(rec: Recommendation) -> list[str]:
     """The recommendation as the person reads it: the counts first, then why."""
     order = ("orchestrator", "main", "minor", "reviewer", "sender", "judge")
-    parts = [f"{post} {rec.counts[post]}" + (" (this session)" if post == "orchestrator" else "")
+    lead = {"person": " (this session)", "background": " (background)",
+            "none": " (nobody leads yet: `flotilla spawn --lead` makes it this session)"}[rec.orchestrator]
+    parts = [f"{post} {rec.counts[post]}" + (lead if post == "orchestrator" else "")
              for post in order if rec.counts.get(post)]
     if rec.raise_nothing:   # the refusal first: a headline of counts would read as a yes (review of 0.7.14)
         return [rec.raise_nothing, f"the smallest fleet would be: {', '.join(parts)}", *rec.lines]

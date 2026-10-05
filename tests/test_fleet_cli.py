@@ -308,7 +308,7 @@ def test_spawn_recommended_plans_the_recommendation_beside_the_posts_held(tmp_pa
     monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [])
     code, out = run_cli("spawn", "--recommended", "--tasks", "2", "--dry-run", "--root", str(root))
     assert code == 0, out
-    assert "recommended: orchestrator 1 (this session), main 2" in out
+    assert "recommended: orchestrator 1 (nobody leads yet" in out and ", main 2," in out
     assert "main session 1" in out and "main session 2" in out and "review session 1" in out
     assert "sender session 1" in out or "sender" in out
     assert "orchestrator session" not in out.split("recommended:")[1].split("\n", 1)[1]
@@ -354,3 +354,27 @@ def test_spawn_recommended_with_memory_unknown_refuses_unless_anyway(tmp_path, m
     assert code == 2 and "free memory" in out and "--anyway" in out
     code, out = run_cli("spawn", "--recommended", "--dry-run", "--anyway", "--root", str(root))
     assert code == 0 and "dry run:" in out
+
+
+def test_fleet_size_counts_a_background_orchestrator_as_a_seat(tmp_path, monkeypatch):
+    import dataclasses
+    import json
+    root = onboarded(tmp_path, monkeypatch)
+    roomy(monkeypatch)
+    lead = _a_session("orchestrator 1", root)
+    monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [lead])
+    code, out = run_cli("fleet", "size", "--root", str(root))
+    assert code == 0 and "orchestrator 1 (background)" in out, out
+    person = dataclasses.replace(lead, kind="interactive")
+    monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [person])
+    code, out = run_cli("fleet", "size", "--root", str(root))
+    assert "orchestrator 1 (this session)" in out, out
+    # a running background orchestrator already holds its memory: it counts back in, as every live seat does
+    from flotilla.core import resources
+    monkeypatch.setattr(resources, "available_mb", lambda **kw: 9000)
+    caps = {}
+    for kind in ("interactive", "background"):
+        monkeypatch.setattr("flotilla.fleet.commands.census", lambda k=kind: [dataclasses.replace(lead, kind=k)])
+        code, out = run_cli("fleet", "size", "--json", "--tasks", "50", "--root", str(root))
+        caps[kind] = json.loads(out)["caps"]["memory"]
+    assert caps["interactive"] == caps["background"], caps

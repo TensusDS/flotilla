@@ -239,3 +239,17 @@ def test_unknown_measurements_file_is_named(tmp_path):
     profile = {"tests": {"tier": [{"name": "unit", "required_for": ["handover"]}]}}
     _, _, note = handover_cost(profile, {}, {}, problem="the measurements file x could not be read")
     assert "could not be read" in note and "never run green" not in note
+
+
+def test_a_background_orchestrator_is_a_seat_and_says_so():
+    """Review of 0.7.14: a background orchestrator costs memory and a tree like any seat; it counted in no cap and
+    was labelled "(this session)"."""
+    from flotilla.fleet.sizing import render
+    limited = {"fleet": {"sizing": {"max_seats": 5}}}
+    person = recommend(machine(), work(), PACE, limited)
+    background = recommend(machine(), work(), PACE, limited, orchestrator="background")
+    assert (person.authors, background.authors) == (3, 2)
+    assert "(this session)" in render(person)[0]
+    assert "(background)" in render(background)[0] and "(this session)" not in render(background)[0]
+    nobody = recommend(machine(), work(), PACE, limited, orchestrator="none")
+    assert nobody.authors == 3 and "spawn --lead" in render(nobody)[0]
