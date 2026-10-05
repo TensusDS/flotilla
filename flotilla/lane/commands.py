@@ -26,7 +26,11 @@ from flotilla.posts import PostError
 
 
 def capacity() -> int:
-    value = (read_machine(paths.state_dir()) or {}).get("lane_capacity", 1)
+    """machine.toml `lane_capacity`, 1 when unset, malformed or unreadable: a torn file never stops a run."""
+    try:
+        value = (read_machine(paths.state_dir()) or {}).get("lane_capacity", 1)
+    except (OSError, ValueError):
+        return 1
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 1 else 1
 
 

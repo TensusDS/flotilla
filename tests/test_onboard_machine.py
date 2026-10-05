@@ -94,3 +94,11 @@ def test_a_torn_machine_file_leaves_the_ceiling_at_its_default(tmp_path, monkeyp
     (tmp_path / machine.MACHINE_FILE).write_text("max_seats = ", encoding="utf-8")
     value, note = sizing._machine_ceiling()
     assert value == sizing.CEILING and "could not be read" in note
+
+
+def test_a_torn_machine_file_leaves_the_lane_at_one_slot(tmp_path, monkeypatch):
+    """`lane run` read machine.toml unguarded: a torn file raised out of every run until fixed by hand."""
+    from flotilla.lane import commands
+    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path))
+    (tmp_path / machine.MACHINE_FILE).write_text("lane_capacity = ", encoding="utf-8")
+    assert commands.capacity() == 1
