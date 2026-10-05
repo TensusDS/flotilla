@@ -410,6 +410,15 @@ turns slowed about twofold as sessions' contexts grew. So flotilla spends the la
 - **a fresh tree is set up once** - the profile's `tests.setup_command` (`npm ci` beside a `package-lock.json`, found
   at onboarding) runs before a tree's first receipt and again only when its lockfile changes.
 
+**Every run in the lane is measured.** A `lane run` or a receipt records how long it took, its peak memory (every
+process it started, a browser in its own process group included), the cores it used and how busy the machine was
+meanwhile. Runs of one command are joined by a ladder of signatures - the exact command with the seat's tree path
+replaced, then with hashes, ports and temporary files removed, then the program, then the project - and `flotilla
+lane` shows each booking's estimate and where it comes from (`estimate: 40 s, 6.9 cores, 1.7 GB (5 runs (exact
+match))`). This is the first stage of admission by resources (`docs/specs/2026-10-05-lane-resource-admission-design.md`):
+admission itself is unchanged, and the next stages admit by a budget of cores and memory and let short runs overtake
+long ones.
+
 ## Guards
 
 Before a Bash command runs, flotilla refuses a few commands that do silent damage:

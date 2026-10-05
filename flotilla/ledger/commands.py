@@ -267,8 +267,9 @@ def _receipt(args) -> int:
         if not args.timeout:   # a tier that will not end is stopped at the lane's ceiling (worldcore W21)
             from flotilla.lane.commands import ceiling_for
             args.timeout = float(ceiling_for(tree, profile, tiers=True))
-        nothing = not receipts.to_run(ident.root, state=state, repo_key=ident.key, purpose=args.purpose,
-                                      profile=profile)
+        planned = receipts.to_run(ident.root, state=state, repo_key=ident.key, purpose=args.purpose,
+                                  profile=profile)
+        nothing = not planned
         if args.no_lane or nothing:
             why = ("--no-lane" if args.no_lane else "nothing to run: every tier is already green over these files"
                    if receipts.tiers_for(profile, args.purpose) else f"no {args.purpose} tiers configured")
@@ -277,9 +278,11 @@ def _receipt(args) -> int:
                                           profile=profile, timeout=args.timeout, setup=args.setup)
         else:
             from flotilla.lane.commands import booked
-            with booked(tree, note=f"{args.purpose} receipt", wait=args.lane_wait):
+            with booked(tree, note=f"{args.purpose} receipt", wait=args.lane_wait, will_run=planned,
+                        purpose=args.purpose) as grant:
                 result = receipts.run_receipt(ident.root, state=state, repo_key=ident.key, purpose=args.purpose,
                                               profile=profile, timeout=args.timeout, setup=args.setup)
+                grant.measured.update(receipts.measured_of(result))
         for tier in result["tiers"]:
             print(f"{tier['status']:<9} {tier['name']}: {tier['summary']}")
             if tier["status"] != "green":   # why, not only that (worldcore field test W23)

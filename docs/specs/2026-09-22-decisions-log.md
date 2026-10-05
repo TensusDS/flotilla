@@ -1478,6 +1478,19 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    answer leads with "raise nothing now". Code coupling and money are later stages; this version says so in its
    output. (planner's decision, 2026-10-04)
 
+232. **The lane measures every run before it decides by them** (Claude Code session, 2026-10-05; design
+   `docs/specs/2026-10-05-lane-resource-admission-design.md`, stage 1). On the field machine the lane admitted by a
+   count and in strict order: 64% of bookings held it under a minute and waited 84 of the 146 hours waited in a week,
+   a two-second test behind a half-hour screenshot job. Admission by a budget of cores and memory needs what each run
+   takes, and nobody measured browser or mutation jobs. Stage 1 measures and changes no admission: every `lane run`
+   and receipt records seconds, peak memory, cores (CPU over wall time) and the machine's busy share; a swept booking
+   is recorded as cut, not dropped. Runs are joined by a ladder of signatures - exact with the tree path replaced,
+   normalised (hashes, ports, temporary files, redirections out), program, project - because hashes and ports made
+   26-39% of the field's runs look new. An estimate comes from the most exact step with three runs in the last 30
+   days (the last ten): duration the median of green runs, cores the maximum of runs on an unsaturated machine, peak
+   the maximum; a new command takes its project's 90th percentile, a new project a fixed prior of 4 cores and 2 GB.
+   (planner's decision, 2026-10-05)
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

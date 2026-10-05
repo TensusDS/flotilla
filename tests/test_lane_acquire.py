@@ -161,3 +161,27 @@ def test_low_memory_holds_the_lane_whatever_the_capacity(lanes):
                    Answer("memory", True, "878 MB available, under the floor of 1500 MB")], [], [])
     grant = take(lanes, low, capacity=4)
     assert grant.booking is None and "memory: 878 MB available" in grant.why
+
+
+def test_held_releases_with_what_the_caller_measured(lanes):
+    class Table(Procs):
+        def ancestors(self, pid):
+            return []
+    with acquire.held(lanes, lambda: QUIET, who="a", note="n", capacity=1, wait=0, table=Table(),
+                      command="make", ladder=["exact:make"], project="p") as grant:
+        grant.measured.update({"seconds": 2.0, "verdict": "green"})
+    item = lanes.bookings()[grant.booking.id]
+    assert (item.state, item.command, item.seconds, item.verdict) == (book.RELEASED, "make", 2.0, "green")
+
+
+def test_a_nested_grant_is_released_and_measured_by_its_owner_only(lanes, monkeypatch):
+    class Table(Procs):
+        def ancestors(self, pid):
+            return [1]
+    outer = lanes.enqueue("a", "outer", pid=1, mark="mark")
+    lanes.grant(outer.id, slots=1)
+    monkeypatch.setenv(acquire.ENV, outer.id)
+    with acquire.held(lanes, lambda: QUIET, who="a", note="inner", capacity=1, wait=0, table=Table()) as grant:
+        grant.measured.update({"seconds": 9.0})
+    item = lanes.bookings()[outer.id]
+    assert item.state == book.HELD and item.seconds is None
