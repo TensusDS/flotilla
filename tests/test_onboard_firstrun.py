@@ -89,3 +89,67 @@ def test_peaks_keep_the_larger_and_survive_the_seconds_writer(tmp_path):
     assert firstrun.load_measurements(tmp_path, "k") == {"unit": 12.5}
     firstrun.measure_peaks(tmp_path, "k", {"unit": 1200})
     assert firstrun.load_peaks(tmp_path, "k") == {"unit": 1200} and firstrun.load_measurements(tmp_path, "k")
+
+
+def test_a_sampler_thread_that_cannot_start_does_not_cost_the_tier(tmp_path, monkeypatch):
+    import threading
+    real = threading.Thread.start
+
+    def refuse(self):
+        if "GroupPeak" in repr(getattr(self, "_target", "")):
+            raise RuntimeError("can't start new thread")
+        return real(self)
+    monkeypatch.setattr(threading.Thread, "start", refuse)
+    run = firstrun.run_tier("unit", "true", tmp_path, timeout=30)
+    assert run.status == "green"
+
+
+def _bad(tmp_path, text):
+    path = firstrun._path(tmp_path, "k")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_a_torn_file_is_replaced_by_the_next_green_run(tmp_path):
+    """Review of 0.7.14: an undecodable file was skipped forever by the receipt writers, and crashed onboarding,
+    which used to overwrite it. Measurements are this machine's cache: any writer starts again from a bad file."""
+    _bad(tmp_path, "[seconds]\nunit = ")
+    firstrun.measure_once(tmp_path, "k", {"unit": 3.0})
+    assert firstrun.load_measurements(tmp_path, "k") == {"unit": 3.0}
+    _bad(tmp_path, "[seconds]\nunit = ")
+    firstrun.measure_peaks(tmp_path, "k", {"unit": 700})
+    assert firstrun.load_peaks(tmp_path, "k") == {"unit": 700}
+    _bad(tmp_path, "[seconds]\nunit = ")
+    firstrun.save_measurements(tmp_path, "k", [firstrun.TierRun("unit", "green", 4.0, "", "")])
+    assert firstrun.load_measurements(tmp_path, "k") == {"unit": 4.0}
+
+
+def test_values_of_the_wrong_type_are_dropped_not_fatal(tmp_path):
+    """A hand-edited `peak_mb = 5` or `unit = "big"` raised TypeError out of the receipt after its tiers ran."""
+    _bad(tmp_path, 'peak_mb = 5\n[seconds]\nunit = "slow"\nlint = 2.0\n')
+    assert firstrun.load_measurements(tmp_path, "k") == {"lint": 2.0}
+    assert firstrun.load_peaks(tmp_path, "k") == {}
+    firstrun.measure_peaks(tmp_path, "k", {"unit": 300})
+    assert firstrun.load_peaks(tmp_path, "k") == {"unit": 300}
+    _bad(tmp_path, '[peak_mb]\nunit = "big"\ne2e = true\n')
+    firstrun.measure_peaks(tmp_path, "k", {"unit": 300})
+    assert firstrun.load_peaks(tmp_path, "k") == {"unit": 300}
+
+
+def test_an_unreadable_file_is_named_not_mistaken_for_no_measurement(tmp_path):
+    _bad(tmp_path, "[seconds]\nunit = ")
+    assert "measurements" in firstrun.measurements_problem(tmp_path, "k")
+    assert firstrun.measurements_problem(tmp_path, "absent") == ""
+
+
+def test_onboarding_keeps_the_larger_peak(tmp_path):
+    firstrun.measure_peaks(tmp_path, "k", {"unit": 900})
+    firstrun.save_measurements(tmp_path, "k", [firstrun.TierRun("unit", "green", 4.0, "", "", 0, 300)])
+    assert firstrun.load_peaks(tmp_path, "k") == {"unit": 900}
+
+
+def test_a_torn_file_is_repaired_even_when_nothing_new_was_measured(tmp_path):
+    _bad(tmp_path, "[seconds]\nunit = ")
+    firstrun.measure_peaks(tmp_path, "k", {"unit": None})
+    assert firstrun.measurements_problem(tmp_path, "k") == ""

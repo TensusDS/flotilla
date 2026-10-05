@@ -162,6 +162,9 @@ def _spawn(ledger, args) -> int:
                 print(line)
             if rec.raise_nothing and not args.anyway:
                 raise MoveRefused(f"{rec.raise_nothing}; `--anyway` raises it all the same")
+            if "memory" not in rec.caps and not args.anyway:   # nothing measured it against the machine
+                raise MoveRefused("free memory could not be read, so nothing measured this fleet against the machine; "
+                                  "`--anyway` raises it all the same, or name the counts")
             counts = {post: n for post, n in rec.counts.items() if post != "orchestrator" and n}
         unnamed = _unnamed_leads(ledger, mine)
         if unnamed:

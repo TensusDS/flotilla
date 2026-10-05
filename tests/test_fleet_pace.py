@@ -92,3 +92,10 @@ def test_a_handover_with_an_unreadable_time_is_skipped_not_fatal():
     for r in rows:
         r.history.append({"at": "not a time", "move": "hand"})
     assert not pace(rows, now=NOW).measured
+
+
+def test_events_dated_after_now_are_ignored():
+    """Review of 0.7.14 (security): a ledger event from the future made a pace nobody kept."""
+    rows = [_row(f"r{i}", ("04T10:00", "claim"), ("04T12:00", "hand")) for i in range(3)]
+    rows += [_row(f"f{i}", ("09T10:00", "claim"), ("09T10:01", "hand")) for i in range(5)]
+    assert pace(rows, now=NOW).handovers_per_author_hour == 0.5

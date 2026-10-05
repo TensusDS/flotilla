@@ -43,7 +43,7 @@ def pace(rows, *, now: dt.datetime, window_days: int = 30) -> Pace:
         started = handed = None
         for event in row.history:
             when, move = _at(event.get("at")), event.get("move")
-            if when is None:
+            if when is None or when > now:   # an event from the future is no pace anyone kept (review of 0.7.14)
                 continue
             if move == "hand":
                 if started is not None and since <= when and when >= started:

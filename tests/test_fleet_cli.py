@@ -340,3 +340,17 @@ def test_spawn_recommended_with_no_room_refuses_unless_anyway(tmp_path, monkeypa
     assert code == 2 and "raise nothing now" in out
     code, out = run_cli("spawn", "--recommended", "--dry-run", "--anyway", "--root", str(root))
     assert code == 0 and "dry run:" in out
+
+
+def test_spawn_recommended_with_memory_unknown_refuses_unless_anyway(tmp_path, monkeypatch):
+    """Review of 0.7.14 (security): with free memory unknown nothing measured the fleet against the machine, and
+    the seat-memory check also passes on unknown."""
+    from flotilla.core import resources
+    root = onboarded(tmp_path, monkeypatch)
+    roomy(monkeypatch)
+    monkeypatch.setattr(resources, "available_mb", lambda **kw: None)
+    monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [])
+    code, out = run_cli("spawn", "--recommended", "--dry-run", "--root", str(root))
+    assert code == 2 and "free memory" in out and "--anyway" in out
+    code, out = run_cli("spawn", "--recommended", "--dry-run", "--anyway", "--root", str(root))
+    assert code == 0 and "dry run:" in out

@@ -60,7 +60,7 @@ def free_disk_mb(path) -> int | None:
 def tree_mb(path, *, run=subprocess.run) -> int | None:
     """A tree's size on disk in MB (rounded up) by `du -sk`; None when du fails or takes over 20 seconds."""
     try:
-        done = run(["du", "-sk", str(path)], capture_output=True, text=True, check=False, timeout=20)
+        done = run(["du", "-sk", "--", str(path)], capture_output=True, text=True, check=False, timeout=20)
     except (OSError, subprocess.SubprocessError):
         return None
     if done.returncode != 0:

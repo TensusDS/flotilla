@@ -192,18 +192,23 @@ authors 3 = max(1, min(backlog 3, memory 3, test runs 3, disk 200)) - limited by
 
 Authors are the smallest of five caps: the **backlog** (ledger rows claimed or being fixed, tasks the orchestrator
 names with `--tasks N` or `--tasks-file`, open GitHub issues when `[fleet.sizing] tracker = "github"`, and open items
-in TODO files), **memory** (free memory above the floor, a seat's cost for each seat the fleet brings, and room for
-one test run), **test runs** (how many handovers the lane can verify in an hour - from the time and peak memory the
-receipts recorded on this machine - against how fast an author hands over, measured from the ledger), **disk** (half
-the free disk, in seat trees) and `max_seats`. Reviewers grow with the authors and the measured review time; a judge
-comes when the profile requires one or has a deploy target. A signal that could not be read is named and left out,
-never guessed. An item counts as minor only where its source says so (a `[minor]` prefix, a `size:small` label).
-`flotilla spawn --recommended` raises the recommendation, less the posts live sessions already hold. Not measured
-yet: how the code splits into independent areas, and subscription limits - later releases.
+in TODO files), **memory** (free memory above the floor, plus what this project's running seats already hold, a
+seat's cost for each seat the fleet brings, and room for one test run), **test runs** (how many handovers the lane can
+verify in an hour - from the time and peak memory the receipts recorded on this machine, the peak counting every
+process a tier starts, a browser in its own process group included - against how fast an author hands over,
+measured from the ledger), **disk** (half the free disk, in seat trees) and **max seats** (12 seats on a machine
+unless `max_seats` in `machine.toml`, the person's own file, says otherwise; a profile may only lower it). Reviewers
+grow with the authors and the measured review time, never past the number of authors; a judge comes when the profile
+requires one or has a deploy target. A signal that could not be read is named and left out, never guessed; with free
+memory unknown, `spawn --recommended` raises nothing without `--anyway`. An item counts as minor only where its source
+says so (a `[minor]` prefix, a `size:small` label). The recommendation is the whole fleet: `flotilla spawn
+--recommended` raises it less the posts live sessions already hold. Not measured yet: how the code splits into
+independent areas, and subscription limits - later releases.
 
 `[fleet.sizing]` in the profile: `tracker` (`"github"`), `labels` (issues with any of them), `minor_labels`
-(`["size:small"]`), `backlog_files` (globs from the repository root, `["TODO.md"]` by default, `[]` for none),
-`minor_prefix` (`"[minor]"`), `max_seats` (a ceiling never exceeded).
+(`["size:small"]`), `backlog_files` (globs from the repository root over the files git tracks or would track,
+`["TODO.md"]` by default, `[]` for none), `minor_prefix` (`"[minor]"`), `max_seats` (lower than the machine's
+ceiling, never higher).
 
 ### 3. Talk to the orchestrator
 

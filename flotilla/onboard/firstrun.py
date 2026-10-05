@@ -99,15 +99,42 @@ def _path(state: Path, repo_key: str) -> Path:
 HEADER = "Tier run times and peak memory on this machine, green runs only."
 
 
-def _load_all(state: Path, repo_key: str) -> dict:
+TABLES = ("seconds", "peak_mb")
+
+
+def _number(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _clean(data) -> dict:
+    """Only the tables this module writes, and only numbers in them: a hand-edited `peak_mb = 5` or `unit = "slow"`
+    is dropped, never a TypeError out of the receipt it rides on (review of 0.7.14)."""
+    out = {}
+    for table in TABLES:
+        values = data.get(table) if isinstance(data, dict) else None
+        if isinstance(values, dict):
+            out[table] = {str(name): value for name, value in values.items() if _number(value)}
+    return out
+
+
+def _read(state: Path, repo_key: str) -> tuple[dict, str]:
+    """(the clean tables, why the file could not be read or "")."""
+    path = _path(state, repo_key)
     try:
-        return tomllib.loads(_path(state, repo_key).read_text(encoding="utf-8"))
+        return _clean(tomllib.loads(path.read_text(encoding="utf-8"))), ""
     except FileNotFoundError:
-        return {}
+        return {}, ""
+    except (OSError, ValueError) as err:   # TOMLDecodeError and UnicodeDecodeError are ValueErrors
+        return {}, f"the measurements file {path} could not be read ({err.__class__.__name__}: {err})"
+
+
+def measurements_problem(state: Path, repo_key: str) -> str:
+    """Why this machine's measurements file could not be read, or "": an unreadable file is not "never measured"."""
+    return _read(state, repo_key)[1]
 
 
 def _write_all(state: Path, repo_key: str, data: dict) -> Path:
-    """The whole file, staged and renamed: each writer keeps the tables it does not own (`seconds`, `peak_mb`)."""
+    """The whole file, staged and renamed, so a reader never sees half."""
     path = _path(state, repo_key)
     path.parent.mkdir(parents=True, exist_ok=True)
     staged = path.with_name(f".{path.name}.{os.getpid()}.tmp")
@@ -120,31 +147,51 @@ def _write_all(state: Path, repo_key: str, data: dict) -> Path:
     return path
 
 
+def _update(state: Path, repo_key: str, change) -> None:
+    """Read, change and write the file under a lock, so two receipts finishing together do not lose each other's
+    peak. A file that cannot be read is this machine's cache gone bad: the writer starts again from nothing, and
+    any green run repairs it (review of 0.7.14). `change(data)` returns whether it changed anything."""
+    path = _path(state, repo_key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path.with_name(f".{path.name}.lock"), "a+") as lock:
+        try:
+            import fcntl
+            fcntl.flock(lock, fcntl.LOCK_EX)
+        except (ImportError, OSError):
+            pass   # no advisory locks here: the staged rename still keeps the file whole
+        data, problem = _read(state, repo_key)
+        if change(data) or problem:
+            _write_all(state, repo_key, data)
+
+
 def save_measurements(state: Path, repo_key: str, runs: list[TierRun]) -> Path:
-    data = _load_all(state, repo_key)
-    data["seconds"] = {run.name: run.seconds for run in runs if run.status == "green"}
-    peaks = {run.name: run.peak_mb for run in runs if run.status == "green" and run.peak_mb is not None}
-    if peaks:
-        data["peak_mb"] = {**dict(data.get("peak_mb") or {}), **peaks}
-    path = _write_all(state, repo_key, data)
-    return path
+    """Onboarding's run: its times replace the table; its peaks join the worst seen, as every receipt's do."""
+    def change(data):
+        data["seconds"] = {run.name: run.seconds for run in runs if run.status == "green"}
+        peaks = dict(data.get("peak_mb") or {})
+        for run in runs:
+            if run.status == "green" and run.peak_mb is not None:
+                peaks[run.name] = max(run.peak_mb, peaks.get(run.name, 0))
+        if peaks:
+            data["peak_mb"] = peaks
+        return True
+    _update(state, repo_key, change)
+    return _path(state, repo_key)
 
 
 def measure_once(state: Path, repo_key: str, times: dict[str, float]) -> None:
     """Record a tier's green time where this machine has none yet (twosuns field test of 0.6.7, W2): a receipt is
     the first green run a machine sees after the one onboarding made elsewhere, and a measurement already there -
-    onboarding's - stands. A side effect: an unreadable file or a failed write measures nothing and never costs the
-    receipt it rides on (review of 0.6.8, I1). Written whole through a staged file, so a reader never sees half; the
-    peak table rides along untouched."""
-    try:
-        data = _load_all(state, repo_key)
-        known = dict(data.get("seconds") or {})
+    onboarding's - stands. A side effect: a failed write measures nothing and never costs the receipt it rides on
+    (review of 0.6.8, I1)."""
+    def change(data):
+        known = data.get("seconds") or {}
         new = {name: seconds for name, seconds in times.items() if name not in known and seconds is not None}
-        if not new:
-            return
         data["seconds"] = {**known, **new}
-        _write_all(state, repo_key, data)
-    except (OSError, ValueError):
+        return bool(new)
+    try:
+        _update(state, repo_key, change)
+    except (OSError, ValueError, TypeError):
         pass
 
 
@@ -152,32 +199,26 @@ def measure_peaks(state: Path, repo_key: str, peaks: dict[str, int | None]) -> N
     """Record each tier's peak memory, keeping the larger of what is there and what was just measured: fleet sizing
     asks how much one run can take, and the worst run seen answers that. Unknown peaks (None) record nothing. Like
     `measure_once`, a side effect that never costs the receipt it rides on."""
-    try:
-        data = _load_all(state, repo_key)
-        known = dict(data.get("peak_mb") or {})
-        merged = dict(known)
+    def change(data):
+        merged = dict(data.get("peak_mb") or {})
+        moved = False
         for name, mb in peaks.items():
-            if mb is not None and (name not in merged or mb > merged[name]):
-                merged[name] = mb
-        if merged == known:
-            return
+            if _number(mb) and mb > merged.get(name, -1):
+                merged[name], moved = mb, True
         data["peak_mb"] = merged
-        _write_all(state, repo_key, data)
-    except (OSError, ValueError):
+        return moved
+    try:
+        _update(state, repo_key, change)
+    except (OSError, ValueError, TypeError):
         pass
 
 
 def load_peaks(state: Path, repo_key: str) -> dict[str, int]:
     """Each tier's largest measured peak memory in MB on this machine; a tier never measured is absent."""
-    try:
-        return dict(_load_all(state, repo_key).get("peak_mb") or {})
-    except (OSError, ValueError):
-        return {}
+    return dict(_read(state, repo_key)[0].get("peak_mb") or {})
 
 
 def load_measurements(state: Path, repo_key: str) -> dict[str, float]:
-    try:
-        data = tomllib.loads(_path(state, repo_key).read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return {}
-    return dict(data.get("seconds") or {})
+    """Each tier's green time on this machine; {} when there is none or the file cannot be read
+    (`measurements_problem` says which)."""
+    return dict(_read(state, repo_key)[0].get("seconds") or {})

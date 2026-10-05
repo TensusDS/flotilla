@@ -111,39 +111,72 @@ def _escapes(glob: str) -> bool:
     return glob.startswith(("/", "\\")) or bool(re.match(r"^[A-Za-z]:", glob)) or ".." in Path(glob).parts
 
 
-def from_files(root, globs, *, minor_prefix: str = "[minor]") -> Source:
-    """TODO-like files matched by globs from the repository root. A glob leaving the root is refused (unknown), and a
-    matched file that resolves outside the root - a link - is skipped: the sizing reads this project, nothing else."""
+MAX_FILE_BYTES = 2_000_000
+
+
+def _glob_regex(glob: str):
+    """A glob from the repository root as a regex over git's paths: `*` and `?` stay inside one directory, `**` is
+    any number of directories, none included; everything else is literal."""
+    parts, out = glob.split("/"), []
+    for i, part in enumerate(parts):
+        last = i == len(parts) - 1
+        if part == "**":
+            out.append("(?:[^/]+/)*[^/]+" if last else "(?:[^/]+/)*")
+            continue
+        out.append("".join("[^/]*" if ch == "*" else "[^/]" if ch == "?" else re.escape(ch) for ch in part)
+                   + ("" if last else "/"))
+    return re.compile("".join(out) + r"\Z")
+
+
+def from_files(root, globs, *, minor_prefix: str = "[minor]", run=subprocess.run) -> Source:
+    """TODO-like files matched by globs from the repository root, among the files git tracks or would track - so
+    ignored trees (`node_modules`) and links to elsewhere are never walked (review of 0.7.14). A glob leaving the
+    root is refused, a matched file resolving outside the root is skipped, and a malformed setting is unknown."""
     root = Path(root)
     name = "TODO files"
+    if not isinstance(globs, (list, tuple)) or not all(isinstance(g, str) and g.strip() for g in globs):
+        return Source(name, None, None, f"[fleet.sizing] backlog_files = {globs!r} is not a list of globs")
     bad = [g for g in globs if _escapes(g)]
     if bad:
         return Source(name, None, None, f"refused: {', '.join(bad)} leaves the repository")
+    try:
+        listed = run(["git", "-C", str(root), "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+                     capture_output=True, text=True, check=False, timeout=20)
+    except (OSError, subprocess.SubprocessError) as err:
+        return Source(name, None, None, f"git ls-files could not be asked: {err}")
+    if listed.returncode != 0:
+        return Source(name, None, None, f"git ls-files failed in {root}: not a repository?")
+    patterns = [_glob_regex(g) for g in globs]
     base = root.resolve()
     seen, main, minor, read, problems = set(), 0, 0, [], []
-    for glob in globs:
-        for path in sorted(root.glob(glob)):
-            try:
-                real = path.resolve()
-                real.relative_to(base)
-            except (OSError, ValueError):
+    for rel in sorted(dict.fromkeys(filter(None, (listed.stdout or "").split("\0")))):
+        if not any(p.match(rel) for p in patterns):
+            continue
+        path = root / rel
+        try:
+            real = path.resolve()
+            real.relative_to(base)
+        except (OSError, ValueError, RuntimeError):
+            continue
+        if real in seen or not real.is_file():
+            continue
+        seen.add(real)
+        try:
+            if real.stat().st_size > MAX_FILE_BYTES:
+                problems.append(f"{rel}: over {MAX_FILE_BYTES // 1_000_000} MB, not read")
                 continue
-            if real in seen or not real.is_file():
-                continue
-            seen.add(real)
-            try:
-                text = real.read_text(encoding="utf-8", errors="replace")
-            except OSError as exc:
-                problems.append(f"{path.relative_to(root)}: {exc.strerror or exc}")
-                continue
-            m, n = todo_items(text, minor_prefix=minor_prefix)
-            main, minor = main + m, minor + n
-            read.append(str(path.relative_to(root)))
+            text = real.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            problems.append(f"{rel}: {exc.strerror or exc}")
+            continue
+        m, n = todo_items(text, minor_prefix=minor_prefix)
+        main, minor = main + m, minor + n
+        read.append(rel)
     if problems and not read:
         return Source(name, None, None, "; ".join(problems))
     note = ", ".join(read) if read else f"no file matched {', '.join(globs)}"
     if problems:
-        note += f" (unreadable: {'; '.join(problems)})"
+        note += f" (not read: {'; '.join(problems)})"
     return Source(name, main, minor, note)
 
 
@@ -155,6 +188,8 @@ def from_tasks(count: int | None, file: Path | None, *, minor_prefix: str = "[mi
             lines = [line.strip() for line in Path(file).read_text(encoding="utf-8").splitlines() if line.strip()]
         except OSError as exc:
             return Source(name, None, None, f"cannot read {file}: {exc.strerror or exc}")
+        except ValueError:
+            return Source(name, None, None, f"cannot read {file}: not UTF-8 text")
         minor = sum(1 for line in lines if line.startswith(minor_prefix))
         return Source(name, len(lines) - minor, minor, str(file))
     if count is not None:
@@ -214,6 +249,6 @@ def gather(root, profile, rows, *, tasks=None, tasks_file=None, run=subprocess.r
     elif tracker:
         sources.append(Source(f"tracker {tracker}", None, None, "only github is supported"))
     globs = sizing.get("backlog_files", list(DEFAULT_FILES))
-    if globs:
+    if globs != []:
         sources.append(from_files(root, globs, minor_prefix=prefix))
     return Backlog(sources)

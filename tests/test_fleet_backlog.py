@@ -4,6 +4,12 @@ from types import SimpleNamespace
 
 from flotilla.fleet import backlog
 
+
+def _git_repo(path):
+    path.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init", "-q", str(path)], check=True)
+    return path
+
 TODO = """# Backlog
 
 - [ ] a
@@ -49,6 +55,7 @@ def test_an_empty_or_all_done_todo_is_zero():
 
 
 def test_from_files_sums_matching_files(tmp_path):
+    _git_repo(tmp_path)
     (tmp_path / "TODO.md").write_text("- [ ] a\n- [ ] [minor] b\n")
     (tmp_path / "docs").mkdir()
     (tmp_path / "docs" / "x.todo.txt").write_text("- [ ] c\n")
@@ -57,6 +64,7 @@ def test_from_files_sums_matching_files(tmp_path):
 
 
 def test_from_files_matching_nothing_is_a_known_zero(tmp_path):
+    _git_repo(tmp_path)
     src = backlog.from_files(tmp_path, ["TODO.md"])
     assert (src.main, src.minor) == (0, 0) and "no file" in src.note
 
@@ -71,8 +79,7 @@ def test_from_files_refuses_a_glob_leaving_the_root(tmp_path):
 
 
 def test_from_files_skips_a_link_pointing_out_of_the_root(tmp_path):
-    root = tmp_path / "repo"
-    root.mkdir()
+    root = _git_repo(tmp_path / "repo")
     (tmp_path / "secret.md").write_text("- [ ] outside\n")
     (root / "TODO.md").symlink_to(tmp_path / "secret.md")
     src = backlog.from_files(root, ["TODO.md"])
@@ -144,6 +151,7 @@ def test_backlog_sums_known_sources_and_names_unknown():
 
 
 def test_gather_asks_only_the_configured_sources(tmp_path):
+    _git_repo(tmp_path)
     (tmp_path / "TODO.md").write_text("- [ ] a\n")
     run = _gh(raises=AssertionError("gh must not be asked without a tracker"))
     b = backlog.gather(tmp_path, {}, {}, tasks=None, tasks_file=None, run=run)
@@ -153,3 +161,47 @@ def test_gather_asks_only_the_configured_sources(tmp_path):
                        tasks=4, tasks_file=None, run=_gh(stdout="[]"))
     assert [s.name for s in b.sources] == ["ledger", "named tasks", "GitHub issues"]
     assert b.main == 4
+
+
+def test_backlog_files_that_are_not_a_list_of_globs_are_unknown_not_a_crash(tmp_path):
+    """Review of 0.7.14: `backlog_files = "TODO.md"` globbed each character and `""` raised out of `fleet size`."""
+    for value in ("TODO.md", "", 5, [""], ["TODO.md", 3]):
+        src = backlog.from_files(tmp_path, value)
+        assert src.main is None and "backlog_files" in src.note, value
+
+
+def test_files_are_matched_among_the_repositorys_files_not_the_disk(tmp_path):
+    """Review of 0.7.14 (security): `**` walked ignored trees and followed a committed link to `/`. Only files git
+    tracks or would track are matched."""
+    root = _git_repo(tmp_path / "repo")
+    (root / ".gitignore").write_text("node_modules/\n")
+    (root / "node_modules" / "x").mkdir(parents=True)
+    (root / "node_modules" / "x" / "TODO.md").write_text("- [ ] vendored\n")
+    (root / "docs").mkdir()
+    (root / "docs" / "TODO.md").write_text("- [ ] mine\n")
+    (root / "everything").symlink_to("/")
+    src = backlog.from_files(root, ["**/TODO.md"])
+    assert (src.main, src.minor) == (1, 0)
+
+
+def test_a_glob_star_star_matches_any_depth_including_none(tmp_path):
+    root = _git_repo(tmp_path / "repo")
+    (root / "TODO.md").write_text("- [ ] top\n")
+    (root / "a" / "b").mkdir(parents=True)
+    (root / "a" / "b" / "TODO.md").write_text("- [ ] deep\n")
+    (root / "a" / "NOTTODO.md").write_text("- [ ] other\n")
+    assert backlog.from_files(root, ["**/TODO.md"]).main == 2
+    assert backlog.from_files(root, ["a/*.md"]).main == 1
+    assert backlog.from_files(root, ["TODO.md"]).main == 1
+
+
+def test_a_tasks_file_that_is_not_utf8_is_unknown(tmp_path):
+    f = tmp_path / "tasks.txt"
+    f.write_bytes(b"\xff\xfe broken\n")
+    src = backlog.from_tasks(None, f)
+    assert src.main is None and "tasks.txt" in src.note
+
+
+def test_a_directory_that_is_not_a_repository_is_unknown(tmp_path):
+    src = backlog.from_files(tmp_path, ["TODO.md"])
+    assert src.main is None and "git" in src.note
