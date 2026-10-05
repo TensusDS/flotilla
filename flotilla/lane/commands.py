@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import datetime as dt
 import os
+import shlex
 import signal
 import subprocess
 import time
@@ -14,7 +15,7 @@ from flotilla.core import config, paths, repo
 from flotilla.core.storage import LocalLogStore, StorageCorrupt
 from flotilla.core.text import visible
 from flotilla.lane import acquire as acq
-from flotilla.lane import book, machine
+from flotilla.lane import book, machine, signature
 from flotilla.lane import run as runner
 from flotilla.lane.procs import ProcessTable
 from flotilla.ledger import gitq, runs
@@ -101,13 +102,32 @@ def _on_signals() -> None:
         signal.signal(number, leave)
 
 
+def _project(root) -> str:
+    try:
+        return repo.identify(Path(root)).key
+    except repo.NotARepository:
+        return ""
+
+
 @contextlib.contextmanager
-def booked(root, *, note: str, wait: float, run_for: str = "", as_name=None):
+def booked(root, *, note: str, wait: float, run_for: str = "", as_name=None, command: list[str] | None = None,
+           will_run: list[str] | None = None, purpose: str = ""):
+    """Book the lane around a run. A command, or a receipt's tiers, gives the booking its full text and its ladder
+    of signatures, so the run's measurement joins the history of its command (lane admission, stage 1)."""
     table = ProcessTable.for_machine()
     lanes = _lanes(table)
     profile, top, problem = _profile(root)
+    project = _project(root)
+    text, ladder = "", []
+    if will_run is not None:
+        text = f"receipt {purpose}: " + ", ".join(will_run)
+        ladder = signature.receipt_ladder(purpose, list(will_run), project=project)
+    elif command:
+        text = shlex.join(command)
+        ladder = signature.ladder(list(command), tree=str(Path(root).resolve()), project=project)
     with acq.held(lanes, _reader(lanes, table, profile, top, problem), who=_who(as_name), note=note,
-                  capacity=capacity(), wait=wait, table=table, run_for=run_for, say=print) as grant:
+                  capacity=capacity(), wait=wait, table=table, run_for=run_for, say=print, command=text,
+                  ladder=ladder, will_run=list(will_run or []), project=project) as grant:
         yield grant
 
 
@@ -231,11 +251,16 @@ def _run(args) -> int:
     where, started = None, None
     try:
         with booked(args.tree, note=args.note or " ".join(command)[:80], wait=args.wait, run_for=args.for_ or "",
-                    as_name=args.as_name):
+                    as_name=args.as_name, command=command) as grant:
             where = _where(Path(args.tree))
             started = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
             limit = args.max if args.max else ceiling_for(args.tree, _profile(args.tree)[0])
             result = runner.execute(command, cwd=args.tree, ceiling=limit)
+            if result.usage is not None:
+                grant.measured.update({"seconds": result.usage.seconds, "peak_mb": result.usage.peak_mb,
+                                       "cores": result.usage.cores, "busy": result.usage.busy,
+                                       "verdict": "ceiling" if "at the ceiling" in result.summary
+                                       else result.verdict})
     except acq.LaneRefused as err:
         print(f"refused: {err}")
         return 2

@@ -149,7 +149,8 @@ def run_receipt(tree: Path, *, state: Path, repo_key: str, purpose: str, profile
                                        f"({seen.get('summary', '')})"})
             continue
         r = run_tier(tier["name"], tier["command"], Path(tree), timeout=timeout)
-        result = {"name": r.name, "status": r.status, "summary": r.summary or "", "seconds": r.seconds}
+        result = {"name": r.name, "status": r.status, "summary": r.summary or "", "seconds": r.seconds,
+                  "peak_mb": r.peak_mb, "cores": r.cores, "busy": r.busy}
         if r.status != "green":   # why it is not green travels with it (worldcore field test W23)
             result.update({"exit": r.exit, "tail": r.tail})
             if prepared.startswith("skipped"):   # a tree whose dependencies went missing reads as red tests
@@ -179,6 +180,24 @@ def run_receipt(tree: Path, *, state: Path, repo_key: str, purpose: str, profile
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(receipt, indent=2, sort_keys=True), encoding="utf-8")
     return receipt
+
+
+def measured_of(result: dict) -> dict:
+    """What a receipt's booking took, for the lane's journal: the tiers that ran (a reused green ran nothing) - their
+    seconds summed, as they ran one after another, and the largest peak, cores and busy share of any of them."""
+    ran = [tier for tier in result.get("tiers") or [] if not str(tier.get("summary") or "").startswith("reused:")]
+    if not ran:
+        return {}
+
+    def most(key):
+        values = [tier[key] for tier in ran if tier.get(key) is not None]
+        return max(values) if values else None
+    seconds = [tier["seconds"] for tier in ran if tier.get("seconds") is not None]
+    return {"seconds": round(sum(seconds), 2) if len(seconds) == len(ran) else None, "peak_mb": most("peak_mb"),
+            "cores": most("cores"), "busy": most("busy"),
+            "verdict": "green" if all(tier.get("status") == "green" for tier in ran) else "red",
+            "ran": [{key: tier.get(key) for key in ("name", "status", "seconds", "peak_mb", "cores", "busy")}
+                    for tier in ran]}
 
 
 def check_receipt(*, state: Path, repo_key: str, sha: str, purpose: str, profile: dict) -> tuple[bool, str]:

@@ -337,3 +337,14 @@ def test_a_green_receipt_records_the_tiers_peak_memory(tmp_path):
     root = repo_with_origin(tmp_path)
     receipts.run_receipt(root, state=state, repo_key=KEY, purpose="handover", profile=data, timeout=60)
     assert load_peaks(state, KEY).get("unit", 0) >= 45
+
+
+def test_a_receipts_measurement_counts_only_the_tiers_that_ran():
+    """A reused green ran nothing: it must not add its old seconds to what the booking took, or be learned twice."""
+    result = {"tiers": [
+        {"name": "lint", "status": "green", "seconds": 3.0, "summary": "reused: green over the same files at abc1234"},
+        {"name": "unit", "status": "green", "seconds": 40.0, "peak_mb": 1700, "cores": 6.8, "busy": 0.5,
+         "summary": "12 passed"}]}
+    measured = receipts.measured_of(result)
+    assert measured["seconds"] == 40.0 and [t["name"] for t in measured["ran"]] == ["unit"]
+    assert receipts.measured_of({"tiers": [result["tiers"][0]]}) == {}

@@ -229,3 +229,42 @@ def test_a_name_with_a_hidden_character_still_releases_its_own_booking(tmp_path,
     assert run_cli("lane", "take", "--root", str(root), "--as", name)[0] == 0
     code, out = run_cli("lane", "release", "--root", str(root), "--as", name)
     assert code == 0 and "released b1" in out
+
+
+def _journal(tmp_path):
+    from flotilla.core.storage import LocalLogStore
+    from flotilla.lane import book
+    return book.fold(LocalLogStore(tmp_path / "state" / "lane").read(book.KEY).records)
+
+
+def test_a_lane_run_records_its_command_and_measurement(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    code, out = run_cli("lane", "run", "--tree", str(root), "--", sys.executable, "-c", "print('1 passed')")
+    assert code == 0, out
+    [item] = [b for b in _journal(tmp_path).values() if b.command]
+    assert sys.executable in item.command and item.ladder[-1].startswith("project:")
+    assert item.verdict == "green" and item.seconds is not None and item.rule == 1
+
+
+def test_a_receipt_records_the_tiers_it_ran(tmp_path, monkeypatch):
+    tier = {"name": "unit", "command": f"{sys.executable} -c \"print('1 passed')\"", "required_for": ["handover"]}
+    root = onboarded(tmp_path, monkeypatch, {**PROFILE, "tests": {"tier": [tier]}})
+    code, out = run_cli("receipt", "run", "--purpose", "handover", "--tree", str(root))
+    assert code == 0, out
+    [item] = [b for b in _journal(tmp_path).values() if b.note == "handover receipt"]
+    assert item.will_run == ["unit"] and item.ladder[0].startswith("receipt:")
+    assert [tier["name"] for tier in item.ran] == ["unit"]
+    assert all("seconds" in tier and "peak_mb" in tier for tier in item.ran)
+    assert item.verdict == "green" and item.seconds is not None
+
+
+def test_a_nested_run_is_not_measured_twice(tmp_path, monkeypatch):
+    """A `lane run` inside a booking is part of it: the outer booking is measured, the inner never books."""
+    from pathlib import Path
+    root = onboarded(tmp_path, monkeypatch)
+    flotilla = Path(__file__).resolve().parent.parent / "bin" / "flotilla"
+    inner = f"{flotilla} lane run --tree {root} --wait 5 -- {sys.executable} -c pass"   # a broken rule waits, not hangs
+    code, out = run_cli("lane", "run", "--tree", str(root), "--", "sh", "-c", inner)
+    assert code == 0, out
+    measured = [b for b in _journal(tmp_path).values() if b.seconds is not None]
+    assert len(measured) == 1 and len(_journal(tmp_path)) == 1
