@@ -62,15 +62,6 @@ Each is a limitation README states today, judged fixable in principle; none is p
   read under the lock with reservations), overtaking with the shadow guard, fleet size reading the lane. Stage 2 must
   treat an estimate as a hint with a ceiling, never as a hard refusal: any session can write the journal.
   *(open, design)*
-- A receipt's setup (`npm ci`) holds the lane but is not measured; a tier stopped at its timeout records no seconds
-  (the spec counts a ceiling run as "at least" its time). *(checked 2026-10-05 on 0.7.15: still [P] -
-  ledger/receipts.py run_receipt)*
-- A run that raises (Ctrl-C, `lane stop`) is released with no measurement and no cut flag. *(checked 2026-10-05 on
-  0.7.15: still [P] - lane/commands.py _run)*
-- A receipt nested inside a `lane run` never writes its tier history (the outer booking has none). *(checked
-  2026-10-05 on 0.7.15: still [P] - lane/acquire.py held)*
-- A signature step with three samples and no green run shadows a coarser step with green durations ("? s").
-  *(checked 2026-10-05 on 0.7.15: still [P] - lane/estimate.py estimate)*
 - The journal is folded whole on every write and never compacted. *(checked 2026-10-05 on 0.7.15: still [P] -
   lane/book.py fold)*
 
@@ -270,6 +261,8 @@ Each is a limitation README states today, judged fixable in principle; none is p
 
 ## Done
 
+- 0.7.16: a receipt's setup and its red and timed-out tiers are measured; a stopped run is recorded as killed; a
+  run inside a booking is recorded beside it; an estimate borrows its duration from a coarser step.
 - 0.7.13: a seat is known by its session id, kept on its post row, and refused rather than left hanging when the census
   is down (decision 230)
 - 0.7.13: `flotilla doctor` names each post older than the shipped template (decision 230)
