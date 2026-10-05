@@ -26,6 +26,51 @@ FIELDS = ("who", "note", "pid", "mark", "run_for", "why", "command", "ladder", "
           "seconds", "peak_mb", "cores", "busy", "verdict", "ran", "cut")
 MEASURED = ("seconds", "peak_mb", "cores", "busy", "verdict", "ran")
 LISTS = ("ladder", "will_run")
+MAX_TEXT = 2048   # a command and each of its signatures: every session folds the whole journal, so text is bounded
+#: Every session writes the journal and any may be steered: a measured figure of the wrong type or out of range
+#: folds as unknown, never as a crash of `flotilla lane` for all of them (review of stage 1).
+BOUNDS = {"seconds": (0.0, 7 * 86400.0), "peak_mb": (0.0, 1e7), "cores": (0.0, 1024.0), "busy": (0.0, 1.0)}
+
+
+def _figure(key, value):
+    low, high = BOUNDS[key]
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not low <= value <= high:
+        return None   # NaN fails both comparisons; infinities fail the bound
+    return int(value) if key == "peak_mb" else value
+
+
+def _tier(value) -> dict | None:
+    if not isinstance(value, dict) or not isinstance(value.get("name"), str):
+        return None
+    tier = {"name": visible(value["name"])[:200], "status": value.get("status") if isinstance(value.get("status"), str)
+            else ""}
+    for key in BOUNDS:
+        tier[key] = _figure(key, value.get(key))
+    return tier
+
+
+def _clean(key, value):
+    """A field as the journal may hold it, or its empty form."""
+    if key in BOUNDS:
+        return _figure(key, value)
+    if key in LISTS:
+        return [visible(v[:MAX_TEXT]) for v in value if isinstance(v, str)] if isinstance(value, list) else []
+    if key == "ran":
+        return [t for t in (_tier(v) for v in value) if t] if isinstance(value, list) else []
+    if key == "cut":
+        return value is True
+    if key in ("verdict", "project", "command"):
+        return visible(value[:MAX_TEXT]) if isinstance(value, str) else ""   # cut first: visible walks every char
+    if key == "rule":
+        return value if isinstance(value, int) and not isinstance(value, bool) else None
+    return visible(value) if key in TEXT and isinstance(value, str) else value
+
+
+def _aware(text) -> bool:
+    try:
+        return isinstance(text, str) and dt.datetime.fromisoformat(text).tzinfo is not None
+    except ValueError:
+        return False
 #: What a caller wrote: another session's text, made visible where the log is read, so no place that prints a
 #: booking can forge a line or move the cursor (scan of 0.7.0, F2).
 TEXT = ("who", "note", "run_for", "why", "command", "project")
@@ -60,13 +105,12 @@ class Booking:
 def fold(records) -> dict[str, Booking]:
     found: dict[str, Booking] = {}
     for event in records:
+        if not isinstance(event, dict) or not isinstance(event.get("booking"), str) or not _aware(event.get("at")):
+            continue   # a line nobody could have written through flotilla: skipped, never fatal
         item = found.get(event["booking"]) or Booking(id=event["booking"])
         for key in FIELDS:
             if key in event:
-                value = event[key]
-                if key in LISTS and isinstance(value, list):
-                    value = [visible(v) if isinstance(v, str) else v for v in value]
-                setattr(item, key, visible(value) if key in TEXT and isinstance(value, str) else value)
+                setattr(item, key, _clean(key, event[key]))
         item.state = event["state"]
         if item.state in (HELD, WAITING):
             item.since = event["at"]
@@ -113,7 +157,8 @@ class Book:
         with self.store.transaction(KEY) as tx:
             found = fold(tx.read().records)
             return self._write(tx, f"b{len(found) + 1}", WAITING, who=who, note=note, pid=pid, mark=mark,
-                               run_for=run_for, command=command, ladder=list(ladder), will_run=list(will_run),
+                               run_for=run_for, command=command[:MAX_TEXT],
+                               ladder=[step[:MAX_TEXT] for step in ladder], will_run=list(will_run),
                                project=project, rule=RULE)
 
     def grant(self, booking_id: str, *, slots: int, by_hand: bool = False) -> Booking | None:

@@ -149,7 +149,7 @@ def _size(mb) -> str:
 def describe_estimate(item, hist) -> str:
     """A booking's estimate as the person reads it, with where it comes from (lane admission, stage 1)."""
     if not item.ladder and not item.will_run:
-        return "estimate: none (an older flotilla booked it)"
+        return "estimate: none (an older flotilla booked it)" if item.rule is None else "estimate: none (taken by hand)"
     if item.will_run:
         found = estimate.receipt_estimate(list(item.will_run), hist, project=item.project)
     else:
@@ -280,8 +280,7 @@ def _run(args) -> int:
             if result.usage is not None:
                 grant.measured.update({"seconds": result.usage.seconds, "peak_mb": result.usage.peak_mb,
                                        "cores": result.usage.cores, "busy": result.usage.busy,
-                                       "verdict": "ceiling" if "at the ceiling" in result.summary
-                                       else result.verdict})
+                                       "verdict": "ceiling" if result.at_ceiling else result.verdict})
     except acq.LaneRefused as err:
         print(f"refused: {err}")
         return 2

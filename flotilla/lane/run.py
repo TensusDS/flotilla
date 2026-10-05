@@ -33,6 +33,7 @@ class RunResult:
     summary: str
     signal: int | None
     usage: Usage | None = None   # what the run took (lane admission, stage 1); None when it never started
+    at_ceiling: bool = False     # stopped at the ceiling: its time is a lower bound, not a full run
 
 
 def summarize(lines) -> str:
@@ -106,7 +107,7 @@ def execute(command: list[str], *, cwd=None, popen=subprocess.Popen, out=None, c
     summary = summarize(tail)
     if over.is_set():
         return RunResult(code if code else 124, "killed",
-                         f"stopped at the ceiling of {ceiling:g} s - no verdict (last line: {summary})", signal_number, usage)
+                         f"stopped at the ceiling of {ceiling:g} s - no verdict (last line: {summary})", signal_number, usage, True)
     if verdict == "killed":
         summary = f"killed by signal {signal_number} - no verdict (last line: {summary})"
     return RunResult(code, verdict, summary, signal_number, usage)

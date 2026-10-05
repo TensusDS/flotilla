@@ -7,6 +7,7 @@ project never seen, a fixed prior. Only the last ten measurements of a step coun
 from __future__ import annotations
 
 import datetime as dt
+import os
 import statistics
 from dataclasses import dataclass
 
@@ -14,6 +15,7 @@ from flotilla.lane import book
 from flotilla.lane.signature import tier_signature
 
 KEEP, ENOUGH, SATURATED = 10, 3, 0.85
+SKEW = dt.timedelta(minutes=5)   # a clock this far ahead is not a run that happened
 
 
 @dataclass(frozen=True)
@@ -45,14 +47,16 @@ def _when(text: str) -> dt.datetime | None:
 
 
 def history(bookings: dict, *, now: dt.datetime, days: int = 30) -> dict[str, list[Sample]]:
-    since = now - dt.timedelta(days=days)
+    since, latest = now - dt.timedelta(days=days), now + SKEW
     found: dict[str, list[Sample]] = {}
     done = [item for item in bookings.values() if item.state == book.RELEASED and not item.cut
-            and item.seconds is not None and (_when(item.ended) or since) >= since]
-    for item in sorted(done, key=lambda item: item.ended):
-        sample = Sample(item.seconds, item.peak_mb, item.cores, item.busy, item.verdict, item.ended)
-        for step in item.ladder:
-            found.setdefault(step, []).append(sample)
+            and (item.seconds is not None or item.ran) and _when(item.ended) is not None
+            and since <= _when(item.ended) <= latest]
+    for item in sorted(done, key=lambda item: _when(item.ended)):
+        if item.seconds is not None:   # a red receipt has no total, but its tiers still teach (review of stage 1)
+            sample = Sample(item.seconds, item.peak_mb, item.cores, item.busy, item.verdict, item.ended)
+            for step in item.ladder:
+                found.setdefault(step, []).append(sample)
         for tier in item.ran or []:
             if isinstance(tier, dict) and tier.get("name") and tier.get("seconds") is not None:
                 found.setdefault(tier_signature(tier["name"], project=item.project), []).append(Sample(
@@ -66,8 +70,16 @@ def _duration(samples: list[Sample]) -> float | None:
     return float(statistics.median(usable)) if usable else None
 
 
-def _cores(samples: list[Sample]) -> float | None:
-    usable = [s.cores for s in samples if s.cores is not None and (s.busy is None or s.busy < SATURATED)]
+def _room(sample: Sample, cpus: int) -> bool:
+    """Whether the run could have used more: the machine was not full, or full of the run itself. A 7-core receipt
+    on 8 cores makes the machine 7/8 busy on its own; that is the run's demand, not a crowd (review of stage 1)."""
+    if sample.busy is None or sample.busy < SATURATED:
+        return True
+    return sample.cores is not None and sample.busy - sample.cores / cpus < 1 - SATURATED
+
+
+def _cores(samples: list[Sample], cpus: int) -> float | None:
+    usable = [s.cores for s in samples if s.cores is not None and _room(s, cpus)]
     return max(usable) if usable else None
 
 
@@ -83,14 +95,15 @@ def _p90(values: list) -> float | int | None:
     return values[min(len(values) - 1, int(round(0.9 * (len(values) - 1))))]
 
 
-def estimate(ladder: list[str], hist: dict[str, list[Sample]], *, project: str) -> Estimate:
+def estimate(ladder: list[str], hist: dict[str, list[Sample]], *, project: str, cpus: int | None = None) -> Estimate:
+    cpus = cpus or os.cpu_count() or 1
     for step in ladder:
         if step.startswith("project:"):
             break
         samples = hist.get(step, [])
         if len(samples) >= ENOUGH:
             kind = step.split(":", 1)[0]
-            return Estimate(_duration(samples), _cores(samples), _peak(samples),
+            return Estimate(_duration(samples), _cores(samples, cpus), _peak(samples),
                             f"{len(samples)} runs ({kind} match)")
     samples = hist.get(f"project:{project}", [])
     if len(samples) >= ENOUGH:
@@ -99,8 +112,10 @@ def estimate(ladder: list[str], hist: dict[str, list[Sample]], *, project: str) 
     return PRIOR
 
 
-def receipt_estimate(will_run: list[str], hist: dict[str, list[Sample]], *, project: str) -> Estimate:
-    parts = [estimate([tier_signature(name, project=project)], hist, project=project) for name in will_run]
+def receipt_estimate(will_run: list[str], hist: dict[str, list[Sample]], *, project: str,
+                     cpus: int | None = None) -> Estimate:
+    parts = [estimate([tier_signature(name, project=project)], hist, project=project, cpus=cpus)
+             for name in will_run]
     if not parts:
         return Estimate(0.0, None, None, "nothing to run")
     seconds = None if any(p.seconds is None for p in parts) else sum(p.seconds for p in parts)

@@ -298,3 +298,8 @@ def test_an_estimate_names_unknown_parts():
     from flotilla.lane import book, commands
     item = book.Booking(id="b2", ladder=["exact:x", "project:q"], project="q")
     assert commands.describe_estimate(item, {}) == "estimate: ? s, 4 cores, 2.0 GB (fixed prior: 4 cores, 2 GB)"
+
+
+def test_a_booking_taken_by_hand_says_so():
+    from flotilla.lane import book, commands
+    assert commands.describe_estimate(book.Booking(id="b1", rule=1), {}) == "estimate: none (taken by hand)"

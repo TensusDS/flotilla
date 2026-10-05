@@ -47,9 +47,9 @@ def test_a_run_stopped_at_the_ceiling_counts_as_at_least_its_time():
 
 
 def test_cores_come_from_unsaturated_runs_and_take_the_maximum():
-    runs = [done(1, LADDER, cores=6.8, busy=0.6), done(2, LADDER, cores=3.1, busy=0.98), done(3, LADDER, cores=5.0,
-                                                                                           busy=0.4)]
-    assert est.estimate(LADDER, est.history(bookings(*runs), now=NOW), project="p").cores == 6.8
+    runs = [done(1, LADDER, cores=6.8, busy=0.9), done(2, LADDER, cores=3.1, busy=0.98), done(3, LADDER, cores=5.0,
+                                                                                           busy=0.7)]
+    assert est.estimate(LADDER, est.history(bookings(*runs), now=NOW), project="p", cpus=8).cores == 6.8
 
 
 def test_unknown_busy_counts_as_unsaturated():
@@ -91,8 +91,8 @@ def test_a_receipt_sums_the_tiers_it_will_run():
 
 def test_a_saturated_runs_cores_are_left_out_even_when_larger():
     runs = [done(1, LADDER, cores=2.0, busy=0.5), done(2, LADDER, cores=2.5, busy=0.6),
-            done(3, LADDER, cores=9.0, busy=0.99)]
-    assert est.estimate(LADDER, est.history(bookings(*runs), now=NOW), project="p").cores == 2.5
+            done(3, LADDER, cores=3.0, busy=0.99)]   # 3 of 8 cores while the machine was full: a crowd, not demand
+    assert est.estimate(LADDER, est.history(bookings(*runs), now=NOW), project="p", cpus=8).cores == 2.5
 
 
 def test_runs_older_than_thirty_days_are_left_out_even_when_few():
@@ -105,3 +105,28 @@ def test_a_cut_booking_never_feeds_history_even_if_it_carries_figures():
     cut = [book.Booking(id=f"c{i}", state=book.RELEASED, ended=at, ladder=list(LADDER), project="p", seconds=99.0,
                         verdict="green", cut=True) for i in range(3)]
     assert est.history(bookings(*cut), now=NOW) == {}
+
+
+def test_a_red_receipt_still_teaches_its_tiers():
+    """Review of stage 1: one red tier made the booking's total unknown, and the history skipped its green tiers."""
+    ran = [{"name": "unit", "status": "green", "seconds": 40.0, "peak_mb": 1700, "cores": 6.9, "busy": 0.9},
+           {"name": "e2e", "status": "red", "seconds": None, "peak_mb": None, "cores": None, "busy": None}]
+    runs = [done(i, ["receipt:p:handover:e2e+unit", "project:p"], ran=ran, verdict="red") for i in range(3)]
+    for item in runs:
+        item.seconds = None
+    hist = est.history(bookings(*runs), now=NOW)
+    assert len(hist["tier:p:unit"]) == 3 and est.receipt_estimate(["unit"], hist, project="p").seconds == 40.0
+
+
+def test_a_runs_own_load_is_not_the_machines_saturation():
+    """Review of stage 1: a 7-core receipt on 8 cores makes the machine 7/8 busy by itself; its samples were all
+    'saturated', and the heaviest run had no cores estimate. Saturation is what the others take."""
+    runs = [done(i, LADDER, cores=7.0, busy=0.9) for i in range(3)]
+    assert est.estimate(LADDER, est.history(bookings(*runs), now=NOW), project="p", cpus=8).cores == 7.0
+    crowded = [done(i, LADDER, cores=3.0, busy=0.98) for i in range(3)]
+    assert est.estimate(LADDER, est.history(bookings(*crowded), now=NOW), project="p", cpus=8).cores is None
+
+
+def test_events_from_the_future_feed_nothing():
+    future = [done(i, LADDER, seconds=999, days_ago=-3650) for i in range(10)]
+    assert est.history(bookings(*future), now=NOW) == {}
