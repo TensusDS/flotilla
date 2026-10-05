@@ -198,7 +198,7 @@ def measured_of(result: dict) -> dict:
     none - it ended early."""
     ran = [tier for tier in result.get("tiers") or [] if not str(tier.get("summary") or "").startswith("reused:")]
     if result.get("setup"):
-        ran = [result["setup"], *ran]
+        ran = [{**result["setup"], "kind": "setup"}, *ran]
     if not ran:
         return {}
 
@@ -210,7 +210,8 @@ def measured_of(result: dict) -> dict:
         seconds = tier.get("seconds") if tier.get("status") == "green" else \
             tier.get("elapsed") if tier.get("status") == "timed-out" else None
         return {"name": tier.get("name"), "status": tier.get("status"), "seconds": seconds,
-                **{key: tier.get(key) for key in ("peak_mb", "cores", "busy")}}
+                **{key: tier.get(key) for key in ("peak_mb", "cores", "busy")},
+                **({"kind": "setup"} if tier.get("kind") == "setup" else {})}
     held = [tier.get("elapsed") if tier.get("elapsed") is not None else tier.get("seconds") for tier in ran]
     return {"seconds": round(sum(held), 2) if all(h is not None for h in held) else None,
             "peak_mb": most("peak_mb"), "cores": most("cores"), "busy": most("busy"),

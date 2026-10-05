@@ -42,8 +42,10 @@ def _figure(key, value):
 def _tier(value) -> dict | None:
     if not isinstance(value, dict) or not isinstance(value.get("name"), str):
         return None
-    tier = {"name": visible(value["name"])[:200], "status": value.get("status") if isinstance(value.get("status"), str)
+    tier = {"name": visible(value["name"][:200]), "status": value.get("status") if isinstance(value.get("status"), str)
             else ""}
+    if value.get("kind") == "setup":
+        tier["kind"] = "setup"
     for key in BOUNDS:
         tier[key] = _figure(key, value.get(key))
     return tier

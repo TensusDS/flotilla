@@ -147,3 +147,23 @@ def test_a_step_with_no_green_run_borrows_its_duration_from_a_coarser_one():
     e = est.estimate(exact, est.history(bookings(*reds, *greens), now=NOW), project="p")
     assert e.seconds == 41.0 and e.cores == 3.0 and e.peak_mb == 800
     assert "exact match" in e.source and "duration from" in e.source and "prog match" in e.source
+
+
+def test_stopped_runs_never_crowd_out_what_was_measured():
+    """Review of 0.7.16: three runs stopped by Ctrl-C filled the exact step with samples that measured nothing, and
+    its cores and memory read '?' where they read 4 cores and 3.9 GB before. A run that measured nothing is no
+    sample."""
+    green = [done(i, LADDER, cores=4.0, peak=4000) for i in range(3)]
+    stopped = [done(10 + i, LADDER, verdict=v, cores=None, peak=None) for i, v in enumerate(["killed"] * 3 +
+                                                                                               ["refused"] * 9)]
+    e = est.estimate(LADDER, est.history(bookings(*green, *stopped), now=NOW), project="p")
+    assert (e.cores, e.peak_mb, e.seconds) == (4.0, 4000, 10.0)
+
+
+def test_setup_history_never_mixes_with_a_tier_named_setup():
+    ran = [{"name": "setup", "status": "green", "seconds": 90.0, "kind": "setup"},
+           {"name": "setup", "status": "green", "seconds": 2.0}]
+    runs = [done(i, ["receipt:p:handover:setup", "project:p"], ran=ran) for i in range(3)]
+    hist = est.history(bookings(*runs), now=NOW)
+    assert [s.seconds for s in hist["tier:p:setup"]] == [2.0] * 3
+    assert [s.seconds for s in hist["setup:p"]] == [90.0] * 3

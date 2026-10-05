@@ -166,3 +166,13 @@ def test_a_huge_command_is_cut_before_it_reaches_the_file(tmp_path):
                                       ladder=["exact:" + "y" * 1_000_000])
     [record] = store.read(book.KEY).records
     assert len(record["command"]) <= book.MAX_TEXT and len(record["ladder"][0]) <= book.MAX_TEXT
+
+
+def test_a_setup_entry_keeps_its_kind_through_the_journal(lane):
+    lanes, _ = lane
+    item = lanes.enqueue("a", "", pid=1, mark="m")
+    lanes.grant(item.id, slots=1)
+    done = lanes.release(item.id, measured={"seconds": 3.0, "ran": [
+        {"name": "setup", "status": "green", "seconds": 3.0, "kind": "setup"},
+        {"name": "setup", "status": "green", "seconds": 1.0, "kind": "anything else"}]})
+    assert [t.get("kind") for t in done.ran] == ["setup", None]

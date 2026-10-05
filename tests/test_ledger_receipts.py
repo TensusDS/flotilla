@@ -362,7 +362,7 @@ def test_a_receipts_hold_time_counts_setup_and_every_tier_that_ran():
     measured = receipts.measured_of(result)
     assert measured["seconds"] == 665.0 and measured["verdict"] == "red" and measured["peak_mb"] == 1700
     by = {t["name"]: t for t in measured["ran"]}
-    assert set(by) == {"setup", "unit", "e2e", "slow"}
+    assert set(by) == {"setup", "unit", "e2e", "slow"} and by["setup"]["kind"] == "setup"
     assert by["slow"]["seconds"] == 600.0 and by["slow"]["status"] == "timed-out"   # at least its time
     assert by["e2e"]["seconds"] is None                                            # an early end says nothing
 
