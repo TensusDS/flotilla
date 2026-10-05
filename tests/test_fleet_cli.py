@@ -276,7 +276,7 @@ def test_fleet_size_prints_the_recommendation_and_its_cap(tmp_path, monkeypatch)
     roomy(monkeypatch)
     code, out = run_cli("fleet", "size", "--root", str(root))
     assert code == 0, out
-    assert out.startswith("recommended: orchestrator 1 (this session), main 1")
+    assert out.startswith("recommended: orchestrator 1 (who leads is unknown: the census could not be read), main 1")
     assert "limited by backlog" in out and "code: not measured in this version" in out
 
 

@@ -33,7 +33,7 @@ V1_UNLIMITED = 2**60   # cgroup v1 writes "no limit" as a page-rounded 2**63 - 1
 def _int_file(path: Path) -> int | None:
     try:
         text = path.read_text(encoding="utf-8").strip()
-    except OSError:
+    except (OSError, ValueError):
         return None
     return int(text) if text.isdigit() else None
 
@@ -44,9 +44,47 @@ def _stat_field(path: Path, field: str) -> int:
             name, _, value = line.partition(" ")
             if name == field and value.strip().isdigit():
                 return int(value)
-    except OSError:
+    except (OSError, ValueError):
         pass
     return 0
+
+
+def _cgroup_limits(proc_self: Path, root: Path) -> list[tuple[int, int, str]]:
+    """(limit bytes, working-set bytes, where) for every memory limit on this process's cgroup and its ancestors.
+    The namespace root is read too: in a container `/proc/self/cgroup` says `0::/` and the limit sits on the root's
+    own memory.max (measured in `docker run -m 512m`, review of 0.7.14); a host's root carries none."""
+    try:
+        lines = proc_self.read_text(encoding="utf-8").splitlines()
+    except (OSError, ValueError):
+        return []
+    found = []
+
+    def take(limit, usage, inactive, where):
+        if limit is not None and usage is not None and limit < V1_UNLIMITED:
+            found.append((limit, max(0, usage - inactive), where))
+
+    for line in lines:
+        parts = line.split(":", 2)
+        if len(parts) != 3:
+            continue
+        hierarchy, controllers, path = parts
+        if hierarchy == "0" and controllers == "":   # cgroup v2: the group and each ancestor, the root included
+            leaf = root / path.strip().lstrip("/")
+            for here in (leaf, *leaf.parents):
+                if here != root and root not in here.parents:
+                    break
+                where = "/" + str(here.relative_to(root)) if here != root else "/"
+                take(_int_file(here / "memory.max"), _int_file(here / "memory.current"),
+                     _stat_field(here / "memory.stat", "inactive_file"), where)
+                if here == root:
+                    break
+        elif "memory" in controllers.split(","):      # cgroup v1's memory controller
+            base = root / "memory"
+            here = base / path.strip().lstrip("/")
+            target = here if (here / "memory.limit_in_bytes").exists() else base
+            take(_int_file(target / "memory.limit_in_bytes"), _int_file(target / "memory.usage_in_bytes"),
+                 _stat_field(target / "memory.stat", "total_inactive_file"), path.strip() or "/")
+    return found
 
 
 def cgroup_room_mb(*, proc_self: Path = PROC_SELF_CGROUP, root: Path = CGROUP_ROOT) -> tuple[int | None, str]:
@@ -54,39 +92,18 @@ def cgroup_room_mb(*, proc_self: Path = PROC_SELF_CGROUP, root: Path = CGROUP_RO
     (None, "") where no limit is set or nothing can be read. Used is the group's working set - its usage less the file
     cache it can drop (`inactive_file`), as container runtimes count it. In a container or a systemd slice with
     MemoryMax, MemAvailable is the host's, and a fleet sized on it is killed (review of 0.7.14)."""
-    try:
-        lines = proc_self.read_text(encoding="utf-8").splitlines()
-    except OSError:
+    rooms = [(max(0, limit - used) // 2**20, limit, where) for limit, used, where in _cgroup_limits(proc_self, root)]
+    if not rooms:
         return None, ""
-    best: tuple[int, str] | None = None
+    room, limit, where = min(rooms)
+    return room, f"the memory limit of {limit // 2**20} MB on cgroup {where} leaves {room} MB"
 
-    def consider(limit: int | None, usage: int | None, inactive: int, where: str) -> None:
-        nonlocal best
-        if limit is None or usage is None or limit >= V1_UNLIMITED:
-            return
-        room = max(0, limit - max(0, usage - inactive)) // 2**20
-        if best is None or room < best[0]:
-            best = (room, f"the memory limit of {limit // 2**20} MB on cgroup {where} leaves {room} MB")
 
-    for line in lines:
-        parts = line.split(":", 2)
-        if len(parts) != 3:
-            continue
-        hierarchy, controllers, path = parts
-        if hierarchy == "0" and controllers == "":   # cgroup v2: the group and each ancestor may carry a limit
-            leaf = root / path.strip().lstrip("/")
-            for here in (leaf, *leaf.parents):
-                if here == root or root not in here.parents:
-                    break   # the root carries no limit of its own
-                consider(_int_file(here / "memory.max"), _int_file(here / "memory.current"),
-                         _stat_field(here / "memory.stat", "inactive_file"), "/" + str(here.relative_to(root)))
-        elif "memory" in controllers.split(","):      # cgroup v1's memory controller
-            base = root / "memory"
-            here = base / path.strip().lstrip("/")
-            target = here if (here / "memory.limit_in_bytes").exists() else base
-            consider(_int_file(target / "memory.limit_in_bytes"), _int_file(target / "memory.usage_in_bytes"),
-                     _stat_field(target / "memory.stat", "total_inactive_file"), path.strip() or "/")
-    return (best[0], best[1]) if best else (None, "")
+def cgroup_limit_mb(*, proc_self: Path = PROC_SELF_CGROUP, root: Path = CGROUP_ROOT) -> int | None:
+    """The tightest memory limit on this process's cgroup or an ancestor, in MB: the machine's size, as far as this
+    process is concerned. None where no limit is set."""
+    limits = [limit for limit, _used, _where in _cgroup_limits(proc_self, root)]
+    return min(limits) // 2**20 if limits else None
 
 
 def memory_mb(*, meminfo: Path = Path("/proc/meminfo"), vm_stat_text: str | None = None, run=subprocess.run,

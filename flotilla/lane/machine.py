@@ -97,7 +97,12 @@ def _meminfo() -> int | None:
 
 
 def _memtotal() -> int | None:
-    return read_meminfo(MEMINFO, "MemTotal")
+    """MemTotal in kB, or a container's memory limit where smaller: the floor is a quarter of what this process may
+    use, not of the host (review of 0.7.14)."""
+    from flotilla.core import resources
+    host = read_meminfo(MEMINFO, "MemTotal")
+    limit = resources.cgroup_limit_mb()
+    return limit * 1024 if limit is not None and (host is None or limit * 1024 < host) else host
 
 
 def memory_floor(profile: dict, total_kb: int | None = None) -> tuple[int, str]:

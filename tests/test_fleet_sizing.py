@@ -253,3 +253,9 @@ def test_a_background_orchestrator_is_a_seat_and_says_so():
     assert "(background)" in render(background)[0] and "(this session)" not in render(background)[0]
     nobody = recommend(machine(), work(), PACE, limited, orchestrator="none")
     assert nobody.authors == 3 and "spawn --lead" in render(nobody)[0]
+
+
+def test_an_unknown_leader_is_not_called_this_session():
+    from flotilla.fleet.sizing import render
+    rec = recommend(machine(), work(2), PACE, {}, orchestrator="unknown")
+    assert "(this session)" not in render(rec)[0] and "census" in render(rec)[0]

@@ -84,7 +84,8 @@ def _split(authors: int, backlog) -> tuple[int, int]:
 
 def recommend(machine: Machine, backlog, pace, profile, *, orchestrator: str = "person") -> Recommendation:
     """`orchestrator`: "person" (the person's session leads: it costs nothing new), "background" (a background seat
-    leads: a seat like any other) or "none" (nobody leads yet: the person is asked, as spawn's gap line does)."""
+    leads: a seat like any other), "none" (nobody leads yet: the person is asked, as spawn's gap line does) or
+    "unknown" (no census: counted as the person's, and said)."""
     sizing = ((profile or {}).get("fleet") or {}).get("sizing") or {}
     judge = _judge(profile or {})
     live = max(0, machine.live_seats or 0)
@@ -304,7 +305,7 @@ def gather(ledger, *, tasks=None, tasks_file=None, census=None, run=subprocess.r
     floor, seat, setting_notes = spawn.memory_settings(ledger)
     main = launch.main_checkout(ledger.root, run=ledger.run)
     notes = list(setting_notes)
-    live, lead = None, "person"
+    live, lead = None, "unknown"
     if census is not None:
         from flotilla.core.census import CensusUnavailable
         from flotilla.ledger import project
@@ -344,7 +345,8 @@ def render(rec: Recommendation) -> list[str]:
     """The recommendation as the person reads it: the counts first, then why."""
     order = ("orchestrator", "main", "minor", "reviewer", "sender", "judge")
     lead = {"person": " (this session)", "background": " (background)",
-            "none": " (nobody leads yet: `flotilla spawn --lead` makes it this session)"}[rec.orchestrator]
+            "none": " (nobody leads yet: `flotilla spawn --lead` makes it this session)",
+            "unknown": " (who leads is unknown: the census could not be read)"}[rec.orchestrator]
     parts = [f"{post} {rec.counts[post]}" + (lead if post == "orchestrator" else "")
              for post in order if rec.counts.get(post)]
     if rec.raise_nothing:   # the refusal first: a headline of counts would read as a yes (review of 0.7.14)

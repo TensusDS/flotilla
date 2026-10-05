@@ -187,3 +187,42 @@ def test_spawn_and_the_lane_see_the_container_limit_too(monkeypatch):
     assert pristine(machine)._meminfo() == 500 * 1024
     monkeypatch.setattr(resources, "cgroup_room_mb", lambda **kw: (None, ""))
     assert pristine(spawn).available_mb() == pristine(spawn).read_available_mb()
+
+
+def _container(tmp_path, leaf):
+    """A container on cgroup v2: its own namespace root carries the limit, and /proc/self/cgroup says `0::/`."""
+    root = tmp_path / "cgroup"
+    root.mkdir()
+    (root / "memory.max").write_text(f"{512 * MB}\n")
+    (root / "memory.current").write_text(f"{200 * MB}\n")
+    (root / "memory.stat").write_text(f"inactive_file {50 * MB}\n")
+    if leaf != "/":
+        (root / leaf.strip("/")).mkdir()
+    selfcg = tmp_path / "self-cgroup"
+    selfcg.write_text(f"0::{leaf}\n")
+    return selfcg, root
+
+
+def test_a_docker_containers_limit_sits_on_its_root(tmp_path):
+    """Review of 0.7.14, measured in `docker run -m 512m`: `0::/`, the limit on /sys/fs/cgroup/memory.max. The walk
+    skipped the root and read nothing, so in a container - the case the reader exists for - nothing changed."""
+    for name, leaf in (("plain", "/"), ("systemd", "/init.scope")):
+        here = tmp_path / name
+        here.mkdir()
+        selfcg, root = _container(here, leaf)
+        room, note = resources.cgroup_room_mb(proc_self=selfcg, root=root)
+        assert room == 512 - (200 - 50) and "512" in note, (leaf, room)
+        assert resources.cgroup_limit_mb(proc_self=selfcg, root=root) == 512
+
+
+def test_the_limit_is_the_tightest_one(tmp_path):
+    selfcg, root = cgroup_v2(tmp_path, {"/": (None, 0, 0), "/user.slice": (2048 * MB, 1500 * MB, 0),
+                                        "/user.slice/app.scope": (8192 * MB, 100 * MB, 0)})
+    assert resources.cgroup_limit_mb(proc_self=selfcg, root=root) == 2048
+    assert resources.cgroup_limit_mb(proc_self=tmp_path / "absent", root=root) is None
+
+
+def test_a_cgroup_name_that_is_not_utf8_reads_as_no_limit(tmp_path):
+    selfcg = tmp_path / "self-cgroup"
+    selfcg.write_bytes(b"0::/\xff\xfe\n")
+    assert resources.cgroup_room_mb(proc_self=selfcg, root=tmp_path) == (None, "")

@@ -98,11 +98,45 @@ def test_a_costly_read_slows_the_sampling_down():
     import time
     reads = []
 
-    def slow(pgid):
+    def slow(pgid):   # costs CPU, as a /proc scan does
         reads.append(time.monotonic())
-        time.sleep(0.02)
+        end = time.thread_time() + 0.02
+        while time.thread_time() < end:
+            pass
         return 100 * 1024
-    sampler = peak.GroupPeak(7, sample=0.01, read=slow, rusage=lambda: None)
+    sampler = peak.GroupPeak(7, sample=0.1, read=slow, rusage=lambda: None)
+    with sampler:
+        time.sleep(0.75)
+    assert 1 <= len(reads) <= 3, len(reads)   # 0.02 s of CPU a read -> 0.4 s between reads, not 0.1 s
+
+
+def test_the_stretched_wait_has_a_ceiling():
+    """A read slowed by a loaded machine must not open gaps long enough to miss a whole tier."""
+    import time
+    reads = []
+
+    def very_slow(pgid):
+        reads.append(time.monotonic())
+        end = time.thread_time() + 0.05   # 20 x 0.05 = 1 s uncapped; the ceiling is 5 x the 0.02 s sample
+        while time.thread_time() < end:
+            pass
+        return 100 * 1024
+    sampler = peak.GroupPeak(7, sample=0.02, read=very_slow, rusage=lambda: None)
+    with sampler:
+        time.sleep(0.6)
+    assert len(reads) >= 3, len(reads)
+
+
+def test_waiting_for_a_cpu_does_not_stretch_the_gap():
+    """Wall time spent off the CPU on a loaded machine is not the read's cost (review of 0.7.14)."""
+    import time
+    reads = []
+
+    def blocked(pgid):
+        reads.append(time.monotonic())
+        time.sleep(0.03)   # off the CPU: 20 x 0.03 = 0.6 s if wall time counted
+        return 100 * 1024
+    sampler = peak.GroupPeak(7, sample=0.02, read=blocked, rusage=lambda: None)
     with sampler:
         time.sleep(0.5)
-    assert 1 <= len(reads) <= 2, len(reads)   # 0.02 s a read -> 0.4 s between reads, not 0.01 s
+    assert len(reads) >= 5, len(reads)

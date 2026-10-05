@@ -388,3 +388,20 @@ def test_a_queue_command_that_is_not_found_is_a_lasting_unknown(tmp_path):
     run, _ = queue(127, "")
     answer = machine.ci_here(COMMAND_HERE, run=run, root=tmp_path)
     assert answer.blocks is None and answer.lasting and "not found" in answer.text
+
+
+def test_the_floor_of_a_limited_cgroup_is_a_quarter_of_its_limit(monkeypatch):
+    """Review of 0.7.14: the room came from the cgroup but the total from the host, so a 2 GB container on a 64 GB
+    host got the 1500 MB floor and its lane closed in its ordinary state."""
+    import importlib.util
+    import sys
+
+    from flotilla.core import resources
+    spec = importlib.util.spec_from_file_location("lane_machine_pristine", machine.__file__)
+    copy = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, spec.name, copy)
+    spec.loader.exec_module(copy)
+    monkeypatch.setattr(copy, "read_meminfo", lambda path=None, field="MemAvailable": 64 * 1024 * 1024)
+    monkeypatch.setattr(resources, "cgroup_limit_mb", lambda **kw: 2048)
+    assert copy._memtotal() == 2048 * 1024
+    assert copy.memory_floor_mb({}, copy._memtotal()) == 512
