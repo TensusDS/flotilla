@@ -58,7 +58,12 @@ def read_available_mb(meminfo: Path = MEMINFO) -> int | None:
 
 
 def available_mb() -> int | None:
-    return read_available_mb()
+    """MemAvailable, or the room under a container's memory limit where smaller - the same figure the sizing reads
+    (review of 0.7.14)."""
+    from flotilla.core import resources
+    host = read_available_mb()
+    room, _ = resources.cgroup_room_mb()
+    return room if room is not None and (host is None or room < host) else host
 
 
 def memory_settings(ledger) -> tuple[int, int, list[str]]:

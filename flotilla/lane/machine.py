@@ -89,7 +89,11 @@ def read_meminfo(path: Path = MEMINFO, field: str = "MemAvailable") -> int | Non
 
 
 def _meminfo() -> int | None:
-    return read_meminfo(MEMINFO)
+    """MemAvailable in kB, or the room under a container's memory limit where smaller (review of 0.7.14)."""
+    from flotilla.core import resources
+    host = read_meminfo(MEMINFO)
+    room, _ = resources.cgroup_room_mb()
+    return room * 1024 if room is not None and (host is None or room * 1024 < host) else host
 
 
 def _memtotal() -> int | None:

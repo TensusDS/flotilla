@@ -326,7 +326,10 @@ def gather(ledger, *, tasks=None, tasks_file=None, census=None, run=subprocess.r
     ceiling, ceiling_note = _machine_ceiling()
     if ceiling_note:
         notes.append(ceiling_note)
-    machine = Machine(free_mb=resources.available_mb(), floor_mb=floor, seat_mb=seat, live_seats=live,
+    free, free_note = resources.memory_mb()
+    if free_note:
+        notes.append(f"free memory: {free_note}")
+    machine = Machine(free_mb=free, floor_mb=floor, seat_mb=seat, live_seats=live,
                       run_mb=run_mb, run_seconds=run_seconds, lane_capacity=capacity(),
                       free_disk_mb=resources.free_disk_mb(Path(main).parent), tree_mb=tree, ceiling=ceiling)
     rows = ledger.rows()

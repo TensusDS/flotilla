@@ -199,7 +199,9 @@ process a tier starts, a browser in its own process group included - against how
 measured from the ledger), **disk** (half the free disk, in seat trees) and **max seats** (12 seats on a machine
 unless `max_seats` in `machine.toml`, the person's own file, says otherwise; a profile may only lower it). Reviewers
 grow with the authors and the measured review time, never past the number of authors; a judge comes when the profile
-requires one or has a deploy target. A signal that could not be read is named and left out, never guessed; with free
+requires one or has a deploy target. Free memory is the room under a container's or systemd slice's memory limit
+where that is smaller than the host's - for the sizing, for spawn's seat check and for the lane's floor alike. A signal
+that could not be read is named and left out, never guessed; with free
 memory unknown, `spawn --recommended` raises nothing without `--anyway`. An item counts as minor only where its source
 says so (a `[minor]` prefix, a `size:small` label). The recommendation is the whole fleet: `flotilla spawn
 --recommended` raises it less the posts live sessions already hold. Not measured yet: how the code splits into

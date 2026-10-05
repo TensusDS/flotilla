@@ -262,7 +262,7 @@ def test_fleet_clean_needs_the_census(tmp_path, monkeypatch):
 
 def roomy(monkeypatch):
     from flotilla.core import resources
-    monkeypatch.setattr(resources, "available_mb", lambda **kw: 64_000)
+    monkeypatch.setattr(resources, "memory_mb", lambda **kw: (64_000, ""))
     monkeypatch.setattr(resources, "free_disk_mb", lambda path: 500_000)
 
     def never(*a, **kw):
@@ -334,7 +334,7 @@ def test_spawn_recommended_with_no_room_refuses_unless_anyway(tmp_path, monkeypa
     from flotilla.core import resources
     root = onboarded(tmp_path, monkeypatch)
     roomy(monkeypatch)
-    monkeypatch.setattr(resources, "available_mb", lambda **kw: 2100)
+    monkeypatch.setattr(resources, "memory_mb", lambda **kw: (2100, ""))
     monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [])
     code, out = run_cli("spawn", "--recommended", "--dry-run", "--root", str(root))
     assert code == 2 and "raise nothing now" in out
@@ -348,7 +348,7 @@ def test_spawn_recommended_with_memory_unknown_refuses_unless_anyway(tmp_path, m
     from flotilla.core import resources
     root = onboarded(tmp_path, monkeypatch)
     roomy(monkeypatch)
-    monkeypatch.setattr(resources, "available_mb", lambda **kw: None)
+    monkeypatch.setattr(resources, "memory_mb", lambda **kw: (None, ""))
     monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [])
     code, out = run_cli("spawn", "--recommended", "--dry-run", "--root", str(root))
     assert code == 2 and "free memory" in out and "--anyway" in out
@@ -371,10 +371,19 @@ def test_fleet_size_counts_a_background_orchestrator_as_a_seat(tmp_path, monkeyp
     assert "orchestrator 1 (this session)" in out, out
     # a running background orchestrator already holds its memory: it counts back in, as every live seat does
     from flotilla.core import resources
-    monkeypatch.setattr(resources, "available_mb", lambda **kw: 9000)
+    monkeypatch.setattr(resources, "memory_mb", lambda **kw: (9000, ""))
     caps = {}
     for kind in ("interactive", "background"):
         monkeypatch.setattr("flotilla.fleet.commands.census", lambda k=kind: [dataclasses.replace(lead, kind=k)])
         code, out = run_cli("fleet", "size", "--json", "--tasks", "50", "--root", str(root))
         caps[kind] = json.loads(out)["caps"]["memory"]
     assert caps["interactive"] == caps["background"], caps
+
+
+def test_fleet_size_names_a_container_limit(tmp_path, monkeypatch):
+    from flotilla.core import resources
+    root = onboarded(tmp_path, monkeypatch)
+    roomy(monkeypatch)
+    monkeypatch.setattr(resources, "memory_mb", lambda **kw: (3000, "the memory limit of 4096 MB on cgroup /x"))
+    code, out = run_cli("fleet", "size", "--root", str(root))
+    assert "3000 MB free" in out and "the memory limit of 4096 MB on cgroup /x" in out, out

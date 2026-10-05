@@ -91,3 +91,99 @@ def test_tree_mb_from_a_du_that_failed_partway_is_unknown():
     def partial(cmd, **kw):
         return subprocess.CompletedProcess(cmd, 1, "1024\t/x\n", "du: cannot read directory '/x/secret'")
     assert resources.tree_mb("/x", run=partial) is None
+
+
+MB = 2**20
+
+
+def cgroup_v2(tmp_path, chain, *, leaf="/user.slice/app.scope"):
+    """chain: {relative dir: (memory.max or None, memory.current, inactive_file)} under a fake /sys/fs/cgroup."""
+    root = tmp_path / "cgroup"
+    for rel, (limit, current, inactive) in chain.items():
+        d = root / rel.lstrip("/") if rel != "/" else root
+        d.mkdir(parents=True, exist_ok=True)
+        if rel != "/":
+            (d / "memory.max").write_text("max\n" if limit is None else f"{limit}\n")
+            (d / "memory.current").write_text(f"{current}\n")
+            (d / "memory.stat").write_text(f"anon 1\nfile 9\ninactive_file {inactive}\nactive_file 3\n")
+    selfcg = tmp_path / "self-cgroup"
+    selfcg.write_text(f"0::{leaf}\n")
+    return selfcg, root
+
+
+def test_a_container_limit_is_the_room_it_leaves(tmp_path):
+    """Review of 0.7.14: in a container, or a systemd slice with MemoryMax, MemAvailable is the host's; the room is
+    the limit less the group's working set (its usage less the file cache it can drop)."""
+    selfcg, root = cgroup_v2(tmp_path, {"/": (None, 0, 0),
+                                        "/user.slice": (None, 0, 0),
+                                        "/user.slice/app.scope": (4096 * MB, 3000 * MB, 1000 * MB)})
+    room, note = resources.cgroup_room_mb(proc_self=selfcg, root=root)
+    assert room == 4096 - (3000 - 1000) and "4096" in note
+
+
+def test_the_tightest_ancestor_binds(tmp_path):
+    selfcg, root = cgroup_v2(tmp_path, {"/": (None, 0, 0),
+                                        "/user.slice": (2048 * MB, 1500 * MB, 0),
+                                        "/user.slice/app.scope": (8192 * MB, 100 * MB, 0)})   # its own, looser
+    room, note = resources.cgroup_room_mb(proc_self=selfcg, root=root)
+    assert room == 2048 - 1500 and "/user.slice" in note
+
+
+def test_no_limit_anywhere_is_no_room_figure(tmp_path):
+    selfcg, root = cgroup_v2(tmp_path, {"/": (None, 0, 0), "/user.slice": (None, 0, 0),
+                                        "/user.slice/app.scope": (None, 5 * MB, 0)})
+    assert resources.cgroup_room_mb(proc_self=selfcg, root=root) == (None, "")
+    assert resources.cgroup_room_mb(proc_self=tmp_path / "absent", root=root) == (None, "")
+
+
+def test_a_cgroup_v1_memory_limit(tmp_path):
+    root = tmp_path / "cgroup"
+    (root / "memory").mkdir(parents=True)
+    (root / "memory" / "memory.limit_in_bytes").write_text(f"{1024 * MB}\n")
+    (root / "memory" / "memory.usage_in_bytes").write_text(f"{600 * MB}\n")
+    (root / "memory" / "memory.stat").write_text(f"cache 1\ntotal_inactive_file {100 * MB}\n")
+    selfcg = tmp_path / "self-cgroup"
+    selfcg.write_text("12:memory:/\n3:cpu:/\n")
+    room, _ = resources.cgroup_room_mb(proc_self=selfcg, root=root)
+    assert room == 1024 - 500
+    (root / "memory" / "memory.limit_in_bytes").write_text("9223372036854771712\n")   # v1's "no limit"
+    assert resources.cgroup_room_mb(proc_self=selfcg, root=root) == (None, "")
+
+
+def test_available_is_the_smaller_of_host_and_container(tmp_path):
+    meminfo = tmp_path / "meminfo"
+    meminfo.write_text("MemAvailable:   8192000 kB\n")
+    selfcg, root = cgroup_v2(tmp_path, {"/": (None, 0, 0), "/user.slice": (None, 0, 0),
+                                        "/user.slice/app.scope": (2048 * MB, 1048 * MB, 0)})
+    mb, note = resources.memory_mb(meminfo=meminfo, os_name="linux", proc_self=selfcg, cgroup_root=root)
+    assert mb == 1000 and "limit" in note
+    assert resources.available_mb(meminfo=meminfo, os_name="linux", proc_self=selfcg, cgroup_root=root) == 1000
+    mb, note = resources.memory_mb(meminfo=meminfo, os_name="linux", proc_self=tmp_path / "absent",
+                                   cgroup_root=root)
+    assert mb == 8000 and note == ""
+
+
+def test_spawn_and_the_lane_see_the_container_limit_too(monkeypatch):
+    """Three readers of free memory - the sizing, spawn's seat check and the lane's floor - must agree: a spawn that
+    asks the host while the sizing asks the container would raise the seats the sizing refused."""
+    import sys
+
+    import pytest
+
+    from flotilla.fleet import spawn
+    from flotilla.lane import machine
+    if not sys.platform.startswith("linux"):
+        pytest.skip("MemAvailable is Linux's")
+    import importlib.util
+
+    def pristine(module):   # conftest stubs both readers in every test; load each module's own code afresh
+        spec = importlib.util.spec_from_file_location(f"{module.__name__}_pristine", module.__file__)
+        copy = importlib.util.module_from_spec(spec)
+        monkeypatch.setitem(sys.modules, spec.name, copy)   # its dataclasses look themselves up there
+        spec.loader.exec_module(copy)
+        return copy
+    monkeypatch.setattr(resources, "cgroup_room_mb", lambda **kw: (500, "the memory limit of 600 MB on cgroup /x"))
+    assert pristine(spawn).available_mb() == 500
+    assert pristine(machine)._meminfo() == 500 * 1024
+    monkeypatch.setattr(resources, "cgroup_room_mb", lambda **kw: (None, ""))
+    assert pristine(spawn).available_mb() == pristine(spawn).read_available_mb()
