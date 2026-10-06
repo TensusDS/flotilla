@@ -220,6 +220,15 @@ STUCK = ("next: if no move named above is yours to make, record whom you wait on
 CANNOT_RUN = ("next: flotilla cannot run here as things stand; send this text to the orchestrator verbatim, and never "
               "work around flotilla with git plumbing.")
 
+def _adopt(ledger, actor, args):
+    if bool(args.branch) == bool(getattr(args, "from_", None)):
+        raise MoveRefused("name one branch, or --from <gone session> for all of its open work - not both")
+    if args.branch:
+        return steering.adopt(ledger, actor, args.branch, to=args.to)
+    rows = steering.adopt_from(ledger, actor, args.from_, to=args.to)
+    return rows[-1], "adopted: " + ", ".join(f"`{row.branch}` ({row.state})" for row in rows) + f" -> {args.to}"
+
+
 MOVES = {
     "claim": lambda l, a, x: core.claim(l, a, x.branch, tree=x.tree, ref=x.ref, requires=x.requires, after=x.after,
                                         also=x.also),
@@ -245,7 +254,7 @@ MOVES = {
     "broke": lambda l, a, x: _broke(l, a, x),
     "unbroke": lambda l, a, x: judging.unbroke(l, a, x.branch, why=x.why),
     "close": lambda l, a, x: judging.close(l, a, x.branch, ref=x.ref, why=x.why),
-    "adopt": lambda l, a, x: steering.adopt(l, a, x.branch, to=x.to),
+    "adopt": lambda l, a, x: _adopt(l, a, x),
     "hold": lambda l, a, x: steering.hold(l, a, x.branch, until=x.until, why=x.why),
     "unhold": lambda l, a, x: steering.unhold(l, a, x.branch),
     "urgent": lambda l, a, x: steering.urgent(l, a, x.branch, why=x.why, cancel=x.cancel),

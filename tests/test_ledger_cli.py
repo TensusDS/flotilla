@@ -578,3 +578,9 @@ def test_receipt_show_counts_only_purposes_with_tiers(tmp_path, monkeypatch):
     assert code == 1 and "no push tiers configured" in out   # "no tiers" is no receipt
     assert run_cli("receipt", "show", "--tree", str(root), "--purpose", "push")[0] == 0   # nothing to hold
     assert run_cli("receipt", "show", "--tree", str(root), "--purpose", "handover")[0] == 1
+
+
+def test_adopt_from_hands_a_gone_sessions_work_in_one_command():
+    from flotilla import cli
+    parsed = cli.build_parser().parse_args(["work", "adopt", "--from", "main session 8", "--to", "main session 2"])
+    assert (parsed.branch, parsed.from_, parsed.to) == (None, "main session 8", "main session 2")

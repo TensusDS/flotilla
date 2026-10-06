@@ -13,7 +13,7 @@ def test_an_idle_holder_is_a_dropped_ball():
     found = fleet.fleet(rows(row(state="handed", reader="review session 1")), PR,
                         [sess("review session 1"), sess("main session 1", state="working")], post_of=post_of)
     assert [(item.kind, item.branch) for item in found] == [("dropped", "feat/x")]
-    assert "waiting on a permission prompt" in found[0].text
+    assert "idle (no permission question" in found[0].text
 
 
 def test_a_working_holder_is_not_dropped():
@@ -415,3 +415,17 @@ def test_claimed_and_returned_work_together_make_a_pile_that_says_which():
 
 def test_a_held_row_is_no_part_of_a_pile():
     assert piles(rows(*three(held_by="orchestrator 1", held_until="feat/9", held_why="stacked")), WORKING_PAIR) == []
+
+
+def test_a_blocked_seat_with_no_question_in_the_queue_reads_as_idle():
+    """Twosuns orchestrator, 0.7.16: 'blocked' meant 'idle, or waiting on a permission prompt', and it checked an
+    empty permission queue more than once. flotilla's own queue says which."""
+    from flotilla.watch.fleet import _census_word
+    from types import SimpleNamespace
+    seat = SimpleNamespace(kind="background", state="blocked", status="", name="main session 8")
+    assert _census_word(seat) == "idle (no permission question of it waits in flotilla's queue)"
+
+
+def test_the_empty_seats_line_says_how_to_raise_them_again():
+    from flotilla.watch import fleet as fl
+    assert "flotilla spawn --fill" in fl.SEATS_HINT

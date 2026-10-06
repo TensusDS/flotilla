@@ -35,6 +35,8 @@ def _gate_line(ledger) -> str:
 
 def _held_back(ledger, rows: dict[str, Row], row: Row) -> list[str]:
     reasons = []
+    if row.held_until:   # held out of the batch: the person's yes never covers it by accident (0.7.17)
+        reasons.append(f"held by {row.held_by} until {row.held_until}: {row.held_why}")
     waiting = blocked_by(rows, row, ledger.profile)
     if waiting:
         reasons.append("blocked on " + ", ".join(f"`{other.branch or other.id}` ({other.state or 'unknown'})"

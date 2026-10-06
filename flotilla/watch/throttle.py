@@ -41,3 +41,20 @@ def due(state_dir, session_id: str, said: str, now: dt.datetime) -> bool:
     tmp.write_text(json.dumps({"at": now.isoformat(), "digest": said}), encoding="utf-8")
     os.replace(tmp, path)
     return True
+
+
+def fresh(state_dir, session_id: str, keys: list[str]) -> tuple[set[str], int]:
+    """(the keys not said to this session before, how many were), remembering this set: an orchestrator is told
+    what is new and the count of what stands, not the same twenty lines again (twosuns orchestrator, 0.7.16)."""
+    name = hashlib.sha256(session_id.encode("utf-8")).hexdigest()[:32]
+    path = Path(state_dir) / "watch" / "said" / f"{name}.fleet.json"
+    try:
+        before = set(json.loads(path.read_text(encoding="utf-8")))
+    except (OSError, ValueError, TypeError):
+        before = set()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(sorted(set(keys))), encoding="utf-8")
+    os.replace(tmp, path)
+    new = set(keys) - before
+    return new, len(set(keys)) - len(new)

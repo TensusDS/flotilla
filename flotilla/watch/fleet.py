@@ -23,6 +23,8 @@ IDLE, DONE, HELPER, STRANGER, PILE = "idle", "done", "helper", "stranger", "pile
 IDLE_SEAT_MINUTES = 60
 PILE_MOVES = 3   # this many moves of one seat nobody waits on, while a peer of its post holds none
 SEATS = "seats"
+SEATS_HINT = ("`flotilla spawn --fill` raises them again (dry run first, and the person's yes); `flotilla fleet` lists "
+              "them, `flotilla fleet down` stands the fleet down")
 THE_PERSON = "the person"
 
 
@@ -39,8 +41,9 @@ def _census_word(session) -> str:
             return "waiting on a permission prompt nobody answers"
         if session.status == "idle":
             return "idle"
-        if session.state == "blocked":
-            return "blocked: idle, or waiting on a permission prompt"
+        if session.state == "blocked":   # its questions would be in flotilla's queue, and a dropped ball is
+            # never asked of a session with one there: so blocked here is idle (twosuns orchestrator, 0.7.16)
+            return "idle (no permission question of it waits in flotilla's queue)"
     return session.state or session.status or "unknown"
 
 
@@ -68,7 +71,7 @@ def fleet(rows: dict, profile: dict, sessions, *, post_of, former_of=None, break
     empty = sorted(found["on"] for found in found_all if found["kind"] == "seat_empty")
     if empty:   # one quiet line for every seat whose session is gone, not an alarm per seat (F27)
         items.append(Item(SEATS, "", f"{len(empty)} post seat(s) with no live session: {', '.join(empty)}; "
-                                     "`flotilla fleet` lists them, `flotilla fleet down` stands the fleet down",
+                                     + SEATS_HINT,
                           "", who=",".join(empty)))   # the ledger knows when a seat was reserved, not when it emptied
     for row in rows.values():
         if row.is_open and row.waiting_on.strip().lower() == THE_PERSON:

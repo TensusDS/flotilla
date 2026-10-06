@@ -15,7 +15,8 @@ from flotilla.ledger.errors import MoveRefused
 from flotilla.ledger.model import Row
 from flotilla.posts import PostError, post_for_session
 
-HOLDABLE = ("handed", "fixing")
+HOLDABLE = ("handed", "fixing", "accepted", "queued")   # the reading queue, and what waits to ship (0.7.17)
+THE_PERSON = "the person"   # a hold only the person lifts: a release put off, not work waiting on other work
 
 
 def adopt(ledger: Ledger, actor: Actor, branch: str, *, to: str) -> Row:
@@ -47,6 +48,18 @@ def _live_or_empty(ledger: Ledger) -> set[str]:
         return set()
 
 
+def adopt_from(ledger: Ledger, actor: Actor, gone: str, *, to: str) -> list[Row]:
+    """Every open row a gone session owns, to one live heir, in one move each (twosuns, 0.7.16: five sessions
+    stopped in one night and their rows were handed over one command at a time). Post seats stay: a seat is the
+    post held, raised again by `flotilla spawn --fill`, not work to adopt."""
+    gone = gone.strip()
+    branches = [row.branch for row in ledger.rows().values()
+                if row.is_open and row.owner == gone and row.state != "reserved" and row.branch]
+    if not branches:
+        raise MoveRefused(f"{gone} owns no open work to adopt")
+    return [adopt(ledger, actor, branch, to=to) for branch in dict.fromkeys(branches)]
+
+
 def hold(ledger: Ledger, actor: Actor, branch: str, *, until: str, why: str) -> Row:
     require_may(actor, "hold", ledger.posts)
     until, why = until.strip(), why.strip()
@@ -60,10 +73,11 @@ def hold(ledger: Ledger, actor: Actor, branch: str, *, until: str, why: str) -> 
         row = s.need_open_row(branch)
         state = s.next_state(row, "hold")
         if row.state not in HOLDABLE:
-            raise MoveRefused(f"a hold keeps work out of the reading queue; `{branch}` is {row.state}")
+            raise MoveRefused(f"a hold keeps work out of the reading queue, or out of the batch to ship; `{branch}` "
+                              f"is {row.state}")
         if until == branch:
             raise MoveRefused("a row cannot wait for itself")
-        if s.open_row(until) is None:
+        if until != THE_PERSON and s.open_row(until) is None:
             known = {r.owner for r in s.rows.values()} | {r.reader for r in s.rows.values()} | live
             if until not in known - {""}:
                 raise MoveRefused(f"`{until}` is neither an open branch nor a session the ledger or the census knows; "

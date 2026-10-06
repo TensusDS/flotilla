@@ -399,3 +399,24 @@ def test_when_even_the_guards_rule_cannot_be_read_the_last_resort_decides(tmp_pa
     monkeypatch.setenv("FLOTILLA_GATE_OVERRIDE", "hotfix")
     code, body = guard_answer(tmp_path, "git push origin main")
     assert code == 0 and body.get("permissionDecision") != "deny" and "unchecked" in body.get("additionalContext", "")
+
+
+def test_the_orchestrator_is_told_what_is_new_and_the_rest_in_one_line(tmp_path):
+    """Twosuns orchestrator, 0.7.16: the prompt hook printed the same twenty 'waits on the person' every time one
+    line changed - a day of the same list, paid in context each turn. New items are printed; the standing ones are
+    counted in one line."""
+    orch, main = sess("orchestrator 1", state="working"), sess("main session 1", state="working")
+    fleet_now = [orch, main]
+    asked = [row(id=f"r{n}", state="fixing", branch=f"feat/{n}", owner="main session 1", waiting_on="the person",
+                 note=f"question {n}") for n in range(20)]
+    first = call("prompt", tmp_path, context(tmp_path, me=orch, sessions=fleet_now, rows_=rows(*asked)))
+    assert first.count("waits on the person") == 20
+    one_more = [*asked, row(id="r99", state="fixing", branch="feat/new", owner="main session 1",
+                            waiting_on="the person", note="the new one")]
+    second = call("prompt", tmp_path, context(tmp_path, me=orch, sessions=fleet_now, rows_=rows(*one_more)),
+                  now=NOW + dt.timedelta(minutes=5))
+    assert "the new one" in second and "question 3" not in second
+    assert "20 standing item(s)" in second and "flotilla watch --once" in second
+    later = call("prompt", tmp_path, context(tmp_path, me=orch, sessions=fleet_now, rows_=rows(*one_more)),
+                 now=NOW + dt.timedelta(minutes=50))
+    assert "waits on the person" not in later and "21 standing item(s)" in later

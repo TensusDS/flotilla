@@ -67,7 +67,7 @@ def test_a_hold_is_recorded_and_lifted(world):
         steering.unhold(ledger, actor(ledger, ORCH), "feat/x")
 
 
-def test_only_the_reading_queue_is_held(world):
+def test_only_the_reading_queue_and_what_waits_to_ship_are_held(world):
     root, ledger = world
     drive(root, ledger, to="claimed")
     with pytest.raises(MoveRefused, match="reading queue"):
@@ -88,3 +88,41 @@ def test_the_census_switch_makes_liveness_unknown(world, monkeypatch):
     monkeypatch.setenv("FLOTILLA_NO_CENSUS", "1")
     with pytest.raises(MoveRefused, match="FLOTILLA_NO_CENSUS"):
         ledger.live_names()
+
+
+def test_an_accepted_row_can_be_held_out_of_the_batch(world):
+    """Twosuns orchestrator, 0.7.16: clouds, thunder and the sound's air were accepted and their release deliberately
+    put off, but `hold` refused accepted rows, so every brief offered them and the person's yes had to list rows by
+    name. A held accepted row stays out of the batch and its sender moves refuse it until it is unheld."""
+    from flotilla.ledger import delivery, report
+    root, ledger = world
+    drive(root, ledger, to="accepted")
+    steering.hold(ledger, actor(ledger, ORCH), "feat/x", until="the person", why="its release waits for the sound pass")
+    text = "\n".join(report.brief(ledger))
+    assert "nothing is ready to ship" in text and "held by orchestrator 1 until the person" in text
+    with pytest.raises(MoveRefused, match="held"):
+        delivery.queue(ledger, actor(ledger, "sender 1"), "feat/x", pr=7)
+    steering.unhold(ledger, actor(ledger, ORCH), "feat/x")
+    assert "1. `feat/x`" in "\n".join(report.brief(ledger))
+
+
+def test_adopt_from_hands_every_row_of_a_gone_session_at_once(world):
+    """Twosuns, 0.7.16: five sessions stopped in one night, and their rows could be handed over one command each."""
+    root, ledger = world
+    drive(root, ledger, to="claimed")
+    drive(root, ledger, "feat/y", to="claimed")
+    moved = steering.adopt_from(ledger, actor(ledger, ORCH), "main session 1", to="main session 2")
+    assert sorted(row.branch for row in moved) == ["feat/x", "feat/y"]
+    assert all(row.owner == "main session 2" for row in moved)
+    with pytest.raises(MoveRefused, match="no open work"):
+        steering.adopt_from(ledger, actor(ledger, ORCH), "main session 1", to="main session 2")
+
+
+def test_a_hold_for_the_person_raises_no_deviation_of_its_own(world):
+    """Held until the person: neither lifted nor unknown - or the watch would wake the orchestrator about it forever."""
+    from flotilla.ledger import views
+    root, ledger = world
+    drive(root, ledger, to="accepted")
+    steering.hold(ledger, actor(ledger, ORCH), "feat/x", until="the person", why="release put off")
+    kinds = {found["kind"] for found in views.deviations(ledger.rows(), ledger.profile, live=set(LIVE))}
+    assert not kinds & {"hold_lifted", "hold_unknown"}
