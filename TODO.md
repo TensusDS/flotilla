@@ -56,6 +56,20 @@ Each is a limitation README states today, judged fixable in principle; none is p
 - Onboarding a repository whose only workflows are symlinks now records no CI and reads no job ids from them; it matters
   only if GitHub Actions runs a symlinked workflow, which nobody measured. *(checked 2026-10-04 on 0.7.9: measure)*
 
+## From the twosuns orchestrator's notes and the review of 0.7.17 (2026-10-06)
+
+- Trial merge at accept: conflicts between groups of changes surface only at release; `git merge-tree` against trunk
+  and the other accepted rows at `accept` would show them at once. *(open, design)*
+- `moved` after `accept` needs the reader's `--agreed-by`; a pure rebase (same patch ids) could pass without it.
+  *(open, design)*
+- The letter after `assign` is sent by hand and forgotten; a hook could require it in the same turn. *(open, design)*
+- A guard against `git reset --hard` / force-push on a branch with an accepted revision (twosuns: a seat reset its
+  branch and undid the reviewer's edits). *(open, design)*
+- `adopt --from` moves only rows the gone session owned; rows it was reading wait for `assign --reader` one by one.
+  *(checked 2026-10-06 on 0.7.17: still [P] - ledger/steering.py adopt_from)*
+- A held queued row in direct mode: `land` refuses with "the orchestrator runs unhold", but nothing tells the
+  orchestrator; the hold could surface in the watch. *(checked 2026-10-06 on 0.7.17: still [P] - ledger/delivery.py)*
+
 ## From lane admission, stage 1, and its reviews (2026-10-05)
 
 - Stages 2-4 of `docs/specs/2026-10-05-lane-resource-admission-design.md`: budget admission (CPU 1.5x cores, memory
