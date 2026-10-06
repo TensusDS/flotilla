@@ -177,6 +177,12 @@ def _session_start(ctx, payload, out, now) -> int:
     return 0
 
 
+def _fleet_key(item) -> str:
+    """The same item across turns, as the watch keys it: an age or a count in its wording is not news (review of
+    0.7.17)."""
+    return f"{item.kind}|{item.branch}|{item.who or item.text}"
+
+
 def _prompt(ctx, payload, out, now) -> int:
     from flotilla.core import paths
     from flotilla.core.storage import LocalLogStore
@@ -196,9 +202,17 @@ def _prompt(ctx, payload, out, now) -> int:
         fleet_items = ctx.fleet() if ctx.is_orchestrator else []
         if mine:
             blocks += ["flotilla - your move:", *render.lines(mine, now)]
-        if fleet_items:
-            blocks += ["flotilla - the fleet (you are the orchestrator):", *render.lines(fleet_items, now)]
-        keys = [f"{item.kind}|{item.branch}|{item.text}" for item in mine + fleet_items]
+        fleet_keys = [_fleet_key(item) for item in fleet_items]
+        state = ctx.ledger.state_dir
+        new, standing = throttle.fresh(state, ctx.session_id, fleet_keys) if fleet_items else (set(), 0)
+        news = [item for item, key in zip(fleet_items, fleet_keys) if key in new]
+        if news or standing:
+            blocks += ["flotilla - the fleet (you are the orchestrator):", *render.lines(news, now)]
+            if standing:
+                blocks.append(f"  and {standing} standing item(s), said before and unchanged; "
+                              "`flotilla watch --once` lists them all")
+        keys = [f"{item.kind}|{item.branch}|{item.text}" for item in mine] + sorted(new) + \
+            ([f"standing|{standing}"] if standing else [])
     keys = keys or blocks
     state = ctx.ledger.state_dir if ctx.ledger is not None else paths.state_dir()
     if title:   # the person's own session leads the fleet: it takes the orchestrator's name now (W9)

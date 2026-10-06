@@ -106,8 +106,17 @@ def build_parser() -> argparse.ArgumentParser:
     close = move_parser("close", "close your shipped work")
     close.add_argument("--ref", default="")
     close.add_argument("--why", default="")
-    move_parser("adopt", "give work whose owner is gone to a live session").add_argument("--to", required=True)
-    hold = move_parser("hold", "keep a handed branch out of the reading queue, with a condition")
+    adopt = moves.add_parser("adopt", help="give work whose owner is gone to a live session")
+    adopt.add_argument("branch", nargs="?", default=None)
+    adopt.add_argument("--from", dest="from_", default=None,
+                       help="every open row this gone session owns, instead of one branch")
+    adopt.add_argument("--to", required=True)
+    adopt.add_argument("--root", default=".")
+    adopt.add_argument("--as", dest="as_name", default=None, help="act as this session (recorded)")
+    adopt.add_argument("--skip-event", dest="skip_event", default=None, help=argparse.SUPPRESS)
+    adopt.add_argument("--skip-why", dest="skip_why", default="")
+    hold = move_parser("hold", "keep a handed branch out of the reading queue, or an accepted one out of the batch, "
+                               "with a condition (`--until \"the person\"` for a release put off)")
     hold.add_argument("--until", required=True)
     hold.add_argument("--why", required=True)
     move_parser("unhold", "lift a hold")
@@ -224,11 +233,12 @@ def build_parser() -> argparse.ArgumentParser:
     helper_done.add_argument("--summary", required=True)
     helper_done.add_argument("--as", dest="as_name", default=None, help=argparse.SUPPRESS)
     helper_done.add_argument("--root", default=".")
-    watch = sub.add_parser("watch", help="what the fleet needs attention for (exit 0 none, 1 some, 2 unknown)")
+    watch = sub.add_parser("watch", help="what the fleet needs attention for (--once: exit 0 none, 1 some; --wait: 0 "
+                                         "either way, read the first line; 2: could not ask)")
     watch.add_argument("--once", action="store_true", help="check once and exit (v1 has no schedule of its own)")
     watch.add_argument("--wait", type=float, default=0.0,
-                       help="block up to this many seconds until something new needs attention (exit 1), or "
-                            "nothing new (exit 0)")
+                       help="block up to this many seconds until something new needs attention; exits 0 either "
+                            "way - its first line says `attention (new):` or `nothing new`")
     watch.add_argument("--interval", type=float, default=20.0, help=argparse.SUPPRESS)
     watch.add_argument("--confirm", type=float, default=5.0, help=argparse.SUPPRESS)
     watch.add_argument("--root", default=".")

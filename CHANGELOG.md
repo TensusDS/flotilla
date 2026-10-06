@@ -3,6 +3,21 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.7.17 - 2026-10-06
+
+From a running fleet's notes:
+- **`flotilla watch --wait` exits 0 when it wakes on news**, so Claude Code no longer shows each wake as a failed
+  task; its first line says `attention (new):` or `nothing new`. `--once` keeps 0/1/2.
+- **All the work of a gone session moves in one command**: `flotilla work adopt --from "<gone>" --to "<live>"`,
+  naming any row it could not move. The empty-seats line says `flotilla spawn --fill` raises them again.
+- **A release the person put off stays out of the batch**: `flotilla work hold <branch> --until "the person"` on an
+  accepted branch keeps it out of `flotilla brief`, and `queue`/`land` refuse it until it is unheld.
+- **A seat the census calls blocked, with no question in flotilla's queue, reads as idle.**
+- **The orchestrator's prompt hook says what is new** and counts the standing items in one line, instead of
+  repeating the whole list.
+- **Existing projects:** copy the new `orchestrator.md` (template v14) over `.flotilla/posts/orchestrator.md` on
+  trunk; `flotilla doctor` names it.
+
 ## 0.7.16 - 2026-10-05
 
 - **The lane measures what it held but did not record**: a receipt's setup and its red and timed-out tiers count in

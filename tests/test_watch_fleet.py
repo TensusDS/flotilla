@@ -415,3 +415,25 @@ def test_claimed_and_returned_work_together_make_a_pile_that_says_which():
 
 def test_a_held_row_is_no_part_of_a_pile():
     assert piles(rows(*three(held_by="orchestrator 1", held_until="feat/9", held_why="stacked")), WORKING_PAIR) == []
+
+
+def test_a_blocked_seat_with_no_question_in_the_queue_reads_as_idle():
+    """Twosuns orchestrator, 0.7.16: 'blocked' meant 'idle, or waiting on a permission prompt', and it checked an
+    empty permission queue more than once. flotilla's own queue says which."""
+    from flotilla.watch.fleet import _census_word
+    from types import SimpleNamespace
+    seat = SimpleNamespace(kind="background", state="blocked", status="running", name="main session 8")
+    assert _census_word(seat).startswith("idle")
+
+
+def test_the_empty_seats_line_says_how_to_raise_them_again():
+    from flotilla.watch import fleet as fl
+    assert "flotilla spawn --fill" in fl.SEATS_HINT
+
+
+def test_blocked_with_no_status_stays_ambiguous():
+    """Review of 0.7.17: 'idle' rests on the census reporting a status; with none, a person may still be needed."""
+    from flotilla.watch.fleet import _census_word
+    from types import SimpleNamespace
+    seat = SimpleNamespace(kind="background", state="blocked", status=None, name="main session 8")
+    assert _census_word(seat) == "blocked: idle, or waiting on a permission prompt"

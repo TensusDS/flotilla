@@ -104,6 +104,12 @@ def approve(ledger: Ledger, branch: str) -> Row:
                         evidence={"revision": revision})
 
 
+def _not_held(row: Row) -> None:
+    if row.held_until:
+        raise MoveRefused(f"`{row.branch}` is held by {row.held_by} until {row.held_until} ({row.held_why}); it stays "
+                          f"out of the batch until the orchestrator runs `flotilla work unhold {row.branch}`")
+
+
 def queue(ledger: Ledger, actor: Actor, branch: str, *, pr: int | None = None) -> Row:
     require_may(actor, "queue", ledger.posts)
     if ledger.mode == "pr" and pr is None:
@@ -116,6 +122,7 @@ def queue(ledger: Ledger, actor: Actor, branch: str, *, pr: int | None = None) -
     with ledger.session() as s:
         row = s.need_open_row(branch)
         state = s.next_state(row, "queue")
+        _not_held(row)
         waiting = blocked_by(s.rows, row, ledger.profile)
         if waiting:
             def named(links):
@@ -173,6 +180,7 @@ def land(ledger: Ledger, actor: Actor, branch: str, *, merge: str | None = None)
         raise MoveRefused(f"git could not resolve the local trunk `{ledger.trunk}` or origin's")
     with ledger.session() as s:
         row = s.need_open_row(branch)
+        _not_held(row)
         state = s.next_state(row, "land")
         read = batch.revision_of(row)
         if not read:

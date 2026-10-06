@@ -71,7 +71,7 @@ def test_wait_returns_when_something_new_needs_attention(tmp_path, capsys):
     calm = context(tmp_path, me=None, sessions=QUIET)
     news = context(tmp_path, me=None, sessions=DROPPED, rows_=HANDED)
     code, out = run_wait(tmp_path, capsys, [calm, calm, news, news])   # the last: the confirming sample
-    assert code == 1 and "attention (new):" in out and "review session 1 holds the move" in out
+    assert code == 0 and "attention (new):" in out and "review session 1 holds the move" in out
 
 
 def test_what_was_there_at_the_start_does_not_wake_it(tmp_path, capsys):
@@ -101,7 +101,7 @@ def dropping(tmp_path, state, status=None):
 def test_a_ball_dropped_again_after_work_resumed_wakes_it(tmp_path, capsys):
     code, out = run_wait(tmp_path, capsys, [dropping(tmp_path, "blocked"), dropping(tmp_path, "working"),
                                             dropping(tmp_path, "blocked"), dropping(tmp_path, "blocked")])
-    assert code == 1 and "review session 1 holds the move" in out
+    assert code == 0 and "review session 1 holds the move" in out
 
 
 def test_a_census_word_that_flickers_is_not_news(tmp_path, capsys):
@@ -154,4 +154,14 @@ def test_a_real_drop_after_a_flicker_wakes_it(tmp_path, capsys):
     busy = dropping(tmp_path, "working")
     idle = dropping(tmp_path, "blocked")
     code, out = run_wait(tmp_path, capsys, [busy, idle, busy, idle, idle, idle], seconds=100.0)
-    assert code == 1 and "review session 1 holds the move" in out
+    assert code == 0 and "review session 1 holds the move" in out
+
+
+def test_a_wait_that_woke_on_news_exits_0_so_the_wake_is_not_read_as_a_failure(tmp_path, capsys):
+    """Twosuns orchestrator, 0.7.16: every wake exited 1, and Claude Code showed each one as a failed task. The news
+    is in the output; the exit says only whether the watch could ask (2) or not."""
+    calm = context(tmp_path, me=None, sessions=QUIET)
+    news = context(tmp_path, me=None, sessions=[sess("review session 1"), sess("main session 1", state="working")],
+                   rows_=HANDED)
+    code, out = run_wait(tmp_path, capsys, [calm, news, news])
+    assert code == 0 and out.splitlines()[1] == "attention (new):"

@@ -157,6 +157,8 @@ def hold_lifted(row: Row, rows: dict[str, Row], live: set[str] | None = None) ->
     until = row.held_until
     if not until:
         return None
+    if until == "the person":
+        return False   # a release the person put off: lifted by their unhold, never by the ledger
     target = next((other for other in reversed(list(rows.values())) if other.branch == until and other.is_open), None)
     if target is not None:
         return target.state not in ("reserved", "claimed", "handed", "fixing")   # lifted once that work is read

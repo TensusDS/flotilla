@@ -4,8 +4,9 @@
 until an attention item appears that was not there when it started, so a question, a dropped ball or a break wakes
 the orchestrator, while what it already saw does not (field test F23).
 
-Exit codes: 0 nothing needs attention (with `--wait`: nothing new before the time ran out), 1 something does, 2 the
-census or the ledger could not be asked (printed, never read as "nothing"). v1 has no schedule of its own
+Exit codes: `--once` 0 nothing needs attention, 1 something does; `--wait` 0 whether it woke on news ("attention
+(new):") or the time ran out ("nothing new") - a wake is not a failure, and Claude Code showed every one as failed
+(twosuns, 0.7.16); either 2 when the census or the ledger could not be asked (printed, never read as "nothing"). v1 has no schedule of its own
 (spec, section 8).
 """
 
@@ -111,6 +112,6 @@ def _wait(root, gather, ctx, seconds, interval, now, sleep, clock, confirm=5.0) 
             print(f"census: {len(ctx.live)} live session(s)")
             print("attention (new):")
             print("\n".join(render.lines(new, now or dt.datetime.now(dt.timezone.utc), limit=10_000)))
-            return 1
+            return 0   # the news is in the output; a wake is not a failure (twosuns orchestrator, 0.7.16)
     print(f"attention: nothing new in {seconds:g} s")
     return 0

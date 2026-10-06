@@ -862,3 +862,15 @@ def test_reconcile_says_its_fetch_failed(direct):
     git(root, "remote", "set-url", "origin", str(root.parent / "no-such-origin"))
     lines = delivery.reconcile(ledger, actor(ledger, SENDER))
     assert any(line.startswith("not yet") and "fetch failed" in line for line in lines), lines
+
+
+def test_a_queued_pull_request_is_not_held(pr_world):
+    """Review of 0.7.17: an open PR can be merged on GitHub whatever the ledger says, and reconcile would record it
+    shipped although the brief said 'not in this batch'. Hold it before it is queued."""
+    from flotilla.ledger import steering
+    root, ledger, answers = pr_world
+    row = drive(root, ledger)
+    answers["pr"] = open_pr("feat/x", row.tip)
+    delivery.queue(ledger, actor(ledger, SENDER), "feat/x", pr=12)
+    with pytest.raises(MoveRefused, match="before it is queued"):
+        steering.hold(ledger, actor(ledger, "orchestrator 1"), "feat/x", until="the person", why="later")
