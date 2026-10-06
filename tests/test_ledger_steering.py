@@ -111,8 +111,8 @@ def test_adopt_from_hands_every_row_of_a_gone_session_at_once(world):
     root, ledger = world
     drive(root, ledger, to="claimed")
     drive(root, ledger, "feat/y", to="claimed")
-    moved = steering.adopt_from(ledger, actor(ledger, ORCH), "main session 1", to="main session 2")
-    assert sorted(row.branch for row in moved) == ["feat/x", "feat/y"]
+    moved, refused = steering.adopt_from(ledger, actor(ledger, ORCH), "main session 1", to="main session 2")
+    assert sorted(row.branch for row in moved) == ["feat/x", "feat/y"] and refused == []
     assert all(row.owner == "main session 2" for row in moved)
     with pytest.raises(MoveRefused, match="no open work"):
         steering.adopt_from(ledger, actor(ledger, ORCH), "main session 1", to="main session 2")
@@ -126,3 +126,22 @@ def test_a_hold_for_the_person_raises_no_deviation_of_its_own(world):
     steering.hold(ledger, actor(ledger, ORCH), "feat/x", until="the person", why="release put off")
     kinds = {found["kind"] for found in views.deviations(ledger.rows(), ledger.profile, live=set(LIVE))}
     assert not kinds & {"hold_lifted", "hold_unknown"}
+
+
+def test_adopt_from_reports_what_moved_when_a_row_is_refused(world, monkeypatch):
+    """Review of 0.7.17: a refusal on the third row printed only 'refused', so the orchestrator believed nothing
+    moved and the heir never heard it owned two rows. Each row is answered for itself."""
+    root, ledger = world
+    for branch in ("feat/x", "feat/y", "feat/z"):
+        drive(root, ledger, branch, to="claimed")
+    real = steering.adopt
+
+    def refusing(ledger_, actor_, branch, *, to):
+        if branch == "feat/y":
+            raise MoveRefused("the census could not be asked")
+        return real(ledger_, actor_, branch, to=to)
+    monkeypatch.setattr(steering, "adopt", refusing)
+    moved, refused = steering.adopt_from(ledger, actor(ledger, ORCH), "main session 1", to="main session 2")
+    assert sorted(row.branch for row in moved) == ["feat/x", "feat/z"]
+    assert refused == [("feat/y", "the census could not be asked")]
+

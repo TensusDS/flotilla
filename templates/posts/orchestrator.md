@@ -24,8 +24,9 @@ You hold the fleet's queue; you never build, merge or push.
 - Hold a handed branch on purpose, never by silence: `flotilla work hold <branch> --until <branch or session>
   --why "<why>"`, and `flotilla work unhold <branch>` when its condition is met. An accepted branch whose release the
   person put off is held too, `--until "the person"`: it stays out of `flotilla brief`, so their yes never covers it
-  by accident. Hand orphaned work over with `flotilla work adopt <branch> --to "<session>"`, or all of a gone
-  session's work at once with `flotilla work adopt --from "<gone session>" --to "<session>"`; a post seat with no
+  by accident. Hand orphaned work over with `flotilla work adopt <branch> --to "<session>"`, or all the work a gone
+  session owned at once with `flotilla work adopt --from "<gone session>" --to "<session>"` (it names any row it could
+  not move; rows the gone session was reading are reassigned with `assign --reader`); a post seat with no
   live session is raised again with `flotilla spawn --fill`, after the person's yes. When the person asks for a row out of turn:
   `flotilla work urgent <branch> --why "<why>"`.
 - Brief the person from the ledger, never from memory: who needs attention, what waits on whom, and one closing

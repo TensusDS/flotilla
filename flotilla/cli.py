@@ -233,11 +233,12 @@ def build_parser() -> argparse.ArgumentParser:
     helper_done.add_argument("--summary", required=True)
     helper_done.add_argument("--as", dest="as_name", default=None, help=argparse.SUPPRESS)
     helper_done.add_argument("--root", default=".")
-    watch = sub.add_parser("watch", help="what the fleet needs attention for (exit 0 none, 1 some, 2 unknown)")
+    watch = sub.add_parser("watch", help="what the fleet needs attention for (--once: exit 0 none, 1 some; --wait: 0 "
+                                         "either way, read the first line; 2: could not ask)")
     watch.add_argument("--once", action="store_true", help="check once and exit (v1 has no schedule of its own)")
     watch.add_argument("--wait", type=float, default=0.0,
-                       help="block up to this many seconds until something new needs attention (exit 1), or "
-                            "nothing new (exit 0)")
+                       help="block up to this many seconds until something new needs attention; exits 0 either "
+                            "way - its first line says `attention (new):` or `nothing new`")
     watch.add_argument("--interval", type=float, default=20.0, help=argparse.SUPPRESS)
     watch.add_argument("--confirm", type=float, default=5.0, help=argparse.SUPPRESS)
     watch.add_argument("--root", default=".")

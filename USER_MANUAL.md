@@ -55,7 +55,7 @@ The CLI is `${CLAUDE_PLUGIN_ROOT}/bin/flotilla`. Every command takes `--help`.
 | reviewer | `take`, `accept --reviewed <sha>`, `fix --why "<what must change>"`, `recuse`, `vouch --commit <sha>` |
 | sender | `queue`, `land`, `ship`, `inbatch`, `return --why`, `offledger`, `release` |
 | judge | `walked --build <b> --steps "<what>" --saw "<what>"`, `broke --where "<where>" --saw "<what>"`, `unbroke --why "<why>"` |
-| orchestrator | `assign --reader "<session>"`, `hold --until <time> --why "<why>"`, `unhold`, `adopt --to "<session>"`, `urgent`, `walkable`, `release` |
+| orchestrator | `assign --reader "<session>"`, `hold --until <branch or session or "the person"> --why "<why>"`, `unhold`, `adopt --to "<session>"` (or `adopt --from "<gone session>" --to "<session>"` for all the work it owned), `urgent`, `walkable`, `release` |
 | the person | `approve` |
 
 Worktrees and receipts:
@@ -92,7 +92,8 @@ Worktrees and receipts:
 3. **Merges you authorize:** the orchestrator shows the batch and the command; for each branch you agree to, you type
    `! <command>` in your own Claude Code session (the orchestrator's, when your session leads the fleet) or run it in a
    terminal. Claude's own Bash call of it is refused, and so is `!` in a background orchestrator's prompt.
-4. **A session done or stuck:** `/flotilla:retire "<name>"`. Its open rows are named; the orchestrator adopts them.
+4. **A session done or stuck:** `/flotilla:retire "<name>"`. Its open rows are named; the orchestrator adopts them, all
+   at once with `flotilla work adopt --from "<name>" --to "<session>"`.
 5. **End of day:** `/flotilla:down`. Trees and branches whose work is surely on trunk go with their seats; the rest
    stay and say why. `flotilla fleet clean` shows what is left to remove, `--yes` removes it.
 6. **After a plugin update:** stand the fleet down, update, bring `.flotilla/posts/` up to the new templates, raise

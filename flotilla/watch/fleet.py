@@ -41,8 +41,12 @@ def _census_word(session) -> str:
             return "waiting on a permission prompt nobody answers"
         if session.status == "idle":
             return "idle"
-        if session.state == "blocked":   # its questions would be in flotilla's queue, and a dropped ball is
-            # never asked of a session with one there: so blocked here is idle (twosuns orchestrator, 0.7.16)
+        if session.state == "blocked":
+            # a dialog that waits on a person reads `waiting` above, and a question in flotilla's queue keeps the
+            # ball from being called dropped at all; so with a status reported, blocked is idle (twosuns, 0.7.16).
+            # With no status the census cannot tell the two apart (review of 0.7.17)
+            if not session.status:
+                return "blocked: idle, or waiting on a permission prompt"
             return "idle (no permission question of it waits in flotilla's queue)"
     return session.state or session.status or "unknown"
 

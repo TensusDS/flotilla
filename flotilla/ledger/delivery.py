@@ -107,7 +107,7 @@ def approve(ledger: Ledger, branch: str) -> Row:
 def _not_held(row: Row) -> None:
     if row.held_until:
         raise MoveRefused(f"`{row.branch}` is held by {row.held_by} until {row.held_until} ({row.held_why}); it stays "
-                          f"out of the batch until `flotilla work unhold {row.branch}`")
+                          f"out of the batch until the orchestrator runs `flotilla work unhold {row.branch}`")
 
 
 def queue(ledger: Ledger, actor: Actor, branch: str, *, pr: int | None = None) -> Row:

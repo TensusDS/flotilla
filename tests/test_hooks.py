@@ -420,3 +420,16 @@ def test_the_orchestrator_is_told_what_is_new_and_the_rest_in_one_line(tmp_path)
     later = call("prompt", tmp_path, context(tmp_path, me=orch, sessions=fleet_now, rows_=rows(*one_more)),
                  now=NOW + dt.timedelta(minutes=50))
     assert "waits on the person" not in later and "21 standing item(s)" in later
+
+
+def test_an_item_whose_wording_moves_is_not_news(tmp_path):
+    """Review of 0.7.17: the hook keyed items on their whole text, so an age or a count in it made a standing item
+    'new' every hour. It keys them as the watch does: kind, branch, and who."""
+    from flotilla.watch import throttle
+    from flotilla.watch.whose import Item
+    first = [Item("idle", "", "main session 3 has held no work for 1 h", "", who="main session 3")]
+    later = [Item("idle", "", "main session 3 has held no work for 2 h", "", who="main session 3")]
+    from flotilla.hooks import _fleet_key
+    throttle.fresh(tmp_path, "s1", [_fleet_key(i) for i in first])
+    new, standing = throttle.fresh(tmp_path, "s1", [_fleet_key(i) for i in later])
+    assert (new, standing) == (set(), 1)

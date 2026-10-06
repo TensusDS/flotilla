@@ -48,7 +48,7 @@ def _live_or_empty(ledger: Ledger) -> set[str]:
         return set()
 
 
-def adopt_from(ledger: Ledger, actor: Actor, gone: str, *, to: str) -> list[Row]:
+def adopt_from(ledger: Ledger, actor: Actor, gone: str, *, to: str) -> tuple[list[Row], list[tuple[str, str]]]:
     """Every open row a gone session owns, to one live heir, in one move each (twosuns, 0.7.16: five sessions
     stopped in one night and their rows were handed over one command at a time). Post seats stay: a seat is the
     post held, raised again by `flotilla spawn --fill`, not work to adopt."""
@@ -56,8 +56,15 @@ def adopt_from(ledger: Ledger, actor: Actor, gone: str, *, to: str) -> list[Row]
     branches = [row.branch for row in ledger.rows().values()
                 if row.is_open and row.owner == gone and row.state != "reserved" and row.branch]
     if not branches:
-        raise MoveRefused(f"{gone} owns no open work to adopt")
-    return [adopt(ledger, actor, branch, to=to) for branch in dict.fromkeys(branches)]
+        raise MoveRefused(f"{gone} owns no open work to adopt (rows it reads are reassigned with "
+                          "`flotilla work assign <branch> --reader`)")
+    moved, refused = [], []
+    for branch in dict.fromkeys(branches):   # each row answered for itself: a refusal never hides what moved
+        try:
+            moved.append(adopt(ledger, actor, branch, to=to))
+        except MoveRefused as err:
+            refused.append((branch, str(err)))
+    return moved, refused
 
 
 def hold(ledger: Ledger, actor: Actor, branch: str, *, until: str, why: str) -> Row:
@@ -72,6 +79,9 @@ def hold(ledger: Ledger, actor: Actor, branch: str, *, until: str, why: str) -> 
     with ledger.session() as s:
         row = s.need_open_row(branch)
         state = s.next_state(row, "hold")
+        if row.state == "queued" and ledger.mode == "pr":
+            raise MoveRefused(f"`{branch}` is queued as a pull request, which GitHub can merge whatever the ledger "
+                              "says; hold an accepted branch before it is queued, or close its PR")
         if row.state not in HOLDABLE:
             raise MoveRefused(f"a hold keeps work out of the reading queue, or out of the batch to ship; `{branch}` "
                               f"is {row.state}")

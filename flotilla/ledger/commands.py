@@ -225,8 +225,14 @@ def _adopt(ledger, actor, args):
         raise MoveRefused("name one branch, or --from <gone session> for all of its open work - not both")
     if args.branch:
         return steering.adopt(ledger, actor, args.branch, to=args.to)
-    rows = steering.adopt_from(ledger, actor, args.from_, to=args.to)
-    return rows[-1], "adopted: " + ", ".join(f"`{row.branch}` ({row.state})" for row in rows) + f" -> {args.to}"
+    moved, refused = steering.adopt_from(ledger, actor, args.from_, to=args.to)
+    lines = []
+    if moved:
+        lines.append("adopted: " + ", ".join(f"`{row.branch}` ({row.state})" for row in moved) + f" -> {args.to}")
+    lines += [f"NOT adopted: `{branch}`: {why}" for branch, why in refused]
+    if not moved:
+        raise MoveRefused("; ".join(lines))
+    return moved[-1], "\n".join(lines)
 
 
 MOVES = {

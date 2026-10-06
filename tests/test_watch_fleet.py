@@ -13,7 +13,7 @@ def test_an_idle_holder_is_a_dropped_ball():
     found = fleet.fleet(rows(row(state="handed", reader="review session 1")), PR,
                         [sess("review session 1"), sess("main session 1", state="working")], post_of=post_of)
     assert [(item.kind, item.branch) for item in found] == [("dropped", "feat/x")]
-    assert "idle (no permission question" in found[0].text
+    assert "waiting on a permission prompt" in found[0].text
 
 
 def test_a_working_holder_is_not_dropped():
@@ -422,10 +422,18 @@ def test_a_blocked_seat_with_no_question_in_the_queue_reads_as_idle():
     empty permission queue more than once. flotilla's own queue says which."""
     from flotilla.watch.fleet import _census_word
     from types import SimpleNamespace
-    seat = SimpleNamespace(kind="background", state="blocked", status="", name="main session 8")
-    assert _census_word(seat) == "idle (no permission question of it waits in flotilla's queue)"
+    seat = SimpleNamespace(kind="background", state="blocked", status="running", name="main session 8")
+    assert _census_word(seat).startswith("idle")
 
 
 def test_the_empty_seats_line_says_how_to_raise_them_again():
     from flotilla.watch import fleet as fl
     assert "flotilla spawn --fill" in fl.SEATS_HINT
+
+
+def test_blocked_with_no_status_stays_ambiguous():
+    """Review of 0.7.17: 'idle' rests on the census reporting a status; with none, a person may still be needed."""
+    from flotilla.watch.fleet import _census_word
+    from types import SimpleNamespace
+    seat = SimpleNamespace(kind="background", state="blocked", status=None, name="main session 8")
+    assert _census_word(seat) == "blocked: idle, or waiting on a permission prompt"
