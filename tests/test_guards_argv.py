@@ -42,6 +42,9 @@ CASES = [
     "flotilla rig >&o open",
     "flotilla work approve feat/x 2>&1 >out",
     "FOO=1 flotilla rig open",
+    "(flotilla work approve x)",
+    "( flotilla rig open )",
+    "(flotilla rig '(' open)",
 ]
 
 

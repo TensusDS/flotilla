@@ -185,3 +185,24 @@ def test_flotillas_own_parser_reads_the_move():
 def test_the_quote_aware_split_cuts_after_an_escaped_angle():
     from flotilla.guards import shell
     assert [part.strip() for part in shell._split_outside_quotes("echo \\>& git push")] == ["echo \\>", "git push"]
+
+
+@pytest.mark.parametrize("command", ["(flotilla work approve feat/x)", "(flotilla rig open --hours 1)",
+                                     "x=$(true) && (flotilla rig close)"])
+def test_a_subshell_glued_to_flotilla_does_not_hide_it(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny"
+
+
+@pytest.mark.parametrize("command", ["{,flotilla} work approve feat/x", "{flotilla,work} approve feat/x",
+                                     "/usr/bin/{flotilla,} rig open --hours 1", "$F {work,} approve feat/x",
+                                     "$F w{o,}rk approve feat/x"])
+def test_a_brace_that_may_become_flotilla_or_its_command_is_refused(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny"
+
+
+@pytest.mark.parametrize("command", ['git commit -m "fix {a,b} in flotilla"', "echo 'flotilla {1..3}'"])
+def test_a_quoted_or_escaped_brace_is_no_expansion(command):
+    from flotilla.guards import shell
+    assert not any(person.check(segment) for segment in shell.segments(command, None))

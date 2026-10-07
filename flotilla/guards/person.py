@@ -48,6 +48,33 @@ RIG_MOVES = ("enable", "disable", "open", "close", "allow-image")
 GUARDED = ("approve",) + RIG_MOVES
 
 
+def _brace_expands(text: str) -> bool:
+    """An unquoted `{a,b}` or `{1..3}`: bash turns it into several words, so the guard cannot say which word is the
+    program or the command before it runs."""
+    quote, depth, inner, escaped = None, 0, [], False
+    for ch in text:
+        if escaped:
+            escaped = False
+        elif quote:
+            quote = None if ch == quote else quote
+        elif ch == "\\":
+            escaped = True
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "{":
+            depth, inner = depth + 1, []
+        elif ch == "}" and depth:
+            depth -= 1
+            if "," in inner or ".." in "".join(inner):
+                return True
+        elif depth:
+            if ch in " \t\n":
+                depth = 0
+            else:
+                inner.append(ch)
+    return False
+
+
 def argv(text: str) -> list[str]:
     """The words bash hands a program from one segment: quotes and backslashes taken out, every redirection and its
     target taken away, a comment ended. Only redirections are removed here, never a word bash keeps, so a quoted
@@ -93,6 +120,9 @@ def argv(text: str) -> list[str]:
             started, i = True, i + 1
         elif ch == "#" and not started:
             break
+        elif ch in "()":                       # subshell and grouping syntax: an operator, never part of a word
+            end()
+            i += 1
         elif ch in "<>" or (ch == "&" and i + 1 < n and text[i + 1] == ">"):
             if started and not "".join(word).isdigit():
                 end()
@@ -208,7 +238,11 @@ def check(segment) -> Finding | None:
                                     "runs cannot be read before it runs - and `approve` is the person's own move. "
                                     "Write the command plainly.")
     rest = words[1:]
-    built = any("$" in word or "`" in word for word in rest) and any(word in GUARDED for word in rest)
+    braces = _brace_expands(text)
+    if braces and "flotilla" in text:
+        return Finding(GUARD, True, "flotilla: a brace here may expand into flotilla or its command (`{a,b}`), so the "
+                                    "move it runs cannot be read before it runs. Write the command plainly.")
+    built = (braces or any("$" in word or "`" in word for word in rest)) and any(word in GUARDED for word in rest)
     named = built or any(_may_be(word, "rig") or _may_be(word, "work") for word in rest)
     if (words and _opaque(words[0]) and named) or any(
             _opaque(command) or ((_is(command, "rig") or _is(command, "work")) and _opaque(move))
