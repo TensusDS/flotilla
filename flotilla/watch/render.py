@@ -13,7 +13,7 @@ from flotilla.watch.whose import WORKING, Item
 MAX_LINES = 20
 LINE_CHARS = 200
 ORDER = {"done": -2, "question": -1, "person": -1, "idle": 7, "helper": 3, "ball": 0, "hold": 1, "unread": 2,
-         "dropped": 3, "nobody": 4, "break": 5, "deviation": 6, "waiting": 8, "seats": 9}
+         "dropped": 3, "nobody": 4, "break": 5, "deviation": 6, "waiting": 8, "seats": 9, "rig": -1}
 
 
 def age(since: str, now: dt.datetime) -> str:

@@ -78,12 +78,17 @@ class Context:
         questions = queue.live(self.ledger.state_dir, self.ledger.repo_key, now=now)
         breaks = fleet.open_breaks(self.ledger.state_dir, self.ledger.repo_key, self.rows, self.profile,
                                    self.post_of)
-        return fleet.question_items(questions) + fleet.fleet(
+        found = fleet.question_items(questions) + fleet.fleet(
             self.rows, self.profile, self.project if self.project is not None else self.sessions,
             post_of=self.post_of, former_of=self.post_or_former, breaks=breaks,
             asking={asked.session for asked in questions},
             claimers={post.name for post in (self.ledger.posts or {}).values() if "claim" in post.may},
             census={session.name for session in self.sessions if session.name})
+        import datetime as _dt
+        from flotilla.core import paths as _paths
+        from flotilla.rig import surface
+        return surface.items(_paths.state_dir(), _dt.datetime.now(_dt.timezone.utc),
+                             project=self.ledger.repo_key) + found
 
 
 def this_session(sessions, session_id: str, *, parent_of=None, start_pid: int | None = None):
