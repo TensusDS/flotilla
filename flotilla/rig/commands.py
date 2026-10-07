@@ -382,13 +382,19 @@ def _project(root) -> tuple[str, rig_profile.RigProfile]:
 def _wait_up(rig: j.Rig, found, machine: j.Machine, deadline: dt.datetime, who: str, why: str) -> int:
     while True:
         rig.renew([machine.id])
+        if not machine.keyed:   # every call that waits attaches, so a call that resumed does too (final review, I1)
+            try:
+                found.attach_ssh(machine.instance, SSH_KEY())
+                machine = rig.note(machine.id, keyed=_now().isoformat(timespec="seconds")) or machine
+            except (provider.ProviderError, sshkey.KeyError_) as err:
+                print(f"note: the rig's ssh key is not on the machine yet: {err}")
         try:
             listed = {entry.instance: entry for entry in found.instances()}
         except provider.ProviderError as err:
             print(f"note: {err}")
             listed = {}
         entry = listed.get(machine.instance)
-        if entry is not None and entry.status == "running" and entry.address:
+        if entry is not None and entry.status == "running" and entry.address and machine.keyed:
             if rig.move(machine.id, j.READY, address=entry.address, expect={"state": j.PROVISIONING}) is None:
                 current = rig.machines()[machine.id]
                 print(f"machine {machine.id} is {current.state} ({current.reason}); not ready")
@@ -475,7 +481,8 @@ def _up(state: Path, settings: rs.RigSettings, args) -> int:
             print(f"refused: no offer within the ceilings ({settings.max_hourly:.2f} $/h, datacenter, "
                   f"{', '.join(wanted.gpus) or 'any GPU'}); machine {machine.id} is failed and will be reaped")
             return 2
-        offer, public = offers[0], SSH_KEY()
+        offer = offers[0]
+        SSH_KEY()   # a key that cannot be made fails before money is spent
         instance = found.create(offer.offer, image=wanted.image, disk_gb=wanted.disk_gb,
                                 env={"FLOTILLA_WATCHDOG_MINUTES": str(args.watchdog),
                                      "NVIDIA_DRIVER_CAPABILITIES": "all"},
@@ -496,10 +503,6 @@ def _up(state: Path, settings: rs.RigSettings, args) -> int:
               "instance by its label and destroys it")
         return 2
     print(f"machine {machine.id}: instance {instance}, {offer.gpu}, {offer.hourly:.3f} $/h - coming up")
-    try:
-        found.attach_ssh(instance, public)
-    except provider.ProviderError as err:
-        print(f"note: the rig's ssh key could not be attached yet: {err}")
     return _wait_up(rig, found, moved, deadline, who, args.why)
 
 

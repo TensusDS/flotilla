@@ -88,6 +88,7 @@ class Machine:
     address: str = ""
     requested: str = ""
     suspect: str = ""
+    keyed: str = ""      # when the rig's ssh key was put on the instance; not ready without it
 
 
 @dataclass
@@ -105,7 +106,7 @@ class Request:
 
 TEXT = ("who", "why", "session", "provider", "instance", "label", "gpu", "reason", "run_mark", "address", "project",
         "image", "suspect")
-TIMES = ("until", "opened", "ended", "created", "lease_until", "idle_since", "requested")
+TIMES = ("until", "opened", "ended", "created", "lease_until", "idle_since", "requested", "keyed")
 MONEY = {"budget": 1e4, "hourly": 1e3}
 
 

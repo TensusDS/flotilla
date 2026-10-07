@@ -1,5 +1,5 @@
 """The rig's own ssh key (rig design, section 6): made once, with no passphrase because cron and background seats use
-it, and refused when others may read it. Its public half is attached to each instance at create; the person's own
+it, and refused when others may read it. Its public half is attached to each instance before it is called ready; the person's own
 keys are never offered to a rented machine."""
 
 from __future__ import annotations

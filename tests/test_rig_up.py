@@ -204,3 +204,39 @@ def test_a_session_closed_meanwhile_refuses_the_machine(world, monkeypatch):
     monkeypatch.setattr(j.Rig, "add_machine", close_first)
     code, out = up(world)
     assert code == 2 and "not open" in out and world["fake"].created == 0
+
+
+def test_a_machine_is_not_ready_until_the_rig_key_is_on_it(world, monkeypatch):
+    opened(world)
+    real = world["fake"]
+
+    def no_key(method, url, headers, body, timeout):
+        if "/ssh/" in url:
+            return 500, b'{"error": true, "msg": "try later"}'
+        return real(method, url, headers, body, timeout)
+    monkeypatch.setattr(vast_adapter, "SEND", no_key)
+    code, out = up(world, "--wait", "30")
+    assert code == 3 and journal(world).machines()["m1"].state == j.PROVISIONING
+    monkeypatch.setattr(vast_adapter, "SEND", real)
+    code, out = up(world)
+    machine = journal(world).machines()["m1"]
+    assert code == 0 and machine.state == j.READY and len(real.ssh_keys[machine.instance]) == 1
+
+
+def test_a_machine_adopted_by_its_label_gets_the_rig_key(world, monkeypatch):
+    opened(world)
+    real = world["fake"]
+
+    def killed_after_create(method, url, headers, body, timeout):
+        answer = real(method, url, headers, body, timeout)
+        if method == "PUT":
+            raise SystemExit("the seat's Bash timeout killed the call")
+        return answer
+    monkeypatch.setattr(vast_adapter, "SEND", killed_after_create)
+    with pytest.raises(SystemExit):
+        up(world)
+    assert journal(world).machines()["m1"].state == j.REQUESTED
+    monkeypatch.setattr(vast_adapter, "SEND", real)
+    code, out = up(world)
+    machine = journal(world).machines()["m1"]
+    assert code == 0 and real.created == 1 and len(real.ssh_keys[machine.instance]) == 1
