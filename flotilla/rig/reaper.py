@@ -32,7 +32,8 @@ OFF_REASON = "rig turned off"
 PASS = dt.timedelta(minutes=5)
 DRAIN_AT = 0.9
 CENT = 1e-6   # money compares within a millionth of a dollar: 0.9 * 0.10 is 0.09000000000000001 in floats
-
+COME_UP = dt.timedelta(minutes=15)
+STOPPED = ("exited", "stopped")
 
 @dataclass
 class Outcome:
@@ -54,7 +55,7 @@ def _listings(rig: j.Rig, providers, services, out: Outcome) -> dict:
     """service name -> {instance id: Listed}, or None when it could not be asked."""
     machines = rig.machines()
     names = {item.provider for item in machines.values() if item.provider} | set(services)
-    found = {}
+    found, asked_at = {}, rig.now()
     for name in sorted(names):
         try:
             found[name] = {entry.instance: entry for entry in providers(name).instances()}
@@ -63,7 +64,7 @@ def _listings(rig: j.Rig, providers, services, out: Outcome) -> dict:
             if any(item.provider == name and item.state in j.LIVE for item in machines.values()):
                 out.failed = True
                 out.lines.append(f"{name} could not be asked: {err}")
-    return found
+    return found, asked_at
 
 
 def _close_sessions(rig: j.Rig, now: dt.datetime, on: bool, out: Outcome) -> None:
@@ -90,6 +91,48 @@ def _dead_runs(rig: j.Rig, alive, out: Outcome) -> None:
             if rig.move(item.id, j.READY, reason="its run is gone",
                         expect={"state": j.BUSY, "run_pid": item.run_pid}):
                 out.lines.append(f"machine {item.id}: its run is gone, back to ready")
+
+
+def _lost_or_slow(rig: j.Rig, listings: dict, listed_at: dt.datetime, now: dt.datetime, out: Outcome) -> None:
+    """A machine the service lists stopped is lost at once; one it no longer lists, or lists offline, is lost when two
+    passes agree - one inconsistent page must not give up a working machine. Its money then stops counting and its
+    record says why. A requested machine whose instance is already listed under its label is adopted; one that never
+    got an instance, or never came up, is given back."""
+    for item in rig.machines().values():
+        listed = listings.get(item.provider)
+        if item.state == j.REQUESTED and not item.instance:
+            entry = next((e for e in (listed or {}).values() if e.label == item.label), None)
+            if entry is not None:
+                if rig.move(item.id, j.PROVISIONING, instance=entry.instance, hourly=entry.hourly,
+                            created=now.isoformat(timespec="seconds"), expect={"state": j.REQUESTED, "instance": ""}):
+                    out.lines.append(f"machine {item.id}: instance {entry.instance} found under its label, adopted")
+                continue
+            requested = _when(item.requested)
+            if requested is not None and now - requested > COME_UP:
+                if rig.move(item.id, j.FAILED, reason="create never answered", expect={"state": j.REQUESTED}):
+                    out.lines.append(f"machine {item.id} failed: create never answered")
+            continue
+        if item.state not in (j.PROVISIONING, j.READY, j.BUSY) or not item.instance:
+            continue
+        created, reason, seen = _when(item.created), "", ""
+        if listed is not None and created is not None and created < listed_at - dt.timedelta(minutes=1):
+            entry = listed.get(item.instance)
+            if entry is None:
+                seen = "lost: the service no longer lists it"
+            elif entry.status in STOPPED:
+                reason = f"lost: {entry.status}"
+            elif entry.status == "offline":
+                seen = "lost: offline"
+        if seen and item.suspect == seen:
+            reason = seen
+        elif listed is not None and seen != item.suspect:
+            rig.note(item.id, suspect=seen, expect={"state": item.state})
+            if seen:
+                out.lines.append(f"machine {item.id}: {seen}? - acting if the next pass agrees")
+        if not reason and item.state == j.PROVISIONING and created is not None and now - created > COME_UP:
+            reason = f"did not come up in {int(COME_UP.total_seconds() // 60)} min"
+        if reason and rig.move(item.id, j.DRAINING, reason=reason, expect={"state": item.state}):
+            out.lines.append(f"machine {item.id} draining: {reason}")
 
 
 def _drain(rig: j.Rig, now: dt.datetime, out: Outcome) -> None:
@@ -200,10 +243,11 @@ def _finish_sessions(rig: j.Rig, now: dt.datetime, out: Outcome) -> None:
 def reap(rig: j.Rig, providers, *, machine_key: str | None, services=(), on: bool = True,
          alive=lambda pid, mark: True) -> Outcome:
     out = Outcome()
-    listings = _listings(rig, providers, services, out)
+    listings, listed_at = _listings(rig, providers, services, out)
     now = rig.now()
     _close_sessions(rig, now, on, out)
     _dead_runs(rig, alive, out)
+    _lost_or_slow(rig, listings, listed_at, now, out)
     _drain(rig, now, out)
     _destroy(rig, providers, listings, machine_key, out)
     if machine_key is not None:

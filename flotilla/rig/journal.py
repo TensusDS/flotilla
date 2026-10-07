@@ -24,8 +24,10 @@ KEY = "rig"
 REQUESTED, PROVISIONING, READY, BUSY, DRAINING = "requested", "provisioning", "ready", "busy", "draining"
 GONE, FAILED, STUCK = "gone", "failed", "stuck"
 OPEN, CLOSING, CLOSED = "open", "closing", "closed"
+ASKED, ANSWERED = "asked", "answered"
 MACHINE_STATES = (REQUESTED, PROVISIONING, READY, BUSY, DRAINING, GONE, FAILED, STUCK)
 SESSION_STATES = (OPEN, CLOSING, CLOSED)
+REQUEST_STATES = (ASKED, ANSWERED)
 LIVE = tuple(state for state in MACHINE_STATES if state != GONE)   # whatever may still cost money
 RENEWABLE = (REQUESTED, PROVISIONING, READY, BUSY)
 MOVES = {
@@ -44,7 +46,7 @@ IDLE = dt.timedelta(minutes=15)
 SETTLE = dt.timedelta(minutes=2)
 ATTEMPTS = 3
 MAX_TEXT = 300
-_NUMBERED = re.compile(r"^[sm]([0-9]{1,9})$")
+_NUMBERED = re.compile(r"^[smr]([0-9]{1,9})$")
 
 
 class RigError(ValueError):
@@ -82,10 +84,27 @@ class Machine:
     ended: str = ""
     run_pid: int | None = None
     run_mark: str = ""
+    address: str = ""
+    requested: str = ""
+    suspect: str = ""
 
 
-TEXT = ("who", "why", "session", "provider", "instance", "label", "gpu", "reason", "run_mark")
-TIMES = ("until", "opened", "ended", "created", "lease_until", "idle_since")
+@dataclass
+class Request:
+    id: str
+    kind: str = ""
+    who: str = ""
+    why: str = ""
+    project: str = ""
+    image: str = ""
+    state: str = ""
+    since: str = ""
+    reason: str = ""
+
+
+TEXT = ("who", "why", "session", "provider", "instance", "label", "gpu", "reason", "run_mark", "address", "project",
+        "image", "suspect")
+TIMES = ("until", "opened", "ended", "created", "lease_until", "idle_since", "requested")
 MONEY = {"budget": 1e4, "hourly": 1e3}
 
 
@@ -114,6 +133,7 @@ def _clean(key, value):
 def _fold(records):
     sessions: dict[str, Session] = {}
     machines: dict[str, Machine] = {}
+    requests: dict[str, Request] = {}
     for event in records:
         if not isinstance(event, dict) or not _aware(event.get("at")) or not isinstance(event.get("id"), str):
             continue
@@ -122,14 +142,22 @@ def _fold(records):
             found, item = sessions, sessions.get(event["id"]) or Session(id=event["id"])
         elif kind == "machine" and state in MACHINE_STATES:
             found, item = machines, machines.get(event["id"]) or Machine(id=event["id"])
+        elif kind == "request" and state in REQUEST_STATES:
+            found, item = requests, requests.get(event["id"]) or Request(id=event["id"])
         else:
             continue   # a line flotilla never writes: skipped, never fatal
+        skip = ("id", "state", "kind", "since") if isinstance(item, Request) else ("id", "state")
         for field in dc_fields(item):
-            if field.name not in ("id", "state") and field.name in event:
+            if field.name not in skip and field.name in event:
                 setattr(item, field.name, _clean(field.name, event[field.name]))
         item.state = state
+        if isinstance(item, Request):
+            if "ask" in event:   # the record's own `kind` key says "request"; the request's kind travels as `ask`
+                item.kind = event["ask"] if event["ask"] in ("machine", "image") else ""
+            if state == ASKED:
+                item.since = event["at"]
         found[item.id] = item
-    return sessions, machines
+    return sessions, machines, requests
 
 
 def _next_id(prefix: str, taken) -> str:
@@ -168,7 +196,7 @@ class Rig:
 
     def open_session(self, who: str, why: str, *, hours: float, budget: float) -> Session:
         with self.store.transaction(KEY) as tx:
-            sessions, _ = _fold(tx.read().records)
+            sessions = _fold(tx.read().records)[0]
             session_id = _next_id("s", sessions)
             now = self.now()
             self._append(tx, "session", session_id, OPEN, who=who, why=why, budget=budget, opened=_iso(now),
@@ -187,15 +215,23 @@ class Rig:
                          **fields)
             return _fold(tx.read().records)[0][session_id]
 
-    def add_machine(self, session_id: str, provider: str, label_of) -> Machine:
-        """Written before the provider is asked, so a labelled instance always has a journal entry (section 5)."""
+    def add_machine(self, session_id: str, provider: str, label_of, *, limit: int | None = None) -> Machine:
+        """Written before the provider is asked, so a labelled instance always has a journal entry (section 5); the
+        session and the ceiling are checked here, inside the transaction, so a close or a second seat cannot slip
+        between a check and the machine."""
         with self.store.transaction(KEY) as tx:
-            sessions, machines = _fold(tx.read().records)
-            if session_id not in sessions:
-                raise RigError(f"no session {session_id}")
+            sessions, machines, _ = _fold(tx.read().records)
+            session = sessions.get(session_id)
+            if session is None or session.state != OPEN:
+                raise RigError(f"session {session_id} is not open")
+            if session.until and self.now() >= _parse(session.until):
+                raise RigError(f"session {session_id} has ended")
+            if limit is not None and sum(1 for m in machines.values() if m.state in LIVE) >= limit:
+                raise RigError(f"the machine ceiling ({limit}) is reached: another machine lives in this rig")
             machine_id = _next_id("m", machines)
+            now = self.now()
             self._append(tx, "machine", machine_id, REQUESTED, session=session_id, provider=provider,
-                         label=label_of(machine_id), lease_until=_iso(self.now() + LEASE))
+                         label=label_of(machine_id), lease_until=_iso(now + LEASE), requested=_iso(now))
             return _fold(tx.read().records)[1][machine_id]
 
     def move(self, machine_id: str, state: str, reason: str = "", *, expect=None, **fields) -> Machine | None:
@@ -230,6 +266,25 @@ class Rig:
                 return None
             self._append(tx, "machine", machine_id, found.state, **fields)
             return _fold(tx.read().records)[1][machine_id]
+
+    def requests(self) -> dict[str, Request]:
+        return _fold(self.store.read(KEY).records)[2]
+
+    def ask(self, who: str, why: str, *, kind: str = "machine", project: str = "", image: str = "") -> Request:
+        """A session wanted what only the person gives: the orchestrator relays it by its id, never by its text."""
+        with self.store.transaction(KEY) as tx:
+            request_id = _next_id("r", _fold(tx.read().records)[2])
+            self._append(tx, "request", request_id, ASKED, ask=kind, who=who, why=why, project=project, image=image)
+            return _fold(tx.read().records)[2][request_id]
+
+    def answer_requests(self, reason: str, *, kind: str | None = None, ids=None) -> list[Request]:
+        with self.store.transaction(KEY) as tx:
+            waiting = [item for item in _fold(tx.read().records)[2].values() if item.state == ASKED
+                       and (kind is None or item.kind == kind) and (ids is None or item.id in ids)]
+            for item in waiting:
+                self._append(tx, "request", item.id, ANSWERED, reason=reason)
+            found = _fold(tx.read().records)[2]
+            return [found[item.id] for item in waiting]
 
     def renew(self, machine_ids=None) -> list[Machine]:
         """A lease renewed by the work: `rig run` calls this for its own machine (stage 2)."""

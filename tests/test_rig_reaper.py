@@ -331,3 +331,85 @@ def test_the_reaper_is_needed_while_anything_lives_and_not_after(world):
     clock.forward(minutes=61)
     passes(rig, providers, n=2)
     assert not needs_reaper(rig)
+
+
+def test_a_machine_the_service_no_longer_lists_is_lost_when_two_passes_agree(world):
+    rig, clock, fake, providers = world
+    session(rig)
+    mid = running(rig, fake)
+    clock.forward(minutes=5)
+    del fake.instances["101"]                       # the watchdog destroyed it
+    passes(rig, providers)
+    assert rig.machines()[mid].state == j.READY and rig.machines()[mid].suspect.startswith("lost")
+    passes(rig, providers)
+    item = rig.machines()[mid]
+    assert item.state == j.GONE and item.reason.startswith("lost") and rig.rate("s1") == 0.0
+
+
+def test_a_machine_missing_from_one_listing_only_is_kept(world):
+    rig, clock, fake, providers = world
+    session(rig)
+    mid = running(rig, fake)
+    clock.forward(minutes=5)
+    kept = fake.instances.pop("101")
+    passes(rig, providers)
+    fake.instances["101"] = kept                    # an inconsistent page, then back
+    passes(rig, providers)
+    item = rig.machines()[mid]
+    assert item.state == j.READY and item.suspect == "" and "101" in fake.instances
+
+
+def test_a_requested_machine_whose_instance_is_listed_is_adopted(world):
+    rig, clock, fake, providers = world
+    session(rig)
+    machine = rig.add_machine("s1", "vast", label_of)
+    fake.instances["555"] = {"label": machine.label, "actual_status": "loading", "dph_total": 0.2}
+    passes(rig, providers)
+    item = rig.machines()[machine.id]
+    assert (item.state, item.instance, item.hourly) == (j.PROVISIONING, "555", 0.2) and "555" in fake.instances
+
+
+def test_an_exited_machine_is_lost(world):
+    rig, clock, fake, providers = world
+    session(rig)
+    mid = running(rig, fake)
+    clock.forward(minutes=5)
+    fake.instances["101"]["actual_status"] = "exited"   # the watchdog stopped it
+    passes(rig, providers)
+    assert rig.machines()[mid].reason == "lost: exited"
+
+
+def test_a_machine_created_after_the_listing_is_not_lost(world):
+    rig, clock, fake, providers = world
+    session(rig)
+    machine = rig.add_machine("s1", "vast", label_of)
+    rig.move(machine.id, j.PROVISIONING, instance="555", hourly=0.2,
+             created=(clock() + dt.timedelta(seconds=30)).isoformat())   # made while the pass listed
+    passes(rig, providers)
+    assert rig.machines()[machine.id].state == j.PROVISIONING
+
+
+def test_a_machine_provisioning_too_long_drains(world):
+    rig, clock, fake, providers = world
+    session(rig)
+    machine = rig.add_machine("s1", "vast", label_of)
+    fake.instances["555"] = {"label": machine.label, "actual_status": "loading"}
+    rig.move(machine.id, j.PROVISIONING, instance="555", hourly=0.2, created=clock().isoformat())
+    clock.forward(minutes=14)
+    rig.renew([machine.id])
+    passes(rig, providers)
+    assert rig.machines()[machine.id].state == j.PROVISIONING
+    clock.forward(minutes=2)
+    rig.renew([machine.id])
+    passes(rig, providers)
+    assert rig.machines()[machine.id].reason == "did not come up in 15 min"
+
+
+def test_a_requested_machine_that_never_got_an_instance_fails(world):
+    rig, clock, fake, providers = world
+    session(rig)
+    machine = rig.add_machine("s1", "vast", label_of)
+    clock.forward(minutes=16)
+    rig.renew([machine.id])
+    passes(rig, providers)
+    assert rig.machines()[machine.id].state in (j.FAILED, j.GONE)
