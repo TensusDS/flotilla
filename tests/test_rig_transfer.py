@@ -168,5 +168,5 @@ def test_put_refuses_a_symlink_that_points_inside_the_tree(tmp_path):
     (tmp_path / "data").mkdir()
     (tmp_path / "b.txt").write_text("b")
     (tmp_path / "data" / "link").symlink_to(tmp_path / "b.txt")
-    with pytest.raises(transfer.Refused):
+    with pytest.raises(transfer.Refused, match="symlink"):
         transfer.put_tar(tmp_path, ["data"], forbidden_roots=())
