@@ -385,7 +385,7 @@ def test_a_machine_created_after_the_listing_is_not_lost(world):
     machine = rig.add_machine("s1", "vast", label_of)
     rig.move(machine.id, j.PROVISIONING, instance="555", hourly=0.2,
              created=(clock() + dt.timedelta(seconds=30)).isoformat())   # made while the pass listed
-    passes(rig, providers)
+    passes(rig, providers, n=2)                     # two passes: the loss rule needs both to agree
     assert rig.machines()[machine.id].state == j.PROVISIONING
 
 

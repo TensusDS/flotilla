@@ -16,7 +16,6 @@ meets Claude Code's permission prompt in the person's session.
 
 from __future__ import annotations
 
-import fnmatch
 import os
 
 from flotilla.guards import Finding
@@ -52,8 +51,9 @@ def _reads(words: list[str]) -> list[tuple[str, str]]:
 
 
 def _is(word: str, name: str) -> bool:
-    """The word is `name`, or a glob bash may expand to it."""
-    return word == name or fnmatch.fnmatchcase(name, word)
+    """The word is `name`. A glob that bash might expand to it never reaches here: `_opaque` refuses any glob in a
+    command or move first, because fnmatch is not bash and the guard does not guess."""
+    return word == name
 
 
 def _opaque(word: str) -> bool:

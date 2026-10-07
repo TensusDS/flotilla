@@ -9,6 +9,7 @@ silent reaper, a failed pass - is shown to every orchestrator and said again eve
 from __future__ import annotations
 
 import datetime as dt
+import re
 from pathlib import Path
 
 from flotilla.core.storage import LocalLogStore, StorageCorrupt
@@ -23,6 +24,13 @@ ENDING = dt.timedelta(minutes=15)
 WARN_AT = 0.8
 REQUEST_LIFE = dt.timedelta(hours=24)
 LOUD_EVERY = dt.timedelta(minutes=30)
+#: A requester's name as the census names sessions; anything else - `--as` takes any text outside the census - is
+#: shown as "a session", so no text a session chose reaches the orchestrator's model as if it were the screen's.
+_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9 _.-]{0,59}")
+
+
+def _who(name: str) -> str:
+    return name if _NAME.fullmatch(name or "") else "a session"
 
 
 def _when(text: str):
@@ -88,15 +96,18 @@ def items(state: Path, now: dt.datetime, project: str = "") -> list[Item]:
         if request.state != j.ASKED or request.project != project or since is None or now - since > REQUEST_LIFE:
             continue
         if request.kind == "image":
+            if not rs.IMAGE.fullmatch(request.image or ""):   # a line written past `rig up` names nothing to paste
+                continue
             line = f"! flotilla rig allow-image {request.image} --for {request.id}"
-            text = (f"{request.who} needs image {request.image}, which the person has not allowed - ask the person "
-                    f"to paste: {line}")
+            text = (f"{_who(request.who)} needs image {request.image}, which the person has not allowed - ask the "
+                    f"person to paste: {line}")
         elif open_:
             continue
         else:
             line = f"! flotilla rig open --hours 2 --budget 1 --for {request.id}"
             first = "" if on else "rig is off: the person runs `! flotilla rig enable --provider vast` first, then "
-            text = f"{request.who} asks for a machine; no session is open - {first}ask the person to paste: {line}"
+            text = (f"{_who(request.who)} asks for a machine; no session is open - {first}ask the person to paste: "
+                    f"{line}")
         found.append(_item(text, request.since, f"rig:request:{request.id}"))
     return found
 
