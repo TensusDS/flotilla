@@ -57,7 +57,9 @@ def _is(word: str, name: str) -> bool:
 
 
 def _opaque(word: str) -> bool:
-    return "$" in word or "`" in word
+    """A word whose meaning bash decides at run time: a variable, a substitution, or a glob - fnmatch is not bash
+    (`[^x]` negates in bash and is a literal caret to fnmatch), so the guard never guesses what a glob becomes."""
+    return any(sign in word for sign in "$`*?[")
 
 
 def _rig_move(words: list[str]) -> str:

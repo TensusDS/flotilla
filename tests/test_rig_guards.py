@@ -102,3 +102,12 @@ def test_the_guard_reads_moves_where_the_parsers_put_them():
     for name in ("rig", "work"):
         options = {option for action in commands.choices[name]._actions for option in action.option_strings}
         assert options <= {"-h", "--help"}, (name, options)
+
+
+@pytest.mark.parametrize("command", ["{cli} r[^x]g open --hours 1 --budget 1", "{cli} rig op[^x]n --hours 1",
+                                     "{cli} w[^x]rk approve feat/x", "{cli} work a[^x]prove feat/x"])
+def test_a_bash_glob_python_would_read_otherwise_is_refused(tmp_path, monkeypatch, command):
+    """`[^x]` is a negation to bash and a literal caret to fnmatch: the guard does not guess what bash expands a glob
+    in the command or the move to - it refuses (background scan of the 2a branch)."""
+    answer = ask(onboarded(tmp_path), command.format(cli=CLI), monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny"
