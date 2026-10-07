@@ -223,8 +223,11 @@ def _peel(words: list[str]) -> tuple[dict, list[str]]:
     return assignments, words[i:]
 
 
-def segments(command: str, cwd) -> list[Segment]:
-    command = without_heredoc_bodies(command)
+def segments(command: str, cwd, *, bodies: bool = False) -> list[Segment]:
+    """The command's segments. Heredoc bodies are taken out unless `bodies`: the person guard reads every line, since
+    a line taken for a body that bash runs would hide a person's move, and a refused body line costs only a retry."""
+    if not bodies:
+        command = without_heredoc_bodies(command)
     found: list[Segment] = []
     for plain, parts in ((True, SEPARATORS.split(command)), (False, _split_outside_quotes(command))):
         here = Path(cwd).resolve() if cwd is not None else None

@@ -287,3 +287,12 @@ def test_a_real_heredoc_body_is_still_skipped():
     from flotilla.guards import shell
     assert shell.without_heredoc_bodies("cat <<EOF\nflotilla work approve r1\nEOF\necho done") == "cat <<EOF\necho done"
     assert shell.heredoc("cat 0<<-'E O'") == ("E O", True) and shell.heredoc("cat <<E\"OF\"") == ("EOF", True)
+
+
+@pytest.mark.parametrize("command", ["if (( 1<<2 )); then :; fi\n{cli} work approve r1\n2",
+                                     "echo 'a\n<<X'\n{cli} work approve r1\nX",
+                                     "case a in <<X) ;; esac\n{cli} work approve r1\nX",
+                                     "cat <<EOF\n{cli} rig open --hours 1\nEOF"])
+def test_the_person_guard_reads_every_line_whatever_looks_like_a_heredoc(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command.format(cli=CLI), monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny"

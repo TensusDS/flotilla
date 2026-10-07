@@ -30,7 +30,8 @@ def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run) -> 
     from flotilla.guards import lane, line_edit, person, push, revert, shell
     from flotilla.guards.rules import rules_for
     segments = shell.segments(command, Path(cwd) if cwd else None)
-    persons = [found for found in (person.check(segment) for segment in segments) if found]   # always on, no rules
+    every_line = shell.segments(command, Path(cwd) if cwd else None, bodies=True)
+    persons = [found for found in (person.check(segment) for segment in every_line) if found]   # always on, no rules
     heredoc = person.heredoc_check(command, segments)
     if heredoc is not None:
         persons.append(heredoc)
