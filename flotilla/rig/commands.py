@@ -9,13 +9,15 @@ from __future__ import annotations
 
 import datetime as dt
 import fcntl
+import math
 import subprocess
+import time
 from pathlib import Path
 
 from flotilla import __version__
 from flotilla.core import caller, paths
 from flotilla.core.storage import LocalLogStore, StorageCorrupt
-from flotilla.onboard.machine import set_person_keys
+from flotilla.onboard.machine import read_machine, set_person_keys
 from flotilla.rig import cron, health, provider, providers, reaper
 from flotilla.rig import journal as j
 from flotilla.rig import settings as rs
@@ -175,11 +177,14 @@ def _enable(state: Path, name: str) -> int:
         return 2
     try:
         set_person_keys(state, rig="on", rig_provider=name)
+        if "rig_images" not in (read_machine(state) or {}):
+            set_person_keys(state, rig_images=list(rs.DEFAULT_IMAGES))
     except ValueError as err:
         print(f"refused: machine.toml cannot be read ({err}); repair it or run `flotilla onboard machine` first")
         return 2
     _install(state)
     print(f"rig is on, provider {name}; nothing is rented until the person opens a session")
+    print("allowed images: " + ", ".join(rs.settings(state).images))
     try:
         rs.read_key(found.key)
     except rs.KeyRefused as err:
@@ -204,6 +209,151 @@ def _disable(state: Path) -> int:
     return 0
 
 
+def _locked(state: Path, fn, wait: float = 90.0):
+    """Run fn holding the reaper's lock, so no crontab edit, session check or ceiling count races a pass."""
+    folder = state / "rig"
+    folder.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + wait
+    with open(folder / "reap.lock", "a") as lock:
+        while True:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("the reaper's lock stayed held; try again in a minute") from None
+                time.sleep(0.5)
+        return fn()
+
+
+def _number(text: str, *, what: str) -> float:
+    try:
+        value = float(text)
+    except ValueError:
+        raise ValueError(f"{what} is not a number: {text!r}") from None
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError(f"{what} must be a number more than 0")
+    return value
+
+
+def _caller_name() -> str:
+    try:
+        chain = caller.calling_sessions()
+    except Exception:  # noqa: BLE001 - a name for the record, never a gate
+        chain = []
+    return next((s.name for s in chain if getattr(s, "name", "")), "the person")
+
+
+def _asked(rig: j.Rig, request_id: str, kind: str):
+    found = rig.requests().get(request_id)
+    return found if found is not None and found.state == j.ASKED and found.kind == kind else None
+
+
+def _open(state: Path, settings: rs.RigSettings, args) -> int:
+    refused = caller.person_refusal("opens a rig session, which spends money")
+    if refused:
+        print(f"refused: {refused}")
+        return 2
+    if not settings.on:
+        print(f"refused: {rs.OFF_LINE}")
+        return 2
+    try:
+        hours, budget = _number(args.hours, what="hours"), _number(args.budget, what="budget")
+    except ValueError as err:
+        print(f"refused: {err}")
+        return 2
+    if hours > settings.max_hours:
+        print(f"refused: {hours:g} hours is over the {settings.max_hours:g}-hour ceiling (machine.toml rig_max_hours)")
+        return 2
+    rig = _rig(state)
+
+    def opened():
+        open_ = [s for s in rig.sessions().values() if s.state == j.OPEN]
+        if open_:
+            return None, f"session {open_[0].id} is open until {_hhmm(open_[0].until)}; `flotilla rig close` first"
+        why = args.why
+        if args.for_:
+            asked = _asked(rig, args.for_, "machine")
+            if asked is None:
+                return None, f"no open machine request {args.for_}"
+            why = asked.why
+        if not why:
+            return None, "say why (--why) or name the request (--for rN)"
+        made = rig.open_session(_caller_name(), why, hours=hours, budget=budget)
+        rig.answer_requests(f"session {made.id} opened", kind="machine")
+        return made, _keep_reaper(rig, state)
+    try:
+        session, problem = _locked(state, opened)
+    except StorageCorrupt as err:
+        print(f"refused: the rig journal is damaged ({err}); `flotilla rig reap` cleans up first")
+        return 2
+    except TimeoutError as err:
+        print(f"refused: {err}")
+        return 2
+    if session is None:
+        print(f"refused: {problem}")
+        return 2
+    print(f"session {session.id} open until {_hhmm(session.until)}, budget {budget:.2f} $")
+    if problem:
+        print(f"but the reaper's crontab line could not be kept: {problem} - nothing may be rented until it is")
+        return 1
+    return 0
+
+
+def _close(state: Path) -> int:
+    refused = caller.person_refusal("closes a rig session")
+    if refused:
+        print(f"refused: {refused}")
+        return 2
+    rig = _rig(state)
+    try:
+        open_ = [s for s in rig.sessions().values() if s.state == j.OPEN]
+        for session in open_:
+            rig.set_session(session.id, j.CLOSING, reason="closed by the person")
+    except StorageCorrupt as err:
+        print(f"refused: the rig journal is damaged ({err}); `flotilla rig reap` cleans up")
+        return 2
+    if not open_:
+        print("no session is open")
+        return 0
+    print(f"session {', '.join(s.id for s in open_)} closing; the reaper drains its machines within 5 minutes - "
+          "`flotilla rig reap` does it now")
+    return 0
+
+
+def _allow_image(state: Path, settings: rs.RigSettings, args) -> int:
+    refused = caller.person_refusal("allows an image for rented machines")
+    if refused:
+        print(f"refused: {refused}")
+        return 2
+    rig = _rig(state)
+    image = args.image
+    if not rs.IMAGE.fullmatch(image or ""):
+        print(f"refused: name the image in full (`flotilla rig allow-image <image>`); {image!r} is not one")
+        return 2
+    if args.for_:
+        asked = _asked(rig, args.for_, "image")
+        if asked is None or asked.image != image:
+            print(f"refused: request {args.for_} does not ask for {image}"
+                  + (f" (it asks for {asked.image})" if asked is not None else ""))
+            return 2
+    if "@sha256:" not in image:
+        print(f"note: {image} is a tag, which its owner can point at other contents later; a digest "
+              "(name@sha256:...) pins what runs")
+    images = list(settings.images)
+    if image not in images:
+        images.append(image)
+        try:
+            set_person_keys(state, rig_images=images)
+        except ValueError as err:
+            print(f"refused: machine.toml cannot be read ({err})")
+            return 2
+    rig.answer_requests(f"image {image} allowed", kind="image",
+                        ids=[r.id for r in rig.requests().values() if r.kind == "image" and r.image == image])
+    print(f"image allowed: {image} ({len(images)} allowed)")
+    return 0
+
+
 def run_rig_command(args) -> int:
     state = paths.state_dir()
     settings = rs.settings(state)
@@ -214,6 +364,12 @@ def run_rig_command(args) -> int:
             return _enable(state, args.provider)
         if args.action == "disable":
             return _disable(state)
+        if args.action == "open":
+            return _open(state, settings, args)
+        if args.action == "close":
+            return _close(state)
+        if args.action == "allow-image":
+            return _allow_image(state, settings, args)
         return _status(state, settings)
     except StorageCorrupt as err:
         print(f"the rig journal is damaged: {err}; `flotilla rig reap` destroys this machine's labelled instances")
