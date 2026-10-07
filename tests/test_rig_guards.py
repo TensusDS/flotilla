@@ -138,3 +138,32 @@ def test_an_opaque_program_with_no_rig_or_work_in_reach_is_not_refused(tmp_path,
 def test_a_built_word_beside_a_variable_program_and_a_guarded_move_is_refused(tmp_path, monkeypatch, command):
     answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
     assert answer and answer["permissionDecision"] == "deny"
+
+
+# bash takes redirections out of argv before argparse reads it; the guard must read the same words (final review, C1)
+@pytest.mark.parametrize("command", ["{cli} rig 2>/dev/null open --hours 1 --budget 9 --for r1",
+                                     "{cli} rig >/tmp/o open --hours 1", "{cli} rig > /tmp/o open --hours 1",
+                                     "{cli} 2>/dev/null rig open --hours 1", "{cli} rig <<<x open --hours 1",
+                                     "{cli} rig 1>x close", "{cli} work 2>/dev/null approve feat/x",
+                                     "{cli} work 2>&1 approve feat/x", "{cli} rig >&2 open --hours 1",
+                                     "{cli} rig &>/dev/null open --hours 1", "{cli} work >>log approve feat/x"])
+def test_a_redirection_between_the_words_does_not_hide_the_move(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command.format(cli=CLI), monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny"
+
+
+def test_a_redirection_after_an_ordinary_move_is_still_ordinary(tmp_path, monkeypatch):
+    assert ask(onboarded(tmp_path), f"{CLI} work list 2>&1 > out.txt", monkeypatch, tmp_path) is None
+
+
+@pytest.mark.parametrize("command", ["a 2>&1 b", "a >&2 b", "a <&3 b", "a &>log b", "a &>>log b"])
+def test_an_ampersand_inside_a_redirection_separates_nothing(command):
+    from flotilla.guards import shell
+    assert [part.strip() for part in shell.SEPARATORS.split(command)] == [command]
+    assert [part.strip() for part in shell._split_outside_quotes(command)] == [command]
+
+
+def test_a_lone_ampersand_still_separates():
+    from flotilla.guards import shell
+    assert [part.strip() for part in shell._split_outside_quotes("a & b")] == ["a", "b"]
+    assert [part.strip() for part in shell.SEPARATORS.split("a & b")] == ["a", "b"]

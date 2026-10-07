@@ -16,7 +16,8 @@ import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
 
-SEPARATORS = re.compile(r"&&|\|\||[;|&\n]")
+#: `&` inside a redirection (`2>&1`, `>&2`, `<&3`, `&>file`) joins, it does not separate (final review of 0.9.0, C1).
+SEPARATORS = re.compile(r"&&|\|\||[;|\n]|(?<![<>])&(?!>)")
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 WRAPPERS = frozenset({"sudo", "command", "nice", "nohup", "time", "exec", "env",
                       "if", "then", "else", "elif", "do", "while", "until", "!", "{", "("})
@@ -90,9 +91,13 @@ def without_heredoc_bodies(command: str) -> str:
     return "\n".join(kept)
 
 
+def _next_is(command: str, at: int, char: str) -> bool:
+    return at + 1 < len(command) and command[at + 1] == char
+
+
 def _split_outside_quotes(command: str) -> list[str]:
     parts, current, quote = [], [], None
-    for ch in command:
+    for at, ch in enumerate(command):
         if quote:
             current.append(ch)
             if ch == quote:
@@ -100,7 +105,7 @@ def _split_outside_quotes(command: str) -> list[str]:
         elif ch in "\"'":
             quote = ch
             current.append(ch)
-        elif ch in ";|&\n":
+        elif ch in ";|\n" or (ch == "&" and not (current and current[-1] in "<>") and not _next_is(command, at, ">")):
             parts.append("".join(current))
             current = []
         else:

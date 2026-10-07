@@ -17,6 +17,7 @@ meets Claude Code's permission prompt in the person's session.
 from __future__ import annotations
 
 import fnmatch
+import re
 
 import os
 
@@ -43,11 +44,32 @@ RIG_MOVES = ("enable", "disable", "open", "close", "allow-image")
 GUARDED = ("approve",) + RIG_MOVES
 
 
+#: A redirection word: an optional descriptor, the operator, and maybe its target in the same word (`2>/dev/null`).
+REDIRECTION = re.compile(r"^[0-9]*(?:&>>?|>>?&?|<<<|<<-?|<>|<&?|>\|)(.*)$")
+
+
+def _unredirected(words: list[str]) -> list[str]:
+    """The words bash hands the program: every redirection taken out, with its target when that is the next word.
+    argparse never sees them, so the guard must not read one as a command or a move (final review of 0.9.0, C1)."""
+    kept, skip = [], False
+    for word in words:
+        if skip:
+            skip = False
+            continue
+        found = REDIRECTION.match(word)
+        if found:
+            skip = found.group(1) == ""
+            continue
+        kept.append(word)
+    return kept
+
+
 def _reads(words: list[str]) -> list[tuple[str, str]]:
     """For each flotilla in the segment, the command and its move: the first two words after it that are not
     options, which is where argparse reads them. Reading only there keeps an ordinary `ls * *` further along from
     looking like a move, and a decoy before a second flotilla from hiding the real one (review of 0.6.10)."""
     found = []
+    words = _unredirected(words)
     for at, word in enumerate(words):
         if _runs_flotilla(word, words[at - 1] if at else ""):
             plain = [item for item in words[at + 1:] if not item.startswith("-")][:2]
