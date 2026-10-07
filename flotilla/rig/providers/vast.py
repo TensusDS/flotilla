@@ -183,10 +183,17 @@ api="{BASE}/api/v0/instances/$CONTAINER_ID/"
 call() {{
   if command -v curl >/dev/null 2>&1; then
     curl -fsS --max-time 30 -X "$1" -H "Authorization: Bearer $CONTAINER_API_KEY" -H 'Content-Type: application/json' --data "$2" "$api"
-  else
+  elif command -v node >/dev/null 2>&1; then
     node -e 'fetch(process.argv[1],{{method:process.argv[2],signal:AbortSignal.timeout(30000),headers:{{Authorization:"Bearer "+process.env.CONTAINER_API_KEY,"Content-Type":"application/json"}},body:process.argv[3]}}).then(r=>process.exit(r.ok?0:1),()=>process.exit(1))' "$api" "$1" "$2"
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import os, sys, urllib.request as u; u.urlopen(u.Request(sys.argv[1], data=sys.argv[3].encode(), method=sys.argv[2], headers={{"Authorization": "Bearer " + os.environ.get("CONTAINER_API_KEY", ""), "Content-Type": "application/json"}}), timeout=30)' "$api" "$1" "$2"
+  else
+    return 1
   fi
 }}
+if ! command -v curl >/dev/null 2>&1 && ! command -v node >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
+  echo "flotilla watchdog: no curl, node or python3 in this image - it cannot reach the service; only the reaper guards this machine"
+fi
 while sleep 60; do
   age=$(( $(date +%s) - $(stat -c %Y /root/flotilla-heartbeat 2>/dev/null || echo 0) ))
   if [ "$age" -gt $(( limit * 60 )) ]; then

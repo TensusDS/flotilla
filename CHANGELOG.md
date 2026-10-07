@@ -9,8 +9,9 @@ each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2
   `rig open --hours --budget` and closes it with `rig close`; a seat that needs a machine outside one is refused and
   its request relayed by the orchestrator as a line carrying only the request's id (`--for rN`). `rig up` raises one
   machine in short calls that resume, from images the person allowed (`rig_images`, grown by `rig allow-image`), on
-  vast datacenter hosts, within the session's budget. A watchdog on the machine destroys it, or stops it, when our
-  heartbeat stops. The reaper also drains a machine the service stopped, no longer lists on two passes, or that
+  vast datacenter hosts, within the session's budget. A watchdog on the machine asks the service to destroy it, or to stop
+  it, a set time after our last heartbeat (nothing renews the heartbeat before `rig run`; it needs curl, node or
+  python3 in the image). A machine is called ready only once the rig's ssh key is on it. The reaper also drains a machine the service stopped, no longer lists on two passes, or that
   took over 15 minutes to come up. `flotilla fleet` shows the session, the machines and loud lines first.
 - From the final review of 0.8.0 and the branch's security reviews: the person guard refuses a glob or a variable
   in a command word, and, beside a program named through a variable, a glob that may be `rig`/`work` or any word

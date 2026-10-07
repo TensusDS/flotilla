@@ -440,11 +440,14 @@ watches it and gives it back; running a job on it over ssh (`rig run`) comes nex
 - **Images are yours to allow.** `rig enable` writes `rig_images` into `machine.toml` with one default
   (`mcr.microsoft.com/playwright:v1.48.0-jammy`); a project's `[rig] image` is only a wish. A seat asking for another
   image is refused and its request relayed as `! flotilla rig allow-image <image> --for rN`.
-- **Inside a session a seat raises a machine with `flotilla rig up`** - short calls (at most 90 seconds each) that
+- **Inside a session a seat raises a machine with `flotilla rig up`** - short calls (`--wait`, 90 seconds by default) that
   resume the machine coming up rather than make a second one. It refuses an image you have not allowed and a machine
   that would pass the session's budget. vast datacenter hosts only.
-- **A watchdog runs on the machine** and destroys it (or, failing that, stops it) when our side stops renewing its
-  heartbeat for `--watchdog-minutes` (default 45, 5 to 45).
+- **A watchdog runs on the machine** and asks the service to destroy it (or, failing that, to stop it)
+  `--watchdog-minutes` (default 45, 5 to 45) after our last heartbeat. In this version nothing renews the heartbeat
+  yet - `rig run` will - so every machine is given back that long after it starts, whatever the session's hours. It
+  needs curl, node or python3 in the image. Which of destroy and stop the service allows is measured by the first
+  live check.
 - `flotilla fleet` shows rig lines first: the open session, each machine, and loud lines for a STUCK machine, a
   silent reaper or a failed one, repeated every half hour until they clear.
 - Ceilings, yours too, in `~/.local/state/flotilla/machine.toml`: `rig_max_machines` (1), `rig_max_hourly`

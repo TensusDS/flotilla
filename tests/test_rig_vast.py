@@ -87,3 +87,42 @@ def test_the_watchdog_destroys_then_stops_with_the_instances_own_key_and_a_lost_
     assert "$CONTAINER_API_KEY" in script and "$CONTAINER_ID" in script and "10_nvidia.json" in script
     assert "|| echo 0" in script                    # a missing heartbeat file reads as the epoch: old, not new
     assert "--max-time 30" in script and "AbortSignal.timeout(30000)" in script   # a hung call never stops the loop
+
+
+def _watchdog_text():
+    script = vast.onstart()
+    return script.split("<<'WATCHDOG'\n", 1)[1].split("\nWATCHDOG\n", 1)[0]
+
+
+def _run_watchdog(tmp_path, tools):
+    """Run the real watchdog under sh with only `tools` (stubs that record their arguments) and the shell basics on
+    PATH; heartbeat missing, so the first tick is past the limit, and the second sleep ends the loop."""
+    import shutil
+    import subprocess
+    bin_ = tmp_path / "bin"
+    bin_.mkdir()
+    for name in ("date", "stat", "cat"):
+        (bin_ / name).write_text(f'#!/bin/sh\nexec {shutil.which(name)} "$@"\n')
+    (bin_ / "sleep").write_text('#!/bin/sh\n[ -f "$T/slept" ] && exit 1\n: > "$T/slept"\n')
+    for name in tools:
+        (bin_ / name).write_text(f'#!/bin/sh\necho "{name} $*" >> "$T/calls"\nexit 1\n')
+    for path in bin_.iterdir():
+        path.chmod(0o755)
+    script = tmp_path / "w.sh"
+    script.write_text(_watchdog_text().replace("/root/flotilla-heartbeat", str(tmp_path / "hb")))
+    sh = shutil.which("sh")
+    done = subprocess.run([sh, str(script)], env={"PATH": str(bin_), "T": str(tmp_path), "CONTAINER_ID": "901",
+                                                   "CONTAINER_API_KEY": "x", "FLOTILLA_WATCHDOG_MINUTES": "5"},
+                          capture_output=True, text=True, timeout=20)
+    calls = (tmp_path / "calls").read_text() if (tmp_path / "calls").exists() else ""
+    return done.stdout + done.stderr, calls
+
+
+def test_the_watchdog_reaches_the_service_with_python_when_curl_and_node_are_missing(tmp_path):
+    out, calls = _run_watchdog(tmp_path, ["python3"])
+    assert calls.count("python3") == 2 and "DELETE" in calls and "PUT" in calls
+
+
+def test_a_watchdog_with_no_client_at_all_says_so_loudly(tmp_path):
+    out, calls = _run_watchdog(tmp_path, [])
+    assert "no curl, node or python3" in out

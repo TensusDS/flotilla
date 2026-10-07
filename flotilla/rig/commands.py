@@ -356,6 +356,8 @@ def _allow_image(state: Path, settings: rs.RigSettings, args) -> int:
     rig.answer_requests(f"image {image} allowed", kind="image",
                         ids=[r.id for r in rig.requests().values() if r.kind == "image" and r.image == image])
     print(f"image allowed: {image} ({len(images)} allowed)")
+    print("note: the machine's watchdog needs curl, node or python3 in the image; without them only the reaper "
+          "gives the machine back")
     return 0
 
 
