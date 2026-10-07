@@ -142,7 +142,8 @@ def _read(run) -> list[str]:
     except (OSError, subprocess.TimeoutExpired) as err:
         raise CronError(f"crontab could not be run: {err}") from None
     if done.returncode == 0:
-        return done.stdout.splitlines()
+        lines = done.stdout.split("\n")   # \n only: a CR or a form feed in the person's line is theirs to keep
+        return lines[:-1] if lines and lines[-1] == "" else lines
     said = (done.stderr or done.stdout or "").strip()
     if "no crontab" in said.lower():
         return []

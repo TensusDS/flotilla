@@ -155,3 +155,10 @@ def test_a_crontab_with_bytes_that_are_not_utf8_is_read_and_kept(tmp_path):
     text, state = line(tmp_path)
     cron.ensure(text, state, run=run)
     assert written["bytes"].startswith(b"# caf\xe9 job\n17 3 * * * /backup.sh\n")
+
+
+def test_a_carriage_return_in_the_persons_line_is_kept(tmp_path):
+    table = FakeCrontab("17 3 * * * /home/max/backup.sh\r\n")
+    text, state = line(tmp_path)
+    cron.ensure(text, state, run=table)
+    assert table.text.startswith("17 3 * * * /home/max/backup.sh\r\n")

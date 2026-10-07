@@ -232,3 +232,26 @@ def test_last_resort_refuses_a_key_made_on_another_host(tmp_path, monkeypatch):
 def test_the_launcher_and_settings_name_this_host_alike():
     from flotilla.rig import settings
     assert load().HOST() == settings.HOST()
+
+
+def test_last_resort_with_no_key_in_place_keeps_its_line(tmp_path, monkeypatch):
+    launcher = load()
+    fake = FakeVast({})
+    folder, env = state_with_adapters(tmp_path, monkeypatch, launcher, fake)
+    (Path(env["XDG_CONFIG_HOME"]) / "flotilla" / "rig" / "vast.key").unlink()
+    table = Crontab(f"*/5 * * * * x {cron.tag(folder.parent)}\n")
+    for _ in range(2):
+        launcher.main(env, folder=folder, run_crontab=table)
+    assert cron.tag(folder.parent) in table.text
+
+
+def test_a_pass_held_by_another_reaper_is_not_a_miss(tmp_path, monkeypatch):
+    import fcntl
+    launcher = load()
+    fake = FakeVast({"101": {"label": "flotilla:0123456789ab:m1"}})
+    folder, env = state_with_adapters(tmp_path, monkeypatch, launcher, fake)
+    with open(folder / "reap.lock", "a") as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        for _ in range(3):
+            assert launcher.main(env, folder=folder, run_crontab=Crontab()) == 0
+    assert not (folder / "misses").exists() and "101" in fake.instances

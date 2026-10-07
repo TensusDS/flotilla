@@ -19,9 +19,10 @@ def ask(root, command, monkeypatch, tmp_path):
 
 
 @pytest.mark.parametrize("move", ["enable --provider vast", "disable", "open --hours 3 --budget 2", "close",
-                                  "-- enable --provider vast", "-- disable"])
-def test_the_persons_rig_moves_are_refused_to_a_tool_call(tmp_path, monkeypatch, move):
-    answer = ask(onboarded(tmp_path), f"{CLI} rig {move}", monkeypatch, tmp_path)
+                                  "allow-image --for r1", "-- enable --provider vast", "-- disable"])
+@pytest.mark.parametrize("word", ["rig", "r?g", "r[i]g", "ri*"])
+def test_the_persons_rig_moves_are_refused_to_a_tool_call(tmp_path, monkeypatch, move, word):
+    answer = ask(onboarded(tmp_path), f"{CLI} {word} {move}", monkeypatch, tmp_path)
     assert answer and answer["permissionDecision"] == "deny" and "person" in answer["permissionDecisionReason"]
 
 
@@ -67,3 +68,37 @@ def test_ordinary_files_are_left_alone_everywhere(tmp_path, monkeypatch):
 def test_a_malformed_edit_payload_is_never_a_crash():
     out = io.StringIO()
     assert hooks.run_hook("edit", io.StringIO("not json"), out=out) == 0 and out.getvalue() == ""
+
+
+@pytest.mark.parametrize("word", ["w?rk", "w[o]rk", "wo*"])
+def test_a_globbed_work_still_reaches_approve(tmp_path, monkeypatch, word):
+    answer = ask(onboarded(tmp_path), f"{CLI} {word} approve feat/x", monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny"
+
+
+@pytest.mark.parametrize("command", ["{cli} $R open --hours 1 --budget 1", "{cli} `echo rig` open --hours 1",
+                                     "{cli} rig $M --hours 1", "{cli} work $M feat/x",
+                                     "$F work approve feat/x"])
+def test_an_opaque_command_word_is_refused(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command.format(cli=CLI), monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny" and "cannot be read" in answer["permissionDecisionReason"]
+
+
+@pytest.mark.parametrize("command", ["{cli} lane run -- ls * *", "{cli} lane run -- echo approve *",
+                                     "{cli} lane run -- echo $HOME", "{cli} work show feat/approve-button",
+                                     "$EDITOR work.txt"])
+def test_ordinary_globs_after_the_move_are_not_refused(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command.format(cli=CLI), monkeypatch, tmp_path)
+    assert not answer or answer.get("permissionDecision") != "deny", answer
+
+
+def test_the_guard_reads_moves_where_the_parsers_put_them():
+    """The guard reads a move as the second word after `flotilla` that is not an option; that holds only while the
+    `rig` and `work` parsers take no option of their own before their move (third review of the 2a plan)."""
+    import argparse
+    from flotilla import cli as flotilla_cli
+    parser = flotilla_cli.build_parser()
+    commands = next(action for action in parser._actions if isinstance(action, argparse._SubParsersAction))
+    for name in ("rig", "work"):
+        options = {option for action in commands.choices[name]._actions for option in action.option_strings}
+        assert options <= {"-h", "--help"}, (name, options)

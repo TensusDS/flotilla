@@ -136,14 +136,16 @@ def last_resort(folder, env):
         return 1, False
     keys = Path(env.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")) / "flotilla" / "rig"
     prefix = f"flotilla:{machine}:m"
-    clear = True
+    clear, listed = True, False
     for path in sorted(p for p in (folder / "providers").glob("*.py") if _ADAPTER.match(p.name)):
         key_file = keys / f"{path.stem}.key"
         if not key_file.exists():
             continue
         try:
             adapter, key = _load(path), read_key(key_file)
-            for row in adapter.instances(key):
+            rows = adapter.instances(key)
+            listed = True
+            for row in rows:
                 if str(row.get("label") or "").startswith(prefix):
                     clear = False
                     adapter.destroy(key, row["instance"])
@@ -152,7 +154,7 @@ def last_resort(folder, env):
         except Exception as err:   # noqa: BLE001 - the last resort reports, it never fails silently
             clear = False
             print(f"rig launcher: no flotilla, and the last resort failed on {path.stem}: {type(err).__name__}")
-    return 1, clear
+    return 1, clear and listed
 
 
 def drop_line(state, run):
@@ -160,7 +162,8 @@ def drop_line(state, run):
     done = run(["crontab", "-l"], capture_output=True, text=True, errors="surrogateescape", timeout=30, check=False)
     if done.returncode != 0:
         return False
-    lines = done.stdout.splitlines()
+    lines = done.stdout.split("\n")
+    lines = lines[:-1] if lines and lines[-1] == "" else lines
     kept = [line for line in lines if not line.endswith(mine)]
     if len(kept) == len(lines):
         return False
@@ -191,6 +194,12 @@ def main(env=os.environ, *, folder=None, run_crontab=subprocess.run):
             (here / "misses").unlink(missing_ok=True)
             return code
         print(f"rig launcher: {root} did not reap (exit {code}); trying the next")
+    with open(here / "reap.lock", "a") as probe:   # a pass that stepped aside for another is no proof flotilla is gone
+        try:
+            fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print("rig launcher: another reaper pass holds the lock; not counted as a miss")
+            return 0
     try:
         misses = int((here / "misses").read_text(encoding="utf-8").strip() or 0) + 1
     except (OSError, ValueError):
