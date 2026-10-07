@@ -26,6 +26,22 @@ GUARD = "person"
 MOVES = ("accept", "adopt", "approve", "assign", "broke", "claim", "close", "fix", "hand", "hold", "inbatch", "land",
          "moved", "offledger", "queue", "reconcile", "recuse", "release", "reserve", "return", "ship", "show", "take", "unbroke",
          "unhold", "urgent", "vouch", "wait", "walkable", "walked")
+#: `flotilla rig` moves that turn rented machines on or off, or spend money (rig design, section 4).
+RIG_MOVES = ("enable", "disable", "open", "close")
+
+
+def _rig_move(words: list[str]) -> str:
+    """The first word after `rig` of a flotilla in the segment, when it is (or bash may expand to) a person's move."""
+    for at, word in enumerate(words):
+        if not _runs_flotilla(word, words[at - 1] if at else ""):
+            continue
+        rest = words[at + 1:]
+        if "rig" in rest:   # options and `--` before the move are skipped: argparse reads past them too
+            after = [item for item in rest[rest.index("rig") + 1:] if not item.startswith("-")]
+            if after and (after[0] in RIG_MOVES or any(fnmatch.fnmatchcase(move, after[0]) for move in RIG_MOVES)):
+                return after[0]
+    return ""
+
 
 
 def _runs_flotilla(word: str, previous: str) -> bool:
@@ -76,6 +92,12 @@ def check(segment) -> Finding | None:
                                     "(braces, $'...', $\"...\", an extglob, a trailing backslash), so the move it "
                                     "runs cannot be read before it runs - and `approve` is the person's own move. "
                                     "Write the command plainly.")
+    rig_move = _rig_move(words)
+    if rig_move:
+        return Finding(GUARD, True, f"flotilla: `rig {rig_move}` is the person's own move - it turns rented machines "
+                                    "on or off, or spends money - and a Claude tool call is never the person's. Show "
+                                    "the person the command; they type it with `!` in front in their own Claude Code "
+                                    "session, or run it in a terminal.")
     if _move(words) != "approve":
         return None
     return Finding(GUARD, True, "flotilla: approving work for trunk is the person's own move, and a Claude tool call "
