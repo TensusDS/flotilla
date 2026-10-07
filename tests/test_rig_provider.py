@@ -61,3 +61,14 @@ def test_the_key_file_is_named_by_the_service(tmp_path):
 def test_an_unknown_provider_is_refused_naming_the_known_ones():
     with pytest.raises(pv.ProviderError, match="no provider `hetzner`.*vast"):
         pv.provider_for("hetzner")
+
+
+def test_offers_and_create_go_through_the_wrapper(rented):
+    from rigkit import OFFERS
+    fake = FakeVast(offers=OFFERS)
+    provider = rented(fake)
+    found = provider.offers({"gpus": [], "max_hourly": 0.6, "min_reliability": 0.98, "disk_gb": 30, "limit": 64})
+    assert found[0] == pv.Offer("53776176", "RTX 2080 Ti", 0.137, 0.999, True)
+    instance = provider.create(found[0].offer, image="img:1", disk_gb=30, env={}, onstart="", label="l")
+    provider.attach_ssh(instance, "ssh-ed25519 AAAA")
+    assert fake.ssh_keys[instance] == ["ssh-ed25519 AAAA"]
