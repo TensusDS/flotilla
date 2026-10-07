@@ -27,9 +27,24 @@ rig is off on this machine and how the person turns it on (`flotilla rig enable`
 
 - **The rig journal** (`<state>/rig/rig.jsonl`, written under a lock like the lane's): sessions, machines, runs and
   their transitions. Every state the orchestrator sees is folded from it.
-- **A provider behind an interface**: `find(filter) -> offers`, `create(offer, image, onstart, label) -> id`,
-  `instances() -> listed`, `destroy(id)`, `ssh_address(id)`. The first provider is vast.ai over its REST API. A second
-  one, `ssh`, is the person's own machine: `create`/`destroy` do nothing, there is no money (section 9).
+- **Rental services are adapters, chosen by name** (`rig_provider`, `rig enable --provider <name>`). Nothing else in
+  rig knows which service it talks to: the journal, the lease, the reaper, the labels and the budget are the same for
+  all. The contract every adapter keeps:
+  - `offers(filter)`, `create(offer, image, onstart, label) -> id`, `address(id)` (stage 2);
+  - `instances(key)` - **every** instance of the account, each as exactly `instance`, `label`, `status`, `hourly`,
+    through every page; nothing else of the service's answer leaves the adapter, so a credential in it never does;
+  - `destroy(key, id)` - asks for a destroy; an id the service could not have issued is refused before any request;
+  - a failure is an exception, never a value: a non-2xx answer, a timeout, a body that does not parse;
+  - the label lives wherever the service keeps a free-text name (vast: `label`; another: a tag or the name);
+  - **one standalone file** (`flotilla/rig/providers/<name>.py`), standard library only, importing nothing from
+    flotilla: the reaper's launcher loads a copy of the same file when no flotilla is installed (section 5), so the
+    code that guards money in the last resort is the code that guarded it every day.
+
+  One shared contract suite runs against every adapter through its own double of the service. A new service is one
+  adapter file and that suite passing. The first adapter is vast.ai over its REST API; `ssh` for the person's own
+  machine comes in stage 3 (section 9). A generic adapter whose commands the person writes in a config file is not
+  offered: such commands run holding a key to money, anyone who can write the config writes them, and nothing could
+  check that their "list" is complete, which is what "gone" rests on.
 - **`flotilla rig enable` / `disable` / `open` / `close`** - the person's moves (section 4).
 - **`flotilla rig run`** - the sessions' command; it renews its machine's lease while it runs.
 - **`flotilla rig reap`** - the reaper, run by cron through a launcher in the state directory.
@@ -124,9 +139,10 @@ So cron does not run the plugin's path:
   from the plugin when a machine is first requested and refreshed by every later rig command.
 - The launcher reads Claude Code's `installed_plugins.json`, takes the newest installed flotilla whose directory
   exists and carries `flotilla/rig/`, and runs its `rig reap`.
-- **With no flotilla installed at all**, the launcher is the last resort: it reads the key and destroys every
-  instance carrying this machine's label through the provider's REST API, writes what it did to `reap.log`, and
-  leaves the crontab line in place until no labelled instance is listed.
+- **With no flotilla installed at all**, the launcher is the last resort: for every adapter copied beside it
+  (`<state>/rig/providers/`) whose key is in place, it lists the instances and destroys every one carrying this
+  machine's label, writes what it did to `reap.log`, and leaves the crontab line in place until no labelled instance
+  is listed.
 - The line names an interpreter that is checked to exist and is not a temporary environment (`machine.toml`'s
   measured `python3`, else `/usr/bin/python3`, else the first `python3` on `PATH`); a path containing `%` (which cron
   reads as a newline) is refused. The mark carries a hash of the state directory, so a second state directory's rig
@@ -159,8 +175,8 @@ So cron does not run the plugin's path:
 - **Offers are filtered.** Datacenter hosts only, verified, reliability >= 0.98, and the project's GPU and disk
   minimum.
 
-**Calling the provider.** flotilla talks to vast's REST API directly with the standard library (`urllib`), not
-through the `vastai` CLI. Read in the CLI's source (1.6.0): on a 401 "Invalid user key" or an expired 2FA session it
+**Calling the provider.** The vast adapter talks to vast's REST API directly with the standard library (`urllib`),
+not through the `vastai` CLI. Read in the CLI's source (1.6.0): on a 401 "Invalid user key" or an expired 2FA session it
 deletes the person's 2FA session file and retries with the person's own account key from `~/.config/vastai/`, which
 would silently defeat a scoped key; it exits 0 after an API error; and without `-y` it prompts. Over REST:
 
@@ -173,8 +189,8 @@ would silently defeat a scoped key; it exits 0 after an API error; and without `
 
 ## 6. Keys and secrets
 
-- **The provider's key** lives only in `~/.config/flotilla/vast_api_key`: a regular file (not a symlink), owned by
-  the user, mode 600. Anything else is a refusal to run. It is never in a project, a journal, a run's environment, an
+- **Each service's key** lives only in `~/.config/flotilla/rig/<service>.key` (vast: `vast.key`): a regular file
+  (not a symlink), owned by the user, mode 600. Anything else is a refusal to run. It is never in a project, a journal, a run's environment, an
   argument list, or on the machine. The plugin ships no key and no key field with a value. `machine.toml` carries
   `rig = "off"` and `rig_provider = ""` until the person runs `rig enable`.
 - **A scoped key is asked for** in the onboarding text. The permissions it needs are `instance_read`,
@@ -353,6 +369,9 @@ this machine's processes and census.
 4. Later, each its own conversation: a test tier on the rig; several runs on one machine.
 
 ## 12. Review of 2026-10-06, and what it changed
+
+(After the review, the person asked that rig not be bound to vast: the service became an adapter chosen by name,
+with one contract and one suite for all - section 2.)
 
 Two read-only reviews of the first draft and its stage-1 plan (a Claude Code plugin specialist and a DevOps
 reviewer), with the critical claims re-checked in the `vastai` 1.6.0 source and the plugin cache:
