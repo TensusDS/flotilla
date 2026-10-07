@@ -241,59 +241,91 @@ would silently defeat a scoped key; it exits 0 after an API error; and without `
 
 `flotilla rig run [--put PATH]... [--get PATH]... [--env NAME=VALUE]... -- COMMAND`
 
+Revised 2026-10-07 after two reviews of the 2b plan and the person's decisions: several runs share a machine; the
+ceiling is the rig's own; setup runs in each run with shared download caches; the refusals on `--put`, `--get` and
+`--root` widened.
+
 **Gate.**
 
-- Rig on.
-- A session open with budget left.
+- Rig on. A session open with budget left.
+- `--root` is the same repository as the caller's working directory (a seat cannot name a peer's tree or a dotfiles
+  repository).
 - A tree with a committed HEAD. Uncommitted changes to tracked files are refused, with a hint: commit, or pass the
   file with `--put`. A run is tied to a revision so its result can be repeated.
 
-**Order.**
+**Several runs on one machine** (the person's decision, 2026-10-07: the machine exists for parallel runs).
 
-- One run per machine at a time. Further runs wait in a queue in the journal, in order of arrival, and
-  `flotilla rig` says who waits behind whom.
-- With no machine ready and the machine ceiling not reached, the run requests one and waits through `provisioning`.
-- A waiting run has a `--wait` like the lane's (default 900 s).
+- A run waits for **room**, not for a free machine. In 0.10.0 room is: fewer than two runs on the machine (a floor
+  that always holds), or, beyond the floor, the machine's live free memory and free GPU memory above their margins
+  (read from the machine when the run asks). Runs are admitted in order of arrival.
+- **0.11.0 packs by estimates:** each run on a rig machine is measured (seconds, peak memory of its process group,
+  cores, GPU memory) with the machine's shape, under the lane's signature ladder; a run is admitted when its estimate
+  fits what the running runs leave; among the runs that fit, the longest goes first and short ones fill the rest;
+  a run that waited past a threshold goes next as soon as it fits, so a long run is never starved by short ones.
+- With no machine of the session and the machine ceiling not reached, the run requests one (as `rig up`) and waits
+  through `provisioning`. A waiting run has a `--wait` (default 900 s).
+- `rig run` takes longer than a Bash tool call: seats call it in the background, and the docs and post say so.
 
 **What goes there.**
 
-- `git archive HEAD` is piped over ssh into `/work/<project>/<sha>`; a revision already there is not sent again.
+- `git archive <revision>` is piped over ssh into `/work/<project>/rev/<sha>`, checked against its sha256 and size on
+  the machine before it is marked complete; a revision already there is not sent again.
+- Each run works in its own copy: `/work/<project>/runs/<run id>`. A `--put` file or an artifact never reaches
+  another run.
 - `--put PATH` adds files git does not track: a data snapshot, a built asset. Refused:
-  - `.env*`, `*.pem`, `id_*`, `credentials*`;
-  - anything outside the tree;
+  - `.env*`, `*.pem`, `id_*`, `credentials*`, `.npmrc`, `.netrc`, `.pypirc`, and any `.git` path component;
+  - anything outside the tree, and any real path under flotilla's state directory, `~/.ssh`, `~/.config/flotilla`
+    or `~/.claude`;
   - symlinks, which are never dereferenced.
-- The profile's `setup_command` runs once per hash of the lock files on that machine. Its result is kept in
-  `/work/<project>/setup/<hash>` and linked into the revision's directory. In the probe `npm ci` took longer than the
-  scene.
+- The setup command (`[rig] setup_command`, else `[tests] setup_command`) runs in each run's own directory, so an
+  editable install points at that run's revision. Download caches are shared on the machine (`/work/cache`: npm,
+  uv, pip, yarn), so a second run installs from the cache. If a warm install proves slow, a shared tree comes later,
+  by measurement.
 
 **Environment.**
 
+- ssh reads no config of the person's (`-F /dev/null`): no agent or X forwarding, no multiplexing, no proxy, no
+  `SendEnv`. Its stdin is closed for calls that send no data.
 - No variable crosses from the field machine except those named with `--env`. Names containing `KEY`, `TOKEN`,
-  `SECRET` or `PASSWORD` are refused.
+  `SECRET` or `PASSWORD` are refused. Values are expanded by the seat's own shell before flotilla sees them; the
+  docs say so.
 - The image and GPU come from the project's profile (`[rig] image`, `gpu`, `disk_gb`). The default image is
   `mcr.microsoft.com/playwright:<pinned tag>-jammy` with `NVIDIA_DRIVER_CAPABILITIES=all`.
 - The start script writes the NVIDIA EGL vendor file, so a project's browser flags need not know about it.
 
 **Running.**
 
-- Output streams back line by line. The remote command's exit code is `rig run`'s exit code.
-- **A broken connection is its own outcome**, not a red run. `ssh` exits 255; `rig run` exits 75 with the verdict
-  `lost`. The machine is marked suspect and the reaper checks it.
-- The ceiling on a run's time is the lane's ceiling for the project.
-- While a run goes, the machine is `busy` and the run itself renews its lease and the heartbeat every 5 minutes.
+- Output streams back line by line. The remote command's exit code is `rig run`'s exit code; the last line names
+  the verdict, so a command's own 2, 3, 75 or 124 is told apart from flotilla's.
+- Every process of a run carries `FLOTILLA_RUN=<run id>` in its environment, and the run's process group is written
+  on the machine; stopping a run ends its group and every process carrying its tag, including those that started a
+  session of their own (a browser's helpers).
+- **The ceiling is the rig's own**: `[rig] max_run_seconds`, default 1800 (the person's decision, 2026-10-07). At the
+  ceiling the run is stopped on the machine; verdict `ceiling`, exit 124.
+- **A broken connection is its own outcome**, not a red run. On ssh's 255 a fresh connection asks the machine how the
+  run ended: finished - its real verdict; still running - it is stopped. `lost` (exit 75) is when the machine cannot
+  be asked for two minutes; that machine is drained, not handed to the next run.
+- `rig run` stopped by a signal (the Bash tool's timeout, a TaskStop) stops its run on the machine and records it.
+- While a run goes, the machine is `busy`, and the run renews its lease and the heartbeat every 5 minutes.
 
 **What comes back.**
 
 - `--get PATH` packs those paths on the machine after the run and unpacks them at the same paths in the tree.
+- Refused: the tree's root, any `.git` or `.claude` path component, a path git tracks at HEAD, a path under a local
+  symlink.
 - Unpacking is safe:
-  - absolute paths, paths leaving the tree and symlinks are refused;
+  - absolute paths, paths leaving the tree, links and devices are refused;
   - the total is capped (default 500 MB);
   - the archive lands in a temporary directory and is moved in only when it arrived whole, so a cut transfer never
     mixes with old files.
 - A red run still brings its artifacts back: red frames are what the person debugs.
 
-**What is recorded:** revision, command, seconds, verdict, and the run's cost (its share of the hour times the price).
-The orchestrator sees where a session's money went.
+**What is recorded:** revision, the command's signature ladder, seconds, verdict, the run's measurements, and its
+cost (its share of the hour times the price). The orchestrator sees where a session's money went; it sees a run's
+program name, never its command text (the channel closed for `why`, section 4).
+
+**Disk.** A run checks free space on the machine first; run directories end with their run, revisions and caches
+beyond a size are pruned oldest first.
 
 ## 8. Not in the first version, and why
 
@@ -392,14 +424,17 @@ this machine's processes and census.
      watchdog; rig lines in `fleet`, `watch` and the session-start hook, and requests relayed by the orchestrator
      (template v15); live check 1 with the person's yes, at most 0.50 $: a machine made, our side "killed", the reaper
      destroys it and the listing confirms; a second machine left to its watchdog; the 2FA question for create.
-   - **2b (0.10.0) - runs:** `rig run` over ssh with `--put`/`--get`, the setup cache, `lost`, renewing its lease
-     and the heartbeat; live check 2 - the twosuns scene through `rig run`, at most 0.50 $.
+   - **2b (0.10.0) - runs:** `rig run` over ssh with `--put`/`--get`, several runs per machine with the floor of two
+     and admission by the machine's live readings, each run measured; setup per run with shared download caches;
+     `lost`, renewing its lease and the heartbeat; live check 2 - the twosuns scene through `rig run`, at most 0.50 $.
+   - **2c (0.11.0) - packing:** admission by estimates from the runs measured in 2b; longest first, short ones fill,
+     no starvation (the person's decision, 2026-10-07).
 
    Measured on 2026-10-07 with the person's scoped key, read-only: listing and offer search work without a 2FA code;
    datacenter offers with one GPU, reliability >= 0.98 and price <= 0.60 $/h started at 0.137 $/h.
 3. **Onboarding:** the base-set comparison, the three questions, the budget estimate with its consequences, the `ssh`
    provider.
-4. Later, each its own conversation: a test tier on the rig; several runs on one machine.
+4. Later, each its own conversation: a test tier on the rig.
 
 ## 12. Review of 2026-10-06, and what it changed
 
