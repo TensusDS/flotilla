@@ -92,6 +92,8 @@ def items(state: Path, now: dt.datetime, project: str = "") -> list[Item]:
             found.append(_item(f"session {session.id} ends at {_hhmm(until)} with machine(s) still busy "
                                f"({', '.join(m.id for m in busy)})", session.opened, f"rig:ending:{session.id}"))
     for request in requests.values():
+        if not re.fullmatch(r"r[0-9]{1,9}", request.id):   # the id is pasted into the person's shell
+            continue
         since = _when(request.since)
         if request.state != j.ASKED or request.project != project or since is None or now - since > REQUEST_LIFE:
             continue

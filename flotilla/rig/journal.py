@@ -47,6 +47,7 @@ SETTLE = dt.timedelta(minutes=2)
 ATTEMPTS = 3
 MAX_TEXT = 300
 _NUMBERED = re.compile(r"^[smr]([0-9]{1,9})$")
+PREFIX = {"session": "s", "machine": "m", "request": "r"}
 
 
 class RigError(ValueError):
@@ -138,6 +139,8 @@ def _fold(records):
         if not isinstance(event, dict) or not _aware(event.get("at")) or not isinstance(event.get("id"), str):
             continue
         kind, state = event.get("kind"), event.get("state")
+        if not _NUMBERED.fullmatch(event["id"]) or event["id"][0] != PREFIX.get(kind):
+            continue   # an id flotilla never issues: text a shell wrote must not travel as an id (final review, C2)
         if kind == "session" and state in SESSION_STATES:
             found, item = sessions, sessions.get(event["id"]) or Session(id=event["id"])
         elif kind == "machine" and state in MACHINE_STATES:

