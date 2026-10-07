@@ -111,3 +111,18 @@ def test_a_bash_glob_python_would_read_otherwise_is_refused(tmp_path, monkeypatc
     in the command or the move to - it refuses (background scan of the 2a branch)."""
     answer = ask(onboarded(tmp_path), command.format(cli=CLI), monkeypatch, tmp_path)
     assert answer and answer["permissionDecision"] == "deny"
+
+
+# A variable program alone is not seen at all (guards.CEILING); these lines name flotilla too, so the hook fires.
+@pytest.mark.parametrize("command", ["echo flotilla && $F r?g open --hours 1",
+                                     "echo flotilla && $F r[i]g open --hours 1",
+                                     "echo flotilla && $F r[^x]g open --hours 1", "$F w?rk approve feat/x",
+                                     "$F wo* approve feat/x"])
+def test_a_globbed_command_after_an_opaque_program_is_refused(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny"
+
+
+@pytest.mark.parametrize("command", ["$PYTHON $SCRIPT --flag", "$EDITOR notes.txt", "$PY -m pytest tests/*.py"])
+def test_an_opaque_program_with_no_rig_or_work_in_reach_is_not_refused(tmp_path, monkeypatch, command):
+    assert ask(onboarded(tmp_path), command, monkeypatch, tmp_path) is None

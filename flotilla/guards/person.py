@@ -16,6 +16,8 @@ meets Claude Code's permission prompt in the person's session.
 
 from __future__ import annotations
 
+import fnmatch
+
 import os
 
 from flotilla.guards import Finding
@@ -62,6 +64,17 @@ def _opaque(word: str) -> bool:
     return any(sign in word for sign in "$`*?[")
 
 
+def _may_be(word: str, name: str) -> bool:
+    """The word is `name`, or a glob bash might expand to it. Only for a program word the guard cannot read: there it
+    asks whether a command it guards is in reach. fnmatch is not bash, so any bracket counts; a variable does not,
+    or every `$PYTHON $SCRIPT` would be refused (a variable program is a stated limit, README "Guards")."""
+    if word == name:
+        return True
+    if "$" in word or "`" in word or not _opaque(word):
+        return False
+    return "[" in word or fnmatch.fnmatchcase(name, word)
+
+
 def _rig_move(words: list[str]) -> str:
     for command, move in _reads(words):
         if _is(command, "rig") and any(_is(move, name) for name in RIG_MOVES):
@@ -92,7 +105,7 @@ def check(segment) -> Finding | None:
                                     "(braces, $'...', $\"...\", an extglob, a trailing backslash), so the move it "
                                     "runs cannot be read before it runs - and `approve` is the person's own move. "
                                     "Write the command plainly.")
-    named = any(_is(word, "rig") or _is(word, "work") for word in words[1:])
+    named = any(_may_be(word, "rig") or _may_be(word, "work") for word in words[1:])
     if (words and _opaque(words[0]) and named) or any(
             _opaque(command) or ((_is(command, "rig") or _is(command, "work")) and _opaque(move))
             for command, move in _reads(words)):
