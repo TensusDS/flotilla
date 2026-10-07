@@ -11,7 +11,9 @@ each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2
   machine in short calls that resume, from images the person allowed (`rig_images`, grown by `rig allow-image`), on
   vast datacenter hosts, within the session's budget. A watchdog on the machine asks the service to destroy it, or to stop
   it, a set time after our last heartbeat (nothing renews the heartbeat before `rig run`; it needs curl, node or
-  python3 in the image). A machine is called ready only once the rig's ssh key is on it. The reaper also drains a machine the service stopped, no longer lists on two passes, or that
+  python3 in the image). A machine is called ready only once the rig's ssh key is on it and vast
+  reports it running, not merely intended to run. A live check on vast (the person's yes, about 0.05 $) measured the
+  reaper and the watchdog destroying machines; the spec's section 12 has the numbers. The reaper also drains a machine the service stopped, no longer lists on two passes, or that
   took over 15 minutes to come up. `flotilla fleet` shows the session, the machines and loud lines first.
 - From the final review of 0.8.0 and the branch's security reviews: the person guard reads the words bash hands
   flotilla (quotes, escapes, redirections and subshell parentheses resolved, measured against bash) and asks

@@ -1515,8 +1515,11 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    `allow-image` names the image it allows. The image is the person's to allow (`rig_images`, the person's decision,
    2026-10-07): a project's `[rig] image` is only a wish. An injection run (24 cases, all red after two tests were
    strengthened) and a security scan of the branch closed two gaps before release: a glob path in the person guard
-   that could never run, and a requester's name or image carried into a relayed line. Live check 1 (Task 9) is
-   recorded in the spec's section 12. (person's decisions with the planner, 2026-10-07)
+   that could never run, and a requester's name or image carried into a relayed line. Live check 1 (the person's yes,
+   2026-10-07, about 0.05 $) measured what the reviews could not: create needs no 2FA with a scoped key; vast's
+   `cur_state` means intent, so a machine was called ready while its image pulled - fixed before release; a destroy
+   leaves the listing within seconds; and the container's own key may destroy, so the watchdog is a real third
+   layer. The spec's section 12 has the numbers. (person's decisions with the planner, 2026-10-07)
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

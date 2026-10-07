@@ -446,8 +446,7 @@ watches it and gives it back; running a job on it over ssh (`rig run`) comes nex
 - **A watchdog runs on the machine** and asks the service to destroy it (or, failing that, to stop it)
   `--watchdog-minutes` (default 45, 5 to 45) after our last heartbeat. In this version nothing renews the heartbeat
   yet - `rig run` will - so every machine is given back that long after it starts, whatever the session's hours. It
-  needs curl, node or python3 in the image. Which of destroy and stop the service allows is measured by the first
-  live check.
+  needs curl, node or python3 in the image. On vast the destroy is allowed (live check, 2026-10-07).
 - `flotilla fleet` shows rig lines first: the open session, each machine, and loud lines for a STUCK machine, a
   silent reaper or a failed one, repeated every half hour until they clear.
 - Ceilings, yours too, in `~/.local/state/flotilla/machine.toml`: `rig_max_machines` (1), `rig_max_hourly`
