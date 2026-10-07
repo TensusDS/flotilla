@@ -206,3 +206,26 @@ def test_receive_refuses_a_whole_stream_whose_digest_is_not_the_one_sent(tmp_pat
     other = hashlib.sha256(b"something else").hexdigest()
     assert ssh(tmp_path, remote.RECEIVE, rev, other, str(len(data)), stdin=data).returncode == 65
     assert ssh(tmp_path, remote.CHECK, rev).stdout.decode().startswith("absent")
+
+
+@linux
+def test_prune_keeps_the_cache_while_a_command_may_use_it(tmp_path, monkeypatch):
+    box = machine(tmp_path, monkeypatch)
+    project, cache = box / "work/P", box / "work/cache"
+    (cache / "uv").mkdir(parents=True)
+    (project / "runs" / T1).mkdir(parents=True)
+    child = start(tmp_path, box, T1, "sleep", "30", status=project / "runs" / f"{T1}.run")
+    wait_tagged(box, T1, 1)
+    out = ssh(tmp_path, remote.PRUNE, project, "5", cache, "999999999")
+    assert out.returncode == 0 and (cache / "uv").exists()
+    ssh(tmp_path, remote.STOP, project / "runs" / f"{T1}.run", T1)
+    child.wait(15)
+
+
+@linux
+def test_a_command_killed_well_inside_its_limit_is_not_a_timeout(tmp_path, monkeypatch):
+    box = machine(tmp_path, monkeypatch)
+    (box / "work/P/runs" / T1).mkdir(parents=True)
+    out = ssh(tmp_path, *run_line(box, T1, "sh", "-c", "kill -9 $$"))
+    status = ssh(tmp_path, remote.STATUS, box / "st").stdout.decode()
+    assert out.returncode == 137 and status.startswith("exit=137 ")

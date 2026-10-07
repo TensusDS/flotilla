@@ -229,7 +229,7 @@ cpu=$(( (stat[15] + stat[16]) / ticks ))
 peak=0 gpu=0
 [ -f "$status.peak" ] && read -r peak gpu < "$status.peak"
 if [ "$stopped" = 1 ]; then said=stopped
-elif [ "$code" = 124 ] || [ "$code" = 137 ]; then said=timeout
+elif { [ "$code" = 124 ] || [ "$code" = 137 ]; } && [ $(( $(date +%s) - started )) -ge "$limit" ]; then said=timeout
 else said=$code; fi
 printf 'exit=%s seconds=%s cpu_s=%s peak_kb=%s gpu_mb=%s\n' "$said" "$(( $(date +%s) - started ))" "$cpu" \
   "${peak:-0}" "${gpu:-0}" > "$status.tmp"
@@ -317,7 +317,7 @@ done
 free=$(df -Pm "$project" | awk 'NR == 2 {print $4}')
 if [ "$free" -lt "$margin" ]; then
   busy=0
-  for st in "$(dirname "$project")"/*/runs/*.setup.running; do
+  for st in "$(dirname "$project")"/*/runs/*.setup.running "$(dirname "$project")"/*/runs/*.run.running; do
     g=$(group_of "$st")
     if [ -n "$g" ] && kill -0 -- "-$g" 2>/dev/null; then busy=1; fi
   done

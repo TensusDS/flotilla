@@ -256,9 +256,11 @@ class Run:
             pass
 
     def stop(self):
-        self.sent_stop = True
+        """End the run on the machine. Marked sent only once both calls returned: a STOP cut short by a second
+        signal is sent again by the finally (review of 0.10.0)."""
         self.box.call(remote.STOP, self.paths.run_status, self.run.tag)
         self.box.call(remote.STOP, self.paths.setup_status, self.run.tag)
+        self.sent_stop = True
 
     def execute(self, script, status_file, argv, ceiling) -> bool:
         """Run a phase streaming its output. True when it ended on the machine with a status to read."""

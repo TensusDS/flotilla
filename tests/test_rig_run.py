@@ -277,3 +277,21 @@ def test_root_naming_another_tree_is_refused(world, box, tree, tmp_path):
     with redirect_stdout(out), chdir(tree):
         code = cli.main(["rig", "run", "--root", str(other), "--as", "minor 8", "--", "true"])
     assert code == 2 and world["fake"].created == 0
+
+
+def test_a_stop_cut_short_by_a_second_signal_is_sent_again(world, box, tree, monkeypatch):
+    opened(world)
+    monkeypatch.setattr(run_module, "CEILING", 3)
+    real, calls = run_module.Box.call, []
+
+    def call(self, script, *args, **kwargs):
+        if script == remote.STOP:
+            calls.append(args)
+            if len(calls) == 1:
+                raise SystemExit(143)          # the second signal, arriving while the first STOP is on its way
+        return real(self, script, *args, **kwargs)
+    monkeypatch.setattr(run_module.Box, "call", call)
+    with pytest.raises(SystemExit):
+        rig_run(world, tree, "--", "sleep", "30")
+    run = journal(world).runs()["j1"]
+    assert len(calls) >= 2 and run.verdict == "stopped" and tagged(box, run.tag) == []
