@@ -413,3 +413,41 @@ def test_a_requested_machine_that_never_got_an_instance_fails(world):
     rig.renew([machine.id])
     passes(rig, providers)
     assert rig.machines()[machine.id].state in (j.FAILED, j.GONE)
+
+
+def _queued(rig, pid, mark="m"):
+    return rig.queue_run("s1", who="x", project="P", revision="a" * 40, program="node", ladder=(), pid=pid, mark=mark)
+
+
+ALIVE_REAL = lambda pid, mark: pid is not None and pid != 404   # like the process table: None is never alive
+
+
+def test_a_run_whose_process_died_is_finished_gone_and_frees_its_machine(world):
+    rig, clock, fake, providers = world
+    session(rig)
+    mid = running(rig, fake)
+    run = _queued(rig, 404)
+    rig.start_run(run.id, mid, alive=lambda pid, mark: True, roomy=False)
+    passes(rig, providers, alive=ALIVE_REAL)
+    assert rig.runs()[run.id].verdict == "gone" and rig.machines()[mid].state == j.READY
+
+
+def test_a_machine_with_a_live_run_stays_busy(world):
+    rig, clock, fake, providers = world
+    session(rig)
+    mid = running(rig, fake)
+    run = _queued(rig, 7)
+    rig.start_run(run.id, mid, alive=ALIVE_REAL, roomy=False)
+    for _ in range(3):
+        rig.renew([mid])
+        passes(rig, providers, alive=ALIVE_REAL)
+    assert rig.machines()[mid].state == j.BUSY and rig.runs()[run.id].state == j.RUNNING
+
+
+def test_a_waiting_run_of_a_closed_session_is_finished(world):
+    rig, clock, fake, providers = world
+    s = session(rig)
+    run = _queued(rig, 7)
+    rig.set_session(s.id, j.CLOSING, reason="closed by the person")
+    passes(rig, providers, alive=ALIVE_REAL)
+    assert rig.runs()[run.id].state == j.DONE and rig.runs()[run.id].verdict == "session ended"

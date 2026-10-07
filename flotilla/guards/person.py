@@ -229,9 +229,58 @@ def _runs_any_flotilla(words: list[str]) -> bool:
     return any(_runs_flotilla(word, words[at - 1] if at else "") for at, word in enumerate(words))
 
 
+def _scan(text: str) -> tuple[bool, int | None]:
+    """Read `text` with bash's quoting: whether a substitution - `$(`, a backtick, `<(`, `>(` - is live somewhere (bash
+    runs it in the caller's own shell, before flotilla starts), and where the first unquoted standalone `--` begins.
+    Single quotes and `$'..'` hide everything; double quotes hide all but `$(` and backticks; a backslash hides the
+    next character. Never a toggle on every quote: an apostrophe inside double quotes is a letter."""
+    live, dashes, state, i, n = False, None, "plain", 0, len(text)
+    while i < n:
+        ch = text[i]
+        if state == "single":
+            if ch == "'":
+                state = "plain"
+        elif state == "ansi":
+            if ch == "\\":
+                i += 1
+            elif ch == "'":
+                state = "plain"
+        elif state == "double":
+            if ch == "\\":
+                i += 1
+            elif ch == '"':
+                state = "plain"
+            elif ch == "`" or text.startswith("$(", i):
+                live = True
+        else:
+            if ch == "\\":
+                i += 1
+            elif ch == "'":
+                state = "single"
+            elif text.startswith("$'", i):
+                state, i = "ansi", i + 1
+            elif ch == '"':
+                state = "double"
+            elif ch == "`" or text.startswith(("$(", "<(", ">("), i):
+                live = True
+            elif (dashes is None and text.startswith("--", i) and (i == 0 or text[i - 1] in " \t")
+                  and (i + 2 == n or text[i + 2] in " \t")):
+                dashes = i
+        i += 1
+    return live, dashes
+
+
 def check(segment) -> Finding | None:
     words = argv(segment.text)
     text = segment.text
+    readings = _reads(words) + _parsed(words)
+    live, dashes = _scan(text)
+    if live and any(_is(command, "rig") for command, _move in readings):
+        return Finding(GUARD, True, "flotilla: this rig line holds a command substitution (`$(..)`, a backtick, "
+                                    "`<(..)`), which your own shell runs before flotilla starts - and some rig moves "
+                                    "spend money. Write the command plainly; quote it in single quotes if it is data.")
+    if dashes is not None and any(_is(c, "rig") and _is(m, "run") for c, m in readings):
+        text = text[:dashes]   # what follows a `rig run`'s `--` is the remote command: data to this guard
     if _runs_any_flotilla(words) and (any(sign in text for sign in EXPANDS) or text.rstrip().endswith("\\")):
         return Finding(GUARD, True, "flotilla: this flotilla command holds what bash expands or continues "
                                     "(braces, $'...', $\"...\", an extglob, a trailing backslash), so the move it "

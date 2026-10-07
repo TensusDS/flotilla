@@ -206,3 +206,37 @@ def test_a_brace_that_may_become_flotilla_or_its_command_is_refused(tmp_path, mo
 def test_a_quoted_or_escaped_brace_is_no_expansion(command):
     from flotilla.guards import shell
     assert not any(person.check(segment) for segment in shell.segments(command, None))
+
+
+@pytest.mark.parametrize("command", ["{cli} rig run -- node -e 'console.log({{a:1}})'",
+                                     "{cli} rig run --get shots -- sh -c 'echo $X; open x'",
+                                     "{cli} rig run -- printf %s {{a,b}}",
+                                     "{cli} rig run -- echo 'literal $(not run)'"])
+def test_a_rig_run_line_with_braces_and_dollars_after_the_dashes_is_not_refused(tmp_path, monkeypatch, command):
+    assert ask(onboarded(tmp_path), command.format(cli=CLI), monkeypatch, tmp_path) is None
+
+
+@pytest.mark.parametrize("command", ["{cli} r{{i,}}g open --hours 1 -- x", "{cli} rig {{run,open}} --hours 1 --"])
+def test_braces_before_the_dashes_are_still_refused(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command.format(cli=CLI), monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny"
+
+
+@pytest.mark.parametrize("command", [
+    "{cli} rig run -- $(flotilla rig {{open,}} --hours 8 --budget 50 --why x)",
+    "{cli} rig run -- `flotilla rig enable --provider vast`",
+    "{cli} rig run -- \"$(flotilla work approve x)\"",
+    "{cli} rig run -- cat <(flotilla rig open --hours 1)",
+    "{cli} rig run -- echo \"it's $(flotilla rig open --hours 8 --budget 50 --why x)\"",
+    "{cli} rig run -- \\' $(flotilla rig {{open,}} --hours 8) \\'",
+    "{cli} rig run -- $'\\'' $(flotilla rig open)",
+    "{cli} rig run --why \"$(flotilla rig open --hours 1)\" -- true",
+    "{cli} rig run --put `flotilla rig enable` -- true"])
+def test_a_substitution_in_a_rig_line_is_refused(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command.format(cli=CLI), monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny"
+
+
+def test_rig_keeps_the_permission_prompt():
+    from flotilla.broker import decide
+    assert "rig" not in decide.OWN_SUBCOMMANDS

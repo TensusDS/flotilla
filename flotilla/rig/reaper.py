@@ -86,7 +86,23 @@ def _close_sessions(rig: j.Rig, now: dt.datetime, on: bool, out: Outcome) -> Non
 
 
 def _dead_runs(rig: j.Rig, alive, out: Outcome) -> None:
+    """A run whose process is gone is finished `gone`, a waiting run of a session that is not open is finished
+    `session ended`; a busy machine is ready again when no run is on it (a machine that runs carries no pid of its
+    own: its runs do), or when the one process that held it is gone."""
+    open_sessions = {s.id for s in rig.sessions().values() if s.state == j.OPEN}
+    for run in rig.runs().values():
+        if run.state in (j.WAITING, j.RUNNING) and not alive(run.pid, run.mark):
+            rig.finish_run(run.id, "gone", reason="its process is gone")
+            out.lines.append(f"run {run.id}: its process is gone")
+        elif run.state == j.WAITING and run.session not in open_sessions:
+            rig.finish_run(run.id, "session ended", reason="its session is not open")
+            out.lines.append(f"run {run.id}: its session is not open")
     for item in rig.machines().values():
+        if item.state == j.BUSY and item.run_pid is None:
+            if not rig.on(item.id) and rig.move(item.id, j.READY, reason="its runs are done",
+                                                 expect={"state": j.BUSY, "run_pid": None}):
+                out.lines.append(f"machine {item.id}: its runs are done, back to ready")
+            continue
         if item.state == j.BUSY and not alive(item.run_pid, item.run_mark):
             if rig.move(item.id, j.READY, reason="its run is gone",
                         expect={"state": j.BUSY, "run_pid": item.run_pid}):

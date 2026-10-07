@@ -137,4 +137,18 @@ def lines(state: Path, now: dt.datetime) -> list[str]:
         found.append(f"  machine {machine.id} {machine.state}: {machine.gpu or 'gpu ?'}, {price}"
                      f"{', ' + machine.address if machine.address else ''}"
                      f"{' (' + machine.reason + ')' if machine.reason else ''}")
+    found.extend(run_lines(rig, now))
     return found
+
+
+def run_lines(rig: j.Rig, now: dt.datetime) -> list[str]:
+    """Who runs what and who waits: the program as the journal checked it, never a command's text."""
+    lines = []
+    for run in sorted(rig.runs().values(), key=lambda r: int(r.id[1:])):
+        if run.state == j.RUNNING:
+            since = _when(run.since)
+            minutes = f" for {int((now - since).total_seconds() // 60)} min" if since else ""
+            lines.append(f'  run {run.id} ({_who(run.who)}) running program "{run.program}" on {run.machine}{minutes}')
+        elif run.state == j.WAITING:
+            lines.append(f"  run {run.id} ({_who(run.who)}) waits")
+    return lines

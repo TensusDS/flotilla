@@ -106,6 +106,9 @@ def _status(state: Path, settings: rs.RigSettings) -> int:
         price = f"{item.hourly:.2f} $/h" if item.hourly is not None else "price unknown"
         print(f"  machine {item.id} {item.state}: instance {item.instance or 'none yet'}, {item.gpu or 'gpu ?'}, "
               f"{price}, lease until {_hhmm(item.lease_until)}{f' ({item.reason})' if item.reason else ''}")
+    from flotilla.rig import surface
+    for text in surface.run_lines(rig, _now()):
+        print(text)
     last = health.last_reap(state)
     ok, note = health.last_outcome(state)
     if live and (last is None or _now() - last > health.SILENT_AFTER):
@@ -114,6 +117,17 @@ def _status(state: Path, settings: rs.RigSettings) -> int:
     elif last:
         print(f"reaper: last pass {_hhmm(last)}" + ("" if ok else f" FAILED: {note}"))
     return 0
+
+
+def _forget_hosts(rig: j.Rig, state: Path) -> None:
+    """A machine that is gone takes its host key with it: vast reuses proxy ports, and a key kept for a port would
+    read as a changed host for the next machine there."""
+    folder = state / "rig" / "hosts"
+    if not folder.is_dir():
+        return
+    for item in rig.machines().values():
+        if item.state == j.GONE:
+            (folder / item.id).unlink(missing_ok=True)
 
 
 def _reap(state: Path, settings: rs.RigSettings) -> int:
@@ -154,6 +168,7 @@ def _reap(state: Path, settings: rs.RigSettings) -> int:
                 return 1
             for line in out.lines:
                 print(f"{stamp} {line}")
+            _forget_hosts(rig, state)
             problem = _keep_reaper(rig, state)
             if problem:
                 print(f"{stamp} the reaper's crontab line: {problem}")
