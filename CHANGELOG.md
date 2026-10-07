@@ -3,6 +3,17 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.8.0 - 2026-10-07
+
+- **`flotilla rig`: the safeguards for rented machines, before any machine is rented.** Off by default; the person
+  turns it on with `flotilla rig enable --provider <service>`, which a Claude tool call cannot run. Rental services
+  are adapters with one contract and one test suite; vast.ai, over its REST API, is the first. A journal of sessions
+  and machines whose moves are compare-and-set; a lease renewed only by the work; a reaper in the person's crontab
+  (through a launcher in the state directory that survives plugin updates and, with flotilla removed, destroys this
+  machine's labelled instances itself) that drains on an expired lease, 15 idle minutes, the session's end or 90 % of
+  its budget, destroys only instances listed under the label flotilla gave them, believes "gone" only from a later
+  listing, says STUCK after three passes, and is checked for silence by `flotilla rig` and `doctor`. Service answers
+  are scrubbed of credentials. Renting and running come next.
 ## 0.7.17 - 2026-10-06
 
 From a running fleet's notes:

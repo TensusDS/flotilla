@@ -268,15 +268,16 @@ Setup is above. The rest of this file:
 4. [The work ledger](#the-work-ledger)
 5. [The person's part](#the-persons-part)
 6. [Long runs and the lane](#long-runs-and-the-lane)
-7. [Guards](#guards)
-8. [What it costs](#what-it-costs)
-9. [What flotilla does on your machine](#what-flotilla-does-on-your-machine)
-10. [Known limitations](#known-limitations)
-11. [Security model and its limits](#security-model-and-its-limits)
-12. [Updating, and removing flotilla](#updating-and-removing-flotilla)
-13. [Development](#development)
-14. [Support, privacy and security](#support-privacy-and-security)
-15. [License](#license)
+7. [Rented machines (rig)](#rented-machines-rig)
+8. [Guards](#guards)
+9. [What it costs](#what-it-costs)
+10. [What flotilla does on your machine](#what-flotilla-does-on-your-machine)
+11. [Known limitations](#known-limitations)
+12. [Security model and its limits](#security-model-and-its-limits)
+13. [Updating, and removing flotilla](#updating-and-removing-flotilla)
+14. [Development](#development)
+15. [Support, privacy and security](#support-privacy-and-security)
+16. [License](#license)
 
 ---
 
@@ -419,6 +420,32 @@ match))`). This is the first stage of admission by resources (`docs/specs/2026-1
 admission itself is unchanged, and the next stages admit by a budget of cores and memory and let short runs overtake
 long ones.
 
+## Rented machines (rig)
+
+Some runs need more than this machine - a GPU for WebGL screenshots, cores a laptop lacks. `flotilla rig` keeps
+the safeguards for machines rented by the hour. **It is off** until you turn it on, and **this version rents
+nothing**: it carries the journal, the lease and the reaper that later versions build on.
+
+- **Rental services are adapters chosen by name**; this version carries `vast` (vast.ai). A new service is one
+  adapter file under `flotilla/rig/providers/` passing the shared contract suite.
+- **Turning it on is yours alone:** put the service's key in `~/.config/flotilla/rig/<service>.key` with `chmod 600`
+  (for vast.ai a scoped key with `instance_read`, `instance_write`, `misc`), then type
+  `! flotilla rig enable --provider vast` in your own session (or run it in a terminal). `flotilla rig disable` turns it off. Claude's tool calls cannot run either,
+  and cannot edit `machine.toml`, the key or the rig's state directory with their edit tools.
+- Ceilings, yours too, in `~/.local/state/flotilla/machine.toml`: `rig_max_machines` (1), `rig_max_hourly`
+  (0.60 $), `rig_max_hours` (8).
+- `flotilla rig` shows sessions, machines, what they cost at least, and when the reaper last ran.
+- `flotilla rig reap` runs from your crontab every 5 minutes while anything is rented, under a line marked
+  `# flotilla rig reaper` that removes itself when nothing is. The line runs a small launcher kept in flotilla's state
+  directory, so it survives plugin updates; with flotilla uninstalled, the launcher itself destroys the instances
+  this machine labelled. The reaper drains a machine whose lease expired, that sat idle 15 minutes, whose session
+  ended or neared its budget; destroys it only when vast lists it under the label flotilla gave it; and calls it gone
+  only when a later listing no longer shows it. After three passes it says STUCK. An instance without this machine's
+  flotilla label - one you made by hand - is never touched.
+- If cron does not run on this machine (WSL by default), `flotilla rig` and `flotilla doctor` say the reaper is
+  silent while anything lives.
+- Limit: every session runs as your user. A shell command that writes these files is not caught; the guards close
+  the commands and the edit tools, the honest paths.
 ## Guards
 
 Before a Bash command runs, flotilla refuses a few commands that do silent damage:

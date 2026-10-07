@@ -8,6 +8,17 @@ something through, B a bug a user meets, P polish, tests or docs), or `open, des
 run). A later triage re-checks only items whose named files changed since that version. An item that is done -
 fixed by a release, or found fixed - leaves its section for **Done** at the bottom, one line with the version.
 
+## Rented machines (rig), after 0.8.0
+
+- **Stage 2:** the vast adapter's offers and create, `rig open/close` behind the person guard and the reaper's lock,
+  `rig run` renewing its lease (refused while the journal is damaged), the watchdog destroying through
+  `CONTAINER_API_KEY`, lines in `fleet`/`watch`/session-start including the stale-reaper alarm, the orchestrator's
+  duty, the 2FA measurement for a scoped key, the account credit beside the local count, and the live check
+  (destroyed instances leave the listing; what a stopped container bills). Design `docs/specs/2026-10-06-rig-design.md`.
+  *(checked 2026-10-07 on 0.8.0: open, design)*
+- **Stage 3:** onboarding for a weak machine (the base set, the three questions, the cost with its consequences) and
+  the `ssh` adapter for the person's own machine. *(checked 2026-10-07 on 0.8.0: open, design)*
+
 ## From the README's known limitations (2026-10-04)
 
 Each is a limitation README states today, judged fixable in principle; none is planned yet.

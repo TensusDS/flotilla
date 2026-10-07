@@ -80,6 +80,13 @@ Worktrees and receipts:
     flotilla guard status                 guards on, hooks installed
     flotilla permit next | list | answer <id> allow|session --mark <mark> | answer <id> deny --why "<why>"
 
+**Rented machines** (off until the person runs `rig enable`; the README's "Rented machines (rig)" says what it guards)
+
+    flotilla rig                          sessions, machines, what they cost at least, when the reaper last ran
+    flotilla rig reap                     drain what should not run, verify it is gone (cron runs it every 5 min)
+    flotilla rig enable --provider vast   the person only: turn rented machines on (a Claude tool call is refused)
+    flotilla rig disable                  the person only: turn them off; the reaper drains what is still live
+
 ## Daily operation
 
 1. **Start:** if your own session leads the fleet (onboarding offers it), `flotilla spawn --lead` gives it the
