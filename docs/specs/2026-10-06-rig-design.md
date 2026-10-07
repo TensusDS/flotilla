@@ -332,7 +332,6 @@ beyond a size are pruned oldest first.
 - **A test tier run on the rig** (a receipt signed by a remote run, `where = "rig"`). It changes who signs a
   revision and needs its own design. Until then a heavy tier may run on the rig as an ordinary `rig run`, which signs
   nothing.
-- **Several runs on one machine at once.** A GPU shares badly; it needs a measurement first.
 - **Other rented providers** (Hetzner's hourly servers among them): the interface takes them later.
 
 ## 9. Onboarding: when a machine is weak
