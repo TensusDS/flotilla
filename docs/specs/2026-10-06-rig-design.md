@@ -96,6 +96,13 @@ user's; it is a door each honest path has to pass, the same standard as `flotill
   person as a ready line to paste (`! flotilla rig open ...`). The orchestrator template gets this duty.
 - The yes cannot exceed the machine's ceilings (section 5, layer 3); a request above them is refused with the
   ceiling named. Turning rig on is not consent to spend: money is spent only inside a session the person opened.
+- **Relayed lines carry a request's id, never a session's text** (review of the 2a plan, 2026-10-07): a seat's reason
+  is a string any session typed, and a line the person pastes with `!` runs in their own shell, past every guard. The
+  orchestrator passes `! flotilla rig open --hours 2 --budget 1 --for r3`; `rig open --for` reads the reason back from
+  the journal. Requests belong to the project that made them, and expire after a day.
+- **The image is the person's to allow** (the person's decision, 2026-10-07): `machine.toml` `rig_images`, written
+  with the shipped default by `rig enable` and grown by `rig allow-image` (`--for rN` relays a project's request). A
+  project's `[rig] image` is only a wish; `rig up` runs nothing the person has not allowed.
 
 ## 5. Safeguards: a machine never outlives the side that took it
 
