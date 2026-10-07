@@ -257,7 +257,8 @@ ceiling is the rig's own; setup runs in each run with shared download caches; th
 
 - A run waits for **room**, not for a free machine. In 0.10.0 room is: fewer than two runs on the machine (a floor
   that always holds), or, beyond the floor, the machine's live free memory and free GPU memory above their margins
-  (read from the machine when the run asks). Runs are admitted in order of arrival.
+  (read from the machine when the run asks), every run on it in its command for a minute (one that is still in its
+  tree or setup has not taken its memory yet), and fewer runs than the machine's CPUs (never under two). Runs are admitted in order of arrival.
 - **0.11.0 packs by estimates:** each run on a rig machine is measured (seconds, peak memory of its process group,
   cores, GPU memory) with the machine's shape, under the lane's signature ladder; a run is admitted when its estimate
   fits what the running runs leave; among the runs that fit, the longest goes first and short ones fill the rest;

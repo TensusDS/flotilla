@@ -253,3 +253,20 @@ def test_a_substitution_in_a_heredoc_body_of_a_flotilla_line_is_refused(tmp_path
 def test_a_quoted_heredoc_body_is_data(tmp_path, monkeypatch):
     command = f"{CLI} rig run -- cat <<'EOF'\n$(not run here)\nEOF"
     assert ask(onboarded(tmp_path), command, monkeypatch, tmp_path) is None
+
+
+@pytest.mark.parametrize("command", ["env -u flotilla -u rig -u run -- {{flotilla,}} rig open --hours 1 --budget 5",
+                                     "env -u flotilla -u rig -u run -- {{flotilla,}} work approve r1",
+                                     "env -u flotilla -u rig -u run -- /usr/bin/fl{{o,}}tilla rig enable",
+                                     "{cli} -- wo{{r,}}k approve x"])
+def test_a_decoy_rig_run_does_not_hide_braces(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command.format(cli=CLI), monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny"
+
+
+@pytest.mark.parametrize("command", ["cat <<< X\n{cli} work approve r1\nX",
+                                     "cat <<E\"OF\"\nx\nEOF\n{cli} work approve r1\nE",
+                                     "true <<<EOF\n{cli} rig enable --provider vast\nEOF"])
+def test_a_heredoc_misread_does_not_hide_a_line_bash_runs(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command.format(cli=CLI), monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny"

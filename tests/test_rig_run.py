@@ -1,3 +1,4 @@
+import datetime as dt
 import io
 import json
 import os
@@ -165,6 +166,7 @@ def test_two_runs_share_a_machine(world, box, tree, tmp_path):
 
 def test_a_third_run_waits_for_room(world, box, tree, tmp_path, monkeypatch):
     opened(world)
+    monkeypatch.setattr(j, "RUN_SETTLE", dt.timedelta(0))   # room, not settling, must hold the third run
     raised(world, tree)
     monkeypatch.setattr(run_module, "READ",
                         lambda b: {"mem_kb": 0, "mem_total_kb": 0, "cpus": 8, "gpu_free_mb": -1, "gpu_total_mb": -1})

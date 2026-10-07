@@ -22,7 +22,6 @@ SEPARATORS = re.compile(r"&&|\|\||[;|&\n]")
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 WRAPPERS = frozenset({"sudo", "command", "nice", "nohup", "time", "exec", "env",
                       "if", "then", "else", "elif", "do", "while", "until", "!", "{", "("})
-HEREDOC = re.compile(r"""<<-?\s*(?:'([^']+)'|"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))""")
 GIT_VALUE_OPTIONS = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"})
 
 
@@ -75,6 +74,21 @@ class Segment:
         return None
 
 
+#: `<<` but never `<<<` (a here-string has no body), then the delimiter as one shell word up to a metacharacter.
+HEREDOC_WORD = re.compile(r"(?<!<)<<(?!<)-?[ \t]*((?:\\.|[^\s;&|<>()])+)")
+
+
+def heredoc(line: str) -> tuple[str, bool] | None:
+    """The first heredoc's delimiter on this line as bash reads it - quotes and backslashes taken out - and whether
+    any part of it was quoted (a quoted delimiter keeps the body as data). None when the line opens none."""
+    found = HEREDOC_WORD.search(line)
+    if not found:
+        return None
+    raw = found.group(1)
+    label = re.sub(r"\\(.)", r"\1", raw).replace("'", "").replace('"', "")
+    return (label, any(sign in raw for sign in "'\"\\")) if label else None
+
+
 def without_heredoc_bodies(command: str) -> str:
     """The command without heredoc bodies; a body whose terminator is missing is kept (a door must not hide)."""
     if "<<" not in command:
@@ -82,9 +96,9 @@ def without_heredoc_bodies(command: str) -> str:
     lines, kept, i = command.split("\n"), [], 0
     while i < len(lines):
         kept.append(lines[i])
-        found = HEREDOC.search(lines[i])
+        found = heredoc(lines[i])
         if found:
-            label = next(group for group in found.groups() if group)
+            label = found[0]
             end = next((j for j in range(i + 1, len(lines)) if lines[j].strip() == label), None)
             if end is not None:
                 i = end

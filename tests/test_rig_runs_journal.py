@@ -156,3 +156,36 @@ def test_a_program_name_that_is_not_one_is_not_kept(tmp_path, program, kept):
     s, m = ready_machine(r)
     run = r.queue_run(s.id, who="x", project="P", revision="a" * 40, program=program, ladder=(), pid=1, mark="m")
     assert r.runs()[run.id].program == kept
+
+
+def test_past_the_floor_a_settled_machine_still_needs_room(tmp_path):
+    clock = {"at": T0}
+    r = rig(tmp_path, clock)
+    s, m = ready_machine(r)
+    r.note(m.id, cpus=8)
+    runs = [queue(r, s, pid=n) for n in (1, 2, 3)]
+    for run in runs[:2]:
+        r.start_run(run.id, m.id, alive=ALIVE, roomy=False)
+        r.command_started(run.id)
+    clock["at"] = T0 + dt.timedelta(seconds=61)
+    assert r.start_run(runs[2].id, m.id, alive=ALIVE, roomy=False) is None
+
+
+def test_a_machine_of_another_session_is_never_taken(tmp_path):
+    r = rig(tmp_path)
+    other, m = ready_machine(r)
+    r.set_session(other.id, j.CLOSING, reason="closed")
+    r.set_session(other.id, j.CLOSED)
+    mine = r.open_session("p", "x", hours=1, budget=1.0)
+    run = queue(r, mine)
+    assert r.start_run(run.id, m.id, alive=ALIVE, roomy=True) is None
+
+
+def test_a_finished_run_keeps_its_first_verdict(tmp_path):
+    r = rig(tmp_path)
+    s, m = ready_machine(r)
+    run = queue(r, s)
+    r.start_run(run.id, m.id, alive=ALIVE, roomy=False)
+    r.finish_run(run.id, "green", exit=0)
+    r.finish_run(run.id, "gone", reason="its process is gone")
+    assert r.runs()[run.id].verdict == "green"

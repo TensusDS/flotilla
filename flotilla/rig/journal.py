@@ -419,6 +419,8 @@ class Rig:
             run = _fold_runs(records).get(run_id)
             if run is None:
                 raise RigError(f"no run {run_id}")
+            if run.state == DONE:    # the first verdict stands: a reaper's late "gone" never overwrites it
+                return run
             fields = {key: value for key, value in dict(exit=exit, seconds=seconds, cost=cost, **measured).items()
                       if value is not None}
             self._append(tx, "run", run_id, DONE, verdict=verdict, **({"reason": reason} if reason else {}), **fields)

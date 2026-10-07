@@ -21,7 +21,8 @@ import tarfile
 from pathlib import Path, PurePosixPath
 
 #: Names `--put` never carries, matched against every path component, case-insensitively.
-SECRET_NAMES = (".env*", "*.pem", "id_*", "credentials*", ".npmrc", ".netrc", ".pypirc", ".git")
+SECRET_NAMES = (".env*", "*.pem", "*.key", "*.p12", "*.pfx", "id_*", "credentials*", ".npmrc", ".netrc", ".pypirc",
+                ".git", ".git-credentials", ".ssh", ".aws", ".kube", ".docker")
 #: Path components `--get` never writes, in the paths asked for and in every member of what comes back: git's,
 #: Claude Code's and flotilla's own files, and the places other tools run code from - dependencies, environments,
 #: direnv, git hooks and attributes, CI workflows, editor tasks, pre-commit.
@@ -127,6 +128,8 @@ def put_tar(root, puts, *, forbidden_roots=None) -> bytes:
                 if stat.S_ISDIR(info.st_mode):
                     archive.addfile(_info(rel, info, tarfile.DIRTYPE))
                 elif stat.S_ISREG(info.st_mode):
+                    if info.st_nlink > 1:
+                        raise Refused(f"--put {rel} has other hard links, which may name a file outside the tree")
                     with open(path, "rb") as handle:
                         archive.addfile(_info(rel, info, tarfile.REGTYPE), handle)
                 else:
@@ -170,7 +173,9 @@ def check_gets(root, gets) -> list[str]:
         hit = _names_match(name, CODE_NAMES)
         if hit:
             raise Refused(f"--get {name}: {hit} holds code or state this machine runs; it is never brought back")
-        if _git(root, "ls-files", "-z", "--", name).stdout:
+        low = name.lower()   # a case-insensitive file system makes src/app.py the tracked src/App.py
+        tracked = [t for t in _git(root, "ls-files", "-z").stdout.split("\0") if t]
+        if any(t.lower() == low or t.lower().startswith(low + "/") for t in tracked):
             raise Refused(f"--get {name}: git tracks it; an artifact is never a tracked file")
         link = _symlinked_parent(root, name)
         if link:
@@ -191,6 +196,8 @@ def unpack(root, archive: Path, wanted, *, cap: int = CAP) -> list[str]:
     if archive.stat().st_size == 0:
         return []
     wanted = [relative(root, w) for w in wanted]
+    wanted = [w for w in dict.fromkeys(wanted)   # a path inside another wanted one arrives with it
+              if not any(o != w and w.startswith(o + "/") for o in wanted)]
     try:
         handle = tarfile.open(archive, mode="r:*")
     except tarfile.TarError as err:

@@ -170,3 +170,39 @@ def test_put_refuses_a_symlink_that_points_inside_the_tree(tmp_path):
     (tmp_path / "data" / "link").symlink_to(tmp_path / "b.txt")
     with pytest.raises(transfer.Refused, match="symlink"):
         transfer.put_tar(tmp_path, ["data"], forbidden_roots=())
+
+
+def test_a_get_path_that_differs_from_a_tracked_one_only_by_case_is_refused(tmp_path):
+    tree = git_tree(tmp_path / "t", {"src/App.py": "code"})
+    with pytest.raises(transfer.Refused):
+        transfer.check_gets(tree, ["src/app.py"])
+
+
+def test_nested_gets_keep_every_file(tmp_path):
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    placed = transfer.unpack(tree, archive(tmp_path, [("out/a", "file", b"a"), ("out/sub/inner.txt", "file", b"i")]),
+                             ["out/sub", "out"])
+    assert (tree / "out/sub/inner.txt").read_bytes() == b"i" and (tree / "out/a").read_bytes() == b"a"
+    assert placed == ["out"]
+
+
+@pytest.mark.parametrize("name", ["certs/server.key", ".ssh/config", ".aws/credentials", ".git-credentials",
+                                  "store.p12", "store.pfx", ".kube/config", ".docker/config.json"])
+def test_put_refuses_more_secrets(tmp_path, name):
+    (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / name).write_text("s")
+    with pytest.raises(transfer.Refused):
+        transfer.put_tar(tmp_path, [name], forbidden_roots=())
+
+
+def test_put_refuses_a_hard_link(tmp_path):
+    import os
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret").write_text("s")
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    os.link(outside / "secret", tree / "data.bin")
+    with pytest.raises(transfer.Refused):
+        transfer.put_tar(tree, ["data.bin"], forbidden_roots=())

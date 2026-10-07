@@ -229,12 +229,12 @@ def _runs_any_flotilla(words: list[str]) -> bool:
     return any(_runs_flotilla(word, words[at - 1] if at else "") for at, word in enumerate(words))
 
 
-def _scan(text: str) -> tuple[bool, int | None]:
+def _scan(text: str) -> tuple[bool, list[int]]:
     """Read `text` with bash's quoting: whether a substitution - `$(`, a backtick, `<(`, `>(` - is live somewhere (bash
     runs it in the caller's own shell, before flotilla starts), and where the first unquoted standalone `--` begins.
     Single quotes and `$'..'` hide everything; double quotes hide all but `$(` and backticks; a backslash hides the
     next character. Never a toggle on every quote: an apostrophe inside double quotes is a letter."""
-    live, dashes, state, i, n = False, None, "plain", 0, len(text)
+    live, dashes, state, i, n = False, [], "plain", 0, len(text)
     while i < n:
         ch = text[i]
         if state == "single":
@@ -263,9 +263,9 @@ def _scan(text: str) -> tuple[bool, int | None]:
                 state = "double"
             elif ch == "`" or text.startswith(("$(", "<(", ">("), i):
                 live = True
-            elif (dashes is None and text.startswith("--", i) and (i == 0 or text[i - 1] in " \t")
+            elif (text.startswith("--", i) and (i == 0 or text[i - 1] in " \t")
                   and (i + 2 == n or text[i + 2] in " \t")):
-                dashes = i
+                dashes.append(i)
         i += 1
     return live, dashes
 
@@ -275,12 +275,13 @@ def heredoc_check(command: str, segments) -> Finding | None:
     segments never show that body. A flotilla line with `$(` or a backtick in such a body is refused."""
     if "<<" not in command or not any(_runs_any_flotilla(argv(s.text)) for s in segments):
         return None
-    from flotilla.guards.shell import HEREDOC
+    from flotilla.guards.shell import heredoc
     lines = command.split("\n")
     for at, line in enumerate(lines):
-        for found in HEREDOC.finditer(line):
-            label = found.group(3)
-            if not label:        # '...' or "..." delimiter: the body is data
+        found = heredoc(line)
+        if found:
+            label, quoted = found
+            if quoted:           # a delimiter quoted in any part: the body is data
                 continue
             for body in lines[at + 1:]:
                 if body.strip() == label:
@@ -301,8 +302,11 @@ def check(segment) -> Finding | None:
         return Finding(GUARD, True, "flotilla: this rig line holds a command substitution (`$(..)`, a backtick, "
                                     "`<(..)`), which your own shell runs before flotilla starts - and some rig moves "
                                     "spend money. Write the command plainly; quote it in single quotes if it is data.")
-    if dashes is not None and any(_is(c, "rig") and _is(m, "run") for c, m in readings):
-        text = text[:dashes]   # what follows a `rig run`'s `--` is the remote command: data to this guard
+    if words and os.path.basename(words[0]) == "flotilla":
+        for at in dashes:      # the `--` ending a `flotilla rig run`, as flotilla's own parser reads the words before it
+            if ("rig", "run") in _parsed(argv(text[:at])):
+                text = text[:at]   # what follows is the remote command: data to this guard
+                break
     if _runs_any_flotilla(words) and (any(sign in text for sign in EXPANDS) or text.rstrip().endswith("\\")):
         return Finding(GUARD, True, "flotilla: this flotilla command holds what bash expands or continues "
                                     "(braces, $'...', $\"...\", an extglob, a trailing backslash), so the move it "
