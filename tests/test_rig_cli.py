@@ -259,3 +259,19 @@ def test_the_provider_key_never_reaches_the_output_or_the_journal(world):
     texts.append((world["state"] / "rig" / "rig.jsonl").read_text())
     for text in texts:
         assert "instance-key-abcdef0123" not in text and "account-key-0123456789" not in text
+
+
+def test_a_crash_inside_a_pass_still_marks_that_the_pass_ran(world, monkeypatch):
+    """A flotilla that ran and crashed is not a flotilla that is gone: the launcher must not count it as a miss and
+    fall to its last resort (final review of 0.8.0, I-1)."""
+    from flotilla.rig import reaper
+    turn(world["state"], "on")
+    machine(world)
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("something unforeseen")
+    monkeypatch.setattr(reaper, "reap", broken)
+    code, out = run_cli("rig", "reap")
+    ok, note = health.last_outcome(world["state"])
+    assert code == 1 and health.last_reap(world["state"]) is not None
+    assert not ok and "RuntimeError" in note and "something unforeseen" in out

@@ -141,3 +141,22 @@ def test_labels_are_made_and_read_back():
     assert rs.key_of_label("flotilla:0123456789ab:m3") == ("0123456789ab", "m3")
     for other in ("", "echoes render box", "flotilla:short:m1", "flotilla:0123456789ab:", "flotilla:0123456789ab:x1"):
         assert rs.key_of_label(other) is None
+
+
+def test_a_state_directory_copied_from_another_host_refuses_its_key(tmp_path, monkeypatch):
+    """Two machines with one key would reap each other's instances as orphans (final review of 0.8.0, I-2)."""
+    state = tmp_path / "state"
+    monkeypatch.setattr(rs, "HOST", lambda: "host-a")
+    first = rs.machine_key(state)
+    assert rs.machine_key(state) == first
+    monkeypatch.setattr(rs, "HOST", lambda: "host-b")
+    with pytest.raises(rs.KeyRefused, match="another machine"):
+        rs.machine_key(state)
+
+
+def test_a_key_made_before_hosts_were_recorded_adopts_this_host(tmp_path, monkeypatch):
+    state = tmp_path / "state"
+    monkeypatch.setattr(rs, "HOST", lambda: "host-a")
+    first = rs.machine_key(state)
+    (state / "rig" / "machine-key.host").unlink()
+    assert rs.machine_key(state) == first and (state / "rig" / "machine-key.host").read_text().strip() == "host-a"

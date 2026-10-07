@@ -218,3 +218,17 @@ def test_the_installed_launcher_runs_as_a_real_script(tmp_path):
                           env={**os.environ, "CLAUDE_CONFIG_DIR": str(tmp_path / "none"),
                                "FLOTILLA_STATE_DIR": str(state)})
     assert "reap via ['rig', 'reap']" in done.stdout and done.returncode == 0
+
+
+def test_last_resort_refuses_a_key_made_on_another_host(tmp_path, monkeypatch):
+    launcher = load()
+    fake = FakeVast({"101": {"label": "flotilla:0123456789ab:m1"}})
+    folder, env = state_with_adapters(tmp_path, monkeypatch, launcher, fake)
+    (folder / "machine-key.host").write_text("some-other-host\n")
+    monkeypatch.setattr(launcher, "HOST", lambda: "this-host")
+    assert launcher.last_resort(folder, env)[0] == 1 and "101" in fake.instances
+
+
+def test_the_launcher_and_settings_name_this_host_alike():
+    from flotilla.rig import settings
+    assert load().HOST() == settings.HOST()

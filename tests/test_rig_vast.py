@@ -34,3 +34,16 @@ def test_the_base_url_ignores_the_environment(monkeypatch):
     monkeypatch.setattr(vast, "SEND", fake)
     vast.instances("k" * 12)
     assert fake.requests[0][1].startswith("https://console.vast.ai/")
+
+
+def test_a_key_echoed_late_in_an_error_is_masked_before_it_is_cut(monkeypatch):
+    """Cut first and a key straddling the cut leaves its first characters behind (final review of 0.8.0)."""
+    import json
+    key = "account-key-0123456789"
+    monkeypatch.setattr(vast, "SEND", lambda *a: (401, json.dumps({"msg": "x" * 190 + key}).encode()))
+    try:
+        vast.instances(key)
+    except vast.AdapterError as err:
+        assert key[:8] not in str(err)
+    else:
+        raise AssertionError("a 401 must raise")

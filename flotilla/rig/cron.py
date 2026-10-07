@@ -138,7 +138,7 @@ def python_of(line: str) -> str:
 
 def _read(run) -> list[str]:
     try:
-        done = run(["crontab", "-l"], capture_output=True, text=True, timeout=30, check=False)
+        done = run(["crontab", "-l"], capture_output=True, text=True, errors="surrogateescape", timeout=30, check=False)
     except (OSError, subprocess.TimeoutExpired) as err:
         raise CronError(f"crontab could not be run: {err}") from None
     if done.returncode == 0:
@@ -152,7 +152,8 @@ def _read(run) -> list[str]:
 def _write(lines: list[str], run) -> None:
     text = "".join(f"{line}\n" for line in lines)
     try:
-        done = run(["crontab", "-"], input=text, capture_output=True, text=True, timeout=30, check=False)
+        done = run(["crontab", "-"], input=text, capture_output=True, text=True, errors="surrogateescape", timeout=30,
+                   check=False)
     except (OSError, subprocess.TimeoutExpired) as err:
         raise CronError(f"crontab could not be run: {err}") from None
     if done.returncode != 0:

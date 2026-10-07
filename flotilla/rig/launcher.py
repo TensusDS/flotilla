@@ -21,6 +21,7 @@ import importlib.util
 import json
 import os
 import re
+import socket
 import stat
 import subprocess
 import sys
@@ -94,7 +95,28 @@ def _run(argv):
         return 1
 
 
+def _host_id():
+    for path in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
+        try:
+            found = open(path, encoding="utf-8").read().strip()
+        except OSError:
+            continue
+        if found:
+            return found
+    return socket.gethostname()
+
+
+HOST = _host_id   # the same answer as flotilla's settings.HOST; a test holds them equal
+
+
 def _machine_key(folder):
+    try:
+        recorded = (folder / "machine-key.host").read_text(encoding="utf-8").strip()
+    except OSError:
+        recorded = ""
+    if recorded and recorded != HOST():
+        print(f"rig launcher: the machine key here was made on another machine ({recorded}); nothing is destroyed")
+        return ""
     for name in ("machine-key", "machine-key.bak"):
         try:
             text = (folder / name).read_text(encoding="utf-8").strip()
@@ -135,15 +157,15 @@ def last_resort(folder, env):
 
 def drop_line(state, run):
     mine = tag(state)
-    done = run(["crontab", "-l"], capture_output=True, text=True, timeout=30, check=False)
+    done = run(["crontab", "-l"], capture_output=True, text=True, errors="surrogateescape", timeout=30, check=False)
     if done.returncode != 0:
         return False
     lines = done.stdout.splitlines()
     kept = [line for line in lines if not line.endswith(mine)]
     if len(kept) == len(lines):
         return False
-    run(["crontab", "-"], input="".join(f"{line}\n" for line in kept), capture_output=True, text=True, timeout=30,
-        check=False)
+    run(["crontab", "-"], input="".join(f"{line}\n" for line in kept), capture_output=True, text=True,
+        errors="surrogateescape", timeout=30, check=False)
     return True
 
 

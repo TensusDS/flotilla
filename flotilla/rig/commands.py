@@ -123,36 +123,44 @@ def _reap(state: Path, settings: rs.RigSettings) -> int:
         except BlockingIOError:
             print("another reaper pass is running; this one steps aside")
             return 0
-        stamp = _now().isoformat(timespec="seconds")
         try:
-            key = rs.machine_key(state)
-        except rs.KeyRefused as err:
-            key = None   # known machines still drain and are recorded; nothing is destroyed
-            print(f"{stamp} {err}")
-        rig = _rig(state)
-        try:
-            out = reaper.reap(rig, PROVIDERS, machine_key=key, services=_services(), on=settings.on, alive=_alive())
-        except StorageCorrupt as err:
-            if key is None:
-                print(f"{stamp} THE RIG JOURNAL IS DAMAGED ({err}) and the machine key cannot be read; check the "
-                      "rental services' consoles by hand")
-                health.stamp(state, _now(), ok=False, note="journal damaged, machine key unreadable")
+            stamp = _now().isoformat(timespec="seconds")
+            try:
+                key = rs.machine_key(state)
+            except rs.KeyRefused as err:
+                key = None   # known machines still drain and are recorded; nothing is destroyed
+                print(f"{stamp} {err}")
+            rig = _rig(state)
+            try:
+                out = reaper.reap(rig, PROVIDERS, machine_key=key, services=_services(), on=settings.on, alive=_alive())
+            except StorageCorrupt as err:
+                if key is None:
+                    print(f"{stamp} THE RIG JOURNAL IS DAMAGED ({err}) and the machine key cannot be read; check the "
+                          "rental services' consoles by hand")
+                    health.stamp(state, _now(), ok=False, note="journal damaged, machine key unreadable")
+                    return 1
+                out = reaper.emergency(PROVIDERS, machine_key=key, services=_services())
+                out.lines.insert(0, f"journal: {err}")
+                for line in out.lines:
+                    print(f"{stamp} {line}")
+                health.stamp(state, _now(), ok=False, note="journal damaged: emergency pass")
                 return 1
-            out = reaper.emergency(PROVIDERS, machine_key=key, services=_services())
-            out.lines.insert(0, f"journal: {err}")
             for line in out.lines:
                 print(f"{stamp} {line}")
-            health.stamp(state, _now(), ok=False, note="journal damaged: emergency pass")
+            problem = _keep_reaper(rig, state)
+            if problem:
+                print(f"{stamp} the reaper's crontab line: {problem}")
+            trouble = [line for line in out.lines if "could not" in line or "failed" in line or "STUCK" in line]
+            ok = not (out.stuck or out.failed or problem or key is None)
+            note = "" if ok else (trouble[0] if trouble else problem or "no machine key")
+            health.stamp(state, _now(), ok=ok, note=note)
+            return 0 if ok else 1
+        except Exception as err:  # noqa: BLE001 - a pass that ran and crashed must say so: the launcher reads an
+            # unmarked pass as "no flotilla here" and would fall to its last resort (final review of 0.8.0, I-1)
+            said = f"{type(err).__name__}: {err}"
+            print(f"{_now().isoformat(timespec='seconds')} the reaper pass failed: {said}")
+            health.stamp(state, _now(), ok=False, note=said)
             return 1
-        for line in out.lines:
-            print(f"{stamp} {line}")
-        problem = _keep_reaper(rig, state)
-        if problem:
-            print(f"{stamp} the reaper's crontab line: {problem}")
-        trouble = [line for line in out.lines if "could not" in line or "failed" in line or "STUCK" in line]
-        ok = not (out.stuck or out.failed or problem or key is None)
-        health.stamp(state, _now(), ok=ok, note="" if ok else (trouble[0] if trouble else problem or "no machine key"))
-        return 0 if ok else 1
 
 
 def _enable(state: Path, name: str) -> int:

@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import re
 import secrets as _secrets
+import socket
 import stat
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -103,9 +104,42 @@ def _write(path: Path, value: str) -> None:
     os.chmod(path, 0o600)
 
 
+def _host_id() -> str:
+    """Which computer this is: the OS's machine id, else the host name. A state directory copied to another computer
+    carries its machine key along, and two computers labelling with one key reap each other's instances as orphans
+    (final review of 0.8.0, I-2)."""
+    for path in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
+        try:
+            found = open(path, encoding="utf-8").read().strip()
+        except OSError:
+            continue
+        if found:
+            return found
+    return socket.gethostname()
+
+
+#: Which computer this is; tests replace it.
+HOST = _host_id
+
+
+def _same_host(folder: Path) -> None:
+    here, recorded = HOST(), _read(folder / "machine-key.host")
+    if not recorded:
+        if (folder / "machine-key").exists() or (folder / "machine-key.bak").exists():
+            _write(folder / "machine-key.host", here)   # a key made before hosts were recorded: it is this one's
+        return
+    if recorded != here:
+        raise KeyRefused(f"the machine key in {folder} was made on another machine ({recorded}); a copied state "
+                         "directory would reap that machine's instances as orphans, so nothing is destroyed here - "
+                         "the person removes machine-key, machine-key.bak and machine-key.host to give this "
+                         "machine its own")
+
+
 def machine_key(state: Path) -> str:
     folder = state / "rig"
     main, backup = folder / "machine-key", folder / "machine-key.bak"
+    if folder.exists():
+        _same_host(folder)
     found, spare = _read(main), _read(backup)
     if _KEY.match(found):
         if spare != found:
@@ -122,6 +156,7 @@ def machine_key(state: Path) -> str:
     made = _secrets.token_hex(6)
     _write(main, made)
     _write(backup, made)
+    _write(folder / "machine-key.host", HOST())
     return made
 
 

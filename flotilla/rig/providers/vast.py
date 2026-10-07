@@ -71,7 +71,7 @@ def _call(key, method, path, query=None):
         data = None
     if not 200 <= status < 300:
         said = data.get("msg") if isinstance(data, dict) and isinstance(data.get("msg"), str) else ""
-        raise AdapterError(f"vast {method} {path} answered {status}: {said[:200].replace(key, '[masked]')}", status)
+        raise AdapterError(f"vast {method} {path} answered {status}: {said.replace(key, '[masked]')[:200]}", status)
     if data is None:
         raise AdapterError(f"vast {method} {path} answered an unparsable body", status)
     return data
