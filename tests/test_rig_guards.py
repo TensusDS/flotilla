@@ -128,3 +128,13 @@ def test_a_globbed_command_after_an_opaque_program_is_refused(tmp_path, monkeypa
                                      'echo flotilla && $PY "${files[@]}"'])
 def test_an_opaque_program_with_no_rig_or_work_in_reach_is_not_refused(tmp_path, monkeypatch, command):
     assert ask(onboarded(tmp_path), command, monkeypatch, tmp_path) is None
+
+
+# A word bash builds at run time beside a variable program may become `work` or `rig`; a guarded move beside them
+# is enough to refuse (commit security review of the 0.9.0 branch).
+@pytest.mark.parametrize("command", ["$F wor$'k' approve feat/x", "$F w$(echo or)k approve feat/x",
+                                     "$F $W approve feat/x", "$F w`echo or`k approve feat/x",
+                                     "echo flotilla && $F $R open --hours 1"])
+def test_a_built_word_beside_a_variable_program_and_a_guarded_move_is_refused(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny"

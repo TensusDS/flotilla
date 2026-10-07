@@ -39,6 +39,9 @@ EXPANDS = ("{", "$'", '$"', "@(", "+(", "!(", "?(", "*(")
 #: `flotilla rig` moves that turn rented machines on or off, spend money, or widen what runs (rig design, section 4).
 RIG_MOVES = ("enable", "disable", "open", "close", "allow-image")
 
+#: The moves a variable program could be running when another of its words is built at run time.
+GUARDED = ("approve",) + RIG_MOVES
+
 
 def _reads(words: list[str]) -> list[tuple[str, str]]:
     """For each flotilla in the segment, the command and its move: the first two words after it that are not
@@ -105,7 +108,9 @@ def check(segment) -> Finding | None:
                                     "(braces, $'...', $\"...\", an extglob, a trailing backslash), so the move it "
                                     "runs cannot be read before it runs - and `approve` is the person's own move. "
                                     "Write the command plainly.")
-    named = any(_may_be(word, "rig") or _may_be(word, "work") for word in words[1:])
+    rest = words[1:]
+    built = any("$" in word or "`" in word for word in rest) and any(word in GUARDED for word in rest)
+    named = built or any(_may_be(word, "rig") or _may_be(word, "work") for word in rest)
     if (words and _opaque(words[0]) and named) or any(
             _opaque(command) or ((_is(command, "rig") or _is(command, "work")) and _opaque(move))
             for command, move in _reads(words)):
