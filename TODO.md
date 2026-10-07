@@ -13,6 +13,15 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 - **Stage 2b (0.10.0):** `rig run` over ssh renewing its lease (refused while the journal is damaged), the account
   credit beside the local count, and live check 2 - the twosuns scene through `rig run`, at most 0.50 $. Design
   `docs/specs/2026-10-06-rig-design.md`. *(checked 2026-10-07 on 0.9.0: open, design)*
+- **From the final review of 0.9.0** (minor, deferred): a `rig up` cut before create leaves a REQUESTED machine that
+  stalls later calls for 15 minutes; the budget pre-check in `rig up` is outside the lock (bounded by the machine
+  ceiling and the 90 % drain); a seat's `--why` reaches the orchestrator's model in fleet lines and `rig` (never a
+  pasted line); an adopted machine's `created` is the adoption time, undercounting the floor by one call; spec
+  section 5 promises the account credit in `flotilla rig`. *(checked 2026-10-07 on 0.9.0: still P -
+  flotilla/rig/commands.py `_up`, flotilla/rig/surface.py, flotilla/rig/reaper.py)*
+- **For `rig run`:** an ssh login shell on a vast machine does not carry `CONTAINER_ID`/`CONTAINER_API_KEY`/
+  `FLOTILLA_WATCHDOG_MINUTES` (the watchdog's process does; live check 1) - renew by touching the heartbeat file.
+  *(checked 2026-10-07 on 0.9.0: open, design)*
 - **Stage 3:** onboarding for a weak machine (the base set, the three questions, the cost with its consequences) and
   the `ssh` adapter for the person's own machine. *(checked 2026-10-07 on 0.9.0: open, design)*
 
