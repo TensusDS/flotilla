@@ -66,7 +66,7 @@ def test_write_then_read(tmp_path):
     data = {"schema": 1, "os": "linux", "python3": {"ok": True, "path": "/usr/bin/python3", "version": "3.12.1"}}
     path = machine.write_machine(tmp_path / "state", data)
     assert path.read_text(encoding="utf-8").startswith("# Measured by")
-    assert machine.read_machine(tmp_path / "state") == data
+    assert machine.read_machine(tmp_path / "state") == {**machine.RIG_DEFAULTS, **data}   # rig off, written for the person
 
 
 def test_read_missing_is_none(tmp_path):

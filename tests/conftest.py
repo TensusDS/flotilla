@@ -48,3 +48,28 @@ def git_rewrites_switched_off_per_test(monkeypatch):
     for key in NO_REWRITES:
         monkeypatch.setenv(key, "")
         monkeypatch.delenv(key)
+
+
+@pytest.fixture(autouse=True)
+def no_real_rental_service(monkeypatch, tmp_path):
+    """No test reaches a rental service or the person's keys (rig design, section 10): every adapter's door refuses
+    unless a test opens it with a double, and the key directory is the test's own."""
+    from flotilla.rig import providers
+
+    def no_network(*args, **kwargs):
+        raise AssertionError("a test reached a real rental service")
+    for name in providers.KNOWN:
+        monkeypatch.setattr(providers.load(name), "SEND", no_network)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config"))
+
+
+@pytest.fixture(autouse=True)
+def no_real_crontab(monkeypatch, tmp_path):
+    """No test touches the person's crontab, reads their plugin list, or reaches a service through the launcher's
+    adapter copies (second review of 2026-10-06)."""
+    from flotilla.rig import commands
+
+    def no_crontab(*args, **kwargs):
+        raise AssertionError("a test reached the real crontab")
+    monkeypatch.setattr(commands, "CRON_RUN", no_crontab)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude-config"))

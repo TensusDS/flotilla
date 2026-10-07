@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -20,7 +21,7 @@ STARTED = time.monotonic()
 #: Seconds per external call inside a hook. The calls plus a margin must fit inside the timeouts declared in
 #: hooks/hooks.json, or Claude Code kills the hook before it can say "unknown".
 HOOK_CHECK_TIMEOUT = 3
-EVENTS = ("session-start", "prompt", "stop", "guard", "permission", "ask")
+EVENTS = ("session-start", "prompt", "stop", "guard", "permission", "ask", "edit")
 CLI = Path(__file__).resolve().parent.parent / "bin" / "flotilla"
 PEERS_SHOWN = 8
 #: A Bash command naming none of these reaches no guard, so the hook answers before looking anything up. The last
@@ -40,6 +41,19 @@ def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime
     if not isinstance(payload, dict):
         payload = {}
     cwd = Path(payload.get("cwd") or ".")
+    if event == "edit":   # any project and none - wherever the plugin is enabled (user scope: every session)
+        try:
+            from flotilla.core import paths as _paths
+            from flotilla.guards.files import check as files_check
+            tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
+            text = files_check(tool_input, state=_paths.state_dir(), env=os.environ)
+        except Exception as err:  # noqa: BLE001 - an edit guard that fails must not stop every edit
+            print(f"flotilla: the edit guard failed and decides nothing: {err}", file=sys.stderr)
+            return 0
+        if text:
+            out.write(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
+                                                         "permissionDecisionReason": text}}))
+        return 0
     if event == "guard":
         tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
         command = tool_input.get("command") if isinstance(tool_input.get("command"), str) else ""

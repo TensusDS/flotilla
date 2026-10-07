@@ -1491,6 +1491,17 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    the maximum; a new command takes its project's 90th percentile, a new project a fixed prior of 4 cores and 2 GB.
    (planner's decision, 2026-10-05)
 
+233. **Rented machines are guarded before any is rented** (Claude Code session, 2026-10-06; design
+   `docs/specs/2026-10-06-rig-design.md`, stage 1). A probe on vast.ai showed a GPU box up in 2.5 minutes and the
+   twosuns scene in 14-18 s against two minutes on the field machine. Money must not depend on a session that may
+   die, so the first release carries only what stops spending. Two read-only reviews of the first draft reshaped it:
+   the `vastai` CLI retries with the person's account key and exits 0 after an API error, so vast is reached over
+   REST; cron named a versioned plugin path a cron-run reap kept pinning, so cron runs a launcher in the state
+   directory with a last resort; orphans were keyed by instance id and destroys did not check the label, so both are
+   decided by the label; a lease renewed by the orchestrator would have kept idle machines paid for, so only the work
+   renews it; and a cron that never fires is now noticed. At the person's request rig is not bound to vast: a rental
+   service is an adapter chosen by name, one standalone file keeping one contract, the same file the launcher's last
+   resort loads. (person's decision with the planner, 2026-10-06)
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

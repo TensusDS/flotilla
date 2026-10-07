@@ -19,7 +19,7 @@ def build_parser() -> argparse.ArgumentParser:
     doctor = sub.add_parser("doctor", help="check this machine and project")
     doctor.add_argument("--quiet", action="store_true", help="print only what needs attention")
     hook = sub.add_parser("hook", help="entry point for Claude Code hooks")
-    hook.add_argument("event", choices=["session-start", "prompt", "stop", "guard", "permission", "ask"])
+    hook.add_argument("event", choices=["session-start", "prompt", "stop", "guard", "permission", "ask", "edit"])
     onboard = sub.add_parser("onboard", help="measure, detect, ask and write the project profile")
     actions = onboard.add_subparsers(dest="action", required=True)
     actions.add_parser("machine", help="measure this machine into the state directory")
@@ -296,6 +296,13 @@ def build_parser() -> argparse.ArgumentParser:
     for item in (lane_take, lane_release, lane_run, lane_actions.choices["sweep"], lane_stop):
         item.add_argument("--root", default=_argparse.SUPPRESS)
         item.add_argument("--as", dest="as_name", default=None)
+    rig = sub.add_parser("rig", help="rented machines for heavy runs (off unless the person turned it on)")
+    rig_actions = rig.add_subparsers(dest="action")
+    rig_actions.add_parser("status", help="sessions, machines, money, the reaper - the same as bare `flotilla rig`")
+    rig_actions.add_parser("reap", help="drain what should not run, verify it is gone, destroy orphans (cron runs it)")
+    rig_enable = rig_actions.add_parser("enable", help="the person turns rented machines on")
+    rig_enable.add_argument("--provider", required=True, help="the rental service's adapter, e.g. vast")
+    rig_actions.add_parser("disable", help="the person turns rented machines off")
     return parser
 
 
@@ -334,4 +341,7 @@ def main(argv: list[str]) -> int:
     if args.command == "permit":
         from flotilla.broker.commands import run_permit_command
         return run_permit_command(args)
+    if args.command == "rig":
+        from flotilla.rig.commands import run_rig_command
+        return run_rig_command(args)
     return 2
