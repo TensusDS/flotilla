@@ -86,8 +86,12 @@ def measure_machine(*, os_name: str = sys.platform, proc_root: Path = Path("/pro
     return data
 
 
-#: Keys the person sets by hand; measuring the machine again keeps them (review of 0.7.14).
-PERSON_KEYS = ("lane_capacity", "max_seats")
+#: Keys the person sets by hand; measuring the machine again keeps them (review of 0.7.14). The rig's switch and
+#: ceilings are the person's too (rig design, section 4).
+PERSON_KEYS = ("lane_capacity", "max_seats", "rig", "rig_provider", "rig_max_machines", "rig_max_hourly",
+               "rig_max_hours")
+#: Written when absent, so the person finds the switch where they will look: off, with no provider.
+RIG_DEFAULTS = {"rig": "off", "rig_provider": ""}
 
 
 def write_machine(state: Path, data: dict) -> Path:
@@ -97,7 +101,18 @@ def write_machine(state: Path, data: dict) -> Path:
         old = read_machine(state) or {}
     except (OSError, ValueError):
         old = {}
-    data = {**{key: old[key] for key in PERSON_KEYS if key in old}, **data}
+    data = {**RIG_DEFAULTS, **{key: old[key] for key in PERSON_KEYS if key in old}, **data}
+    header = "Measured by `flotilla onboard machine`. Facts about this computer only; re-run to refresh."
+    path.write_text(render_toml(data, header=header), encoding="utf-8")
+    return path
+
+
+def set_person_keys(state: Path, **keys) -> Path:
+    """The person's own keys, set by their command (`rig enable`); every other key is kept as it was."""
+    state.mkdir(parents=True, exist_ok=True)
+    data = read_machine(state) or {}   # a torn file raises: it is the person's to repair, never to overwrite
+    data.update({key: value for key, value in keys.items() if key in PERSON_KEYS})
+    path = state / MACHINE_FILE
     header = "Measured by `flotilla onboard machine`. Facts about this computer only; re-run to refresh."
     path.write_text(render_toml(data, header=header), encoding="utf-8")
     return path
