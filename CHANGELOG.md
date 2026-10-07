@@ -3,6 +3,23 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.9.0 - 2026-10-07
+
+- **`flotilla rig`: a rented machine made, watched and given back.** The person opens a session with
+  `rig open --hours --budget` and closes it with `rig close`; a seat that needs a machine outside one is refused and
+  its request relayed by the orchestrator as a line carrying only the request's id (`--for rN`). `rig up` raises one
+  machine in short calls that resume, from images the person allowed (`rig_images`, grown by `rig allow-image`), on
+  vast datacenter hosts, within the session's budget. A watchdog on the machine destroys it, or stops it, when our
+  heartbeat stops. The reaper also drains a machine the service stopped, no longer lists on two passes, or that
+  took over 15 minutes to come up. `flotilla fleet` shows the session, the machines and loud lines first.
+- From the final review of 0.8.0 and the branch's security reviews: the person guard refuses a glob or a variable
+  in a command word, and, beside a program named through a variable, a glob that may be `rig`/`work` or any word
+  built at run time next to a guarded move; crontab lines
+  split on newlines only; the launcher's last resort keeps its line unless a service was listed; a reap that steps
+  aside on the lock is not a miss.
+- **Existing projects:** copy the new `orchestrator.md` (template v15) over `.flotilla/posts/orchestrator.md` on
+  trunk; `flotilla doctor` names it.
+
 ## 0.8.0 - 2026-10-07
 
 - **`flotilla rig`: the safeguards for rented machines, before any machine is rented.** Off by default; the person

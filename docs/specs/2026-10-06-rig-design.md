@@ -324,8 +324,9 @@ this machine has 4 and 8 - the fleet will run, its runs will wait for each other
    - what that comes to at the person's pace: the lane shows how many hours a week heavy runs took;
    - **the consequences, in plain words:**
      - money runs while a machine lives, idle or not;
-     - if all three safeguards fail, a machine can run to its session's end, never past the 8-hour ceiling; a
-       container the watchdog only stopped keeps billing its disk until it is destroyed;
+     - if the reaper fails, a machine runs until the watchdog's limit after our last heartbeat; if the watchdog
+       fails too, until it is destroyed by hand; a container the watchdog only stopped keeps billing its disk until
+       it is destroyed;
      - the project's committed code travels to a stranger's host;
      - prices and availability move;
      - the account, its 2FA and its balance are the person's, not the fleet's.

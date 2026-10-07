@@ -423,8 +423,8 @@ long ones.
 ## Rented machines (rig)
 
 Some runs need more than this machine - a GPU for WebGL screenshots, cores a laptop lacks. `flotilla rig` keeps
-the safeguards for machines rented by the hour. **It is off** until you turn it on, and **this version rents
-nothing**: it carries the journal, the lease and the reaper that later versions build on.
+the safeguards for machines rented by the hour. **It is off** until you turn it on. This version makes a machine,
+watches it and gives it back; running a job on it over ssh (`rig run`) comes next.
 
 - **Rental services are adapters chosen by name**; this version carries `vast` (vast.ai). A new service is one
   adapter file under `flotilla/rig/providers/` passing the shared contract suite.
@@ -432,6 +432,21 @@ nothing**: it carries the journal, the lease and the reaper that later versions 
   (for vast.ai a scoped key with `instance_read`, `instance_write`, `misc`), then type
   `! flotilla rig enable --provider vast` in your own session (or run it in a terminal). `flotilla rig disable` turns it off. Claude's tool calls cannot run either,
   and cannot edit `machine.toml`, the key or the rig's state directory with their edit tools.
+- **Money is spent only inside a session you open.** A seat that needs a machine and finds no session open is
+  refused, and its request goes to the orchestrator, which relays a ready line to paste:
+  `! flotilla rig open --hours 2 --budget 1 --for r3`. The line carries the request's id, never a session's text;
+  `--for` reads the reason back from the journal. `flotilla rig close` ends the session and the reaper drains its
+  machines. Requests belong to the project that made them and expire after a day.
+- **Images are yours to allow.** `rig enable` writes `rig_images` into `machine.toml` with one default
+  (`mcr.microsoft.com/playwright:v1.48.0-jammy`); a project's `[rig] image` is only a wish. A seat asking for another
+  image is refused and its request relayed as `! flotilla rig allow-image <image> --for rN`.
+- **Inside a session a seat raises a machine with `flotilla rig up`** - short calls (at most 90 seconds each) that
+  resume the machine coming up rather than make a second one. It refuses an image you have not allowed and a machine
+  that would pass the session's budget. vast datacenter hosts only.
+- **A watchdog runs on the machine** and destroys it (or, failing that, stops it) when our side stops renewing its
+  heartbeat for `--watchdog-minutes` (default 45, 5 to 45).
+- `flotilla fleet` shows rig lines first: the open session, each machine, and loud lines for a STUCK machine, a
+  silent reaper or a failed one, repeated every half hour until they clear.
 - Ceilings, yours too, in `~/.local/state/flotilla/machine.toml`: `rig_max_machines` (1), `rig_max_hourly`
   (0.60 $), `rig_max_hours` (8).
 - `flotilla rig` shows sessions, machines, what they cost at least, and when the reaper last ran.
@@ -439,7 +454,8 @@ nothing**: it carries the journal, the lease and the reaper that later versions 
   `# flotilla rig reaper` that removes itself when nothing is. The line runs a small launcher kept in flotilla's state
   directory, so it survives plugin updates; with flotilla uninstalled, the launcher itself destroys the instances
   this machine labelled. The reaper drains a machine whose lease expired, that sat idle 15 minutes, whose session
-  ended or neared its budget; destroys it only when vast lists it under the label flotilla gave it; and calls it gone
+  ended or neared its budget, that the service stopped or no longer lists (two passes agreeing), or that took over
+  15 minutes to come up; destroys it only when vast lists it under the label flotilla gave it; and calls it gone
   only when a later listing no longer shows it. After three passes it says STUCK. An instance without this machine's
   flotilla label - one you made by hand - is never touched.
 - If cron does not run on this machine (WSL by default), `flotilla rig` and `flotilla doctor` say the reaper is

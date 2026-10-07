@@ -1502,6 +1502,21 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    renews it; and a cron that never fires is now noticed. At the person's request rig is not bound to vast: a rental
    service is an adapter chosen by name, one standalone file keeping one contract, the same file the launcher's last
    resort loads. (person's decision with the planner, 2026-10-06)
+
+234. **A rented machine is made, watched and given back before any job runs on it** (Claude Code session,
+   2026-10-07; design `docs/specs/2026-10-06-rig-design.md`, stage 2a; plan
+   `docs/superpowers/plans/2026-10-07-rig-stage-2a.md`). Stage 2 was split: 0.9.0 makes and returns a machine,
+   0.10.0 runs work on it, so the money path is checked live before anything depends on it. A seat raises a machine
+   with `rig up`, short calls that resume the machine coming up by its label, because a tool call that waits ten
+   minutes is a tool call that times out and retries into a second machine. Two read-only reviews of the plan
+   (a plugin specialist and DevOps) reshaped it: a relayed line carried a session's typed reason into the person's
+   shell, so lines carry a request id (`--for rN`) and the reason is read back from the journal; requests are scoped
+   to the repository and expire after a day; one listing that misses a machine is not a loss, two that agree are;
+   `allow-image` names the image it allows. The image is the person's to allow (`rig_images`, the person's decision,
+   2026-10-07): a project's `[rig] image` is only a wish. An injection run (24 cases, all red after two tests were
+   strengthened) and a security scan of the branch closed two gaps before release: a glob path in the person guard
+   that could never run, and a requester's name or image carried into a relayed line. Live check 1 (Task 9) is
+   recorded in the spec's section 12. (person's decisions with the planner, 2026-10-07)
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
