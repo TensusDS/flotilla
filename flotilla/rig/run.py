@@ -373,6 +373,9 @@ def _main(state: Path, settings: rs.RigSettings, args) -> int:
         return task.code
     except _Ended:
         return task.code
+    except (SystemExit, KeyboardInterrupt):
+        task.verdict, task.code = "stopped", 130   # a signal in any phase: the finally ends the run on the machine
+        raise
     except Lost as err:
         task.lost = True
         task.verdict, task.code, task.reason = "lost", 75, str(err)

@@ -233,12 +233,13 @@ def test_a_run_past_its_ceiling_stops_everything_it_started(world, box, tree, mo
     assert code == 124 and run.verdict == "ceiling" and tagged(box, run.tag) == []
 
 
-def test_a_killed_rig_run_stops_its_run_on_the_machine(world, box, tree, tmp_path):
+@pytest.mark.parametrize("delay", [0.0, 1.0])   # in the tree's phases, or in the command's
+def test_a_killed_rig_run_stops_its_run_on_the_machine(world, box, tree, tmp_path, delay):
     opened(world)
     raised(world, tree)
     child = background_rig_run(world, tree, box, tmp_path, "--", "sleep", "30")
     wait_for(lambda: running(world) == 1)
-    time.sleep(1.0)
+    time.sleep(delay)
     child.send_signal(signal.SIGTERM)
     time.sleep(0.2)
     child.send_signal(signal.SIGTERM)
