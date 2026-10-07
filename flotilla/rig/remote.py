@@ -261,8 +261,8 @@ for _ in $(seq 50); do
   if [ -z "$left" ] && { [ -z "$g" ] || ! kill -0 -- "-$g" 2>/dev/null; }; then break; fi
   sleep 0.1
 done
-[ -n "$g" ] && kill -KILL -- "-$g" 2>/dev/null
-for p in $(tagged "$tag"); do kill -KILL "$p" 2>/dev/null; done
+if [ -n "$g" ] && kill -KILL -- "-$g" 2>/dev/null; then n=$((n + 1)); fi
+for p in $(tagged "$tag"); do kill -KILL "$p" 2>/dev/null && n=$((n + 1)); done
 echo "stopped $n"
 exit 0
 '''

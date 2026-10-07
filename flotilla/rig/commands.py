@@ -536,6 +536,9 @@ def run_rig_command(args) -> int:
             return _close(state)
         if args.action == "up":
             return _up(state, settings, args)
+        if args.action == "run":
+            from flotilla.rig import run as rig_run
+            return rig_run.main(state, settings, args)
         if args.action == "allow-image":
             return _allow_image(state, settings, args)
         return _status(state, settings)

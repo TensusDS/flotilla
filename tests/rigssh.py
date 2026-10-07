@@ -30,7 +30,7 @@ if os.path.exists(box + "/.dropped") and os.path.exists(box + "/.unreachable"):
     sys.exit(255)
 drop = None
 if os.path.exists(box + "/.drop"):
-    marker, seconds = open(box + "/.drop").read().split()
+    marker, seconds = open(box + "/.drop").read().rsplit(" ", 1)
     if marker in line:
         drop = float(seconds)
 env = {{"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": box + "/root", "LANG": "C"}}

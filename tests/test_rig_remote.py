@@ -164,13 +164,12 @@ def test_a_stop_before_the_run_wrote_its_group_still_finds_it_by_its_tag(tmp_pat
     box = machine(tmp_path, monkeypatch)
     (box / "work/P/runs" / T1).mkdir(parents=True)
     child = start(tmp_path, box, T1, "sleep", "60", status=box / "st")
-    end, said = time.time() + 5, ""
-    while time.time() < end:
+    end, stopped = time.time() + 5, 0
+    while time.time() < end and child.poll() is None:
         said = ssh(tmp_path, remote.STOP, box / "st", T1).stdout.decode()
-        if said.strip() != "stopped 0":
-            break
+        stopped += int(said.split()[-1])
     child.wait(15)
-    assert said.strip() != "stopped 0" and tagged(box, T1) == []
+    assert stopped > 0 and child.returncode != 0 and tagged(box, T1) == []
 
 
 def test_readings_report_memory_cpus_and_disk(tmp_path, monkeypatch):
