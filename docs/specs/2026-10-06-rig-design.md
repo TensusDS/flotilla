@@ -46,7 +46,9 @@ rig is off on this machine and how the person turns it on (`flotilla rig enable`
   offered: such commands run holding a key to money, anyone who can write the config writes them, and nothing could
   check that their "list" is complete, which is what "gone" rests on.
 - **`flotilla rig enable` / `disable` / `open` / `close`** - the person's moves (section 4).
-- **`flotilla rig run`** - the sessions' command; it renews its machine's lease while it runs.
+- **`flotilla rig up`** - raises one machine inside the person's open session (stage 2a, so a machine can be made and
+  watched before any run exists); with no session open it records a request the orchestrator relays.
+- **`flotilla rig run`** - the sessions' command; it renews its machine's lease while it runs (stage 2b).
 - **`flotilla rig reap`** - the reaper, run by cron through a launcher in the state directory.
 - **`flotilla rig`** - what stands where.
 
@@ -166,11 +168,14 @@ So cron does not run the plugin's path:
 
 **Layer 2 - a watchdog inside the machine**, for the case where the whole field machine died together with the cron.
 
-- vast injects into every container a key that can only start, stop or destroy that one instance
-  (`CONTAINER_API_KEY`; vast's FAQ). flotilla puts no key of its own on the machine.
+- vast injects into every container a key scoped to that one instance (`CONTAINER_API_KEY`, with `CONTAINER_ID`;
+  vast's FAQ documents stopping the instance with it, and says nothing of destroying it). flotilla puts no key of its
+  own on the machine.
 - The instance's start script runs a loop over a heartbeat file that our side touches over ssh on every run and
-  every lease renewal. When the heartbeat is older than 45 minutes, the watchdog destroys the instance with that
-  injected key; if the destroy fails, it stops the container.
+  every lease renewal. When the heartbeat is older than 45 minutes, the watchdog asks vast to destroy the instance
+  with that key, and when that is refused, to stop it. The limit is passed as `FLOTILLA_WATCHDOG_MINUTES` (5 to 45;
+  `rig up --watchdog-minutes` lowers it for the live check). Which of the two calls the key may make is measured by
+  the live check, not assumed.
 - Stage 2's live check measures both paths: that a self-destroy ends billing, and what a stopped container costs.
 
 **Layer 3 - ceilings.**
@@ -373,15 +378,17 @@ this machine's processes and census.
    crontab line; `last-reap` and its alarm in `flotilla rig` and `doctor`; the REST client for listing and destroy;
    the secret filter; the ceilings; `rig enable`/`disable` behind the person guard and the guard on `Edit`/`Write` of
    the person's files; off by default; `flotilla rig` display. All on doubles.
-2. **vast and runs:**
-   - `rig open`/`close` by the relayed yes;
-   - the vast provider's offers and create, and the ssh transfer;
-   - `rig run` with `--put`/`--get`, renewing its lease;
-   - the in-instance watchdog;
-   - lines in `fleet` and `watch`, and the stale-reaper alarm in `watch` and the session-start hook;
-   - the orchestrator template's duty;
-   - the 2FA measurement;
-   - the live check.
+2. **vast and runs, as two releases** (the person's decision, 2026-10-07):
+   - **2a (0.9.0) - a machine made, watched and given back:** the final review's minors; `rig open`/`close` by the
+     relayed yes, under the reaper's lock; `rig up`; the vast adapter's offers, create and ssh key; the in-instance
+     watchdog; rig lines in `fleet`, `watch` and the session-start hook, and requests relayed by the orchestrator
+     (template v15); live check 1 with the person's yes, at most 0.50 $: a machine made, our side "killed", the reaper
+     destroys it and the listing confirms; a second machine left to its watchdog; the 2FA question for create.
+   - **2b (0.10.0) - runs:** `rig run` over ssh with `--put`/`--get`, the setup cache, `lost`, renewing its lease
+     and the heartbeat; live check 2 - the twosuns scene through `rig run`, at most 0.50 $.
+
+   Measured on 2026-10-07 with the person's scoped key, read-only: listing and offer search work without a 2FA code;
+   datacenter offers with one GPU, reliability >= 0.98 and price <= 0.60 $/h started at 0.137 $/h.
 3. **Onboarding:** the base-set comparison, the three questions, the budget estimate with its consequences, the `ssh`
    provider.
 4. Later, each its own conversation: a test tier on the rig; several runs on one machine.
