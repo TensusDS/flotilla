@@ -28,6 +28,10 @@ LABEL_PREFIX = "flotilla:"
 OFF_LINE = ("rig is off on this machine: rented machines are used only after the person runs "
             "`flotilla rig enable --provider <service>` (README, section \"Rented machines (rig)\")")
 DEFAULTS = {"rig_max_machines": 1, "rig_max_hourly": 0.60, "rig_max_hours": 8.0}
+DEFAULT_IMAGE = "mcr.microsoft.com/playwright:v1.48.0-jammy"
+DEFAULT_IMAGES = (DEFAULT_IMAGE,)
+#: An image name a rented machine may run: safe to print in a line the person pastes (rig design, section 4).
+IMAGE = re.compile(r"[a-z0-9][a-z0-9./_:@-]{0,200}")
 _KEY = re.compile(r"^[0-9a-f]{12}$")
 _LABEL = re.compile(r"^flotilla:([0-9a-f]{12}):(m[0-9]+)$")
 
@@ -43,6 +47,7 @@ class RigSettings:
     max_machines: int = 1
     max_hourly: float = 0.60
     max_hours: float = 8.0
+    images: tuple = DEFAULT_IMAGES
 
 
 def _number(data: dict, key: str, *, whole: bool):
@@ -60,10 +65,16 @@ def settings(state: Path) -> RigSettings:
     except (OSError, ValueError):
         data = {}
     provider = data.get("rig_provider")
+    named = data.get("rig_images", None)
+    if named is None:
+        images = DEFAULT_IMAGES
+    else:
+        images = tuple(item for item in (named if isinstance(named, list) else []) if isinstance(item, str)
+                       and IMAGE.fullmatch(item))
     return RigSettings(on=data.get("rig") == "on", provider=provider if isinstance(provider, str) else "",
                        max_machines=_number(data, "rig_max_machines", whole=True),
                        max_hourly=_number(data, "rig_max_hourly", whole=False),
-                       max_hours=_number(data, "rig_max_hours", whole=False))
+                       max_hours=_number(data, "rig_max_hours", whole=False), images=images)
 
 
 def key_path(provider: str, env: Mapping[str, str] = os.environ) -> Path:
