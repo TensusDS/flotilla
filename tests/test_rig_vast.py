@@ -126,3 +126,11 @@ def test_the_watchdog_reaches_the_service_with_python_when_curl_and_node_are_mis
 def test_a_watchdog_with_no_client_at_all_says_so_loudly(tmp_path):
     out, calls = _run_watchdog(tmp_path, [])
     assert "no curl, node or python3" in out
+
+
+def test_a_machine_vast_only_intends_to_run_is_not_reported_running(monkeypatch):
+    fake = FakeVast()
+    fake.instances["901"] = {"label": "flotilla:k:m1", "actual_status": None, "ssh_host": "h", "ssh_port": 1}
+    monkeypatch.setattr(vast, "SEND", fake)
+    row = next(r for r in vast.instances("k" * 12) if r["instance"] == "901")
+    assert row["status"] != "running"      # measured 2026-10-07: cur_state says running while the image still pulls

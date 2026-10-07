@@ -91,7 +91,7 @@ def instances(key):
             label, price = row.get("label"), row.get("dph_total")
             host, port = row.get("ssh_host"), row.get("ssh_port")
             found.append({"instance": str(row["id"]), "label": label if isinstance(label, str) else "",
-                          "status": str(row.get("actual_status") or row.get("cur_state") or ""),
+                          "status": str(row.get("actual_status") or ""),   # cur_state is the intent
                           "hourly": float(price) if isinstance(price, (int, float)) and not isinstance(price, bool)
                           else None,
                           "address": f"{host}:{port}" if isinstance(host, str) and isinstance(port, int) else ""})

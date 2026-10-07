@@ -58,10 +58,13 @@ class FakeVast:
             chunk = ids[after:after + self.page]
             for i in chunk:
                 self.polls[i] = self.polls.get(i, 0) + 1
+                if self.instances[i].get("actual_status", "") is None and self.polls[i] > 1:
+                    self.instances[i]["actual_status"] = "loading"   # measured 2026-10-07: null, then loading
                 if self.instances[i].get("actual_status") == "loading" and self.polls[i] > self.boot_polls:
                     self.instances[i]["actual_status"] = "running"
             rows = [{"id": int(i), "label": self.instances[i].get("label"),
                      "actual_status": self.instances[i].get("actual_status", "running"),
+                     "cur_state": "running", "intended_status": "running",   # what vast intends, from the first second
                      "dph_total": self.instances[i].get("dph_total", 0.30),
                      "ssh_host": self.instances[i].get("ssh_host"), "ssh_port": self.instances[i].get("ssh_port"),
                      **({"instance_api_key": self.leak} if self.leak else {})} for i in chunk]
@@ -83,7 +86,7 @@ class FakeVast:
             payload = json.loads(body or b"{}")
             self.created += 1
             instance = str(900 + self.created)
-            self.instances[instance] = {"label": payload.get("label"), "actual_status": "loading", "dph_total": 0.20,
+            self.instances[instance] = {"label": payload.get("label"), "actual_status": None, "dph_total": 0.20,
                                         "ssh_host": "ssh4.vast.ai", "ssh_port": 30000 + self.created,
                                         "payload": payload}
             return 200, json.dumps({"success": True, "new_contract": int(instance),
