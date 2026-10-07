@@ -123,6 +123,8 @@ def test_a_globbed_command_after_an_opaque_program_is_refused(tmp_path, monkeypa
     assert answer and answer["permissionDecision"] == "deny"
 
 
-@pytest.mark.parametrize("command", ["$PYTHON $SCRIPT --flag", "$EDITOR notes.txt", "$PY -m pytest tests/*.py"])
+@pytest.mark.parametrize("command", ["echo flotilla && $PYTHON $SCRIPT --flag", "echo flotilla && $EDITOR notes.txt",
+                                     "echo flotilla && $PY -m pytest tests/*.py",
+                                     'echo flotilla && $PY "${files[@]}"'])
 def test_an_opaque_program_with_no_rig_or_work_in_reach_is_not_refused(tmp_path, monkeypatch, command):
     assert ask(onboarded(tmp_path), command, monkeypatch, tmp_path) is None
