@@ -22,9 +22,12 @@ from pathlib import Path, PurePosixPath
 
 #: Names `--put` never carries, matched against every path component, case-insensitively.
 SECRET_NAMES = (".env*", "*.pem", "id_*", "credentials*", ".npmrc", ".netrc", ".pypirc", ".git")
-#: Path components `--get` never writes: git's and Claude Code's own files, and untracked code the field machine
-#: runs (dependencies, environments, direnv, git hooks).
-CODE_NAMES = (".git", ".claude", "node_modules", ".venv", "venv", ".envrc", ".direnv", ".husky")
+#: Path components `--get` never writes, in the paths asked for and in every member of what comes back: git's,
+#: Claude Code's and flotilla's own files, and the places other tools run code from - dependencies, environments,
+#: direnv, git hooks and attributes, CI workflows, editor tasks, pre-commit.
+CODE_NAMES = (".git", ".gitattributes", ".gitmodules", ".claude", ".flotilla", "node_modules", ".venv", "venv",
+              ".envrc", ".direnv", ".husky", ".github", ".gitlab-ci.yml", ".vscode", ".idea",
+              ".pre-commit-config.yaml")
 CAP = 500 * 2 ** 20
 
 
@@ -204,6 +207,9 @@ def unpack(root, archive: Path, wanted, *, cap: int = CAP) -> list[str]:
                 raise Refused(f"the archive holds {name!r}, which is not a file or a directory")
             if not _inside(name, wanted):
                 raise Refused(f"the archive holds {name!r}, outside {', '.join(wanted)}")
+            hit = _names_match(name, CODE_NAMES)
+            if hit:
+                raise Refused(f"the archive holds {name!r}: {hit} holds code this machine runs")
             total += member.size
             if total > cap:
                 raise Refused(f"the archive is over {cap // 2 ** 20} MB")

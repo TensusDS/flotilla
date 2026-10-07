@@ -144,3 +144,21 @@ def test_the_project_slug_is_safe_and_stable(tmp_path):
     slug = transfer.project_slug(tmp_path / "two suns!", "github:x/twosuns")
     assert slug == transfer.project_slug(tmp_path / "two suns!", "github:x/twosuns")
     assert all(c.isalnum() or c in "._-" for c in slug) and slug.startswith("two-suns-")
+
+
+@pytest.mark.parametrize("member", ["shots/.envrc", "shots/.git/hooks/pre-commit", "shots/node_modules/x/index.js",
+                                    "shots/sub/.claude/settings.json", "shots/.github/workflows/x.yml"])
+def test_an_archive_member_that_plants_code_is_refused(tmp_path, member):
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    with pytest.raises(transfer.Refused):
+        transfer.unpack(tree, archive(tmp_path, [("shots/a.png", "file", b"1"), (member, "file", b"x")]), ["shots"])
+    assert list(tree.iterdir()) == []
+
+
+@pytest.mark.parametrize("bad", [".github/workflows", ".vscode", ".flotilla/posts", ".idea", ".gitattributes",
+                                 ".pre-commit-config.yaml", ".gitmodules"])
+def test_a_get_path_where_tools_run_code_is_refused(tmp_path, bad):
+    tree = git_tree(tmp_path / "t", {"tracked.txt": "t"})
+    with pytest.raises(transfer.Refused):
+        transfer.check_gets(tree, [bad])
