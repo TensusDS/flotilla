@@ -219,8 +219,8 @@ stopped=0
 timeout -k 10 "$limit" "$@" &
 cmd=$!
 trap 'stopped=1; kill -TERM "$cmd" 2>/dev/null' TERM
-wait "$cmd"; code=$?
-while kill -0 "$cmd" 2>/dev/null; do wait "$cmd"; code=$?; done
+wait "$cmd" 2>/dev/null; code=$?   # bash's own job notice must not die on a connection that broke (SIGPIPE)
+while kill -0 "$cmd" 2>/dev/null; do wait "$cmd" 2>/dev/null; code=$?; done
 trap - TERM
 kill "$sampler" 2>/dev/null; wait "$sampler" 2>/dev/null
 read -r -a stat < "/proc/$$/stat"

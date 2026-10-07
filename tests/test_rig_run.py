@@ -215,8 +215,9 @@ def test_a_run_stopped_from_outside_while_cut_is_cut(world, box, tree):
     def stop_from_outside():
         tag = tag_of(world, "j1")
         st = next((box / "work").rglob(f"{tag}.run.running")).with_suffix("")
-        subprocess.run(remote.ssh_argv("h:1", Path("k"), Path("kh"), remote.line(remote.STOP, st, tag)),
-                       env={**os.environ}, capture_output=True, timeout=30)
+        # on the machine itself: the stand-in is unreachable after the drop, as the field side is
+        subprocess.run(["bash", "-c", remote.line(remote.STOP, st, tag)], capture_output=True, timeout=30)
+        wait_for(lambda: st.exists() and st.read_text().startswith("exit=stopped"))
         (box / ".unreachable").unlink()
 
     after_drop(box, 0.5, stop_from_outside)

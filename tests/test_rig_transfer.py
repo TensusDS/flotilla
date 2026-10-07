@@ -162,3 +162,11 @@ def test_a_get_path_where_tools_run_code_is_refused(tmp_path, bad):
     tree = git_tree(tmp_path / "t", {"tracked.txt": "t"})
     with pytest.raises(transfer.Refused):
         transfer.check_gets(tree, [bad])
+
+
+def test_put_refuses_a_symlink_that_points_inside_the_tree(tmp_path):
+    (tmp_path / "data").mkdir()
+    (tmp_path / "b.txt").write_text("b")
+    (tmp_path / "data" / "link").symlink_to(tmp_path / "b.txt")
+    with pytest.raises(transfer.Refused):
+        transfer.put_tar(tmp_path, ["data"], forbidden_roots=())

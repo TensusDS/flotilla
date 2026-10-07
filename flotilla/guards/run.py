@@ -31,6 +31,9 @@ def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run) -> 
     from flotilla.guards.rules import rules_for
     segments = shell.segments(command, Path(cwd) if cwd else None)
     persons = [found for found in (person.check(segment) for segment in segments) if found]   # always on, no rules
+    heredoc = person.heredoc_check(command, segments)
+    if heredoc is not None:
+        persons.append(heredoc)
     if root is None:   # the session stands in no project; a push into one is still judged by that project (F18)
         return persons + [found for found in (push.guard(segment, root=None, profile={}, env=env, run=run)
                                               for segment in segments if push.door(segment) is not None)

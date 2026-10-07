@@ -196,3 +196,13 @@ def test_prune_keeps_what_is_recent_or_running(tmp_path, monkeypatch):
     assert out.returncode == 0 and out.stdout.decode().startswith("free_mb=")
     assert sorted(p.name for p in (project / "rev").iterdir()) == ["new"]
     assert not (project / "runs" / "stale").exists()
+
+
+@linux
+def test_receive_refuses_a_whole_stream_whose_digest_is_not_the_one_sent(tmp_path, monkeypatch):
+    box = machine(tmp_path, monkeypatch)
+    rev = box / "work/P/rev/abc"
+    data = tar_bytes({"a.txt": "1"})
+    other = hashlib.sha256(b"something else").hexdigest()
+    assert ssh(tmp_path, remote.RECEIVE, rev, other, str(len(data)), stdin=data).returncode == 65
+    assert ssh(tmp_path, remote.CHECK, rev).stdout.decode().startswith("absent")

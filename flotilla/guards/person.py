@@ -270,6 +270,28 @@ def _scan(text: str) -> tuple[bool, int | None]:
     return live, dashes
 
 
+def heredoc_check(command: str, segments) -> Finding | None:
+    """A heredoc whose delimiter is not quoted expands its body in the caller's own shell, quotes or not; the
+    segments never show that body. A flotilla line with `$(` or a backtick in such a body is refused."""
+    if "<<" not in command or not any(_runs_any_flotilla(argv(s.text)) for s in segments):
+        return None
+    from flotilla.guards.shell import HEREDOC
+    lines = command.split("\n")
+    for at, line in enumerate(lines):
+        for found in HEREDOC.finditer(line):
+            label = found.group(3)
+            if not label:        # '...' or "..." delimiter: the body is data
+                continue
+            for body in lines[at + 1:]:
+                if body.strip() == label:
+                    break
+                if "`" in body or "$(" in body:
+                    return Finding(GUARD, True, "flotilla: a heredoc in this flotilla line holds a command "
+                                                "substitution, which your own shell runs before flotilla starts. "
+                                                "Quote the delimiter (<<'EOF') if the body is data.")
+    return None
+
+
 def check(segment) -> Finding | None:
     words = argv(segment.text)
     text = segment.text

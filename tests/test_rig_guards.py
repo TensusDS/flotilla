@@ -240,3 +240,16 @@ def test_a_substitution_in_a_rig_line_is_refused(tmp_path, monkeypatch, command)
 def test_rig_keeps_the_permission_prompt():
     from flotilla.broker import decide
     assert "rig" not in decide.OWN_SUBCOMMANDS
+
+
+@pytest.mark.parametrize("command", ["{cli} rig run -- cat <<EOF\n$(flotilla rig open --hours 8 --budget 50)\nEOF",
+                                     "{cli} rig run -- cat <<-EOF\n\t`flotilla rig enable --provider vast`\n\tEOF",
+                                     "{cli} work list <<EOF\n'$(flotilla work approve x)'\nEOF"])
+def test_a_substitution_in_a_heredoc_body_of_a_flotilla_line_is_refused(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command.format(cli=CLI), monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny"
+
+
+def test_a_quoted_heredoc_body_is_data(tmp_path, monkeypatch):
+    command = f"{CLI} rig run -- cat <<'EOF'\n$(not run here)\nEOF"
+    assert ask(onboarded(tmp_path), command, monkeypatch, tmp_path) is None
