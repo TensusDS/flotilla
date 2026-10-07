@@ -9,15 +9,19 @@ profile turns on: a session cannot waive what only a person gives.
 
 Seen: the flotilla CLI anywhere in the segment - by any path, behind an interpreter or a wrapper (`python3 .../flotilla`,
 `timeout 60 .../flotilla`), or as the module (`-m flotilla.cli`) - whose move, the first word after `work` that names
-one, is `approve`. Quotes and backslashes inside the word are read as the shell reads them. Not seen: what the shell's
+one, is `approve`. The words are the ones bash hands the program - quotes and backslashes taken out,
+redirections and their targets taken away (`argv`, measured against bash) - and the move is the one flotilla's own
+parser reads. Not seen: what the shell's
 ceiling hides (`flotilla.guards.CEILING`) and Python handed the code as text (`python3 -c ...`) - such a call still
 meets Claude Code's permission prompt in the person's session.
 """
 
 from __future__ import annotations
 
+import contextlib
 import fnmatch
-import re
+import functools
+import io
 
 import os
 
@@ -44,24 +48,75 @@ RIG_MOVES = ("enable", "disable", "open", "close", "allow-image")
 GUARDED = ("approve",) + RIG_MOVES
 
 
-#: A redirection word: an optional descriptor, the operator, and maybe its target in the same word (`2>/dev/null`).
-REDIRECTION = re.compile(r"^[0-9]*(?:&>>?|>>?&?|<<<|<<-?|<>|<&?|>\|)(.*)$")
+def argv(text: str) -> list[str]:
+    """The words bash hands a program from one segment: quotes and backslashes taken out, every redirection and its
+    target taken away, a comment ended. Only redirections are removed here, never a word bash keeps, so a quoted
+    `'>'` stays an argument. Expansions are not performed: `check` refuses a segment that holds them first.
+    Measured against bash itself (tests/test_guards_argv.py)."""
+    words, word, started, i, n = [], [], False, 0, len(text)
+    drop_next = False
 
+    def end():
+        nonlocal word, started, drop_next
+        if started:
+            if drop_next:
+                drop_next = False
+            else:
+                words.append("".join(word))
+        word, started = [], False
 
-def _unredirected(words: list[str]) -> list[str]:
-    """The words bash hands the program: every redirection taken out, with its target when that is the next word.
-    argparse never sees them, so the guard must not read one as a command or a move (final review of 0.9.0, C1)."""
-    kept, skip = [], False
-    for word in words:
-        if skip:
-            skip = False
-            continue
-        found = REDIRECTION.match(word)
-        if found:
-            skip = found.group(1) == ""
-            continue
-        kept.append(word)
-    return kept
+    while i < n:
+        ch = text[i]
+        if ch in " \t\n":
+            end()
+            i += 1
+        elif ch == "\\":
+            if i + 1 < n and text[i + 1] != "\n":
+                word.append(text[i + 1])
+            started = True
+            i += 2
+        elif ch == "'":
+            close = text.find("'", i + 1)
+            close = n if close < 0 else close
+            word.append(text[i + 1:close])
+            started, i = True, close + 1
+        elif ch == '"':
+            i += 1
+            while i < n and text[i] != '"':
+                if text[i] == "\\" and i + 1 < n and text[i + 1] in '$`"\\\n':
+                    if text[i + 1] != "\n":
+                        word.append(text[i + 1])
+                    i += 2
+                else:
+                    word.append(text[i])
+                    i += 1
+            started, i = True, i + 1
+        elif ch == "#" and not started:
+            break
+        elif ch in "<>" or (ch == "&" and i + 1 < n and text[i + 1] == ">"):
+            if started and not "".join(word).isdigit():
+                end()
+            word, started = [], False          # a descriptor before the operator belongs to it
+            j = i + 1
+            while j < n and text[j] in "<>&|-":
+                j += 1
+            operator, i = text[i:j], j
+            if operator.endswith("&-"):        # `>&-` closes a descriptor: no target
+                continue
+            if operator.endswith("&"):         # `2>&1`, `>&2`: the target is the descriptor glued to it
+                k = i
+                while k < n and text[k].isdigit():
+                    k += 1
+                if k > i:
+                    i = k
+                    continue
+            drop_next = True                   # the target is the next word, glued or not
+        else:
+            word.append(ch)
+            started = True
+            i += 1
+    end()
+    return words
 
 
 def _reads(words: list[str]) -> list[tuple[str, str]]:
@@ -69,7 +124,6 @@ def _reads(words: list[str]) -> list[tuple[str, str]]:
     options, which is where argparse reads them. Reading only there keeps an ordinary `ls * *` further along from
     looking like a move, and a decoy before a second flotilla from hiding the real one (review of 0.6.10)."""
     found = []
-    words = _unredirected(words)
     for at, word in enumerate(words):
         if _runs_flotilla(word, words[at - 1] if at else ""):
             plain = [item for item in words[at + 1:] if not item.startswith("-")][:2]
@@ -100,15 +154,38 @@ def _may_be(word: str, name: str) -> bool:
     return "[" in word or fnmatch.fnmatchcase(name, word)
 
 
+@functools.lru_cache(maxsize=1)
+def _parser():
+    from flotilla.cli import build_parser
+    return build_parser()
+
+
+def _parsed(words: list[str]) -> list[tuple[str, str]]:
+    """For each flotilla in the segment, the command and move flotilla's own parser reads - the reading that decides
+    what runs, so no ordering, option value or abbreviation can differ from it. A line it refuses runs nothing."""
+    found = []
+    for at, word in enumerate(words):
+        if _runs_flotilla(word, words[at - 1] if at else ""):
+            try:
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    space = _parser().parse_args(words[at + 1:])
+            except SystemExit:
+                continue
+            command = getattr(space, "command", "") or ""
+            move = getattr(space, "move", "") if command == "work" else getattr(space, "action", "")
+            found.append((command, move or ""))
+    return found
+
+
 def _rig_move(words: list[str]) -> str:
-    for command, move in _reads(words):
+    for command, move in _reads(words) + _parsed(words):
         if _is(command, "rig") and any(_is(move, name) for name in RIG_MOVES):
             return move
     return ""
 
 
 def _moves(words: list[str]) -> list[str]:
-    return [("approve" if _is(move, "approve") else move) for command, move in _reads(words)
+    return [("approve" if _is(move, "approve") else move) for command, move in _reads(words) + _parsed(words)
             if _is(command, "work") and move]
 
 
@@ -123,7 +200,7 @@ def _runs_any_flotilla(words: list[str]) -> bool:
 
 
 def check(segment) -> Finding | None:
-    words = list(segment.words)
+    words = argv(segment.text)
     text = segment.text
     if _runs_any_flotilla(words) and (any(sign in text for sign in EXPANDS) or text.rstrip().endswith("\\")):
         return Finding(GUARD, True, "flotilla: this flotilla command holds what bash expands or continues "

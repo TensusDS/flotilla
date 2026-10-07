@@ -4,6 +4,7 @@ import json
 import pytest
 
 from flotilla import hooks
+from flotilla.guards import person
 from guardkit import onboarded
 
 CLI = str(hooks.CLI)
@@ -159,7 +160,6 @@ def test_a_redirection_after_an_ordinary_move_is_still_ordinary(tmp_path, monkey
 @pytest.mark.parametrize("command", ["a 2>&1 b", "a >&2 b", "a <&3 b", "a &>log b", "a &>>log b"])
 def test_an_ampersand_inside_a_redirection_separates_nothing(command):
     from flotilla.guards import shell
-    assert [part.strip() for part in shell.SEPARATORS.split(command)] == [command]
     assert [part.strip() for part in shell._split_outside_quotes(command)] == [command]
 
 
@@ -167,3 +167,21 @@ def test_a_lone_ampersand_still_separates():
     from flotilla.guards import shell
     assert [part.strip() for part in shell._split_outside_quotes("a & b")] == ["a", "b"]
     assert [part.strip() for part in shell.SEPARATORS.split("a & b")] == ["a", "b"]
+
+
+@pytest.mark.parametrize("command", ["echo \\>& git push origin main", "echo '>'& git push origin main",
+                                     'echo ">"& git push origin main'])
+def test_an_escaped_or_quoted_angle_before_an_ampersand_still_separates(command):
+    from flotilla.guards import shell
+    assert any(segment.words[:2] == ("git", "push") for segment in shell.segments(command, None))
+
+
+def test_flotillas_own_parser_reads_the_move():
+    assert person._parsed(["flotilla", "rig", "open", "--hours", "1", "--budget", "1"]) == [("rig", "open")]
+    assert person._parsed(["/x/bin/flotilla", "work", "approve", "feat/x"]) == [("work", "approve")]
+    assert person._parsed(["flotilla", "rig", "no-such-move"]) == []
+
+
+def test_the_quote_aware_split_cuts_after_an_escaped_angle():
+    from flotilla.guards import shell
+    assert [part.strip() for part in shell._split_outside_quotes("echo \\>& git push")] == ["echo \\>", "git push"]

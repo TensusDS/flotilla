@@ -16,8 +16,9 @@ import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
 
-#: `&` inside a redirection (`2>&1`, `>&2`, `<&3`, `&>file`) joins, it does not separate (final review of 0.9.0, C1).
-SEPARATORS = re.compile(r"&&|\|\||[;|\n]|(?<![<>])&(?!>)")
+#: The plain split cuts at every `&`, `2>&1` included: it cannot tell an escaped `\>` from a redirection, and an extra
+#: cut only adds a segment. The quote-aware split below reads `2>&1` whole; the guards read both.
+SEPARATORS = re.compile(r"&&|\|\||[;|&\n]")
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 WRAPPERS = frozenset({"sudo", "command", "nice", "nohup", "time", "exec", "env",
                       "if", "then", "else", "elif", "do", "while", "until", "!", "{", "("})
@@ -96,20 +97,33 @@ def _next_is(command: str, at: int, char: str) -> bool:
 
 
 def _split_outside_quotes(command: str) -> list[str]:
-    parts, current, quote = [], [], None
+    """Cut at separators outside quotes. An `&` inside a redirection (`2>&1`, `>&2`, `<&3`, `&>file`) joins, unless the
+    `<`/`>` before it was escaped or quoted, which makes it a plain character (final review of 0.9.0, C1)."""
+    parts, current, quote, escaped, angle = [], [], None, False, False
     for at, ch in enumerate(command):
         if quote:
             current.append(ch)
             if ch == quote:
                 quote = None
-        elif ch in "\"'":
+            angle = False
+            continue
+        if escaped:
+            current.append(ch)
+            escaped, angle = False, False
+            continue
+        if ch == "\\":
+            current.append(ch)
+            escaped = True
+            continue
+        if ch in "\"'":
             quote = ch
             current.append(ch)
-        elif ch in ";|\n" or (ch == "&" and not (current and current[-1] in "<>") and not _next_is(command, at, ">")):
+        elif ch in ";|\n" or (ch == "&" and not angle and not _next_is(command, at, ">")):
             parts.append("".join(current))
             current = []
         else:
             current.append(ch)
+        angle = ch in "<>"
     parts.append("".join(current))
     return parts
 
