@@ -61,3 +61,15 @@ def no_real_rental_service(monkeypatch, tmp_path):
     for name in providers.KNOWN:
         monkeypatch.setattr(providers.load(name), "SEND", no_network)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config"))
+
+
+@pytest.fixture(autouse=True)
+def no_real_crontab(monkeypatch, tmp_path):
+    """No test touches the person's crontab, reads their plugin list, or reaches a service through the launcher's
+    adapter copies (second review of 2026-10-06)."""
+    from flotilla.rig import commands
+
+    def no_crontab(*args, **kwargs):
+        raise AssertionError("a test reached the real crontab")
+    monkeypatch.setattr(commands, "CRON_RUN", no_crontab)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude-config"))

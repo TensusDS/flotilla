@@ -126,6 +126,13 @@ def collect(*, cwd: Path, env=os.environ, run=subprocess.run, which=shutil.which
         if setup:   # a hook skips them: its firing proves the plugin runs, and its budget is seconds
             findings += _setup(root, run=run, timeout=timeout, home=home)
 
+    try:
+        import datetime as _dt
+        from flotilla.rig import health as rig_health
+        for status, detail, fix in rig_health.findings(state, now=_dt.datetime.now(_dt.timezone.utc), run=run):
+            findings.append(Finding(status, "rig", detail, fix))
+    except Exception as err:  # noqa: BLE001 - a check that could not ask says so
+        findings.append(Finding("warn", "rig", f"could not be checked: {err}"))
     return findings
 
 
