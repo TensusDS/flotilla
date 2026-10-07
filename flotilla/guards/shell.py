@@ -74,19 +74,71 @@ class Segment:
         return None
 
 
-#: `<<` but never `<<<` (a here-string has no body), then the delimiter as one shell word up to a metacharacter.
-HEREDOC_WORD = re.compile(r"(?<!<)<<(?!<)-?[ \t]*((?:\\.|[^\s;&|<>()])+)")
+def _word(line: str, i: int) -> tuple[str, bool, int]:
+    """The shell word starting at `i`, as bash reads it: quotes and backslashes taken out, whether any part was
+    quoted, and where it ends (a blank or a metacharacter outside quotes)."""
+    out, quoted, n = [], False, len(line)
+    while i < n and line[i] not in " \t;&|<>()":
+        ch = line[i]
+        if ch == "\\" and i + 1 < n:
+            out.append(line[i + 1])
+            quoted, i = True, i + 2
+        elif ch in "'\"":
+            close = line.find(ch, i + 1)
+            close = n if close < 0 else close
+            out.append(line[i + 1:close])
+            quoted, i = True, close + 1
+        else:
+            out.append(ch)
+            i += 1
+    return "".join(out), quoted, i
 
 
 def heredoc(line: str) -> tuple[str, bool] | None:
-    """The first heredoc's delimiter on this line as bash reads it - quotes and backslashes taken out - and whether
-    any part of it was quoted (a quoted delimiter keeps the body as data). None when the line opens none."""
-    found = HEREDOC_WORD.search(line)
-    if not found:
-        return None
-    raw = found.group(1)
-    label = re.sub(r"\\(.)", r"\1", raw).replace("'", "").replace('"', "")
-    return (label, any(sign in raw for sign in "'\"\\")) if label else None
+    """The first heredoc this line opens, as bash reads it: its delimiter with quotes and backslashes taken out, and
+    whether any part of it was quoted (a quoted delimiter keeps the body as data). `<<` counts only outside quotes,
+    comments and arithmetic, and `<<<` (a here-string) never; None when the line opens none."""
+    state, depth, i, n = "plain", 0, 0, len(line)
+    while i < n:
+        ch = line[i]
+        if state == "single":
+            state = "plain" if ch == "'" else state
+        elif state == "ansi":
+            if ch == "\\":
+                i += 1
+            elif ch == "'":
+                state = "plain"
+        elif state == "double":
+            if ch == "\\":
+                i += 1
+            elif ch == '"':
+                state = "plain"
+        elif ch == "\\":
+            i += 1
+        elif ch == "'":
+            state = "single"
+        elif line.startswith("$'", i):
+            state, i = "ansi", i + 1
+        elif ch == '"':
+            state = "double"
+        elif ch == "#" and (i == 0 or line[i - 1] in " \t;&|()"):
+            return None                    # a comment to the end of the line
+        elif line.startswith("$((", i) or (line.startswith("((", i) and depth == 0 and line[:i].strip() in ("", "!")):
+            depth += 1
+            i += 2 if line[i] == "$" else 1
+        elif line.startswith("))", i) and depth:
+            depth -= 1
+            i += 1
+        elif depth == 0 and line.startswith("<<", i) and not line.startswith("<<<", i):
+            j = i + 2 + (1 if line.startswith("<<-", i) else 0)
+            while j < n and line[j] in " \t":
+                j += 1
+            label, quoted, _ = _word(line, j)
+            return (label, quoted) if label else None
+        elif depth == 0 and line.startswith("<<<", i):
+            i += 2
+        i += 1
+    return None
 
 
 def without_heredoc_bodies(command: str) -> str:

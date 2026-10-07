@@ -270,3 +270,20 @@ def test_a_decoy_rig_run_does_not_hide_braces(tmp_path, monkeypatch, command):
 def test_a_heredoc_misread_does_not_hide_a_line_bash_runs(tmp_path, monkeypatch, command):
     answer = ask(onboarded(tmp_path), command.format(cli=CLI), monkeypatch, tmp_path)
     assert answer and answer["permissionDecision"] == "deny"
+
+
+@pytest.mark.parametrize("command", ["echo '<<X'\n{cli} work approve r1\nX",
+                                     "echo $((1<<2))\n{cli} work approve r1\n2",
+                                     "# <<X\n{cli} work approve r1\nX",
+                                     "echo \"a <<X\"\n{cli} rig open --hours 1\nX",
+                                     "echo a\\<<X\n{cli} work approve r1\nX",
+                                     "(( y = 1<<3 ))\n{cli} work approve r1\n3"])
+def test_a_heredoc_that_is_not_one_does_not_hide_the_lines_after_it(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command.format(cli=CLI), monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny"
+
+
+def test_a_real_heredoc_body_is_still_skipped():
+    from flotilla.guards import shell
+    assert shell.without_heredoc_bodies("cat <<EOF\nflotilla work approve r1\nEOF\necho done") == "cat <<EOF\necho done"
+    assert shell.heredoc("cat 0<<-'E O'") == ("E O", True) and shell.heredoc("cat <<E\"OF\"") == ("EOF", True)
