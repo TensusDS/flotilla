@@ -82,9 +82,12 @@ user's; it is a door each honest path has to pass, the same standard as `flotill
   moves: refused to any Claude tool call by the guard hook (a command the person types with `!` never reaches the
   hook), refused to a background session or a process without a terminal (`caller.person_refusal`). They write the
   `rig` keys of `machine.toml`; measuring the machine again keeps them (`PERSON_KEYS`).
-- **The files that carry the person's word** - `machine.toml`, the provider key, the rig's state directory - are
-  refused to Claude's `Edit`, `Write`, `MultiEdit` and `NotebookEdit` tools by a guard hook on those tools. A shell
-  command that writes them is not caught: that is the limit named in the README's security model.
+- **The files that carry the person's word** - `machine.toml`, the services' keys, the rig's state directory - are
+  refused to Claude's `Edit`, `Write`, `MultiEdit` and `NotebookEdit` tools by a guard hook on those tools. Not
+  caught, and named as limits: a shell command that writes them; an MCP server's own write tools; a session where
+  flotilla's hooks do not load - with a per-project install that is every session outside those projects, so
+  `rig enable` and `doctor` recommend installing flotilla for the user once rig is on. The guards fail open (a guard
+  that crashes lets the edit through and says so on stderr): they guard the honest path, not a wall.
 - **Opening a session** (`flotilla rig open --hours H --budget USD --why TEXT`, stage 2) and **closing one** are
   the person's moves under the same guard. A session that needs a machine and finds none open is refused with a line
   naming the orchestrator, and the refusal is written to the journal as a request. The orchestrator relays it to the
@@ -112,24 +115,28 @@ Three layers; each fires if the one before it did not.
   - its session is not open (ended, closed, over budget);
   - rig was turned off and the machine is not `busy` - off stops new spending at once and lets a running job end.
 - **Draining means verifying, one pass apart.** A pass destroys a draining machine's instance; the next pass asks
-  the provider's listing. Absent: `gone`. Still listed: one more attempt is counted and the destroy repeated; at three
+  the provider's listing. Absent: `gone`. Still listed: the destroy is repeated; still listed after three destroys,
   the machine is `stuck`. A provider still listing an instance seconds after its destroy is therefore not an attempt.
-- **A destroy is checked against the label.** The reaper destroys an instance only when the listing shows it with
-  exactly the label the journal holds for that machine. Any other label - the person's own instance named by a damaged
+- **A destroy is checked against the label.** The reaper destroys an instance only when the journal's label for that
+  machine is this field machine's key with that machine's id, and the listing shows the instance with exactly that
+  label. An empty label, another machine's key or another id is never enough. Any other label - the person's own instance named by a damaged
   or forged journal line - is never destroyed; the machine is marked `stuck` with the reason `label mismatch`.
 - **Orphans are decided by the label, not by the instance id.** An instance labelled
-  `flotilla:<this machine's key>:<machine id>` is an orphan when the journal does not know that machine id, or knows it
-  as `gone`. The listing is taken first and the journal read after it, so a machine written to the journal while the
+  `flotilla:<this machine's key>:<machine id>` is an orphan unless that machine is live and holds this very instance,
+  or holds none yet (it is being created). So a duplicate made by a retried create, or the real instance a damaged
+  line stopped naming, is destroyed rather than left to bill. The listing is taken first and the journal read after it, so a machine written to the journal while the
   listing was taken is still known. **An instance without this machine's flotilla label is never touched**: the
   person's own vast work and another field machine's instances are safe.
 - **One reaper at a time.** A pass takes a non-blocking lock; a second pass (cron and a manual `rig reap` together)
   says the reaper is running and exits. Every move the reaper makes is a compare-and-set: re-checked inside the
   journal's transaction against the state and lease it decided on, and skipped if a run renewed it meanwhile.
 - **When the journal is damaged**, the reaper does not stop: it destroys every instance carrying this machine's
-  label, and says so loudly. A damaged journal can no longer say what is wanted, and money running is the worse error.
+  label, on every service with a key in place, and says so loudly. Stage 2's `rig open` and `rig run` refuse while the
+  journal is damaged, so nothing is created only to be destroyed. A damaged journal can no longer say what is wanted, and money running is the worse error.
 - **The machine key** (in the labels) is written once, with a backup beside it. A damaged key file is recovered from
-  the backup or from the labels in the journal, never silently replaced: a new key would make every earlier instance
-  an orphan no pass could recognise.
+  the backup, never from the journal's labels (any session can write those) and never silently replaced: a new key
+  would make every earlier instance an orphan no pass could recognise. With neither copy readable, the pass still
+  drains and records, but destroys nothing, and says so loudly until the person restores the key.
 
 **The reaper's launcher.** Cron must keep working when every session is dead and the plugin was updated or removed,
 and the plugin cache path is versioned (Claude Code marks superseded versions `.orphaned_at` and deletes them later).
@@ -137,19 +144,25 @@ So cron does not run the plugin's path:
 
 - The crontab line runs a launcher written into the state directory: `<state>/rig/reaper.py`, stdlib only, copied
   from the plugin when a machine is first requested and refreshed by every later rig command.
-- The launcher reads Claude Code's `installed_plugins.json`, takes the newest installed flotilla whose directory
-  exists and carries `flotilla/rig/`, and runs its `rig reap`.
-- **With no flotilla installed at all**, the launcher is the last resort: for every adapter copied beside it
-  (`<state>/rig/providers/`) whose key is in place, it lists the instances and destroys every one carrying this
-  machine's label, writes what it did to `reap.log`, and leaves the crontab line in place until no labelled instance
-  is listed.
-- The line names an interpreter that is checked to exist and is not a temporary environment (`machine.toml`'s
-  measured `python3`, else `/usr/bin/python3`, else the first `python3` on `PATH`); a path containing `%` (which cron
+- The launcher trusts only the marketplace recorded beside it when flotilla installed it (`flotilla@flotilla`, say),
+  never a plugin of the same name from another marketplace; and an older flotilla never rewrites what a newer one
+  installed. It runs the newest trusted flotilla whose directory still exists; one that does not leave a fresh mark of
+  a pass (a missing module, a Python older than 3.11) is skipped for the next.
+- **With no flotilla that reaps, on two passes in a row** (one miss may be `installed_plugins.json` caught
+  mid-rewrite), the launcher is the last resort: for every adapter copied beside it (`<state>/rig/providers/`) whose
+  key is in place, it destroys every instance carrying this machine's label, under the same lock as the reaper. When
+  every service was listed and none shows such an instance, it removes its own crontab line.
+- The line names an interpreter that is checked to exist, to be 3.11 or newer, and not to be a temporary environment
+  (`machine.toml`'s measured `python3`, else `/usr/bin/python3`, else the first `python3` on `PATH`); a path containing `%` (which cron
   reads as a newline) is refused. The mark carries a hash of the state directory, so a second state directory's rig
   never removes this one's line.
-- **Every pass writes `<state>/rig/last-reap`.** While anything lives and the last pass is older than 12 minutes,
-  `flotilla rig`, `doctor`, `watch` and the session-start hook say so loudly: a crontab line that never fires (a
-  machine with no cron daemon, as on WSL by default) is otherwise indistinguishable from a working one.
+- **Every pass writes `<state>/rig/last-reap`, with whether it did its work.** While anything lives and the last pass
+  is older than 12 minutes, or the last pass could not ask a service, `flotilla rig`, `doctor`, `watch` and the
+  session-start hook say so loudly: a crontab line that never fires (a machine with no cron daemon, as on WSL by
+  default) or a revoked key is otherwise indistinguishable from a working reaper. `doctor` also names a crontab line
+  whose launcher or interpreter is gone.
+- **Every edit of the crontab line happens under the reaper's lock**, so a pass that found nothing to guard never
+  removes the line a session opening at that moment just needed (stage 2's `rig open` takes the same lock).
 
 **Layer 2 - a watchdog inside the machine**, for the case where the whole field machine died together with the cron.
 
@@ -167,7 +180,8 @@ So cron does not run the plugin's path:
   listing's `dph_total` on every pass. The local figure is a floor, not the bill: traffic and storage are billed
   apart. So a session drains at **90 % of its budget, projected to the next pass** (spending now plus one pass at the
   current rate), and `flotilla rig` shows the account's credit at the session's open and now, when the key may read
-  it, so the person can see the real bill.
+  it, so the person can see the real bill. The refreshed price is applied to the machine's whole life: the local
+  figure is an estimate, the service's bill is the truth.
 - **The machine's ceilings** live in `machine.toml` and only the person changes them (section 4):
   - at most 1 machine at a time (`rig_max_machines`);
   - at most 0.60 $/hour (`rig_max_hourly`);
@@ -185,7 +199,10 @@ would silently defeat a scoped key; it exits 0 after an API error; and without `
   `DELETE /api/v0/instances/<id>/`;
 - every request has a 30 s timeout; an HTTP status other than 2xx, a timeout, or a body that does not parse is a
   failure, never a success, and its text is scrubbed before it is shown;
-- the base URL is fixed to `https://console.vast.ai`, so no environment variable can send the key elsewhere.
+- the base URL is fixed to `https://console.vast.ai`, so no environment variable can send the key elsewhere, and
+  redirects are not followed (urllib would carry the `Authorization` header to wherever one points);
+- any failure of the request - a refused connection, a cut answer (`http.client` errors are not `OSError`) - is the
+  adapter's error, never a crash of the pass; an instance id is ASCII digits only.
 
 ## 6. Keys and secrets
 
@@ -295,7 +312,8 @@ this machine has 4 and 8 - the fleet will run, its runs will wait for each other
    - what that comes to at the person's pace: the lane shows how many hours a week heavy runs took;
    - **the consequences, in plain words:**
      - money runs while a machine lives, idle or not;
-     - if all three safeguards fail, a machine can run to its session's end, never past the 8-hour ceiling;
+     - if all three safeguards fail, a machine can run to its session's end, never past the 8-hour ceiling; a
+       container the watchdog only stopped keeps billing its disk until it is destroyed;
      - the project's committed code travels to a stranger's host;
      - prices and availability move;
      - the account, its 2FA and its balance are the person's, not the fleet's.
@@ -396,3 +414,11 @@ reviewer), with the critical claims re-checked in the `vastai` 1.6.0 source and 
 - **A damaged journal stopped all cleanup; a damaged machine key was silently replaced**: the fallback and the
   recovery in section 5.
 - **The secret filter's injection would have stayed green**: the tests assert on the structure the provider returns.
+
+**Second review, the same day, after the rewrite.** Both reviewers checked their own findings (all closed or
+narrowed) and found what the rewrite itself broke: an empty label passed the label check; an instance its machine
+no longer named was never an orphan; the person guard read `rig -- enable` as harmless; the launcher trusted any
+marketplace's `flotilla`, ran it with no fallback, could act on one bad read, and never left the crontab; the
+interpreter's version was not checked; `http.client` errors and non-ASCII digits escaped the adapter; redirects kept
+the key; a failed pass looked healthy; the machine key could be adopted from forged labels; the budget test failed on
+`0.9 * 0.10`; and one injection could not fail. Each is closed in sections 4 and 5 above and in the plan.
