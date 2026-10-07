@@ -312,6 +312,14 @@ def build_parser() -> argparse.ArgumentParser:
     rig_allow = rig_actions.add_parser("allow-image", help="the person allows one more image for rented machines")
     rig_allow.add_argument("image", nargs="?", default="", help="the image, named in full")
     rig_allow.add_argument("--for", dest="for_", default="", help="the request it answers (checked, never trusted)")
+    rig_up = rig_actions.add_parser("up", help="raise one machine inside the person's open session (call again to "
+                                               "resume one still coming up)")
+    rig_up.add_argument("--why", default="a heavy run")
+    rig_up.add_argument("--wait", type=float, default=90.0, help="seconds to wait this call (default 90)")
+    rig_up.add_argument("--watchdog-minutes", dest="watchdog", type=int, default=45,
+                        help="lower the in-instance watchdog's limit (5-45; for the live check)")
+    rig_up.add_argument("--root", default=".")
+    rig_up.add_argument("--as", dest="as_name", default=None)
     return parser
 
 

@@ -18,7 +18,9 @@ from flotilla import __version__
 from flotilla.core import caller, paths
 from flotilla.core.storage import LocalLogStore, StorageCorrupt
 from flotilla.onboard.machine import read_machine, set_person_keys
-from flotilla.rig import cron, health, provider, providers, reaper
+from flotilla.ledger.errors import MoveRefused
+from flotilla.rig import cron, health, provider, providers, reaper, sshkey
+from flotilla.rig import profile as rig_profile
 from flotilla.rig import journal as j
 from flotilla.rig import settings as rs
 
@@ -26,6 +28,9 @@ CRON_RUN = subprocess.run
 PROVIDERS = provider.provider_for
 CLOCK = None
 ALIVE = None   # None: the machine's process table
+SLEEP = time.sleep
+POLL = 10.0
+SSH_KEY = sshkey.ensure
 LOG_LIMIT = 1_000_000
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 
@@ -354,6 +359,150 @@ def _allow_image(state: Path, settings: rs.RigSettings, args) -> int:
     return 0
 
 
+def _who(as_name) -> str:
+    from flotilla.lane.commands import _who as lane_who
+    return lane_who(as_name)
+
+
+def _project(root) -> tuple[str, rig_profile.RigProfile]:
+    """The repository's key - one for every worktree of it, so a seat's request reaches its fleet's orchestrator,
+    whose ledger carries the same key - and the profile read from the repository's top."""
+    from flotilla.core import config, repo
+    try:
+        found = repo.identify(Path(root))
+        key, top = found.key, found.root
+    except Exception:  # noqa: BLE001 - outside a repository: the directory itself names the project
+        key, top = f"dir:{Path(root).resolve()}", Path(root)
+    try:
+        return key, rig_profile.read(config.load_project(top).data)
+    except Exception:  # noqa: BLE001 - no profile, or one that cannot be read: the defaults
+        return key, rig_profile.read({})
+
+
+def _wait_up(rig: j.Rig, found, machine: j.Machine, deadline: dt.datetime, who: str, why: str) -> int:
+    while True:
+        rig.renew([machine.id])
+        try:
+            listed = {entry.instance: entry for entry in found.instances()}
+        except provider.ProviderError as err:
+            print(f"note: {err}")
+            listed = {}
+        entry = listed.get(machine.instance)
+        if entry is not None and entry.status == "running" and entry.address:
+            if rig.move(machine.id, j.READY, address=entry.address, expect={"state": j.PROVISIONING}) is None:
+                current = rig.machines()[machine.id]
+                print(f"machine {machine.id} is {current.state} ({current.reason}); not ready")
+                return 2
+            print(f"machine {machine.id} ready at {entry.address} (for {who}: {why})")
+            return 0
+        if _now() >= deadline:
+            print(f"machine {machine.id} is still coming up; call `flotilla rig up` again to keep waiting - "
+                  "the reaper gives it back after 15 minutes")
+            return 3
+        SLEEP(POLL)
+
+
+def _up(state: Path, settings: rs.RigSettings, args) -> int:
+    if not settings.on:
+        print(f"refused: {rs.OFF_LINE}")
+        return 2
+    if not 5 <= args.watchdog <= 45:
+        print("refused: --watchdog-minutes is 5 to 45; it may only lower the watchdog's limit")
+        return 2
+    deadline = _now() + dt.timedelta(seconds=min(args.wait, 100.0))   # the whole call: a seat's Bash cut is 120 s
+    try:
+        who = _who(args.as_name)
+        key = rs.machine_key(state)
+        rig = _rig(state)
+        open_ = [s for s in rig.sessions().values() if s.state == j.OPEN]
+    except (MoveRefused, rs.KeyRefused, StorageCorrupt) as err:
+        print(f"refused: {err}")
+        return 2
+    project, wanted = _project(args.root)
+    if not open_:
+        asked = rig.ask(who, args.why, project=project)
+        print(f"refused: no rig session is open; request {asked.id} is recorded for the orchestrator, who asks the "
+              f"person to paste: ! flotilla rig open --hours 2 --budget 1 --for {asked.id}")
+        return 2
+    session = open_[0]
+    found = PROVIDERS(settings.provider)
+    mine = [m for m in rig.machines().values()
+            if m.session == session.id and m.state in (j.REQUESTED, j.PROVISIONING, j.READY)]
+    if mine:   # resume: a call cut by its caller's timeout, or a seat asking again
+        machine = mine[0]
+        if machine.state == j.READY:
+            print(f"machine {machine.id} already ready at {machine.address}")
+            return 0
+        if machine.state == j.REQUESTED:
+            try:
+                entry = next((e for e in found.instances() if e.label == machine.label), None)
+            except provider.ProviderError as err:
+                entry = None
+                print(f"note: {err}")
+            moved = None if entry is None else rig.move(
+                machine.id, j.PROVISIONING, instance=entry.instance, hourly=entry.hourly,
+                created=_now().isoformat(timespec="seconds"), expect={"state": j.REQUESTED, "instance": ""})
+            if moved is None:
+                print(f"machine {machine.id} is being created by another call; call `flotilla rig up` again shortly")
+                return 3
+            machine = moved
+        return _wait_up(rig, found, machine, deadline, who, args.why)
+    for problem in wanted.problems:
+        print(f"note: {problem}")
+    if wanted.image not in settings.images:
+        asked = rig.ask(who, args.why, kind="image", project=project, image=wanted.image)
+        print(f"refused: the project asks for image {wanted.image}, which the person has not allowed; request "
+              f"{asked.id} is recorded - the person pastes: ! flotilla rig allow-image {wanted.image} --for {asked.id}")
+        return 2
+    now = _now()
+    one_pass = reaper.PASS.total_seconds() / 3600
+    ahead = rig.spent(session.id, now) + (rig.rate(session.id) + settings.max_hourly) * one_pass
+    if session.budget is not None and ahead >= reaper.DRAIN_AT * session.budget - reaper.CENT:
+        print(f"refused: session {session.id} would pass 90 % of its budget ({session.budget:.2f} $) within one pass")
+        return 2
+    try:
+        machine = _locked(state, lambda: rig.add_machine(session.id, settings.provider, lambda mid: rs.label(key, mid),
+                                                         limit=settings.max_machines), wait=10.0)
+    except (j.RigError, TimeoutError) as err:
+        print(f"refused: {err}")
+        return 2
+    try:
+        want = {"gpus": list(wanted.gpus), "max_hourly": settings.max_hourly, "min_reliability": 0.98,
+                "disk_gb": wanted.disk_gb, "limit": 64}
+        offers = found.offers(want)
+        if not offers:
+            rig.move(machine.id, j.FAILED, reason="no offer within the ceilings")
+            print(f"refused: no offer within the ceilings ({settings.max_hourly:.2f} $/h, datacenter, "
+                  f"{', '.join(wanted.gpus) or 'any GPU'}); machine {machine.id} is failed and will be reaped")
+            return 2
+        offer, public = offers[0], SSH_KEY()
+        instance = found.create(offer.offer, image=wanted.image, disk_gb=wanted.disk_gb,
+                                env={"FLOTILLA_WATCHDOG_MINUTES": str(args.watchdog),
+                                     "NVIDIA_DRIVER_CAPABILITIES": "all"},
+                                onstart=found.onstart(), label=machine.label)
+    except (provider.ProviderError, sshkey.KeyError_) as err:
+        rig.move(machine.id, j.FAILED, reason=f"create failed: {str(err)[:200]}")
+        print(f"refused: {err}; machine {machine.id} is failed - if the service made it anyway, the reaper finds it "
+              "by its label and destroys it")
+        return 2
+    try:
+        moved = rig.move(machine.id, j.PROVISIONING, instance=instance, gpu=offer.gpu, hourly=offer.hourly,
+                         created=_now().isoformat(timespec="seconds"), expect={"state": j.REQUESTED})
+    except j.RigError as err:
+        moved = None
+        print(f"note: {err}")
+    if moved is None:
+        print(f"machine {machine.id} changed while it was created (instance {instance}); the reaper finds the "
+              "instance by its label and destroys it")
+        return 2
+    print(f"machine {machine.id}: instance {instance}, {offer.gpu}, {offer.hourly:.3f} $/h - coming up")
+    try:
+        found.attach_ssh(instance, public)
+    except provider.ProviderError as err:
+        print(f"note: the rig's ssh key could not be attached yet: {err}")
+    return _wait_up(rig, found, moved, deadline, who, args.why)
+
+
 def run_rig_command(args) -> int:
     state = paths.state_dir()
     settings = rs.settings(state)
@@ -368,6 +517,8 @@ def run_rig_command(args) -> int:
             return _open(state, settings, args)
         if args.action == "close":
             return _close(state)
+        if args.action == "up":
+            return _up(state, settings, args)
         if args.action == "allow-image":
             return _allow_image(state, settings, args)
         return _status(state, settings)
