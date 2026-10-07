@@ -13,9 +13,11 @@ each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2
   it, a set time after our last heartbeat (nothing renews the heartbeat before `rig run`; it needs curl, node or
   python3 in the image). A machine is called ready only once the rig's ssh key is on it. The reaper also drains a machine the service stopped, no longer lists on two passes, or that
   took over 15 minutes to come up. `flotilla fleet` shows the session, the machines and loud lines first.
-- From the final review of 0.8.0 and the branch's security reviews: the person guard refuses a glob or a variable
-  in a command word, and, beside a program named through a variable, a glob that may be `rig`/`work` or any word
-  built at run time next to a guarded move; crontab lines
+- From the final review of 0.8.0 and the branch's security reviews: the person guard reads the words bash hands
+  flotilla (quotes, escapes, redirections and subshell parentheses resolved, measured against bash) and asks
+  flotilla's own parser for the move; it refuses a glob or a variable in a command word, a brace that may expand into
+  flotilla or its command, and, beside a program named through a variable, a glob that may be `rig`/`work` or any
+  word built at run time next to a guarded move; crontab lines
   split on newlines only; the launcher's last resort keeps its line unless a service was listed; a reap that steps
   aside on the lock is not a miss.
 - **Existing projects:** copy the new `orchestrator.md` (template v15) over `.flotilla/posts/orchestrator.md` on
