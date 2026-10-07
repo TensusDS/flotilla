@@ -10,9 +10,9 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 
 ## Rented machines (rig), after 0.9.0
 
-- **Stage 2b (0.10.0):** `rig run` over ssh renewing its lease (refused while the journal is damaged), the account
-  credit beside the local count, and live check 2 - the twosuns scene through `rig run`, at most 0.50 $. Design
-  `docs/specs/2026-10-06-rig-design.md`. *(checked 2026-10-07 on 0.9.0: open, design)*
+- **Stage 2c (0.11.0):** packing by estimates from the runs measured on rig machines (longest first, short ones
+  fill, none starved); the account credit beside the local count. Design `docs/specs/2026-10-06-rig-design.md`
+  section 7. *(checked 2026-10-07 on 0.10.0: open, design)*
 - **From the final review of 0.9.0** (minor, deferred): a `rig up` cut before create leaves a REQUESTED machine that
   stalls later calls for 15 minutes; the budget pre-check in `rig up` is outside the lock (bounded by the machine
   ceiling and the 90 % drain); a seat's `--why` reaches the orchestrator's model in fleet lines and `rig` (never a
@@ -295,6 +295,7 @@ Each is a limitation README states today, judged fixable in principle; none is p
 
 ## Done
 
+- 0.10.0: rig stage 2b - `rig run`: runs share a machine, are measured there, and bring artifacts back (decision 235).
 - 0.9.0: the person guard refuses a glob or a variable in a command word (`flotilla r?g open`, `$F rig open`).
 - 0.9.0: crontab lines are split on newlines only, so CR and form feed survive a rewrite.
 - 0.9.0: the launcher's last resort keeps its line unless a service was listed.

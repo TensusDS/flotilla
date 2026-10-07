@@ -311,8 +311,10 @@ ceiling is the rig's own; setup runs in each run with shared download caches; th
 **What comes back.**
 
 - `--get PATH` packs those paths on the machine after the run and unpacks them at the same paths in the tree.
-- Refused: the tree's root, any `.git` or `.claude` path component, a path git tracks at HEAD, a path under a local
-  symlink.
+- Refused: the tree's root, a path git tracks at HEAD, a path under a local symlink, and any path component - in the
+  path asked for and in every member of what comes back - where tools run code: `.git`, `.gitattributes`,
+  `.gitmodules`, `.claude`, `.flotilla`, `node_modules`, `.venv`, `venv`, `.envrc`, `.direnv`, `.husky`, `.github`,
+  `.gitlab-ci.yml`, `.vscode`, `.idea`, `.pre-commit-config.yaml`.
 - Unpacking is safe:
   - absolute paths, paths leaving the tree, links and devices are refused;
   - the total is capped (default 500 MB);

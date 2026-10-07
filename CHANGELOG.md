@@ -3,6 +3,19 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.10.0 - 2026-10-07
+
+- **`flotilla rig run`: a command on a rented machine, its output, its exit code and its artifacts.** Several runs
+  share a machine - two always, more when its memory, GPU memory and CPUs leave room - in a line per session. The
+  revision travels once and is checked by sha256; each run has its own copy and its own setup with shared download
+  caches; `--put` and `--get` refuse secrets, symlinks and places that run code; ssh reads none of the person's
+  config. A broken connection is asked about, not assumed; a signal stops the run on the machine; every run renews
+  the lease and the heartbeat, is measured there, and leaves its verdict and cost in the journal.
+- The person guard reads a rig line with bash's quoting: a live substitution anywhere in it, or in a heredoc of any
+  flotilla line, is refused; what follows `rig run`'s `--` is the remote command's data.
+- **Existing projects:** posts `main` v7 and `minor` v5 say how seats call `rig run`; `flotilla doctor` names older
+  copies.
+
 ## 0.9.0 - 2026-10-07
 
 - **`flotilla rig`: a rented machine made, watched and given back.** The person opens a session with
