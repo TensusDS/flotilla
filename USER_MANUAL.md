@@ -86,6 +86,13 @@ Worktrees and receipts:
     flotilla rig reap                     drain what should not run, verify it is gone (cron runs it every 5 min)
     flotilla rig enable --provider vast   the person only: turn rented machines on (a Claude tool call is refused)
     flotilla rig disable                  the person only: turn them off; the reaper drains what is still live
+    flotilla rig open --hours H --budget USD (--why TEXT | --for rN)
+                                          the person only: open a session that may spend; --for answers a request
+    flotilla rig close                    the person only: close the open session; the reaper drains its machines
+    flotilla rig allow-image IMAGE [--for rN]
+                                          the person only: allow one more image for rented machines
+    flotilla rig up [--wait S] [--watchdog-minutes M]
+                                          a seat raises one machine in the open session; call again to resume
 
 ## Daily operation
 

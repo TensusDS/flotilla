@@ -303,6 +303,23 @@ def build_parser() -> argparse.ArgumentParser:
     rig_enable = rig_actions.add_parser("enable", help="the person turns rented machines on")
     rig_enable.add_argument("--provider", required=True, help="the rental service's adapter, e.g. vast")
     rig_actions.add_parser("disable", help="the person turns rented machines off")
+    rig_open = rig_actions.add_parser("open", help="the person opens a rig session: hours, budget, and why or --for")
+    rig_open.add_argument("--hours", required=True)
+    rig_open.add_argument("--budget", required=True, help="dollars the session may spend")
+    rig_open.add_argument("--why", default="")
+    rig_open.add_argument("--for", dest="for_", default="", help="the request id the orchestrator relayed (rN)")
+    rig_actions.add_parser("close", help="the person closes the open session; the reaper drains its machines")
+    rig_allow = rig_actions.add_parser("allow-image", help="the person allows one more image for rented machines")
+    rig_allow.add_argument("image", nargs="?", default="", help="the image, named in full")
+    rig_allow.add_argument("--for", dest="for_", default="", help="the request it answers (checked, never trusted)")
+    rig_up = rig_actions.add_parser("up", help="raise one machine inside the person's open session (call again to "
+                                               "resume one still coming up)")
+    rig_up.add_argument("--why", default="a heavy run")
+    rig_up.add_argument("--wait", type=float, default=90.0, help="seconds to wait this call (default 90)")
+    rig_up.add_argument("--watchdog-minutes", dest="watchdog", type=int, default=45,
+                        help="lower the in-instance watchdog's limit (5-45; for the live check)")
+    rig_up.add_argument("--root", default=".")
+    rig_up.add_argument("--as", dest="as_name", default=None)
     return parser
 
 

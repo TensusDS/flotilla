@@ -324,8 +324,9 @@ this machine has 4 and 8 - the fleet will run, its runs will wait for each other
    - what that comes to at the person's pace: the lane shows how many hours a week heavy runs took;
    - **the consequences, in plain words:**
      - money runs while a machine lives, idle or not;
-     - if all three safeguards fail, a machine can run to its session's end, never past the 8-hour ceiling; a
-       container the watchdog only stopped keeps billing its disk until it is destroyed;
+     - if the reaper fails, a machine runs until the watchdog's limit after our last heartbeat; if the watchdog
+       fails too, until it is destroyed by hand; a container the watchdog only stopped keeps billing its disk until
+       it is destroyed;
      - the project's committed code travels to a stranger's host;
      - prices and availability move;
      - the account, its 2FA and its balance are the person's, not the fleet's.
@@ -436,3 +437,30 @@ marketplace's `flotilla`, ran it with no fallback, could act on one bad read, an
 interpreter's version was not checked; `http.client` errors and non-ASCII digits escaped the adapter; redirects kept
 the key; a failed pass looked healthy; the machine key could be adopted from forged labels; the budget test failed on
 `0.9 * 0.10`; and one injection could not fail. Each is closed in sections 4 and 5 above and in the plan.
+
+### Live check 1 (2026-10-07, the person's yes, at most 0.50 $)
+
+From the 0.9.0 branch, the person's scoped vast key, `rig_max_hourly` 0.25. Two sessions, two Tesla P100
+datacenter machines at 0.107 $/h. Credit 4 -> 3.95 $ as the person read it, rounded; the local floor said at least
+0.04 $.
+
+- **Create needs no 2FA** with the scoped key (`instance_read`, `instance_write`, `misc`).
+- **vast's `cur_state` and `intended_status` say `running` from the first second**; only `actual_status` reports the
+  box: null, then `loading` while the image pulls, then `running` about 2 minutes after create. `rig up` first
+  called the machine ready after 3 seconds, reading `cur_state`; fixed before release, and the test fake now answers
+  with this sequence.
+- **The reaper path:** after `rig close`, one pass sent the destroy; the instance was absent from the listing at the
+  first poll, 9 seconds later; the next pass recorded it gone and closed the session.
+- **The watchdog path:** with `--watchdog-minutes 5` and the reaper's crontab line removed, the instance left the
+  listing about 6 minutes after it ran (the limit plus the 60-second tick). The container's `CONTAINER_API_KEY`
+  **may destroy**; no `exited` or `stopped` was seen. The reaper, back, marked the machine suspect, then lost and gone
+  on the next pass.
+- **Statuses seen:** `null`, `loading`, `running`, then absent. `offline` and `exited` were not seen, so the
+  two-pass rule for an unlisted or `offline` machine stays as designed.
+- **On the machine** (over ssh with the rig's key): the key is accepted; the start script ran (heartbeat, watchdog,
+  `10_nvidia.json`); the Playwright image has curl, node and python3. The watchdog's process sees `CONTAINER_ID`,
+  `CONTAINER_API_KEY` and `FLOTILLA_WATCHDOG_MINUTES`; **an ssh login shell does not**, which `rig run` must allow
+  for.
+- The reaper removed its own crontab line when nothing was rented; the crontab ended identical to its backup. A
+  session that expired was closed by the cron reaper on time.
+

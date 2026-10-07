@@ -11,7 +11,8 @@ nice, nohup, time, exec and shell keywords. It does not see commands inside $( )
 xargs, find -exec, functions, aliases or scripts (./ship.sh), nor wrappers with options (sudo -u x git ...). A
 directory named through a variable (cd $D) is unknown: the revert guard then only warns, the push guard refuses.
 The line-number guard does not open sed -f scripts and does not know perl -i, awk -i inplace or ed. What the text
-hides from the push guard, the git pre-push hook catches: it asks git what is pushed."""
+hides from the push guard, the git pre-push hook catches: it asks git what is pushed. A program named through a
+variable (`$F rig open`) is not seen at all when nothing else in the line names flotilla."""
 
 
 @dataclass(frozen=True)

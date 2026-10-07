@@ -160,3 +160,13 @@ def test_a_key_made_before_hosts_were_recorded_adopts_this_host(tmp_path, monkey
     first = rs.machine_key(state)
     (state / "rig" / "machine-key.host").unlink()
     assert rs.machine_key(state) == first and (state / "rig" / "machine-key.host").read_text().strip() == "host-a"
+
+
+def test_the_allowed_images_default_to_the_shipped_one_and_are_the_persons(tmp_path):
+    state = tmp_path / "state"
+    assert rs.settings(state).images == (rs.DEFAULT_IMAGE,)
+    write(state, render_toml({"rig": "on", "rig_images": ["ghcr.io/me/shoot:1.2", "bad; rm", 7]}))
+    assert rs.settings(state).images == ("ghcr.io/me/shoot:1.2",)
+    write(state, render_toml({"rig": "on", "rig_images": []}))
+    assert rs.settings(state).images == ()
+    assert "rig_images" in PERSON_KEYS

@@ -8,28 +8,13 @@ something through, B a bug a user meets, P polish, tests or docs), or `open, des
 run). A later triage re-checks only items whose named files changed since that version. An item that is done -
 fixed by a release, or found fixed - leaves its section for **Done** at the bottom, one line with the version.
 
-## Rented machines (rig), after 0.8.0
+## Rented machines (rig), after 0.9.0
 
-- **Stage 2:** the vast adapter's offers and create, `rig open/close` behind the person guard and the reaper's lock,
-  `rig run` renewing its lease (refused while the journal is damaged), the watchdog destroying through
-  `CONTAINER_API_KEY`, lines in `fleet`/`watch`/session-start including the stale-reaper alarm, the orchestrator's
-  duty, the 2FA measurement for a scoped key, the account credit beside the local count, and the live check
-  (destroyed instances leave the listing; what a stopped container bills). Design `docs/specs/2026-10-06-rig-design.md`.
-  *(checked 2026-10-07 on 0.8.0: open, design)*
-- **From the final review of 0.8.0** (each before stage 2 spends money):
-  - the person guard misses a glob on the word `rig` (`flotilla r?g open ...` with a file named `rig` present) - the
-    same gap as `w?rk approve`; match the word with fnmatch, or refuse `?*[` in a segment that runs flotilla. Must
-    close before `rig open` exists. *(checked 2026-10-07 on 0.8.0: still S - flotilla/guards/person.py `_rig_move`)*
-  - crontab lines are split with `splitlines()`, so CR and form feed in the person's crontab are altered on rewrite;
-    split on `\n` only. *(checked 2026-10-07 on 0.8.0: still P - flotilla/rig/cron.py `_read`, launcher.py
-    `drop_line`)*
-  - the launcher's last resort with no key file in place removes its own line, saying nothing labelled is left; set
-    "clear" only when a service was listed. *(checked 2026-10-07 on 0.8.0: still B - flotilla/rig/launcher.py
-    `last_resort`)*
-  - a reap that steps aside on the lock leaves no mark, so two collisions in a row count as two launcher misses.
-    *(checked 2026-10-07 on 0.8.0: still B - flotilla/rig/commands.py `_reap`, launcher.py `main`)*
+- **Stage 2b (0.10.0):** `rig run` over ssh renewing its lease (refused while the journal is damaged), the account
+  credit beside the local count, and live check 2 - the twosuns scene through `rig run`, at most 0.50 $. Design
+  `docs/specs/2026-10-06-rig-design.md`. *(checked 2026-10-07 on 0.9.0: open, design)*
 - **Stage 3:** onboarding for a weak machine (the base set, the three questions, the cost with its consequences) and
-  the `ssh` adapter for the person's own machine. *(checked 2026-10-07 on 0.8.0: open, design)*
+  the `ssh` adapter for the person's own machine. *(checked 2026-10-07 on 0.9.0: open, design)*
 
 ## From the README's known limitations (2026-10-04)
 
@@ -301,6 +286,11 @@ Each is a limitation README states today, judged fixable in principle; none is p
 
 ## Done
 
+- 0.9.0: the person guard refuses a glob or a variable in a command word (`flotilla r?g open`, `$F rig open`).
+- 0.9.0: crontab lines are split on newlines only, so CR and form feed survive a rewrite.
+- 0.9.0: the launcher's last resort keeps its line unless a service was listed.
+- 0.9.0: a reap that steps aside on the lock is not counted as a launcher miss.
+- 0.9.0: rig stage 2a - `rig open/close/allow-image/up`, the watchdog, rig lines in `fleet` (decision 234).
 - 0.7.16: a receipt's setup and its red and timed-out tiers are measured; a stopped run is recorded as killed; a
   run inside a booking is recorded beside it; an estimate borrows its duration from a coarser step.
 - 0.7.13: a seat is known by its session id, kept on its post row, and refused rather than left hanging when the census

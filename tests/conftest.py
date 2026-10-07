@@ -73,3 +73,7 @@ def no_real_crontab(monkeypatch, tmp_path):
         raise AssertionError("a test reached the real crontab")
     monkeypatch.setattr(commands, "CRON_RUN", no_crontab)
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude-config"))
+
+    def no_keygen(*args, **kwargs):
+        raise AssertionError("a test reached the real ssh-keygen")
+    monkeypatch.setattr(commands, "SSH_KEY", no_keygen, raising=False)

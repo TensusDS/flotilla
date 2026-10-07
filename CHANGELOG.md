@@ -3,6 +3,28 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.9.0 - 2026-10-07
+
+- **`flotilla rig`: a rented machine made, watched and given back.** The person opens a session with
+  `rig open --hours --budget` and closes it with `rig close`; a seat that needs a machine outside one is refused and
+  its request relayed by the orchestrator as a line carrying only the request's id (`--for rN`). `rig up` raises one
+  machine in short calls that resume, from images the person allowed (`rig_images`, grown by `rig allow-image`), on
+  vast datacenter hosts, within the session's budget. A watchdog on the machine asks the service to destroy it, or to stop
+  it, a set time after our last heartbeat (nothing renews the heartbeat before `rig run`; it needs curl, node or
+  python3 in the image). A machine is called ready only once the rig's ssh key is on it and vast
+  reports it running, not merely intended to run. A live check on vast (the person's yes, about 0.05 $) measured the
+  reaper and the watchdog destroying machines; the spec's section 12 has the numbers. The reaper also drains a machine the service stopped, no longer lists on two passes, or that
+  took over 15 minutes to come up. `flotilla fleet` shows the session, the machines and loud lines first.
+- From the final review of 0.8.0 and the branch's security reviews: the person guard reads the words bash hands
+  flotilla (quotes, escapes, redirections and subshell parentheses resolved, measured against bash) and asks
+  flotilla's own parser for the move; it refuses a glob or a variable in a command word, a brace that may expand into
+  flotilla or its command, and, beside a program named through a variable, a glob that may be `rig`/`work` or any
+  word built at run time next to a guarded move; crontab lines
+  split on newlines only; the launcher's last resort keeps its line unless a service was listed; a reap that steps
+  aside on the lock is not a miss.
+- **Existing projects:** copy the new `orchestrator.md` (template v15) over `.flotilla/posts/orchestrator.md` on
+  trunk; `flotilla doctor` names it.
+
 ## 0.8.0 - 2026-10-07
 
 - **`flotilla rig`: the safeguards for rented machines, before any machine is rented.** Off by default; the person

@@ -89,7 +89,7 @@ def measure_machine(*, os_name: str = sys.platform, proc_root: Path = Path("/pro
 #: Keys the person sets by hand; measuring the machine again keeps them (review of 0.7.14). The rig's switch and
 #: ceilings are the person's too (rig design, section 4).
 PERSON_KEYS = ("lane_capacity", "max_seats", "rig", "rig_provider", "rig_max_machines", "rig_max_hourly",
-               "rig_max_hours")
+               "rig_max_hours", "rig_images")
 #: Written when absent, so the person finds the switch where they will look: off, with no provider.
 RIG_DEFAULTS = {"rig": "off", "rig_provider": ""}
 

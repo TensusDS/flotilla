@@ -36,10 +36,10 @@ def test_an_adapter_is_one_standalone_stdlib_file(path):
     assert names <= set(sys.stdlib_module_names) | {"__future__"}, names - set(sys.stdlib_module_names)
 
 
-def test_rows_carry_exactly_the_four_fields_and_nothing_of_a_credential(adapter):
+def test_rows_carry_exactly_the_five_fields_and_nothing_of_a_credential(adapter):
     module, double = adapter(instances={"101": {"label": "flotilla:0123456789ab:m1"}}, leak="instance-key-abcdef0123")
     rows = module.instances("account-key-0123456789")
-    assert rows and all(set(row) == {"instance", "label", "status", "hourly"} for row in rows)
+    assert rows and all(set(row) == {"instance", "label", "status", "hourly", "address"} for row in rows)
     assert "instance-key-abcdef0123" not in repr(rows)
 
 
@@ -100,3 +100,49 @@ def test_the_key_never_reaches_an_error_text(adapter):
     with pytest.raises(module.AdapterError) as err:
         module.instances("account-key-0123456789")
     assert "account-key-0123456789" not in str(err.value)
+
+
+WANT = {"gpus": [], "max_hourly": 0.60, "min_reliability": 0.98, "disk_gb": 30, "limit": 64}
+
+
+def test_offers_are_datacenter_within_the_price_and_carry_exactly_five_fields(adapter):
+    from rigkit import OFFERS
+    module, _ = adapter(offers=OFFERS)
+    rows = module.offers("k" * 12, WANT)
+    assert [row["offer"] for row in rows] == ["53776176", "44053836"]
+    assert all(set(row) == {"offer", "gpu", "hourly", "reliability", "datacenter"} for row in rows)
+    assert "should-never-leave" not in repr(rows)
+
+
+def test_a_create_answers_the_new_instance_and_nothing_of_its_key(adapter):
+    module, double = adapter(leak="instance-key-abcdef0123")
+    instance = module.create("k" * 12, "53776176", image="img:1", disk_gb=30, env={"A": "1"}, onstart="echo hi",
+                             label="flotilla:0123456789ab:m1")
+    assert instance.isdigit() and double.instances[instance]["label"] == "flotilla:0123456789ab:m1"
+    assert "instance-key-abcdef0123" not in repr(instance)
+
+
+@pytest.mark.parametrize("status", [401, 404, 500])
+def test_a_refused_create_is_an_error(adapter, status):
+    module, _ = adapter(create_status=status)
+    with pytest.raises(module.AdapterError):
+        module.create("k" * 12, "53776176", image="img:1", disk_gb=30, env={}, onstart="", label="l")
+
+
+@pytest.mark.parametrize("bad", ["53776176/../x", "", "５３"])
+def test_an_offer_id_the_service_could_not_have_issued_is_never_sent(adapter, bad):
+    module, double = adapter()
+    with pytest.raises(module.AdapterError):
+        module.create("k" * 12, bad, image="img:1", disk_gb=30, env={}, onstart="", label="l")
+    assert double.requests == []
+
+
+def test_rows_carry_an_address_once_the_instance_runs(adapter):
+    module, _ = adapter(instances={"7": {"label": "x", "ssh_host": "ssh4.vast.ai", "ssh_port": 30123}})
+    assert module.instances("k" * 12)[0]["address"] == "ssh4.vast.ai:30123"
+
+
+def test_the_start_script_carries_the_watchdog(adapter):
+    module, _ = adapter()
+    script = module.onstart()
+    assert "FLOTILLA_WATCHDOG_MINUTES" in script and "flotilla-heartbeat" in script
