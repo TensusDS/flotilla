@@ -316,3 +316,23 @@ def test_a_shared_machines_gpu_figure_is_not_kept_as_the_runs(shared, gpu):
     task.measured = {}
     task.read_status(f"exit=0 seconds=10 cpu_s=5 peak_kb=2048 gpu_mb=300 shared={shared}", stopped_here=False)
     assert task.measured["gpu_mb"] == gpu and task.measured["cores"] == 0.5 and task.measured["peak_mb"] == 2
+
+
+def test_a_gone_run_is_stopped_on_its_machine_once(world, box, tree, monkeypatch):
+    opened(world)
+    raised(world, tree)
+    r = journal(world)
+    s = next(iter(r.sessions().values()))
+    gone = r.queue_run(s.id, who="x", project="P", revision="a" * 40, program="sleep", ladder=(), pid=404, mark="m")
+    r.start_run(gone.id, "m1", alive=lambda pid, mark: True, roomy=False)
+    r.finish_run(gone.id, "gone", reason="its process is gone")
+    real, stops = run_module.Box.call, []
+
+    def call(self, script, *args, **kwargs):
+        if script == remote.STOP and gone.tag in args:
+            stops.append(args)
+        return real(self, script, *args, **kwargs)
+    monkeypatch.setattr(run_module.Box, "call", call)
+    rig_run(world, tree, "--", "true")
+    rig_run(world, tree, "--", "true")
+    assert len(stops) == 1 and journal(world).runs()[gone.id].swept

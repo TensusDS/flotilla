@@ -413,8 +413,10 @@ def _main(state: Path, settings: rs.RigSettings, args) -> int:
 def _phases(task: Run, root, revision, puts, gets, pairs, command, profile, ceiling):
     box, paths, rig = task.box, task.paths, task.rig
     for done in rig.runs().values():   # runs whose field side died outright: end what they left on this machine
-        if done.machine == task.machine.id and done.state == j.DONE and done.verdict == "gone" and done.tag:
-            box.call(remote.STOP, f"{paths.project}/runs/{done.tag}.run", done.tag)
+        if (done.machine == task.machine.id and done.state == j.DONE and done.verdict == "gone" and done.tag
+                and not done.swept):
+            if box.call(remote.STOP, f"{paths.project}/runs/{done.tag}.run", done.tag).returncode == 0:
+                rig.mark_swept(done.id)
     pruned = task.checked(box.call(remote.PRUNE, paths.project, KEEP_REVISIONS, paths.cache, DISK_MARGIN_MB),
                           "pruning")
     free = _status(pruned.stdout.decode()).get("free_mb", "0")

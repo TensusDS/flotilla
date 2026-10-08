@@ -189,3 +189,15 @@ def test_a_finished_run_keeps_its_first_verdict(tmp_path):
     r.finish_run(run.id, "green", exit=0)
     r.finish_run(run.id, "gone", reason="its process is gone")
     assert r.runs()[run.id].verdict == "green"
+
+
+def test_a_swept_run_keeps_its_verdict_and_says_it_was_swept(tmp_path):
+    r = rig(tmp_path)
+    s, m = ready_machine(r)
+    run = queue(r, s)
+    r.start_run(run.id, m.id, alive=ALIVE, roomy=False)
+    r.finish_run(run.id, "gone", reason="its process is gone")
+    assert not r.runs()[run.id].swept
+    r.mark_swept(run.id)
+    done = r.runs()[run.id]
+    assert done.swept and done.verdict == "gone" and done.state == j.DONE
