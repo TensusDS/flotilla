@@ -288,3 +288,12 @@ def test_the_sampler_ends_with_its_run_however_the_run_ends(tmp_path, monkeypatc
     ssh(tmp_path, remote.STOP, box / "st", T1)
     child.wait(15)
     assert left == []
+
+
+@linux
+def test_a_command_that_leaves_a_process_holding_the_output_still_ends(tmp_path, monkeypatch):
+    box = machine(tmp_path, monkeypatch)
+    (box / "work/P/runs" / T1).mkdir(parents=True)
+    began = time.time()
+    out = ssh(tmp_path, *run_line(box, T1, "sh", "-c", "sleep 30 & echo done"), timeout=60)
+    assert out.returncode == 0 and time.time() - began < 15 and tagged(box, T1) == []

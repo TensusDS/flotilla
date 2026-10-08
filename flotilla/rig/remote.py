@@ -249,6 +249,11 @@ printf 'exit=%s seconds=%s cpu_s=%s peak_kb=%s gpu_mb=%s shared=%s\n' "$said" "$
   "$cpu" "${peak:-0}" "${gpu:-0}" "${shared:-0}" > "$status.tmp"
 mv "$status.tmp" "$status"
 rm -f "$status.peak"
+# the run is over: what it left running (a server, a browser) would hold the channel open until the ceiling
+left() { grep -lzxF "FLOTILLA_RUN=$tag" /proc/[0-9]*/environ 2>/dev/null | sed -n 's|^/proc/\([0-9]*\)/environ$|\1|p'; }
+for p in $(left); do kill -TERM "$p" 2>/dev/null; done
+for _ in 1 2 3 4 5 6 7 8 9 10; do [ -z "$(left)" ] && break; sleep 0.3; done
+for p in $(left); do kill -KILL "$p" 2>/dev/null; done
 exit "$code"
 '''
 RUN = _RUN.replace("#MARK", "# flotilla-run")

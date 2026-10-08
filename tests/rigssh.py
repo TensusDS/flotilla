@@ -60,8 +60,8 @@ if drop is not None:
         os._exit(255)
 code = child.wait()
 for t in threads:
-    t.join(5)
-sys.exit(code)
+    t.join()          # as the OpenSSH client does: the channel closes when every process holding it has let go
+sys.exit(255 if code < 0 else code)   # a remote killed by a signal: the client reports 255
 '''
 
 
