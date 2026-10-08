@@ -457,8 +457,10 @@ rented machine with `flotilla rig run` and gets its output, its exit code and it
     shared on the machine;
   - `--put` sends untracked files and never `.env*`, `*.pem`, `id_*`, `credentials*`, `.npmrc`, `.netrc`,
     `.pypirc`, `.git`, a symlink, or anything under `~/.ssh`, `~/.claude`, `~/.config/flotilla` or flotilla's state;
-  - `--get` brings paths back after the run, red runs too, through a temporary directory, at most 500 MB; each path
-    replaces the local one whole (untracked files in it go); never
+  - `--get` brings paths back after the run, red runs too, through a temporary directory, at most 500 MB, and only
+    artifact types (images, video, sound, `json`, `csv`, `tsv`, `txt`, `log`, `md`, `pdf`; more with
+    `[rig] get_types`) - any other file is left on the machine and named; each path replaces the local one whole
+    (untracked files in it go); never
     into `.git`, `.claude`, `.flotilla`, `.github`, `.vscode`, `node_modules`, `.venv`, `.envrc` or a tracked path;
   - `--env` sets a variable there; names holding `KEY`, `TOKEN`, `SECRET` or `PASSWORD` are refused, and values are
     expanded by your own shell before flotilla sees them;

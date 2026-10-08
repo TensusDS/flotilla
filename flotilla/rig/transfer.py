@@ -33,6 +33,11 @@ CODE_NAMES = (".git", ".gitattributes", ".gitmodules", ".claude", ".flotilla", "
               "conftest.py", "*.pth", "sitecustomize.py", "usercustomize.py", ".npmrc", ".yarnrc", ".yarnrc.yml",
               ".pnpmfile.cjs")
 CAP = 500 * 2 ** 20
+#: What may come back at all (the person's decision, 2026-10-08): a list of names that tools run can never be whole,
+#: so only files that look like artifacts arrive - images, video, sound, data, text. The rest is skipped and named.
+#: A project adds its own with `[rig] get_types`.
+ARTIFACT_TYPES = ("png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff", "mp4", "webm", "mov", "wav", "mp3", "ogg",
+                  "flac", "json", "csv", "tsv", "txt", "log", "md", "pdf")
 #: What comes back is plain tar from PACK: never compressed (a small archive must not unfold past the cap), never more
 #: members than this, never a sparse file whose real size is not its header's.
 MAX_MEMBERS = 100_000
@@ -195,12 +200,17 @@ def _inside(name: str, wanted) -> bool:
     return any(parts[:len(PurePosixPath(w).parts)] == PurePosixPath(w).parts for w in wanted)
 
 
-def unpack(root, archive: Path, wanted, *, cap: int = CAP) -> list[str]:
+def _artifact(name: str, types) -> bool:
+    suffix = PurePosixPath(name).suffix.lower().lstrip(".")
+    return bool(suffix) and suffix in types
+
+
+def unpack(root, archive: Path, wanted, *, cap: int = CAP, types=ARTIFACT_TYPES, skipped: bool = False):
     """Check every member, extract into a temporary directory in the tree, then replace each wanted path that
     arrived. Any refusal is raised before the tree changes."""
     root, archive = Path(root), Path(archive)
     if archive.stat().st_size == 0:
-        return []
+        return ([], []) if skipped else []
     wanted = [relative(root, w) for w in wanted]
     wanted = [w for w in dict.fromkeys(wanted)   # a path inside another wanted one arrives with it
               if not any(o != w and w.startswith(o + "/") for o in wanted)]
@@ -209,7 +219,7 @@ def unpack(root, archive: Path, wanted, *, cap: int = CAP) -> list[str]:
     except tarfile.TarError as err:
         raise Refused(f"what came back is not an archive: {err}") from None
     with handle:
-        checked, total = [], 0
+        checked, total, left_out = [], 0, []
         members = []
         for member in handle:
             members.append(member)
@@ -228,6 +238,9 @@ def unpack(root, archive: Path, wanted, *, cap: int = CAP) -> list[str]:
             hit = _names_match(name, CODE_NAMES)
             if hit:
                 raise Refused(f"the archive holds {name!r}: {hit} holds code this machine runs")
+            if member.isreg() and not _artifact(name, types):
+                left_out.append(name)       # not an artifact type: never placed, but named
+                continue
             total += member.size
             if total > cap:
                 raise Refused(f"the archive is over {cap // 2 ** 20} MB")
@@ -259,7 +272,7 @@ def unpack(root, archive: Path, wanted, *, cap: int = CAP) -> list[str]:
                 if old.exists():
                     shutil.rmtree(old) if old.is_dir() else old.unlink()
                 placed.append(name)
-            return placed
+            return (placed, left_out) if skipped else placed
         finally:
             shutil.rmtree(temp, ignore_errors=True)
 

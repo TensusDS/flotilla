@@ -288,7 +288,7 @@ class Run:
             self.verdict = "green" if result.exit == 0 else "red"
         return True
 
-    def gets(self, gets, root):
+    def gets(self, gets, root, types):
         if not gets or self.lost:
             return
         argv = self.box.argv(remote.PACK, self.paths.run, *gets)
@@ -309,9 +309,13 @@ class Run:
             if size > cap:
                 print("flotilla: what came back is over the cap; nothing was placed", flush=True)
                 return
-            placed = transfer.unpack(root, spool, gets)
+            placed, left_out = transfer.unpack(root, spool, gets, types=types, skipped=True)
             if placed:
                 print(f"flotilla: brought back {', '.join(placed)}", flush=True)
+            if left_out:
+                print(f"flotilla: not an artifact type, left on the machine: {', '.join(left_out[:20])}"
+                      + (f" and {len(left_out) - 20} more" if len(left_out) > 20 else "")
+                      + " - add a type with [rig] get_types if it is one", flush=True)
         except transfer.Refused as err:
             print(f"flotilla: nothing was placed: {err}", flush=True)
         finally:
@@ -449,4 +453,4 @@ def _phases(task: Run, root, revision, puts, gets, pairs, command, profile, ceil
     remaining = max(1.0, ceiling - (time.monotonic() - began))
     task.rig.command_started(task.run.id)
     task.execute(remote.RUN, paths.run_status, [str(len(pairs)), *pairs, *command], remaining)
-    task.gets(gets, root)
+    task.gets(gets, root, profile.get_types)

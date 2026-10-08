@@ -319,6 +319,10 @@ ceiling is the rig's own; setup runs in each run with shared download caches; th
   `.gitlab-ci.yml`, `.vscode`, `.idea`, `.pre-commit-config.yaml`, and files tools run by their name alone:
   `conftest.py`, `*.pth`, `sitecustomize.py`, `usercustomize.py`, `.npmrc`, `.yarnrc`, `.yarnrc.yml`, `.pnpmfile.cjs`.
 - What comes back is plain tar of at most 100 000 members with no sparse file, and no file of it is executable.
+- **Only artifact types come back** (the person's decision, 2026-10-08): images, video, sound, `json`, `csv`, `tsv`,
+  `txt`, `log`, `md`, `pdf`, and what the project adds with `[rig] get_types`. Any other file stays on the machine and
+  is named. The refusals above remain a second barrier: a list of names that tools run is never whole, and what comes
+  back is written by the command and everything it installed, not only by the host.
 - Unpacking is safe:
   - absolute paths, paths leaving the tree, links and devices are refused;
   - the total is capped (default 500 MB);

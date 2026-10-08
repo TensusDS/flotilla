@@ -129,8 +129,8 @@ def test_setup_runs_in_each_run(world, box, tree):
 
 def test_artifacts_come_back_even_from_a_red_run(world, box, tree):
     opened(world)
-    code, out = rig_run(world, tree, "--get", "shots", "--", "sh", "-c", "mkdir shots && echo f > shots/a && exit 1")
-    assert code == 1 and (tree / "shots" / "a").read_text() == "f\n"
+    code, out = rig_run(world, tree, "--get", "shots", "--", "sh", "-c", "mkdir shots && echo f > shots/a.txt && exit 1")
+    assert code == 1 and (tree / "shots" / "a.txt").read_text() == "f\n"
 
 
 def test_a_put_file_reaches_this_run_only(world, box, tree):
