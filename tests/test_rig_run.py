@@ -336,3 +336,59 @@ def test_a_gone_run_is_stopped_on_its_machine_once(world, box, tree, monkeypatch
     rig_run(world, tree, "--", "true")
     rig_run(world, tree, "--", "true")
     assert len(stops) == 1 and journal(world).runs()[gone.id].swept
+
+
+def test_max_lowers_the_ceiling_for_one_run(world, box, tree):
+    opened(world)
+    code, out = rig_run(world, tree, "--max", "2", "--", "sleep", "30")
+    assert code == 124 and journal(world).runs()["j1"].verdict == "ceiling"
+
+
+def test_max_above_the_profiles_ceiling_is_refused(world, box, tree):
+    opened(world)
+    code, out = rig_run(world, tree, "--max", "999999", "--", "true")
+    assert code == 2 and "max_run_seconds" in out and world["fake"].created == 0
+
+
+def rig_stop(world, run_id, who):
+    out = io.StringIO()
+    with redirect_stdout(out):
+        code = cli.main(["rig", "stop", run_id, "--as", who])
+    return code, out.getvalue()
+
+
+def test_a_seat_stops_its_own_run(world, box, tree, tmp_path):
+    opened(world)
+    raised(world, tree)
+    child = background_rig_run(world, tree, box, tmp_path, "--", "sleep", "60")
+    wait_for(lambda: running(world) == 1)
+    time.sleep(1.0)
+    code, out = rig_stop(world, "j1", "minor 9")
+    child.wait(60)
+    run = journal(world).runs()["j1"]
+    assert code == 0 and run.verdict == "stopped" and tagged(box, run.tag) == []
+
+
+def test_a_seat_cannot_stop_another_seats_run(world, box, tree, tmp_path, monkeypatch):
+    from flotilla.core import caller
+    opened(world)
+    monkeypatch.setattr(caller, "person_refusal", lambda what: "this caller is a session, not the person")
+    raised(world, tree)
+    child = background_rig_run(world, tree, box, tmp_path, "--", "sleep", "20")
+    wait_for(lambda: running(world) == 1)
+    code, out = rig_stop(world, "j1", "main 2")
+    assert code == 2 and "minor 9" in out and journal(world).runs()["j1"].state == j.RUNNING
+    child.wait(60)
+
+
+def test_stopping_a_run_whose_process_is_gone_ends_it_on_the_machine(world, box, tree, tmp_path):
+    opened(world)
+    raised(world, tree)
+    child = background_rig_run(world, tree, box, tmp_path, "--", "sleep", "60")
+    wait_for(lambda: running(world) == 1)
+    time.sleep(1.0)
+    child.kill()
+    child.wait(10)
+    code, out = rig_stop(world, "j1", "minor 9")
+    run = journal(world).runs()["j1"]
+    assert code == 0 and run.state == j.DONE and run.verdict == "stopped" and tagged(box, run.tag) == []

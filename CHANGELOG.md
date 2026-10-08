@@ -3,6 +3,16 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.10.4 - 2026-10-09
+
+From the twosuns fleet's field use of 0.10.2:
+- **`flotilla rig run --max S`**: one run's ceiling in seconds, at most the profile's `[rig] max_run_seconds`.
+- **`flotilla rig stop jN`**: a seat stops its own run (the person may stop any). Its `rig run` ends it on the machine
+  and records it `stopped`; when that process is already gone, the run is stopped on the machine by its tag and
+  recorded.
+- The hang twosuns reported (a script's background vite holding ssh's channel until the 30-minute ceiling) was fixed
+  in 0.10.3.
+
 ## 0.10.3 - 2026-10-08
 
 - **A run's measurements are right for 0.11.0's packing** (live check 2 read cores 0.22 and GPU memory 0 for a

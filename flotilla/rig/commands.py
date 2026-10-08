@@ -10,6 +10,8 @@ from __future__ import annotations
 import datetime as dt
 import fcntl
 import math
+import os
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -19,7 +21,7 @@ from flotilla.core import caller, paths
 from flotilla.core.storage import LocalLogStore, StorageCorrupt
 from flotilla.onboard.machine import read_machine, set_person_keys
 from flotilla.ledger.errors import MoveRefused
-from flotilla.rig import cron, health, provider, providers, reaper, sshkey
+from flotilla.rig import cron, health, provider, providers, reaper, remote, sshkey
 from flotilla.rig import profile as rig_profile
 from flotilla.rig import journal as j
 from flotilla.rig import settings as rs
@@ -435,6 +437,48 @@ def _up(state: Path, settings: rs.RigSettings, args) -> int:
                          watchdog=args.watchdog)
 
 
+def _stop(state: Path, args) -> int:
+    """A seat stops its own run (field feedback from twosuns, 0.10.2): its `rig run` is signalled and ends the run on
+    the machine itself; when that process is gone, the run is stopped on the machine here, by its tag."""
+    rig = _rig(state)
+    run = rig.runs().get(args.run_id)
+    if run is None:
+        print(f"refused: no run {args.run_id}")
+        return 2
+    try:
+        who = _who(args.as_name)
+    except MoveRefused as err:
+        print(f"refused: {err}")
+        return 2
+    if run.who != who and caller.person_refusal("stops another seat's run"):
+        print(f"refused: run {run.id} is {run.who}'s; a seat stops only its own")
+        return 2
+    if run.state == j.DONE:
+        print(f"run {run.id} already ended: {run.verdict}")
+        return 0
+    if run.pid and _alive()(run.pid, run.mark):
+        try:
+            os.kill(run.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        else:
+            deadline = time.monotonic() + 90
+            while time.monotonic() < deadline:
+                done = rig.runs()[run.id]
+                if done.state == j.DONE:
+                    print(f"run {run.id} stopped: {done.verdict}")
+                    return 0
+                time.sleep(0.5)
+    machine = rig.machines().get(run.machine) if run.machine else None
+    if machine is not None and machine.address and run.tag:
+        from flotilla.rig import run as rig_run
+        box = rig_run.Box(state, machine)
+        box.call(remote.STOP, f"{remote.BASE}/runs/{run.tag}.gone", run.tag)
+    rig.finish_run(run.id, "stopped", reason=f"stopped by {who}")
+    print(f"run {run.id} stopped")
+    return 0
+
+
 def raise_machine(state: Path, settings: rs.RigSettings, *, who: str, why: str, root, wait: float,
                   watchdog: int) -> int:
     """Raise one machine in the person's open session, or resume the one coming up: 0 ready, 2 refused, 3 still
@@ -551,6 +595,8 @@ def run_rig_command(args) -> int:
             return _close(state)
         if args.action == "up":
             return _up(state, settings, args)
+        if args.action == "stop":
+            return _stop(state, args)
         if args.action == "run":
             from flotilla.rig import run as rig_run
             return rig_run.main(state, settings, args)
