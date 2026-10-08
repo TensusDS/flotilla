@@ -265,20 +265,31 @@ def unpack(root, archive: Path, wanted, *, cap: int = CAP, types=ARTIFACT_TYPES,
                 handle.extractall(temp, members=checked, filter="data")
             else:
                 handle.extractall(temp, members=checked)
-            placed = []
-            for name in wanted:
-                arrived = temp / name
-                if not arrived.exists():
-                    continue
-                target = root / name
-                target.parent.mkdir(parents=True, exist_ok=True)
-                old = root / f".flotilla-old-{secrets.token_hex(4)}"
-                if target.exists():
-                    os.rename(target, old)
-                os.rename(arrived, target)
-                if old.exists():
+            placed, moved_aside = [], []      # (target, where the old one waits); deleted only once all are in
+            try:
+                for name in wanted:
+                    arrived = temp / name
+                    if not arrived.exists():
+                        continue
+                    target = root / name
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    old = None
+                    if target.exists():
+                        old = root / f".flotilla-old-{secrets.token_hex(4)}"
+                        os.rename(target, old)
+                    moved_aside.append((target, old))
+                    os.rename(arrived, target)
+                    placed.append(name)
+            except BaseException:
+                for target, old in reversed(moved_aside):   # put every old path back, whole
+                    if target.exists() and (old is None or old.exists()):
+                        shutil.rmtree(target) if target.is_dir() else target.unlink()
+                    if old is not None and old.exists():
+                        os.rename(old, target)
+                raise
+            for _target, old in moved_aside:
+                if old is not None and old.exists():
                     shutil.rmtree(old) if old.is_dir() else old.unlink()
-                placed.append(name)
             return (placed, left_out) if skipped else placed
         finally:
             shutil.rmtree(temp, ignore_errors=True)
