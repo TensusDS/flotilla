@@ -291,7 +291,8 @@ ceiling is the rig's own; setup runs in each run with shared download caches; th
   `SECRET` or `PASSWORD` are refused. Values are expanded by the seat's own shell before flotilla sees them; the
   docs say so.
 - The image and GPU come from the project's profile (`[rig] image`, `gpu`, `disk_gb`). The default image is
-  `mcr.microsoft.com/playwright:<pinned tag>-jammy` with `NVIDIA_DRIVER_CAPABILITIES=all`.
+  `mcr.microsoft.com/playwright:<pinned tag>-noble` (v1.64.0, Node 24, since live check 2: v1.48's Node 20.18 was too old
+  for vite 8) with `NVIDIA_DRIVER_CAPABILITIES=all`.
 - The start script writes the NVIDIA EGL vendor file, so a project's browser flags need not know about it.
 
 **Running.**
@@ -500,4 +501,29 @@ datacenter machines at 0.107 $/h. Credit 4 -> 3.95 $ as the person read it, roun
   for.
 - The reaper removed its own crontab line when nothing was rented; the crontab ended identical to its backup. A
   session that expired was closed by the cron reaper on time.
+
+### Live check 2 (2026-10-08, the person's yes, at most 0.50 $)
+
+From the 0.10.0 branch, in a scratch clone of twosuns (its trunk, its origin removed), one session of 0.40 $, one
+Tesla P100-SXM2-16GB at 0.107 $/h, 24 CPUs, the v1.48 image. The local floor said at least 0.04 $.
+
+- **The machine was ready 40 s after create** (the image cached on the host); a cold `npm ci` took 3 s; vast's ssh
+  banner goes to stderr, so the tree, the status and the artifacts stay clean.
+- **The twosuns scene renders on the GPU through `rig run`:** the WebGL context check on Vulkan (a copy of
+  `tools/gpu-checks/run.mjs` with `--use-angle=vulkan`) went green, its two frames came back with `--get`, and they
+  show the scene. It needed Node 22 inside the run: v1.48's Node 20.18 is too old for vite 8, the image has no `xz`,
+  and dependencies installed under Node 20 left rolldown without its binding. The default image is now v1.64.0-noble
+  (Node 24).
+- **Two runs shared the machine** from the same second to the end, both green.
+- **The ceiling in the middle of a render** ended the run `ceiling` (124); right after, no Chrome or vite process was
+  left on the box - vite had started a session of its own and the tag reached it - and the GPU held 5 MiB.
+- **`kill -9` of the local ssh** ended nothing on the box (the finally's STOP did), but was recorded `red (137)` -
+  fixed before release: a client killed by a signal is a broken connection, and the machine is asked.
+- **The Bash tool past its timeout moved the call to the background**; the run went on to its end. The signal path
+  stays for TaskStop and other harnesses.
+- **Measured but not yet right:** cores read 0.22 for a browser run (helpers that leave the group escape `cutime`) and
+  GPU memory 0 (`nvidia-smi` in the container lists no processes). Both feed 0.11.0's packing and must be measured
+  another way there.
+- Closing the session: the destroy left the listing in 17 s; no flotilla-labelled instance remained; the crontab
+  ended identical to its backup; the gone machine's host key was removed.
 

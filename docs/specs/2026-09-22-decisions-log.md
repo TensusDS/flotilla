@@ -1533,7 +1533,11 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    of the person's (an agent forwarded to a stranger's host); `--get` never writes where code runs; a run's tag is
    random so stopping one never ends a neighbour; a broken connection asks the machine before freeing it; the
    guard reads a rig line with bash's quoting, after a toggle-style reading let an apostrophe hide `$(..)`, and
-   refuses substitutions in heredoc bodies. (person's decisions with the planner, 2026-10-07)
+   refuses substitutions in heredoc bodies. Live check 2 (2026-10-08, about 0.05 $) rendered the twosuns scene on a
+   P100 through `rig run`, ran two runs side by side, stopped a render at its ceiling with nothing left on the box,
+   and found two things fixed before release: a client killed outright was recorded as the command's exit, and the
+   default image's Node was too old for vite 8 (now v1.64.0-noble, Node 24, at the person's word).
+   (person's decisions with the planner, 2026-10-07/08)
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

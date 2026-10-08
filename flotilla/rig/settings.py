@@ -28,7 +28,8 @@ LABEL_PREFIX = "flotilla:"
 OFF_LINE = ("rig is off on this machine: rented machines are used only after the person runs "
             "`flotilla rig enable --provider <service>` (README, section \"Rented machines (rig)\")")
 DEFAULTS = {"rig_max_machines": 1, "rig_max_hourly": 0.60, "rig_max_hours": 8.0}
-DEFAULT_IMAGE = "mcr.microsoft.com/playwright:v1.48.0-jammy"
+#: Node 24 (its Dockerfile's NODE_VERSION, read 2026-10-08): live check 2 met v1.48's node 20.18, which vite 8 refuses.
+DEFAULT_IMAGE = "mcr.microsoft.com/playwright:v1.64.0-noble"
 DEFAULT_IMAGES = (DEFAULT_IMAGE,)
 #: An image name a rented machine may run: safe to print in a line the person pastes (rig design, section 4).
 IMAGE = re.compile(r"[a-z0-9][a-z0-9./_:@-]{0,200}")

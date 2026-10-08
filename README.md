@@ -438,7 +438,7 @@ rented machine with `flotilla rig run` and gets its output, its exit code and it
   `--for` reads the reason back from the journal. `flotilla rig close` ends the session and the reaper drains its
   machines. Requests belong to the project that made them and expire after a day.
 - **Images are yours to allow.** `rig enable` writes `rig_images` into `machine.toml` with one default
-  (`mcr.microsoft.com/playwright:v1.48.0-jammy`); a project's `[rig] image` is only a wish. A seat asking for another
+  (`mcr.microsoft.com/playwright:v1.64.0-noble`, Node 24); a project's `[rig] image` is only a wish. A seat asking for another
   image is refused and its request relayed as `! flotilla rig allow-image <image> --for rN`.
 - **Inside a session a seat raises a machine with `flotilla rig up`** - short calls (`--wait`, 90 seconds by default) that
   resume the machine coming up rather than make a second one. It refuses an image you have not allowed and a machine

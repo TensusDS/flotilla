@@ -13,6 +13,9 @@ each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2
   the lease and the heartbeat, is measured there, and leaves its verdict and cost in the journal.
 - The person guard reads a rig line with bash's quoting: a live `$(..)`, backtick or process substitution anywhere in
   it, or in an unquoted heredoc of any flotilla line, is refused; what follows `rig run`'s `--` is the remote command's data.
+- **The default image is `mcr.microsoft.com/playwright:v1.64.0-noble` (Node 24)**: v1.48's Node 20.18 is too old for
+  vite 8 (live check 2). Machines that already allowed the old image allow the new one once with
+  `! flotilla rig allow-image mcr.microsoft.com/playwright:v1.64.0-noble`.
 - **Existing projects:** posts `main` v7 and `minor` v5 say how seats call `rig run`; `flotilla doctor` names older
   copies.
 
