@@ -10,6 +10,9 @@ from dataclasses import dataclass, field
 from flotilla.rig.settings import DEFAULT_IMAGE, IMAGE
 
 DEFAULT_DISK = 30
+#: A run's ceiling on a rented machine, the rig's own (the person's decision, 2026-10-07): the lane's is measured on
+#: this machine and says nothing of a GPU.
+DEFAULT_RUN_SECONDS = 1800
 _GPU = re.compile(r"[A-Za-z0-9 _.-]{1,40}")
 
 
@@ -19,6 +22,8 @@ class RigProfile:
     gpus: tuple
     disk_gb: int
     problems: tuple = field(default=(), compare=False)
+    setup: str = ""
+    max_run_seconds: int = DEFAULT_RUN_SECONDS
 
 
 def read(data: dict) -> RigProfile:
@@ -38,4 +43,13 @@ def read(data: dict) -> RigProfile:
     if isinstance(disk, bool) or not isinstance(disk, int) or not 10 <= disk <= 500:
         problems.append(f"[rig] disk_gb {disk!r} is not 10-500; using {DEFAULT_DISK}")
         disk = DEFAULT_DISK
-    return RigProfile(image, kept, disk, tuple(problems))
+    tests = data.get("tests") if isinstance(data, dict) and isinstance(data.get("tests"), dict) else {}
+    setup = section.get("setup_command", tests.get("setup_command", ""))
+    if not isinstance(setup, str):
+        problems.append("[rig] setup_command is not a command line; no setup runs")
+        setup = ""
+    seconds = section.get("max_run_seconds", DEFAULT_RUN_SECONDS)
+    if isinstance(seconds, bool) or not isinstance(seconds, int) or not 60 <= seconds <= 86400:
+        problems.append(f"[rig] max_run_seconds {seconds!r} is not 60-86400; using {DEFAULT_RUN_SECONDS}")
+        seconds = DEFAULT_RUN_SECONDS
+    return RigProfile(image, kept, disk, tuple(problems), setup.strip(), seconds)

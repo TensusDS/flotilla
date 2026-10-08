@@ -160,3 +160,34 @@ def test_allow_image_by_name_and_a_malformed_name_is_refused(world):
     assert run_cli("rig", "allow-image", "ghcr.io/me/other:2")[0] == 0
     assert "ghcr.io/me/other:2" in rs.settings(world["state"]).images
     assert run_cli("rig", "allow-image", "x; rm -rf /")[0] == 2
+
+
+def test_status_shows_who_runs_and_who_waits(world):
+    state = world["state"]
+    r = journal(world)
+    s = r.open_session("p", "x", hours=3, budget=2.0)
+    m = r.add_machine(s.id, "vast", lambda mid: f"flotilla:k:{mid}")
+    r.move(m.id, j.PROVISIONING, instance="901", hourly=0.2, created=r.now().isoformat())
+    r.move(m.id, j.READY, address="ssh4.vast.ai:30001")
+    a = r.queue_run(s.id, who="minor 8", project="P", revision="a" * 40, program="node", ladder=(), pid=1, mark="m")
+    r.start_run(a.id, m.id, alive=lambda p, mk: True, roomy=False)
+    r.queue_run(s.id, who="main 2", project="P", revision="a" * 40, program="sh", ladder=(), pid=2, mark="m")
+    out = io.StringIO()
+    with redirect_stdout(out):
+        commands._status(state, rs.settings(state))
+    assert 'run j1 (minor 8) running program "node"' in out.getvalue() and "run j2 (main 2) waits" in out.getvalue()
+
+
+def test_a_gone_machine_takes_its_host_key_with_it(world):
+    state = world["state"]
+    r = journal(world)
+    s = r.open_session("p", "x", hours=3, budget=2.0)
+    m = r.add_machine(s.id, "vast", lambda mid: f"flotilla:k:{mid}")
+    r.move(m.id, j.FAILED, reason="no offer")
+    r.move(m.id, j.GONE)
+    hosts = state / "rig" / "hosts"
+    hosts.mkdir(parents=True)
+    (hosts / m.id).write_text("ssh4 key")
+    (hosts / "m9").write_text("other")
+    commands._forget_hosts(r, state)
+    assert not (hosts / m.id).exists() and (hosts / "m9").exists()

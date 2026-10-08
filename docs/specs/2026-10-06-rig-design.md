@@ -257,7 +257,8 @@ ceiling is the rig's own; setup runs in each run with shared download caches; th
 
 - A run waits for **room**, not for a free machine. In 0.10.0 room is: fewer than two runs on the machine (a floor
   that always holds), or, beyond the floor, the machine's live free memory and free GPU memory above their margins
-  (read from the machine when the run asks). Runs are admitted in order of arrival.
+  (read from the machine when the run asks), every run on it in its command for a minute (one that is still in its
+  tree or setup has not taken its memory yet), and fewer runs than the machine's CPUs (never under two). Runs are admitted in order of arrival.
 - **0.11.0 packs by estimates:** each run on a rig machine is measured (seconds, peak memory of its process group,
   cores, GPU memory) with the machine's shape, under the lane's signature ladder; a run is admitted when its estimate
   fits what the running runs leave; among the runs that fit, the longest goes first and short ones fill the rest;
@@ -290,7 +291,8 @@ ceiling is the rig's own; setup runs in each run with shared download caches; th
   `SECRET` or `PASSWORD` are refused. Values are expanded by the seat's own shell before flotilla sees them; the
   docs say so.
 - The image and GPU come from the project's profile (`[rig] image`, `gpu`, `disk_gb`). The default image is
-  `mcr.microsoft.com/playwright:<pinned tag>-jammy` with `NVIDIA_DRIVER_CAPABILITIES=all`.
+  `mcr.microsoft.com/playwright:<pinned tag>-noble` (v1.64.0, Node 24, since live check 2: v1.48's Node 20.18 was too old
+  for vite 8) with `NVIDIA_DRIVER_CAPABILITIES=all`.
 - The start script writes the NVIDIA EGL vendor file, so a project's browser flags need not know about it.
 
 **Running.**
@@ -311,8 +313,10 @@ ceiling is the rig's own; setup runs in each run with shared download caches; th
 **What comes back.**
 
 - `--get PATH` packs those paths on the machine after the run and unpacks them at the same paths in the tree.
-- Refused: the tree's root, any `.git` or `.claude` path component, a path git tracks at HEAD, a path under a local
-  symlink.
+- Refused: the tree's root, a path git tracks at HEAD, a path under a local symlink, and any path component - in the
+  path asked for and in every member of what comes back - where tools run code: `.git`, `.gitattributes`,
+  `.gitmodules`, `.claude`, `.flotilla`, `node_modules`, `.venv`, `venv`, `.envrc`, `.direnv`, `.husky`, `.github`,
+  `.gitlab-ci.yml`, `.vscode`, `.idea`, `.pre-commit-config.yaml`.
 - Unpacking is safe:
   - absolute paths, paths leaving the tree, links and devices are refused;
   - the total is capped (default 500 MB);
@@ -497,4 +501,29 @@ datacenter machines at 0.107 $/h. Credit 4 -> 3.95 $ as the person read it, roun
   for.
 - The reaper removed its own crontab line when nothing was rented; the crontab ended identical to its backup. A
   session that expired was closed by the cron reaper on time.
+
+### Live check 2 (2026-10-08, the person's yes, at most 0.50 $)
+
+From the 0.10.0 branch, in a scratch clone of twosuns (its trunk, its origin removed), one session of 0.40 $, one
+Tesla P100-SXM2-16GB at 0.107 $/h, 24 CPUs, the v1.48 image. The local floor said at least 0.04 $.
+
+- **The machine was ready 40 s after create** (the image cached on the host); a cold `npm ci` took 3 s; vast's ssh
+  banner goes to stderr, so the tree, the status and the artifacts stay clean.
+- **The twosuns scene renders on the GPU through `rig run`:** the WebGL context check on Vulkan (a copy of
+  `tools/gpu-checks/run.mjs` with `--use-angle=vulkan`) went green, its two frames came back with `--get`, and they
+  show the scene. It needed Node 22 inside the run: v1.48's Node 20.18 is too old for vite 8, the image has no `xz`,
+  and dependencies installed under Node 20 left rolldown without its binding. The default image is now v1.64.0-noble
+  (Node 24).
+- **Two runs shared the machine** from the same second to the end, both green.
+- **The ceiling in the middle of a render** ended the run `ceiling` (124); right after, no Chrome or vite process was
+  left on the box - vite had started a session of its own and the tag reached it - and the GPU held 5 MiB.
+- **`kill -9` of the local ssh** ended nothing on the box (the finally's STOP did), but was recorded `red (137)` -
+  fixed before release: a client killed by a signal is a broken connection, and the machine is asked.
+- **The Bash tool past its timeout moved the call to the background**; the run went on to its end. The signal path
+  stays for TaskStop and other harnesses.
+- **Measured but not yet right:** cores read 0.22 for a browser run (helpers that leave the group escape `cutime`) and
+  GPU memory 0 (`nvidia-smi` in the container lists no processes). Both feed 0.11.0's packing and must be measured
+  another way there.
+- Closing the session: the destroy left the listing in 17 s; no flotilla-labelled instance remained; the crontab
+  ended identical to its backup; the gone machine's host key was removed.
 

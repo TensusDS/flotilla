@@ -16,6 +16,7 @@ from __future__ import annotations
 import datetime as dt
 import math
 import re
+import secrets
 from dataclasses import dataclass, fields as dc_fields
 
 from flotilla.core.text import visible
@@ -46,8 +47,18 @@ IDLE = dt.timedelta(minutes=15)
 SETTLE = dt.timedelta(minutes=2)
 ATTEMPTS = 3
 MAX_TEXT = 300
-_NUMBERED = re.compile(r"^[smr]([0-9]{1,9})$")
-PREFIX = {"session": "s", "machine": "m", "request": "r"}
+_NUMBERED = re.compile(r"^[smrj]([0-9]{1,9})$")
+PREFIX = {"session": "s", "machine": "m", "request": "r", "run": "j"}
+WAITING, RUNNING, DONE = "waiting", "running", "done"
+RUN_STATES = (WAITING, RUNNING, DONE)
+#: Two runs share a machine whatever its readings say; past them, room is the readings' (rig design, section 7).
+FLOOR = 2
+#: Past the floor, one more run only once every run on the machine has run its command this long: a run still in
+#: its tree or setup has not taken its memory yet, and the readings would admit a crowd (third review of 2b).
+RUN_SETTLE = dt.timedelta(seconds=60)
+DEFAULT_CAP = 4
+_PROGRAM = re.compile(r"[A-Za-z0-9._+-]{1,24}")
+_TAG = re.compile(r"j[0-9]{1,9}-[0-9a-f]{8}")
 
 
 class RigError(ValueError):
@@ -88,6 +99,9 @@ class Machine:
     address: str = ""
     requested: str = ""
     suspect: str = ""
+    cpus: int | None = None           # the machine's shape, from its first readings
+    ram_mb: int | None = None
+    gpu_total_mb: int | None = None
     keyed: str = ""      # when the rig's ssh key was put on the instance; not ready without it
 
 
@@ -104,10 +118,38 @@ class Request:
     reason: str = ""
 
 
+@dataclass
+class Run:
+    """One `rig run`: a line per session, a place on a machine, what it measured (rig design, section 7)."""
+    id: str
+    session: str = ""
+    machine: str = ""
+    tag: str = ""                     # FLOTILLA_RUN on the machine: the id plus a random part, so j1 never matches j10
+    who: str = ""
+    project: str = ""
+    revision: str = ""
+    program: str = ""                 # checked: the only part of a command an orchestrator's model sees
+    ladder: tuple = ()
+    state: str = ""
+    verdict: str = ""
+    exit: int | None = None
+    seconds: float | None = None
+    cost: float | None = None
+    peak_mb: int | None = None
+    cores: float | None = None
+    gpu_mb: int | None = None
+    pid: int | None = None
+    mark: str = ""
+    since: str = ""
+    command_at: str = ""
+    reason: str = ""
+
+
 TEXT = ("who", "why", "session", "provider", "instance", "label", "gpu", "reason", "run_mark", "address", "project",
-        "image", "suspect")
-TIMES = ("until", "opened", "ended", "created", "lease_until", "idle_since", "requested", "keyed")
-MONEY = {"budget": 1e4, "hourly": 1e3}
+        "image", "suspect", "revision", "verdict", "machine", "mark")
+TIMES = ("until", "opened", "ended", "created", "lease_until", "idle_since", "requested", "keyed", "command_at")
+MONEY = {"budget": 1e4, "hourly": 1e3, "cost": 1e4}
+WHOLE = {"peak_mb": 10 ** 7, "gpu_mb": 10 ** 7, "cpus": 10 ** 4, "ram_mb": 10 ** 8, "gpu_total_mb": 10 ** 7}
 
 
 def _aware(text) -> bool:
@@ -127,8 +169,22 @@ def _clean(key, value):
         return float(value) if ok else None
     if key == "attempts":
         return value if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 1000 else 0
-    if key == "run_pid":
+    if key in ("run_pid", "pid"):
         return value if isinstance(value, int) and not isinstance(value, bool) and 0 < value < 2 ** 31 else None
+    if key in WHOLE:
+        return value if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= WHOLE[key] else None
+    if key in ("seconds", "cores"):
+        ok = isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value <= 1e6
+        return float(value) if ok else None
+    if key == "exit":
+        return value if isinstance(value, int) and not isinstance(value, bool) and -255 <= value <= 255 else None
+    if key == "program":
+        return value if isinstance(value, str) and _PROGRAM.fullmatch(value) else "a program"
+    if key == "tag":
+        return value if isinstance(value, str) and _TAG.fullmatch(value) else ""
+    if key == "ladder":
+        items = value if isinstance(value, list) else []
+        return tuple(visible(item[:200]) for item in items[:6] if isinstance(item, str))
     return None
 
 
@@ -162,6 +218,33 @@ def _fold(records):
                 item.since = event["at"]
         found[item.id] = item
     return sessions, machines, requests
+
+
+def _fold_runs(records) -> dict[str, Run]:
+    runs: dict[str, Run] = {}
+    for event in records:
+        if not isinstance(event, dict) or event.get("kind") != "run" or not _aware(event.get("at")):
+            continue
+        run_id, state = event.get("id"), event.get("state")
+        if not isinstance(run_id, str) or not _NUMBERED.fullmatch(run_id) or run_id[0] != "j":
+            continue
+        if state not in RUN_STATES:
+            continue
+        item = runs.get(run_id) or Run(id=run_id)
+        for field in dc_fields(item):
+            if field.name not in ("id", "state", "since") and field.name in event:
+                setattr(item, field.name, _clean(field.name, event[field.name]))
+        if item.tag and not item.tag.startswith(run_id + "-"):
+            item.tag = ""
+        item.state = state
+        if state == WAITING:
+            item.since = event["at"]
+        runs[run_id] = item
+    return runs
+
+
+def _number(item_id: str) -> int:
+    return int(item_id[1:])
 
 
 def _next_id(prefix: str, taken) -> str:
@@ -270,6 +353,85 @@ class Rig:
                 return None
             self._append(tx, "machine", machine_id, found.state, **fields)
             return _fold(tx.read().records)[1][machine_id]
+
+    def runs(self) -> dict[str, Run]:
+        return _fold_runs(self.store.read(KEY).records)
+
+    def queue_run(self, session_id: str, *, who: str, project: str, revision: str, program: str, ladder,
+                  pid: int, mark: str) -> Run:
+        with self.store.transaction(KEY) as tx:
+            run_id = _next_id("j", _fold_runs(tx.read().records))
+            self._append(tx, "run", run_id, WAITING, session=session_id, tag=f"{run_id}-{secrets.token_hex(4)}",
+                         who=who, project=project, revision=revision, program=program, ladder=list(ladder), pid=pid,
+                         mark=mark)
+            return _fold_runs(tx.read().records)[run_id]
+
+    @staticmethod
+    def _head(runs: dict, session_id: str, alive) -> Run | None:
+        waiting = [item for item in runs.values() if item.state == WAITING and item.session == session_id
+                   and alive(item.pid, item.mark)]
+        return min(waiting, key=lambda item: _number(item.id), default=None)
+
+    def head(self, session_id: str, alive) -> Run | None:
+        return self._head(self.runs(), session_id, alive)
+
+    def on(self, machine_id: str) -> list[Run]:
+        return [item for item in self.runs().values() if item.state == RUNNING and item.machine == machine_id]
+
+    def start_run(self, run_id: str, machine_id: str, *, alive, roomy: bool) -> Run | None:
+        """One transaction: the run is its session's head, the machine is the session's and has room. Up to FLOOR
+        runs share a machine always; past it only when the caller read room just now (`roomy`), every run on it is
+        past RUN_SETTLE in its command, and the machine's cap (its CPUs, never under FLOOR) is not reached."""
+        with self.store.transaction(KEY) as tx:
+            records = tx.read().records
+            runs, machine = _fold_runs(records), _fold(records)[1].get(machine_id)
+            run = runs.get(run_id)
+            if run is None or machine is None or run.state != WAITING or machine.state not in (READY, BUSY):
+                return None
+            head = self._head(runs, run.session, alive)
+            if head is None or head.id != run_id or machine.session != run.session:
+                return None
+            there = [item for item in runs.values() if item.state == RUNNING and item.machine == machine_id]
+            if len(there) >= FLOOR:
+                cap = max(FLOOR, machine.cpus) if machine.cpus else DEFAULT_CAP
+                now = self.now()
+                settled = all(item.command_at and now - _parse(item.command_at) >= RUN_SETTLE for item in there)
+                if not roomy or not settled or len(there) >= cap:
+                    return None
+            self._append(tx, "run", run_id, RUNNING, machine=machine_id)
+            if machine.state == READY:
+                self._append(tx, "machine", machine_id, BUSY, idle_since="")
+            return _fold_runs(tx.read().records)[run_id]
+
+    def command_started(self, run_id: str) -> Run:
+        with self.store.transaction(KEY) as tx:
+            run = _fold_runs(tx.read().records).get(run_id)
+            if run is None:
+                raise RigError(f"no run {run_id}")
+            self._append(tx, "run", run_id, run.state, command_at=_iso(self.now()))
+            return _fold_runs(tx.read().records)[run_id]
+
+    def finish_run(self, run_id: str, verdict: str, *, exit=None, seconds=None, cost=None, reason: str = "",
+                   **measured) -> Run:
+        """The run is done; its machine is ready again when no other run is on it."""
+        with self.store.transaction(KEY) as tx:
+            records = tx.read().records
+            run = _fold_runs(records).get(run_id)
+            if run is None:
+                raise RigError(f"no run {run_id}")
+            if run.state == DONE:    # the first verdict stands: a reaper's late "gone" never overwrites it
+                return run
+            fields = {key: value for key, value in dict(exit=exit, seconds=seconds, cost=cost, **measured).items()
+                      if value is not None}
+            self._append(tx, "run", run_id, DONE, verdict=verdict, **({"reason": reason} if reason else {}), **fields)
+            if run.machine:
+                others = [item for item in _fold_runs(tx.read().records).values()
+                          if item.state == RUNNING and item.machine == run.machine]
+                machine = _fold(records)[1].get(run.machine)
+                if not others and machine is not None and machine.state == BUSY:
+                    self._append(tx, "machine", run.machine, READY, idle_since=_iso(self.now()), run_pid=None,
+                                 run_mark="")
+            return _fold_runs(tx.read().records)[run_id]
 
     def requests(self) -> dict[str, Request]:
         return _fold(self.store.read(KEY).records)[2]

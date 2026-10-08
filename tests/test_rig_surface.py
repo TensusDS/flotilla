@@ -160,3 +160,23 @@ def test_a_request_whose_id_is_not_rn_is_never_relayed(tmp_path, monkeypatch):
     real = j.Rig.requests
     monkeypatch.setattr(j.Rig, "requests", lambda self: {"x": replace(r, id="r1; id") for r in real(self).values()})
     assert texts(state, T0) == []
+
+
+def machine_ready(r, s):
+    m = r.add_machine(s.id, "vast", lambda mid: f"flotilla:k:{mid}")
+    r.move(m.id, j.PROVISIONING, instance="901", hourly=0.2, created=T0.isoformat())
+    r.move(m.id, j.READY, address="ssh4.vast.ai:30001")
+    return m
+
+
+def test_fleet_lines_show_the_running_program_and_who_waits(tmp_path):
+    state = state_on(tmp_path)
+    r = rig(state)
+    s = r.open_session("p", "x", hours=3, budget=2.0)
+    machine_ready(r, s)
+    a = r.queue_run(s.id, who="minor 8", project="P", revision="a" * 40, program="node", ladder=(), pid=1, mark="m")
+    r.start_run(a.id, "m1", alive=lambda p, m: True, roomy=False)
+    r.queue_run(s.id, who="main 2", project="P", revision="a" * 40, program="node; evil", ladder=(), pid=2, mark="m")
+    said = " ".join(surface.lines(state, T0))
+    assert 'run j1 (minor 8) running program "node"' in said and "run j2 (main 2) waits" in said
+    assert "evil" not in said

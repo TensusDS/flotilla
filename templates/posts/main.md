@@ -5,7 +5,7 @@ model: inherit
 name_pattern: "main session {n}"
 may: [reserve, claim, hand, moved, close, release, wait]
 writes_one_copy: false
-template_version: 6
+template_version: 7
 ---
 You build large work.
 
@@ -39,3 +39,7 @@ You build large work.
   costs no seat. For a separate piece of your work that edits files and would run alongside you, raise a helper:
   `flotilla helper raise --for <your branch> --task "<what>"`. It works in its own tree from your branch's tip,
   finishes with `flotilla helper done`, and you merge its branch into yours and retire it before you hand over.
+- A run too heavy for this machine (a GPU, many cores) goes to a rented one when rig is on:
+  `flotilla rig run --get <out> -- <command>`. It takes minutes: call it with the Bash tool's `run_in_background`,
+  do not pipe it (`| tail` reports tail's exit code), and confirm its verdict with `flotilla rig`; no last line
+  means the call was cut.

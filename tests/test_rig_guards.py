@@ -206,3 +206,93 @@ def test_a_brace_that_may_become_flotilla_or_its_command_is_refused(tmp_path, mo
 def test_a_quoted_or_escaped_brace_is_no_expansion(command):
     from flotilla.guards import shell
     assert not any(person.check(segment) for segment in shell.segments(command, None))
+
+
+@pytest.mark.parametrize("command", ["{cli} rig run -- node -e 'console.log({{a:1}})'",
+                                     "{cli} rig run --get shots -- sh -c 'echo $X; open x'",
+                                     "{cli} rig run -- printf %s {{a,b}}",
+                                     "{cli} rig run -- echo 'literal $(not run)'"])
+def test_a_rig_run_line_with_braces_and_dollars_after_the_dashes_is_not_refused(tmp_path, monkeypatch, command):
+    assert ask(onboarded(tmp_path), command.format(cli=CLI), monkeypatch, tmp_path) is None
+
+
+@pytest.mark.parametrize("command", ["{cli} r{{i,}}g open --hours 1 -- x", "{cli} rig {{run,open}} --hours 1 --"])
+def test_braces_before_the_dashes_are_still_refused(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command.format(cli=CLI), monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny"
+
+
+@pytest.mark.parametrize("command", [
+    "{cli} rig run -- $(flotilla rig {{open,}} --hours 8 --budget 50 --why x)",
+    "{cli} rig run -- `flotilla rig enable --provider vast`",
+    "{cli} rig run -- \"$(flotilla work approve x)\"",
+    "{cli} rig run -- cat <(flotilla rig open --hours 1)",
+    "{cli} rig run -- echo \"it's $(flotilla rig open --hours 8 --budget 50 --why x)\"",
+    "{cli} rig run -- \\' $(flotilla rig {{open,}} --hours 8) \\'",
+    "{cli} rig run -- $'\\'' $(flotilla rig open)",
+    "{cli} rig run --why \"$(flotilla rig open --hours 1)\" -- true",
+    "{cli} rig run --put `flotilla rig enable` -- true"])
+def test_a_substitution_in_a_rig_line_is_refused(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command.format(cli=CLI), monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny"
+
+
+def test_rig_keeps_the_permission_prompt():
+    from flotilla.broker import decide
+    assert "rig" not in decide.OWN_SUBCOMMANDS
+
+
+@pytest.mark.parametrize("command", ["{cli} rig run -- cat <<EOF\n$(flotilla rig open --hours 8 --budget 50)\nEOF",
+                                     "{cli} rig run -- cat <<-EOF\n\t`flotilla rig enable --provider vast`\n\tEOF",
+                                     "{cli} work list <<EOF\n'$(flotilla work approve x)'\nEOF"])
+def test_a_substitution_in_a_heredoc_body_of_a_flotilla_line_is_refused(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command.format(cli=CLI), monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny"
+
+
+def test_a_quoted_heredoc_body_is_data(tmp_path, monkeypatch):
+    command = f"{CLI} rig run -- cat <<'EOF'\n$(not run here)\nEOF"
+    assert ask(onboarded(tmp_path), command, monkeypatch, tmp_path) is None
+
+
+@pytest.mark.parametrize("command", ["env -u flotilla -u rig -u run -- {{flotilla,}} rig open --hours 1 --budget 5",
+                                     "env -u flotilla -u rig -u run -- {{flotilla,}} work approve r1",
+                                     "env -u flotilla -u rig -u run -- /usr/bin/fl{{o,}}tilla rig enable",
+                                     "{cli} -- wo{{r,}}k approve x"])
+def test_a_decoy_rig_run_does_not_hide_braces(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command.format(cli=CLI), monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny"
+
+
+@pytest.mark.parametrize("command", ["cat <<< X\n{cli} work approve r1\nX",
+                                     "cat <<E\"OF\"\nx\nEOF\n{cli} work approve r1\nE",
+                                     "true <<<EOF\n{cli} rig enable --provider vast\nEOF"])
+def test_a_heredoc_misread_does_not_hide_a_line_bash_runs(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command.format(cli=CLI), monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny"
+
+
+@pytest.mark.parametrize("command", ["echo '<<X'\n{cli} work approve r1\nX",
+                                     "echo $((1<<2))\n{cli} work approve r1\n2",
+                                     "# <<X\n{cli} work approve r1\nX",
+                                     "echo \"a <<X\"\n{cli} rig open --hours 1\nX",
+                                     "echo a\\<<X\n{cli} work approve r1\nX",
+                                     "(( y = 1<<3 ))\n{cli} work approve r1\n3"])
+def test_a_heredoc_that_is_not_one_does_not_hide_the_lines_after_it(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command.format(cli=CLI), monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny"
+
+
+def test_a_real_heredoc_body_is_still_skipped():
+    from flotilla.guards import shell
+    assert shell.without_heredoc_bodies("cat <<EOF\nflotilla work approve r1\nEOF\necho done") == "cat <<EOF\necho done"
+    assert shell.heredoc("cat 0<<-'E O'") == ("E O", True) and shell.heredoc("cat <<E\"OF\"") == ("EOF", True)
+
+
+@pytest.mark.parametrize("command", ["if (( 1<<2 )); then :; fi\n{cli} work approve r1\n2",
+                                     "echo 'a\n<<X'\n{cli} work approve r1\nX",
+                                     "case a in <<X) ;; esac\n{cli} work approve r1\nX",
+                                     "cat <<EOF\n{cli} rig open --hours 1\nEOF"])
+def test_the_person_guard_reads_every_line_whatever_looks_like_a_heredoc(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command.format(cli=CLI), monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny"

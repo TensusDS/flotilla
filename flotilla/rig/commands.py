@@ -106,6 +106,9 @@ def _status(state: Path, settings: rs.RigSettings) -> int:
         price = f"{item.hourly:.2f} $/h" if item.hourly is not None else "price unknown"
         print(f"  machine {item.id} {item.state}: instance {item.instance or 'none yet'}, {item.gpu or 'gpu ?'}, "
               f"{price}, lease until {_hhmm(item.lease_until)}{f' ({item.reason})' if item.reason else ''}")
+    from flotilla.rig import surface
+    for text in surface.run_lines(rig, _now()):
+        print(text)
     last = health.last_reap(state)
     ok, note = health.last_outcome(state)
     if live and (last is None or _now() - last > health.SILENT_AFTER):
@@ -114,6 +117,17 @@ def _status(state: Path, settings: rs.RigSettings) -> int:
     elif last:
         print(f"reaper: last pass {_hhmm(last)}" + ("" if ok else f" FAILED: {note}"))
     return 0
+
+
+def _forget_hosts(rig: j.Rig, state: Path) -> None:
+    """A machine that is gone takes its host key with it: vast reuses proxy ports, and a key kept for a port would
+    read as a changed host for the next machine there."""
+    folder = state / "rig" / "hosts"
+    if not folder.is_dir():
+        return
+    for item in rig.machines().values():
+        if item.state == j.GONE:
+            (folder / item.id).unlink(missing_ok=True)
 
 
 def _reap(state: Path, settings: rs.RigSettings) -> int:
@@ -154,6 +168,7 @@ def _reap(state: Path, settings: rs.RigSettings) -> int:
                 return 1
             for line in out.lines:
                 print(f"{stamp} {line}")
+            _forget_hosts(rig, state)
             problem = _keep_reaper(rig, state)
             if problem:
                 print(f"{stamp} the reaper's crontab line: {problem}")
@@ -411,24 +426,36 @@ def _wait_up(rig: j.Rig, found, machine: j.Machine, deadline: dt.datetime, who: 
 
 
 def _up(state: Path, settings: rs.RigSettings, args) -> int:
+    try:
+        who = _who(args.as_name)
+    except MoveRefused as err:
+        print(f"refused: {err}")
+        return 2
+    return raise_machine(state, settings, who=who, why=args.why, root=args.root, wait=args.wait,
+                         watchdog=args.watchdog)
+
+
+def raise_machine(state: Path, settings: rs.RigSettings, *, who: str, why: str, root, wait: float,
+                  watchdog: int) -> int:
+    """Raise one machine in the person's open session, or resume the one coming up: 0 ready, 2 refused, 3 still
+    coming (call again). `rig up` and `rig run` both come here."""
     if not settings.on:
         print(f"refused: {rs.OFF_LINE}")
         return 2
-    if not 5 <= args.watchdog <= 45:
+    if not 5 <= watchdog <= 45:
         print("refused: --watchdog-minutes is 5 to 45; it may only lower the watchdog's limit")
         return 2
-    deadline = _now() + dt.timedelta(seconds=min(args.wait, 100.0))   # the whole call: a seat's Bash cut is 120 s
+    deadline = _now() + dt.timedelta(seconds=min(wait, 100.0))   # the whole call: a seat's Bash cut is 120 s
     try:
-        who = _who(args.as_name)
         key = rs.machine_key(state)
         rig = _rig(state)
         open_ = [s for s in rig.sessions().values() if s.state == j.OPEN]
     except (MoveRefused, rs.KeyRefused, StorageCorrupt) as err:
         print(f"refused: {err}")
         return 2
-    project, wanted = _project(args.root)
+    project, wanted = _project(root)
     if not open_:
-        asked = rig.ask(who, args.why, project=project)
+        asked = rig.ask(who, why, project=project)
         print(f"refused: no rig session is open; request {asked.id} is recorded for the orchestrator, who asks the "
               f"person to paste: ! flotilla rig open --hours 2 --budget 1 --for {asked.id}")
         return 2
@@ -454,11 +481,11 @@ def _up(state: Path, settings: rs.RigSettings, args) -> int:
                 print(f"machine {machine.id} is being created by another call; call `flotilla rig up` again shortly")
                 return 3
             machine = moved
-        return _wait_up(rig, found, machine, deadline, who, args.why)
+        return _wait_up(rig, found, machine, deadline, who, why)
     for problem in wanted.problems:
         print(f"note: {problem}")
     if wanted.image not in settings.images:
-        asked = rig.ask(who, args.why, kind="image", project=project, image=wanted.image)
+        asked = rig.ask(who, why, kind="image", project=project, image=wanted.image)
         print(f"refused: the project asks for image {wanted.image}, which the person has not allowed; request "
               f"{asked.id} is recorded - the person pastes: ! flotilla rig allow-image {wanted.image} --for {asked.id}")
         return 2
@@ -486,7 +513,7 @@ def _up(state: Path, settings: rs.RigSettings, args) -> int:
         offer = offers[0]
         SSH_KEY()   # a key that cannot be made fails before money is spent
         instance = found.create(offer.offer, image=wanted.image, disk_gb=wanted.disk_gb,
-                                env={"FLOTILLA_WATCHDOG_MINUTES": str(args.watchdog),
+                                env={"FLOTILLA_WATCHDOG_MINUTES": str(watchdog),
                                      "NVIDIA_DRIVER_CAPABILITIES": "all"},
                                 onstart=found.onstart(), label=machine.label)
     except (provider.ProviderError, sshkey.KeyError_) as err:
@@ -505,7 +532,7 @@ def _up(state: Path, settings: rs.RigSettings, args) -> int:
               "instance by its label and destroys it")
         return 2
     print(f"machine {machine.id}: instance {instance}, {offer.gpu}, {offer.hourly:.3f} $/h - coming up")
-    return _wait_up(rig, found, moved, deadline, who, args.why)
+    return _wait_up(rig, found, moved, deadline, who, why)
 
 
 def run_rig_command(args) -> int:
@@ -524,6 +551,9 @@ def run_rig_command(args) -> int:
             return _close(state)
         if args.action == "up":
             return _up(state, settings, args)
+        if args.action == "run":
+            from flotilla.rig import run as rig_run
+            return rig_run.main(state, settings, args)
         if args.action == "allow-image":
             return _allow_image(state, settings, args)
         return _status(state, settings)

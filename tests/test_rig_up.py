@@ -240,3 +240,10 @@ def test_a_machine_adopted_by_its_label_gets_the_rig_key(world, monkeypatch):
     code, out = up(world)
     machine = journal(world).machines()["m1"]
     assert code == 0 and real.created == 1 and len(real.ssh_keys[machine.instance]) == 1
+
+
+def test_raise_machine_is_what_up_does(world):
+    opened(world)
+    code = commands.raise_machine(world["state"], rs.settings(world["state"]), who="minor 8", why="x",
+                                  root=world["root"], wait=60.0, watchdog=45)
+    assert code == 0 and [m.state for m in journal(world).machines().values()] == [j.READY]

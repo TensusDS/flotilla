@@ -320,6 +320,16 @@ def build_parser() -> argparse.ArgumentParser:
                         help="lower the in-instance watchdog's limit (5-45; for the live check)")
     rig_up.add_argument("--root", default=".")
     rig_up.add_argument("--as", dest="as_name", default=None)
+    rig_run = rig_actions.add_parser("run", help="run a command on a rented machine and bring back what it made "
+                                                 "(takes minutes: call it in the background)")
+    rig_run.add_argument("--put", action="append", default=[], metavar="PATH", help="a file git does not track")
+    rig_run.add_argument("--get", action="append", default=[], metavar="PATH", help="a path to bring back")
+    rig_run.add_argument("--env", action="append", default=[], metavar="NAME=VALUE", help="a variable to set")
+    rig_run.add_argument("--wait", type=float, default=900.0, help="seconds to wait for room (default 900)")
+    rig_run.add_argument("--why", default="a heavy run")
+    rig_run.add_argument("--root", default=".")
+    rig_run.add_argument("--as", dest="as_name", default=None)
+    rig_run.add_argument("run_command", nargs=argparse.REMAINDER, metavar="COMMAND")
     return parser
 
 

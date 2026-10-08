@@ -423,8 +423,8 @@ long ones.
 ## Rented machines (rig)
 
 Some runs need more than this machine - a GPU for WebGL screenshots, cores a laptop lacks. `flotilla rig` keeps
-the safeguards for machines rented by the hour. **It is off** until you turn it on. This version makes a machine,
-watches it and gives it back; running a job on it over ssh (`rig run`) comes next.
+the safeguards for machines rented by the hour. **It is off** until you turn it on. A seat runs a command on a
+rented machine with `flotilla rig run` and gets its output, its exit code and its artifacts back.
 
 - **Rental services are adapters chosen by name**; this version carries `vast` (vast.ai). A new service is one
   adapter file under `flotilla/rig/providers/` passing the shared contract suite.
@@ -438,15 +438,37 @@ watches it and gives it back; running a job on it over ssh (`rig run`) comes nex
   `--for` reads the reason back from the journal. `flotilla rig close` ends the session and the reaper drains its
   machines. Requests belong to the project that made them and expire after a day.
 - **Images are yours to allow.** `rig enable` writes `rig_images` into `machine.toml` with one default
-  (`mcr.microsoft.com/playwright:v1.48.0-jammy`); a project's `[rig] image` is only a wish. A seat asking for another
+  (`mcr.microsoft.com/playwright:v1.64.0-noble`, Node 24); a project's `[rig] image` is only a wish. A seat asking for another
   image is refused and its request relayed as `! flotilla rig allow-image <image> --for rN`.
 - **Inside a session a seat raises a machine with `flotilla rig up`** - short calls (`--wait`, 90 seconds by default) that
   resume the machine coming up rather than make a second one. It refuses an image you have not allowed and a machine
   that would pass the session's budget. vast datacenter hosts only.
 - **A watchdog runs on the machine** and asks the service to destroy it (or, failing that, to stop it)
-  `--watchdog-minutes` (default 45, 5 to 45) after our last heartbeat. In this version nothing renews the heartbeat
-  yet - `rig run` will - so every machine is given back that long after it starts, whatever the session's hours. It
-  needs curl, node or python3 in the image. On vast the destroy is allowed (live check, 2026-10-07).
+  `--watchdog-minutes` (default 45, 5 to 45) after our last heartbeat. `rig run` renews the heartbeat and the lease every 5
+  minutes while it runs; an idle machine is given back after 15 minutes. It needs curl, node or python3 in the image. On vast the destroy is allowed (live check, 2026-10-07).
+- **`flotilla rig run [--put P]... [--get P]... [--env NAME=VALUE]... -- COMMAND`** runs one command there:
+  - nothing is spent before the gate: rig on, a session open, `--root` this very tree, a committed HEAD (a tracked
+    file changed since must be committed or passed with `--put`);
+  - **several runs share a machine:** two always; past two, a run starts only when the machine's free memory and
+    GPU memory leave room, every run on it has reached its command for a minute, and no more run than it has CPUs.
+    A waiting run keeps its place in the session's line for `--wait` (900 s);
+  - the revision travels once per machine (`git archive`, checked by sha256 there); each run works in its own copy
+    and runs the profile's setup (`[rig] setup_command`, else `[tests] setup_command`) itself, with download caches
+    shared on the machine;
+  - `--put` sends untracked files and never `.env*`, `*.pem`, `id_*`, `credentials*`, `.npmrc`, `.netrc`,
+    `.pypirc`, `.git`, a symlink, or anything under `~/.ssh`, `~/.claude`, `~/.config/flotilla` or flotilla's state;
+  - `--get` brings paths back after the run, red runs too, through a temporary directory, at most 500 MB; each path
+    replaces the local one whole (untracked files in it go); never
+    into `.git`, `.claude`, `.flotilla`, `.github`, `.vscode`, `node_modules`, `.venv`, `.envrc` or a tracked path;
+  - `--env` sets a variable there; names holding `KEY`, `TOKEN`, `SECRET` or `PASSWORD` are refused, and values are
+    expanded by your own shell before flotilla sees them;
+  - ssh reads none of your ssh config (no agent forwarding to a stranger's host);
+  - the exit code is the command's; `124` its ceiling (`[rig] max_run_seconds`, default 1800); `75` the connection
+    broke (the machine is asked how the run ended; one that cannot be asked for two minutes is drained, under every
+    run on it); `130` stopped by a signal; `2` refused; `3` no room within `--wait`. The last line, on stdout and
+    stderr, names the verdict; `flotilla rig` keeps it;
+  - each run is measured on the machine (seconds, peak memory, cores, GPU memory) for the packing that comes next.
+  It takes minutes: seats call it in the background and confirm the verdict with `flotilla rig`.
 - `flotilla fleet` shows rig lines first: the open session, each machine, and loud lines for a STUCK machine, a
   silent reaper or a failed one, repeated every half hour until they clear.
 - Ceilings, yours too, in `~/.local/state/flotilla/machine.toml`: `rig_max_machines` (1), `rig_max_hourly`
@@ -462,6 +484,8 @@ watches it and gives it back; running a job on it over ssh (`rig run`) comes nex
   flotilla label - one you made by hand - is never touched.
 - If cron does not run on this machine (WSL by default), `flotilla rig` and `flotilla doctor` say the reaper is
   silent while anything lives.
+- Limits of `rig run`: host keys are trusted on first use, per machine; a process that clears its environment
+  escapes the run's tag and outlives its stop; the image needs GNU tar and coreutils.
 - Limit: every session runs as your user. A shell command that writes these files is not caught; the guards close
   the commands and the edit tools, the honest paths.
 ## Guards
