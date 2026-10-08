@@ -3,6 +3,17 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.10.3 - 2026-10-08
+
+- **A run's measurements are right for 0.11.0's packing** (live check 2 read cores 0.22 and GPU memory 0 for a
+  browser run): CPU now counts helpers that left the run's group; GPU memory is the machine's peak against its start,
+  and is not kept as the run's own when another run was on the machine.
+- **What a run left running ends with it**: a server or a browser the command leaves behind no longer holds ssh's
+  channel open until the ceiling.
+- A gone run is stopped on its machine once, then marked swept; the sampler ends with its run however the run ends;
+  a `--get` placement that fails midway puts every old path back; a staged rename names both files; a `--put`
+  directory covers the changes under it; a `$( )` in a comment of a rig line is data.
+
 ## 0.10.2 - 2026-10-08
 
 - **`rig run --get` brings back only artifact types** (the person's decision): images, video, sound, `json`, `csv`,
