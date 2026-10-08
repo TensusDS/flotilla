@@ -297,3 +297,14 @@ def test_a_command_that_leaves_a_process_holding_the_output_still_ends(tmp_path,
     began = time.time()
     out = ssh(tmp_path, *run_line(box, T1, "sh", "-c", "sleep 30 & echo done"), timeout=60)
     assert out.returncode == 0 and time.time() - began < 15 and tagged(box, T1) == []
+
+
+@linux
+def test_cpu_of_a_helper_whose_name_holds_spaces_is_counted(tmp_path, monkeypatch):
+    box = machine(tmp_path, monkeypatch)
+    (box / "work/P/runs" / T1).mkdir(parents=True)
+    helper = "printf 'Isolated Web Co' > /proc/self/comm; while :; do :; done"
+    ssh(tmp_path, *run_line(box, T1, "sh", "-c", f'setsid sh -c "{helper}" > /dev/null 2>&1 & sleep 6'), timeout=40)
+    fields = dict(item.split("=") for item in ssh(tmp_path, remote.STATUS, box / "st").stdout.decode().split())
+    ssh(tmp_path, remote.STOP, box / "st", T1)
+    assert int(fields["cpu_s"]) >= 3

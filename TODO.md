@@ -299,7 +299,7 @@ Each is a limitation README states today, judged fixable in principle; none is p
 
 ## Done
 
-- 0.10.3: rig measurements fixed for packing (CPU of helpers, the machine's GPU peak, shared marked); a run's leftovers end with it; gone runs swept once; sampler bound to its run; atomic --get placement; rename and directory-put gate fixes; comments on rig lines are data.
+- 0.10.3: rig measurements fixed for packing (CPU of helpers, the machine's GPU peak, shared marked); a run's leftovers end with it; gone runs swept once; sampler bound to its run; atomic --get placement; rename and directory-put gate fixes.
 - 0.10.0: rig stage 2b - `rig run`: runs share a machine, are measured there, and bring artifacts back (decision 235).
 - 0.9.0: the person guard refuses a glob or a variable in a command word (`flotilla r?g open`, `$F rig open`).
 - 0.9.0: crontab lines are split on newlines only, so CR and form feed survive a rewrite.

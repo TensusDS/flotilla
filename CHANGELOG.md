@@ -12,7 +12,8 @@ each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2
   channel open until the ceiling.
 - A gone run is stopped on its machine once, then marked swept; the sampler ends with its run however the run ends;
   a `--get` placement that fails midway puts every old path back; a staged rename names both files; a `--put`
-  directory covers the changes under it; a `$( )` in a comment of a rig line is data.
+  directory covers the changed files under it that exist (a file deleted under it is still refused: the machine would
+  keep it from the revision); CPU is read right for processes whose name holds spaces (Firefox's `Web Content`).
 
 ## 0.10.2 - 2026-10-08
 

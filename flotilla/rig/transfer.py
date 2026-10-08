@@ -102,8 +102,10 @@ def gate(root, puts) -> str:
     head = _git(Path(root), "rev-parse", "--verify", "HEAD")
     if head.returncode != 0:
         raise Refused("the tree has no commit: a run is tied to a revision - commit first")
-    missing = [name for name in unsent(root)
-               if not any(name == put or name.startswith(put.rstrip("/") + "/") for put in puts)]
+    root = Path(root)
+    missing = [name for name in unsent(root)   # a directory put covers what it carries: changed files that exist
+               if not (name in puts or ((root / name).exists()
+                                        and any(name.startswith(put.rstrip("/") + "/") for put in puts)))]
     if missing:
         raise Refused(f"uncommitted changes to {', '.join(missing)}: commit them, or pass each with --put")
     return head.stdout.strip()
@@ -273,11 +275,10 @@ def unpack(root, archive: Path, wanted, *, cap: int = CAP, types=ARTIFACT_TYPES,
                         continue
                     target = root / name
                     target.parent.mkdir(parents=True, exist_ok=True)
-                    old = None
-                    if target.exists():
-                        old = root / f".flotilla-old-{secrets.token_hex(4)}"
+                    old = root / f".flotilla-old-{secrets.token_hex(4)}" if target.exists() else None
+                    moved_aside.append((target, old))      # recorded before the move, so an interrupt is undone too
+                    if old is not None:
                         os.rename(target, old)
-                    moved_aside.append((target, old))
                     os.rename(arrived, target)
                     placed.append(name)
             except BaseException:

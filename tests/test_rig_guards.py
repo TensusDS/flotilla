@@ -298,8 +298,12 @@ def test_the_person_guard_reads_every_line_whatever_looks_like_a_heredoc(tmp_pat
     assert answer and answer["permissionDecision"] == "deny"
 
 
-def test_a_substitution_in_a_comment_of_a_rig_line_is_not_refused(tmp_path, monkeypatch):
-    assert ask(onboarded(tmp_path), f"{CLI} rig run -- echo hi # $(x) `y`", monkeypatch, tmp_path) is None
+@pytest.mark.parametrize("command", ["{cli} rig run -- echo ${{u:- #$(flotilla rig open --hours 1)}}",
+                                     "{cli} rig run -- echo a\\ #$(flotilla rig open --hours 1)",
+                                     "{cli} rig run -- echo hi # $(flotilla rig open --hours 1)"])
+def test_a_hash_never_hides_a_substitution_from_the_guard(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command.format(cli=CLI), monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny"
 
 
 def test_a_hash_inside_a_word_is_no_comment(tmp_path, monkeypatch):

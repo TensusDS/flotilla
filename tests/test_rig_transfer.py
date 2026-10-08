@@ -295,3 +295,11 @@ def test_a_placement_that_fails_midway_puts_the_old_paths_back(tmp_path, monkeyp
         transfer.unpack(tree, archive(tmp_path, [("a/new.png", "file", b"n"), ("b/new.png", "file", b"n")]), ["a", "b"])
     assert sorted(p.name for p in tree.iterdir()) == ["a", "b"]
     assert [p.name for p in (tree / "a").iterdir()] == ["old.png"] and [p.name for p in (tree / "b").iterdir()] == ["old.png"]
+
+
+def test_a_directory_put_does_not_cover_a_file_deleted_under_it(tmp_path):
+    from rigtree import git
+    tree = git_tree(tmp_path / "t", {"data/a.txt": "1", "data/b.txt": "2"})
+    git(tree, "rm", "-q", "data/b.txt")
+    with pytest.raises(transfer.Refused, match="b.txt"):
+        transfer.gate(tree, ["data"])

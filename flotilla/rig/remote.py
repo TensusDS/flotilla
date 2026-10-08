@@ -188,8 +188,9 @@ while kill -0 "$parent" 2>/dev/null; do   # it ends with its run, however the ru
   for pid in $found; do
     kb=$(awk '/^VmRSS:/ {print $2}' "/proc/$pid/status" 2>/dev/null)
     total=$((total + ${kb:-0}))
-    read -r -a st < "/proc/$pid/stat" 2>/dev/null || continue
-    t=$(( st[13] + st[14] ))   # this process's own CPU: helpers that left the group count too, once each
+    line=$(< "/proc/$pid/stat") 2>/dev/null || continue
+    read -r -a st <<< "${line##*) }"   # after the name, which may hold spaces ("Isolated Web Co")
+    t=$(( st[11] + st[12] ))           # utime + stime: helpers that left the group count too, once each
     [ "$t" -gt "${ticks[$pid]:-0}" ] && ticks[$pid]=$t
   done
   if command -v nvidia-smi > /dev/null 2>&1; then
