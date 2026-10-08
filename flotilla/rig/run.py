@@ -249,8 +249,9 @@ class Run:
         try:
             seconds = float(fields.get("seconds", "0"))
             cpu = float(fields.get("cpu_s", "0"))
+            shared = fields.get("shared", "0") == "1"   # the machine's GPU figure, with another run on it
             self.measured = {"peak_mb": int(fields.get("peak_kb", "0")) // 1024,
-                             "gpu_mb": int(fields.get("gpu_mb", "0")),
+                             "gpu_mb": None if shared else int(fields.get("gpu_mb", "0")),
                              "cores": round(cpu / seconds, 2) if seconds > 0 else 0.0}
         except ValueError:
             pass

@@ -175,22 +175,34 @@ rm -rf "$tmp" "$file"
 '''
 
 _SAMPLER = r'''tag=$1 out=$2
-peak=0 gpu=0
+peak=0 gpu=0 shared=0
+declare -A ticks
+gpu_used() {
+  nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | awk '{s += $1} END {print s + 0}'
+}
+base=0
+command -v nvidia-smi > /dev/null 2>&1 && base=$(gpu_used)
 while :; do
-  total=0 used=0 pids=" "
+  total=0
   found=$(grep -lzxF "FLOTILLA_RUN=$tag" /proc/[0-9]*/environ 2>/dev/null | sed -n 's|^/proc/\([0-9]*\)/environ$|\1|p')
   for pid in $found; do
     kb=$(awk '/^VmRSS:/ {print $2}' "/proc/$pid/status" 2>/dev/null)
     total=$((total + ${kb:-0}))
-    pids="$pids$pid "
+    read -r -a st < "/proc/$pid/stat" 2>/dev/null || continue
+    t=$(( st[13] + st[14] ))   # this process's own CPU: helpers that left the group count too, once each
+    [ "$t" -gt "${ticks[$pid]:-0}" ] && ticks[$pid]=$t
   done
   if command -v nvidia-smi > /dev/null 2>&1; then
-    used=$(nvidia-smi --query-compute-apps=pid,used_memory --format=csv,noheader,nounits 2>/dev/null |
-           awk -F', *' -v pids="$pids" 'index(pids, " " $1 " ") {s += $2} END {print s + 0}')
+    used=$(( $(gpu_used) - base ))
+    [ "$used" -gt "$gpu" ] && gpu=$used
   fi
+  # another run on this machine makes the machine-wide GPU figure no measure of this run alone
+  if grep -hzoE '^FLOTILLA_RUN=j[0-9]+-[0-9a-f]{8}$' /proc/[0-9]*/environ 2>/dev/null | tr '\0' '\n' | sort -u |
+     grep -qvxF "FLOTILLA_RUN=$tag"; then shared=1; fi
   [ "$total" -gt "$peak" ] && peak=$total
-  [ "${used:-0}" -gt "$gpu" ] && gpu=$used
-  echo "$peak $gpu" > "$out.tmp" && mv "$out.tmp" "$out"
+  sum=0
+  for t in "${ticks[@]}"; do sum=$((sum + t)); done
+  echo "$peak $gpu $sum $shared" > "$out.tmp" && mv "$out.tmp" "$out"
   sleep 2
 done
 '''
@@ -226,13 +238,15 @@ kill "$sampler" 2>/dev/null; wait "$sampler" 2>/dev/null
 read -r -a stat < "/proc/$$/stat"
 ticks=$(getconf CLK_TCK)
 cpu=$(( (stat[15] + stat[16]) / ticks ))
-peak=0 gpu=0
-[ -f "$status.peak" ] && read -r peak gpu < "$status.peak"
+peak=0 gpu=0 sampled=0 shared=0
+[ -f "$status.peak" ] && read -r peak gpu sampled shared < "$status.peak"
+sampled=$(( ${sampled:-0} / ticks ))
+[ "$sampled" -gt "$cpu" ] && cpu=$sampled
 if [ "$stopped" = 1 ]; then said=stopped
 elif { [ "$code" = 124 ] || [ "$code" = 137 ]; } && [ $(( $(date +%s) - started )) -ge "$limit" ]; then said=timeout
 else said=$code; fi
-printf 'exit=%s seconds=%s cpu_s=%s peak_kb=%s gpu_mb=%s\n' "$said" "$(( $(date +%s) - started ))" "$cpu" \
-  "${peak:-0}" "${gpu:-0}" > "$status.tmp"
+printf 'exit=%s seconds=%s cpu_s=%s peak_kb=%s gpu_mb=%s shared=%s\n' "$said" "$(( $(date +%s) - started ))" \
+  "$cpu" "${peak:-0}" "${gpu:-0}" "${shared:-0}" > "$status.tmp"
 mv "$status.tmp" "$status"
 rm -f "$status.peak"
 exit "$code"

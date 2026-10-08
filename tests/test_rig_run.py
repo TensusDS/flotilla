@@ -308,3 +308,11 @@ def test_a_client_killed_outright_is_a_cut_not_the_commands_exit(world, box, tre
     code, out = rig_run(world, tree, "--", "sleep", "30")
     run = journal(world).runs()["j1"]
     assert code == 75 and run.verdict == "cut" and tagged(box, run.tag) == []
+
+
+@pytest.mark.parametrize("shared, gpu", [("0", 300), ("1", None)])
+def test_a_shared_machines_gpu_figure_is_not_kept_as_the_runs(shared, gpu):
+    task = run_module.Run.__new__(run_module.Run)
+    task.measured = {}
+    task.read_status(f"exit=0 seconds=10 cpu_s=5 peak_kb=2048 gpu_mb=300 shared={shared}", stopped_here=False)
+    assert task.measured["gpu_mb"] == gpu and task.measured["cores"] == 0.5 and task.measured["peak_mb"] == 2
