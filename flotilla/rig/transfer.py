@@ -84,10 +84,16 @@ def relative(root, text: str) -> str:
 
 def unsent(root) -> list[str]:
     found = _git(Path(root), "status", "--porcelain=v1", "-z", "--untracked-files=no")
-    names = []
-    for entry in found.stdout.split("\0"):
+    entries, names, at = found.stdout.split("\0"), [], 0
+    while at < len(entries):
+        entry = entries[at]
         if len(entry) > 3:
             names.append(entry[3:])
+            if "R" in entry[:2] or "C" in entry[:2]:   # a rename or copy: its source follows whole, as its own entry
+                at += 1
+                if at < len(entries) and entries[at]:
+                    names.append(entries[at])
+        at += 1
     return names
 
 
@@ -96,7 +102,10 @@ def gate(root, puts) -> str:
     head = _git(Path(root), "rev-parse", "--verify", "HEAD")
     if head.returncode != 0:
         raise Refused("the tree has no commit: a run is tied to a revision - commit first")
-    missing = [name for name in unsent(root) if name not in set(puts)]
+    root = Path(root)
+    missing = [name for name in unsent(root)   # a directory put covers what it carries: changed files that exist
+               if not (name in puts or ((root / name).exists()
+                                        and any(name.startswith(put.rstrip("/") + "/") for put in puts)))]
     if missing:
         raise Refused(f"uncommitted changes to {', '.join(missing)}: commit them, or pass each with --put")
     return head.stdout.strip()
@@ -258,20 +267,30 @@ def unpack(root, archive: Path, wanted, *, cap: int = CAP, types=ARTIFACT_TYPES,
                 handle.extractall(temp, members=checked, filter="data")
             else:
                 handle.extractall(temp, members=checked)
-            placed = []
-            for name in wanted:
-                arrived = temp / name
-                if not arrived.exists():
-                    continue
-                target = root / name
-                target.parent.mkdir(parents=True, exist_ok=True)
-                old = root / f".flotilla-old-{secrets.token_hex(4)}"
-                if target.exists():
-                    os.rename(target, old)
-                os.rename(arrived, target)
-                if old.exists():
+            placed, moved_aside = [], []      # (target, where the old one waits); deleted only once all are in
+            try:
+                for name in wanted:
+                    arrived = temp / name
+                    if not arrived.exists():
+                        continue
+                    target = root / name
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    old = root / f".flotilla-old-{secrets.token_hex(4)}" if target.exists() else None
+                    moved_aside.append((target, old))      # recorded before the move, so an interrupt is undone too
+                    if old is not None:
+                        os.rename(target, old)
+                    os.rename(arrived, target)
+                    placed.append(name)
+            except BaseException:
+                for target, old in reversed(moved_aside):   # put every old path back, whole
+                    if target.exists() and (old is None or old.exists()):
+                        shutil.rmtree(target) if target.is_dir() else target.unlink()
+                    if old is not None and old.exists():
+                        os.rename(old, target)
+                raise
+            for _target, old in moved_aside:
+                if old is not None and old.exists():
                     shutil.rmtree(old) if old.is_dir() else old.unlink()
-                placed.append(name)
             return (placed, left_out) if skipped else placed
         finally:
             shutil.rmtree(temp, ignore_errors=True)

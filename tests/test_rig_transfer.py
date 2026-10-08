@@ -263,3 +263,43 @@ def test_a_project_may_add_a_type(tmp_path):
     placed, skipped = transfer.unpack(tree, archive(tmp_path, [("out/model.onnx", "file", b"m")]), ["out"],
                                       types=transfer.ARTIFACT_TYPES + ("onnx",), skipped=True)
     assert (tree / "out/model.onnx").exists() and skipped == []
+
+
+def test_a_staged_rename_names_both_files_whole(tmp_path):
+    from rigtree import git
+    tree = git_tree(tmp_path / "t", {"alpha.txt": "1"})
+    git(tree, "mv", "alpha.txt", "beta.txt")
+    assert sorted(transfer.unsent(tree)) == ["alpha.txt", "beta.txt"]
+
+
+def test_a_directory_put_covers_the_changed_files_under_it(tmp_path):
+    tree = git_tree(tmp_path / "t", {"data/a.txt": "1"})
+    (tree / "data" / "a.txt").write_text("changed")
+    assert len(transfer.gate(tree, ["data"])) == 40
+
+
+def test_a_placement_that_fails_midway_puts_the_old_paths_back(tmp_path, monkeypatch):
+    tree = tmp_path / "tree"
+    for name in ("a", "b"):
+        (tree / name).mkdir(parents=True)
+        (tree / name / "old.png").write_bytes(b"old")
+    real, calls = transfer.os.rename, []
+
+    def rename(src, dst):
+        calls.append((src, dst))
+        if len(calls) == 4:                    # the second path's new copy cannot be moved in
+            raise OSError("disk full")
+        return real(src, dst)
+    monkeypatch.setattr(transfer.os, "rename", rename)
+    with pytest.raises(OSError):
+        transfer.unpack(tree, archive(tmp_path, [("a/new.png", "file", b"n"), ("b/new.png", "file", b"n")]), ["a", "b"])
+    assert sorted(p.name for p in tree.iterdir()) == ["a", "b"]
+    assert [p.name for p in (tree / "a").iterdir()] == ["old.png"] and [p.name for p in (tree / "b").iterdir()] == ["old.png"]
+
+
+def test_a_directory_put_does_not_cover_a_file_deleted_under_it(tmp_path):
+    from rigtree import git
+    tree = git_tree(tmp_path / "t", {"data/a.txt": "1", "data/b.txt": "2"})
+    git(tree, "rm", "-q", "data/b.txt")
+    with pytest.raises(transfer.Refused, match="b.txt"):
+        transfer.gate(tree, ["data"])

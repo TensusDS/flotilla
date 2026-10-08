@@ -296,3 +296,16 @@ def test_a_real_heredoc_body_is_still_skipped():
 def test_the_person_guard_reads_every_line_whatever_looks_like_a_heredoc(tmp_path, monkeypatch, command):
     answer = ask(onboarded(tmp_path), command.format(cli=CLI), monkeypatch, tmp_path)
     assert answer and answer["permissionDecision"] == "deny"
+
+
+@pytest.mark.parametrize("command", ["{cli} rig run -- echo ${{u:- #$(flotilla rig open --hours 1)}}",
+                                     "{cli} rig run -- echo a\\ #$(flotilla rig open --hours 1)",
+                                     "{cli} rig run -- echo hi # $(flotilla rig open --hours 1)"])
+def test_a_hash_never_hides_a_substitution_from_the_guard(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command.format(cli=CLI), monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny"
+
+
+def test_a_hash_inside_a_word_is_no_comment(tmp_path, monkeypatch):
+    answer = ask(onboarded(tmp_path), f"{CLI} rig run -- echo a#$(flotilla rig open --hours 1)", monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny"

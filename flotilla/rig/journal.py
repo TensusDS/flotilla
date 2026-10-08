@@ -142,12 +142,14 @@ class Run:
     mark: str = ""
     since: str = ""
     command_at: str = ""
+    swept: str = ""                   # when a later run ended on the machine what this gone run had left there
     reason: str = ""
 
 
 TEXT = ("who", "why", "session", "provider", "instance", "label", "gpu", "reason", "run_mark", "address", "project",
         "image", "suspect", "revision", "verdict", "machine", "mark")
-TIMES = ("until", "opened", "ended", "created", "lease_until", "idle_since", "requested", "keyed", "command_at")
+TIMES = ("until", "opened", "ended", "created", "lease_until", "idle_since", "requested", "keyed", "command_at",
+         "swept")
 MONEY = {"budget": 1e4, "hourly": 1e3, "cost": 1e4}
 WHOLE = {"peak_mb": 10 ** 7, "gpu_mb": 10 ** 7, "cpus": 10 ** 4, "ram_mb": 10 ** 8, "gpu_total_mb": 10 ** 7}
 
@@ -409,6 +411,15 @@ class Rig:
             if run is None:
                 raise RigError(f"no run {run_id}")
             self._append(tx, "run", run_id, run.state, command_at=_iso(self.now()))
+            return _fold_runs(tx.read().records)[run_id]
+
+    def mark_swept(self, run_id: str) -> Run:
+        """A later run ended on the machine what this finished run had left there: it is not swept again."""
+        with self.store.transaction(KEY) as tx:
+            run = _fold_runs(tx.read().records).get(run_id)
+            if run is None or run.state != DONE:
+                raise RigError(f"no finished run {run_id}")
+            self._append(tx, "run", run_id, DONE, swept=_iso(self.now()))
             return _fold_runs(tx.read().records)[run_id]
 
     def finish_run(self, run_id: str, verdict: str, *, exit=None, seconds=None, cost=None, reason: str = "",

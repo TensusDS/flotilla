@@ -249,8 +249,9 @@ class Run:
         try:
             seconds = float(fields.get("seconds", "0"))
             cpu = float(fields.get("cpu_s", "0"))
+            shared = fields.get("shared", "0") == "1"   # the machine's GPU figure, with another run on it
             self.measured = {"peak_mb": int(fields.get("peak_kb", "0")) // 1024,
-                             "gpu_mb": int(fields.get("gpu_mb", "0")),
+                             "gpu_mb": None if shared else int(fields.get("gpu_mb", "0")),
                              "cores": round(cpu / seconds, 2) if seconds > 0 else 0.0}
         except ValueError:
             pass
@@ -412,8 +413,10 @@ def _main(state: Path, settings: rs.RigSettings, args) -> int:
 def _phases(task: Run, root, revision, puts, gets, pairs, command, profile, ceiling):
     box, paths, rig = task.box, task.paths, task.rig
     for done in rig.runs().values():   # runs whose field side died outright: end what they left on this machine
-        if done.machine == task.machine.id and done.state == j.DONE and done.verdict == "gone" and done.tag:
-            box.call(remote.STOP, f"{paths.project}/runs/{done.tag}.run", done.tag)
+        if (done.machine == task.machine.id and done.state == j.DONE and done.verdict == "gone" and done.tag
+                and not done.swept):
+            if box.call(remote.STOP, f"{paths.project}/runs/{done.tag}.run", done.tag).returncode == 0:
+                rig.mark_swept(done.id)
     pruned = task.checked(box.call(remote.PRUNE, paths.project, KEEP_REVISIONS, paths.cache, DISK_MARGIN_MB),
                           "pruning")
     free = _status(pruned.stdout.decode()).get("free_mb", "0")

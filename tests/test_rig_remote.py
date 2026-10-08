@@ -229,3 +229,82 @@ def test_a_command_killed_well_inside_its_limit_is_not_a_timeout(tmp_path, monke
     out = ssh(tmp_path, *run_line(box, T1, "sh", "-c", "kill -9 $$"))
     status = ssh(tmp_path, remote.STATUS, box / "st").stdout.decode()
     assert out.returncode == 137 and status.startswith("exit=137 ")
+
+
+@linux
+def test_cpu_of_a_helper_that_left_the_group_is_counted(tmp_path, monkeypatch):
+    box = machine(tmp_path, monkeypatch)
+    (box / "work/P/runs" / T1).mkdir(parents=True)
+    # the helper outlives the command, as a browser does until the run's stop: nobody waits for it
+    ssh(tmp_path, *run_line(box, T1, "sh", "-c",
+                            'setsid sh -c "while :; do :; done" > /dev/null 2>&1 & sleep 6'), timeout=40)
+    fields = dict(item.split("=") for item in ssh(tmp_path, remote.STATUS, box / "st").stdout.decode().split())
+    ssh(tmp_path, remote.STOP, box / "st", T1)
+    assert int(fields["cpu_s"]) >= 3
+
+
+@linux
+def test_a_run_sharing_the_machine_marks_its_measure_shared(tmp_path, monkeypatch):
+    box = machine(tmp_path, monkeypatch)
+    for tag in (T1, T2):
+        (box / "work/P/runs" / tag).mkdir(parents=True)
+    other = start(tmp_path, box, T2, "sleep", "8", status=box / "st2")
+    wait_tagged(box, T2, 1)
+    ssh(tmp_path, *run_line(box, T1, "sleep", "5"), timeout=40)
+    alone = ssh(tmp_path, remote.STATUS, box / "st").stdout.decode()
+    other.wait(30)
+    ssh(tmp_path, *run_line(box, T1, "sleep", "3", status=box / "st3"), timeout=40)
+    assert "shared=1" in alone and "shared=0" in ssh(tmp_path, remote.STATUS, box / "st3").stdout.decode()
+
+
+def _samplers(status):
+    found = []
+    for proc in os.listdir("/proc"):
+        if proc.isdigit():
+            try:
+                argv = open(f"/proc/{proc}/cmdline", "rb").read().split(b"\0")
+            except OSError:
+                continue
+            if b"sampler" in argv and str(status).encode() + b".peak" in argv:
+                found.append(int(proc))
+    return found
+
+
+@linux
+def test_the_sampler_ends_with_its_run_however_the_run_ends(tmp_path, monkeypatch):
+    import signal
+    box = machine(tmp_path, monkeypatch)
+    (box / "work/P/runs" / T1).mkdir(parents=True)
+    child = start(tmp_path, box, T1, "sleep", "60", status=box / "st")
+    end = time.time() + 10
+    while not _samplers(box / "st") and time.time() < end:
+        time.sleep(0.1)
+    leader = int((box / "st.running").read_text().split()[0].split("=")[1])
+    os.kill(leader, signal.SIGKILL)            # RUN dies other than through STOP
+    end = time.time() + 8
+    while _samplers(box / "st") and time.time() < end:
+        time.sleep(0.2)
+    left = _samplers(box / "st")
+    ssh(tmp_path, remote.STOP, box / "st", T1)
+    child.wait(15)
+    assert left == []
+
+
+@linux
+def test_a_command_that_leaves_a_process_holding_the_output_still_ends(tmp_path, monkeypatch):
+    box = machine(tmp_path, monkeypatch)
+    (box / "work/P/runs" / T1).mkdir(parents=True)
+    began = time.time()
+    out = ssh(tmp_path, *run_line(box, T1, "sh", "-c", "sleep 30 & echo done"), timeout=60)
+    assert out.returncode == 0 and time.time() - began < 15 and tagged(box, T1) == []
+
+
+@linux
+def test_cpu_of_a_helper_whose_name_holds_spaces_is_counted(tmp_path, monkeypatch):
+    box = machine(tmp_path, monkeypatch)
+    (box / "work/P/runs" / T1).mkdir(parents=True)
+    helper = "printf 'Isolated Web Co' > /proc/self/comm; while :; do :; done"
+    ssh(tmp_path, *run_line(box, T1, "sh", "-c", f'setsid sh -c "{helper}" > /dev/null 2>&1 & sleep 6'), timeout=40)
+    fields = dict(item.split("=") for item in ssh(tmp_path, remote.STATUS, box / "st").stdout.decode().split())
+    ssh(tmp_path, remote.STOP, box / "st", T1)
+    assert int(fields["cpu_s"]) >= 3
