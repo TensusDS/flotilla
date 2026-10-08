@@ -3,6 +3,14 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.10.1 - 2026-10-08
+
+From a security review of the pushed 0.10.0:
+- **What `rig run --get` brings back is checked harder:** a member named as a file tools run by name alone
+  (`conftest.py`, `*.pth`, `sitecustomize.py`, `usercustomize.py`, `.npmrc`, `.yarnrc`, `.yarnrc.yml`,
+  `.pnpmfile.cjs`) is refused; no file comes back executable; the archive must be plain tar (a compressed one could
+  unfold past the 500 MB cap), at most 100 000 members, and no sparse file.
+
 ## 0.10.0 - 2026-10-07
 
 - **`flotilla rig run`: a command on a rented machine, its output, its exit code and its artifacts.** Several runs

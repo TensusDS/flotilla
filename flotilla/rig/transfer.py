@@ -28,8 +28,14 @@ SECRET_NAMES = (".env*", "*.pem", "*.key", "*.p12", "*.pfx", "id_*", "credential
 #: direnv, git hooks and attributes, CI workflows, editor tasks, pre-commit.
 CODE_NAMES = (".git", ".gitattributes", ".gitmodules", ".claude", ".flotilla", "node_modules", ".venv", "venv",
               ".envrc", ".direnv", ".husky", ".github", ".gitlab-ci.yml", ".vscode", ".idea",
-              ".pre-commit-config.yaml")
+              ".pre-commit-config.yaml",
+              # files a tool runs because of their name alone, wherever they lie
+              "conftest.py", "*.pth", "sitecustomize.py", "usercustomize.py", ".npmrc", ".yarnrc", ".yarnrc.yml",
+              ".pnpmfile.cjs")
 CAP = 500 * 2 ** 20
+#: What comes back is plain tar from PACK: never compressed (a small archive must not unfold past the cap), never more
+#: members than this, never a sparse file whose real size is not its header's.
+MAX_MEMBERS = 100_000
 
 
 class Refused(ValueError):
@@ -199,18 +205,23 @@ def unpack(root, archive: Path, wanted, *, cap: int = CAP) -> list[str]:
     wanted = [w for w in dict.fromkeys(wanted)   # a path inside another wanted one arrives with it
               if not any(o != w and w.startswith(o + "/") for o in wanted)]
     try:
-        handle = tarfile.open(archive, mode="r:*")
+        handle = tarfile.open(archive, mode="r:")
     except tarfile.TarError as err:
         raise Refused(f"what came back is not an archive: {err}") from None
     with handle:
         checked, total = [], 0
-        for member in handle.getmembers():
+        members = []
+        for member in handle:
+            members.append(member)
+            if len(members) > MAX_MEMBERS:
+                raise Refused(f"the archive holds more than {MAX_MEMBERS} members")
+        for member in members:
             if member.name in (".", "./"):
                 continue
             if member.name.startswith("/"):
                 raise Refused(f"the archive holds an absolute path: {member.name!r}")
             name = relative(root, member.name)
-            if not (member.isreg() or member.isdir()):
+            if not (member.isreg() or member.isdir()) or member.issparse():
                 raise Refused(f"the archive holds {name!r}, which is not a file or a directory")
             if not _inside(name, wanted):
                 raise Refused(f"the archive holds {name!r}, outside {', '.join(wanted)}")
@@ -221,7 +232,7 @@ def unpack(root, archive: Path, wanted, *, cap: int = CAP) -> list[str]:
             if total > cap:
                 raise Refused(f"the archive is over {cap // 2 ** 20} MB")
             member.name = name
-            member.mode = 0o755 if member.isdir() else (member.mode & 0o755)
+            member.mode = 0o755 if member.isdir() else 0o644   # an artifact is never executable
             checked.append(member)
         for name in wanted:
             link = _symlinked_parent(root, name)

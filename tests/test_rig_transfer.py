@@ -206,3 +206,42 @@ def test_put_refuses_a_hard_link(tmp_path):
     os.link(outside / "secret", tree / "data.bin")
     with pytest.raises(transfer.Refused):
         transfer.put_tar(tree, ["data.bin"], forbidden_roots=())
+
+
+@pytest.mark.parametrize("member", ["out/conftest.py", "out/x.pth", "out/sitecustomize.py", "out/usercustomize.py",
+                                    "out/.npmrc", "out/.yarnrc.yml", "out/.pnpmfile.cjs"])
+def test_an_archive_member_a_tool_runs_by_its_name_is_refused(tmp_path, member):
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    with pytest.raises(transfer.Refused):
+        transfer.unpack(tree, archive(tmp_path, [("out/a.png", "file", b"1"), (member, "file", b"x")]), ["out"])
+    assert list(tree.iterdir()) == []
+
+
+def test_what_comes_back_is_never_executable(tmp_path):
+    path = tmp_path / "a.tar"
+    with tarfile.open(path, mode="w") as t:
+        info = tarfile.TarInfo("out/run.sh")
+        info.size, info.mode = 2, 0o755
+        t.addfile(info, io.BytesIO(b"x\n"))
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    transfer.unpack(tree, path, ["out"])
+    assert (tree / "out/run.sh").stat().st_mode & 0o111 == 0
+
+
+def test_a_compressed_archive_is_refused(tmp_path):
+    path = tmp_path / "a.tar.gz"
+    with tarfile.open(path, mode="w:gz") as t:
+        info = tarfile.TarInfo("out/a")
+        info.size = 1
+        t.addfile(info, io.BytesIO(b"x"))
+    with pytest.raises(transfer.Refused):
+        transfer.unpack(tmp_path, path, ["out"])
+
+
+def test_too_many_members_are_refused(tmp_path, monkeypatch):
+    monkeypatch.setattr(transfer, "MAX_MEMBERS", 3)
+    path = archive(tmp_path, [(f"out/{n}", "file", b"x") for n in range(4)])
+    with pytest.raises(transfer.Refused):
+        transfer.unpack(tmp_path, path, ["out"])
