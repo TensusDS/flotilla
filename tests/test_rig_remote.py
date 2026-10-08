@@ -255,3 +255,36 @@ def test_a_run_sharing_the_machine_marks_its_measure_shared(tmp_path, monkeypatc
     other.wait(30)
     ssh(tmp_path, *run_line(box, T1, "sleep", "3", status=box / "st3"), timeout=40)
     assert "shared=1" in alone and "shared=0" in ssh(tmp_path, remote.STATUS, box / "st3").stdout.decode()
+
+
+def _samplers(status):
+    found = []
+    for proc in os.listdir("/proc"):
+        if proc.isdigit():
+            try:
+                argv = open(f"/proc/{proc}/cmdline", "rb").read().split(b"\0")
+            except OSError:
+                continue
+            if b"sampler" in argv and str(status).encode() + b".peak" in argv:
+                found.append(int(proc))
+    return found
+
+
+@linux
+def test_the_sampler_ends_with_its_run_however_the_run_ends(tmp_path, monkeypatch):
+    import signal
+    box = machine(tmp_path, monkeypatch)
+    (box / "work/P/runs" / T1).mkdir(parents=True)
+    child = start(tmp_path, box, T1, "sleep", "60", status=box / "st")
+    end = time.time() + 10
+    while not _samplers(box / "st") and time.time() < end:
+        time.sleep(0.1)
+    leader = int((box / "st.running").read_text().split()[0].split("=")[1])
+    os.kill(leader, signal.SIGKILL)            # RUN dies other than through STOP
+    end = time.time() + 8
+    while _samplers(box / "st") and time.time() < end:
+        time.sleep(0.2)
+    left = _samplers(box / "st")
+    ssh(tmp_path, remote.STOP, box / "st", T1)
+    child.wait(15)
+    assert left == []

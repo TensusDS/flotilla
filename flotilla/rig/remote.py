@@ -174,7 +174,7 @@ cp -a "$tmp/." "$run/"
 rm -rf "$tmp" "$file"
 '''
 
-_SAMPLER = r'''tag=$1 out=$2
+_SAMPLER = r'''tag=$1 out=$2 parent=$3
 peak=0 gpu=0 shared=0
 declare -A ticks
 gpu_used() {
@@ -182,7 +182,7 @@ gpu_used() {
 }
 base=0
 command -v nvidia-smi > /dev/null 2>&1 && base=$(gpu_used)
-while :; do
+while kill -0 "$parent" 2>/dev/null; do   # it ends with its run, however the run ends
   total=0
   found=$(grep -lzxF "FLOTILLA_RUN=$tag" /proc/[0-9]*/environ 2>/dev/null | sed -n 's|^/proc/\([0-9]*\)/environ$|\1|p')
   for pid in $found; do
@@ -223,7 +223,7 @@ done
 read -r -a stat < "/proc/$$/stat"
 echo "pgrp=${stat[4]} started=$(date +%s)" > "$status.running"
 started=$(date +%s)
-env -u FLOTILLA_RUN bash -c ''' + "'" + _SAMPLER.replace("'", "'\\''") + "'" + r''' sampler "$tag" "$status.peak" &
+env -u FLOTILLA_RUN bash -c ''' + "'" + _SAMPLER.replace("'", "'\\''") + "'" + r''' sampler "$tag" "$status.peak" "$$" &
 sampler=$!
 export FLOTILLA_RUN="$tag" npm_config_cache="$cache/npm" UV_CACHE_DIR="$cache/uv" PIP_CACHE_DIR="$cache/pip"
 export YARN_CACHE_FOLDER="$cache/yarn"
