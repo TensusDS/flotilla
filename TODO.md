@@ -22,6 +22,18 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 - **For `rig run`:** an ssh login shell on a vast machine does not carry `CONTAINER_ID`/`CONTAINER_API_KEY`/
   `FLOTILLA_WATCHDOG_MINUTES` (the watchdog's process does; live check 1) - renew by touching the heartbeat file.
   *(checked 2026-10-07 on 0.9.0: open, design)*
+- **For 0.11.0's packing, from live check 2:** a run's cores read 0.22 for a browser run (helpers that leave the
+  group escape `cutime`) and its GPU memory 0 (`nvidia-smi` in the container lists no pids); both feed the estimates
+  and must be measured another way (per-tag `/proc/<pid>/stat` sums, `nvidia-smi` used memory against the machine's
+  total). *(checked 2026-10-08 on 0.10.2: open, measure)*
+- **From the final reviews of 0.10.0** (minor, deferred): gone runs are STOPped again by every new run on the
+  machine; the sampler can outlive a RUN shell that died other than through STOP; `${x@P}`, `${arr[..]}`, `$[..]` with
+  a value set in an earlier segment run a substitution locally (the eval class, CEILING); `unpack`'s replacement is not
+  atomic against an OS error midway; `unsent()` cuts a staged rename's second entry and a directory put does not
+  cover changed files under it; a comment's `$( )` is refused on a rig line; the ssh stand-in returns where real ssh
+  would wait for every holder of the channel, closes the pipe at once on a drop, and returns the remote's signal
+  status where real ssh returns 255. *(checked 2026-10-08 on 0.10.2: still P - flotilla/rig/run.py, remote.py,
+  transfer.py, guards/person.py, tests/rigssh.py)*
 - **Stage 3:** onboarding for a weak machine (the base set, the three questions, the cost with its consequences) and
   the `ssh` adapter for the person's own machine. *(checked 2026-10-07 on 0.9.0: open, design)*
 
