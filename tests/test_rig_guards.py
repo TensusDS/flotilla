@@ -296,3 +296,12 @@ def test_a_real_heredoc_body_is_still_skipped():
 def test_the_person_guard_reads_every_line_whatever_looks_like_a_heredoc(tmp_path, monkeypatch, command):
     answer = ask(onboarded(tmp_path), command.format(cli=CLI), monkeypatch, tmp_path)
     assert answer and answer["permissionDecision"] == "deny"
+
+
+def test_a_substitution_in_a_comment_of_a_rig_line_is_not_refused(tmp_path, monkeypatch):
+    assert ask(onboarded(tmp_path), f"{CLI} rig run -- echo hi # $(x) `y`", monkeypatch, tmp_path) is None
+
+
+def test_a_hash_inside_a_word_is_no_comment(tmp_path, monkeypatch):
+    answer = ask(onboarded(tmp_path), f"{CLI} rig run -- echo a#$(flotilla rig open --hours 1)", monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny"

@@ -261,6 +261,8 @@ def _scan(text: str) -> tuple[bool, list[int]]:
                 state, i = "ansi", i + 1
             elif ch == '"':
                 state = "double"
+            elif ch == "#" and (i == 0 or text[i - 1] in " \t"):
+                break                      # a comment to the end: bash runs nothing in it
             elif ch == "`" or text.startswith(("$(", "<(", ">("), i):
                 live = True
             elif (text.startswith("--", i) and (i == 0 or text[i - 1] in " \t")

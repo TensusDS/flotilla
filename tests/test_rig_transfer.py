@@ -263,3 +263,16 @@ def test_a_project_may_add_a_type(tmp_path):
     placed, skipped = transfer.unpack(tree, archive(tmp_path, [("out/model.onnx", "file", b"m")]), ["out"],
                                       types=transfer.ARTIFACT_TYPES + ("onnx",), skipped=True)
     assert (tree / "out/model.onnx").exists() and skipped == []
+
+
+def test_a_staged_rename_names_both_files_whole(tmp_path):
+    from rigtree import git
+    tree = git_tree(tmp_path / "t", {"alpha.txt": "1"})
+    git(tree, "mv", "alpha.txt", "beta.txt")
+    assert sorted(transfer.unsent(tree)) == ["alpha.txt", "beta.txt"]
+
+
+def test_a_directory_put_covers_the_changed_files_under_it(tmp_path):
+    tree = git_tree(tmp_path / "t", {"data/a.txt": "1"})
+    (tree / "data" / "a.txt").write_text("changed")
+    assert len(transfer.gate(tree, ["data"])) == 40

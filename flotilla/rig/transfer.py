@@ -84,10 +84,16 @@ def relative(root, text: str) -> str:
 
 def unsent(root) -> list[str]:
     found = _git(Path(root), "status", "--porcelain=v1", "-z", "--untracked-files=no")
-    names = []
-    for entry in found.stdout.split("\0"):
+    entries, names, at = found.stdout.split("\0"), [], 0
+    while at < len(entries):
+        entry = entries[at]
         if len(entry) > 3:
             names.append(entry[3:])
+            if "R" in entry[:2] or "C" in entry[:2]:   # a rename or copy: its source follows whole, as its own entry
+                at += 1
+                if at < len(entries) and entries[at]:
+                    names.append(entries[at])
+        at += 1
     return names
 
 
@@ -96,7 +102,8 @@ def gate(root, puts) -> str:
     head = _git(Path(root), "rev-parse", "--verify", "HEAD")
     if head.returncode != 0:
         raise Refused("the tree has no commit: a run is tied to a revision - commit first")
-    missing = [name for name in unsent(root) if name not in set(puts)]
+    missing = [name for name in unsent(root)
+               if not any(name == put or name.startswith(put.rstrip("/") + "/") for put in puts)]
     if missing:
         raise Refused(f"uncommitted changes to {', '.join(missing)}: commit them, or pass each with --put")
     return head.stdout.strip()
