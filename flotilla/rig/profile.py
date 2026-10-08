@@ -24,6 +24,7 @@ class RigProfile:
     problems: tuple = field(default=(), compare=False)
     setup: str = ""
     max_run_seconds: int = DEFAULT_RUN_SECONDS
+    get_types: tuple = ()
 
 
 def read(data: dict) -> RigProfile:
@@ -52,4 +53,11 @@ def read(data: dict) -> RigProfile:
     if isinstance(seconds, bool) or not isinstance(seconds, int) or not 60 <= seconds <= 86400:
         problems.append(f"[rig] max_run_seconds {seconds!r} is not 60-86400; using {DEFAULT_RUN_SECONDS}")
         seconds = DEFAULT_RUN_SECONDS
-    return RigProfile(image, kept, disk, tuple(problems), setup.strip(), seconds)
+    from flotilla.rig.transfer import ARTIFACT_TYPES
+    extra = section.get("get_types", [])
+    extra = extra if isinstance(extra, list) else []
+    good = tuple(t.lower() for t in extra if isinstance(t, str) and re.fullmatch(r"[A-Za-z0-9]{1,10}", t))
+    if len(good) != len(extra):
+        problems.append("[rig] get_types holds names that are not file extensions; they are left out")
+    types = ARTIFACT_TYPES + tuple(t for t in good if t not in ARTIFACT_TYPES)
+    return RigProfile(image, kept, disk, tuple(problems), setup.strip(), seconds, types)

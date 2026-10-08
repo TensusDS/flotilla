@@ -31,3 +31,11 @@ def test_the_ceiling_is_the_rigs_own():
     assert profile.read({}).max_run_seconds == 1800
     assert profile.read({"rig": {"max_run_seconds": 600}}).max_run_seconds == 600
     assert profile.read({"rig": {"max_run_seconds": 5}}).max_run_seconds == 1800
+
+
+def test_get_types_extend_the_artifact_types():
+    from flotilla.rig import profile, transfer
+    got = profile.read({"rig": {"get_types": ["onnx", "PLY", "bad/one"]}})
+    assert "onnx" in got.get_types and "ply" in got.get_types and "png" in got.get_types
+    assert "bad/one" not in got.get_types and any("get_types" in p for p in got.problems)
+    assert profile.read({}).get_types == transfer.ARTIFACT_TYPES

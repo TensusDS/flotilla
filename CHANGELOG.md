@@ -3,6 +3,14 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.10.2 - 2026-10-08
+
+- **`rig run --get` brings back only artifact types** (the person's decision): images, video, sound, `json`, `csv`,
+  `tsv`, `txt`, `log`, `md`, `pdf`. Any other file - code, a config, a file with no extension - stays on the machine
+  and is named in the output; a project adds its own types with `[rig] get_types`. A list of names that tools run can
+  never be whole, and the files in what comes back are written by the command and everything it installed, not only
+  by the host.
+
 ## 0.10.1 - 2026-10-08
 
 From a security review of the pushed 0.10.0:

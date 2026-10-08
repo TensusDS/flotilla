@@ -41,7 +41,7 @@ def test_get_refuses_and_leaves_the_tree_untouched(tmp_path, member):
 
 def test_get_past_the_cap_is_refused(tmp_path):
     with pytest.raises(transfer.Refused):
-        transfer.unpack(tmp_path, archive(tmp_path, [("shots/a", "file", b"x" * 11)]), ["shots"], cap=10)
+        transfer.unpack(tmp_path, archive(tmp_path, [("shots/a.png", "file", b"x" * 11)]), ["shots"], cap=10)
 
 
 def test_get_replaces_the_path_whole(tmp_path):
@@ -181,9 +181,9 @@ def test_a_get_path_that_differs_from_a_tracked_one_only_by_case_is_refused(tmp_
 def test_nested_gets_keep_every_file(tmp_path):
     tree = tmp_path / "tree"
     tree.mkdir()
-    placed = transfer.unpack(tree, archive(tmp_path, [("out/a", "file", b"a"), ("out/sub/inner.txt", "file", b"i")]),
+    placed = transfer.unpack(tree, archive(tmp_path, [("out/a.png", "file", b"a"), ("out/sub/inner.txt", "file", b"i")]),
                              ["out/sub", "out"])
-    assert (tree / "out/sub/inner.txt").read_bytes() == b"i" and (tree / "out/a").read_bytes() == b"a"
+    assert (tree / "out/sub/inner.txt").read_bytes() == b"i" and (tree / "out/a.png").read_bytes() == b"a"
     assert placed == ["out"]
 
 
@@ -221,13 +221,13 @@ def test_an_archive_member_a_tool_runs_by_its_name_is_refused(tmp_path, member):
 def test_what_comes_back_is_never_executable(tmp_path):
     path = tmp_path / "a.tar"
     with tarfile.open(path, mode="w") as t:
-        info = tarfile.TarInfo("out/run.sh")
+        info = tarfile.TarInfo("out/frame.png")
         info.size, info.mode = 2, 0o755
         t.addfile(info, io.BytesIO(b"x\n"))
     tree = tmp_path / "tree"
     tree.mkdir()
     transfer.unpack(tree, path, ["out"])
-    assert (tree / "out/run.sh").stat().st_mode & 0o111 == 0
+    assert (tree / "out/frame.png").stat().st_mode & 0o111 == 0
 
 
 def test_a_compressed_archive_is_refused(tmp_path):
@@ -245,3 +245,21 @@ def test_too_many_members_are_refused(tmp_path, monkeypatch):
     path = archive(tmp_path, [(f"out/{n}", "file", b"x") for n in range(4)])
     with pytest.raises(transfer.Refused):
         transfer.unpack(tmp_path, path, ["out"])
+
+
+def test_only_artifact_types_come_back_and_the_rest_is_named(tmp_path):
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    placed, skipped = transfer.unpack(tree, archive(tmp_path, [
+        ("out/frame.png", "file", b"p"), ("out/report.json", "file", b"{}"), ("out/jest.config.js", "file", b"x"),
+        ("out/Makefile", "file", b"x"), ("out/sub/run.sh", "file", b"x")]), ["out"], skipped=True)
+    assert sorted(p.name for p in (tree / "out").rglob("*") if p.is_file()) == ["frame.png", "report.json"]
+    assert sorted(skipped) == ["out/Makefile", "out/jest.config.js", "out/sub/run.sh"]
+
+
+def test_a_project_may_add_a_type(tmp_path):
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    placed, skipped = transfer.unpack(tree, archive(tmp_path, [("out/model.onnx", "file", b"m")]), ["out"],
+                                      types=transfer.ARTIFACT_TYPES + ("onnx",), skipped=True)
+    assert (tree / "out/model.onnx").exists() and skipped == []
