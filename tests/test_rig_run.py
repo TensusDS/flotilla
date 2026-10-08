@@ -55,12 +55,13 @@ def raised(world, tree):
 
 def background_rig_run(world, tree, box, tmp_path, *argv, no_room=False):
     env = {**os.environ, "RIG_TEST_SSH": remote.PROGRAM, "RIG_TEST_BASE": remote.BASE, "RIG_TEST_BEAT": remote.BEAT,
-           "RIG_TEST_KEY": str(tmp_path / "key"), "PYTHONPATH": f"{HERE.parent}{os.pathsep}{HERE}"}
+           "RIG_TEST_KEY": str(tmp_path / "key"), "PYTHONPATH": f"{HERE.parent}{os.pathsep}{HERE}",
+           "RIG_TEST_CLOCK": world["clock"]["at"].isoformat()}
     if no_room:
         env["RIG_TEST_NO_ROOM"] = "1"
     return subprocess.Popen([sys.executable, str(HERE / "rigrun_child.py"), "rig", "run", "--root", str(tree),
-                             "--as", "minor 9", *argv], cwd=tree, env=env, stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL)
+                             "--as", "minor 9", *argv], cwd=tree, env=env,
+                            stdout=open(tmp_path / "child.log", "ab"), stderr=subprocess.STDOUT)
 
 
 def rows(world):
@@ -297,3 +298,13 @@ def test_a_stop_cut_short_by_a_second_signal_is_sent_again(world, box, tree, mon
         rig_run(world, tree, "--", "sleep", "30")
     run = journal(world).runs()["j1"]
     assert len(calls) >= 2 and run.verdict == "stopped" and tagged(box, run.tag) == []
+
+
+def test_a_client_killed_outright_is_a_cut_not_the_commands_exit(world, box, tree):
+    from rigssh import kill_on_drop
+    opened(world)
+    drop_after(box, "# flotilla-run", 1)
+    kill_on_drop(box)
+    code, out = rig_run(world, tree, "--", "sleep", "30")
+    run = journal(world).runs()["j1"]
+    assert code == 75 and run.verdict == "cut" and tagged(box, run.tag) == []

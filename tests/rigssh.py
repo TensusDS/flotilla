@@ -55,6 +55,8 @@ if drop is not None:
     time.sleep(drop)
     if child.poll() is None:
         open(box + "/.dropped", "w").close()
+        if os.path.exists(box + "/.drop-by-kill"):
+            os.kill(os.getpid(), signal.SIGKILL)   # the client killed outright, as by OOM or kill -9 (live check 2)
         os._exit(255)
 code = child.wait()
 for t in threads:
@@ -79,6 +81,10 @@ def machine(tmp_path: Path, monkeypatch) -> Path:
 
 def drop_after(box: Path, marker: str, seconds: float) -> None:
     (box / ".drop").write_text(f"{marker} {seconds}")
+
+
+def kill_on_drop(box: Path) -> None:
+    (box / ".drop-by-kill").write_text("")
 
 
 def unreachable_after_drop(box: Path) -> None:

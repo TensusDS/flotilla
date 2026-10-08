@@ -19,6 +19,9 @@ remote.BEAT = os.environ["RIG_TEST_BEAT"]
 run.KEY_PATH = os.environ["RIG_TEST_KEY"]
 run.POLL = run.ASK_EVERY = 0.2
 commands.PROVIDERS = no_provider
+if os.environ.get("RIG_TEST_CLOCK"):   # the parent's clock: a journal written at its time must be read at its time
+    import datetime as dt
+    commands.CLOCK = lambda: dt.datetime.fromisoformat(os.environ["RIG_TEST_CLOCK"])
 if os.environ.get("RIG_TEST_NO_ROOM"):
     run.READ = lambda box: {"mem_kb": 0, "mem_total_kb": 0, "cpus": 8, "gpu_free_mb": -1, "gpu_total_mb": -1}
 sys.exit(cli.main(sys.argv[1:]))

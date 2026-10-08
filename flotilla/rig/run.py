@@ -276,7 +276,7 @@ class Run:
             self.stop()
             self.verdict, self.code = "ceiling", 124
             return False
-        if result.exit == 255:
+        if result.exit == 255 or result.signal is not None:   # ssh's 255, or ssh itself killed (live check 2)
             self.ask(status_file)
             return False
         done = self.box.call(remote.STATUS, status_file)
