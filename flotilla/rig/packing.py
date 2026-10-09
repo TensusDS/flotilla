@@ -202,8 +202,8 @@ def choose(waiting, running, machine, needs, now) -> Pick:
         return Pick(None, why)
     chosen = max(candidates, key=lambda r: (math.inf if needs[r.id].seconds is None else needs[r.id].seconds,
                                             -_number(r)))
+    first = "not measured yet" if needs[chosen.id].seconds is None else "longer"
     for item in candidates:
         if item is not chosen:
-            why[item.id] = f"{chosen.id} goes first ({'not measured yet' if needs[chosen.id].seconds is None
-                                                       else 'longer'})"
+            why[item.id] = f"{chosen.id} goes first ({first})"
     return Pick(chosen.id, why)
