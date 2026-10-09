@@ -25,6 +25,15 @@ Rig stage 2c: runs on a rented machine are packed by estimates (the person's dec
   machine with no run for 15 minutes goes back on its own, and only the person ends a session sooner
   (`flotilla rig close`). The orchestrator brings that line when the person wants the rig closed.
 
+## 0.10.5 - 2026-10-09
+
+- A `rig run` signalled in the instant between taking its machine and knowing its paths on it ended with no verdict
+  in the journal (its cleanup tripped on the missing paths). The paths are now known first, and the cleanup asks
+  for both. Found by CI on 0.10.4, reproduced by a test.
+- Tests no longer see this machine's own runs as the lane's foreign runs. A test that took its isolated lane read
+  the real process table, so a full suite under `flotilla lane run` waited on any pytest queued behind it - which
+  waited on the suite. Measured on 2026-10-09: the suite resumed the second the queued run was stopped.
+
 ## 0.10.4 - 2026-10-09
 
 From the twosuns fleet's field use of 0.10.2:

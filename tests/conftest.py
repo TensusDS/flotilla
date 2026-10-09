@@ -77,3 +77,22 @@ def no_real_crontab(monkeypatch, tmp_path):
     def no_keygen(*args, **kwargs):
         raise AssertionError("a test reached the real ssh-keygen")
     monkeypatch.setattr(commands, "SSH_KEY", no_keygen, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def no_real_foreign_run(monkeypatch):
+    """The lane asks this machine for runs it did not book; a test's lane must not see the suite's own neighbours.
+    A test's isolated lane books nothing of the machine's, so any other pytest or `lane run` on it - a peer's, or the
+    run queued behind this very suite - read as a foreign run and the test waited on it, while it waited on the
+    suite: a deadlock (0.10.5, seen in a full suite run under `flotilla lane run`). Tables a test builds itself
+    (its own proc root or `ps` runner) are still asked."""
+    import subprocess
+    from pathlib import Path
+    from flotilla.lane import machine
+    real = machine.foreign_runs
+
+    def only_a_tests_own_table(table, patterns, exclude):
+        if getattr(table, "proc_root", None) == Path("/proc") and getattr(table, "run", None) is subprocess.run:
+            return []
+        return real(table, patterns, exclude)
+    monkeypatch.setattr(machine, "foreign_runs", only_a_tests_own_table)

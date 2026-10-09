@@ -662,3 +662,17 @@ def test_a_size_noted_from_the_host_is_corrected_to_the_container(world, box, tr
     task = run_module.Run(world["state"], rs.settings(world["state"]), None)
     task.roomy(machine)
     assert journal(world).machines()[machine.id].ram_mb == 8_000_000 // 1024
+
+def test_a_signal_before_the_runs_paths_are_known_still_records_it(world, box, tree, monkeypatch):
+    # CI of 0.10.4: SIGTERM between the machine's Box and the run's paths left the finally on a None and the run
+    # with no verdict at all
+    from flotilla.rig import transfer
+
+    def signalled(*_a, **_k):
+        raise SystemExit(143)
+    opened(world)
+    raised(world, tree)
+    monkeypatch.setattr(transfer, "project_slug", signalled)
+    with pytest.raises(SystemExit):
+        rig_run(world, tree, "--", "true")
+    assert journal(world).runs()["j1"].verdict == "stopped"

@@ -399,9 +399,9 @@ def _main(state: Path, settings: rs.RigSettings, args) -> int:
         if not task.take_room(session, time.monotonic() + float(args.wait)):
             return task.code
         task.started = time.monotonic()
-        task.box = Box(state, task.machine)
         slug = transfer.project_slug(root, key)
-        task.paths = remote.paths(slug, revision, task.run.tag)
+        task.paths = remote.paths(slug, revision, task.run.tag)   # before the box: the finally needs both
+        task.box = Box(state, task.machine)
         rig.place_run(task.run.id, slug)
         renewer = threading.Thread(target=task.renew, daemon=True)
         renewer.start()
@@ -425,7 +425,7 @@ def _main(state: Path, settings: rs.RigSettings, args) -> int:
         task.renewing.set()
         if renewer is not None:
             renewer.join(35)
-        if task.box is not None and not task.lost:
+        if task.box is not None and task.paths is not None and not task.lost:
             with contextlib.suppress(Lost):
                 if not task.sent_stop:
                     task.stop()
