@@ -501,3 +501,18 @@ def test_a_slug_a_shell_wrote_folds_as_none(world, box, tree):
     raised(world, tree)
     placed_run(world, dead_pid(), "x", slug="../../etc")
     assert journal(world).runs()["j1"].slug == ""
+
+
+def test_a_signal_before_the_runs_paths_are_known_still_records_it(world, box, tree, monkeypatch):
+    # CI of 0.10.4: SIGTERM between the machine's Box and the run's paths left the finally on a None and the run
+    # with no verdict at all
+    from flotilla.rig import transfer
+
+    def signalled(*_a, **_k):
+        raise SystemExit(143)
+    opened(world)
+    raised(world, tree)
+    monkeypatch.setattr(transfer, "project_slug", signalled)
+    with pytest.raises(SystemExit):
+        rig_run(world, tree, "--", "true")
+    assert journal(world).runs()["j1"].verdict == "stopped"

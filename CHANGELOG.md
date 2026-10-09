@@ -3,6 +3,15 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.10.5 - 2026-10-09
+
+- A `rig run` signalled in the instant between taking its machine and knowing its paths on it ended with no verdict
+  in the journal (its cleanup tripped on the missing paths). The paths are now known first, and the cleanup asks
+  for both. Found by CI on 0.10.4, reproduced by a test.
+- Tests no longer see this machine's own runs as the lane's foreign runs. A test that took its isolated lane read
+  the real process table, so a full suite under `flotilla lane run` waited on any pytest queued behind it - which
+  waited on the suite. Measured on 2026-10-09: the suite resumed the second the queued run was stopped.
+
 ## 0.10.4 - 2026-10-09
 
 From the twosuns fleet's field use of 0.10.2:
