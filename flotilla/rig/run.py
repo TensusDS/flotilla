@@ -186,7 +186,8 @@ class Run:
             return False
         if machine.cpus is None and readings.get("cpus"):
             gpu = readings.get("gpu_total_mb", -1)
-            self.rig.note(machine.id, cpus=readings["cpus"], ram_mb=readings.get("mem_total_kb", 0) // 1024,
+            ram = readings.get("mem_limit_kb", readings.get("mem_total_kb", 0))   # the container's, not the host's
+            self.rig.note(machine.id, cpus=readings["cpus"], ram_mb=ram // 1024,
                           gpu_total_mb=None if gpu < 0 else gpu)
         gpu_free = readings.get("gpu_free_mb", -1)
         return readings.get("mem_kb", 0) // 1024 >= MARGIN_MB and (gpu_free < 0 or gpu_free >= GPU_MARGIN_MB)
@@ -250,8 +251,10 @@ class Run:
             seconds = float(fields.get("seconds", "0"))
             cpu = float(fields.get("cpu_s", "0"))
             shared = fields.get("shared", "0") == "1"   # the machine's GPU figure, with another run on it
+            gpu = int(fields.get("gpu_mb", "-1"))           # -1: the machine has no nvidia-smi
             self.measured = {"peak_mb": int(fields.get("peak_kb", "0")) // 1024,
-                             "gpu_mb": None if shared else int(fields.get("gpu_mb", "0")),
+                             "gpu_mb": None if shared or gpu < 0 else gpu,
+                             "gpu_shared_mb": gpu if shared and gpu >= 0 else None,
                              "cores": round(cpu / seconds, 2) if seconds > 0 else 0.0}
         except ValueError:
             pass

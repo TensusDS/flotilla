@@ -140,6 +140,7 @@ class Run:
     peak_mb: int | None = None
     cores: float | None = None
     gpu_mb: int | None = None
+    gpu_shared_mb: int | None = None  # GPU memory measured while another run shared the machine: raises, never lowers
     pid: int | None = None
     mark: str = ""
     since: str = ""
@@ -154,7 +155,7 @@ TEXT = ("who", "why", "session", "provider", "instance", "label", "gpu", "reason
 TIMES = ("until", "opened", "ended", "created", "lease_until", "idle_since", "requested", "keyed", "command_at",
          "swept")
 MONEY = {"budget": 1e4, "hourly": 1e3, "cost": 1e4}
-WHOLE = {"peak_mb": 10 ** 7, "gpu_mb": 10 ** 7, "cpus": 10 ** 4, "ram_mb": 10 ** 8, "gpu_total_mb": 10 ** 7}
+WHOLE = {"peak_mb": 10 ** 7, "gpu_mb": 10 ** 7, "gpu_shared_mb": 10 ** 7, "cpus": 10 ** 4, "ram_mb": 10 ** 8, "gpu_total_mb": 10 ** 7}
 
 
 def _aware(text) -> bool:

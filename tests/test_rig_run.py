@@ -501,3 +501,19 @@ def test_a_slug_a_shell_wrote_folds_as_none(world, box, tree):
     raised(world, tree)
     placed_run(world, dead_pid(), "x", slug="../../etc")
     assert journal(world).runs()["j1"].slug == ""
+
+
+# 0.11.0: measurements fit for packing
+
+def test_a_machine_without_nvidia_smi_measures_no_gpu(world, box, tree):
+    opened(world)
+    raised(world, tree)
+    code, out = rig_run(world, tree, "--", "true")
+    assert code == 0 and journal(world).runs()["j1"].gpu_mb is None
+
+
+def test_a_shared_gpu_figure_is_kept_apart():
+    task = run_module.Run.__new__(run_module.Run)
+    task.measured = {}
+    task.read_status("exit=0 seconds=10 cpu_s=20 peak_kb=4096 gpu_mb=3000 shared=1", stopped_here=False)
+    assert task.measured["gpu_mb"] is None and task.measured["gpu_shared_mb"] == 3000
