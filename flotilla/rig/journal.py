@@ -147,6 +147,7 @@ class Run:
     command_at: str = ""
     swept: str = ""                   # when a later run ended on the machine what this gone run had left there
     slug: str = ""                    # its project's directory on the machine, so `rig stop` finds its status files
+    ended: str = ""                   # its first `done` event, from the fold: a later `swept` never moves it
     reason: str = ""
 
 
@@ -240,13 +241,15 @@ def _fold_runs(records) -> dict[str, Run]:
             continue
         item = runs.get(run_id) or Run(id=run_id)
         for field in dc_fields(item):
-            if field.name not in ("id", "state", "since") and field.name in event:
+            if field.name not in ("id", "state", "since", "ended") and field.name in event:
                 setattr(item, field.name, _clean(field.name, event[field.name]))
         if item.tag and not item.tag.startswith(run_id + "-"):
             item.tag = ""
         item.state = state
         if state == WAITING:
             item.since = event["at"]
+        if state == DONE and not item.ended:
+            item.ended = event["at"]
         runs[run_id] = item
     return runs
 

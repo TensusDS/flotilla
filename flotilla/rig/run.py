@@ -26,6 +26,7 @@ from pathlib import Path
 from flotilla.lane import run as lane_run
 from flotilla.lane import signature
 from flotilla.rig import commands, journal as j, reaper, remote, sshkey, transfer
+from flotilla.rig.packing import GPU_MARGIN_MB, MARGIN_MB
 from flotilla.rig import settings as rs
 
 RENEW = 300.0
@@ -34,8 +35,6 @@ SLEEP = time.sleep
 EXECUTE = lane_run.execute
 ASK_FOR = 120.0
 ASK_EVERY = 10.0
-MARGIN_MB = 2048
-GPU_MARGIN_MB = 1024
 DISK_MARGIN_MB = 2048
 KEEP_REVISIONS = 5
 READ = None        # None: the READINGS script over ssh
