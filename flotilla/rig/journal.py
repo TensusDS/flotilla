@@ -57,6 +57,8 @@ FLOOR = 2
 #: its tree or setup has not taken its memory yet, and the readings would admit a crowd (third review of 2b).
 RUN_SETTLE = dt.timedelta(seconds=60)
 DEFAULT_CAP = 4
+#: A machine is not given back within this long of coming up unused, or of a peer's run ending on it (0.12.0).
+GIVE_BACK_GRACE = dt.timedelta(minutes=5)
 _PROGRAM = re.compile(r"[A-Za-z0-9._+-]{1,24}")
 _TAG = re.compile(r"j[0-9]{1,9}-[0-9a-f]{8}")
 _SLUG = re.compile(r"[A-Za-z0-9._-]{0,40}-[0-9a-f]{8}")   # transfer.project_slug's shape, and only that
@@ -255,6 +257,10 @@ def _fold_runs(records) -> dict[str, Run]:
             item.ended = event["at"]
         runs[run_id] = item
     return runs
+
+
+def _minutes(span: dt.timedelta) -> str:
+    return f"{max(0, int(span.total_seconds() // 60))} min"
 
 
 def _number(item_id: str) -> int:
@@ -467,6 +473,15 @@ class Rig:
                              key=lambda x: int(x[1:]))
             if waiting:
                 return f"{', '.join(waiting)} waits for a machine in this session"
+            now = self.now()
+            ran = [item for item in runs.values() if item.machine == machine_id and item.state == DONE and item.ended]
+            if not ran and machine.idle_since and now - _parse(machine.idle_since) < GIVE_BACK_GRACE:
+                return (f"machine {machine_id} came up {_minutes(now - _parse(machine.idle_since))} ago and nobody has "
+                        "run on it yet - a seat may be about to")
+            last = max(ran, key=lambda item: item.ended, default=None)
+            if last is not None and last.who != who and now - _parse(last.ended) < GIVE_BACK_GRACE:
+                return (f"{last.id} of {last.who} ended on {machine_id} {_minutes(now - _parse(last.ended))} ago - "
+                        "that seat may run again")
             self._append(tx, "machine", machine_id, DRAINING, reason=f"given back by {who}")
             return ""
 

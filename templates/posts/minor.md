@@ -36,5 +36,6 @@ You take small work, under the same form as the main post.
   budget, or when the person closes it (`flotilla rig close` is theirs alone). So when your run ends there is nothing
   to release and nothing to ask the person for; `flotilla rig stop jN` stops a run of yours that should not go on.
   When your run has ended and you foresee no rig run of yours in the next 5 minutes, give the machine back at once:
-  `flotilla rig down`. It is refused while a run is on the machine or waits for one, so it never cuts a peer's work;
-  the session stays open, and the next `rig run` raises a machine again in a few minutes.
+  `flotilla rig down`. It is refused while a run is on the machine or waits for one, and for 5 minutes after the
+  machine came up unused or a peer's run ended on it - a refusal is an answer, not an error. The session stays open;
+  the next `rig run` waits for the old machine to go and raises a new one in a few minutes.

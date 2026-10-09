@@ -184,7 +184,14 @@ class Run:
                                               why=self.args.why, root=self.args.root,
                                               wait=max(1.0, min(deadline - time.monotonic(), 100.0)),
                                               watchdog=45)
-                if code == 2:
+                draining = [m.id for m in self.rig.machines().values()
+                            if m.session == session.id and m.state == j.DRAINING]
+                if code == 2 and draining:   # the ceiling counts a machine being given back: wait for it to go
+                    text = f"machine {', '.join(draining)} is being given back; a new one is raised once it is gone"
+                    if text != said:
+                        _say(f"rig run {self.run.id} waits: {text}")
+                        said = text
+                elif code == 2:
                     self.reason = "no machine could be raised"
                     return False
                 if code == 0:

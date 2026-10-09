@@ -450,9 +450,14 @@ def _down(state: Path, settings: rs.RigSettings, args) -> int:
         print(f"refused: {err}")
         return 2
     open_ = {s.id for s in rig.sessions().values() if s.state == j.OPEN}
-    live = [m for m in rig.machines().values() if m.session in open_ and m.state in (j.READY, j.BUSY)]
+    machines = [m for m in rig.machines().values() if m.session in open_]
+    live = [m for m in machines if m.state in (j.READY, j.BUSY)]
+    coming = [m.id for m in machines if m.state in (j.REQUESTED, j.PROVISIONING)]
+    if coming:
+        print(f"machine {', '.join(coming)} is still coming up: not given back - the reaper gives it back after 15 "
+              "idle minutes once it is ready")
     if not live:
-        print("no machine to give back")
+        print("no machine to give back" if not coming else "no ready machine to give back")
         return 0
     refusals, given = [], []
     for machine in live:
@@ -462,11 +467,20 @@ def _down(state: Path, settings: rs.RigSettings, args) -> int:
         print("refused: " + "; ".join(refusals))
     if not given:
         return 2
-    for attempt in range(3):   # the reaper destroys and then sees it gone at the provider; usually within seconds
+    import contextlib
+    import io
+    said = io.StringIO()
+    with contextlib.redirect_stdout(said):   # one pass destroys; its other lines are the reaper's, not this seat's
         _reap(state, settings)
+    for line in said.getvalue().splitlines():
+        if any(f"machine {mid}" in line for mid in given):
+            print(line)
+    for attempt in range(3):   # then only the listing: never a second destroy, never a counted attempt
         if all(rig.machines()[mid].state == j.GONE for mid in given):
             break
         SLEEP(10)
+        for line in reaper.confirm_gone(rig, PROVIDERS, given):
+            print(line)
     left = [mid for mid in given if rig.machines()[mid].state != j.GONE]
     print(f"machine {', '.join(given)} given back by {who}" + (f"; gone at {settings.provider}" if not left else
           f"; {', '.join(left)} not yet confirmed gone - the reaper confirms it within 5 minutes"))

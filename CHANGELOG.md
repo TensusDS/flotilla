@@ -6,9 +6,11 @@ each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2
 ## 0.12.0 - 2026-10-09
 
 - **`flotilla rig down`**: a seat gives the session's idle machine back at once instead of after 15 idle minutes
-  (the person's decision). It drains the machine and runs the reaper until the provider no longer lists it. It is
-  refused while a run is on the machine or waits for one - checked in the same journal transaction that starts runs,
-  so no run is handed a machine being given back. The session stays open; the next `rig run` raises a machine again.
+  (the person's decision). One reaper pass destroys it; then only the provider's listing is asked, so a slow
+  provider is never counted as failed destroys. It is refused while a run is on the machine or waits for one, within
+  5 minutes of the machine coming up with no run on it, and within 5 minutes of another seat's run ending on it -
+  checked under the journal's lock, like starting a run, so no run is handed a machine being given back. The
+  session stays open; a `rig run` that needs a machine meanwhile waits for it to go and raises a new one.
 - The main and minor posts tell seats to call it when their run has ended and they foresee no rig run of theirs in
   the next five minutes.
 

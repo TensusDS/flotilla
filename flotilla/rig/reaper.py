@@ -178,6 +178,23 @@ def _drain(rig: j.Rig, now: dt.datetime, out: Outcome) -> None:
             out.lines.append(f"machine {item.id} draining: {reason}")
 
 
+def confirm_gone(rig: j.Rig, providers, machine_ids) -> list[str]:
+    """Ask the listing only: a draining machine whose instance is no longer listed is `gone`. Nothing is destroyed
+    and no attempt is counted - a provider still listing an instance seconds after its destroy is not an attempt
+    (section 5), so `rig down` may ask as often as it likes."""
+    out = Outcome()
+    listings, _ = _listings(rig, providers, (), out)
+    for machine_id in machine_ids:
+        item = rig.machines().get(machine_id)
+        if item is None or item.state != j.DRAINING:
+            continue
+        listed = listings.get(item.provider)
+        if listed is not None and item.instance not in listed:
+            if rig.move(item.id, j.GONE, expect={"state": j.DRAINING}):
+                out.lines.append(f"machine {item.id} gone (instance {item.instance or 'none'} no longer listed)")
+    return out.lines
+
+
 def _ours(item: j.Machine, machine_key: str | None) -> bool:
     return machine_key is not None and key_of_label(item.label) == (machine_key, item.id)
 
