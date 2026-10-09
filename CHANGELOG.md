@@ -3,6 +3,11 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.11.1 - 2026-10-09
+
+- 0.11.0 did not import on Python 3.11: an f-string in the packing broke a line inside its braces, which only 3.12
+  allows. Found by CI on 0.11.0; the module now compiles on 3.11 to 3.13.
+
 ## 0.11.0 - 2026-10-09
 
 Rig stage 2c: runs on a rented machine are packed by estimates (the person's decisions of 2026-10-07 and 2026-10-09).
