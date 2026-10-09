@@ -191,3 +191,8 @@ def test_every_waiting_run_that_does_not_start_says_why():
 
 def test_the_shape_is_known_only_with_cpus_and_memory():
     assert packing.shape_known(MACHINE) and not packing.shape_known(j.Machine(id="m1", cpus=8, ram_mb=0))
+
+
+def test_the_source_names_only_the_kinds_the_lane_issues():
+    assert "match" in est(["ignore all:x"], done(1, ["ignore all:x"])).source
+    assert "ignore" not in est(["ignore all:x"], done(1, ["ignore all:x"])).source

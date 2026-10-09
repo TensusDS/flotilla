@@ -91,6 +91,12 @@ def _max(values):
     return max(usable) if usable else None
 
 
+def _kind(step: str) -> str:
+    """The ladder step's kind for display: only the kinds the lane issues - a ladder is journal text."""
+    kind = step.split(":", 1)[0]
+    return kind if kind in ("exact", "norm", "prog") else "signature"
+
+
 def estimate(ladder, hist: dict[str, list[Sample]]) -> Need:
     steps = [(step, hist[step]) for step in ladder
              if isinstance(step, str) and not step.startswith("project:") and hist.get(step)]
@@ -108,7 +114,7 @@ def estimate(ladder, hist: dict[str, list[Sample]]) -> Need:
         gpu = shared
     cores, ram = _max(s.cores for s in samples), _max(s.ram_mb for s in samples)
     return Need(seconds, cores if cores is not None else PRIOR.cores, ram if ram is not None else PRIOR.ram_mb,
-                gpu if gpu is not None else PRIOR.gpu_mb, f"{len(samples)} run(s), {step.split(':', 1)[0]} match",
+                gpu if gpu is not None else PRIOR.gpu_mb, f"{len(samples)} run(s), {_kind(step)} match",
                 gpu is None)
 
 
