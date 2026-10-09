@@ -440,6 +440,39 @@ def _up(state: Path, settings: rs.RigSettings, args) -> int:
                          watchdog=args.watchdog)
 
 
+def _down(state: Path, settings: rs.RigSettings, args) -> int:
+    """A seat gives its session's idle machines back at once instead of after 15 idle minutes; the session stays
+    open, and the next `rig run` raises a machine again. Refused while a run is on a machine or waits for one."""
+    rig = _rig(state)
+    try:
+        who = _who(args.as_name)
+    except MoveRefused as err:
+        print(f"refused: {err}")
+        return 2
+    open_ = {s.id for s in rig.sessions().values() if s.state == j.OPEN}
+    live = [m for m in rig.machines().values() if m.session in open_ and m.state in (j.READY, j.BUSY)]
+    if not live:
+        print("no machine to give back")
+        return 0
+    refusals, given = [], []
+    for machine in live:
+        why = rig.give_back(machine.id, who, alive=_alive())
+        (refusals if why else given).append(why or machine.id)
+    if refusals:
+        print("refused: " + "; ".join(refusals))
+    if not given:
+        return 2
+    for attempt in range(3):   # the reaper destroys and then sees it gone at the provider; usually within seconds
+        _reap(state, settings)
+        if all(rig.machines()[mid].state == j.GONE for mid in given):
+            break
+        SLEEP(10)
+    left = [mid for mid in given if rig.machines()[mid].state != j.GONE]
+    print(f"machine {', '.join(given)} given back by {who}" + (f"; gone at {settings.provider}" if not left else
+          f"; {', '.join(left)} not yet confirmed gone - the reaper confirms it within 5 minutes"))
+    return 2 if refusals else 0
+
+
 def _stop(state: Path, args) -> int:
     """A seat stops its own run (field feedback from twosuns, 0.10.2): its `rig run` is signalled and ends the run on
     the machine itself; when that process is gone, the run is stopped on the machine here, by its tag."""
@@ -634,6 +667,8 @@ def run_rig_command(args) -> int:
             return _close(state)
         if args.action == "up":
             return _up(state, settings, args)
+        if args.action == "down":
+            return _down(state, settings, args)
         if args.action == "stop":
             return _stop(state, args)
         if args.action == "run":

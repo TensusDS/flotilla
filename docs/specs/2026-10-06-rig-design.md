@@ -94,6 +94,10 @@ user's; it is a door each honest path has to pass, the same standard as `flotill
   the person's moves under the same guard. A session that needs a machine and finds none open is refused with a line
   naming the orchestrator, and the refusal is written to the journal as a request. The orchestrator relays it to the
   person as a ready line to paste (`! flotilla rig open ...`). The orchestrator template gets this duty.
+- **Giving a machine back early** (`flotilla rig down`, 0.12.0, the person's decision of 2026-10-09) is any seat's
+  move: it only stops spending. It drains the session's idle machines at once, in the journal transaction that
+  starts runs, so it is refused while a run is on a machine or waits for one; the session stays open. Seats are
+  told to call it when they foresee no rig run within five minutes.
 - The yes cannot exceed the machine's ceilings (section 5, layer 3); a request above them is refused with the
   ceiling named. Turning rig on is not consent to spend: money is spent only inside a session the person opened.
 - **Relayed lines carry a request's id, never a session's text** (review of the 2a plan, 2026-10-07): a seat's reason

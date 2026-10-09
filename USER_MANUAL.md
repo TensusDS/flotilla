@@ -95,6 +95,8 @@ Worktrees and receipts:
     flotilla rig up [--wait S] [--watchdog-minutes M]
                                           a seat raises one machine in the open session; call again to resume
     flotilla rig stop jN                  a seat stops its own run (the person: any); it ends on the machine
+    flotilla rig down                     give the session's idle machine back now (refused while a run is on it
+                                          or waits); the session stays open
     flotilla rig run [--put P]... [--get P]... [--env N=V]... [--wait S] [--max S] -- COMMAND
                                           a seat runs COMMAND on a rented machine and gets its artifacts back
                                           (minutes: call it in the background; the last line names the verdict)

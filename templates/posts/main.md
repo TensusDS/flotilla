@@ -5,7 +5,7 @@ model: inherit
 name_pattern: "main session {n}"
 may: [reserve, claim, hand, moved, close, release, wait]
 writes_one_copy: false
-template_version: 8
+template_version: 9
 ---
 You build large work.
 
@@ -46,3 +46,6 @@ You build large work.
   for 15 minutes is given back on its own (the reaper looks every 5 minutes), and the session ends at its hours or
   budget, or when the person closes it (`flotilla rig close` is theirs alone). So when your run ends there is nothing
   to release and nothing to ask the person for; `flotilla rig stop jN` stops a run of yours that should not go on.
+  When your run has ended and you foresee no rig run of yours in the next 5 minutes, give the machine back at once:
+  `flotilla rig down`. It is refused while a run is on the machine or waits for one, so it never cuts a peer's work;
+  the session stays open, and the next `rig run` raises a machine again in a few minutes.

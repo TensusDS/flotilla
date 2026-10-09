@@ -477,6 +477,10 @@ rented machine with `flotilla rig run` and gets its output, its exit code and it
   It takes minutes: seats call it in the background and confirm the verdict with `flotilla rig`. `--max S` lowers one
   run's ceiling; `flotilla rig stop jN` stops your own run (the person may stop any) - it ends on the machine and is recorded
   `stopped`, or `gone` with exit 1 when the machine cannot be reached.
+- **`flotilla rig down`** gives the session's idle machine back at once instead of after 15 idle minutes, and waits
+  until the provider no longer lists it. It is refused while a run is on the machine or waits for one; the session
+  stays open, and the next `rig run` raises a machine again. Seats call it when they foresee no rig run within five
+  minutes.
 - `flotilla fleet` shows rig lines first: the open session, each machine, and loud lines for a STUCK machine, a
   silent reaper or a failed one, repeated every half hour until they clear.
 - Ceilings, yours too, in `~/.local/state/flotilla/machine.toml`: `rig_max_machines` (1), `rig_max_hourly`

@@ -449,6 +449,27 @@ class Rig:
                 self._append(tx, "machine", machine_id, BUSY, idle_since="")
             return _fold_runs(tx.read().records)[run_id]
 
+    def give_back(self, machine_id: str, who: str, *, alive) -> str:
+        """A seat gives an idle machine back at once (0.12.0): one transaction, so no run starts on it meanwhile and
+        none waits for it. "" when it drains now, else why not."""
+        with self.store.transaction(KEY) as tx:
+            records = tx.read().records
+            machine, runs = _fold(records)[1].get(machine_id), _fold_runs(records)
+            if machine is None:
+                return f"no machine {machine_id}"
+            on = sorted(item.id for item in runs.values() if item.state == RUNNING and item.machine == machine_id)
+            if on:
+                return f"{', '.join(on)} runs on {machine_id}"
+            if machine.state != READY:
+                return f"machine {machine_id} is {machine.state}, not idle"
+            waiting = sorted((item.id for item in runs.values() if item.state == WAITING
+                              and item.session == machine.session and alive(item.pid, item.mark)),
+                             key=lambda x: int(x[1:]))
+            if waiting:
+                return f"{', '.join(waiting)} waits for a machine in this session"
+            self._append(tx, "machine", machine_id, DRAINING, reason=f"given back by {who}")
+            return ""
+
     def place_run(self, run_id: str, slug: str) -> Run:
         with self.store.transaction(KEY) as tx:
             run = _fold_runs(tx.read().records).get(run_id)
