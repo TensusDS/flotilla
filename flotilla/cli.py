@@ -326,10 +326,15 @@ def build_parser() -> argparse.ArgumentParser:
     rig_run.add_argument("--get", action="append", default=[], metavar="PATH", help="a path to bring back")
     rig_run.add_argument("--env", action="append", default=[], metavar="NAME=VALUE", help="a variable to set")
     rig_run.add_argument("--wait", type=float, default=900.0, help="seconds to wait for room (default 900)")
+    rig_run.add_argument("--max", type=int, default=None, metavar="S",
+                         help="this run's ceiling in seconds, at most the profile's [rig] max_run_seconds")
     rig_run.add_argument("--why", default="a heavy run")
     rig_run.add_argument("--root", default=".")
     rig_run.add_argument("--as", dest="as_name", default=None)
     rig_run.add_argument("run_command", nargs=argparse.REMAINDER, metavar="COMMAND")
+    rig_stop = rig_actions.add_parser("stop", help="stop your own run (jN): it ends on the machine and is recorded")
+    rig_stop.add_argument("run_id", metavar="RUN")
+    rig_stop.add_argument("--as", dest="as_name", default=None)
     return parser
 
 

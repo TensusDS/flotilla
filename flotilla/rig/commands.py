@@ -10,6 +10,8 @@ from __future__ import annotations
 import datetime as dt
 import fcntl
 import math
+import os
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -19,7 +21,7 @@ from flotilla.core import caller, paths
 from flotilla.core.storage import LocalLogStore, StorageCorrupt
 from flotilla.onboard.machine import read_machine, set_person_keys
 from flotilla.ledger.errors import MoveRefused
-from flotilla.rig import cron, health, provider, providers, reaper, sshkey
+from flotilla.rig import cron, health, provider, providers, reaper, remote, sshkey
 from flotilla.rig import profile as rig_profile
 from flotilla.rig import journal as j
 from flotilla.rig import settings as rs
@@ -48,6 +50,9 @@ def _hhmm(moment) -> str:
         return "?"
     when = dt.datetime.fromisoformat(moment) if isinstance(moment, str) else moment
     return when.astimezone().strftime("%H:%M")
+
+
+STOP_WAIT = 90.0   # how long `rig stop` waits for the run's own rig run to end it
 
 
 def _alive():
@@ -435,6 +440,84 @@ def _up(state: Path, settings: rs.RigSettings, args) -> int:
                          watchdog=args.watchdog)
 
 
+def _stop(state: Path, args) -> int:
+    """A seat stops its own run (field feedback from twosuns, 0.10.2): its `rig run` is signalled and ends the run on
+    the machine itself; when that process is gone, the run is stopped on the machine here, by its tag."""
+    rig = _rig(state)
+    run = rig.runs().get(args.run_id)
+    if run is None:
+        print(f"refused: no run {args.run_id}")
+        return 2
+    from flotilla.ledger.actor import resolve_actor
+    from flotilla.ledger.errors import ActorMismatch, ActorUnknown
+    try:   # the census confirms who calls; outside it `--as` is only a word, and a word is no one's own run
+        who = resolve_actor({}, as_name=args.as_name).name
+    except ActorMismatch as err:
+        print(f"refused: {err}")
+        return 2
+    except (ActorUnknown, MoveRefused):
+        who = None
+    if run.who != who:
+        refused = caller.person_refusal("stops another seat's run")
+        if refused:
+            print(f"refused: run {run.id} is {run.who}'s; a seat stops only its own" if who else
+                  f"refused: the census does not confirm who calls, so `--as` proves no run is yours; {refused}")
+            return 2
+    if run.state == j.DONE:
+        print(f"run {run.id} already ended: {run.verdict}")
+        return 0
+    alive = _alive()
+    if run.pid and run.mark and alive(run.pid, run.mark):   # no mark: a pid alone may be anyone's by now
+        try:
+            os.kill(run.pid, signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            pass
+        else:
+            deadline = time.monotonic() + STOP_WAIT
+            while time.monotonic() < deadline:
+                done = rig.runs()[run.id]
+                if done.state == j.DONE:
+                    print(f"run {run.id} stopped: {done.verdict}")
+                    return 0
+                if not alive(run.pid, run.mark):
+                    break
+                time.sleep(0.5)
+            else:   # its own cleanup is still going: what it records stands, and nothing is recorded here
+                print(f"run {run.id}: its rig run (pid {run.pid}) has not ended after {STOP_WAIT:g} s; not recorded")
+                return 1
+            done = rig.runs()[run.id]
+            if done.state == j.DONE:
+                print(f"run {run.id} stopped: {done.verdict}")
+                return 0
+    reached = _stop_on_machine(state, rig, run)
+    if not reached:   # `gone` is what the next run on the machine sweeps
+        ended = rig.finish_run(run.id, "gone", reason=f"rig stop by {who or 'the person'} could not reach the machine")
+        print(f"run {run.id}: rig stop could not reach the machine; recorded {ended.verdict}, the next run there "
+              "ends what is left")
+        return 1
+    ended = rig.finish_run(run.id, "stopped", reason=f"stopped by {who or 'the person'}")
+    print(f"run {run.id} stopped" if ended.verdict == "stopped" else f"run {run.id} already ended: {ended.verdict}")
+    return 0
+
+
+def _stop_on_machine(state: Path, rig, run) -> bool:
+    """STOP both of the run's status files, as its own `rig run` does: the process group it wrote, then its tag."""
+    machine = rig.machines().get(run.machine) if run.machine else None
+    if machine is None or not machine.address or not run.tag:
+        return False
+    from flotilla.rig import run as rig_run
+    box = rig_run.Box(state, machine)
+    if run.slug:
+        paths = remote.paths(run.slug, run.revision or "-", run.tag)
+        files = [paths.run_status, paths.setup_status]
+    else:   # a run from before 0.10.4 recorded no directory: its tag alone
+        files = [f"{remote.BASE}/runs/{run.tag}.gone"]
+    try:
+        return all(box.call(remote.STOP, path, run.tag).returncode == 0 for path in files)
+    except rig_run.Lost:
+        return False
+
+
 def raise_machine(state: Path, settings: rs.RigSettings, *, who: str, why: str, root, wait: float,
                   watchdog: int) -> int:
     """Raise one machine in the person's open session, or resume the one coming up: 0 ready, 2 refused, 3 still
@@ -551,6 +634,8 @@ def run_rig_command(args) -> int:
             return _close(state)
         if args.action == "up":
             return _up(state, settings, args)
+        if args.action == "stop":
+            return _stop(state, args)
         if args.action == "run":
             from flotilla.rig import run as rig_run
             return rig_run.main(state, settings, args)

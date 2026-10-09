@@ -470,7 +470,9 @@ rented machine with `flotilla rig run` and gets its output, its exit code and it
     run on it); `130` stopped by a signal; `2` refused; `3` no room within `--wait`. The last line, on stdout and
     stderr, names the verdict; `flotilla rig` keeps it;
   - each run is measured on the machine (seconds, peak memory, cores, GPU memory) for the packing that comes next.
-  It takes minutes: seats call it in the background and confirm the verdict with `flotilla rig`.
+  It takes minutes: seats call it in the background and confirm the verdict with `flotilla rig`. `--max S` lowers one
+  run's ceiling; `flotilla rig stop jN` stops your own run (the person may stop any) - it ends on the machine and is recorded
+  `stopped`, or `gone` with exit 1 when the machine cannot be reached.
 - `flotilla fleet` shows rig lines first: the open session, each machine, and loud lines for a STUCK machine, a
   silent reaper or a failed one, repeated every half hour until they clear.
 - Ceilings, yours too, in `~/.local/state/flotilla/machine.toml`: `rig_max_machines` (1), `rig_max_hourly`

@@ -344,6 +344,9 @@ def _main(state: Path, settings: rs.RigSettings, args) -> int:
         revision = transfer.gate(root, puts)
         key, profile = commands._project(root)
         who = commands._who(args.as_name)
+        if args.max is not None and not 1 <= args.max <= profile.max_run_seconds:
+            raise Refused(f"--max {args.max} is not 1-{profile.max_run_seconds} s: a run's ceiling may only lower "
+                          "the profile's [rig] max_run_seconds")
     except (Refused, transfer.Refused, commands.MoveRefused) as err:
         _say(f"rig run: refused (exit 2) - {err}")
         return 2
@@ -372,10 +375,12 @@ def _main(state: Path, settings: rs.RigSettings, args) -> int:
             return task.code
         task.started = time.monotonic()
         task.box = Box(state, task.machine)
-        task.paths = remote.paths(transfer.project_slug(root, key), revision, task.run.tag)
+        slug = transfer.project_slug(root, key)
+        task.paths = remote.paths(slug, revision, task.run.tag)
+        rig.place_run(task.run.id, slug)
         renewer = threading.Thread(target=task.renew, daemon=True)
         renewer.start()
-        ceiling = float(CEILING or profile.max_run_seconds)
+        ceiling = float(CEILING or min(profile.max_run_seconds, args.max or profile.max_run_seconds))
         _phases(task, root, revision, puts, gets, pairs, command, profile, ceiling)
         return task.code
     except _Ended:
