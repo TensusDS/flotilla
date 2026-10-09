@@ -110,3 +110,91 @@ def estimate(ladder, hist: dict[str, list[Sample]]) -> Need:
     return Need(seconds, cores if cores is not None else PRIOR.cores, ram if ram is not None else PRIOR.ram_mb,
                 gpu if gpu is not None else PRIOR.gpu_mb, f"{len(samples)} run(s), {step.split(':', 1)[0]} match",
                 gpu is None)
+
+
+#: A run waiting this long is senior: until it fits, no later run takes room it needs.
+SENIOR = dt.timedelta(minutes=10)
+CORES, MEMORY, GPU = "cores", "MB of memory", "MB of GPU memory"
+
+
+@dataclass(frozen=True)
+class Pick:
+    run_id: str | None
+    why: dict
+
+
+def shape_known(machine) -> bool:
+    return bool(machine.cpus) and bool(machine.ram_mb)
+
+
+def _number(run) -> int:
+    return int(run.id[1:])
+
+
+def _age(run, now) -> dt.timedelta:
+    try:
+        return now - dt.datetime.fromisoformat(run.since)
+    except (TypeError, ValueError):
+        return dt.timedelta(0)
+
+
+def choose(waiting, running, machine, needs, now) -> Pick:
+    """Which of `waiting` (the live waiting runs of the machine's session) starts on `machine` now, and why each
+    other one waits. Memory and GPU memory bind from the first run; cores only past two (a machine always takes two
+    runs, as it did before estimates: CPU over-commit slows runs, memory over-commit kills them)."""
+    room = {CORES: float(machine.cpus), MEMORY: machine.ram_mb - MARGIN_MB}
+    if machine.gpu_total_mb is not None and machine.gpu_total_mb > 0:
+        room[GPU] = machine.gpu_total_mb - GPU_MARGIN_MB
+
+    def amounts(item):
+        n = needs[item.id]
+        found = {CORES: min(n.cores, room[CORES]), MEMORY: n.ram_mb}
+        if GPU in room:
+            found[GPU] = n.gpu_mb
+        return found
+
+    used = {key: sum(amounts(r)[key] for r in running) for key in room}
+    binding = [key for key in room if key != CORES or len(running) >= 2]
+
+    def short(item, held_for=None) -> str:
+        """The first resource `item` lacks, with a senior's share held back where `item` needs any, or ""."""
+        mine = amounts(item)
+        for key in binding:
+            held = amounts(held_for)[key] if held_for is not None and mine[key] > 0 else 0
+            left = room[key] - used[key] - held
+            if mine[key] > left:
+                return f"needs {mine[key]:g} {key}, {max(left, 0):g} left"
+        return ""
+
+    def bigger_than_machine(item) -> bool:
+        return any(amounts(item)[key] > room[key] for key in room if key != CORES)
+
+    def fits(item) -> bool:
+        return not running or not short(item)
+
+    order = sorted(waiting, key=_number)
+    seniors = [r for r in order if _age(r, now) >= SENIOR]
+    senior = seniors[0] if seniors else None
+    if senior is not None and fits(senior):
+        return Pick(senior.id, {r.id: f"senior {senior.id} goes first" for r in order if r is not senior})
+    why: dict[str, str] = {}
+    candidates = []
+    for item in order:
+        if item is senior:
+            why[item.id] = f"senior; {short(item) or 'waits for the machine to empty'}"
+        elif senior is not None and bigger_than_machine(senior):
+            why[item.id] = f"held for senior {senior.id}, which needs the whole machine"
+        elif senior is not None and short(item, senior):
+            why[item.id] = f"held for senior {senior.id}: {short(item, senior)}"
+        elif not fits(item):
+            why[item.id] = short(item)
+        else:
+            candidates.append(item)
+    if not candidates:
+        return Pick(None, why)
+    chosen = max(candidates, key=lambda r: (math.inf if needs[r.id].seconds is None else needs[r.id].seconds,
+                                            -_number(r)))
+    for item in candidates:
+        if item is not chosen:
+            why[item.id] = f"{chosen.id} goes first (longer)"
+    return Pick(chosen.id, why)
