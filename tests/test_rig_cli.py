@@ -275,3 +275,132 @@ def test_a_crash_inside_a_pass_still_marks_that_the_pass_ran(world, monkeypatch)
     ok, note = health.last_outcome(world["state"])
     assert code == 1 and health.last_reap(world["state"]) is not None
     assert not ok and "RuntimeError" in note and "something unforeseen" in out
+
+
+# rig down: a seat gives an idle machine back at once (0.12.0)
+
+def queued(rig, pid=5):
+    return rig.queue_run("s1", who="minor 3", project="p", revision="r", program="node", ladder=(), pid=pid,
+                         mark="m")
+
+
+def test_rig_down_gives_an_idle_machine_back_and_sees_it_gone(world, monkeypatch):
+    monkeypatch.setattr(commands, "SLEEP", lambda s: None)
+    turn(world["state"], "on")
+    machine(world)
+    world["clock"]["at"] = T0 + dt.timedelta(minutes=6)   # past the grace for a machine nobody ran on
+    code, out = run_cli("rig", "down", "--as", "minor 3")
+    item = journal(world).machines()["m1"]
+    assert code == 0 and item.state == j.GONE and "given back" in out and "gone" in out
+    assert world["fake"].instances == {}
+    assert journal(world).sessions()["s1"].state == j.OPEN          # the session stays open for the next run
+
+
+def test_rig_down_refuses_while_a_run_is_on_the_machine(world):
+    turn(world["state"], "on")
+    rig, mid = machine(world)
+    run = queued(rig)
+    assert rig.start_run(run.id, mid, alive=lambda p, m: True, roomy=True)
+    code, out = run_cli("rig", "down", "--as", "minor 3")
+    assert code == 2 and "j1" in out and journal(world).machines()[mid].state == j.BUSY
+
+
+def test_rig_down_refuses_while_a_run_waits_in_the_session(world):
+    turn(world["state"], "on")
+    rig, mid = machine(world)
+    queued(rig)
+    code, out = run_cli("rig", "down", "--as", "minor 3")
+    assert code == 2 and "waits" in out and journal(world).machines()[mid].state == j.READY
+
+
+def test_a_machine_given_back_is_never_handed_a_run(world):
+    turn(world["state"], "on")
+    rig, mid = machine(world)
+    world["clock"]["at"] = T0 + dt.timedelta(minutes=6)   # past the grace for a machine nobody ran on
+    assert rig.give_back(mid, "minor 3", alive=lambda p, m: True) == ""
+    run = queued(rig)
+    assert rig.start_run(run.id, mid, alive=lambda p, m: True, roomy=True) is None
+
+
+def test_a_machine_with_a_run_started_meanwhile_is_not_given_back(world):
+    turn(world["state"], "on")
+    rig, mid = machine(world)
+    run = queued(rig)
+    rig.start_run(run.id, mid, alive=lambda p, m: True, roomy=True)
+    assert "j1" in rig.give_back(mid, "minor 3", alive=lambda p, m: True)
+    assert journal(world).machines()[mid].state == j.BUSY
+
+
+def test_rig_down_with_no_machine_says_so(world):
+    turn(world["state"], "on")
+    code, out = run_cli("rig", "down", "--as", "minor 3")
+    assert code == 0 and "no machine" in out
+
+
+def test_the_seat_posts_say_when_to_give_the_machine_back():
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent / "templates" / "posts"
+    for post in ("main.md", "minor.md"):
+        text = (root / post).read_text(encoding="utf-8")
+        assert "flotilla rig down" in text and "5 minutes" in text
+
+
+# review of 0.12.0
+
+def test_a_slow_provider_is_not_counted_as_failed_destroys(world, monkeypatch):
+    monkeypatch.setattr(commands, "SLEEP", lambda s: None)
+    turn(world["state"], "on")
+    machine(world)
+    world["fake"].sticky.add("101")                       # vast still lists it a while after the destroy
+    world["clock"]["at"] = T0 + dt.timedelta(minutes=6)   # past the grace for a machine nobody ran on
+    code, out = run_cli("rig", "down", "--as", "minor 3")
+    item = journal(world).machines()["m1"]
+    assert code == 0 and item.state == j.DRAINING and item.attempts == 1 and "not yet confirmed" in out
+    world["fake"].sticky.clear()
+    world["fake"].instances.pop("101", None)
+    run_cli("rig", "reap")
+    assert journal(world).machines()["m1"].state == j.GONE
+
+
+def test_rig_down_shows_only_its_own_machines_lines(world, monkeypatch):
+    monkeypatch.setattr(commands, "SLEEP", lambda s: None)
+    turn(world["state"], "on")
+    rig, _ = machine(world)
+    other = rig.add_machine("s1", "vast", lambda mid: f"flotilla:k:{mid}")
+    rig.move(other.id, j.FAILED, reason="no offer")          # the reaper says "m2 gone" in the same pass
+    world["clock"]["at"] = T0 + dt.timedelta(minutes=6)   # past the grace for a machine nobody ran on
+    code, out = run_cli("rig", "down", "--as", "minor 3")
+    assert code == 0 and "m2" not in out and "m1" in out, out
+
+
+def test_a_machine_just_raised_with_no_run_yet_is_not_given_back(world):
+    turn(world["state"], "on")
+    rig, mid = machine(world)
+    rig.move(mid, j.BUSY)
+    rig.move(mid, j.READY)                                 # ready now, at T0: nobody has run on it yet
+    code, out = run_cli("rig", "down", "--as", "minor 3")
+    assert code == 2 and "nobody has run on it yet" in out and journal(world).machines()[mid].state == j.READY
+    world["clock"]["at"] = T0 + dt.timedelta(minutes=6)
+    assert journal(world).give_back(mid, "minor 3", alive=lambda p, m: True) == ""
+
+
+def test_a_peers_run_that_just_ended_keeps_the_machine(world):
+    turn(world["state"], "on")
+    rig, mid = machine(world)
+    run = rig.queue_run("s1", who="main 2", project="p", revision="r", program="node", ladder=(), pid=5, mark="m")
+    rig.start_run(run.id, mid, alive=lambda p, m: True, roomy=True)
+    world["clock"]["at"] = T0 + dt.timedelta(minutes=10)
+    rig.finish_run(run.id, "green", exit=0, seconds=60.0)
+    world["clock"]["at"] = T0 + dt.timedelta(minutes=12)
+    code, out = run_cli("rig", "down", "--as", "minor 3")
+    assert code == 2 and "main 2" in out and journal(world).machines()[mid].state == j.READY
+    assert journal(world).give_back(mid, "main 2", alive=lambda p, m: True) == ""     # its own seat may
+
+
+def test_rig_down_names_a_machine_still_coming_up(world):
+    turn(world["state"], "on")
+    rig = journal(world)
+    rig.open_session("max", "night frames", hours=3, budget=2.0)
+    rig.add_machine("s1", "vast", lambda mid: f"flotilla:k:{mid}")
+    code, out = run_cli("rig", "down", "--as", "minor 3")
+    assert code == 0 and "m1" in out and "coming up" in out

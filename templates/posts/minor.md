@@ -5,7 +5,7 @@ model: inherit
 name_pattern: "minor session {n}"
 may: [reserve, claim, hand, moved, close, release, wait]
 writes_one_copy: false
-template_version: 6
+template_version: 7
 ---
 You take small work, under the same form as the main post.
 
@@ -35,3 +35,7 @@ You take small work, under the same form as the main post.
   for 15 minutes is given back on its own (the reaper looks every 5 minutes), and the session ends at its hours or
   budget, or when the person closes it (`flotilla rig close` is theirs alone). So when your run ends there is nothing
   to release and nothing to ask the person for; `flotilla rig stop jN` stops a run of yours that should not go on.
+  When your run has ended and you foresee no rig run of yours in the next 5 minutes, give the machine back at once:
+  `flotilla rig down`. It is refused while a run is on the machine or waits for one, and for 5 minutes after the
+  machine came up unused or a peer's run ended on it - a refusal is an answer, not an error. The session stays open;
+  the next `rig run` waits for the old machine to go and raises a new one in a few minutes.

@@ -57,6 +57,8 @@ FLOOR = 2
 #: its tree or setup has not taken its memory yet, and the readings would admit a crowd (third review of 2b).
 RUN_SETTLE = dt.timedelta(seconds=60)
 DEFAULT_CAP = 4
+#: A machine is not given back within this long of coming up unused, or of a peer's run ending on it (0.12.0).
+GIVE_BACK_GRACE = dt.timedelta(minutes=5)
 _PROGRAM = re.compile(r"[A-Za-z0-9._+-]{1,24}")
 _TAG = re.compile(r"j[0-9]{1,9}-[0-9a-f]{8}")
 _SLUG = re.compile(r"[A-Za-z0-9._-]{0,40}-[0-9a-f]{8}")   # transfer.project_slug's shape, and only that
@@ -257,6 +259,10 @@ def _fold_runs(records) -> dict[str, Run]:
     return runs
 
 
+def _minutes(span: dt.timedelta) -> str:
+    return f"{max(0, int(span.total_seconds() // 60))} min"
+
+
 def _number(item_id: str) -> int:
     return int(item_id[1:])
 
@@ -448,6 +454,36 @@ class Rig:
             if machine.state == READY:
                 self._append(tx, "machine", machine_id, BUSY, idle_since="")
             return _fold_runs(tx.read().records)[run_id]
+
+    def give_back(self, machine_id: str, who: str, *, alive) -> str:
+        """A seat gives an idle machine back at once (0.12.0): one transaction, so no run starts on it meanwhile and
+        none waits for it. "" when it drains now, else why not."""
+        with self.store.transaction(KEY) as tx:
+            records = tx.read().records
+            machine, runs = _fold(records)[1].get(machine_id), _fold_runs(records)
+            if machine is None:
+                return f"no machine {machine_id}"
+            on = sorted(item.id for item in runs.values() if item.state == RUNNING and item.machine == machine_id)
+            if on:
+                return f"{', '.join(on)} runs on {machine_id}"
+            if machine.state != READY:
+                return f"machine {machine_id} is {machine.state}, not idle"
+            waiting = sorted((item.id for item in runs.values() if item.state == WAITING
+                              and item.session == machine.session and alive(item.pid, item.mark)),
+                             key=lambda x: int(x[1:]))
+            if waiting:
+                return f"{', '.join(waiting)} waits for a machine in this session"
+            now = self.now()
+            ran = [item for item in runs.values() if item.machine == machine_id and item.state == DONE and item.ended]
+            if not ran and machine.idle_since and now - _parse(machine.idle_since) < GIVE_BACK_GRACE:
+                return (f"machine {machine_id} came up {_minutes(now - _parse(machine.idle_since))} ago and nobody has "
+                        "run on it yet - a seat may be about to")
+            last = max(ran, key=lambda item: item.ended, default=None)
+            if last is not None and last.who != who and now - _parse(last.ended) < GIVE_BACK_GRACE:
+                return (f"{last.id} of {last.who} ended on {machine_id} {_minutes(now - _parse(last.ended))} ago - "
+                        "that seat may run again")
+            self._append(tx, "machine", machine_id, DRAINING, reason=f"given back by {who}")
+            return ""
 
     def place_run(self, run_id: str, slug: str) -> Run:
         with self.store.transaction(KEY) as tx:

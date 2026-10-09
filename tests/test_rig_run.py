@@ -676,3 +676,18 @@ def test_a_signal_before_the_runs_paths_are_known_still_records_it(world, box, t
     with pytest.raises(SystemExit):
         rig_run(world, tree, "--", "true")
     assert journal(world).runs()["j1"].verdict == "stopped"
+
+
+
+def test_a_run_waits_while_its_sessions_machine_is_being_given_back(world, box, tree, monkeypatch):
+    # review of 0.12.0: the ceiling counts a draining machine, so raising one refuses; the run waits instead
+    opened(world)
+    raised(world, tree)
+    rig = journal(world)
+    session = next(s for s in rig.sessions().values() if s.state == j.OPEN)
+    world["clock"]["at"] += dt.timedelta(minutes=6)   # past the grace for a machine nobody ran on
+    assert rig.give_back("m1", "minor 3", alive=lambda p, m: True) == ""
+    monkeypatch.setattr(run_module, "SLEEP", lambda s: None)
+    task = waiting_task(world, tree, rig, session, ("exact:a",), pid=80)
+    assert not task.take_room(rig.sessions()[session.id], time.monotonic() + 0.5)
+    assert task.verdict == "waited" and task.code == 3

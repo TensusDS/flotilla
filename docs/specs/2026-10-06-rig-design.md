@@ -94,6 +94,12 @@ user's; it is a door each honest path has to pass, the same standard as `flotill
   the person's moves under the same guard. A session that needs a machine and finds none open is refused with a line
   naming the orchestrator, and the refusal is written to the journal as a request. The orchestrator relays it to the
   person as a ready line to paste (`! flotilla rig open ...`). The orchestrator template gets this duty.
+- **Giving a machine back early** (`flotilla rig down`, 0.12.0, the person's decision of 2026-10-09) is any seat's
+  move: it only stops spending. It drains the session's idle machines at once, under the journal's lock like
+  starting a run, and is refused while a run is on a machine or waits for one, within 5 minutes of the machine
+  coming up unused, and within 5 minutes of another seat's run ending on it; the session stays open. One reaper
+  pass destroys; after it only the listing is asked, so no attempt is counted (section 5). Seats are told to call it
+  when they foresee no rig run within five minutes.
 - The yes cannot exceed the machine's ceilings (section 5, layer 3); a request above them is refused with the
   ceiling named. Turning rig on is not consent to spend: money is spent only inside a session the person opened.
 - **Relayed lines carry a request's id, never a session's text** (review of the 2a plan, 2026-10-07): a seat's reason
@@ -122,7 +128,8 @@ Three layers; each fires if the one before it did not.
   - its lease expired;
   - it has been `ready` for 15 minutes;
   - its session is not open (ended, closed, over budget);
-  - rig was turned off and the machine is not `busy` - off stops new spending at once and lets a running job end.
+  - rig was turned off and the machine is not `busy` - off stops new spending at once and lets a running job end;
+  - a seat gave it back (`flotilla rig down`, section 4).
 - **Draining means verifying, one pass apart.** A pass destroys a draining machine's instance; the next pass asks
   the provider's listing. Absent: `gone`. Still listed: the destroy is repeated; still listed after three destroys,
   the machine is `stuck`. A provider still listing an instance seconds after its destroy is therefore not an attempt.

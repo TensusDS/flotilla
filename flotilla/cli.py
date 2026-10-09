@@ -332,6 +332,9 @@ def build_parser() -> argparse.ArgumentParser:
     rig_run.add_argument("--root", default=".")
     rig_run.add_argument("--as", dest="as_name", default=None)
     rig_run.add_argument("run_command", nargs=argparse.REMAINDER, metavar="COMMAND")
+    rig_down = rig_actions.add_parser("down", help="give the session's idle machine back now, not after 15 idle "
+                                                   "minutes (refused while a run is on it or waits)")
+    rig_down.add_argument("--as", dest="as_name", default=None)
     rig_stop = rig_actions.add_parser("stop", help="stop your own run (jN): it ends on the machine and is recorded")
     rig_stop.add_argument("run_id", metavar="RUN")
     rig_stop.add_argument("--as", dest="as_name", default=None)

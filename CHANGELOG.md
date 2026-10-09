@@ -3,6 +3,17 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.12.0 - 2026-10-09
+
+- **`flotilla rig down`**: a seat gives the session's idle machine back at once instead of after 15 idle minutes
+  (the person's decision). One reaper pass destroys it; then only the provider's listing is asked, so a slow
+  provider is never counted as failed destroys. It is refused while a run is on the machine or waits for one, within
+  5 minutes of the machine coming up with no run on it, and within 5 minutes of another seat's run ending on it -
+  checked under the journal's lock, like starting a run, so no run is handed a machine being given back. The
+  session stays open; a `rig run` that needs a machine meanwhile waits for it to go and raises a new one.
+- The main and minor posts tell seats to call it when their run has ended and they foresee no rig run of theirs in
+  the next five minutes.
+
 ## 0.11.1 - 2026-10-09
 
 - 0.11.0 did not import on Python 3.11: an f-string in the packing broke a line inside its braces, which only 3.12
