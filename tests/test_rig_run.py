@@ -381,6 +381,20 @@ def test_a_seat_cannot_stop_another_seats_run(world, box, tree, tmp_path, monkey
     child.wait(60)
 
 
+def test_a_name_the_census_does_not_confirm_stops_nothing_but_the_persons(world, box, tree, tmp_path, monkeypatch):
+    # security review of 0.10.4: outside any listed session `--as` is only a word, and the owner's name was enough
+    from flotilla.core import caller
+    opened(world)
+    raised(world, tree)
+    child = background_rig_run(world, tree, box, tmp_path, "--", "sleep", "20")
+    wait_for(lambda: running(world) == 1)
+    monkeypatch.setattr(caller, "person_refusal", lambda what: "this caller is a session, not the person")
+    monkeypatch.setattr(caller, "has_terminal", lambda: False)   # a process a session detached: no census, no tty
+    code, out = rig_stop(world, "j1", "minor 9")
+    assert code == 2 and "census" in out and journal(world).runs()["j1"].state == j.RUNNING
+    child.wait(60)
+
+
 def test_stopping_a_run_whose_process_is_gone_ends_it_on_the_machine(world, box, tree, tmp_path):
     opened(world)
     raised(world, tree)

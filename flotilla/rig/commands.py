@@ -445,14 +445,21 @@ def _stop(state: Path, args) -> int:
     if run is None:
         print(f"refused: no run {args.run_id}")
         return 2
-    try:
-        who = _who(args.as_name)
-    except MoveRefused as err:
+    from flotilla.ledger.actor import resolve_actor
+    from flotilla.ledger.errors import ActorMismatch, ActorUnknown
+    try:   # the census confirms who calls; outside it `--as` is only a word, and a word is no one's own run
+        who = resolve_actor({}, as_name=args.as_name).name
+    except ActorMismatch as err:
         print(f"refused: {err}")
         return 2
-    if run.who != who and caller.person_refusal("stops another seat's run"):
-        print(f"refused: run {run.id} is {run.who}'s; a seat stops only its own")
-        return 2
+    except (ActorUnknown, MoveRefused):
+        who = None
+    if run.who != who:
+        refused = caller.person_refusal("stops another seat's run")
+        if refused:
+            print(f"refused: run {run.id} is {run.who}'s; a seat stops only its own" if who else
+                  f"refused: the census does not confirm who calls, so `--as` proves no run is yours; {refused}")
+            return 2
     if run.state == j.DONE:
         print(f"run {run.id} already ended: {run.verdict}")
         return 0
@@ -474,7 +481,7 @@ def _stop(state: Path, args) -> int:
         from flotilla.rig import run as rig_run
         box = rig_run.Box(state, machine)
         box.call(remote.STOP, f"{remote.BASE}/runs/{run.tag}.gone", run.tag)
-    rig.finish_run(run.id, "stopped", reason=f"stopped by {who}")
+    rig.finish_run(run.id, "stopped", reason=f"stopped by {who or 'the person'}")
     print(f"run {run.id} stopped")
     return 0
 
