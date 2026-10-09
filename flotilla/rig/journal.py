@@ -148,10 +148,11 @@ class Run:
     swept: str = ""                   # when a later run ended on the machine what this gone run had left there
     slug: str = ""                    # its project's directory on the machine, so `rig stop` finds its status files
     ended: str = ""                   # its first `done` event, from the fold: a later `swept` never moves it
+    waits: str = ""                   # why it waits, in plain words: written when the reason changes, never per poll
     reason: str = ""
 
 
-TEXT = ("who", "why", "session", "provider", "instance", "label", "gpu", "reason", "run_mark", "address", "project",
+TEXT = ("who", "why", "waits", "session", "provider", "instance", "label", "gpu", "reason", "run_mark", "address", "project",
         "image", "suspect", "revision", "verdict", "machine", "mark")
 TIMES = ("until", "opened", "ended", "created", "lease_until", "idle_since", "requested", "keyed", "command_at",
          "swept")
@@ -246,7 +247,7 @@ def _fold_runs(records) -> dict[str, Run]:
         if item.tag and not item.tag.startswith(run_id + "-"):
             item.tag = ""
         item.state = state
-        if state == WAITING:
+        if state == WAITING and not item.since:   # a later `waits` line never resets how long it has waited
             item.since = event["at"]
         if state == DONE and not item.ended:
             item.ended = event["at"]
@@ -389,18 +390,50 @@ class Rig:
     def on(self, machine_id: str) -> list[Run]:
         return [item for item in self.runs().values() if item.state == RUNNING and item.machine == machine_id]
 
+    def _verdict(self, runs, machine, run, alive) -> str:
+        """"" when `run` is the one to start on `machine` now (before the second barrier), else why it waits: the
+        packing's choice when the machine's size is known, else the session's line by arrival."""
+        from flotilla.rig import packing
+        live = [item for item in runs.values() if item.state == WAITING and item.session == run.session
+                and alive(item.pid, item.mark)]
+        if machine.session != run.session or run.id not in {item.id for item in live}:
+            return "not waiting in this machine's session"
+        if not packing.shape_known(machine):
+            head = min(live, key=lambda item: _number(item.id))
+            return "" if head.id == run.id else f"{head.id} came first"
+        there = [item for item in runs.values() if item.state == RUNNING and item.machine == machine.id]
+        hist = packing.history(runs, now=self.now())
+        needs = {item.id: packing.estimate(item.ladder, hist) for item in live + there}
+        picked = packing.choose(live, there, machine, needs, self.now())
+        if picked.run_id == run.id:
+            return ""
+        return picked.why.get(run.id) or f"{picked.run_id} goes first"
+
+    def would_start(self, run_id: str, machine_id: str, *, alive) -> str:
+        """The same question as `start_run`'s first barrier, read without the lock and written nowhere: a waiting
+        run asks it before it reads the machine, so only the run that would go makes an ssh call."""
+        records = self.store.read(KEY).records
+        runs, machine = _fold_runs(records), _fold(records)[1].get(machine_id)
+        run = runs.get(run_id)
+        if run is None or machine is None or run.state != WAITING or machine.state not in (READY, BUSY):
+            return "no such waiting run or ready machine"
+        return self._verdict(runs, machine, run, alive)
+
     def start_run(self, run_id: str, machine_id: str, *, alive, roomy: bool) -> Run | None:
-        """One transaction: the run is its session's head, the machine is the session's and has room. Up to FLOOR
-        runs share a machine always; past it only when the caller read room just now (`roomy`), every run on it is
-        past RUN_SETTLE in its command, and the machine's cap (its CPUs, never under FLOOR) is not reached."""
+        """One transaction: the run is the one its session's packing picks for this machine (or, the machine's size
+        unknown, its session's head). Up to FLOOR runs share a machine without readings; past it only when the
+        caller read room just now (`roomy`), every run on it is past RUN_SETTLE in its command, and the machine's
+        cap (its CPUs, never under FLOOR) is not reached."""
         with self.store.transaction(KEY) as tx:
             records = tx.read().records
             runs, machine = _fold_runs(records), _fold(records)[1].get(machine_id)
             run = runs.get(run_id)
             if run is None or machine is None or run.state != WAITING or machine.state not in (READY, BUSY):
                 return None
-            head = self._head(runs, run.session, alive)
-            if head is None or head.id != run_id or machine.session != run.session:
+            reason = self._verdict(runs, machine, run, alive)
+            if reason:
+                if reason != run.waits:
+                    self._append(tx, "run", run_id, WAITING, waits=reason)
                 return None
             there = [item for item in runs.values() if item.state == RUNNING and item.machine == machine_id]
             if len(there) >= FLOOR:

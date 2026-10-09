@@ -517,3 +517,69 @@ def test_a_shared_gpu_figure_is_kept_apart():
     task.measured = {}
     task.read_status("exit=0 seconds=10 cpu_s=20 peak_kb=4096 gpu_mb=3000 shared=1", stopped_here=False)
     assert task.measured["gpu_mb"] is None and task.measured["gpu_shared_mb"] == 3000
+
+
+# 0.11.0: every waiting run tries; only the chosen one reads the machine
+
+def shaped(world, tree, cpus=24, ram_mb=64000):
+    raised(world, tree)
+    rig = journal(world)
+    machine = next(iter(rig.machines().values()))
+    rig.note(machine.id, cpus=cpus, ram_mb=ram_mb, gpu_total_mb=None)
+    return rig, next(s for s in rig.sessions().values() if s.state == j.OPEN), machine
+
+
+def measured(rig, session, machine, ladder, seconds):
+    run = rig.queue_run(session.id, who="minor 8", project="p", revision="r", program="x", ladder=ladder, pid=7,
+                        mark="m")
+    rig.start_run(run.id, machine.id, alive=lambda p, m: True, roomy=True)
+    rig.finish_run(run.id, "green", exit=0, seconds=seconds, cores=1.0, peak_mb=500)
+
+
+def waiting_task(world, tree, rig, session, ladder, pid):
+    import argparse
+    args = argparse.Namespace(why="test", root=str(tree), wait=2)
+    task = run_module.Run(world["state"], rs.settings(world["state"]), args)
+    task.run = rig.queue_run(session.id, who="minor 8", project="p", revision="r", program="x", ladder=ladder,
+                             pid=pid, mark="m")
+    return task
+
+
+def test_the_longer_run_that_came_second_starts_first(world, box, tree, monkeypatch):
+    opened(world)
+    rig, session, machine = shaped(world, tree)
+    measured(rig, session, machine, ("exact:long",), 480.0)
+    measured(rig, session, machine, ("exact:short",), 30.0)
+    monkeypatch.setattr(run_module, "SLEEP", lambda s: None)
+    short = waiting_task(world, tree, rig, session, ("exact:short",), pid=11)
+    long = waiting_task(world, tree, rig, session, ("exact:long",), pid=12)
+    assert long.take_room(rig.sessions()[session.id], time.monotonic() + 2)       # not the head, and it goes
+    assert journal(world).runs()[long.run.id].state == j.RUNNING
+    assert journal(world).runs()[short.run.id].state == j.WAITING
+
+
+def test_only_the_run_that_would_start_reads_the_machine(world, box, tree, monkeypatch):
+    opened(world)
+    rig, session, machine = shaped(world, tree)
+    for pid in (21, 22):                                   # two runs fill the floor, settled in their commands
+        run = rig.queue_run(session.id, who="minor 8", project="p", revision="r", program="x", ladder=("e:f",),
+                            pid=pid, mark="m")
+        rig.start_run(run.id, machine.id, alive=lambda p, m: True, roomy=True)
+        rig.command_started(run.id)
+    world["clock"]["at"] += dt.timedelta(minutes=2)
+    measured_long = ("exact:long",)
+    measured(rig, session, machine, measured_long, 480.0)
+    measured(rig, session, machine, ("exact:new-a",), 20.0)
+    measured(rig, session, machine, ("exact:new-b",), 20.0)
+    asked = []
+    monkeypatch.setattr(run_module, "READ", lambda b: asked.append(1) or {
+        "mem_kb": 50_000_000, "mem_total_kb": 64_000_000, "mem_limit_kb": 64_000_000, "cpus": 24,
+        "gpu_free_mb": -1, "gpu_total_mb": -1})
+    monkeypatch.setattr(run_module, "SLEEP", lambda s: None)
+    short = waiting_task(world, tree, rig, session, ("exact:new-a",), pid=31)
+    other = waiting_task(world, tree, rig, session, ("exact:new-b",), pid=32)
+    long = waiting_task(world, tree, rig, session, measured_long, pid=33)
+    session_now = rig.sessions()[session.id]
+    assert not short.take_room(session_now, time.monotonic() + 0.3) and asked == []
+    assert not other.take_room(session_now, time.monotonic() + 0.3) and asked == []
+    assert long.take_room(session_now, time.monotonic() + 2) and asked

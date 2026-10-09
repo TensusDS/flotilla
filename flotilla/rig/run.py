@@ -26,6 +26,7 @@ from pathlib import Path
 from flotilla.lane import run as lane_run
 from flotilla.lane import signature
 from flotilla.rig import commands, journal as j, reaper, remote, sshkey, transfer
+from flotilla.rig import packing
 from flotilla.rig.packing import GPU_MARGIN_MB, MARGIN_MB
 from flotilla.rig import settings as rs
 
@@ -151,39 +152,54 @@ class Run:
 
     # -- the line and the room ------------------------------------------------------------------------------
     def take_room(self, session, deadline) -> bool:
+        """Every waiting run tries every ready machine of its session: the journal's packing decides which one goes,
+        and only that one reads the machine. Only the session's oldest waiting run raises a machine."""
+        said = ""
         while True:
+            machines = [m for m in self.rig.machines().values() if m.session == session.id]
+            for machine in machines:
+                if machine.state not in (j.READY, j.BUSY) or not machine.address:
+                    continue
+                machine = self.shape(machine)
+                reason = self.rig.would_start(self.run.id, machine.id, alive=self.alive)
+                if reason:
+                    if reason != said:
+                        _say(f"rig run {self.run.id} waits: {reason}")
+                        said = reason
+                    continue
+                roomy = len(self.rig.on(machine.id)) < j.FLOOR or self.roomy(machine)
+                if self.rig.start_run(self.run.id, machine.id, alive=self.alive, roomy=roomy):
+                    self.machine = self.rig.machines()[machine.id]
+                    return True
             head = self.rig.head(session.id, self.alive)
-            if head is not None and head.id == self.run.id:
-                machines = [m for m in self.rig.machines().values() if m.session == session.id]
-                for machine in machines:
-                    if machine.state not in (j.READY, j.BUSY) or not machine.address:
-                        continue
-                    roomy = False
-                    if len(self.rig.on(machine.id)) >= j.FLOOR:
-                        roomy = self.roomy(machine)
-                    if self.rig.start_run(self.run.id, machine.id, alive=self.alive, roomy=roomy):
-                        self.machine = self.rig.machines()[machine.id]
-                        return True
-                if not any(m.state in (j.READY, j.BUSY) for m in machines):
-                    code = commands.raise_machine(self.state, self.settings, who=self.run.who,
-                                                  why=self.args.why, root=self.args.root,
-                                                  wait=max(1.0, min(deadline - time.monotonic(), 100.0)),
-                                                  watchdog=45)
-                    if code == 2:
-                        self.reason = "no machine could be raised"
-                        return False
-                    if code == 0:
-                        continue
+            if (head is not None and head.id == self.run.id
+                    and not any(m.state in (j.READY, j.BUSY) for m in machines)):
+                code = commands.raise_machine(self.state, self.settings, who=self.run.who,
+                                              why=self.args.why, root=self.args.root,
+                                              wait=max(1.0, min(deadline - time.monotonic(), 100.0)),
+                                              watchdog=45)
+                if code == 2:
+                    self.reason = "no machine could be raised"
+                    return False
+                if code == 0:
+                    continue
             if time.monotonic() >= deadline:
                 self.verdict, self.code, self.reason = "waited", 3, "no room within --wait"
                 return False
             SLEEP(POLL)
 
+    def shape(self, machine):
+        """The machine's size, read once: packing needs it before the first try, not only past the floor."""
+        if packing.shape_known(machine):
+            return machine
+        self.roomy(machine)
+        return self.rig.machines()[machine.id]
+
     def roomy(self, machine) -> bool:
         readings = _readings(Box(self.state, machine))
         if not readings:
             return False
-        if machine.cpus is None and readings.get("cpus"):
+        if not packing.shape_known(machine) and readings.get("cpus"):
             gpu = readings.get("gpu_total_mb", -1)
             ram = readings.get("mem_limit_kb", readings.get("mem_total_kb", 0))   # the container's, not the host's
             self.rig.note(machine.id, cpus=readings["cpus"], ram_mb=ram // 1024,
