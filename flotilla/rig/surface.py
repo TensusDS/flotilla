@@ -142,13 +142,29 @@ def lines(state: Path, now: dt.datetime) -> list[str]:
 
 
 def run_lines(rig: j.Rig, now: dt.datetime) -> list[str]:
-    """Who runs what and who waits: the program as the journal checked it, never a command's text."""
+    """Who runs what and who waits: the program as the journal checked it, never a command's text. Why a run waits
+    is worked out here again from the estimates, never read from the journal's `waits`, which any session may write."""
+    from flotilla.rig import packing
     lines = []
-    for run in sorted(rig.runs().values(), key=lambda r: int(r.id[1:])):
+    runs = rig.runs()
+    hist = packing.history(runs, now=now)
+    machines = rig.machines()
+    for run in sorted(runs.values(), key=lambda r: int(r.id[1:])):
         if run.state == j.RUNNING:
             since = _when(run.since)
             minutes = f" for {int((now - since).total_seconds() // 60)} min" if since else ""
             lines.append(f'  run {run.id} ({_who(run.who)}) running program "{run.program}" on {run.machine}{minutes}')
         elif run.state == j.WAITING:
-            lines.append(f"  run {run.id} ({_who(run.who)}) waits")
+            need = packing.estimate(run.ladder, hist)
+            since = _when(run.since)
+            took = f"~{max(1, round(need.seconds / 60))} min, " if need.seconds is not None else ""
+            gpu = "GPU: prior" if need.gpu_prior else f"{need.gpu_mb} MB GPU"
+            senior = "senior, " if since and now - since >= packing.SENIOR else ""
+            ready = [m for m in machines.values() if m.session == run.session and m.state in (j.READY, j.BUSY)]
+            reason = ""
+            if ready:
+                said = rig.would_start(run.id, ready[0].id, alive=lambda pid, mark: True)
+                reason = f": {said}" if said else ": next to start"
+            lines.append(f"  run {run.id} ({_who(run.who)}) waits{reason} ({senior}{took}{need.cores:g} cores, "
+                         f"{need.ram_mb} MB, {gpu}; {need.source})")
     return lines

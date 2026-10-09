@@ -26,6 +26,8 @@ from pathlib import Path
 from flotilla.lane import run as lane_run
 from flotilla.lane import signature
 from flotilla.rig import commands, journal as j, reaper, remote, sshkey, transfer
+from flotilla.rig import packing
+from flotilla.rig.packing import GPU_MARGIN_MB, MARGIN_MB
 from flotilla.rig import settings as rs
 
 RENEW = 300.0
@@ -34,8 +36,6 @@ SLEEP = time.sleep
 EXECUTE = lane_run.execute
 ASK_FOR = 120.0
 ASK_EVERY = 10.0
-MARGIN_MB = 2048
-GPU_MARGIN_MB = 1024
 DISK_MARGIN_MB = 2048
 KEEP_REVISIONS = 5
 READ = None        # None: the READINGS script over ssh
@@ -152,41 +152,64 @@ class Run:
 
     # -- the line and the room ------------------------------------------------------------------------------
     def take_room(self, session, deadline) -> bool:
+        """Every waiting run tries every ready machine of its session: the journal's packing decides which one goes,
+        and only that one reads the machine. Only the session's oldest waiting run raises a machine."""
+        said = ""
         while True:
+            machines = [m for m in self.rig.machines().values() if m.session == session.id]
+            reasons = {}
+            for machine in machines:
+                if machine.state not in (j.READY, j.BUSY) or not machine.address:
+                    continue
+                reason = self.rig.would_start(self.run.id, machine.id, alive=self.alive)
+                if not reason:   # this run would go: only now is the machine read (its size first, then its room)
+                    machine = self.shape(machine)
+                    reason = self.rig.would_start(self.run.id, machine.id, alive=self.alive)
+                if reason:
+                    reasons[machine.id] = reason
+                    continue
+                roomy = len(self.rig.on(machine.id)) < j.FLOOR or self.roomy(machine)
+                if self.rig.start_run(self.run.id, machine.id, alive=self.alive, roomy=roomy):
+                    self.machine = self.rig.machines()[machine.id]
+                    return True
+                reasons[machine.id] = "next to start; the machine's live readings or settle minute say not yet"
+            text = "; ".join(f"{mid}: {why}" if len(reasons) > 1 else why for mid, why in sorted(reasons.items()))
+            if text and text != said:
+                _say(f"rig run {self.run.id} waits: {text}")
+                said = text
             head = self.rig.head(session.id, self.alive)
-            if head is not None and head.id == self.run.id:
-                machines = [m for m in self.rig.machines().values() if m.session == session.id]
-                for machine in machines:
-                    if machine.state not in (j.READY, j.BUSY) or not machine.address:
-                        continue
-                    roomy = False
-                    if len(self.rig.on(machine.id)) >= j.FLOOR:
-                        roomy = self.roomy(machine)
-                    if self.rig.start_run(self.run.id, machine.id, alive=self.alive, roomy=roomy):
-                        self.machine = self.rig.machines()[machine.id]
-                        return True
-                if not any(m.state in (j.READY, j.BUSY) for m in machines):
-                    code = commands.raise_machine(self.state, self.settings, who=self.run.who,
-                                                  why=self.args.why, root=self.args.root,
-                                                  wait=max(1.0, min(deadline - time.monotonic(), 100.0)),
-                                                  watchdog=45)
-                    if code == 2:
-                        self.reason = "no machine could be raised"
-                        return False
-                    if code == 0:
-                        continue
+            if (head is not None and head.id == self.run.id
+                    and not any(m.state in (j.READY, j.BUSY) for m in machines)):
+                code = commands.raise_machine(self.state, self.settings, who=self.run.who,
+                                              why=self.args.why, root=self.args.root,
+                                              wait=max(1.0, min(deadline - time.monotonic(), 100.0)),
+                                              watchdog=45)
+                if code == 2:
+                    self.reason = "no machine could be raised"
+                    return False
+                if code == 0:
+                    continue
             if time.monotonic() >= deadline:
                 self.verdict, self.code, self.reason = "waited", 3, "no room within --wait"
                 return False
             SLEEP(POLL)
 
+    def shape(self, machine):
+        """The machine's size, read once: packing needs it before the first try, not only past the floor."""
+        if packing.shape_known(machine):
+            return machine
+        self.roomy(machine)
+        return self.rig.machines()[machine.id]
+
     def roomy(self, machine) -> bool:
         readings = _readings(Box(self.state, machine))
         if not readings:
             return False
-        if machine.cpus is None and readings.get("cpus"):
+        ram = readings.get("mem_limit_kb", readings.get("mem_total_kb", 0))   # the container's, not the host's
+        noted_too_big = bool(readings.get("mem_limit_kb")) and (machine.ram_mb or 0) > ram // 1024   # by 0.10.x
+        if (not packing.shape_known(machine) or noted_too_big) and readings.get("cpus"):
             gpu = readings.get("gpu_total_mb", -1)
-            self.rig.note(machine.id, cpus=readings["cpus"], ram_mb=readings.get("mem_total_kb", 0) // 1024,
+            self.rig.note(machine.id, cpus=readings["cpus"], ram_mb=ram // 1024,
                           gpu_total_mb=None if gpu < 0 else gpu)
         gpu_free = readings.get("gpu_free_mb", -1)
         return readings.get("mem_kb", 0) // 1024 >= MARGIN_MB and (gpu_free < 0 or gpu_free >= GPU_MARGIN_MB)
@@ -250,8 +273,10 @@ class Run:
             seconds = float(fields.get("seconds", "0"))
             cpu = float(fields.get("cpu_s", "0"))
             shared = fields.get("shared", "0") == "1"   # the machine's GPU figure, with another run on it
+            gpu = int(fields.get("gpu_mb", "-1"))           # -1: the machine has no nvidia-smi
             self.measured = {"peak_mb": int(fields.get("peak_kb", "0")) // 1024,
-                             "gpu_mb": None if shared else int(fields.get("gpu_mb", "0")),
+                             "gpu_mb": None if shared or gpu < 0 else gpu,
+                             "gpu_shared_mb": gpu if shared and gpu >= 0 else None,
                              "cores": round(cpu / seconds, 2) if seconds > 0 else 0.0}
         except ValueError:
             pass

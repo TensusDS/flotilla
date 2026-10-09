@@ -308,3 +308,75 @@ def test_cpu_of_a_helper_whose_name_holds_spaces_is_counted(tmp_path, monkeypatc
     fields = dict(item.split("=") for item in ssh(tmp_path, remote.STATUS, box / "st").stdout.decode().split())
     ssh(tmp_path, remote.STOP, box / "st", T1)
     assert int(fields["cpu_s"]) >= 3
+
+
+# 0.11.0: the machine's size is its container's, for packing
+
+def fake_root(tmp_path, *, meminfo_total=256 * 1024 * 1024, available=200 * 1024 * 1024, v2=True,
+              limit=8 * 1024 ** 3, current=6 * 1024 ** 3, inactive=3 * 1024 ** 3, quota="400000 100000"):
+    root = tmp_path / "root"
+    (root / "proc").mkdir(parents=True)
+    (root / "proc/meminfo").write_text(f"MemTotal: {meminfo_total} kB\nMemAvailable: {available} kB\n")
+    cg = root / "sys/fs/cgroup"
+    if v2:
+        cg.mkdir(parents=True)
+        (cg / "memory.max").write_text(f"{limit}\n")
+        (cg / "memory.current").write_text(f"{current}\n")
+        (cg / "memory.stat").write_text(f"anon 1\ninactive_file {inactive}\n")
+        (cg / "cpu.max").write_text(f"{quota}\n")
+    else:
+        (cg / "memory").mkdir(parents=True)
+        (cg / "cpu").mkdir(parents=True)
+        (cg / "memory/memory.limit_in_bytes").write_text(f"{limit}\n")
+        (cg / "memory/memory.usage_in_bytes").write_text(f"{current}\n")
+        (cg / "memory/memory.stat").write_text(f"cache 5\ntotal_inactive_file {inactive}\n")
+        q, p = quota.split()
+        (cg / "cpu/cpu.cfs_quota_us").write_text(f"{q}\n")
+        (cg / "cpu/cpu.cfs_period_us").write_text(f"{p}\n")
+    return root
+
+
+def readings(tmp_path, monkeypatch, root):
+    box = machine(tmp_path, monkeypatch)
+    line = ssh(tmp_path, remote.READINGS, box / "work", root).stdout.decode()
+    return {k: int(v) for k, v in (item.split("=") for item in line.split())}
+
+
+def fake_nvidia_smi(tmp_path, monkeypatch, *, total, free):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    tool = bin_dir / "nvidia-smi"
+    tool.write_text(f'#!/bin/bash\ncase "$*" in *memory.total*) echo {total};; *memory.free*) echo {free};; '
+                    '*) echo 0;; esac\n')
+    tool.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+
+
+@linux
+@pytest.mark.parametrize("v2", [True, False])
+def test_readings_report_the_containers_limits(tmp_path, monkeypatch, v2):
+    got = readings(tmp_path, monkeypatch, fake_root(tmp_path, v2=v2))
+    assert got["mem_limit_kb"] == 8 * 1024 * 1024          # the cgroup's 8 GB, not the host's 256 GB
+    assert got["cpus"] <= 4                                # the quota's 4 cores, whatever nproc says
+    assert got["mem_kb"] == (8 - (6 - 3)) * 1024 * 1024    # page cache that can be reclaimed is free
+
+
+@linux
+def test_readings_without_a_cgroup_limit_report_the_machine(tmp_path, monkeypatch):
+    got = readings(tmp_path, monkeypatch, fake_root(tmp_path, limit=2 ** 63 - 1, quota="max 100000"))
+    assert got["mem_limit_kb"] == 256 * 1024 * 1024 and got["mem_kb"] == 200 * 1024 * 1024
+
+
+@linux
+def test_a_gpu_that_reports_no_memory_is_no_gpu(tmp_path, monkeypatch):
+    fake_nvidia_smi(tmp_path, monkeypatch, total=0, free=0)
+    got = readings(tmp_path, monkeypatch, fake_root(tmp_path))
+    assert got["gpu_total_mb"] == -1 and got["gpu_free_mb"] == -1
+
+
+@linux
+def test_an_unreadable_usage_never_reports_the_whole_limit_free(tmp_path, monkeypatch):
+    root = fake_root(tmp_path)
+    (root / "sys/fs/cgroup/memory.current").unlink()
+    got = readings(tmp_path, monkeypatch, root)
+    assert got["mem_kb"] == 200 * 1024 * 1024 and got["mem_limit_kb"] == 8 * 1024 * 1024

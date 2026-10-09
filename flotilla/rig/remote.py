@@ -124,30 +124,53 @@ echo received
 
 READINGS = r'''set -u
 mkdir -p "$1"
-mem=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
-total=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+r=${2:-}   # a root for /proc and /sys: tests point it at a fake tree, the machine passes nothing
+mem=$(awk '/^MemAvailable:/ {print $2}' "$r/proc/meminfo")
+[ -n "$mem" ] || mem=$(awk '/^MemFree:/ {print $2}' "$r/proc/meminfo"); mem=${mem:-0}
+total=$(awk '/^MemTotal:/ {print $2}' "$r/proc/meminfo"); total=${total:-0}
+limit=$total
 cpus=$(nproc)
-if [ -r /sys/fs/cgroup/memory.max ]; then
-  max=$(cat /sys/fs/cgroup/memory.max); cur=$(cat /sys/fs/cgroup/memory.current 2>/dev/null || echo 0)
-  if [ "$max" != max ]; then room=$(( (max - cur) / 1024 )); [ "$room" -lt "$mem" ] && mem=$room; fi
-elif [ -r /sys/fs/cgroup/memory/memory.limit_in_bytes ]; then
-  max=$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes)
-  cur=$(cat /sys/fs/cgroup/memory/memory.usage_in_bytes 2>/dev/null || echo 0)
-  if [ "$max" -lt 1000000000000000 ]; then room=$(( (max - cur) / 1024 )); [ "$room" -lt "$mem" ] && mem=$room; fi
-fi
-if [ -r /sys/fs/cgroup/cpu.max ]; then
-  read -r quota period < /sys/fs/cgroup/cpu.max
-  if [ "$quota" != max ]; then
-    capped=$(( (quota + period - 1) / period )); [ "$capped" -lt "$cpus" ] && cpus=$capped
+cg=$r/sys/fs/cgroup
+take_limit() {  # $1 the limit in bytes, $2 usage in bytes, $3 page cache the kernel can reclaim, in bytes
+  [ "${1:-0}" -gt 0 ] && [ "$1" -lt 1000000000000000 ] || return 0
+  [ $(( $1 / 1024 )) -lt "$limit" ] && limit=$(( $1 / 1024 ))
+  [ -n "${2:-}" ] || return 0   # usage unread: the limit is not all free, so MemAvailable alone answers
+  local room=$(( ($1 - (${2:-0} - ${3:-0})) / 1024 ))
+  [ "$room" -lt "$mem" ] && mem=$room
+  return 0
+}
+take_quota() {  # $1 the quota, $2 the period (microseconds); max or -1 is no quota
+  case ${1:-max} in max|-1) return 0 ;; esac
+  [ "${2:-0}" -gt 0 ] || return 0
+  local capped=$(( ($1 + $2 - 1) / $2 ))
+  [ "$capped" -lt "$cpus" ] && cpus=$capped
+  return 0
+}
+if [ -r "$cg/memory.max" ]; then
+  max=$(cat "$cg/memory.max")
+  if [ "$max" != max ]; then
+    take_limit "$max" "$(cat "$cg/memory.current" 2>/dev/null)" \
+      "$(awk '$1 == "inactive_file" {print $2}' "$cg/memory.stat" 2>/dev/null)"
   fi
+elif [ -r "$cg/memory/memory.limit_in_bytes" ]; then
+  take_limit "$(cat "$cg/memory/memory.limit_in_bytes")" "$(cat "$cg/memory/memory.usage_in_bytes" 2>/dev/null)" \
+    "$(awk '$1 == "total_inactive_file" {print $2}' "$cg/memory/memory.stat" 2>/dev/null)"
+fi
+if [ -r "$cg/cpu.max" ]; then
+  read -r quota period < "$cg/cpu.max"
+  take_quota "$quota" "$period"
+elif [ -r "$cg/cpu/cpu.cfs_quota_us" ]; then
+  take_quota "$(cat "$cg/cpu/cpu.cfs_quota_us")" "$(cat "$cg/cpu/cpu.cfs_period_us" 2>/dev/null)"
 fi
 gfree=-1 gtotal=-1
 if command -v nvidia-smi > /dev/null 2>&1; then
   gfree=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits | awk '{s += $1} END {print s + 0}')
   gtotal=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | awk '{s += $1} END {print s + 0}')
+  [ "${gtotal:-0}" -gt 0 ] || { gfree=-1; gtotal=-1; }   # NVML that answers 0 is a GPU we cannot count on
 fi
 disk=$(df -Pm "$1" | awk 'NR == 2 {print $4}')
-echo "mem_kb=$mem mem_total_kb=$total cpus=$cpus gpu_free_mb=$gfree gpu_total_mb=$gtotal disk_free_mb=$disk"
+echo "mem_kb=$mem mem_total_kb=$total mem_limit_kb=$limit" \
+  "cpus=$cpus gpu_free_mb=$gfree gpu_total_mb=$gtotal disk_free_mb=$disk"
 '''
 
 STAGE = r'''set -u
@@ -175,13 +198,13 @@ rm -rf "$tmp" "$file"
 '''
 
 _SAMPLER = r'''tag=$1 out=$2 parent=$3
-peak=0 gpu=0 shared=0
+peak=0 gpu=-1 shared=0   # -1: no nvidia-smi on this machine, so no GPU figure at all
 declare -A ticks
 gpu_used() {
   nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | awk '{s += $1} END {print s + 0}'
 }
 base=0
-command -v nvidia-smi > /dev/null 2>&1 && base=$(gpu_used)
+command -v nvidia-smi > /dev/null 2>&1 && { base=$(gpu_used); gpu=0; }
 while kill -0 "$parent" 2>/dev/null; do   # it ends with its run, however the run ends
   total=0
   found=$(grep -lzxF "FLOTILLA_RUN=$tag" /proc/[0-9]*/environ 2>/dev/null | sed -n 's|^/proc/\([0-9]*\)/environ$|\1|p')
@@ -239,7 +262,7 @@ kill "$sampler" 2>/dev/null; wait "$sampler" 2>/dev/null
 read -r -a stat < "/proc/$$/stat"
 ticks=$(getconf CLK_TCK)
 cpu=$(( (stat[15] + stat[16]) / ticks ))
-peak=0 gpu=0 sampled=0 shared=0
+peak=0 gpu=-1 sampled=0 shared=0
 [ -f "$status.peak" ] && read -r peak gpu sampled shared < "$status.peak"
 sampled=$(( ${sampled:-0} / ticks ))
 [ "$sampled" -gt "$cpu" ] && cpu=$sampled
