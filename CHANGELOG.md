@@ -3,6 +3,25 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.11.0 - 2026-10-09
+
+Rig stage 2c: runs on a rented machine are packed by estimates (the person's decisions of 2026-10-07 and 2026-10-09).
+- **Estimates** come from the runs of the same command measured on rig machines before (the lane's signature ladder,
+  never the project-wide step): median duration of green runs, maxima of cores, memory and GPU memory. A command
+  never measured takes 4 cores, 2 GB of memory and 2 GB of GPU memory. GPU memory measured beside another run may
+  raise an estimate, never lower it.
+- **Fit:** memory and GPU memory bind from the first run; cores bind past two runs (the floor of two stays: CPU
+  over-commit only slows runs). Margins as before: 2 GB of memory, 1 GB of GPU memory.
+- **Order:** the longest run that fits goes first, short ones fill the rest; a run waiting 10 minutes is senior and
+  later runs leave it the room it needs (the whole machine, if it is bigger than the machine); a run bigger than the
+  machine runs alone once it is empty.
+- **The live readings stay** as the second barrier past two runs, now counting reclaimable page cache as free.
+- **The machine's size is its container's:** the cgroup's memory limit and CPU quota (v1 and v2), not the host's;
+  a GPU whose NVML reports no memory is treated as no GPU, and a machine without `nvidia-smi` measures no GPU.
+- **Every waiting `rig run` tries;** only the one the estimates pick reads the machine. A waiting run says why it
+  waits, and `flotilla rig` shows each waiting run's reason, estimate and seniority.
+- Runs finished before 0.11.0 teach estimates too (a run's end is taken from its first `done` record).
+
 ## 0.10.4 - 2026-10-09
 
 From the twosuns fleet's field use of 0.10.2:

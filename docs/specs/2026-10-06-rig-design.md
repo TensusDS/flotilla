@@ -255,14 +255,21 @@ ceiling is the rig's own; setup runs in each run with shared download caches; th
 
 **Several runs on one machine** (the person's decision, 2026-10-07: the machine exists for parallel runs).
 
-- A run waits for **room**, not for a free machine. In 0.10.0 room is: fewer than two runs on the machine (a floor
-  that always holds), or, beyond the floor, the machine's live free memory and free GPU memory above their margins
-  (read from the machine when the run asks), every run on it in its command for a minute (one that is still in its
-  tree or setup has not taken its memory yet), and fewer runs than the machine's CPUs (never under two). Runs are admitted in order of arrival.
-- **0.11.0 packs by estimates:** each run on a rig machine is measured (seconds, peak memory of its process group,
-  cores, GPU memory) with the machine's shape, under the lane's signature ladder; a run is admitted when its estimate
-  fits what the running runs leave; among the runs that fit, the longest goes first and short ones fill the rest;
-  a run that waited past a threshold goes next as soon as it fits, so a long run is never starved by short ones.
+- A run waits for **room**, not for a free machine, and since 0.11.0 room is two barriers (the person's decisions,
+  2026-10-07 and 2026-10-09; the five details and the rulings: `docs/superpowers/plans/2026-10-09-rig-packing.md`).
+  **Estimates:** what a run will take (duration, cores, memory, GPU memory) comes from the runs measured on rig
+  machines before it, by the lane's signature ladder (never the project-wide step) - the median duration of green
+  runs, the maxima of the rest; a GPU figure measured beside another run may raise an estimate but never lower it;
+  a command never measured takes 4 cores, 2 GB memory and 2 GB GPU memory. A run fits when the estimates of the
+  runs on the machine plus its own stay within the machine's memory minus 2 GB and GPU memory minus 1 GB, and -
+  past two runs - its CPUs (within two, CPU over-commit only slows runs; memory over-commit kills them); the
+  machine's size is its container's (cgroup limit and quota, v1 and v2). Of the runs that fit, the longest goes
+  first and short ones fill the rest; a run waiting 10 minutes is senior, and until it fits no later run takes room
+  it needs - all of the machine, when the senior is bigger than it; a run bigger than the machine starts alone on an
+  empty one. **Live readings:** beyond two runs, the machine's free memory (reclaimable page cache counted free) and
+  GPU memory above their margins, every run on it in its command for a minute, and fewer runs than its CPUs. Every
+  waiting run tries every ready machine of its session; only the one the estimates pick reads the machine. A
+  waiting run says why it waits, and `flotilla rig` works the reason out again rather than showing journal text.
 - With no machine of the session and the machine ceiling not reached, the run requests one (as `rig up`) and waits
   through `provisioning`. A waiting run has a `--wait` (default 900 s).
 - `rig run` takes longer than a Bash tool call: seats call it in the background, and the docs and post say so.
@@ -437,7 +444,7 @@ this machine's processes and census.
      and admission by the machine's live readings, each run measured; setup per run with shared download caches;
      `lost`, renewing its lease and the heartbeat; live check 2 - the twosuns scene through `rig run`, at most 0.50 $.
    - **2c (0.11.0) - packing:** admission by estimates from the runs measured in 2b; longest first, short ones fill,
-     no starvation (the person's decision, 2026-10-07).
+     no starvation (the person's decision, 2026-10-07). Done in 0.11.0 (section 7).
 
    Measured on 2026-10-07 with the person's scoped key, read-only: listing and offer search work without a 2FA code;
    datacenter offers with one GPU, reliability >= 0.98 and price <= 0.60 $/h started at 0.137 $/h.

@@ -10,9 +10,13 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 
 ## Rented machines (rig), after 0.9.0
 
-- **Stage 2c (0.11.0):** packing by estimates from the runs measured on rig machines (longest first, short ones
-  fill, none starved); the account credit beside the local count. Design `docs/specs/2026-10-06-rig-design.md`
-  section 7. *(checked 2026-10-07 on 0.10.0: open, design)*
+- **The account credit beside the local count** (left from stage 2c). *(checked 2026-10-09 on 0.11.0: open)*
+- **From the plan reviews of 0.11.0 (packing), not built:** EASY backfill (a later run may use a senior's room if it
+  ends before the senior can start - today a senior's reservation can idle cores until its `--wait`); memory as PSS
+  (`smaps_rollup`) plus `/dev/shm` instead of summed RSS; setup-phase measurements kept with the command's; a per-run
+  disk estimate checked against the machine's free disk; OOM kills read from `memory.events` instead of exit 137;
+  peak cores per sampling window instead of the run's mean; the journal grows without bound (history is folded on
+  every poll). *(checked 2026-10-09 on 0.11.0: open)*
 - **From the final review of 0.9.0** (minor, deferred): a `rig up` cut before create leaves a REQUESTED machine that
   stalls later calls for 15 minutes; the budget pre-check in `rig up` is outside the lock (bounded by the machine
   ceiling and the 90 % drain); a seat's `--why` reaches the orchestrator's model in fleet lines and `rig` (never a

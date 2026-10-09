@@ -449,9 +449,12 @@ rented machine with `flotilla rig run` and gets its output, its exit code and it
 - **`flotilla rig run [--put P]... [--get P]... [--env NAME=VALUE]... -- COMMAND`** runs one command there:
   - nothing is spent before the gate: rig on, a session open, `--root` this very tree, a committed HEAD (a tracked
     file changed since must be committed or passed with `--put`);
-  - **several runs share a machine:** two always; past two, a run starts only when the machine's free memory and
-    GPU memory leave room, every run on it has reached its command for a minute, and no more run than it has CPUs.
-    A waiting run keeps its place in the session's line for `--wait` (900 s);
+  - **several runs share a machine, packed by estimates:** what a run will take comes from the runs of the same
+    command measured before it (a command never measured: 4 cores, 2 GB, 2 GB of GPU memory); a run starts when its
+    memory and GPU memory fit what the running runs leave (and past two runs, its cores), the longest first and
+    short ones filling the rest; a run waiting 10 minutes is senior, and later runs leave it the room it needs.
+    Past two runs the machine's live free memory and GPU memory must agree too. A waiting run says why it waits,
+    and keeps waiting for `--wait` (900 s);
   - the revision travels once per machine (`git archive`, checked by sha256 there); each run works in its own copy
     and runs the profile's setup (`[rig] setup_command`, else `[tests] setup_command`) itself, with download caches
     shared on the machine;
@@ -469,7 +472,8 @@ rented machine with `flotilla rig run` and gets its output, its exit code and it
     broke (the machine is asked how the run ended; one that cannot be asked for two minutes is drained, under every
     run on it); `130` stopped by a signal; `2` refused; `3` no room within `--wait`. The last line, on stdout and
     stderr, names the verdict; `flotilla rig` keeps it;
-  - each run is measured on the machine (seconds, peak memory, cores, GPU memory) for the packing that comes next.
+  - each run is measured on the machine (seconds, peak memory, cores, GPU memory), and those measurements are the
+    estimates the next runs are packed by; the machine's size is its container's, not its host's.
   It takes minutes: seats call it in the background and confirm the verdict with `flotilla rig`. `--max S` lowers one
   run's ceiling; `flotilla rig stop jN` stops your own run (the person may stop any) - it ends on the machine and is recorded
   `stopped`, or `gone` with exit 1 when the machine cannot be reached.

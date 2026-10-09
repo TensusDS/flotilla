@@ -25,7 +25,7 @@ alone once the machine is empty. `flotilla rig` and the waiting `rig run` say wh
 
 **Spec:** `docs/specs/2026-10-06-rig-design.md` - section 7 ("Several runs on one machine", the 0.11.0 bullet),
 section 11 stage 2c, section 12 "Live check 2". The five details below were approved by the person on 2026-10-09
-("да, все супер, делаем") in answer to the design posted on 2026-10-08:
+("yes, all good, go") in answer to the design posted on 2026-10-08:
 1. estimates come from runs measured on rig machines, by the lane's signature ladder: duration is the median of
    green runs; cores, memory and GPU memory are maxima; GPU memory measured as shared is not used; a command never
    measured takes a prior of 4 cores, 2 GB memory, 2 GB GPU memory;
