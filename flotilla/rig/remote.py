@@ -125,7 +125,8 @@ echo received
 READINGS = r'''set -u
 mkdir -p "$1"
 r=${2:-}   # a root for /proc and /sys: tests point it at a fake tree, the machine passes nothing
-mem=$(awk '/^MemAvailable:/ {print $2}' "$r/proc/meminfo"); mem=${mem:-0}
+mem=$(awk '/^MemAvailable:/ {print $2}' "$r/proc/meminfo")
+[ -n "$mem" ] || mem=$(awk '/^MemFree:/ {print $2}' "$r/proc/meminfo"); mem=${mem:-0}
 total=$(awk '/^MemTotal:/ {print $2}' "$r/proc/meminfo"); total=${total:-0}
 limit=$total
 cpus=$(nproc)
@@ -133,6 +134,7 @@ cg=$r/sys/fs/cgroup
 take_limit() {  # $1 the limit in bytes, $2 usage in bytes, $3 page cache the kernel can reclaim, in bytes
   [ "${1:-0}" -gt 0 ] && [ "$1" -lt 1000000000000000 ] || return 0
   [ $(( $1 / 1024 )) -lt "$limit" ] && limit=$(( $1 / 1024 ))
+  [ -n "${2:-}" ] || return 0   # usage unread: the limit is not all free, so MemAvailable alone answers
   local room=$(( ($1 - (${2:-0} - ${3:-0})) / 1024 ))
   [ "$room" -lt "$mem" ] && mem=$room
   return 0
@@ -167,7 +169,8 @@ if command -v nvidia-smi > /dev/null 2>&1; then
   [ "${gtotal:-0}" -gt 0 ] || { gfree=-1; gtotal=-1; }   # NVML that answers 0 is a GPU we cannot count on
 fi
 disk=$(df -Pm "$1" | awk 'NR == 2 {print $4}')
-echo "mem_kb=$mem mem_total_kb=$total mem_limit_kb=$limit cpus=$cpus gpu_free_mb=$gfree gpu_total_mb=$gtotal disk_free_mb=$disk"
+echo "mem_kb=$mem mem_total_kb=$total mem_limit_kb=$limit" \
+  "cpus=$cpus gpu_free_mb=$gfree gpu_total_mb=$gtotal disk_free_mb=$disk"
 '''
 
 STAGE = r'''set -u

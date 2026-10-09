@@ -69,10 +69,12 @@ def history(runs: dict, *, now: dt.datetime) -> dict[str, list[Sample]]:
         if ended.tzinfo is None or not since <= ended <= latest or seconds is None:
             continue
         killed = run.exit == KILLED
+        sampled = _positive(run.peak_mb, int) is not None   # the sampler saw the run: its 0 GPU memory is a measure
+        gpu = run.gpu_mb if sampled and isinstance(run.gpu_mb, int) and not isinstance(run.gpu_mb, bool) \
+            and run.gpu_mb >= 0 else None
         dated.append((ended, run, Sample(seconds, _positive(run.cores, float),
                                          None if killed else _positive(run.peak_mb, int),
-                                         _positive(run.gpu_mb, int), _positive(run.gpu_shared_mb, int),
-                                         run.verdict)))
+                                         gpu, _positive(run.gpu_shared_mb, int), run.verdict)))
     found: dict[str, list[Sample]] = {}
     for _, run, sample in sorted(dated, key=lambda item: item[0]):
         for step in run.ladder:
@@ -202,5 +204,6 @@ def choose(waiting, running, machine, needs, now) -> Pick:
                                             -_number(r)))
     for item in candidates:
         if item is not chosen:
-            why[item.id] = f"{chosen.id} goes first (longer)"
+            why[item.id] = f"{chosen.id} goes first ({'not measured yet' if needs[chosen.id].seconds is None
+                                                       else 'longer'})"
     return Pick(chosen.id, why)

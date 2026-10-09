@@ -148,16 +148,18 @@ class Run:
     swept: str = ""                   # when a later run ended on the machine what this gone run had left there
     slug: str = ""                    # its project's directory on the machine, so `rig stop` finds its status files
     ended: str = ""                   # its first `done` event, from the fold: a later `swept` never moves it
-    waits: str = ""                   # why it waits, in plain words: written when the reason changes, never per poll
+    waits: str = ""                   # why start_run refused it inside the lock, once per change; never displayed
     reason: str = ""
 
 
-TEXT = ("who", "why", "waits", "session", "provider", "instance", "label", "gpu", "reason", "run_mark", "address", "project",
+TEXT = ("who", "why", "waits",
+        "session", "provider", "instance", "label", "gpu", "reason", "run_mark", "address", "project",
         "image", "suspect", "revision", "verdict", "machine", "mark")
 TIMES = ("until", "opened", "ended", "created", "lease_until", "idle_since", "requested", "keyed", "command_at",
          "swept")
 MONEY = {"budget": 1e4, "hourly": 1e3, "cost": 1e4}
-WHOLE = {"peak_mb": 10 ** 7, "gpu_mb": 10 ** 7, "gpu_shared_mb": 10 ** 7, "cpus": 10 ** 4, "ram_mb": 10 ** 8, "gpu_total_mb": 10 ** 7}
+WHOLE = {"peak_mb": 10 ** 7, "gpu_mb": 10 ** 7, "gpu_shared_mb": 10 ** 7,
+         "cpus": 10 ** 4, "ram_mb": 10 ** 8, "gpu_total_mb": 10 ** 7}
 
 
 def _aware(text) -> bool:

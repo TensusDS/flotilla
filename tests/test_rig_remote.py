@@ -372,3 +372,11 @@ def test_a_gpu_that_reports_no_memory_is_no_gpu(tmp_path, monkeypatch):
     fake_nvidia_smi(tmp_path, monkeypatch, total=0, free=0)
     got = readings(tmp_path, monkeypatch, fake_root(tmp_path))
     assert got["gpu_total_mb"] == -1 and got["gpu_free_mb"] == -1
+
+
+@linux
+def test_an_unreadable_usage_never_reports_the_whole_limit_free(tmp_path, monkeypatch):
+    root = fake_root(tmp_path)
+    (root / "sys/fs/cgroup/memory.current").unlink()
+    got = readings(tmp_path, monkeypatch, root)
+    assert got["mem_kb"] == 200 * 1024 * 1024 and got["mem_limit_kb"] == 8 * 1024 * 1024

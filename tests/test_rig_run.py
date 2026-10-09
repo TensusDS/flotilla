@@ -583,3 +583,82 @@ def test_only_the_run_that_would_start_reads_the_machine(world, box, tree, monke
     assert not short.take_room(session_now, time.monotonic() + 0.3) and asked == []
     assert not other.take_room(session_now, time.monotonic() + 0.3) and asked == []
     assert long.take_room(session_now, time.monotonic() + 2) and asked
+
+
+def second_machine(world, rig, session):
+    other = rig.add_machine(session.id, "vast", lambda mid: f"flotilla:k:{mid}")
+    rig.move(other.id, j.PROVISIONING, instance="902", hourly=0.1, created=world["clock"]["at"].isoformat())
+    rig.move(other.id, j.READY, address="ssh5.vast.ai:30002")
+    rig.note(other.id, cpus=24, ram_mb=64000, gpu_total_mb=None)
+    return rig.machines()[other.id]
+
+
+def test_a_run_blocked_on_two_machines_says_so_once(world, box, tree, monkeypatch, capsys):
+    opened(world)
+    rig, session, machine = shaped(world, tree)
+    other = second_machine(world, rig, session)
+    measured_ram(rig, session, machine, ("exact:hold-a",), 30000)
+    measured_ram(rig, session, machine, ("exact:hold-b",), 20000)
+    measured_ram(rig, session, machine, ("exact:big",), 50000)
+    for where, ladder in ((machine, ("exact:hold-a",)), (other, ("exact:hold-b",))):
+        run = rig.queue_run(session.id, who="minor 8", project="p", revision="r", program="x", ladder=ladder,
+                            pid=40, mark="m")
+        assert rig.start_run(run.id, where.id, alive=lambda p, m: True, roomy=True)
+    monkeypatch.setattr(run_module, "SLEEP", lambda s: None)
+    task = waiting_task(world, tree, rig, session, ("exact:big",), pid=50)
+    capsys.readouterr()
+    assert not task.take_room(rig.sessions()[session.id], time.monotonic() + 0.5)
+    said = [line for line in capsys.readouterr().out.splitlines() if "waits:" in line]
+    assert len(said) == 1 and "m1" in said[0] and "m2" in said[0], said
+
+
+def measured_ram(rig, session, machine, ladder, peak_mb):
+    run = rig.queue_run(session.id, who="minor 8", project="p", revision="r", program="x", ladder=ladder, pid=7,
+                        mark="m")
+    rig.start_run(run.id, machine.id, alive=lambda p, m: True, roomy=True)
+    rig.finish_run(run.id, "green", exit=0, seconds=10.0, cores=1.0, peak_mb=peak_mb)
+
+
+def test_with_the_size_unknown_only_the_oldest_run_reads_the_machine(world, box, tree, monkeypatch):
+    opened(world)
+    raised(world, tree)
+    rig = journal(world)
+    session = next(s for s in rig.sessions().values() if s.state == j.OPEN)
+    asked = []
+    monkeypatch.setattr(run_module, "READ", lambda b: asked.append(1) or {})   # readings that never succeed
+    monkeypatch.setattr(run_module, "SLEEP", lambda s: None)
+    first = waiting_task(world, tree, rig, session, ("exact:a",), pid=61)
+    second = waiting_task(world, tree, rig, session, ("exact:b",), pid=62)
+    assert not second.take_room(rig.sessions()[session.id], time.monotonic() + 0.3) and asked == []
+    assert first.take_room(rig.sessions()[session.id], time.monotonic() + 2) and asked
+
+
+def test_the_chosen_run_held_by_the_live_readings_says_so_once(world, box, tree, monkeypatch, capsys):
+    opened(world)
+    rig, session, machine = shaped(world, tree)
+    for pid in (21, 22):                    # two runs on the machine, still in their setup: not settled
+        run = rig.queue_run(session.id, who="minor 8", project="p", revision="r", program="x", ladder=("e:f",),
+                            pid=pid, mark="m")
+        rig.start_run(run.id, machine.id, alive=lambda p, m: True, roomy=True)
+    monkeypatch.setattr(run_module, "READ", lambda b: {"mem_kb": 50_000_000, "mem_total_kb": 64_000_000,
+                                                       "mem_limit_kb": 64_000_000, "cpus": 24, "gpu_free_mb": -1,
+                                                       "gpu_total_mb": -1})
+    monkeypatch.setattr(run_module, "SLEEP", lambda s: None)
+    task = waiting_task(world, tree, rig, session, ("exact:x",), pid=70)
+    capsys.readouterr()
+    assert not task.take_room(rig.sessions()[session.id], time.monotonic() + 0.5)
+    said = [line for line in capsys.readouterr().out.splitlines() if "waits:" in line]
+    assert len(said) == 1 and "not yet" in said[0], said
+
+
+def test_a_size_noted_from_the_host_is_corrected_to_the_container(world, box, tree, monkeypatch):
+    opened(world)
+    rig, session, machine = shaped(world, tree, cpus=64, ram_mb=256000)      # what 0.10.x noted
+    monkeypatch.setattr(run_module, "READ", lambda b: {"mem_kb": 6_000_000, "mem_total_kb": 256_000_000,
+                                                       "mem_limit_kb": 8_000_000, "cpus": 4, "gpu_free_mb": -1,
+                                                       "gpu_total_mb": -1})
+    machine = journal(world).machines()[machine.id]                        # as the journal holds it now
+    assert machine.ram_mb == 256000
+    task = run_module.Run(world["state"], rs.settings(world["state"]), None)
+    task.roomy(machine)
+    assert journal(world).machines()[machine.id].ram_mb == 8_000_000 // 1024

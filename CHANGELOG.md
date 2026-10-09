@@ -21,6 +21,9 @@ Rig stage 2c: runs on a rented machine are packed by estimates (the person's dec
 - **Every waiting `rig run` tries;** only the one the estimates pick reads the machine. A waiting run says why it
   waits, and `flotilla rig` shows each waiting run's reason, estimate and seniority.
 - Runs finished before 0.11.0 teach estimates too (a run's end is taken from its first `done` record).
+- **The posts say who gives a machine back:** a seat never releases a machine or closes the rig session - a
+  machine with no run for 15 minutes goes back on its own, and only the person ends a session sooner
+  (`flotilla rig close`). The orchestrator brings that line when the person wants the rig closed.
 
 ## 0.10.4 - 2026-10-09
 

@@ -157,20 +157,26 @@ class Run:
         said = ""
         while True:
             machines = [m for m in self.rig.machines().values() if m.session == session.id]
+            reasons = {}
             for machine in machines:
                 if machine.state not in (j.READY, j.BUSY) or not machine.address:
                     continue
-                machine = self.shape(machine)
                 reason = self.rig.would_start(self.run.id, machine.id, alive=self.alive)
+                if not reason:   # this run would go: only now is the machine read (its size first, then its room)
+                    machine = self.shape(machine)
+                    reason = self.rig.would_start(self.run.id, machine.id, alive=self.alive)
                 if reason:
-                    if reason != said:
-                        _say(f"rig run {self.run.id} waits: {reason}")
-                        said = reason
+                    reasons[machine.id] = reason
                     continue
                 roomy = len(self.rig.on(machine.id)) < j.FLOOR or self.roomy(machine)
                 if self.rig.start_run(self.run.id, machine.id, alive=self.alive, roomy=roomy):
                     self.machine = self.rig.machines()[machine.id]
                     return True
+                reasons[machine.id] = "next to start; the machine's live readings or settle minute say not yet"
+            text = "; ".join(f"{mid}: {why}" if len(reasons) > 1 else why for mid, why in sorted(reasons.items()))
+            if text and text != said:
+                _say(f"rig run {self.run.id} waits: {text}")
+                said = text
             head = self.rig.head(session.id, self.alive)
             if (head is not None and head.id == self.run.id
                     and not any(m.state in (j.READY, j.BUSY) for m in machines)):
@@ -199,9 +205,10 @@ class Run:
         readings = _readings(Box(self.state, machine))
         if not readings:
             return False
-        if not packing.shape_known(machine) and readings.get("cpus"):
+        ram = readings.get("mem_limit_kb", readings.get("mem_total_kb", 0))   # the container's, not the host's
+        noted_too_big = bool(readings.get("mem_limit_kb")) and (machine.ram_mb or 0) > ram // 1024   # by 0.10.x
+        if (not packing.shape_known(machine) or noted_too_big) and readings.get("cpus"):
             gpu = readings.get("gpu_total_mb", -1)
-            ram = readings.get("mem_limit_kb", readings.get("mem_total_kb", 0))   # the container's, not the host's
             self.rig.note(machine.id, cpus=readings["cpus"], ram_mb=ram // 1024,
                           gpu_total_mb=None if gpu < 0 else gpu)
         gpu_free = readings.get("gpu_free_mb", -1)

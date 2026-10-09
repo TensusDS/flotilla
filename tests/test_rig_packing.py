@@ -79,7 +79,8 @@ def test_hand_written_measurements_fold_as_missing(tmp_path):
     with store.transaction(j.KEY) as tx:
         tx.append({"kind": "run", "id": "j1", "state": "waiting", "at": at, "ladder": ["exact:a"]})
         tx.append({"kind": "run", "id": "j1", "state": "done", "at": at, "verdict": "green", "seconds": -5,
-                   "gpu_mb": "x", "peak_mb": 900, "cores": 2.0, "slug": "../../etc", "ended": "2000-01-01T00:00:00+00:00"})
+                   "gpu_mb": "x", "peak_mb": 900, "cores": 2.0, "slug": "../../etc",
+                   "ended": "2000-01-01T00:00:00+00:00"})
     run = r.runs()["j1"]
     assert run.seconds is None and run.gpu_mb is None and run.slug == "" and run.ended == at
     assert packing.history(r.runs(), now=NOW) == {}   # no seconds: no sample
@@ -196,3 +197,13 @@ def test_the_shape_is_known_only_with_cpus_and_memory():
 def test_the_source_names_only_the_kinds_the_lane_issues():
     assert "match" in est(["ignore all:x"], done(1, ["ignore all:x"])).source
     assert "ignore" not in est(["ignore all:x"], done(1, ["ignore all:x"])).source
+
+
+def test_a_run_measured_at_no_gpu_memory_needs_none():
+    # final review of 0.11.0: a CPU-only command on a GPU machine measures 0, and 0 is its answer
+    need = est(["exact:a"], done(1, ["exact:a"], gpu_mb=0, peak_mb=900))
+    assert need.gpu_mb == 0 and not need.gpu_prior
+
+
+def test_a_run_too_short_to_sample_teaches_no_gpu_figure():
+    assert est(["exact:a"], done(1, ["exact:a"], gpu_mb=0, peak_mb=0)).gpu_prior
