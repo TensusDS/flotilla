@@ -121,3 +121,16 @@ def test_a_process_table_says_whether_a_pid_exists(source):
     table = procs.ProcessTable(source)
     assert table.exists(os.getpid()) is True
     assert table.exists(2 ** 22 + 12345) is False   # above any pid_max this machine allows
+
+
+def test_a_test_never_sees_this_machines_runs_as_foreign():
+    import subprocess as sp
+    import sys
+    from flotilla.lane import machine
+    neighbour = sp.Popen([sys.executable, "-c", "import time\nwhile True: pass", "pytest"])
+    try:
+        table = procs.ProcessTable.for_machine()
+        assert machine.foreign_runs(table, machine.patterns_for({}), set()) == []
+    finally:
+        neighbour.kill()
+        neighbour.wait()
