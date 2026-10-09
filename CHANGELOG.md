@@ -8,8 +8,10 @@ each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2
 From the twosuns fleet's field use of 0.10.2:
 - **`flotilla rig run --max S`**: one run's ceiling in seconds, at most the profile's `[rig] max_run_seconds`.
 - **`flotilla rig stop jN`**: a seat stops its own run (the person may stop any). Its `rig run` ends it on the machine
-  and records it `stopped`; when that process is already gone, the run is stopped on the machine by its tag and
-  recorded.
+  and records it `stopped`; when that process is already gone, the run is stopped on the machine through its own
+  status files and recorded. A machine that cannot be reached leaves the run `gone`, for the next run there to end,
+  and exits 1; a `rig run` still cleaning up after 90 s is left to record its own verdict. Whose run it is comes from
+  the census: outside any listed session `--as` proves nothing, and only the person may stop.
 - The hang twosuns reported (a script's background vite holding ssh's channel until the 30-minute ceiling) was fixed
   in 0.10.3.
 

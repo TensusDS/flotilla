@@ -59,6 +59,8 @@ RUN_SETTLE = dt.timedelta(seconds=60)
 DEFAULT_CAP = 4
 _PROGRAM = re.compile(r"[A-Za-z0-9._+-]{1,24}")
 _TAG = re.compile(r"j[0-9]{1,9}-[0-9a-f]{8}")
+_SLUG = re.compile(r"[A-Za-z0-9._-]{0,40}-[0-9a-f]{8}")   # transfer.project_slug's shape, and only that
+
 
 
 class RigError(ValueError):
@@ -143,6 +145,7 @@ class Run:
     since: str = ""
     command_at: str = ""
     swept: str = ""                   # when a later run ended on the machine what this gone run had left there
+    slug: str = ""                    # its project's directory on the machine, so `rig stop` finds its status files
     reason: str = ""
 
 
@@ -171,6 +174,8 @@ def _clean(key, value):
         return float(value) if ok else None
     if key == "attempts":
         return value if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 1000 else 0
+    if key == "slug":
+        return value if isinstance(value, str) and _SLUG.fullmatch(value) else ""
     if key in ("run_pid", "pid"):
         return value if isinstance(value, int) and not isinstance(value, bool) and 0 < value < 2 ** 31 else None
     if key in WHOLE:
@@ -403,6 +408,14 @@ class Rig:
             self._append(tx, "run", run_id, RUNNING, machine=machine_id)
             if machine.state == READY:
                 self._append(tx, "machine", machine_id, BUSY, idle_since="")
+            return _fold_runs(tx.read().records)[run_id]
+
+    def place_run(self, run_id: str, slug: str) -> Run:
+        with self.store.transaction(KEY) as tx:
+            run = _fold_runs(tx.read().records).get(run_id)
+            if run is None:
+                raise RigError(f"no run {run_id}")
+            self._append(tx, "run", run_id, run.state, slug=slug)
             return _fold_runs(tx.read().records)[run_id]
 
     def command_started(self, run_id: str) -> Run:

@@ -375,7 +375,9 @@ def _main(state: Path, settings: rs.RigSettings, args) -> int:
             return task.code
         task.started = time.monotonic()
         task.box = Box(state, task.machine)
-        task.paths = remote.paths(transfer.project_slug(root, key), revision, task.run.tag)
+        slug = transfer.project_slug(root, key)
+        task.paths = remote.paths(slug, revision, task.run.tag)
+        rig.place_run(task.run.id, slug)
         renewer = threading.Thread(target=task.renew, daemon=True)
         renewer.start()
         ceiling = float(CEILING or min(profile.max_run_seconds, args.max or profile.max_run_seconds))

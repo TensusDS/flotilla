@@ -406,3 +406,98 @@ def test_stopping_a_run_whose_process_is_gone_ends_it_on_the_machine(world, box,
     code, out = rig_stop(world, "j1", "minor 9")
     run = journal(world).runs()["j1"]
     assert code == 0 and run.state == j.DONE and run.verdict == "stopped" and tagged(box, run.tag) == []
+
+
+# review of 0.10.4: the risky branches of `rig stop`
+
+def placed_run(world, pid, mark, slug=""):
+    rig = journal(world)
+    session = next(s for s in rig.sessions().values() if s.state == j.OPEN)
+    machine = next(iter(rig.machines().values()))
+    run = rig.queue_run(session.id, who="minor 9", project="p", revision="r", program="sleep", ladder=[], pid=pid,
+                        mark=mark)
+    assert rig.start_run(run.id, machine.id, alive=lambda p, m: True, roomy=True)
+    if slug:
+        rig.place_run(run.id, slug)
+    return run
+
+
+def test_a_run_with_no_start_mark_is_never_signalled(world, box, tree, monkeypatch):
+    opened(world)
+    raised(world, tree)
+    bystander = subprocess.Popen(["sleep", "60"])
+    try:
+        placed_run(world, bystander.pid, "")
+        monkeypatch.setattr(commands, "ALIVE", lambda pid, mark: True)
+        code, out = rig_stop(world, "j1", "minor 9")
+        assert bystander.poll() is None and code == 0 and journal(world).runs()["j1"].verdict == "stopped"
+    finally:
+        bystander.kill()
+        bystander.wait()
+
+
+def test_a_rig_run_that_outlives_the_wait_is_not_recorded(world, box, tree, monkeypatch):
+    from flotilla.lane.procs import ProcessTable
+    opened(world)
+    raised(world, tree)
+    stubborn = subprocess.Popen([sys.executable, "-c", "import signal, time\n"
+                                 "signal.signal(signal.SIGTERM, signal.SIG_IGN)\ntime.sleep(60)"])
+    try:
+        time.sleep(0.5)
+        placed_run(world, stubborn.pid, ProcessTable.for_machine().start_mark(stubborn.pid) or "")
+        monkeypatch.setattr(commands, "STOP_WAIT", 1.0)
+        code, out = rig_stop(world, "j1", "minor 9")
+        assert code == 1 and "not recorded" in out and journal(world).runs()["j1"].state == j.RUNNING
+    finally:
+        stubborn.kill()
+        stubborn.wait()
+
+
+def dead_pid():
+    gone = subprocess.Popen(["true"])
+    gone.wait()
+    return gone.pid
+
+
+def test_a_stop_the_machine_did_not_take_is_recorded_gone(world, box, tree, monkeypatch):
+    from flotilla.rig import run as rig_run
+    opened(world)
+    raised(world, tree)
+    placed_run(world, dead_pid(), "x")
+    monkeypatch.setattr(rig_run.Box, "call", lambda self, *a, **k: subprocess.CompletedProcess(a, 255, b"", b""))
+    code, out = rig_stop(world, "j1", "minor 9")
+    run = journal(world).runs()["j1"]
+    assert code == 1 and run.verdict == "gone" and "could not" in out
+
+
+def test_a_machine_that_cannot_be_asked_leaves_the_run_gone(world, box, tree, monkeypatch):
+    from flotilla.rig import run as rig_run
+
+    def lost(self, *a, **k):
+        raise rig_run.Lost("the machine's host key changed")
+    opened(world)
+    raised(world, tree)
+    placed_run(world, dead_pid(), "x")
+    monkeypatch.setattr(rig_run.Box, "call", lost)
+    code, out = rig_stop(world, "j1", "minor 9")
+    assert code == 1 and journal(world).runs()["j1"].verdict == "gone"
+
+
+def test_the_fallback_stop_names_the_runs_own_status_files(world, box, tree, monkeypatch):
+    from flotilla.rig import run as rig_run
+    called = []
+    opened(world)
+    raised(world, tree)
+    run = placed_run(world, dead_pid(), "x", slug="tree-0123abcd")
+    monkeypatch.setattr(rig_run.Box, "call",
+                        lambda self, *a, **k: called.append(a) or subprocess.CompletedProcess(a, 0, b"", b""))
+    assert rig_stop(world, "j1", "minor 9")[0] == 0
+    paths = remote.paths("tree-0123abcd", "r", run.tag)
+    assert [c[1] for c in called] == [paths.run_status, paths.setup_status]
+
+
+def test_a_slug_a_shell_wrote_folds_as_none(world, box, tree):
+    opened(world)
+    raised(world, tree)
+    placed_run(world, dead_pid(), "x", slug="../../etc")
+    assert journal(world).runs()["j1"].slug == ""
