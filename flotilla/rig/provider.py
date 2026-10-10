@@ -4,6 +4,7 @@ masked. The adapter decides how to talk to its service; this decides what may le
 
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -65,6 +66,20 @@ class Rented:
                                 float(hourly) if isinstance(hourly, (int, float)) and not isinstance(hourly, bool)
                                 else None, str(row.get("address") or "")))
         return found
+
+    def credit(self) -> float | None:
+        """The account's credit, or None when the key may not read the account (rig design, section 5): whether it
+        may is the person's choice of key, not a failure. Only a number leaves, whatever the adapter answered."""
+        secret = self._secret()
+        try:
+            found = self.adapter.credit(secret)
+        except self.adapter.AdapterError as err:
+            if err.status in (401, 403):
+                return None
+            raise ProviderError(scrub_text(str(err), [secret])) from None
+        if not isinstance(found, (int, float)) or isinstance(found, bool) or not math.isfinite(found):
+            raise ProviderError(f"{self.name} answered no credit")
+        return float(found)
 
     def destroy(self, instance: str) -> None:
         self._ask(self.adapter.destroy, instance)

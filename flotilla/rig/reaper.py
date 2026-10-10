@@ -13,7 +13,9 @@ One pass, in this order:
    listing, nothing is destroyed and the pass counts;
 6. an instance labelled with this machine's key is an orphan unless its machine is live and holds that very instance
    (or none yet: it is being created). An instance without this machine's label is never touched;
-7. prices are refreshed from the listing; a closing session with nothing live closes.
+7. prices are refreshed from the listing; a closing session with nothing live closes;
+8. while a session is open or closing, the account's credit is read and noted - last, and never a failure of the
+   pass: it is shown to the person, it decides nothing.
 
 Without a usable machine key the pass still decides and records, but destroys nothing: what is ours cannot be told
 from what is not. The caller holds the reaper's lock; when the journal is damaged it calls `emergency` instead.
@@ -273,8 +275,22 @@ def _finish_sessions(rig: j.Rig, now: dt.datetime, out: Outcome) -> None:
         out.lines.append(f"session {session.id} closed: cost at least {cost:.2f} $")
 
 
+def _credit(rig: j.Rig, providers, account: str | None, out: Outcome) -> None:
+    sessions = [s for s in rig.sessions().values() if s.state in (j.OPEN, j.CLOSING)]
+    if account is None or not sessions:
+        return
+    try:
+        found = providers(account).credit()
+    except ProviderError as err:
+        out.lines.append(f"{account} credit could not be read: {err}")
+        return
+    if found is not None:
+        for session in sessions:
+            rig.note_credit(session.id, found)
+
+
 def reap(rig: j.Rig, providers, *, machine_key: str | None, services=(), on: bool = True,
-         alive=lambda pid, mark: True) -> Outcome:
+         alive=lambda pid, mark: True, account: str | None = None) -> Outcome:
     out = Outcome()
     listings, listed_at = _listings(rig, providers, services, out)
     now = rig.now()
@@ -286,6 +302,7 @@ def reap(rig: j.Rig, providers, *, machine_key: str | None, services=(), on: boo
     if machine_key is not None:
         _orphans(rig, providers, listings, machine_key, out)
     _prices(rig, listings)
+    _credit(rig, providers, account, out)
     _finish_sessions(rig, now, out)
     return out
 

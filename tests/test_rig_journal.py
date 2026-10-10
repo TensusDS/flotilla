@@ -237,3 +237,35 @@ def test_a_record_whose_id_flotilla_never_issues_is_skipped(tmp_path, kind, bad)
         out.write(json.dumps(record) + "\n")
     rig = j.Rig(store)
     assert not rig.requests() and not rig.machines() and not rig.sessions()
+
+
+def test_the_first_credit_reading_is_the_sessions_open_and_later_ones_only_now(tmp_path):
+    clock = Clock()
+    r = rig(tmp_path, clock)
+    r.open_session("max", "night frames", hours=3, budget=2.0)
+    r.note_credit("s1", 41.2)
+    clock.forward(minutes=5)
+    s = r.note_credit("s1", 40.05)
+    assert (s.credit_open, s.credit_now, s.credited, s.state) == (41.2, 40.05, iso(clock.at), j.OPEN)
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), 1e7, "41", True])
+def test_a_credit_that_is_no_amount_is_not_kept(tmp_path, bad):
+    r = rig(tmp_path)
+    r.open_session("max", "x", hours=1, budget=1.0)
+    s = r.note_credit("s1", bad)
+    assert s.credit_open is None and s.credit_now is None
+
+
+def test_a_credit_may_be_below_zero(tmp_path):
+    r = rig(tmp_path)
+    r.open_session("max", "x", hours=1, budget=1.0)
+    assert r.note_credit("s1", -1.5).credit_now == -1.5
+
+
+def test_a_closed_sessions_credit_is_not_noted(tmp_path):
+    r = rig(tmp_path)
+    r.open_session("max", "x", hours=1, budget=1.0)
+    r.set_session("s1", j.CLOSING)
+    r.set_session("s1", j.CLOSED)
+    assert r.note_credit("s1", 41.2) is None and r.sessions()["s1"].credit_now is None

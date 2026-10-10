@@ -130,6 +130,7 @@ def lines(state: Path, now: dt.datetime) -> list[str]:
         until = _when(session.until)
         found.append(f"rig: session {session.id} {session.state} ({session.why}) until "
                      f"{_hhmm(until) if until else '?'}, spent at least {rig.spent(session.id, now):.2f} of {budget} $")
+        found.append("  " + credit_line(session))
     if not shown:
         found.append("rig: no session open")
     for machine in live:
@@ -139,6 +140,17 @@ def lines(state: Path, now: dt.datetime) -> list[str]:
                      f"{' (' + machine.reason + ')' if machine.reason else ''}")
     found.extend(run_lines(rig, now))
     return found
+
+
+def credit_line(session: j.Session) -> str:
+    """The account's credit beside the local count: the local figure is a floor, the account's is the bill (rig
+    design, section 5)."""
+    if session.credit_open is None or session.credit_now is None:
+        return "account credit not read (the key may not read it)"
+    read = _when(session.credited)
+    return (f"account credit {session.credit_open:.2f} $ at open, {session.credit_now:.2f} $ at "
+            f"{_hhmm(read) if read else '?'} ({session.credit_open - session.credit_now:.2f} $ spent by the "
+            "account's count)")
 
 
 def run_lines(rig: j.Rig, now: dt.datetime) -> list[str]:

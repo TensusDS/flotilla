@@ -146,3 +146,26 @@ def test_the_start_script_carries_the_watchdog(adapter):
     module, _ = adapter()
     script = module.onstart()
     assert "FLOTILLA_WATCHDOG_MINUTES" in script and "flotilla-heartbeat" in script
+
+
+def test_the_account_credit_is_one_number_and_nothing_of_the_account(adapter):
+    """The service's answer carries the account's key, session and address; one number leaves the adapter (0.13.0)."""
+    module, double = adapter(credit=41.2)
+    found = module.credit("account-key-0123456789")
+    assert type(found) is float and found == 41.2
+    assert double.requests[0][:2] == ("GET", "https://console.vast.ai/api/v0/users/current/")
+
+
+@pytest.mark.parametrize("bad", [None, "41.2", True, [41.2], {"credit": 1}])
+def test_a_credit_that_is_not_a_number_is_an_error(adapter, bad):
+    module, _ = adapter(credit=bad)
+    with pytest.raises(module.AdapterError):
+        module.credit("k" * 12)
+
+
+@pytest.mark.parametrize("status", [401, 403, 500])
+def test_a_refused_credit_is_an_error_carrying_its_status(adapter, status):
+    module, _ = adapter(user_status=status)
+    with pytest.raises(module.AdapterError) as err:
+        module.credit("k" * 12)
+    assert err.value.status == status

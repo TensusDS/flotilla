@@ -191,3 +191,17 @@ def test_a_gone_machine_takes_its_host_key_with_it(world):
     (hosts / "m9").write_text("other")
     commands._forget_hosts(r, state)
     assert not (hosts / m.id).exists() and (hosts / "m9").exists()
+
+
+def test_open_notes_the_accounts_credit_at_once(world):
+    world["fake"].credit = 41.2
+    code, out = run_cli("rig", "open", "--hours", "1", "--budget", "1", "--why", "x")
+    assert code == 0 and journal(world).sessions()["s1"].credit_open == 41.2
+    assert "account credit 41.20 $" in out
+
+
+def test_open_goes_on_when_the_credit_cannot_be_read(world):
+    world["fake"].user_status = 403
+    code, out = run_cli("rig", "open", "--hours", "1", "--budget", "1", "--why", "x")
+    assert code == 0 and journal(world).sessions()["s1"].credit_open is None
+    assert "account credit not readable with this key" in out

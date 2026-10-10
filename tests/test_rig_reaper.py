@@ -451,3 +451,31 @@ def test_a_waiting_run_of_a_closed_session_is_finished(world):
     rig.set_session(s.id, j.CLOSING, reason="closed by the person")
     passes(rig, providers, alive=ALIVE_REAL)
     assert rig.runs()[run.id].state == j.DONE and rig.runs()[run.id].verdict == "session ended"
+
+
+def test_a_pass_reads_the_accounts_credit_while_a_session_is_open(world):
+    rig, clock, fake, providers = world
+    s = session(rig)
+    passes(rig, providers, account="vast")
+    fake.credit = 40.05
+    clock.forward(minutes=5)
+    passes(rig, providers, account="vast")
+    found = rig.sessions()[s.id]
+    assert (found.credit_open, found.credit_now) == (41.2, 40.05)
+
+
+def test_no_session_open_means_the_account_is_not_asked(world):
+    rig, clock, fake, providers = world
+    passes(rig, providers, account="vast")
+    assert not any("/users/" in url for _, url, _ in fake.requests)
+
+
+def test_a_credit_that_cannot_be_read_never_fails_the_pass_nor_stops_a_destroy(world):
+    rig, clock, fake, providers = world
+    session(rig)
+    mid = running(rig, fake)
+    fake.user_status = 500
+    clock.forward(minutes=31)
+    out = passes(rig, providers, n=2, account="vast")
+    assert rig.machines()[mid].state == j.GONE and "101" not in fake.instances
+    assert not out.failed and rig.sessions()["s1"].credit_now is None

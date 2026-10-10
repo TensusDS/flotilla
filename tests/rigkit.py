@@ -3,7 +3,8 @@
 Every double takes the same knobs, so the contract suite runs over all of them: `instances` (id -> {"label",
 "actual_status", "dph_total"}), `sticky` (answer a destroy and stay listed), `page` (page size), `listing_status` and
 `destroy_status` (answer with that HTTP status and an error body), `garbage` (an unparsable body), `leak` (a
-credential in every row and every error body, in a field the adapter must not pass on).
+credential in every row and every error body, in a field the adapter must not pass on), `credit` and `user_status`
+(the account's answer, which always carries the account's own key, session and address - as vast's does).
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ def fake_key(tmp_path: Path, mode: int = 0o600, text: str = "account-key-0123456
 
 class FakeVast:
     def __init__(self, instances=None, *, sticky=(), page=25, listing_status=200, destroy_status=200, garbage=False,
-                 leak="", offers=(), boot_polls=0, create_status=200):
+                 leak="", offers=(), boot_polls=0, create_status=200, credit=41.2, user_status=200):
         self.instances = dict(instances or {})
         self.sticky = set(sticky)
         self.page = page
@@ -39,6 +40,8 @@ class FakeVast:
         self.created = 0
         self.polls: dict = {}
         self.last_query = None
+        self.credit = credit
+        self.user_status = user_status
 
     def _error(self, status):
         body = {"error": True, "msg": "Invalid user key", **({"api_key": self.leak} if self.leak else {})}
@@ -70,6 +73,12 @@ class FakeVast:
                      **({"instance_api_key": self.leak} if self.leak else {})} for i in chunk]
             more = after + self.page < len(ids)
             return 200, json.dumps({"instances": rows, "next_token": str(after + self.page) if more else None}).encode()
+        if method == "GET" and parsed.path == "/api/v0/users/current/":
+            if self.user_status != 200:
+                return self._error(self.user_status)
+            return 200, json.dumps({"id": 7, "credit": self.credit, "balance": 0, "api_key": "account-api-key-0f0f0f0f",
+                                    "sid": "session-id-1a2b3c4d", "email": "person@example.com",
+                                    "billaddress_line1": "1 Street", "total_spend": 3.5}).encode()
         if method == "DELETE" and parsed.path.startswith("/api/v0/instances/"):
             if self.destroy_status != 200:
                 return self._error(self.destroy_status)

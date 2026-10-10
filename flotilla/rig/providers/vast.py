@@ -7,7 +7,8 @@ an API error (review of 2026-10-06).
 
 The contract: `instances(key)` returns every instance of the account through every page, each as exactly
 `instance`, `label`, `status`, `hourly` - nothing else of vast's answer leaves this file, so the instance key vast
-puts in its rows never does; `destroy(key, id)` asks for a destroy; a non-2xx answer, a timeout or a body that does
+puts in its rows never does; `credit(key)` returns the account's credit as one float - the account's answer also
+carries its own key, session and address, and none of it leaves; `destroy(key, id)` asks for a destroy; a non-2xx answer, a timeout or a body that does
 not parse raises `AdapterError`. The key goes only into the `Authorization` header; the base URL is a constant.
 """
 
@@ -100,6 +101,14 @@ def instances(key):
             return found
         query = {**query, "after_token": str(token)}
     raise AdapterError(f"vast's instance listing did not end after {MAX_PAGES} pages")
+
+
+def credit(key):
+    answer = _call(key, "GET", "/api/v0/users/current/")
+    found = answer.get("credit") if isinstance(answer, dict) else None
+    if not isinstance(found, (int, float)) or isinstance(found, bool):
+        raise AdapterError("vast's account answer has no credit")
+    return float(found)
 
 
 def destroy(key, instance):
