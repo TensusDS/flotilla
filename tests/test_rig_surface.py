@@ -121,7 +121,8 @@ def test_fleet_lines_name_the_session_and_its_machines(tmp_path):
     r.move("m1", j.PROVISIONING, instance="7", gpu="RTX 2080 Ti", hourly=0.137, created=T0.isoformat())
     lines = surface.lines(state, T0 + dt.timedelta(minutes=30))
     assert lines[0].startswith("rig: session s1 open (night frames) until")
-    assert "machine m1 provisioning: RTX 2080 Ti, 0.137 $/h" in lines[1]
+    assert lines[1] == "  account credit not read yet"
+    assert "machine m1 provisioning: RTX 2080 Ti, 0.137 $/h" in lines[2]
 
 
 def test_a_requesters_name_that_is_not_a_session_name_is_not_relayed(tmp_path):
@@ -225,3 +226,30 @@ def test_a_gpu_estimate_from_the_prior_says_so(tmp_path):
     r.queue_run(s.id, who="minor 8", project="P", revision="a" * 40, program="node", ladder=("exact:new",), pid=7,
                 mark="m")
     assert "GPU: prior" in " ".join(surface.run_lines(rig(state), T0))
+
+
+def test_the_session_line_shows_the_accounts_credit_beside_the_local_count(tmp_path):
+    state = state_on(tmp_path)
+    r = rig(state)
+    r.open_session("p", "night frames", hours=3, budget=2.0)
+    r.note_credit("s1", 41.2)
+    r.note_credit("s1", 39.85)
+    said = "\n".join(surface.lines(state, T0 + dt.timedelta(minutes=30)))
+    assert "account credit 41.20 $ at open, 39.85 $ at 20:00: down 1.35 $ (the whole account)" in said
+
+
+def test_a_credit_that_went_up_is_not_a_negative_spend(tmp_path):
+    state = state_on(tmp_path)
+    r = rig(state)
+    r.open_session("p", "night frames", hours=3, budget=2.0)
+    r.note_credit("s1", 21.2)
+    r.note_credit("s1", 41.2)
+    said = "\n".join(surface.lines(state, T0))
+    assert "up 20.00 $ (a top-up?)" in said and "-20" not in said
+
+
+def test_a_credit_never_read_says_so(tmp_path):
+    state = state_on(tmp_path)
+    rig(state).open_session("p", "night frames", hours=3, budget=2.0)
+    said = "\n".join(surface.lines(state, T0))
+    assert "account credit not read yet" in said

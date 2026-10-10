@@ -82,8 +82,9 @@ Worktrees and receipts:
 
 **Rented machines** (off until the person runs `rig enable`; the README's "Rented machines (rig)" says what it guards)
 
-    flotilla rig                          sessions, machines, what they cost at least, when the reaper last ran;
-                                          each waiting run with why it waits and what it is estimated to take
+    flotilla rig                          sessions, machines, what they cost at least, the account's credit at
+                                          the session's open and now, when the reaper last ran; each waiting run
+                                          with why it waits and what it is estimated to take
     flotilla rig reap                     drain what should not run, verify it is gone (cron runs it every 5 min)
     flotilla rig enable --provider vast   the person only: turn rented machines on (a Claude tool call is refused)
     flotilla rig disable                  the person only: turn them off; the reaper drains what is still live

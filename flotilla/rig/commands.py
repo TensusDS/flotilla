@@ -158,7 +158,8 @@ def _reap(state: Path, settings: rs.RigSettings) -> int:
                 print(f"{stamp} {err}")
             rig = _rig(state)
             try:
-                out = reaper.reap(rig, PROVIDERS, machine_key=key, services=_services(), on=settings.on, alive=_alive())
+                out = reaper.reap(rig, PROVIDERS, machine_key=key, services=_services(), on=settings.on, alive=_alive(),
+                                  account=settings.provider)
             except StorageCorrupt as err:
                 if key is None:
                     print(f"{stamp} THE RIG JOURNAL IS DAMAGED ({err}) and the machine key cannot be read; check the "
@@ -171,7 +172,7 @@ def _reap(state: Path, settings: rs.RigSettings) -> int:
                     print(f"{stamp} {line}")
                 health.stamp(state, _now(), ok=False, note="journal damaged: emergency pass")
                 return 1
-            for line in out.lines:
+            for line in out.lines + out.notes:
                 print(f"{stamp} {line}")
             _forget_hosts(rig, state)
             problem = _keep_reaper(rig, state)
@@ -274,6 +275,19 @@ def _asked(rig: j.Rig, request_id: str, kind: str):
     return found if found is not None and found.state == j.ASKED and found.kind == kind else None
 
 
+def _note_credit(rig: j.Rig, session_id: str, name: str) -> str:
+    """The credit at open is read outside the journal's lock - a network call - and never stops the session."""
+    try:
+        found = PROVIDERS(name).credit()
+        if found is None:
+            return "account credit not readable with this key: `flotilla rig` will show the local count only"
+        rig.note_credit(session_id, found)
+    except Exception as err:  # noqa: BLE001 - the session is open; nothing about the credit may hide that
+        said = err if isinstance(err, provider.ProviderError) else type(err).__name__
+        return f"account credit not read now ({said}); the reaper tries again on its next pass"
+    return f"account credit {found:.2f} $ at open"
+
+
 def _open(state: Path, settings: rs.RigSettings, args) -> int:
     refused = caller.person_refusal("opens a rig session, which spends money")
     if refused:
@@ -319,6 +333,7 @@ def _open(state: Path, settings: rs.RigSettings, args) -> int:
         print(f"refused: {problem}")
         return 2
     print(f"session {session.id} open until {_hhmm(session.until)}, budget {budget:.2f} $")
+    print(_note_credit(rig, session.id, settings.provider))
     if problem:
         print(f"but the reaper's crontab line could not be kept: {problem} - nothing may be rented until it is")
         return 1

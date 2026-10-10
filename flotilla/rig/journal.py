@@ -80,6 +80,9 @@ class Session:
     opened: str = ""
     ended: str = ""
     reason: str = ""
+    credit_open: float | None = None   # the account's credit at the first reading in this session (0.13.0)
+    credit_now: float | None = None
+    credited: str = ""                 # when credit_now was read
 
 
 @dataclass
@@ -158,7 +161,8 @@ TEXT = ("who", "why", "waits",
         "session", "provider", "instance", "label", "gpu", "reason", "run_mark", "address", "project",
         "image", "suspect", "revision", "verdict", "machine", "mark")
 TIMES = ("until", "opened", "ended", "created", "lease_until", "idle_since", "requested", "keyed", "command_at",
-         "swept")
+         "swept", "credited")
+CREDIT = ("credit_open", "credit_now")   # an account's credit may be below zero
 MONEY = {"budget": 1e4, "hourly": 1e3, "cost": 1e4}
 WHOLE = {"peak_mb": 10 ** 7, "gpu_mb": 10 ** 7, "gpu_shared_mb": 10 ** 7,
          "cpus": 10 ** 4, "ram_mb": 10 ** 8, "gpu_total_mb": 10 ** 7}
@@ -176,6 +180,11 @@ def _clean(key, value):
         return visible(value[:MAX_TEXT]) if isinstance(value, str) else ""
     if key in TIMES:
         return value if value == "" or _aware(value) else ""
+    if key in CREDIT:
+        # the bound first: it compares an integer of any size, where isfinite would raise OverflowError
+        ok = isinstance(value, (int, float)) and not isinstance(value, bool) and abs(value) <= 1e6 and \
+            math.isfinite(value)
+        return float(value) if ok else None
     if key in MONEY:
         ok = isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value <= MONEY[key]
         return float(value) if ok else None
@@ -320,6 +329,21 @@ class Rig:
             extra = {"ended": _iso(self.now())} if state == CLOSED else {}
             self._append(tx, "session", session_id, state, **({"reason": reason} if reason else {}), **extra,
                          **fields)
+            return _fold(tx.read().records)[0][session_id]
+
+    def note_credit(self, session_id: str, credit) -> Session | None:
+        """The account's credit read now; the session's first reading is also its credit at open. A closed session
+        keeps what it had."""
+        with self.store.transaction(KEY) as tx:
+            found = _fold(tx.read().records)[0].get(session_id)
+            if found is None or found.state == CLOSED:
+                return None
+            if _clean("credit_now", credit) is None:
+                return found   # a reading the fold would drop must not erase a good one
+            fields = {"credit_now": credit, "credited": _iso(self.now())}
+            if found.credit_open is None:
+                fields["credit_open"] = credit
+            self._append(tx, "session", session_id, found.state, **fields)
             return _fold(tx.read().records)[0][session_id]
 
     def add_machine(self, session_id: str, provider: str, label_of, *, limit: int | None = None) -> Machine:

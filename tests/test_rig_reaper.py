@@ -451,3 +451,66 @@ def test_a_waiting_run_of_a_closed_session_is_finished(world):
     rig.set_session(s.id, j.CLOSING, reason="closed by the person")
     passes(rig, providers, alive=ALIVE_REAL)
     assert rig.runs()[run.id].state == j.DONE and rig.runs()[run.id].verdict == "session ended"
+
+
+def test_a_pass_reads_the_accounts_credit_while_a_session_is_open(world):
+    rig, clock, fake, providers = world
+    s = session(rig)
+    passes(rig, providers, account="vast")
+    fake.credit = 40.05
+    clock.forward(minutes=5)
+    passes(rig, providers, account="vast")
+    found = rig.sessions()[s.id]
+    assert (found.credit_open, found.credit_now) == (41.2, 40.05)
+
+
+def test_no_session_open_means_the_account_is_not_asked(world):
+    rig, clock, fake, providers = world
+    passes(rig, providers, account="vast")
+    assert not any("/users/" in url for _, url, _ in fake.requests)
+
+
+def test_a_credit_that_cannot_be_read_never_fails_the_pass_nor_stops_a_destroy(world):
+    rig, clock, fake, providers = world
+    session(rig)
+    mid = running(rig, fake)
+    fake.user_status = 500
+    clock.forward(minutes=31)
+    out = passes(rig, providers, n=2, account="vast")
+    assert rig.machines()[mid].state == j.GONE and "101" not in fake.instances
+    assert not out.failed and rig.sessions()["s1"].credit_now is None
+
+
+def test_an_account_answer_past_a_floats_range_never_breaks_the_pass(world):
+    rig, clock, fake, providers = world
+    session(rig)
+    fake.credit = 10 ** 400
+    out = passes(rig, providers, account="vast")
+    assert not out.failed and rig.sessions()["s1"].credit_now is None
+
+
+def test_a_session_closes_before_the_credit_is_asked(world):
+    """The credit is read last: a closing session with nothing live is closed first, never waiting on the account
+    (review of 0.13.0, I-3)."""
+    rig, clock, fake, providers = world
+    session(rig)
+    rig.set_session("s1", j.CLOSING)
+    passes(rig, providers, account="vast")
+    found = rig.sessions()["s1"]
+    assert found.state == j.CLOSED and found.credit_now is None
+
+
+def test_an_account_whose_listing_failed_this_pass_is_not_asked_for_its_credit(world):
+    rig, clock, fake, providers = world
+    session(rig)
+    fake.listing_status = 503
+    passes(rig, providers, account="vast")
+    assert not any("/users/" in url for _, url, _ in fake.requests)
+
+
+def test_the_credit_line_never_reads_as_trouble(world):
+    rig, clock, fake, providers = world
+    session(rig)
+    fake.user_status = 500
+    out = passes(rig, providers, account="vast")
+    assert out.notes and not out.lines and not out.failed

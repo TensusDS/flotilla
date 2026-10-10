@@ -13,7 +13,10 @@ One pass, in this order:
    listing, nothing is destroyed and the pass counts;
 6. an instance labelled with this machine's key is an orphan unless its machine is live and holds that very instance
    (or none yet: it is being created). An instance without this machine's label is never touched;
-7. prices are refreshed from the listing; a closing session with nothing live closes.
+7. prices are refreshed from the listing; a closing session with nothing live closes;
+8. last, while a session is open or closing and the account's listing answered in this pass, the account's credit
+   is read and noted. It is shown to the person and decides nothing, so nothing it does fails the pass: its lines
+   are notes, never the pass's trouble.
 
 Without a usable machine key the pass still decides and records, but destroys nothing: what is ours cannot be told
 from what is not. The caller holds the reaper's lock; when the journal is damaged it calls `emergency` instead.
@@ -38,6 +41,7 @@ STOPPED = ("exited", "stopped")
 @dataclass
 class Outcome:
     lines: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)   # said in the log, never the reason a pass failed
     stuck: list[str] = field(default_factory=list)
     failed: bool = False
 
@@ -273,8 +277,21 @@ def _finish_sessions(rig: j.Rig, now: dt.datetime, out: Outcome) -> None:
         out.lines.append(f"session {session.id} closed: cost at least {cost:.2f} $")
 
 
+def _credit(rig: j.Rig, providers, account: str | None, listings: dict, out: Outcome) -> None:
+    sessions = [s for s in rig.sessions().values() if s.state in (j.OPEN, j.CLOSING)]
+    if account is None or not sessions or listings.get(account) is None:
+        return   # an account whose listing failed this pass is not asked again: it would only add a wait
+    try:
+        found = providers(account).credit()
+        if found is not None:
+            for session in sessions:
+                rig.note_credit(session.id, found)
+    except Exception as err:  # noqa: BLE001 - the credit decides nothing; a pass that destroyed must not fail on it
+        out.notes.append(f"{account} credit not read: {err if isinstance(err, ProviderError) else type(err).__name__}")
+
+
 def reap(rig: j.Rig, providers, *, machine_key: str | None, services=(), on: bool = True,
-         alive=lambda pid, mark: True) -> Outcome:
+         alive=lambda pid, mark: True, account: str | None = None) -> Outcome:
     out = Outcome()
     listings, listed_at = _listings(rig, providers, services, out)
     now = rig.now()
@@ -287,6 +304,7 @@ def reap(rig: j.Rig, providers, *, machine_key: str | None, services=(), on: boo
         _orphans(rig, providers, listings, machine_key, out)
     _prices(rig, listings)
     _finish_sessions(rig, now, out)
+    _credit(rig, providers, account, listings, out)
     return out
 
 

@@ -146,3 +146,43 @@ def test_the_start_script_carries_the_watchdog(adapter):
     module, _ = adapter()
     script = module.onstart()
     assert "FLOTILLA_WATCHDOG_MINUTES" in script and "flotilla-heartbeat" in script
+
+
+def test_the_account_credit_is_one_number_and_nothing_of_the_account(adapter):
+    """The service's answer carries the account's key, session and address; one number leaves the adapter (0.13.0)."""
+    module, double = adapter(credit=41.2)
+    found = module.credit("account-key-0123456789")
+    assert type(found) is float and found == 41.2
+    assert double.requests[0][:2] == ("GET", "https://console.vast.ai/api/v0/users/current/")
+
+
+@pytest.mark.parametrize("bad", [None, "41.2", True, [41.2], {"credit": 1}])
+def test_a_credit_that_is_not_a_number_is_an_error(adapter, bad):
+    module, _ = adapter(credit=bad)
+    with pytest.raises(module.AdapterError):
+        module.credit("k" * 12)
+
+
+@pytest.mark.parametrize("status", [401, 403, 500])
+def test_a_refused_credit_is_an_error_carrying_its_status(adapter, status):
+    module, _ = adapter(user_status=status)
+    with pytest.raises(module.AdapterError) as err:
+        module.credit("k" * 12)
+    assert err.value.status == status
+
+
+def test_a_credit_too_large_for_a_float_is_an_adapter_error(adapter):
+    """Not an OverflowError, which no caller expects (security review of 0.13.0)."""
+    module, _ = adapter(credit=10 ** 400)
+    with pytest.raises(module.AdapterError):
+        module.credit("k" * 12)
+
+
+def test_the_credit_is_asked_with_a_shorter_timeout_than_the_listing(adapter, monkeypatch):
+    """Under the reaper's lock a slow account must not add a whole listing's wait (review of 0.13.0, I-3)."""
+    module, double = adapter()
+    seen = []
+    monkeypatch.setattr(module, "SEND", lambda *a: (seen.append(a[4]), double(*a))[1])
+    module.credit("k" * 12)
+    module.instances("k" * 12)
+    assert seen[0] < seen[1]

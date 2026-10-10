@@ -7,7 +7,8 @@ an API error (review of 2026-10-06).
 
 The contract: `instances(key)` returns every instance of the account through every page, each as exactly
 `instance`, `label`, `status`, `hourly` - nothing else of vast's answer leaves this file, so the instance key vast
-puts in its rows never does; `destroy(key, id)` asks for a destroy; a non-2xx answer, a timeout or a body that does
+puts in its rows never does; `credit(key)` returns the account's credit as one float - the account's answer also
+carries its own key, session and address, and none of it leaves; `destroy(key, id)` asks for a destroy; a non-2xx answer, a timeout or a body that does
 not parse raises `AdapterError`. The key goes only into the `Authorization` header; the base URL is a constant.
 """
 
@@ -22,6 +23,7 @@ BASE = "https://console.vast.ai"
 PAGE = 25
 MAX_PAGES = 200
 TIMEOUT = 30
+CREDIT_TIMEOUT = 10   # read under the reaper's lock, which interactive commands wait on: never a listing's wait
 
 
 class AdapterError(Exception):
@@ -57,13 +59,13 @@ def _query(query):
                     for name, value in query.items())
 
 
-def _call(key, method, path, query=None, body=None):
+def _call(key, method, path, query=None, body=None, timeout=TIMEOUT):
     url = BASE + path + (f"?{_query(query)}" if query else "")
     headers = {"Authorization": f"Bearer {key}", "Accept": "application/json", "Content-Type": "application/json",
                "User-Agent": "flotilla-rig"}
     try:
         payload = json.dumps(body).encode() if body is not None else (b"{}" if method == "DELETE" else None)
-        status, raw = SEND(method, url, headers, payload, TIMEOUT)
+        status, raw = SEND(method, url, headers, payload, timeout)
     except Exception as err:   # noqa: BLE001 - OSError, http.client's IncompleteRead, anything: a failure, said once
         raise AdapterError(f"vast {method} {path}: {type(err).__name__}") from None
     try:
@@ -100,6 +102,14 @@ def instances(key):
             return found
         query = {**query, "after_token": str(token)}
     raise AdapterError(f"vast's instance listing did not end after {MAX_PAGES} pages")
+
+
+def credit(key):
+    answer = _call(key, "GET", "/api/v0/users/current/", timeout=CREDIT_TIMEOUT)
+    found = answer.get("credit") if isinstance(answer, dict) else None
+    if not isinstance(found, (int, float)) or isinstance(found, bool) or not -1e6 <= found <= 1e6:
+        raise AdapterError("vast's account answer has no credit")   # the bound also keeps float() from overflowing
+    return float(found)
 
 
 def destroy(key, instance):

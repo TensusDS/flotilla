@@ -72,3 +72,24 @@ def test_offers_and_create_go_through_the_wrapper(rented):
     instance = provider.create(found[0].offer, image="img:1", disk_gb=30, env={}, onstart="", label="l")
     provider.attach_ssh(instance, "ssh-ed25519 AAAA")
     assert fake.ssh_keys[instance] == ["ssh-ed25519 AAAA"]
+
+
+def test_the_credit_is_read_through_the_wrapper(rented):
+    assert rented(FakeVast(credit=41.2)).credit() == 41.2
+
+
+@pytest.mark.parametrize("status", [401, 403])
+def test_a_key_that_may_not_read_the_account_gives_no_credit(rented, status):
+    assert rented(FakeVast(user_status=status)).credit() is None
+
+
+def test_a_credit_the_service_could_not_answer_is_a_provider_error(rented):
+    with pytest.raises(pv.ProviderError, match="500"):
+        rented(FakeVast(user_status=500)).credit()
+
+
+def test_the_wrapper_lets_only_a_number_out_even_if_an_adapter_passed_the_account(rented, monkeypatch):
+    monkeypatch.setattr(vast, "credit", lambda key: {"credit": 41.2, "api_key": "account-api-key-0f0f0f0f"})
+    with pytest.raises(pv.ProviderError) as err:
+        rented(FakeVast()).credit()
+    assert "account-api-key" not in str(err.value)
