@@ -10,7 +10,6 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 
 ## Rented machines (rig), after 0.9.0
 
-- **The account credit beside the local count** (left from stage 2c). *(checked 2026-10-09 on 0.11.0: open)*
 - **From the plan reviews of 0.11.0 (packing), not built:** EASY backfill (a later run may use a senior's room if it
   ends before the senior can start - today a senior's reservation can idle cores until its `--wait`); memory as PSS
   (`smaps_rollup`) plus `/dev/shm` instead of summed RSS; setup-phase measurements kept with the command's; a per-run
@@ -20,8 +19,7 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 - **From the final review of 0.9.0** (minor, deferred): a `rig up` cut before create leaves a REQUESTED machine that
   stalls later calls for 15 minutes; the budget pre-check in `rig up` is outside the lock (bounded by the machine
   ceiling and the 90 % drain); a seat's `--why` reaches the orchestrator's model in fleet lines and `rig` (never a
-  pasted line); an adopted machine's `created` is the adoption time, undercounting the floor by one call; spec
-  section 5 promises the account credit in `flotilla rig`. *(checked 2026-10-07 on 0.9.0: still P -
+  pasted line); an adopted machine's `created` is the adoption time, undercounting the floor by one call. *(checked 2026-10-07 on 0.9.0: still P -
   flotilla/rig/commands.py `_up`, flotilla/rig/surface.py, flotilla/rig/reaper.py)*
 - **For `rig run`:** an ssh login shell on a vast machine does not carry `CONTAINER_ID`/`CONTAINER_API_KEY`/
   `FLOTILLA_WATCHDOG_MINUTES` (the watchdog's process does; live check 1) - renew by touching the heartbeat file.

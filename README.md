@@ -487,7 +487,11 @@ rented machine with `flotilla rig run` and gets its output, its exit code and it
   silent reaper or a failed one, repeated every half hour until they clear.
 - Ceilings, yours too, in `~/.local/state/flotilla/machine.toml`: `rig_max_machines` (1), `rig_max_hourly`
   (0.60 $), `rig_max_hours` (8).
-- `flotilla rig` shows sessions, machines, what they cost at least, and when the reaper last ran.
+- `flotilla rig` shows sessions, machines, what they cost at least, and when the reaper last ran. Beside the local
+  count it shows the account's credit at the session's open and now, read when the session opens and on every
+  reaper pass: the local count is a floor (traffic and storage are billed apart), the account's is the bill. A key
+  that may not read the account says so, and the rest works as before. Nothing of the account but that one number
+  leaves the adapter - vast's answer also carries the account's own key, session and address.
 - `flotilla rig reap` runs from your crontab every 5 minutes while anything is rented, under a line marked
   `# flotilla rig reaper` that removes itself when nothing is. The line runs a small launcher kept in flotilla's state
   directory, so it survives plugin updates; with flotilla uninstalled, the launcher itself destroys the instances

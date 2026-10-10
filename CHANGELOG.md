@@ -3,6 +3,15 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.13.0 - 2026-10-10
+
+- **The account's credit beside the local count** (rig design, section 5, promised since 0.9.0): `flotilla rig`
+  shows the vast account's credit at the session's open and now, and what the account says was spent. It is read
+  when the session opens and on every reaper pass while a session is open or closing - last in the pass, and never
+  a failure of it: it is shown, it decides nothing; the 90 % drain still runs on the local count. Only the number
+  leaves the adapter (vast's answer also carries the account's own key, session and address); a key that may not
+  read the account (401/403) is said, not an error.
+
 ## 0.12.0 - 2026-10-09
 
 - **`flotilla rig down`**: a seat gives the session's idle machine back at once instead of after 15 idle minutes
