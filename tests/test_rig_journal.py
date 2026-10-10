@@ -269,3 +269,12 @@ def test_a_closed_sessions_credit_is_not_noted(tmp_path):
     r.set_session("s1", j.CLOSING)
     r.set_session("s1", j.CLOSED)
     assert r.note_credit("s1", 41.2) is None and r.sessions()["s1"].credit_now is None
+
+
+def test_a_credit_too_large_for_a_float_is_dropped_not_a_crash_of_the_fold(tmp_path):
+    """A journal line any process may write: an integer past a float's range must not stop the reaper (security
+    review of 0.13.0)."""
+    r = rig(tmp_path)
+    r.open_session("max", "x", hours=1, budget=1.0)
+    r.note_credit("s1", 10 ** 400)
+    assert r.sessions()["s1"].credit_now is None

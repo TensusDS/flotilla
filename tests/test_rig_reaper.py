@@ -479,3 +479,11 @@ def test_a_credit_that_cannot_be_read_never_fails_the_pass_nor_stops_a_destroy(w
     out = passes(rig, providers, n=2, account="vast")
     assert rig.machines()[mid].state == j.GONE and "101" not in fake.instances
     assert not out.failed and rig.sessions()["s1"].credit_now is None
+
+
+def test_an_account_answer_past_a_floats_range_never_breaks_the_pass(world):
+    rig, clock, fake, providers = world
+    session(rig)
+    fake.credit = 10 ** 400
+    out = passes(rig, providers, account="vast")
+    assert not out.failed and rig.sessions()["s1"].credit_now is None

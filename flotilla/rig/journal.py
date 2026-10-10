@@ -181,8 +181,9 @@ def _clean(key, value):
     if key in TIMES:
         return value if value == "" or _aware(value) else ""
     if key in CREDIT:
-        ok = isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and \
-            abs(value) <= 1e6
+        # the bound first: it compares an integer of any size, where isfinite would raise OverflowError
+        ok = isinstance(value, (int, float)) and not isinstance(value, bool) and abs(value) <= 1e6 and \
+            math.isfinite(value)
         return float(value) if ok else None
     if key in MONEY:
         ok = isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value <= MONEY[key]

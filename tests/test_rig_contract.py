@@ -169,3 +169,10 @@ def test_a_refused_credit_is_an_error_carrying_its_status(adapter, status):
     with pytest.raises(module.AdapterError) as err:
         module.credit("k" * 12)
     assert err.value.status == status
+
+
+def test_a_credit_too_large_for_a_float_is_an_adapter_error(adapter):
+    """Not an OverflowError, which no caller expects (security review of 0.13.0)."""
+    module, _ = adapter(credit=10 ** 400)
+    with pytest.raises(module.AdapterError):
+        module.credit("k" * 12)

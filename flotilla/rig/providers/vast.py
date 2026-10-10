@@ -106,8 +106,8 @@ def instances(key):
 def credit(key):
     answer = _call(key, "GET", "/api/v0/users/current/")
     found = answer.get("credit") if isinstance(answer, dict) else None
-    if not isinstance(found, (int, float)) or isinstance(found, bool):
-        raise AdapterError("vast's account answer has no credit")
+    if not isinstance(found, (int, float)) or isinstance(found, bool) or not -1e6 <= found <= 1e6:
+        raise AdapterError("vast's account answer has no credit")   # the bound also keeps float() from overflowing
     return float(found)
 
 
