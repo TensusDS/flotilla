@@ -10,6 +10,10 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 
 ## Rented machines (rig), after 0.9.0
 
+- **A test that fails under the full suite's load:** `tests/test_rig_remote.py::test_a_run_sharing_the_machine_marks_its_measure_shared`
+  failed once in a full run on 0.13.0's branch (the second run, expected alone, read `shared=1`) and passed 10 of 10
+  alone, on main and on the branch. The sampler reads this host's process table, so a neighbour's process or a
+  lingering sampler may count as sharing. *(2026-10-10: open, cause not established)*
 - **From the final review of 0.13.0 (account credit)** (minor, deferred): a reading is appended on every pass even
   when unchanged (about 12 records an hour per session); the reading's time is shown as HH:MM only; a provider
   changed mid-session (disable, enable another) would mix two accounts' credit - not reachable while vast is the
