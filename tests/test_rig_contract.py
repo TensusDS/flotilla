@@ -176,3 +176,13 @@ def test_a_credit_too_large_for_a_float_is_an_adapter_error(adapter):
     module, _ = adapter(credit=10 ** 400)
     with pytest.raises(module.AdapterError):
         module.credit("k" * 12)
+
+
+def test_the_credit_is_asked_with_a_shorter_timeout_than_the_listing(adapter, monkeypatch):
+    """Under the reaper's lock a slow account must not add a whole listing's wait (review of 0.13.0, I-3)."""
+    module, double = adapter()
+    seen = []
+    monkeypatch.setattr(module, "SEND", lambda *a: (seen.append(a[4]), double(*a))[1])
+    module.credit("k" * 12)
+    module.instances("k" * 12)
+    assert seen[0] < seen[1]

@@ -487,3 +487,30 @@ def test_an_account_answer_past_a_floats_range_never_breaks_the_pass(world):
     fake.credit = 10 ** 400
     out = passes(rig, providers, account="vast")
     assert not out.failed and rig.sessions()["s1"].credit_now is None
+
+
+def test_a_session_closes_before_the_credit_is_asked(world):
+    """The credit is read last: a closing session with nothing live is closed first, never waiting on the account
+    (review of 0.13.0, I-3)."""
+    rig, clock, fake, providers = world
+    session(rig)
+    rig.set_session("s1", j.CLOSING)
+    passes(rig, providers, account="vast")
+    found = rig.sessions()["s1"]
+    assert found.state == j.CLOSED and found.credit_now is None
+
+
+def test_an_account_whose_listing_failed_this_pass_is_not_asked_for_its_credit(world):
+    rig, clock, fake, providers = world
+    session(rig)
+    fake.listing_status = 503
+    passes(rig, providers, account="vast")
+    assert not any("/users/" in url for _, url, _ in fake.requests)
+
+
+def test_the_credit_line_never_reads_as_trouble(world):
+    rig, clock, fake, providers = world
+    session(rig)
+    fake.user_status = 500
+    out = passes(rig, providers, account="vast")
+    assert out.notes and not out.lines and not out.failed

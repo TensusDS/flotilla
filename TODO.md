@@ -10,6 +10,10 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 
 ## Rented machines (rig), after 0.9.0
 
+- **From the final review of 0.13.0 (account credit)** (minor, deferred): a reading is appended on every pass even
+  when unchanged (about 12 records an hour per session); the reading's time is shown as HH:MM only; a provider
+  changed mid-session (disable, enable another) would mix two accounts' credit - not reachable while vast is the
+  only provider; whether vast's `credit` lags its billing is unmeasured. *(2026-10-10: open)*
 - **From the plan reviews of 0.11.0 (packing), not built:** EASY backfill (a later run may use a senior's room if it
   ends before the senior can start - today a senior's reservation can idle cores until its `--wait`); memory as PSS
   (`smaps_rollup`) plus `/dev/shm` instead of summed RSS; setup-phase measurements kept with the command's; a per-run

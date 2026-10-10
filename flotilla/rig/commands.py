@@ -172,7 +172,7 @@ def _reap(state: Path, settings: rs.RigSettings) -> int:
                     print(f"{stamp} {line}")
                 health.stamp(state, _now(), ok=False, note="journal damaged: emergency pass")
                 return 1
-            for line in out.lines:
+            for line in out.lines + out.notes:
                 print(f"{stamp} {line}")
             _forget_hosts(rig, state)
             problem = _keep_reaper(rig, state)
@@ -279,11 +279,12 @@ def _note_credit(rig: j.Rig, session_id: str, name: str) -> str:
     """The credit at open is read outside the journal's lock - a network call - and never stops the session."""
     try:
         found = PROVIDERS(name).credit()
-    except provider.ProviderError as err:
-        return f"account credit not read now ({err}); the reaper tries again on its next pass"
-    if found is None:
-        return "account credit not readable with this key: `flotilla rig` will show the local count only"
-    rig.note_credit(session_id, found)
+        if found is None:
+            return "account credit not readable with this key: `flotilla rig` will show the local count only"
+        rig.note_credit(session_id, found)
+    except Exception as err:  # noqa: BLE001 - the session is open; nothing about the credit may hide that
+        said = err if isinstance(err, provider.ProviderError) else type(err).__name__
+        return f"account credit not read now ({said}); the reaper tries again on its next pass"
     return f"account credit {found:.2f} $ at open"
 
 

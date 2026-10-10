@@ -121,7 +121,7 @@ def test_fleet_lines_name_the_session_and_its_machines(tmp_path):
     r.move("m1", j.PROVISIONING, instance="7", gpu="RTX 2080 Ti", hourly=0.137, created=T0.isoformat())
     lines = surface.lines(state, T0 + dt.timedelta(minutes=30))
     assert lines[0].startswith("rig: session s1 open (night frames) until")
-    assert lines[1] == "  account credit not read (the key may not read it)"
+    assert lines[1] == "  account credit not read yet"
     assert "machine m1 provisioning: RTX 2080 Ti, 0.137 $/h" in lines[2]
 
 
@@ -235,11 +235,21 @@ def test_the_session_line_shows_the_accounts_credit_beside_the_local_count(tmp_p
     r.note_credit("s1", 41.2)
     r.note_credit("s1", 39.85)
     said = "\n".join(surface.lines(state, T0 + dt.timedelta(minutes=30)))
-    assert "account credit 41.20 $ at open, 39.85 $ at 20:00 (1.35 $ spent by the account's count)" in said
+    assert "account credit 41.20 $ at open, 39.85 $ at 20:00: down 1.35 $ (the whole account)" in said
+
+
+def test_a_credit_that_went_up_is_not_a_negative_spend(tmp_path):
+    state = state_on(tmp_path)
+    r = rig(state)
+    r.open_session("p", "night frames", hours=3, budget=2.0)
+    r.note_credit("s1", 21.2)
+    r.note_credit("s1", 41.2)
+    said = "\n".join(surface.lines(state, T0))
+    assert "up 20.00 $ (a top-up?)" in said and "-20" not in said
 
 
 def test_a_credit_never_read_says_so(tmp_path):
     state = state_on(tmp_path)
     rig(state).open_session("p", "night frames", hours=3, budget=2.0)
     said = "\n".join(surface.lines(state, T0))
-    assert "account credit not read (the key may not read it)" in said
+    assert "account credit not read yet" in said

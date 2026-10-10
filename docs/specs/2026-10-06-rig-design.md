@@ -199,9 +199,10 @@ So cron does not run the plugin's path:
   listing's `dph_total` on every pass. The local figure is a floor, not the bill: traffic and storage are billed
   apart. So a session drains at **90 % of its budget, projected to the next pass** (spending now plus one pass at the
   current rate), and `flotilla rig` shows the account's credit at the session's open and now, when the key may read
-  it, so the person can see the real bill (0.13.0: read when the session opens and on every reaper pass while a
-  session is open or closing, last in the pass and never failing it; only the number leaves the adapter; a 401/403
-  is shown as "not readable with this key"). The refreshed price is applied to the machine's whole life: the local
+  it, so the person can see the real bill (0.13.0: read when the session opens and last in every reaper pass while a
+  session is open or closing, with a 10-second limit, skipped when that account's listing failed, never failing the
+  pass; only the number leaves the adapter; a 401/403 is shown as "not readable with this key". The credit is the
+  whole account's: another machine on the same account, or a top-up, moves it too). The refreshed price is applied to the machine's whole life: the local
   figure is an estimate, the service's bill is the truth.
 - **The machine's ceilings** live in `machine.toml` and only the person changes them (section 4):
   - at most 1 machine at a time (`rig_max_machines`);

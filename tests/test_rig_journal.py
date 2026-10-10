@@ -278,3 +278,19 @@ def test_a_credit_too_large_for_a_float_is_dropped_not_a_crash_of_the_fold(tmp_p
     r.open_session("max", "x", hours=1, budget=1.0)
     r.note_credit("s1", 10 ** 400)
     assert r.sessions()["s1"].credit_now is None
+
+
+def test_a_closing_sessions_credit_keeps_it_closing(tmp_path):
+    r = rig(tmp_path)
+    r.open_session("max", "x", hours=1, budget=1.0)
+    r.set_session("s1", j.CLOSING, "closed by max")
+    s = r.note_credit("s1", 41.2)
+    assert (s.state, s.reason, s.credit_now) == (j.CLOSING, "closed by max", 41.2)
+
+
+def test_a_reading_the_journal_would_drop_never_erases_a_good_one(tmp_path):
+    r = rig(tmp_path)
+    r.open_session("max", "x", hours=1, budget=1.0)
+    r.note_credit("s1", 41.2)
+    r.note_credit("s1", 5e6)
+    assert r.sessions()["s1"].credit_now == 41.2

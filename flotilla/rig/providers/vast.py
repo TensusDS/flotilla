@@ -23,6 +23,7 @@ BASE = "https://console.vast.ai"
 PAGE = 25
 MAX_PAGES = 200
 TIMEOUT = 30
+CREDIT_TIMEOUT = 10   # read under the reaper's lock, which interactive commands wait on: never a listing's wait
 
 
 class AdapterError(Exception):
@@ -58,13 +59,13 @@ def _query(query):
                     for name, value in query.items())
 
 
-def _call(key, method, path, query=None, body=None):
+def _call(key, method, path, query=None, body=None, timeout=TIMEOUT):
     url = BASE + path + (f"?{_query(query)}" if query else "")
     headers = {"Authorization": f"Bearer {key}", "Accept": "application/json", "Content-Type": "application/json",
                "User-Agent": "flotilla-rig"}
     try:
         payload = json.dumps(body).encode() if body is not None else (b"{}" if method == "DELETE" else None)
-        status, raw = SEND(method, url, headers, payload, TIMEOUT)
+        status, raw = SEND(method, url, headers, payload, timeout)
     except Exception as err:   # noqa: BLE001 - OSError, http.client's IncompleteRead, anything: a failure, said once
         raise AdapterError(f"vast {method} {path}: {type(err).__name__}") from None
     try:
@@ -104,7 +105,7 @@ def instances(key):
 
 
 def credit(key):
-    answer = _call(key, "GET", "/api/v0/users/current/")
+    answer = _call(key, "GET", "/api/v0/users/current/", timeout=CREDIT_TIMEOUT)
     found = answer.get("credit") if isinstance(answer, dict) else None
     if not isinstance(found, (int, float)) or isinstance(found, bool) or not -1e6 <= found <= 1e6:
         raise AdapterError("vast's account answer has no credit")   # the bound also keeps float() from overflowing

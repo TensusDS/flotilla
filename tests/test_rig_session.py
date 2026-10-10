@@ -205,3 +205,13 @@ def test_open_goes_on_when_the_credit_cannot_be_read(world):
     code, out = run_cli("rig", "open", "--hours", "1", "--budget", "1", "--why", "x")
     assert code == 0 and journal(world).sessions()["s1"].credit_open is None
     assert "account credit not readable with this key" in out
+
+
+def test_an_unforeseen_credit_failure_at_open_never_hides_the_session(world, monkeypatch):
+    from flotilla.rig import provider as pv
+
+    def broken(self):
+        raise RuntimeError("unforeseen")
+    monkeypatch.setattr(pv.Rented, "credit", broken)
+    code, out = run_cli("rig", "open", "--hours", "1", "--budget", "1", "--why", "x")
+    assert code == 0 and "session s1 open" in out and "account credit not read now" in out

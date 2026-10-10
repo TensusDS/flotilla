@@ -404,3 +404,33 @@ def test_rig_down_names_a_machine_still_coming_up(world):
     rig.add_machine("s1", "vast", lambda mid: f"flotilla:k:{mid}")
     code, out = run_cli("rig", "down", "--as", "minor 3")
     assert code == 0 and "m1" in out and "coming up" in out
+
+
+# the account's credit (0.13.0)
+
+def test_a_credit_read_failure_never_becomes_the_reason_a_pass_failed(world, monkeypatch):
+    """The health note names what keeps the reaper from destroying, not the credit read beside it (review of 0.13.0,
+    I-1)."""
+    from flotilla.rig import settings as rs
+
+    def refused(state):
+        raise rs.KeyRefused("the machine key is unreadable")
+    turn(world["state"], "on")
+    machine(world)
+    monkeypatch.setattr(rs, "machine_key", refused)
+    world["fake"].user_status = 500
+    code, _ = run_cli("rig", "reap")
+    ok, note = health.last_outcome(world["state"])
+    assert code == 1 and not ok and note == "no machine key"
+
+
+def test_an_unforeseen_credit_failure_never_fails_the_pass(world, monkeypatch):
+    from flotilla.rig import provider as pv
+    turn(world["state"], "on")
+    machine(world)
+
+    def broken(self):
+        raise RuntimeError("unforeseen")
+    monkeypatch.setattr(pv.Rented, "credit", broken)
+    code, _ = run_cli("rig", "reap")
+    assert code == 0 and health.last_outcome(world["state"])[0]

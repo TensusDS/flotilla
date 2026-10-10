@@ -6,11 +6,13 @@ each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2
 ## 0.13.0 - 2026-10-10
 
 - **The account's credit beside the local count** (rig design, section 5, promised since 0.9.0): `flotilla rig`
-  shows the vast account's credit at the session's open and now, and what the account says was spent. It is read
-  when the session opens and on every reaper pass while a session is open or closing - last in the pass, and never
-  a failure of it: it is shown, it decides nothing; the 90 % drain still runs on the local count. Only the number
-  leaves the adapter (vast's answer also carries the account's own key, session and address); a key that may not
-  read the account (401/403) is said, not an error.
+  shows the vast account's credit at the session's open and now, and how far it moved - for the whole account,
+  so another machine on it or a top-up moves it too. It is read when the session opens and at the end of every
+  reaper pass while a session is open or closing, with a 10-second limit and not at all when the account's listing
+  failed in that pass. It decides nothing - the 90 % drain still runs on the local count - so nothing it does fails
+  a pass, delays a session's close or becomes the reason a pass is shown failed. Only the number leaves the adapter
+  (vast's answer also carries the account's own key, session and address); a key that may not read the account
+  (401/403) is said, not an error.
 
 ## 0.12.0 - 2026-10-09
 

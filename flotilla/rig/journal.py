@@ -338,6 +338,8 @@ class Rig:
             found = _fold(tx.read().records)[0].get(session_id)
             if found is None or found.state == CLOSED:
                 return None
+            if _clean("credit_now", credit) is None:
+                return found   # a reading the fold would drop must not erase a good one
             fields = {"credit_now": credit, "credited": _iso(self.now())}
             if found.credit_open is None:
                 fields["credit_open"] = credit

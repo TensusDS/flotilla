@@ -143,14 +143,16 @@ def lines(state: Path, now: dt.datetime) -> list[str]:
 
 
 def credit_line(session: j.Session) -> str:
-    """The account's credit beside the local count: the local figure is a floor, the account's is the bill (rig
-    design, section 5)."""
+    """The account's credit beside the local count (rig design, section 5): the local figure is a floor for this
+    session; the credit moves with everything the account is billed for - this session's machines, traffic and
+    storage, and anything else on the same account."""
     if session.credit_open is None or session.credit_now is None:
-        return "account credit not read (the key may not read it)"
+        return "account credit not read yet"
     read = _when(session.credited)
+    moved = session.credit_open - session.credit_now
+    how = f"down {moved:.2f} $ (the whole account)" if moved >= 0 else f"up {-moved:.2f} $ (a top-up?)"
     return (f"account credit {session.credit_open:.2f} $ at open, {session.credit_now:.2f} $ at "
-            f"{_hhmm(read) if read else '?'} ({session.credit_open - session.credit_now:.2f} $ spent by the "
-            "account's count)")
+            f"{_hhmm(read) if read else '?'}: {how}")
 
 
 def run_lines(rig: j.Rig, now: dt.datetime) -> list[str]:
