@@ -8,6 +8,29 @@ something through, B a bug a user meets, P polish, tests or docs), or `open, des
 run). A later triage re-checks only items whose named files changed since that version. An item that is done -
 fixed by a release, or found fixed - leaves its section for **Done** at the bottom, one line with the version.
 
+## From the khrushchevka demo fleet (2026-10-12, 0.13.0 beside another fleet on 0.10.2)
+
+- **A rig run wrapped in the lane holds this machine for a job that runs elsewhere.** A reviewer ran
+  `flotilla lane run -- flotilla rig run ...`. Its rig run waited 10 minutes for cores on the rented machine, which
+  the other fleet's runs held, and all that time it held the local lane, on which the other fleet's local runs
+  waited: each fleet waited on the other. The run itself took 28.8 s on the machine. Nothing refused the wrap, and
+  other seats had done the same before with no harm seen. Why they wrapped it is not established (the lane guard does
+  not name `rig run`; the posts say long runs go through the lane). Idea: `lane run` refuses a command that is
+  `flotilla rig run`, or the posts say a rig run is not a local long run.
+  *(seen 2026-10-12 on 0.13.0: B - flotilla/lane/commands.py:264)*
+- **A seat stopped at a startup dialog looks like a seat that never came up.** A `.mcp.json` in a parent directory made
+  every new session ask "New MCP server found in this project". `spawn` said "launched, not yet seen in the census
+  after 30 s" for all five, `flotilla fleet` said "not running", the census said "blocked"; nothing named the dialog.
+  Each had to be attached to and answered. Idea: `spawn` and `fleet` say "waits at a dialog: attach and answer" for a
+  session the census lists as blocked right after launch; `doctor` names a parent `.mcp.json`.
+  *(seen 2026-10-12 on 0.13.0: B - flotilla/fleet/spawn.py:416)*
+- **Before the profile reaches trunk, a commit of one's own on trunk cannot be pushed by the door.** `receipt run
+  --purpose push` refused ("the project profile could not be read, so CI on this machine could not be asked"), and
+  `onboard publish` refuses while trunk is ahead of origin. The way through was to park the commit on a branch,
+  publish, then merge it back. Idea: `publish` names that way, or the receipt runs on the tree's own profile as the
+  other guards do before onboarding reaches trunk.
+  *(seen 2026-10-12 on 0.13.0: P - flotilla/lane/machine.py:321)*
+
 ## Rented machines (rig), after 0.9.0
 
 - **A test that fails under the full suite's load:** `tests/test_rig_remote.py::test_a_run_sharing_the_machine_marks_its_measure_shared`
