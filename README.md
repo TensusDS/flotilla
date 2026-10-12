@@ -256,10 +256,6 @@ does today.
    over which revision, what is held back and why, and what verifies it. Answer yes once; where your profile has
    you approve merges, each branch's approve command is printed ready to type.
 
-**A whole run to read or repeat.** [examples/khrushchevka/](examples/khrushchevka/) is one recorded fleet run from
-the task to the result: the repository five sessions were given, the task as typed, the code and the picture they
-handed over, what the reviewer sent back, and the steps to run it yourself in about an hour.
-
 ---
 
 ## Contents
