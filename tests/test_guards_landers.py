@@ -275,7 +275,8 @@ def test_a_harmless_word_that_is_an_options_value_frees_no_merge(command, tmp_pa
 
 @pytest.mark.parametrize("command", ["gh pr merge 5 -sb --help", "gh pr merge 5 -R --help", "gh pr merge 5 -st -h",
                                      "git push -o -n origin main", "git push -fo --dry-run origin main",
-                                     "git push --receive-pack -h origin main"])
+                                     "git push --receive-pack -h origin main", "git push --push-o -n origin main",
+                                     "git push --exe -n origin main", "git push origin main -- -n"])
 def test_a_harmless_word_after_a_flag_that_takes_a_value_frees_nothing(command, tmp_path):
     """Security review: gh and git read `-sb --help` as a body of "--help"; a guard that reads it as a call for
     help lets the merge through unjudged."""
@@ -327,6 +328,101 @@ def test_a_merge_named_by_url_from_outside_any_project_is_not_let_through_unjudg
     found = push.guard(first("gh pr merge https://github.com/o/r/pull/5 --squash", elsewhere), root=None, profile={},
                        env=env(tmp_path))
     assert found is not None and found.refuse and "names a repository" in found.text
+
+
+@pytest.mark.parametrize("command", [
+    'gh pr create --title x --body "see https://example.com/issue/1"',
+    'gh pr create --title fix --body "Generated with [Claude Code](https://claude.com/claude-code)"',
+    'gh pr merge 5 --squash --body "closes https://example.com/issue/1"',
+    "gh pr merge 5 -sb https://github.com/o/r/pull/5",
+    "gh workflow run ci.yml -f target=https://staging.example.com"])
+def test_a_url_that_is_not_the_pull_request_named_leaves_a_command_outside_any_project_alone(command, tmp_path):
+    """Second review, the blocker of the first fix: any word holding `://` was read as naming a repository, so a
+    pull request whose body carries a link was refused in every project that never onboarded."""
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    assert push.guard(first(command, elsewhere), root=None, profile={}, env=env(tmp_path)) is None
+
+
+def test_a_merge_aimed_from_outside_every_project_is_asked_of_the_seats_own(tmp_path, monkeypatch):
+    """Second review: a merge has no second barrier, and one whose project cannot be told (-R, a URL, from another
+    directory) fell to the overridable refusal. A seat is asked by the project it stands in."""
+    root = fleet(tmp_path, monkeypatch)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    for merge in ("gh pr merge https://github.com/o/r/pull/5 --squash", "gh pr merge 5 -R o/r --squash",
+                  "GH_REPO=o/r gh pr merge 5 --squash"):
+        for command in (f"cd {elsewhere} && {merge}", f'cd {elsewhere} && FLOTILLA_GATE_OVERRIDE="x" {merge}'):
+            assert "may not land" in denied(ask(root, command, "sid-main")), command
+        assert not denied(ask(root, f'cd {elsewhere} && FLOTILLA_GATE_OVERRIDE="x" {merge}', "sid-sender")), merge
+        assert "names a repository" in denied(ask(root, f"cd {elsewhere} && {merge}", "sid-sender")), merge
+
+
+def test_a_directory_with_rules_of_its_own_that_cannot_be_read_opens_nothing(tmp_path, monkeypatch):
+    """Second review: a seat can write a `.flotilla/project.toml` into a subdirectory; reading it fell the guard
+    before the post was asked, and an override opened the push."""
+    root = fleet(tmp_path, monkeypatch)
+    (root / "scratch" / ".flotilla").mkdir(parents=True)
+    (root / "scratch" / ".flotilla" / "project.toml").write_text("not toml [", encoding="utf-8")
+    for command in ("cd scratch && git push origin HEAD:main",
+                    'cd scratch && FLOTILLA_GATE_OVERRIDE="x" git push origin HEAD:main'):
+        assert "may not land" in denied(ask(root, command, "sid-main")), command
+
+
+def test_an_own_branch_push_whose_tree_cannot_be_told_says_how_to_make_it_told(tmp_path, monkeypatch):
+    """Second review: the post's refusal replaced the line that tells the seat what to do - name the tree."""
+    root = fleet(tmp_path, monkeypatch)
+    git(root, "checkout", "-q", "-b", "feat/x")
+    why = denied(ask(root, 'cd "$WT" && git push -u origin feat/x', "sid-main"))
+    assert "may not land" in why and "git -C <path>" in why
+
+
+def test_a_seat_that_stands_in_no_project_is_asked_by_the_project_it_pushes(tmp_path, monkeypatch):
+    root = fleet(tmp_path, monkeypatch)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    assert "may not land" in denied(ask(elsewhere, f"git -C {root} push origin HEAD:main", "sid-main"))
+
+
+def test_a_tree_whose_own_profile_cannot_be_read_still_asks_who_lands(tmp_path, monkeypatch):
+    root = fleet(tmp_path, monkeypatch)
+    (root / ".flotilla" / "project.toml").write_text("not toml [", encoding="utf-8")
+    assert "may not land" in denied(ask(root, "git push origin HEAD:main", "sid-main"))
+
+
+def test_a_push_whose_tree_cannot_be_told_cannot_waive_the_persons_approval(tmp_path, monkeypatch):
+    """Second review: the merge was closed, the push from a tree named through a variable was not."""
+    root = fleet(tmp_path, monkeypatch, authorized="human")
+    why = denied(ask(root, 'cd "$D" && FLOTILLA_GATE_OVERRIDE="x" git push origin HEAD:main', "sid-sender"))
+    assert "approved" in why and "git -C <path>" in why
+
+
+def test_a_receipt_check_that_fell_does_not_let_an_override_stand_in_for_the_approval(tmp_path, monkeypatch):
+    """Security review: the approval was asked after the receipts, inside the same `try` - a receipt check that
+    fell skipped it, and the override that waives a fallen guard then waived the approval with it."""
+    root = fleet(tmp_path, monkeypatch, authorized="human")
+    (root / "w.txt").write_text("work nobody approved\n", encoding="utf-8")
+    git(root, "add", "w.txt")
+    git(root, *IDENTITY, "commit", "-q", "-m", "work nobody approved")
+
+    def fell(*args, **kwargs):
+        raise RuntimeError("the receipts could not be read")
+
+    monkeypatch.setattr("flotilla.guards.push._failures", fell)
+    found = judge('FLOTILLA_GATE_OVERRIDE="x" git push origin HEAD:main', root, tmp_path, "sender 1", subprocess.run)
+    assert found is not None and found.refuse and "approved" in found.text
+
+
+def test_a_post_on_trunk_that_cannot_be_read_closes_the_push_and_names_its_file(tmp_path, monkeypatch):
+    root = fleet(tmp_path, monkeypatch)
+    post = root / ".flotilla" / "posts" / "minor.md"
+    post.write_text(post.read_text(encoding="utf-8").replace("may: [", "may: [fly, "), encoding="utf-8")
+    git(root, "add", ".flotilla")
+    git(root, *IDENTITY, "commit", "-q", "-m", "a post that names a move nobody knows")
+    git(root, "push", "-q", "origin", "main")
+    why = denied(ask(root, "git push origin HEAD:main", "sid-mine"))
+    assert "who may land could not be told" in why
+    assert ".flotilla/posts/minor.md" in why and "flotilla-posts-" not in why   # trunk's file, not a temp copy
 
 
 def test_posts_that_cannot_be_listed_close_the_push_rather_than_switch_the_rule_off(tmp_path, monkeypatch):

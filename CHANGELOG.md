@@ -23,14 +23,19 @@ each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2
 - **Fixed: an override could waive your approval of a merge.** Where you authorize merges
   (`merge_authorized_by = "human"`), `FLOTILLA_GATE_OVERRIDE="..." gh pr merge 5` - a merge no revision pins -
   was recorded as overridden and ran: the approval was never asked. Such a merge is now closed until it names
-  `--match-head-commit`, and so is a seat's push or merge whose revision could not be told.
+  `--match-head-commit`; so is a push whose tree could not be told, and one whose receipt check fell. For a seat
+  whose post may not land, an override no longer opens any push or merge whose revision could not be told.
 - A harmless word that is an option's value frees nothing: `gh pr merge 5 -b --help` and `-sb --help` are merges
-  with a body of "--help", `git push -o -n origin main` is a push with an option of "-n", and each is judged as
-  what it is. A merge that names its pull request by URL from outside any project is refused rather than let
-  through unjudged.
-- A guard that fell before it could ask who calls - a git that timed out - is judged like a door whose revision
-  could not be told: an override no longer opens it for a seat that may not land.
-- `flotilla guard check` asks who calls, as the hook does, so it says what the hook would.
+  with a body of "--help", `git push -o -n origin main` and `--push-o -n` are pushes with an option of "-n", and
+  each is judged as what it is. A merge that names its pull request by URL from outside any project is refused
+  rather than let through unjudged, and a seat's merge aimed from outside every project (`-R`, `GH_REPO`, a URL)
+  is asked of the project the seat stands in.
+- A guard that fell before it could ask who calls - a git that timed out, a project file a seat wrote into a
+  subdirectory - is judged like a door whose revision could not be told.
+- **A post on origin's trunk that cannot be read now closes every push that lands, for everyone**, as a broken
+  profile there already did: who may land is not guessed. You fix it from your terminal with
+  `git push --no-verify`.
+- `flotilla guard check` asks which seats the call runs under, as the hook does.
 
 ## 0.13.0 - 2026-10-10
 

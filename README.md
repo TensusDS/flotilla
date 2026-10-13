@@ -529,10 +529,10 @@ Before a Bash command runs, flotilla refuses a few commands that do silent damag
   it and to every seat its process runs under, so a session a seat starts inside itself is that seat's. Anyone
   else in the fleet is refused and told where the work goes: handed over, and landed by the live sender the
   refusal names; with no live sender, the seat tells the orchestrator, and the orchestrator tells you. This
-  refusal has no override - nor has a seat's push or merge whose revision could not be told, such as a
-  `gh pr merge` without `--match-head-commit`. A session that holds none of the project's posts - your own,
-  another project's seat - is judged by the receipt and the approval alone, and where nobody can say which
-  session calls, a push that lands is closed.
+  refusal has no override, and such a seat gets it too where what it pushes or merges could not be told - a
+  `gh pr merge` without `--match-head-commit`, a tree named through a variable. A session that holds none of the
+  project's posts - your own, another project's seat - is judged by the receipt and the approval alone, and where
+  nobody can say which session calls, a push that lands is closed.
 - **lane** - a warning, not a refusal, when a long run starts outside the lane.
 
 Two git hooks back them, installed only with your yes, one each (`/flotilla:guard`): `pre-commit` refuses a rewrite of
@@ -625,7 +625,8 @@ What flotilla does not do yet, or does only partly. Each one was met in a field 
   still reconfigure its own checkout around a client-side guard; see
   [Security model and its limits](#security-model-and-its-limits) for what protects trunk.
 - **A broken profile on trunk closes trunk.** If the profile on origin's trunk cannot be read, every push to trunk
-  is refused, the one that would fix it included. You fix it from your own terminal with `git push --no-verify`.
+  is refused, the one that would fix it included. The same holds for a post there that cannot be read - who may
+  land is then not told for anyone. You fix it from your own terminal with `git push --no-verify`.
 - **It does not isolate sessions from you or from each other** - see the next section.
 
 ## Security model and its limits
