@@ -41,6 +41,13 @@ def the_caller_is_a_person_in_a_terminal(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def a_push_is_made_by_a_session_that_holds_no_post(monkeypatch):
+    """The push guard asks which session calls, and which seats its process runs under, before a push that lands
+    (decision 236). No test asks the machine's census: the caller holds no post unless the test names one."""
+    monkeypatch.setattr("flotilla.guards.push.callers", lambda session_id="": ([], []))
+
+
+@pytest.fixture(autouse=True)
 def git_rewrites_switched_off_per_test(monkeypatch):
     """The hook entry points switch off git's replace refs and grafts for their whole process; in a test process
     that would outlive the test. Each test starts without them and leaves none behind."""

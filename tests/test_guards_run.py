@@ -282,8 +282,9 @@ def _sender_tree(tmp_path, monkeypatch, opted=True):
     core.reserve(ledger, actor(ledger, "sender 1"), "fleet/sender-1", tree=str(root))
     names = {"sid-sender": "sender 1", "sid-sender-2": "sender 2", "sid-main": "main session 1"}
     monkeypatch.setattr("flotilla.guards.run._caller_name", lambda session_id: names.get(session_id, ""))
-    monkeypatch.setattr("flotilla.guards.run._calling",   # who the push guard asks about a landing push's post
-                        lambda session_id: (names.get(session_id, ""), list(names.values())))
+    monkeypatch.setattr("flotilla.guards.push.callers",   # who the push guard asks about a landing push's post
+                        lambda session_id="": ([names[session_id]] if session_id in names else [],
+                                               list(names.values())))
     return root
 
 
@@ -324,8 +325,12 @@ def test_a_push_from_a_tree_whose_owner_may_not_land_is_left_to_the_classifier(t
     other = tmp_path / "elsewhere"
     git(root, "worktree", "add", "-q", "-b", "fleet/main-1", str(other), "main")
     core.reserve(open_ledger(root), actor(open_ledger(root), "main session 1"), "fleet/main-1", tree=str(other))
-    assert not _allowed(ask(root, f"git -C {other} push origin HEAD:main", monkeypatch, tmp_path,
-                            session="sid-main"))   # its owner calls, and that owner's post may not land
+    # the push guard's own refusal of that post (decision 236) is taken out of the way: this asks the allowance's
+    # check alone, which must hold by itself (the final review found the newer refusal had disarmed this test)
+    monkeypatch.setattr("flotilla.guards.push.callers", lambda session_id="": ([], []))
+    answer = ask(root, f"git -C {other} push origin HEAD:main", monkeypatch, tmp_path, session="sid-main")
+    assert (answer or {}).get("permissionDecision") != "deny"
+    assert not _allowed(answer)   # its owner calls, and that owner's post may not land
 
 
 def test_a_push_inside_a_compound_command_is_left_to_the_classifier(tmp_path, monkeypatch):

@@ -145,7 +145,7 @@ Worktrees and receipts:
 | `onboard write` stops and prints a mark | it shows the whole profile first | read it; if it is right, run `write --confirm <mark>` |
 | auto mode refuses the sender's push ("Merge Without Review") or a ledger move | Claude Code's classifier judges it; flotilla lets its own checked commands past only where you opted in | answer the refusal yourself, or - knowing what it means - set `skip_classifier_for_checked = true` under `[permissions]` in the profile and bring it to trunk (README, "Letting checked commands past auto mode's classifier") |
 | a push is refused: receipt | no green push receipt over exactly what is pushed | `flotilla receipt run --purpose push` in that tree, then push |
-| a push is refused: `holds the post ... which may not land` | only a post with the `land` move (the sender) pushes to trunk or a tag; there is no override | hand the branch over (`flotilla work hand`); with no live sender, `flotilla spawn -s 1` - or push it yourself with `!` or from a terminal |
+| a push is refused: `holds the post ... which may not land` | only a post with the `land` move (the sender) pushes to trunk or a tag, or merges a pull request; there is no override | hand the branch over (`flotilla work hand`); with no live sender, `flotilla spawn -s 1` - or push it yourself with `!` or from a terminal |
 | a push is refused: not approved | a person authorizes merges and has not approved that work | `flotilla work approve <branch>` by the person |
 | `gh pr merge` is refused | it does not pin the checked head | add `--match-head-commit <sha>` as the refusal names it |
 | a retired session is alive again | a message to a stopped background session resumes it | `claude stop <id>`; address letters to the live holder of a post |

@@ -5,17 +5,28 @@ each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2
 
 ## 0.14.0 - 2026-10-13
 
-- **Only a post that may land pushes to trunk or a tag.** The sender was "the only session that writes trunk" in
-  the README and in its post's instructions, but the push guard asked only for a green receipt: any seat holding
-  one could push to trunk. Now a session that holds a post lands - `git push` to trunk or a tag, `gh pr merge` -
-  only if its post has the `land` move. The refusal names the live sender the work goes to once it is handed over
-  and accepted; with no live sender, the seat is told to tell the orchestrator, and the orchestrator to tell you.
-  There is no override: you can still push with `!` or from a terminal, raise a sender (`flotilla spawn -s 1`) or
-  have the work adopted. The `pre-push` hook asks the same of a push hidden in a script.
-- Not judged by a post: a session that holds none (your own session in a project whose fleet is down), and a
-  project whose trunk carries no post that lands. **If your own Claude Code session leads the fleet as its
-  orchestrator, the model in it can no longer push to trunk; you can, with `!`.** Where the session census cannot
-  be asked, a push that lands is closed until it can.
+- **Only a post that may land pushes to trunk or a tag, or merges a pull request.** The sender was "the only
+  session that writes trunk" in the README and in its post's instructions, but the push guard asked only for a
+  green receipt: any seat holding one could push to trunk. Now a session that holds one of the project's posts
+  lands - `git push` to trunk or a tag, `gh pr merge` - only if its post has the `land` move. A call answers to
+  the session that made it and to every seat its process runs under, so a session a seat starts inside itself is
+  judged as that seat. The refusal names the live sender the work goes to once it is handed over and accepted;
+  with no live sender, the seat is told to tell the orchestrator, and the orchestrator to tell you. There is no
+  override: you can still push with `!` or from a terminal, raise a sender (`flotilla spawn -s 1`) or have the
+  work adopted. The `pre-push` hook asks the same of the background sessions a push hidden in a script runs
+  under.
+- Not judged by a post: a session that holds none of the project's posts (your own, another project's seat), and
+  a project whose trunk carries no post that lands. **If your own Claude Code session leads the fleet as its
+  orchestrator, a push the model types there is now refused; you push with `!`.** A push hidden in a script in
+  your own session is not told apart from yours. Where the session census cannot be asked, a push that lands is
+  closed until it can - at your terminal, `git push --no-verify` is your way through.
+- **Fixed: an override could waive your approval of a merge.** Where you authorize merges
+  (`merge_authorized_by = "human"`), `FLOTILLA_GATE_OVERRIDE="..." gh pr merge 5` - a merge no revision pins -
+  was recorded as overridden and ran: the approval was never asked. Such a merge is now closed until it names
+  `--match-head-commit`, and so is a seat's push or merge whose revision could not be told.
+- A `gh pr merge` whose `--body` or `--subject` value is `--help` or `--dry-run` is judged as the merge it is, and
+  one that names its pull request by URL from outside any project is refused rather than let through unjudged.
+- `flotilla guard check` asks who calls, as the hook does, so it says what the hook would.
 
 ## 0.13.0 - 2026-10-10
 

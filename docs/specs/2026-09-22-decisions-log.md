@@ -1555,6 +1555,24 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    a project whose trunk carries no post that lands. Where the census cannot be asked, a landing push is closed.
    It remains a check on a session that errs or was misled, not a lock: `git push --no-verify` inside a script
    passes both barriers, and the lock is the server's branch protection.
+   *Final review, same day (a reader who had not seen the reasoning, and the commit's security review).* One
+   blocker: what a door carries was worked out before the post was asked, so a door whose revisions could not be
+   told - `gh pr merge 5` with no `--match-head-commit`, a push from a tree named through a variable - fell to the
+   receipt's refusal, and `FLOTILLA_GATE_OVERRIDE` opened it for a builder; the refusal even named the override.
+   Such a door is now judged as landing: the caller's post is asked where it fell, and - the same root, older than
+   this decision - a merge that could not be pinned no longer lets an override stand in for the person's approval
+   (decision 188). A failure inside the question itself (posts that cannot be listed, a name two posts match) is
+   closed without override too. Who calls: the session by its id *and* every background session its process runs
+   under, one function (`push.callers`) for the command guard, the git hook and `flotilla guard check`; a call
+   with no id is asked the same way, a nearer session does not hide the seat above it, and an interactive session
+   above - the person's - is named by its id alone, which keeps their `!`. The refusal tells a post to hand only
+   if it may, and names the posts that land from trunk rather than "the sender". Eight mutations the first tests
+   left green - posts read from the tree, the fleet's name dropped, the hook asking only of trunk, the hook
+   taking an override, the caller never named, the merge door dropped - each fell a test before this was merged.
+   Left as limits, and written in the README: a process a seat detaches from itself is not seen as its own (a
+   terminal cannot be demanded of a push, as it is of a person-only command: an editor's push has none); a session
+   is known by the name it was started under; in the person's own session a push hidden in a script is not told
+   apart from theirs.
 
 ## Open questions (for the foundation spec)
 
