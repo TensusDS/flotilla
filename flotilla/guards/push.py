@@ -68,20 +68,28 @@ def _value(args, *names):
     return None
 
 
+def _own_words(args, values, shorts: str) -> list[str]:
+    """The words that are flags or positionals of their own, not the value of the option before them: `-b --help`
+    is a body of "--help", and so is `-sb --help` - a cluster whose last letter takes a value. Read as git and gh
+    read them, so a harmless word frees a door only where the program would see it (security review of 236)."""
+    def takes_value(word: str) -> bool:
+        return word in values or (len(word) > 2 and word[0] == "-" and word[1] != "-" and word[-1] in shorts)
+    return [arg for i, arg in enumerate(args) if not (i and takes_value(args[i - 1]))]
+
+
 def door(segment) -> Door | None:
     found = segment.git()
     if found is not None:
         verb, args, directory = found
-        if verb != "push" or any(arg in HARMLESS for arg in args):
+        if verb != "push" or any(arg in HARMLESS for arg in _own_words(args, PUSH_VALUES, "o")):
             return None
         return Door("git push", segment, directory)
     words = segment.words
     if segment.program == "gh" and len(words) >= 3:
         kind = f"gh {words[1]} {words[2]}"
         if kind in ("gh pr create", "gh pr merge", "gh workflow run"):
-            rest = words[3:]   # a word that is an option's value publishes nothing by being `--help` (review of 236)
-            named = rest if kind != "gh pr merge" else [arg for i, arg in enumerate(rest)
-                                                        if not (i and rest[i - 1] in MERGE_VALUES)]
+            named = words[3:] if kind != "gh pr merge" else _own_words(words[3:], (*MERGE_VALUES, "-R", "--repo"),
+                                                                       "tbFAR")
             if any(arg in ("-h", "--help", "--dry-run") for arg in named):
                 return None
             flags = [word for word in words[3:] if word.startswith("-")]
@@ -563,22 +571,23 @@ def _post_refusal(root, where: OriginTrunk, who, run, *, hook: bool = False) -> 
 
 
 def _when_untold(d: Door, home_root, where: OriginTrunk, who, run, err) -> tuple[list[str], str, list[str]]:
-    """(rules that could not be read, the caller's post, the person's approval) for a door that lands and whose
-    revisions could not be told - a merge no revision pins, a tree named through a variable. It is judged as
-    landing: none of the three is a receipt, and an override waives a receipt alone (final review of decision 236:
-    `FLOTILLA_GATE_OVERRIDE=x gh pr merge 5` passed a builder, and passed unapproved work)."""
+    """(rules that could not be read, the caller's post, the person's approval) for a door that lands and fell
+    before its revisions were told - a merge no revision pins, a tree named through a variable, a git that timed
+    out. It is judged as landing: none of the three is a receipt, and an override waives a receipt alone (final
+    review of decision 236: `FLOTILLA_GATE_OVERRIDE=x gh pr merge 5` passed a builder, and passed unapproved
+    work). `err`: what the guard says fell."""
     if d.kind not in LANDS:
         return [], "", []
     try:
         profile, _ = rules_at(home_root, where, run)
-    except Unknown as unread:
+    except Exception as unread:  # noqa: BLE001 - rules nobody can read decide nothing, however the reading fell
         return [str(unread)], "", []
     if not (profile.get("guards") or {}).get(GUARD):
         return [], "", []
     outsider = _post_refusal(home_root, where, who, run) if who is not None else ""
     unapproved = []
     if d.kind == "gh pr merge" and (profile.get("flow") or {}).get("merge_authorized_by") == "human":
-        unapproved = [f"whether the person approved this could not be asked: it {err}"]
+        unapproved = [f"whether the person approved this could not be asked: {err}"]
     return [], outsider, unapproved
 
 
@@ -652,10 +661,10 @@ def guard(segment, *, root, profile, env=os.environ, run=subprocess.run, who=Non
                 unapproved = [f"whether the person approved this could not be asked: {err}"]
     except Unknown as err:
         failures = [str(err)]
-        if where is not None and not asked and not closed:
-            closed, outsider, unapproved = _when_untold(d, home_root, where, who, run, err)
     except Exception as err:  # noqa: BLE001 - the push guard's own failure refuses (spec, section 10)
         failures = [f"the guard failed: {err}"]
+    if failures and where is not None and not asked and not closed:   # it fell before the post was asked
+        closed, outsider, unapproved = _when_untold(d, home_root, where, who, run, failures[0])
     if outsider and d.kind == "git push":
         broad = [word for word in BROAD if word in d.segment.git()[1]]
         if broad:   # the seat pushed its own branch, and one word made it a push of everything

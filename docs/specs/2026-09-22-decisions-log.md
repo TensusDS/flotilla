@@ -1569,6 +1569,10 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    if it may, and names the posts that land from trunk rather than "the sender". Eight mutations the first tests
    left green - posts read from the tree, the fleet's name dropped, the hook asking only of trunk, the hook
    taking an override, the caller never named, the merge door dropped - each fell a test before this was merged.
+   The security review of that fix found two more of the same family, closed the same day: a guard that *fell*
+   before the post was asked (a git that timed out, not an `Unknown`) still went to the overridable refusal, and
+   a harmless word frees a door only where git and gh would read it as a flag - `gh pr merge 5 -sb --help` is a
+   merge with a body of "--help", `git push -o -n` a push with an option of "-n".
    Left as limits, and written in the README: a process a seat detaches from itself is not seen as its own (a
    terminal cannot be demanded of a push, as it is of a person-only command: an editor's push has none); a session
    is known by the name it was started under; in the person's own session a push hidden in a script is not told

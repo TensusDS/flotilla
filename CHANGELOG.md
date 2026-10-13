@@ -24,8 +24,12 @@ each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2
   (`merge_authorized_by = "human"`), `FLOTILLA_GATE_OVERRIDE="..." gh pr merge 5` - a merge no revision pins -
   was recorded as overridden and ran: the approval was never asked. Such a merge is now closed until it names
   `--match-head-commit`, and so is a seat's push or merge whose revision could not be told.
-- A `gh pr merge` whose `--body` or `--subject` value is `--help` or `--dry-run` is judged as the merge it is, and
-  one that names its pull request by URL from outside any project is refused rather than let through unjudged.
+- A harmless word that is an option's value frees nothing: `gh pr merge 5 -b --help` and `-sb --help` are merges
+  with a body of "--help", `git push -o -n origin main` is a push with an option of "-n", and each is judged as
+  what it is. A merge that names its pull request by URL from outside any project is refused rather than let
+  through unjudged.
+- A guard that fell before it could ask who calls - a git that timed out - is judged like a door whose revision
+  could not be told: an override no longer opens it for a seat that may not land.
 - `flotilla guard check` asks who calls, as the hook does, so it says what the hook would.
 
 ## 0.13.0 - 2026-10-10

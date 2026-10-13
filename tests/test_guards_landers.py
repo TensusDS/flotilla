@@ -273,6 +273,54 @@ def test_a_harmless_word_that_is_an_options_value_frees_no_merge(command, tmp_pa
     assert push.door(first("gh pr merge 5 --help", tmp_path)) is None
 
 
+@pytest.mark.parametrize("command", ["gh pr merge 5 -sb --help", "gh pr merge 5 -R --help", "gh pr merge 5 -st -h",
+                                     "git push -o -n origin main", "git push -fo --dry-run origin main",
+                                     "git push --receive-pack -h origin main"])
+def test_a_harmless_word_after_a_flag_that_takes_a_value_frees_nothing(command, tmp_path):
+    """Security review: gh and git read `-sb --help` as a body of "--help"; a guard that reads it as a call for
+    help lets the merge through unjudged."""
+    assert push.door(first(command, tmp_path)) is not None
+
+
+@pytest.mark.parametrize("command", ["gh pr merge 5 --help", "gh pr merge --help", "gh pr merge 5 --squash -h",
+                                     "git push -n origin main", "git push origin main --dry-run"])
+def test_a_call_for_help_or_a_dry_run_is_still_no_door(command, tmp_path):
+    assert push.door(first(command, tmp_path)) is None
+
+
+def breaks_on(*words, error=RuntimeError("git fell over")):
+    def run(cmd, **kwargs):
+        if cmd[0] == "git" and all(any(word in part for part in cmd) for word in words):
+            raise error
+        return subprocess.run(cmd, **kwargs)
+    return run
+
+
+def test_a_guard_that_fell_before_the_post_was_asked_is_not_opened_by_an_override(tmp_path, monkeypatch):
+    """Security review: only a door whose revisions could not be *told* was judged as landing; one where the guard
+    itself fell - a git that timed out - still went to the receipt's refusal, and an override opened it."""
+    root = fleet(tmp_path, monkeypatch)
+    slow = breaks_on("rev-parse", "HEAD^{commit}", error=subprocess.TimeoutExpired("git", 10))
+    for command in ("git push origin HEAD:main", 'FLOTILLA_GATE_OVERRIDE="x" git push origin HEAD:main'):
+        found = judge(command, root, tmp_path, "main session 1", slow)
+        assert found is not None and found.refuse and "may not land" in found.text, command
+    waived = judge('FLOTILLA_GATE_OVERRIDE="x" git push origin HEAD:main', root, tmp_path, "sender 1", slow)
+    assert waived is not None and not waived.refuse      # the sender's own override of a guard that fell, as before
+
+
+def test_rules_that_fell_while_being_read_close_an_untold_door_without_override(tmp_path, monkeypatch):
+    root = fleet(tmp_path, monkeypatch)
+    head = git(root, "rev-parse", "HEAD")
+
+    def run(cmd, **kwargs):
+        if cmd[0] == "gh":
+            return subprocess.CompletedProcess(cmd, 0, head + "\n", "")
+        return breaks_on("show", ".flotilla/project.toml")(cmd, **kwargs)
+
+    found = judge('FLOTILLA_GATE_OVERRIDE="x" gh pr merge 5', root, tmp_path, "main session 1", run)
+    assert found is not None and found.refuse and "override recorded" not in found.text
+
+
 def test_a_merge_named_by_url_from_outside_any_project_is_not_let_through_unjudged(tmp_path):
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
