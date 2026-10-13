@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import subprocess
 import tomllib
 from dataclasses import dataclass
@@ -30,6 +31,18 @@ PUSH_VALUES = ("-o", "--push-option", "--repo", "--receive-pack", "--exec")
 BROAD = ("--all", "--mirror", "--tags", "--follow-tags")
 MERGE_VALUES = ("-t", "--subject", "-b", "--body", "-F", "--body-file", "-A", "--author-email",
                 "--match-head-commit")
+
+
+PULL_URL = re.compile(r"https?://[^/\s]+/[^/\s]+/[^/\s]+/pull/\d+", re.IGNORECASE)   # gh lowers the scheme
+#: The options of each gh door that take a value, and the short letters among them: what gh reads as a value is
+#: neither a flag nor a positional of the command, whatever it looks like.
+GH_VALUES = {
+    "gh pr merge": ((*MERGE_VALUES, "-R", "--repo"), "tbFAR"),
+    "gh pr create": (("-a", "--assignee", "-B", "--base", "-b", "--body", "-F", "--body-file", "-H", "--head", "-l",
+                      "--label", "-m", "--milestone", "-p", "--project", "--recover", "-r", "--reviewer", "-T",
+                      "--template", "-t", "--title", "-R", "--repo"), "aBbFHlmprTtR"),
+    "gh workflow run": (("-f", "--raw-field", "-F", "--field", "-r", "--ref", "-R", "--repo"), "fFrR"),
+}
 
 
 class Unknown(RuntimeError):
@@ -68,18 +81,53 @@ def _value(args, *names):
     return None
 
 
+def _own_words(args, values, shorts: str, *, positionals: bool = False) -> list[str]:
+    """The words that are flags or positionals of their own, not the value of the option before them: `-b --help`
+    is a body of "--help", and so is `-sb --help` - a cluster whose last letter takes a value. Read as git and gh
+    read them, so a harmless word frees a door only where the program would see it (security review of 236).
+    `positionals`: with the words after `--`, which are positionals and never flags."""
+    def takes_value(word: str) -> bool:
+        if word in values or (len(word) > 2 and word[0] == "-" and word[1] != "-" and word[-1] in shorts):
+            return True   # git also takes a long option by any prefix that names it: `--push-o -n`
+        return len(word) > 2 and word.startswith("--") and any(value.startswith(word) for value in values)
+    args, after = list(args), []
+    if "--" in args:   # what follows `--` is never a flag
+        args, after = args[:args.index("--")], args[args.index("--") + 1:]
+    return [arg for i, arg in enumerate(args) if not (i and takes_value(args[i - 1]))] + (after if positionals else [])
+
+
+def _repo_flag(kind: str, words) -> bool:
+    """Whether a gh door names its repository with -R/--repo, in any form gh takes: `-R o/r`, `--repo=o/r`,
+    `-Ro/r`, and `-sR o/r` - a cluster in which R is a flag, not the value of the letter before it."""
+    values, shorts = GH_VALUES[kind]
+    for word in _own_words(words, values, shorts):
+        if word in ("-R", "--repo") or word.startswith("--repo="):
+            return True
+        if len(word) > 2 and word[0] == "-" and word[1] != "-":
+            for letter in word[1:]:
+                if letter == "R":
+                    return True
+                if letter in shorts:   # the rest of the cluster is this letter's value
+                    break
+    return False
+
+
 def door(segment) -> Door | None:
     found = segment.git()
     if found is not None:
         verb, args, directory = found
-        if verb != "push" or any(arg in HARMLESS for arg in args):
+        own = _own_words(args, PUSH_VALUES, "o")   # git takes no `--dry-run=false`; gh does, below
+        if verb != "push" or (any(arg in HARMLESS for arg in own)
+                              and not any(arg.startswith("--no-d") for arg in own)):   # `-n --no-dry-run` pushes
             return None
         return Door("git push", segment, directory)
     words = segment.words
     if segment.program == "gh" and len(words) >= 3:
         kind = f"gh {words[1]} {words[2]}"
         if kind in ("gh pr create", "gh pr merge", "gh workflow run"):
-            if any(arg in ("-h", "--help", "--dry-run") for arg in words[3:]):
+            own = _own_words(words[3:], *GH_VALUES[kind])
+            if any(arg in ("-h", "--help", "--dry-run") for arg in own) and not any(
+                    arg.startswith(("--help=", "--dry-run=", "-h=")) for arg in own):   # `--dry-run=false` cancels it
                 return None
             flags = [word for word in words[3:] if word.startswith("-")]
             if kind == "gh pr merge" and flags == ["--disable-auto"] and len(words[3:]) <= 2:
@@ -136,7 +184,7 @@ def revisions(d: Door, trunk: str, *, run=subprocess.run) -> list[tuple[str, str
     if d.kind == "git push":
         return _push_revisions(d.segment.git()[1], d.directory, trunk, run)
     rest = words[3:]
-    if _value(rest, "-R", "--repo") is not None:
+    if _repo_flag(d.kind, rest):
         raise Unknown("names a repository with -R/--repo; run it from that repository's tree, where its receipts "
                       "are")
     if d.kind == "gh pr create":
@@ -417,7 +465,6 @@ def _home(d: Door, root, profile: dict, run):
     """(project root, profile) the door is judged by, or None when it acts outside any flotilla project. The
     project is the one the door acts on, not the one the session stands in (F18)."""
     from flotilla.core.config import find_project
-    from flotilla.guards.rules import rules_for
     if d.directory is None:
         return (root, profile) if root is not None else None
     found = find_project(d.directory)
@@ -425,7 +472,8 @@ def _home(d: Door, root, profile: dict, run):
         return None
     if root is not None and found.resolve() == Path(root).resolve():
         return root, profile
-    return found, rules_for(found, run=run)[0]
+    return found, {}   # its tree's profile is not read: a push is judged by origin's, and a file a seat writes into
+    #                    a directory must not be able to fell the guard before it asks who lands (review of 236)
 
 
 def _own_repository(home_root, root, run=subprocess.run) -> bool:
@@ -445,17 +493,203 @@ def _own_repository(home_root, root, run=subprocess.run) -> bool:
 
 def _names_repo(d: Door, env) -> bool:
     """A gh door that names its repository acts on it whatever directory it runs in (F21)."""
-    return d.kind.startswith("gh ") and (_value(list(d.segment.words[3:]), "-R", "--repo") is not None
-                                         or bool(d.segment.assignments.get("GH_REPO")))
+    if not d.kind.startswith("gh "):
+        return False
+    words = list(d.segment.words[3:])
+    if _repo_flag(d.kind, words) or bool(d.segment.assignments.get("GH_REPO")):
+        return True
+    # a merge may name its pull request by URL, and that names the repository too. Only the pull request itself: a
+    # link in a body or a workflow input names nothing (second review of 236)
+    return d.kind == "gh pr merge" and any(
+        PULL_URL.match(word) for word in _own_words(words, *GH_VALUES[d.kind], positionals=True))
     # a GH_REPO exported in the person's environment names no door of this command: work outside flotilla stays open
 
 
-def guard(segment, *, root, profile, env=os.environ, run=subprocess.run) -> Finding | None:
+LAND = "land"   # the ledger move that puts work on trunk: a post that has it is the one that pushes there
+
+
+def _posts_at(root, where: OriginTrunk, run) -> dict:
+    """The posts origin's trunk carries - {} where it has no trunk yet, or carries no profile: the onboarding's own
+    first push is judged by no post. Read from that revision alone, like the profile a push is judged by: the tree's
+    own files - which a seat edits, and may break - decide nothing here."""
+    import tempfile
+    from flotilla.ledger.commands import fleet_name
+    from flotilla.posts import POSTS_DIR, load_posts
+    found = _project(root)
+    carried = _show_profile(found, where.base, run) if where.base else None
+    if carried is None:
+        return {}
+    # --full-tree: the path is trunk's, whatever directory the door stands in (a subdirectory with a project file of
+    # its own would otherwise list its own, empty, posts - and switch the rule off)
+    listed = _git(found, "ls-tree", "-r", "--full-tree", where.base, "--", f"{POSTS_DIR}/", run=run)
+    if listed is None:   # not "no posts": a rule that could not be read is not a rule that is off
+        raise Unknown(f"git could not list {POSTS_DIR}/ at {where.base[:7]}")
+    with tempfile.TemporaryDirectory(prefix="flotilla-posts-") as tmp:
+        folder = Path(tmp) / POSTS_DIR
+        folder.mkdir(parents=True)
+        for line in listed.splitlines():
+            meta, _, path = line.partition("\t")
+            name = path.removeprefix(f"{POSTS_DIR}/")
+            if "/" in name or not name.endswith(".md"):
+                continue
+            if meta.split()[0] == "120000":
+                raise Unknown(f"{path} is a symlink on origin's trunk; posts are read only from real files")
+            shown = run(["git", "-C", str(found), "show", f"{where.base}:{path}"], capture_output=True, text=True,
+                        check=False, timeout=10)
+            if shown.returncode != 0:
+                raise Unknown(f"git could not read {path} at {where.base[:7]}, so who may land cannot be told")
+            (folder / name).write_text(shown.stdout, encoding="utf-8")
+        try:
+            return load_posts(Path(tmp), project=fleet_name(Path(found), carried))
+        except Exception as err:  # noqa: BLE001 - said by trunk's file, not by the copy it was read from
+            at = f"origin's `{where.trunk}` at {where.base[:7]}: "
+            raise Unknown(str(err).replace(f"{tmp}{os.sep}", at)) from err
+
+
+LANDS = ("git push", "gh pr merge")   # the doors that put work on trunk or a tag; the others publish, and land nothing
+
+
+def _may_not_land(root, where: OriginTrunk, who, run, *, hook: bool = False) -> str:
+    """Why this call may not put work on trunk, or "". A session that holds a post lands only if its post has the
+    `land` move; one that holds none - a person's own, another project's seat - is judged as before, by the receipt
+    and the approval. Where no post lands at all there is no fleet to ask. The posts are origin's trunk's, never
+    the tree's: a seat cannot grant itself the move. `who()` gives every name the call answers to and every live
+    session; where it cannot, the push is closed - who may land is not guessed. `hook`: asked by git's own hook,
+    where the one reading may be the person at their terminal."""
+    from flotilla.posts import PostError, post_for_session
+    posts = _posts_at(root, where, run)
+    landing = sorted(post.name for post in posts.values() if LAND in post.may)
+    if not landing:
+        return ""
+    rule = (f"only a session whose post may land ({', '.join(f'`{name}`' for name in landing)}) pushes to "
+            f"`{where.trunk}` or a tag, or merges a pull request")
+    try:
+        names, live = who()
+    except Exception as err:  # noqa: BLE001 - whoever it is, it is not known to be one that lands
+        return f"who is calling could not be asked ({err}), and {rule}. Run it again; {_persons_way(hook)}"
+    held = [(name, post) for name in names if (post := post_for_session(posts, name)) is not None]
+    barred = [(name, post) for name, post in held if LAND not in post.may]
+    if not barred:
+        return ""
+    name, post = barred[0]
+
+    def holds(other: str, move: str) -> bool:
+        try:
+            found = post_for_session(posts, other)
+        except PostError:
+            return False
+        return found is not None and move in found.may
+
+    others = sorted({other for other in live if other and other not in names})
+    landers = [other for other in others if holds(other, LAND)]
+    said = f"{name} holds the post `{post.name}`, which may not land: {rule}."
+    hands = "hand" in post.may   # a reviewer, an orchestrator, a helper and a judge have no work of their own to hand
+    if landers:
+        who_lands = landers[0] if len(landers) == 1 else "one of " + ", ".join(landers)
+        if hands:
+            return (f"{said}\n  Hand the work over (`flotilla work hand <branch>`); once it is accepted, {who_lands} "
+                    "lands it.")
+        return f"{said}\n  It is not yours to land: {who_lands} lands work that was handed over and accepted."
+    absent = "No live session of this fleet holds a post that may land"
+    if "assign" in post.may:   # the one who leads: the person hears it from this session
+        return (f"{said}\n  {absent}, so tell the person: the fleet has nobody to merge, and `flotilla spawn -s 1` "
+                "raises a sender.")
+    leads = [other for other in others if holds(other, "assign")]
+    waits = "; the work waits handed over (`flotilla work hand <branch>`)" if hands else ""
+    if leads:
+        return (f"{said}\n  {absent}. Tell {', '.join(leads)} (SendMessage), so that the person hears the fleet has "
+                f"nobody to merge{waits}.")
+    return (f"{said}\n  {absent}, and nobody leads it either. Say so where the person will read it: they raise a "
+            f"sender with `flotilla spawn -s 1`{waits}.")
+
+
+def _persons_way(hook: bool) -> str:
+    if hook:   # the one reading may be the person, at the very terminal the push was typed in
+        return "a person who knows why pushes from their own terminal with `git push --no-verify`."
+    return "a person pushes with `!` in their own session, or from a terminal."
+
+
+def _post_refusal(root, where: OriginTrunk, who, run, *, hook: bool = False) -> str:
+    """`_may_not_land`, for a guard: never raises. Where the question itself fails - posts that cannot be read, a
+    name two posts match - the push is closed like one whose rules cannot be read; an override waives a receipt,
+    never who may land (security review of decision 236)."""
+    try:
+        return _may_not_land(root, where, who, run, hook=hook)
+    except Exception as err:  # noqa: BLE001 - not guessed, whatever broke
+        return f"who may land could not be told ({err}), and it is not guessed. Until it can, {_persons_way(hook)}"
+
+
+def _asked_of_own(d: Door, root, who, run) -> str:
+    """The caller's post, asked of the project the session stands in, for a door that lands and whose own project
+    cannot be told - above all a merge from a directory in no project, which has no second barrier and many
+    spellings (`-R`, a URL, an exported GH_REPO, a scratch repository). The post alone: the receipts and the
+    approval of the session's project say nothing about work in another repository (third reading of 236)."""
+    if root is None or who is None or d.kind not in LANDS:
+        return ""
+    try:
+        where = origin_trunk(root, run)
+        profile, _ = rules_at(root, where, run)
+    except Exception as err:  # noqa: BLE001 - rules nobody can read decide nothing, and no override waives that
+        return (f"the rules of the project this session stands in could not be read from origin ({err}), so who may "
+                f"land cannot be told. Until they can, {_persons_way(False)}")
+    if not (profile.get("guards") or {}).get(GUARD):
+        return ""
+    return _post_refusal(root, where, who, run)
+
+
+def _when_untold(d: Door, home_root, where: OriginTrunk, who, run, err) -> tuple[list[str], str, list[str]]:
+    """(rules that could not be read, the caller's post, the person's approval) for a door that lands and fell
+    before its revisions were told - a merge no revision pins, a tree named through a variable, a git that timed
+    out. It is judged as landing: none of the three is a receipt, and an override waives a receipt alone (final
+    review of decision 236: `FLOTILLA_GATE_OVERRIDE=x gh pr merge 5` passed a builder, and passed unapproved
+    work). `err`: what the guard says fell."""
+    if d.kind not in LANDS:
+        return [], "", []
+    try:
+        profile, _ = rules_at(home_root, where, run)
+    except Exception as unread:  # noqa: BLE001 - rules nobody can read decide nothing, however the reading fell
+        return [str(unread)], "", []
+    if not (profile.get("guards") or {}).get(GUARD):
+        return [], "", []
+    outsider = _post_refusal(home_root, where, who, run) if who is not None else ""
+    unapproved = []
+    if (profile.get("flow") or {}).get("merge_authorized_by") == "human":
+        unapproved = [f"whether the person approved this could not be asked: {err}"]
+    return [], outsider, unapproved
+
+
+def identities(sessions, session_id: str = "", *, chain=()) -> tuple[list[str], list[str]]:
+    """(every name this call answers to, the names of every live session). A call answers to the session whose id
+    made it, and to every background session its process runs under: a session a seat started inside itself is
+    that seat's, whatever it is named, and a nearer one does not hide it. An interactive session above - the
+    person's own - is named only by its id: their `!` and their terminal stay theirs."""
+    names = [item.name for item in sessions if session_id and item.session_id == session_id]
+    names += [item.name for item in chain if item.kind == "background"]
+    return [name for name in dict.fromkeys(names) if name], [item.name for item in sessions if item.name]
+
+
+def callers(session_id: str = "") -> tuple[list[str], list[str]]:
+    """`identities`, asked of the census and of this process's parents: the hook's process is a child of the
+    session that fired it, and git's of the session a hidden push runs under. Raises where the census cannot be
+    asked: who may land is not guessed."""
+    from flotilla.core import platform as plat
+    from flotilla.core.caller import sessions_above
+    from flotilla.core.census import read_census
+    sessions = read_census(timeout=8)
+    source = plat.probe().parent_pid_source
+    chain = sessions_above(sessions, parent_of=lambda pid: plat.parent_pid(pid, source))
+    return identities(sessions, session_id, chain=chain)
+
+
+def guard(segment, *, root, profile, env=os.environ, run=subprocess.run, who=None) -> Finding | None:
+    """`who` says which sessions the call answers to (`callers`); without it nobody's post is asked."""
     from flotilla.core import paths, repo
     d = door(segment)
     if d is None:
         return None
-    state, key, unapproved, closed = paths.state_dir(env), "unknown", [], []
+    state, key, unapproved, closed, outsider = paths.state_dir(env), "unknown", [], [], ""
+    home_root = where = None
+    asked = False   # whether the caller's post was reached: a door that fell before it is asked where it fell
     try:
         home = _home(d, root, profile, run)
         if home is None:
@@ -463,9 +697,14 @@ def guard(segment, *, root, profile, env=os.environ, run=subprocess.run) -> Find
                 raise Unknown("could not tell which repository this pushes (GIT_DIR, a git dir named elsewhere); "
                               "run it as `git -C <tree> push`")
             if not _names_repo(d, env):
-                return None
-            raise Unknown("names a repository with -R/--repo or GH_REPO from outside any project, so which "
-                          "project's receipts it needs cannot be told; run it from that repository's tree")
+                if d.kind != "gh pr merge":
+                    return None
+                stands = _asked_of_own(d, root, who, run)   # a seat's merge is asked for its post wherever it is
+                return Finding(GUARD, True, f"flotilla push: `{segment.text}` is closed.\n  {stands}") if stands \
+                    else None
+            raise Unknown("names a repository with -R/--repo, GH_REPO or its pull request's URL from outside any "
+                          "project, so which project's receipts it needs cannot be told; run it from that "
+                          "repository's tree")
         home_root = home[0]
         where = origin_trunk(home_root, run, own=_own_repository(home_root, root, run))   # scan of 0.7.0, F1
         trunk = where.trunk
@@ -480,8 +719,16 @@ def guard(segment, *, root, profile, env=os.environ, run=subprocess.run) -> Find
         if not (home_profile.get("guards") or {}).get(GUARD):
             return None
         key = repo.identify(Path(home_root)).key
-        failures = _failures(pairs, directory=d.directory, profile=home_profile, state_dir=state, repo_key=key,
-                             run=run)
+        asked = True
+        if who is not None and d.kind in LANDS:
+            outsider = _post_refusal(home_root, where, who, run)
+        try:   # by itself: a receipt check that fell must not skip the approval asked below (security review)
+            failures = [] if outsider else _failures(pairs, directory=d.directory, profile=home_profile,
+                                                     state_dir=state, repo_key=key, run=run)
+        except Unknown as err:
+            failures = [str(err)]
+        except Exception as err:  # noqa: BLE001 - the push guard's own failure refuses (spec, section 10)
+            failures = [f"the guard failed: {err}"]
         landing = [(label, sha) for label, sha in pairs if d.kind == "gh pr merge" or label in (trunk, "HEAD")]
         if d.kind in ("git push", "gh pr merge") and landing and \
                 (home_profile.get("flow") or {}).get("merge_authorized_by") == "human":
@@ -493,9 +740,23 @@ def guard(segment, *, root, profile, env=os.environ, run=subprocess.run) -> Find
         failures = [str(err)]
     except Exception as err:  # noqa: BLE001 - the push guard's own failure refuses (spec, section 10)
         failures = [f"the guard failed: {err}"]
+    if failures and not asked and not closed:   # it fell before the post was asked
+        if where is None:   # which project it acts on could not be told: a seat is asked by the one it stands in
+            outsider = _asked_of_own(d, root, who, run)
+        else:
+            closed, outsider, unapproved = _when_untold(d, home_root, where, who, run, failures[0])
+        if outsider:   # the seat still learns how to make the door one that can be judged
+            outsider += f"\n  What it carries could not be told: {failures[0]}"
+    if outsider and d.kind == "git push":
+        broad = [word for word in BROAD if word in d.segment.git()[1]]
+        if broad:   # the seat pushed its own branch, and one word made it a push of everything
+            outsider += (f"\n  {', '.join(f'`{word}`' for word in broad)} may carry trunk or a tag: push your "
+                         "branch by its name, without it.")
     if closed:
         return Finding(GUARD, True, f"flotilla push: `{segment.text}` is closed: the rules it is judged by could not "
                                     "be read from origin.\n" + "\n".join(f"  {item}" for item in closed))
+    if outsider:   # no override either: an override a seat can type turns the rule back into advice
+        return Finding(GUARD, True, f"flotilla push: `{segment.text}` is closed.\n  {outsider}")
     if unapproved:   # the person's approval has no override: a session cannot waive what only a person gives
         return Finding(GUARD, True, f"flotilla push: `{segment.text}` is closed: it carries work the person has "
                                     "not approved.\n" + "\n".join(f"  {item}" for item in unapproved))
@@ -539,6 +800,9 @@ def pre_push(root, stdin_text: str, *, env=os.environ, run=subprocess.run, url: 
         return 1, f"flotilla pre-push: the push is closed: the rules it is judged by could not be read.\n  {err}"
     if not (profile.get("guards") or {}).get(GUARD):
         return 0, ""
+    outsider = _post_refusal(root, where, callers, run, hook=True)   # the seats this git runs under
+    if outsider:   # no override, as on the command line
+        return 1, f"flotilla pre-push: the push is closed.\n  {outsider}"
     state, key = paths.state_dir(env), repo.identify(Path(root)).key
     failures = _failures(pairs, directory=Path(root), profile=profile, state_dir=state, repo_key=key, run=run)
     try:

@@ -78,8 +78,9 @@ def run_guard_command(args) -> int:
         if root is None:
             print("not onboarded here: no guard is on")
             return 0
+        from flotilla.guards import push
         from flotilla.guards.run import evaluate
-        findings = evaluate(args.guarded_command, Path(args.cwd).resolve(), root)
+        findings = evaluate(args.guarded_command, Path(args.cwd).resolve(), root, who=push.callers)   # as the hook
         if not findings:
             print("allowed: no guard has anything to say")
         for finding in findings:

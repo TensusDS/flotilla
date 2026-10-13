@@ -1538,6 +1538,60 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    and found two things fixed before release: a client killed outright was recorded as the command's exit, and the
    default image's Node was too old for vite 8 (now v1.64.0-noble, Node 24, at the person's word).
    (person's decisions with the planner, 2026-10-07/08)
+236. **Only a post that may land pushes to trunk** (Claude Code session with the person, 2026-10-13). The README
+   called the sender "the only session that writes trunk"; the push guard asked for a green receipt and for
+   nobody's post, so a builder holding a receipt could push to trunk itself. A fact-check of the demo video's
+   script found it (2026-10-12), and the person had taken the rule for enforced. Now a session that holds a post
+   lands - a push to trunk or a tag, `gh pr merge` - only if its post has the `land` move; the pre-push hook asks
+   the same of the background session a hidden push runs under. Decided with the person: no override (a seat that
+   can type one turns the rule back into advice; the person still pushes with `!` or from a terminal, raises a
+   sender, or has the work adopted); tags are the sender's too, `gh workflow run` and `gh pr create` stay as they
+   were; the model in a person's own leading session is refused like any orchestrator, the person there is not.
+   The refusal says where the work goes - handed over, landed by the live sender it names - and, at the person's
+   word, with no live sender the seat tells the orchestrator so that the person hears the fleet has nobody to
+   merge. Posts are read at origin's trunk revision alone: the first draft read them through the tree's profile,
+   and two older tests - a tree that renames trunk, a broken tree profile - showed that a seat could then switch
+   the rule off by editing its own files. Not judged by a post: a session that holds none, a call no session made,
+   a project whose trunk carries no post that lands. Where the census cannot be asked, a landing push is closed.
+   It remains a check on a session that errs or was misled, not a lock: `git push --no-verify` inside a script
+   passes both barriers, and the lock is the server's branch protection.
+   *Final review, same day (a reader who had not seen the reasoning, and the commit's security review).* One
+   blocker: what a door carries was worked out before the post was asked, so a door whose revisions could not be
+   told - `gh pr merge 5` with no `--match-head-commit`, a push from a tree named through a variable - fell to the
+   receipt's refusal, and `FLOTILLA_GATE_OVERRIDE` opened it for a builder; the refusal even named the override.
+   Such a door is now judged as landing: the caller's post is asked where it fell, and - the same root, older than
+   this decision - a merge that could not be pinned no longer lets an override stand in for the person's approval
+   (decision 188). A failure inside the question itself (posts that cannot be listed, a name two posts match) is
+   closed without override too. Who calls: the session by its id *and* every background session its process runs
+   under, one function (`push.callers`) for the command guard, the git hook and `flotilla guard check`; a call
+   with no id is asked the same way, a nearer session does not hide the seat above it, and an interactive session
+   above - the person's - is named by its id alone, which keeps their `!`. The refusal tells a post to hand only
+   if it may, and names the posts that land from trunk rather than "the sender". Eight mutations the first tests
+   left green - posts read from the tree, the fleet's name dropped, the hook asking only of trunk, the hook
+   taking an override, the caller never named, the merge door dropped - each fell a test before this was merged.
+   The security review of that fix found two more of the same family, closed the same day: a guard that *fell*
+   before the post was asked (a git that timed out, not an `Unknown`) still went to the overridable refusal, and
+   a harmless word frees a door only where git and gh would read it as a flag - `gh pr merge 5 -sb --help` is a
+   merge with a body of "--help", `git push -o -n` a push with an option of "-n".
+   *Second reading and the next security review.* The first fix had a blocker of its own: any word holding `://`
+   was read as naming a repository, so `gh pr create --body "... https://..."` was refused in every project that
+   never onboarded - only a pull request's own URL, as a word of its own on a merge, names one. Also closed: a
+   seat's merge made from a directory outside every project, however spelt - `-R`, a URL, an exported `GH_REPO`,
+   a scratch repository with the same remote - is asked for its post by the project the seat stands in (a merge
+   has no second barrier; the post alone, since that project's receipts and approval say nothing about another
+   repository's work); a project file a seat writes into a subdirectory, which fell the guard or, once that was fixed, made
+   git list that directory's posts instead of trunk's (`ls-tree --full-tree`); a receipt check that fell before
+   the approval was asked, and a push from a tree named through a variable, each of which let an override stand
+   in for the person's approval; `--push-o -n`, since git takes a long option by any prefix. A post on trunk that
+   cannot be read closes every landing push for everyone, as a broken profile does, and the refusal names
+   trunk's file. A fifth security review added two: the seat's project's rules that cannot be read close such
+   a merge rather than let an override through, and gh's `--dry-run=false` cancels a dry run. 49 mutations of
+   the rule, each seen red.
+   Left as limits, and written in the README: a process a seat detaches from itself is not seen as its own (a
+   terminal cannot be demanded of a push, as it is of a person-only command: an editor's push has none); a session
+   is known by the name it was started under; in the person's own session a push hidden in a script is not told
+   apart from theirs.
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

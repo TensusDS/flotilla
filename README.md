@@ -328,6 +328,9 @@ instructions its session starts with. The templates:
 | acceptance judge | `acceptance judge N` | walks shipped work on the running build, records what broke | walked, broke, unbroke, wait |
 | helper | `helper N` | a short-lived session raised by another for a piece of its work, in its own tree | release, wait |
 
+That the sender alone writes trunk is checked, not only written here: where the push guard is on, it refuses a
+push to trunk or a tag, and a pull-request merge, from any seat whose post lacks `land` ([Guards](#guards)).
+
 Every post may also `reserve` its home branch. A post's file is yours to edit: change its instructions, its `model`,
 the `plugins` it keeps, or narrow its permission mode (a post can narrow the profile's mode, never widen it). One
 exception to a post's own `model`: when onboarding chose the strongest model for reviewers, every post that may accept
@@ -521,6 +524,15 @@ Before a Bash command runs, flotilla refuses a few commands that do silent damag
   later push to the pull request cannot be merged in its place. A door is judged by the project it acts on, wherever
   the session stands. `FLOTILLA_GATE_OVERRIDE="<why>"` at the head of a push lets a missing receipt through and
   records the reason; it never waives a missing approval.
+  The same guard asks **who lands**: a session that holds one of the project's posts pushes to trunk or a tag, or
+  runs `gh pr merge`, only if its post has the `land` move - the sender's. A call answers to the session that made
+  it and to every seat its process runs under, so a session a seat starts inside itself is that seat's. Anyone
+  else in the fleet is refused and told where the work goes: handed over, and landed by the live sender the
+  refusal names; with no live sender, the seat tells the orchestrator, and the orchestrator tells you. This
+  refusal has no override, and such a seat gets it too where what it pushes or merges could not be told - a
+  `gh pr merge` without `--match-head-commit`, a tree named through a variable. A session that holds none of the
+  project's posts - your own, another project's seat - is judged by the receipt and the approval alone, and where
+  nobody can say which session calls, a push that lands is closed.
 - **lane** - a warning, not a refusal, when a long run starts outside the lane.
 
 Two git hooks back them, installed only with your yes, one each (`/flotilla:guard`): `pre-commit` refuses a rewrite of
@@ -613,7 +625,8 @@ What flotilla does not do yet, or does only partly. Each one was met in a field 
   still reconfigure its own checkout around a client-side guard; see
   [Security model and its limits](#security-model-and-its-limits) for what protects trunk.
 - **A broken profile on trunk closes trunk.** If the profile on origin's trunk cannot be read, every push to trunk
-  is refused, the one that would fix it included. You fix it from your own terminal with `git push --no-verify`.
+  is refused, the one that would fix it included. The same holds for a post there that cannot be read - who may
+  land is then not told for anyone. You fix it from your own terminal with `git push --no-verify`.
 - **It does not isolate sessions from you or from each other** - see the next section.
 
 ## Security model and its limits
@@ -631,9 +644,14 @@ prompt in `ask` mode. If you need isolation from the code a fleet works on, run 
 
 **The push guards are a check on what a session pushes, not a lock on your repository.** They read trunk and its
 rules from origin, read git's history with replace refs and grafts switched off, and the `pre-push` hook asks the
-destination git itself names. They catch a session that pushes unreviewed or unapproved work by mistake, or because
-it was told to. A session set on getting around them still can: it owns its checkout - its git config, its remotes,
-its objects, `git push --no-verify` - and a guard running on that checkout can only judge what it is shown. The lock
+destination git itself names. They catch a session that pushes unreviewed or unapproved work - or work that is not
+its to land - by mistake, or because it was told to. A session set on getting around them still can: it owns its
+checkout - its git config, its remotes, its objects, `git push --no-verify` - and a guard running on that checkout
+can only judge what it is shown. Who pushes is told the same way, from what the machine shows: a process a seat
+detaches from itself is no longer seen as that seat's, a session is known by the name it was started under, a
+push or a merge made from a directory outside every flotilla project is judged by no project's rules - a seat's
+merge there is still asked for its post -, and in your own session a push hidden in a script is not told apart
+from one you typed after `!`. The lock
 is on the server: **protect your trunk on GitHub** (Settings → Rules → Rulesets, or Branches → branch protection) so
 it accepts changes only through pull requests with the reviews and checks you require. The pull-request flows work
 with that on; the `direct` flow pushes to trunk itself, so pick a pull-request flow, or let the ruleset allow the

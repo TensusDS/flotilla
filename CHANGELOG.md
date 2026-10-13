@@ -3,6 +3,45 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.14.0 - 2026-10-13
+
+- **Only a post that may land pushes to trunk or a tag, or merges a pull request.** The sender was "the only
+  session that writes trunk" in the README and in its post's instructions, but the push guard asked only for a
+  green receipt: any seat holding one could push to trunk. Now a session that holds one of the project's posts
+  lands - `git push` to trunk or a tag, `gh pr merge` - only if its post has the `land` move. A call answers to
+  the session that made it and to every seat its process runs under, so a session a seat starts inside itself is
+  judged as that seat. The refusal names the live sender the work goes to once it is handed over and accepted;
+  with no live sender, the seat is told to tell the orchestrator, and the orchestrator to tell you. There is no
+  override: you can still push with `!` or from a terminal, raise a sender (`flotilla spawn -s 1`) or have the
+  work adopted. The `pre-push` hook asks the same of the background sessions a push hidden in a script runs
+  under.
+- Not judged by a post: a session that holds none of the project's posts (your own, another project's seat), and
+  a project whose trunk carries no post that lands. **If your own Claude Code session leads the fleet as its
+  orchestrator, a push the model types there is now refused; you push with `!`.** A push hidden in a script in
+  your own session is not told apart from yours. Where the session census cannot be asked, a push that lands is
+  closed until it can - at your terminal, `git push --no-verify` is your way through.
+- **Fixed: an override could waive your approval of a merge.** Where you authorize merges
+  (`merge_authorized_by = "human"`), `FLOTILLA_GATE_OVERRIDE="..." gh pr merge 5` - a merge no revision pins -
+  was recorded as overridden and ran: the approval was never asked. Such a merge is now closed until it names
+  `--match-head-commit`; so is a push whose tree could not be told, and one whose receipt check fell. For a seat
+  whose post may not land, an override no longer opens any push or merge whose revision could not be told.
+- A harmless word that is an option's value frees nothing: `gh pr merge 5 -b --help` and `-sb --help` are merges
+  with a body of "--help", `git push -o -n origin main` and `--push-o -n` are pushes with an option of "-n",
+  `gh pr create --title --dry-run` opens a pull request titled "--dry-run", and each is judged as what it is.
+  `-sR o/r` and `-Ro/r` name a repository as `-R o/r` does; `git push -n --no-dry-run` and
+  `gh pr create --dry-run --dry-run=false` are what they end as, not dry runs. A merge
+  that names its pull request by URL from outside any project is refused rather than let through unjudged.
+- A seat's merge made from a directory outside every project - however it names the repository, or without
+  naming it - is asked for its post by the project the seat stands in: a merge has no second barrier. Only the
+  post: that project's receipts and approval say nothing about work in another repository. Where that project's
+  own rules cannot be read from origin, such a merge is closed, as a push to its trunk would be.
+- A guard that fell before it could ask who calls - a git that timed out, a project file a seat wrote into a
+  subdirectory - is judged like a door whose revision could not be told.
+- **A post on origin's trunk that cannot be read now closes every push that lands, for everyone**, as a broken
+  profile there already did: who may land is not guessed. You fix it from your terminal with
+  `git push --no-verify`.
+- `flotilla guard check` asks which seats the call runs under, as the hook does.
+
 ## 0.13.0 - 2026-10-10
 
 - **The account's credit beside the local count** (rig design, section 5, promised since 0.9.0): `flotilla rig`

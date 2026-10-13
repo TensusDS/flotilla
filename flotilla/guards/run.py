@@ -26,7 +26,8 @@ def _safely(name: str, check) -> list[Finding]:
     return [found] if found else []
 
 
-def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run) -> list[Finding]:
+def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run, who=None) -> list[Finding]:
+    """`who` says which sessions the call answers to (`push.callers`); without it nobody's post is asked."""
     from flotilla.guards import lane, line_edit, person, push, revert, shell
     from flotilla.guards.rules import rules_for
     segments = shell.segments(command, Path(cwd) if cwd else None)
@@ -36,7 +37,7 @@ def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run) -> 
     if heredoc is not None:
         persons.append(heredoc)
     if root is None:   # the session stands in no project; a push into one is still judged by that project (F18)
-        return persons + [found for found in (push.guard(segment, root=None, profile={}, env=env, run=run)
+        return persons + [found for found in (push.guard(segment, root=None, profile={}, env=env, run=run, who=who)
                                               for segment in segments if push.door(segment) is not None)
                           if found is not None]
     try:
@@ -44,7 +45,8 @@ def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run) -> 
     except Exception as err:  # noqa: BLE001 - which guards are on is unknown
         # a push is judged by origin's rules, which the push guard reads itself: an unreadable tree profile is no
         # reason to judge it otherwise, nor one an override covers (review of the scan of 0.7.0, C2)
-        found = [finding for finding in (push.guard(segment, root=Path(root), profile={}, env=env, run=run)
+        found = [finding for finding in (push.guard(segment, root=Path(root), profile={}, env=env, run=run,
+                                                    who=who)
                                          for segment in segments if push.door(segment) is not None)
                  if finding is not None]
         return persons + found or [Finding("rules", False, f"flotilla guards: the project's rules could not be read ({err}); "
@@ -56,8 +58,9 @@ def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run) -> 
             findings += _safely(revert.GUARD, lambda: revert.check(segment, run=run))
         if on.get(line_edit.GUARD):
             findings += _safely(line_edit.GUARD, lambda: line_edit.check(segment))
-        found = push.guard(segment, root=Path(root), profile=profile, env=env, run=run)   # it asks the door's
-        if found is not None:                                                            # own project (F18)
+        found = push.guard(segment, root=Path(root), profile=profile, env=env, run=run,   # it asks the door's
+                           who=who)                                                       # own project (F18)
+        if found is not None:
             findings.append(found)
         if lane.is_on(profile):
             findings += _safely(lane.GUARD, lambda: lane.check(segment, profile, command))
@@ -335,7 +338,9 @@ def allowance(command: str, cwd, root, *, session_id: str = "", run=subprocess.r
 def guard_hook(command: str, cwd, root, out, *, env=os.environ, run=subprocess.run, mode: str = "",
                session_id: str = "", tool_input: dict | None = None) -> int:
     try:
-        findings = evaluate(command, cwd, root, env=env, run=run)
+        from flotilla.guards import push
+        # asked even of a call that carries no id: its process still runs under the session that made it
+        findings = evaluate(command, cwd, root, env=env, run=run, who=lambda: push.callers(session_id))
     except Exception as err:  # noqa: BLE001 - decided by reversibility: a command that may push is refused
         findings = [on_failure(command, err, env)]
     refusals = [finding.text for finding in findings if finding.refuse]
