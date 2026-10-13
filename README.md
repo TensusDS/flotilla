@@ -328,6 +328,9 @@ instructions its session starts with. The templates:
 | acceptance judge | `acceptance judge N` | walks shipped work on the running build, records what broke | walked, broke, unbroke, wait |
 | helper | `helper N` | a short-lived session raised by another for a piece of its work, in its own tree | release, wait |
 
+That the sender alone writes trunk is checked, not only written here: the push guard refuses a push to trunk or a
+tag from any seat whose post lacks `land` ([Guards](#guards)).
+
 Every post may also `reserve` its home branch. A post's file is yours to edit: change its instructions, its `model`,
 the `plugins` it keeps, or narrow its permission mode (a post can narrow the profile's mode, never widen it). One
 exception to a post's own `model`: when onboarding chose the strongest model for reviewers, every post that may accept
@@ -521,6 +524,12 @@ Before a Bash command runs, flotilla refuses a few commands that do silent damag
   later push to the pull request cannot be merged in its place. A door is judged by the project it acts on, wherever
   the session stands. `FLOTILLA_GATE_OVERRIDE="<why>"` at the head of a push lets a missing receipt through and
   records the reason; it never waives a missing approval.
+  The same guard asks **who lands**: a session that holds a post pushes to trunk or a tag, or runs `gh pr merge`,
+  only if its post has the `land` move - the sender's. Anyone else in the fleet is refused and told where the work
+  goes: handed over, and landed by the live sender the refusal names; with no live sender, the seat tells the
+  orchestrator, and the orchestrator tells you. This refusal has no override. A session that holds no post - your
+  own, in a project whose fleet is down - is judged by the receipt and the approval alone, and where nobody can
+  say which session calls, a push that lands is closed.
 - **lane** - a warning, not a refusal, when a long run starts outside the lane.
 
 Two git hooks back them, installed only with your yes, one each (`/flotilla:guard`): `pre-commit` refuses a rewrite of
@@ -631,8 +640,8 @@ prompt in `ask` mode. If you need isolation from the code a fleet works on, run 
 
 **The push guards are a check on what a session pushes, not a lock on your repository.** They read trunk and its
 rules from origin, read git's history with replace refs and grafts switched off, and the `pre-push` hook asks the
-destination git itself names. They catch a session that pushes unreviewed or unapproved work by mistake, or because
-it was told to. A session set on getting around them still can: it owns its checkout - its git config, its remotes,
+destination git itself names. They catch a session that pushes unreviewed or unapproved work - or work that is not its to land -
+by mistake, or because it was told to. A session set on getting around them still can: it owns its checkout - its git config, its remotes,
 its objects, `git push --no-verify` - and a guard running on that checkout can only judge what it is shown. The lock
 is on the server: **protect your trunk on GitHub** (Settings → Rules → Rulesets, or Branches → branch protection) so
 it accepts changes only through pull requests with the reviews and checks you require. The pull-request flows work

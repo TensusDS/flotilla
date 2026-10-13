@@ -104,4 +104,6 @@ it, whoever sent it.
 - act under another session's name (`--as`); the ledger records who really called;
 - read, return or accept your own work;
 - type "shipped": the ledger asks the PR or origin;
+- push to trunk or a tag, or merge a pull request, unless your post may `land`: the guard refuses it, and tells you
+  whom the work goes to;
 - take a post nobody gave you, even when it is empty: tell the orchestrator one is needed.

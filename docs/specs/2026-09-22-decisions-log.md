@@ -1538,6 +1538,24 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    and found two things fixed before release: a client killed outright was recorded as the command's exit, and the
    default image's Node was too old for vite 8 (now v1.64.0-noble, Node 24, at the person's word).
    (person's decisions with the planner, 2026-10-07/08)
+236. **Only a post that may land pushes to trunk** (Claude Code session with the person, 2026-10-13). The README
+   called the sender "the only session that writes trunk"; the push guard asked for a green receipt and for
+   nobody's post, so a builder holding a receipt could push to trunk itself. A fact-check of the demo video's
+   script found it (2026-10-12), and the person had taken the rule for enforced. Now a session that holds a post
+   lands - a push to trunk or a tag, `gh pr merge` - only if its post has the `land` move; the pre-push hook asks
+   the same of the background session a hidden push runs under. Decided with the person: no override (a seat that
+   can type one turns the rule back into advice; the person still pushes with `!` or from a terminal, raises a
+   sender, or has the work adopted); tags are the sender's too, `gh workflow run` and `gh pr create` stay as they
+   were; the model in a person's own leading session is refused like any orchestrator, the person there is not.
+   The refusal says where the work goes - handed over, landed by the live sender it names - and, at the person's
+   word, with no live sender the seat tells the orchestrator so that the person hears the fleet has nobody to
+   merge. Posts are read at origin's trunk revision alone: the first draft read them through the tree's profile,
+   and two older tests - a tree that renames trunk, a broken tree profile - showed that a seat could then switch
+   the rule off by editing its own files. Not judged by a post: a session that holds none, a call no session made,
+   a project whose trunk carries no post that lands. Where the census cannot be asked, a landing push is closed.
+   It remains a check on a session that errs or was misled, not a lock: `git push --no-verify` inside a script
+   passes both barriers, and the lock is the server's branch protection.
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

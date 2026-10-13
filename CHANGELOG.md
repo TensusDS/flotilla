@@ -3,6 +3,20 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.14.0 - 2026-10-13
+
+- **Only a post that may land pushes to trunk or a tag.** The sender was "the only session that writes trunk" in
+  the README and in its post's instructions, but the push guard asked only for a green receipt: any seat holding
+  one could push to trunk. Now a session that holds a post lands - `git push` to trunk or a tag, `gh pr merge` -
+  only if its post has the `land` move. The refusal names the live sender the work goes to once it is handed over
+  and accepted; with no live sender, the seat is told to tell the orchestrator, and the orchestrator to tell you.
+  There is no override: you can still push with `!` or from a terminal, raise a sender (`flotilla spawn -s 1`) or
+  have the work adopted. The `pre-push` hook asks the same of a push hidden in a script.
+- Not judged by a post: a session that holds none (your own session in a project whose fleet is down), and a
+  project whose trunk carries no post that lands. **If your own Claude Code session leads the fleet as its
+  orchestrator, the model in it can no longer push to trunk; you can, with `!`.** Where the session census cannot
+  be asked, a push that lands is closed until it can.
+
 ## 0.13.0 - 2026-10-10
 
 - **The account's credit beside the local count** (rig design, section 5, promised since 0.9.0): `flotilla rig`

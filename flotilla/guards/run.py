@@ -26,7 +26,8 @@ def _safely(name: str, check) -> list[Finding]:
     return [found] if found else []
 
 
-def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run, session_id: str = "") -> list[Finding]:
+def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run,
+             session_id: str = "") -> list[Finding]:
     from flotilla.guards import lane, line_edit, person, push, revert, shell
     from flotilla.guards.rules import rules_for
     who = (lambda: _calling(session_id)) if session_id else None   # a call no session made is judged by no post
