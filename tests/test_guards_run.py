@@ -282,6 +282,8 @@ def _sender_tree(tmp_path, monkeypatch, opted=True):
     core.reserve(ledger, actor(ledger, "sender 1"), "fleet/sender-1", tree=str(root))
     names = {"sid-sender": "sender 1", "sid-sender-2": "sender 2", "sid-main": "main session 1"}
     monkeypatch.setattr("flotilla.guards.run._caller_name", lambda session_id: names.get(session_id, ""))
+    monkeypatch.setattr("flotilla.guards.run._calling",   # who the push guard asks about a landing push's post
+                        lambda session_id: (names.get(session_id, ""), list(names.values())))
     return root
 
 
