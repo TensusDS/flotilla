@@ -33,7 +33,16 @@ MERGE_VALUES = ("-t", "--subject", "-b", "--body", "-F", "--body-file", "-A", "-
                 "--match-head-commit")
 
 
-PULL_URL = re.compile(r"https?://[^/\s]+/[^/\s]+/[^/\s]+/pull/\d+")
+PULL_URL = re.compile(r"https?://[^/\s]+/[^/\s]+/[^/\s]+/pull/\d+", re.IGNORECASE)   # gh lowers the scheme
+#: The options of each gh door that take a value, and the short letters among them: what gh reads as a value is
+#: neither a flag nor a positional of the command, whatever it looks like.
+GH_VALUES = {
+    "gh pr merge": ((*MERGE_VALUES, "-R", "--repo"), "tbFAR"),
+    "gh pr create": (("-a", "--assignee", "-B", "--base", "-b", "--body", "-F", "--body-file", "-H", "--head", "-l",
+                      "--label", "-m", "--milestone", "-p", "--project", "--recover", "-r", "--reviewer", "-T",
+                      "--template", "-t", "--title", "-R", "--repo"), "aBbFHlmprTtR"),
+    "gh workflow run": (("-f", "--raw-field", "-F", "--field", "-r", "--ref", "-R", "--repo"), "fFrR"),
+}
 
 
 class Unknown(RuntimeError):
@@ -72,34 +81,51 @@ def _value(args, *names):
     return None
 
 
-def _own_words(args, values, shorts: str) -> list[str]:
+def _own_words(args, values, shorts: str, *, positionals: bool = False) -> list[str]:
     """The words that are flags or positionals of their own, not the value of the option before them: `-b --help`
     is a body of "--help", and so is `-sb --help` - a cluster whose last letter takes a value. Read as git and gh
-    read them, so a harmless word frees a door only where the program would see it (security review of 236)."""
+    read them, so a harmless word frees a door only where the program would see it (security review of 236).
+    `positionals`: with the words after `--`, which are positionals and never flags."""
     def takes_value(word: str) -> bool:
         if word in values or (len(word) > 2 and word[0] == "-" and word[1] != "-" and word[-1] in shorts):
             return True   # git also takes a long option by any prefix that names it: `--push-o -n`
         return len(word) > 2 and word.startswith("--") and any(value.startswith(word) for value in values)
-    args = list(args)
+    args, after = list(args), []
     if "--" in args:   # what follows `--` is never a flag
-        args = args[:args.index("--")]
-    return [arg for i, arg in enumerate(args) if not (i and takes_value(args[i - 1]))]
+        args, after = args[:args.index("--")], args[args.index("--") + 1:]
+    return [arg for i, arg in enumerate(args) if not (i and takes_value(args[i - 1]))] + (after if positionals else [])
+
+
+def _repo_flag(kind: str, words) -> bool:
+    """Whether a gh door names its repository with -R/--repo, in any form gh takes: `-R o/r`, `--repo=o/r`,
+    `-Ro/r`, and `-sR o/r` - a cluster in which R is a flag, not the value of the letter before it."""
+    values, shorts = GH_VALUES[kind]
+    for word in _own_words(words, values, shorts):
+        if word in ("-R", "--repo") or word.startswith("--repo="):
+            return True
+        if len(word) > 2 and word[0] == "-" and word[1] != "-":
+            for letter in word[1:]:
+                if letter == "R":
+                    return True
+                if letter in shorts:   # the rest of the cluster is this letter's value
+                    break
+    return False
 
 
 def door(segment) -> Door | None:
     found = segment.git()
     if found is not None:
         verb, args, directory = found
-        if verb != "push" or any(arg in HARMLESS for arg in _own_words(args, PUSH_VALUES, "o")):
+        own = _own_words(args, PUSH_VALUES, "o")
+        if verb != "push" or (any(arg in HARMLESS for arg in own)
+                              and not any(arg.startswith("--no-d") for arg in own)):   # `-n --no-dry-run` pushes
             return None
         return Door("git push", segment, directory)
     words = segment.words
     if segment.program == "gh" and len(words) >= 3:
         kind = f"gh {words[1]} {words[2]}"
         if kind in ("gh pr create", "gh pr merge", "gh workflow run"):
-            named = words[3:] if kind != "gh pr merge" else _own_words(words[3:], (*MERGE_VALUES, "-R", "--repo"),
-                                                                       "tbFAR")
-            if any(arg in ("-h", "--help", "--dry-run") for arg in named):
+            if any(arg in ("-h", "--help", "--dry-run") for arg in _own_words(words[3:], *GH_VALUES[kind])):
                 return None
             flags = [word for word in words[3:] if word.startswith("-")]
             if kind == "gh pr merge" and flags == ["--disable-auto"] and len(words[3:]) <= 2:
@@ -156,7 +182,7 @@ def revisions(d: Door, trunk: str, *, run=subprocess.run) -> list[tuple[str, str
     if d.kind == "git push":
         return _push_revisions(d.segment.git()[1], d.directory, trunk, run)
     rest = words[3:]
-    if _value(rest, "-R", "--repo") is not None:
+    if _repo_flag(d.kind, rest):
         raise Unknown("names a repository with -R/--repo; run it from that repository's tree, where its receipts "
                       "are")
     if d.kind == "gh pr create":
@@ -468,12 +494,12 @@ def _names_repo(d: Door, env) -> bool:
     if not d.kind.startswith("gh "):
         return False
     words = list(d.segment.words[3:])
-    if _value(words, "-R", "--repo") is not None or bool(d.segment.assignments.get("GH_REPO")):
+    if _repo_flag(d.kind, words) or bool(d.segment.assignments.get("GH_REPO")):
         return True
     # a merge may name its pull request by URL, and that names the repository too. Only the pull request itself: a
     # link in a body or a workflow input names nothing (second review of 236)
     return d.kind == "gh pr merge" and any(
-        PULL_URL.match(word) for word in _own_words(words, (*MERGE_VALUES, "-R", "--repo"), "tbFAR"))
+        PULL_URL.match(word) for word in _own_words(words, *GH_VALUES[d.kind], positionals=True))
     # a GH_REPO exported in the person's environment names no door of this command: work outside flotilla stays open
 
 
@@ -591,6 +617,23 @@ def _post_refusal(root, where: OriginTrunk, who, run, *, hook: bool = False) -> 
         return f"who may land could not be told ({err}), and it is not guessed. Until it can, {_persons_way(hook)}"
 
 
+def _asked_of_own(d: Door, root, who, run) -> str:
+    """The caller's post, asked of the project the session stands in, for a door that lands and whose own project
+    cannot be told - above all a merge from a directory in no project, which has no second barrier and many
+    spellings (`-R`, a URL, an exported GH_REPO, a scratch repository). The post alone: the receipts and the
+    approval of the session's project say nothing about work in another repository (third reading of 236)."""
+    if root is None or who is None or d.kind not in LANDS:
+        return ""
+    try:
+        where = origin_trunk(root, run)
+        profile, _ = rules_at(root, where, run)
+    except Exception:  # noqa: BLE001 - this project's rules cannot be read: they are not this door's to close
+        return ""
+    if not (profile.get("guards") or {}).get(GUARD):
+        return ""
+    return _post_refusal(root, where, who, run)
+
+
 def _when_untold(d: Door, home_root, where: OriginTrunk, who, run, err) -> tuple[list[str], str, list[str]]:
     """(rules that could not be read, the caller's post, the person's approval) for a door that lands and fell
     before its revisions were told - a merge no revision pins, a tree named through a variable, a git that timed
@@ -651,9 +694,14 @@ def guard(segment, *, root, profile, env=os.environ, run=subprocess.run, who=Non
                 raise Unknown("could not tell which repository this pushes (GIT_DIR, a git dir named elsewhere); "
                               "run it as `git -C <tree> push`")
             if not _names_repo(d, env):
-                return None
-            raise Unknown("names a repository with -R/--repo or GH_REPO from outside any project, so which "
-                          "project's receipts it needs cannot be told; run it from that repository's tree")
+                if d.kind != "gh pr merge":
+                    return None
+                stands = _asked_of_own(d, root, who, run)   # a seat's merge is asked for its post wherever it is
+                return Finding(GUARD, True, f"flotilla push: `{segment.text}` is closed.\n  {stands}") if stands \
+                    else None
+            raise Unknown("names a repository with -R/--repo, GH_REPO or its pull request's URL from outside any "
+                          "project, so which project's receipts it needs cannot be told; run it from that "
+                          "repository's tree")
         home_root = home[0]
         where = origin_trunk(home_root, run, own=_own_repository(home_root, root, run))   # scan of 0.7.0, F1
         trunk = where.trunk
@@ -690,15 +738,12 @@ def guard(segment, *, root, profile, env=os.environ, run=subprocess.run, who=Non
     except Exception as err:  # noqa: BLE001 - the push guard's own failure refuses (spec, section 10)
         failures = [f"the guard failed: {err}"]
     if failures and not asked and not closed:   # it fell before the post was asked
-        if where is None and root is not None:   # which project it acts on could not be told: a seat is asked by
-            try:                                 # the one it stands in (a merge has no second barrier)
-                home_root, where = root, origin_trunk(root, run)
-            except Exception:  # noqa: BLE001 - then nothing more is known than that the guard fell
-                where = None
-        if where is not None:
+        if where is None:   # which project it acts on could not be told: a seat is asked by the one it stands in
+            outsider = _asked_of_own(d, root, who, run)
+        else:
             closed, outsider, unapproved = _when_untold(d, home_root, where, who, run, failures[0])
-            if outsider:   # the seat still learns how to make the door one that can be judged
-                outsider += f"\n  What it carries could not be told: {failures[0]}"
+        if outsider:   # the seat still learns how to make the door one that can be judged
+            outsider += f"\n  What it carries could not be told: {failures[0]}"
     if outsider and d.kind == "git push":
         broad = [word for word in BROAD if word in d.segment.git()[1]]
         if broad:   # the seat pushed its own branch, and one word made it a push of everything

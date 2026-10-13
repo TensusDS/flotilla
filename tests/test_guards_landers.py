@@ -99,7 +99,8 @@ def test_a_session_that_holds_no_post_pushes_as_before(tmp_path, monkeypatch):
 def test_a_call_that_carries_no_session_id_is_still_asked_who_made_it(tmp_path, monkeypatch):
     """Review: without an id nobody's post was asked. The process's own parents say which seat it runs under."""
     root = fleet(tmp_path, monkeypatch)
-    monkeypatch.setattr("flotilla.guards.push.callers", lambda session_id="": (["main session 1"], list(FLEET.values())))
+    monkeypatch.setattr("flotilla.guards.push.callers",
+                        lambda session_id="": (["main session 1"], list(FLEET.values())))
     assert "may not land" in denied(ask(root, "git push origin HEAD:main", ""))
 
 
@@ -276,7 +277,11 @@ def test_a_harmless_word_that_is_an_options_value_frees_no_merge(command, tmp_pa
 @pytest.mark.parametrize("command", ["gh pr merge 5 -sb --help", "gh pr merge 5 -R --help", "gh pr merge 5 -st -h",
                                      "git push -o -n origin main", "git push -fo --dry-run origin main",
                                      "git push --receive-pack -h origin main", "git push --push-o -n origin main",
-                                     "git push --exe -n origin main", "git push origin main -- -n"])
+                                     "git push --exe -n origin main", "git push origin main -- -n",
+                                     "git push -n --no-dry-run origin main", "git push --dry-run --no-dry origin main",
+                                     "git push -d --no-delete origin main",
+                                     "gh pr create --title --dry-run --body x", "gh pr create -t --help",
+                                     "gh pr create --fill -B --help", "gh workflow run ci.yml --ref --help"])
 def test_a_harmless_word_after_a_flag_that_takes_a_value_frees_nothing(command, tmp_path):
     """Security review: gh and git read `-sb --help` as a body of "--help"; a guard that reads it as a call for
     help lets the merge through unjudged."""
@@ -284,7 +289,8 @@ def test_a_harmless_word_after_a_flag_that_takes_a_value_frees_nothing(command, 
 
 
 @pytest.mark.parametrize("command", ["gh pr merge 5 --help", "gh pr merge --help", "gh pr merge 5 --squash -h",
-                                     "git push -n origin main", "git push origin main --dry-run"])
+                                     "git push -n origin main", "git push origin main --dry-run",
+                                     "gh pr create --fill --dry-run", "gh workflow run --help"])
 def test_a_call_for_help_or_a_dry_run_is_still_no_door(command, tmp_path):
     assert push.door(first(command, tmp_path)) is None
 
@@ -322,11 +328,15 @@ def test_rules_that_fell_while_being_read_close_an_untold_door_without_override(
     assert found is not None and found.refuse and "override recorded" not in found.text
 
 
-def test_a_merge_named_by_url_from_outside_any_project_is_not_let_through_unjudged(tmp_path):
+@pytest.mark.parametrize("command", ["gh pr merge https://github.com/o/r/pull/5 --squash",
+                                     "gh pr merge --squash -- https://github.com/o/r/pull/5",
+                                     "gh pr merge HTTPS://GitHub.com/o/r/pull/5", "gh pr merge 5 -sR o/r",
+                                     "gh pr merge 5 -Ro/r --squash", "gh pr merge 5 --repo=o/r"])
+def test_a_merge_that_names_its_repository_from_outside_any_project_is_not_let_through_unjudged(command, tmp_path):
+    """However it names it - as gh reads the words, not as they look (security reviews of 236)."""
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
-    found = push.guard(first("gh pr merge https://github.com/o/r/pull/5 --squash", elsewhere), root=None, profile={},
-                       env=env(tmp_path))
+    found = push.guard(first(command, elsewhere), root=None, profile={}, env=env(tmp_path))
     assert found is not None and found.refuse and "names a repository" in found.text
 
 
@@ -356,6 +366,31 @@ def test_a_merge_aimed_from_outside_every_project_is_asked_of_the_seats_own(tmp_
             assert "may not land" in denied(ask(root, command, "sid-main")), command
         assert not denied(ask(root, f'cd {elsewhere} && FLOTILLA_GATE_OVERRIDE="x" {merge}', "sid-sender")), merge
         assert "names a repository" in denied(ask(root, f"cd {elsewhere} && {merge}", "sid-sender")), merge
+
+
+def test_a_seats_merge_from_outside_every_project_is_asked_for_its_post_however_it_is_spelt(tmp_path, monkeypatch):
+    """Third reading: only some spellings of "another repository" were recognised; the rest went unjudged. A merge
+    has no second barrier, so a seat's merge from a directory in no project is asked of the project it stands in."""
+    root = fleet(tmp_path, monkeypatch)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    for merge in ("gh pr merge 5 --squash", 'gh pr merge "$PR_URL" --squash',
+                  "export GH_REPO=o/r && gh pr merge 5 --squash"):
+        assert "may not land" in denied(ask(root, f"cd {elsewhere} && {merge}", "sid-main")), merge
+        assert not denied(ask(root, f"cd {elsewhere} && {merge}", "sid-sender")), merge
+        assert not denied(ask(root, f"cd {elsewhere} && {merge}", "sid-mine")), merge
+
+
+def test_a_merge_in_an_unrelated_repository_is_not_asked_for_this_projects_approval(tmp_path, monkeypatch):
+    """Third reading: asked of the session's own project, a merge elsewhere is asked for the post alone - the
+    approval there is another project's matter, and asking it closed every such merge with no way through."""
+    root = fleet(tmp_path, monkeypatch, authorized="human")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    command = f'cd {elsewhere} && FLOTILLA_GATE_OVERRIDE="x" gh pr merge 7 -R someone/unrelated --squash'
+    assert not denied(ask(root, command, "sid-mine"))
+    assert not denied(ask(root, command, "sid-sender"))
+    assert "may not land" in denied(ask(root, command, "sid-main"))
 
 
 def test_a_directory_with_rules_of_its_own_that_cannot_be_read_opens_nothing(tmp_path, monkeypatch):

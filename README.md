@@ -648,8 +648,10 @@ destination git itself names. They catch a session that pushes unreviewed or una
 its to land - by mistake, or because it was told to. A session set on getting around them still can: it owns its
 checkout - its git config, its remotes, its objects, `git push --no-verify` - and a guard running on that checkout
 can only judge what it is shown. Who pushes is told the same way, from what the machine shows: a process a seat
-detaches from itself is no longer seen as that seat's, a session is known by the name it was started under, and
-in your own session a push hidden in a script is not told apart from one you typed after `!`. The lock
+detaches from itself is no longer seen as that seat's, a session is known by the name it was started under, a
+push or a merge made from a directory outside every flotilla project is judged by no project's rules - a seat's
+merge there is still asked for its post -, and in your own session a push hidden in a script is not told apart
+from one you typed after `!`. The lock
 is on the server: **protect your trunk on GitHub** (Settings → Rules → Rulesets, or Branches → branch protection) so
 it accepts changes only through pull requests with the reviews and checks you require. The pull-request flows work
 with that on; the `direct` flow pushes to trunk itself, so pick a pull-request flow, or let the ruleset allow the
