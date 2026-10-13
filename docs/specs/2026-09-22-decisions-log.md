@@ -1584,7 +1584,9 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    the approval was asked, and a push from a tree named through a variable, each of which let an override stand
    in for the person's approval; `--push-o -n`, since git takes a long option by any prefix. A post on trunk that
    cannot be read closes every landing push for everyone, as a broken profile does, and the refusal names
-   trunk's file. 47 mutations of the rule, each seen red.
+   trunk's file. A fifth security review added two: the seat's project's rules that cannot be read close such
+   a merge rather than let an override through, and gh's `--dry-run=false` cancels a dry run. 49 mutations of
+   the rule, each seen red.
    Left as limits, and written in the README: a process a seat detaches from itself is not seen as its own (a
    terminal cannot be demanded of a push, as it is of a person-only command: an editor's push has none); a session
    is known by the name it was started under; in the person's own session a push hidden in a script is not told

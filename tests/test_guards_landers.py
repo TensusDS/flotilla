@@ -280,6 +280,8 @@ def test_a_harmless_word_that_is_an_options_value_frees_no_merge(command, tmp_pa
                                      "git push --exe -n origin main", "git push origin main -- -n",
                                      "git push -n --no-dry-run origin main", "git push --dry-run --no-dry origin main",
                                      "git push -d --no-delete origin main",
+                                     "gh pr create --fill --dry-run --dry-run=false", "gh pr merge 5 --help=false",
+                                     "gh workflow run ci.yml -h=0",
                                      "gh pr create --title --dry-run --body x", "gh pr create -t --help",
                                      "gh pr create --fill -B --help", "gh workflow run ci.yml --ref --help"])
 def test_a_harmless_word_after_a_flag_that_takes_a_value_frees_nothing(command, tmp_path):
@@ -391,6 +393,22 @@ def test_a_merge_in_an_unrelated_repository_is_not_asked_for_this_projects_appro
     assert not denied(ask(root, command, "sid-mine"))
     assert not denied(ask(root, command, "sid-sender"))
     assert "may not land" in denied(ask(root, command, "sid-main"))
+
+
+def test_an_untold_door_outside_every_project_closes_where_the_seats_rules_cannot_be_read(tmp_path, monkeypatch):
+    """Security review of 8e59e57: rules of the seat's own project that cannot be read let an untold merge fall to
+    the overridable refusal again. Rules nobody can read decide nothing, and are waived by no override."""
+    root = fleet(tmp_path, monkeypatch)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+
+    def unread(*args, **kwargs):
+        raise push.Unknown("the profile on origin's trunk cannot be read")
+
+    monkeypatch.setattr("flotilla.guards.push.rules_at", unread)
+    for merge in ("gh pr merge 5 -R o/r --squash", "gh pr merge 5 --squash"):
+        why = denied(ask(root, f'cd {elsewhere} && FLOTILLA_GATE_OVERRIDE="x" {merge}', "sid-main"))
+        assert "could not be read" in why and "override recorded" not in why, merge
 
 
 def test_a_directory_with_rules_of_its_own_that_cannot_be_read_opens_nothing(tmp_path, monkeypatch):

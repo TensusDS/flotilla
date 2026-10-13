@@ -116,7 +116,7 @@ def door(segment) -> Door | None:
     found = segment.git()
     if found is not None:
         verb, args, directory = found
-        own = _own_words(args, PUSH_VALUES, "o")
+        own = _own_words(args, PUSH_VALUES, "o")   # git takes no `--dry-run=false`; gh does, below
         if verb != "push" or (any(arg in HARMLESS for arg in own)
                               and not any(arg.startswith("--no-d") for arg in own)):   # `-n --no-dry-run` pushes
             return None
@@ -125,7 +125,9 @@ def door(segment) -> Door | None:
     if segment.program == "gh" and len(words) >= 3:
         kind = f"gh {words[1]} {words[2]}"
         if kind in ("gh pr create", "gh pr merge", "gh workflow run"):
-            if any(arg in ("-h", "--help", "--dry-run") for arg in _own_words(words[3:], *GH_VALUES[kind])):
+            own = _own_words(words[3:], *GH_VALUES[kind])
+            if any(arg in ("-h", "--help", "--dry-run") for arg in own) and not any(
+                    arg.startswith(("--help=", "--dry-run=", "-h=")) for arg in own):   # `--dry-run=false` cancels it
                 return None
             flags = [word for word in words[3:] if word.startswith("-")]
             if kind == "gh pr merge" and flags == ["--disable-auto"] and len(words[3:]) <= 2:
@@ -627,8 +629,9 @@ def _asked_of_own(d: Door, root, who, run) -> str:
     try:
         where = origin_trunk(root, run)
         profile, _ = rules_at(root, where, run)
-    except Exception:  # noqa: BLE001 - this project's rules cannot be read: they are not this door's to close
-        return ""
+    except Exception as err:  # noqa: BLE001 - rules nobody can read decide nothing, and no override waives that
+        return (f"the rules of the project this session stands in could not be read from origin ({err}), so who may "
+                f"land cannot be told. Until they can, {_persons_way(False)}")
     if not (profile.get("guards") or {}).get(GUARD):
         return ""
     return _post_refusal(root, where, who, run)

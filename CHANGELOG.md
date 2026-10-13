@@ -28,11 +28,13 @@ each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2
 - A harmless word that is an option's value frees nothing: `gh pr merge 5 -b --help` and `-sb --help` are merges
   with a body of "--help", `git push -o -n origin main` and `--push-o -n` are pushes with an option of "-n",
   `gh pr create --title --dry-run` opens a pull request titled "--dry-run", and each is judged as what it is.
-  `-sR o/r` and `-Ro/r` name a repository as `-R o/r` does, and `git push -n --no-dry-run` is a push. A merge
+  `-sR o/r` and `-Ro/r` name a repository as `-R o/r` does; `git push -n --no-dry-run` and
+  `gh pr create --dry-run --dry-run=false` are what they end as, not dry runs. A merge
   that names its pull request by URL from outside any project is refused rather than let through unjudged.
 - A seat's merge made from a directory outside every project - however it names the repository, or without
   naming it - is asked for its post by the project the seat stands in: a merge has no second barrier. Only the
-  post: that project's receipts and approval say nothing about work in another repository.
+  post: that project's receipts and approval say nothing about work in another repository. Where that project's
+  own rules cannot be read from origin, such a merge is closed, as a push to its trunk would be.
 - A guard that fell before it could ask who calls - a git that timed out, a project file a seat wrote into a
   subdirectory - is judged like a door whose revision could not be told.
 - **A post on origin's trunk that cannot be read now closes every push that lands, for everyone**, as a broken
