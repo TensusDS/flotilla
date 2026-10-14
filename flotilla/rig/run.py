@@ -32,6 +32,7 @@ from flotilla.rig import settings as rs
 
 RENEW = 300.0
 POLL = 10.0
+MARKET_EVERY = 60.0   # how often a run that waits asks the market again when it had nothing to rent
 SLEEP = time.sleep
 EXECUTE = lane_run.execute
 ASK_FOR = 120.0
@@ -154,7 +155,7 @@ class Run:
     def take_room(self, session, deadline) -> bool:
         """Every waiting run tries every ready machine of its session: the journal's packing decides which one goes,
         and only that one reads the machine. Only the session's oldest waiting run raises a machine."""
-        said = ""
+        said, market_again = "", 0.0
         while True:
             machines = [m for m in self.rig.machines().values() if m.session == session.id]
             reasons = {}
@@ -178,12 +179,18 @@ class Run:
                 _say(f"rig run {self.run.id} waits: {text}")
                 said = text
             head = self.rig.head(session.id, self.alive)
-            if (head is not None and head.id == self.run.id
+            if (head is not None and head.id == self.run.id and time.monotonic() >= market_again
                     and not any(m.state in (j.READY, j.BUSY) for m in machines)):
                 code = commands.raise_machine(self.state, self.settings, who=self.run.who,
                                               why=self.args.why, root=self.args.root,
                                               wait=max(1.0, min(deadline - time.monotonic(), 100.0)),
-                                              watchdog=45)
+                                              watchdog=45, market=True)
+                if code == commands.NO_OFFER:   # nothing to rent now: the market is asked again, not given up on
+                    market_again = time.monotonic() + MARKET_EVERY
+                    text = f"no offer within the ceilings; the market is asked again every {MARKET_EVERY:g} s"
+                    if text != said:
+                        _say(f"rig run {self.run.id} waits: {text}")
+                        said = text
                 draining = [m.id for m in self.rig.machines().values()
                             if m.session == session.id and m.state == j.DRAINING]
                 if code == 2 and draining:   # the ceiling counts a machine being given back: wait for it to go
@@ -197,6 +204,9 @@ class Run:
                 if code == 0:
                     continue
             if time.monotonic() >= deadline:
+                if market_again:   # what it waited for was an offer, not room
+                    self.reason = "no offer within the ceilings within --wait"
+                    return False
                 self.verdict, self.code, self.reason = "waited", 3, "no room within --wait"
                 return False
             SLEEP(POLL)

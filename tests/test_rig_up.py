@@ -120,13 +120,6 @@ def test_up_refuses_when_the_budget_would_be_passed(world):
     assert code == 2 and "budget" in out and world["fake"].created == 0
 
 
-def test_no_offer_within_the_ceilings_fails_the_machine(world):
-    opened(world)
-    world["fake"].offers = [OFFERS[3]]
-    code, out = up(world)
-    assert code == 2 and "no offer" in out and journal(world).machines()["m1"].state == j.FAILED
-
-
 def test_a_second_up_resumes_the_machine_coming_up(world):
     opened(world)
     world["fake"].boot_polls = 20

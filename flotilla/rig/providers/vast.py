@@ -32,6 +32,15 @@ class AdapterError(Exception):
         self.status = status
 
 
+class OfferGone(AdapterError):
+    """vast still listed the offer but no longer rents it: nothing was made, and the next offer may be tried."""
+
+
+#: vast's own words for an ask it no longer rents (2026-10-14: 400, "error 404/3603: no_such_ask Instance type by id
+#: 47627492 is not available."). Anything else - a timeout above all - may come after the machine was made.
+_GONE = ("no_such_ask", "is not available")
+
+
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
         return None   # urllib would carry the Authorization header to wherever a redirect points
@@ -164,7 +173,12 @@ def create(key, offer, *, image, disk_gb, env, onstart, label):
             "label": label, "extra": None, "onstart": onstart, "runtype": "ssh_proxy", "image_login": None,
             "python_utf8": False, "lang_utf8": False, "use_jupyter_lab": False, "jupyter_dir": None, "force": False,
             "cancel_unavail": True, "template_hash_id": None, "user": None}
-    answer = _call(key, "PUT", f"/api/v0/asks/{offer}/", body=body)
+    try:
+        answer = _call(key, "PUT", f"/api/v0/asks/{offer}/", body=body)
+    except AdapterError as err:
+        if err.status in (400, 404, 410) and any(word in str(err) for word in _GONE):
+            raise OfferGone(str(err), err.status) from None
+        raise
     contract = answer.get("new_contract") if isinstance(answer, dict) else None
     if not isinstance(answer, dict) or answer.get("success") is False or not isinstance(contract, int):
         raise AdapterError(f"vast did not say which instance offer {offer} became")
