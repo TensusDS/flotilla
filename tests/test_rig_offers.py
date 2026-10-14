@@ -89,6 +89,7 @@ def test_no_offer_within_the_ceilings_frees_the_ceiling_at_once(world):
     (400, "error 404/3603: no_such_ask Instance type by id 7 is not available.", True),
     (404, "Instance type by id 7 is not available.", True),
     (400, "Invalid user key", False),
+    (400, "Requested image is not available.", False),   # about the request, not the ask: no offer is any better
     (500, "no_such_ask", False),
 ])
 def test_the_adapter_says_an_offer_is_gone_only_when_vast_does(tmp_path, monkeypatch, status, said, gone):
@@ -146,3 +147,148 @@ def test_rig_run_asks_the_market_again_until_its_deadline_and_then_says_why(worl
     assert time.monotonic() - started >= 0.9
     rows = journal(world).machines().values()
     assert len(rows) >= 2 and all(item.state == j.GONE for item in rows)   # each try freed the ceiling
+
+
+# ---- the review of this fix
+
+def test_the_machine_records_the_offer_it_rented_not_the_stale_one(world, monkeypatch):
+    opened(world)
+    monkeypatch.setattr(vast_adapter, "SEND", stale(world["fake"], CHEAPEST))
+    up(world)
+    machine = journal(world).machines()["m1"]
+    assert machine.hourly == OFFERS[1]["dph_total"] and machine.gpu == OFFERS[1]["gpu_name"]
+
+
+def test_a_stale_market_is_waited_for_like_an_empty_one(world, monkeypatch):
+    opened(world)
+    monkeypatch.setattr(vast_adapter, "SEND", stale(world["fake"], CHEAPEST, NEXT))
+    code = commands.raise_machine(world["state"], commands.rs.settings(world["state"]), who="x", why="x",
+                                  root=world["root"], wait=10.0, watchdog=45, market=True)
+    assert code == commands.NO_OFFER
+
+
+def test_a_waiting_run_does_not_try_the_offers_it_already_found_gone(world, monkeypatch):
+    """Five stale asks at the top of the list would otherwise be the only five ever tried."""
+    opened(world)
+    many = [{**OFFERS[0], "id": 70000 + n, "dph_total": 0.10 + n / 100} for n in range(6)]
+    world["fake"].offers = many
+    monkeypatch.setattr(vast_adapter, "SEND", stale(world["fake"], *(str(item["id"]) for item in many[:5])))
+    passed = set()
+    settings = commands.rs.settings(world["state"])
+    first = commands.raise_machine(world["state"], settings, who="x", why="x", root=world["root"], wait=10.0,
+                                   watchdog=45, market=True, passed_over=passed)
+    second = commands.raise_machine(world["state"], settings, who="x", why="x", root=world["root"], wait=10.0,
+                                    watchdog=45, market=True, passed_over=passed)
+    assert first == commands.NO_OFFER and second in (0, 3) and world["fake"].created == 1   # 3: still coming up
+    assert world["fake"].asked == [str(item["id"]) for item in many]
+
+
+def test_a_machine_drained_while_its_offers_were_tried_ends_the_call_cleanly(world, monkeypatch):
+    """The reaper may drain a requested machine meanwhile (its session closed): the call says so, it does not
+    crash, and the machine is left to the reaper as it stands."""
+    opened(world)
+    send = stale(world["fake"], CHEAPEST, NEXT)
+
+    def drained_meanwhile(method, url, headers, body, timeout):
+        if method == "PUT":
+            rig = journal(world)
+            if rig.machines()["m1"].state == j.REQUESTED:
+                rig.move("m1", j.DRAINING, reason="session ended")
+        return send(method, url, headers, body, timeout)
+    monkeypatch.setattr(vast_adapter, "SEND", drained_meanwhile)
+    code, out = up(world)
+    assert code == 2 and "changed while" in out and journal(world).machines()["m1"].state == j.DRAINING
+
+
+def test_requests_for_machines_do_not_keep_a_dead_reaper_quiet(world):
+    """Only opening a session arms the reaper again; a machine asked for later must not restart the clock."""
+    health.stamp(world["state"], T0 - dt.timedelta(hours=15), ok=True, note="")
+    opened(world)
+    rig = journal(world)
+    world["clock"]["at"] = T0 + dt.timedelta(minutes=10)
+    rig = journal(world)
+    rig.add_machine("s1", "vast", lambda mid: f"flotilla:abcdefabcdef:{mid}")
+    quiet, _ = health.silent(world["state"], journal(world), T0 + dt.timedelta(minutes=13))
+    assert quiet
+    quiet, _ = health.silent(world["state"], journal(world), T0 + dt.timedelta(minutes=11))
+    assert not quiet
+
+
+def test_a_mark_from_the_future_does_not_hide_a_dead_reaper(world):
+    health.stamp(world["state"], T0 - dt.timedelta(hours=15), ok=True, note="")
+    world["clock"]["at"] = T0 + dt.timedelta(days=1)   # a clock that ran ahead when the session was opened
+    opened(world)
+    quiet, _ = health.silent(world["state"], journal(world), T0 + dt.timedelta(hours=2))
+    assert quiet
+
+
+def run_in(world, tree, *argv):
+    out = io.StringIO()
+    with redirect_stdout(out), chdir(tree):
+        code = cli.main(["rig", "run", "--root", str(tree), "--as", "minor 8", *argv])
+    return code, out.getvalue()
+
+
+def test_a_run_that_saw_no_offer_once_and_then_waited_for_a_machine_says_it_waited_for_room(world, monkeypatch,
+                                                                                            tmp_path):
+    """Review of this fix, the blocker: one empty answer marked the whole wait as a wait for an offer."""
+    from flotilla.rig import run as run_module
+    from rigtree import git_tree
+    monkeypatch.setattr(run_module, "POLL", 0.05)
+    monkeypatch.setattr(run_module, "MARKET_EVERY", 0.2)
+    opened(world)
+    tree = git_tree(tmp_path / "tree", {"package.json": "{}", ".flotilla/project.toml": "schema = 1\n"})
+    world["fake"].offers, world["fake"].boot_polls = [], 10_000   # then a machine that never finishes coming up
+    real = commands.raise_machine
+
+    def market_returns(*args, **kwargs):
+        code = real(*args, **kwargs)
+        world["fake"].offers = list(OFFERS)
+        return code
+    monkeypatch.setattr(commands, "raise_machine", market_returns)
+    code, out = run_in(world, tree, "--wait", "1", "--", "true")
+    assert code == 3 and "no room within --wait" in out and "no offer" in out   # it did see no offer, once
+
+
+def test_a_waiting_run_asks_the_market_no_more_often_than_it_says(world, monkeypatch, tmp_path):
+    from flotilla.rig import run as run_module
+    from rigtree import git_tree
+    monkeypatch.setattr(run_module, "POLL", 0.02)
+    monkeypatch.setattr(run_module, "MARKET_EVERY", 0.3)
+    opened(world)
+    tree = git_tree(tmp_path / "tree", {"package.json": "{}", ".flotilla/project.toml": "schema = 1\n"})
+    world["fake"].offers = []
+    code, out = run_in(world, tree, "--wait", "1", "--", "true")
+    assert code == 2 and 2 <= len(journal(world).machines()) <= 5   # every 0.3 s over 1 s, not every 0.02 s
+    assert "within --wait (waited 1 s)" in out
+
+
+def test_a_machine_a_peer_took_over_meanwhile_is_not_moved_from_under_it(world, monkeypatch):
+    """The two moves of a machine never made expect it as they found it: requested, with no instance."""
+    opened(world)
+    send = stale(world["fake"], CHEAPEST, NEXT)
+
+    def adopted_meanwhile(method, url, headers, body, timeout):
+        if method == "PUT":
+            rig = journal(world)
+            if rig.machines()["m1"].state == j.REQUESTED:
+                rig.move("m1", j.PROVISIONING, instance="555", gpu="RTX A5000", hourly=0.2, created=T0.isoformat())
+        return send(method, url, headers, body, timeout)
+    monkeypatch.setattr(vast_adapter, "SEND", adopted_meanwhile)
+    code, out = up(world)
+    machine = journal(world).machines()["m1"]
+    assert code == 2 and "changed while" in out and (machine.state, machine.instance) == (j.PROVISIONING, "555")
+
+
+def test_a_waiting_run_tries_each_stale_offer_once_across_its_asks(world, monkeypatch, tmp_path):
+    from flotilla.rig import run as run_module
+    from rigtree import git_tree
+    monkeypatch.setattr(run_module, "POLL", 0.02)
+    monkeypatch.setattr(run_module, "MARKET_EVERY", 0.25)
+    opened(world)
+    tree = git_tree(tmp_path / "tree", {"package.json": "{}", ".flotilla/project.toml": "schema = 1\n"})
+    many = [{**OFFERS[0], "id": 70000 + n, "dph_total": 0.10 + n / 100} for n in range(7)]
+    world["fake"].offers = many
+    monkeypatch.setattr(vast_adapter, "SEND", stale(world["fake"], *(str(item["id"]) for item in many)))
+    code, out = run_in(world, tree, "--wait", "1", "--", "true")
+    assert code == 2 and sorted(world["fake"].asked) == sorted(str(item["id"]) for item in many)   # each once

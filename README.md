@@ -461,7 +461,8 @@ rented machine with `flotilla rig run` and gets its output, its exit code and it
     short ones filling the rest; a run waiting 10 minutes is senior, and later runs leave it the room it needs.
     Past two runs the machine's live free memory and GPU memory must agree too. A waiting run says why it waits,
     and keeps waiting for `--wait` (900 s) - for an offer too: with nothing to rent within your ceilings it asks the
-    market again every minute, spending nothing until something is rented;
+    market again every minute, spending nothing until something is rented and never trying again an offer it
+    found gone;
   - the revision travels once per machine (`git archive`, checked by sha256 there); each run works in its own copy
     and runs the profile's setup (`[rig] setup_command`, else `[tests] setup_command`) itself, with download caches
     shared on the machine;
@@ -511,8 +512,8 @@ rented machine with `flotilla rig run` and gets its output, its exit code and it
   only when a later listing no longer shows it. After three passes it says STUCK. An instance without this machine's
   flotilla label - one you made by hand - is never touched.
 - If cron does not run on this machine (WSL by default), `flotilla rig` and `flotilla doctor` say the reaper is
-  silent while anything lives. Silence is counted from the later of the reaper's last pass and the moment it was
-  needed again - a session opened, a machine asked for - since its line was gone while nothing needed it.
+  silent while anything lives. Silence is counted from the later of the reaper's last pass and the opening of the
+  session that needed it again, since its line was gone while nothing needed it.
 - Limits of `rig run`: host keys are trusted on first use, per machine; a process that clears its environment
   escapes the run's tag and outlives its stop; the image needs GNU tar and coreutils.
 - Limit: every session runs as your user. A shell command that writes these files is not caught; the guards close

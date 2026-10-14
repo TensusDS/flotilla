@@ -37,8 +37,9 @@ class OfferGone(AdapterError):
 
 
 #: vast's own words for an ask it no longer rents (2026-10-14: 400, "error 404/3603: no_such_ask Instance type by id
-#: 47627492 is not available."). Anything else - a timeout above all - may come after the machine was made.
-_GONE = ("no_such_ask", "is not available")
+#: 47627492 is not available."): about the ask, never about the request - "is not available" alone may be said of an
+#: image, which no other offer cures. Anything else - a timeout above all - may come after the machine was made.
+_GONE = ("no_such_ask", "Instance type by id")
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):

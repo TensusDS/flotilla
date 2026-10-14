@@ -42,13 +42,13 @@ def last_reap(state: Path) -> dt.datetime | None:
 
 def silent(state: Path, rig, now: dt.datetime) -> tuple[bool, dt.datetime | None]:
     """(whether the reaper is silent while something needs it, its last pass). Silence is counted from the later of
-    its last pass and the moment it was needed again - a session opened, a machine asked for: with nothing to guard
-    it removes its own crontab line, so a pass from the morning says nothing about an evening session (field report
-    of 2026-10-14)."""
+    its last pass and the moment it was needed again - a session opened: with nothing to guard it removes its own
+    crontab line, so a pass from the morning says nothing about an evening session (field report of 2026-10-14)."""
     last = last_reap(state)
+    # only opening a session arms the reaper again (a machine is asked for inside one): a later request must not
+    # restart the clock, and a mark ahead of now - a clock that ran ahead - says nothing
     marks = [item.opened for item in rig.sessions().values() if item.state in (j.OPEN, j.CLOSING)]
-    marks += [item.requested for item in rig.machines().values() if item.state in j.LIVE]
-    since = [moment for moment in (_moment(text) for text in marks) if moment is not None]
+    since = [moment for moment in (_moment(text) for text in marks) if moment is not None and moment <= now]
     if last is not None:
         since.append(last)
     return (not since or now - max(since) > SILENT_AFTER), last

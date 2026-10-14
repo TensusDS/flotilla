@@ -18,13 +18,15 @@ and `flotilla rig` called the reaper silent while cron was firing.
   that were all gone, was left failed until the next reaper pass, holding the one-machine ceiling; vast never made
   it, so it now leaves at once. A failure that may have made a machine still waits for the reaper to look for it.
 - **`rig run --wait` waits for an offer too.** It waited only for room on a machine, so an empty market came back
-  in 0 s. Now it asks the market again every minute until its `--wait`, says so while it waits, and is refused
-  (exit 2) "no offer within the ceilings within --wait" if nothing turned up. Nothing is spent while it waits.
+  in 0 s. Now it asks the market again every minute until its `--wait`, says so while it waits, never tries again
+  an offer it found gone, and is refused (exit 2) "no offer within the ceilings within --wait" if nothing turned
+  up; a run whose last wait was for room still ends "no room within --wait" (exit 3). Both name the seconds waited,
+  which the last line's own count leaves out. Nothing is spent while it waits.
 - **The reaper is no longer called silent just after it was armed again.** With nothing to guard it removes its own
   crontab line - in the report, at 05:05, when the last session closed - and the evening's session put it back;
   until its first pass, `flotilla rig`, `flotilla doctor` and the fleet's attention list compared now with 05:05
-  and asked whether cron was running. Silence is now counted from the later of the last pass and the moment the
-  reaper was needed again (a session opened, a machine asked for).
+  and asked whether cron was running. Silence is now counted from the later of the last pass and the opening of
+  the session that needed the reaper again; a mark from a clock that ran ahead counts for nothing.
 
 ## 0.14.0 - 2026-10-13
 
