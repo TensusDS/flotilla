@@ -40,6 +40,28 @@ def last_reap(state: Path) -> dt.datetime | None:
     return moment if moment.tzinfo is not None else None
 
 
+def silent(state: Path, rig, now: dt.datetime) -> tuple[bool, dt.datetime | None]:
+    """(whether the reaper is silent while something needs it, its last pass). Silence is counted from the later of
+    its last pass and the moment it was needed again - a session opened: with nothing to guard it removes its own
+    crontab line, so a pass from the morning says nothing about an evening session (field report of 2026-10-14)."""
+    last = last_reap(state)
+    # only opening a session arms the reaper again (a machine is asked for inside one): a later request must not
+    # restart the clock, and a mark ahead of now - a clock that ran ahead - says nothing
+    marks = [item.opened for item in rig.sessions().values() if item.state in (j.OPEN, j.CLOSING)]
+    since = [moment for moment in (_moment(text) for text in marks) if moment is not None and moment <= now]
+    if last is not None:
+        since.append(last)
+    return (not since or now - max(since) > SILENT_AFTER), last
+
+
+def _moment(text: str) -> dt.datetime | None:
+    try:
+        moment = dt.datetime.fromisoformat(text) if text else None
+    except ValueError:
+        return None
+    return moment if moment is not None and moment.tzinfo is not None else None
+
+
 def last_outcome(state: Path) -> tuple[bool, str]:
     mark = _mark(state)
     return mark.get("ok") is not False, str(mark.get("note") or "")
@@ -62,7 +84,8 @@ def user_scope(env=os.environ) -> bool:
 def findings(state: Path, *, now: dt.datetime, run, env=os.environ) -> list[tuple[str, str, str]]:
     on = rs.settings(state).on
     try:
-        live = [m for m in j.Rig(LocalLogStore(state / "rig")).machines().values() if m.state in j.LIVE]
+        rig = j.Rig(LocalLogStore(state / "rig"))
+        live = [m for m in rig.machines().values() if m.state in j.LIVE]
     except StorageCorrupt as err:
         return [("fail", f"the rig journal is damaged: {err}",
                  "run `flotilla rig reap`: it destroys this machine's labelled instances")]
@@ -75,8 +98,8 @@ def findings(state: Path, *, now: dt.datetime, run, env=os.environ) -> list[tupl
                       "files run only in those projects' sessions",
                       "install it for the user: `claude plugin install flotilla@flotilla --scope user`"))
     if live:
-        last = last_reap(state)
-        if last is None or now - last > SILENT_AFTER:
+        quiet, last = silent(state, rig, now)
+        if quiet:
             when = last.isoformat(timespec="minutes") if last else "never"
             found.append(("fail", f"the reaper is silent (last pass: {when}) while a machine lives",
                           "is cron running on this machine? run `flotilla rig reap` by hand now"))

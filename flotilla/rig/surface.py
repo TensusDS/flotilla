@@ -73,9 +73,9 @@ def items(state: Path, now: dt.datetime, project: str = "") -> list[Item]:
             found.append(_item(f"machine {machine.id} provisioning for {minutes} min (instance {machine.instance})",
                                machine.created, f"rig:slow:{machine.id}"))
     if live:
-        last = health.last_reap(state)
+        quiet, _ = health.silent(state, rig, now)
         ok, note = health.last_outcome(state)
-        if last is None or now - last > health.SILENT_AFTER:
+        if quiet:
             found.append(_item("the reaper is silent while a machine lives - is cron running? `flotilla rig reap` now",
                                "", f"rig:silent:{_loud(now)}"))
         elif not ok:

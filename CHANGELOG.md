@@ -3,6 +3,31 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.15.0 - 2026-10-14
+
+From a field report on twosuns (flotilla 0.10.2, 2026-10-14): two runs a minute apart failed on the same stale vast
+offer, each leaving a failed machine that held the one-machine ceiling; a run told to wait 900 s was refused in 0 s;
+and `flotilla rig` called the reaper silent while cron was firing.
+
+- **A stale offer is passed over.** `rig up` and `rig run` took the cheapest offer and nothing else: when vast
+  answered that it no longer rents it ("no_such_ask ... is not available") while its search still listed it, every
+  run failed the same way until vast dropped it. Now the next offer is tried, up to five, all within the same
+  ceilings, and the refusal says how many were tried. Any other failure is refused at once as before: it may come
+  after vast made the machine, and a second try could pay for two.
+- **A try that rented nothing frees the machine ceiling at once.** A machine refused for no offer, or for offers
+  that were all gone, was left failed until the next reaper pass, holding the one-machine ceiling; vast never made
+  it, so it now leaves at once. A failure that may have made a machine still waits for the reaper to look for it.
+- **`rig run --wait` waits for an offer too.** It waited only for room on a machine, so an empty market came back
+  in 0 s. Now it asks the market again every minute until its `--wait`, says so while it waits, never tries again
+  an offer it found gone, and is refused (exit 2) "no offer within the ceilings within --wait" if nothing turned
+  up; a run whose last wait was for room still ends "no room within --wait" (exit 3). Both name the seconds waited,
+  which the last line's own count leaves out. Nothing is spent while it waits.
+- **The reaper is no longer called silent just after it was armed again.** With nothing to guard it removes its own
+  crontab line - in the report, at 05:05, when the last session closed - and the evening's session put it back;
+  until its first pass, `flotilla rig`, `flotilla doctor` and the fleet's attention list compared now with 05:05
+  and asked whether cron was running. Silence is now counted from the later of the last pass and the opening of
+  the session that needed the reaper again; a mark from a clock that ran ahead counts for nothing.
+
 ## 0.14.0 - 2026-10-13
 
 - **Only a post that may land pushes to trunk or a tag, or merges a pull request.** The sender was "the only

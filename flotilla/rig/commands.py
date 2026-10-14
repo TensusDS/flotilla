@@ -114,9 +114,9 @@ def _status(state: Path, settings: rs.RigSettings) -> int:
     from flotilla.rig import surface
     for text in surface.run_lines(rig, _now()):
         print(text)
-    last = health.last_reap(state)
+    quiet, last = health.silent(state, rig, _now())
     ok, note = health.last_outcome(state)
-    if live and (last is None or _now() - last > health.SILENT_AFTER):
+    if live and quiet:
         print(f"REAPER SILENT: last pass {_hhmm(last) if last else 'never'} while a machine lives - is cron running "
               "here? run `flotilla rig reap` now")
     elif last:
@@ -580,10 +580,37 @@ def _stop_on_machine(state: Path, rig, run) -> bool:
         return False
 
 
+#: How many offers one raise tries when the service says the one before is gone (field report of 2026-10-14).
+TRIES = 5
+#: What `raise_machine(market=True)` answers when the market has nothing within the ceilings now: a run that may
+#: wait asks again later. `rig up` answers 2 for it, as it always did.
+NO_OFFER = 4
+
+
+def _never_made(rig: j.Rig, machine_id: str, reason: str) -> bool:
+    """A machine the service never made holds nothing: it leaves the ceiling at once instead of after a reap. False
+    when it changed meanwhile - the reaper drained it, a peer's call adopted an instance - and is left as it stands."""
+    try:
+        if rig.move(machine_id, j.FAILED, reason=reason, expect={"state": j.REQUESTED, "instance": ""}) is None:
+            return False
+    except j.RigError:
+        return False
+    rig.move(machine_id, j.GONE, reason=f"{reason}; it never had an instance")
+    return True
+
+
+def _changed(machine_id: str) -> None:
+    print(f"refused: machine {machine_id} changed while it was asked for (the reaper drained it, or another call "
+          "took it); it is left as it stands")
+
+
 def raise_machine(state: Path, settings: rs.RigSettings, *, who: str, why: str, root, wait: float,
-                  watchdog: int) -> int:
+                  watchdog: int, market: bool = False, passed_over: set | None = None) -> int:
     """Raise one machine in the person's open session, or resume the one coming up: 0 ready, 2 refused, 3 still
-    coming (call again). `rig up` and `rig run` both come here."""
+    coming (call again). `rig up` and `rig run` both come here. `market`: answer NO_OFFER, not 2, when nothing
+    within the ceilings could be rented now. `passed_over`: offer ids a caller that asks again found gone before,
+    skipped and added to."""
+    passed_over = set() if passed_over is None else passed_over
     if not settings.on:
         print(f"refused: {rs.OFF_LINE}")
         return 2
@@ -650,17 +677,35 @@ def raise_machine(state: Path, settings: rs.RigSettings, *, who: str, why: str, 
         want = {"gpus": list(wanted.gpus), "max_hourly": settings.max_hourly, "min_reliability": 0.98,
                 "disk_gb": wanted.disk_gb, "limit": 64}
         offers = found.offers(want)
+        ceilings = f"{settings.max_hourly:.2f} $/h, datacenter, {', '.join(wanted.gpus) or 'any GPU'}"
+        offers = [item for item in offers if item.offer not in passed_over][:TRIES]   # found gone earlier this run
         if not offers:
-            rig.move(machine.id, j.FAILED, reason="no offer within the ceilings")
-            print(f"refused: no offer within the ceilings ({settings.max_hourly:.2f} $/h, datacenter, "
-                  f"{', '.join(wanted.gpus) or 'any GPU'}); machine {machine.id} is failed and will be reaped")
-            return 2
-        offer = offers[0]
+            if not _never_made(rig, machine.id, "no offer within the ceilings"):
+                _changed(machine.id)
+                return 2
+            print(f"refused: no offer within the ceilings ({ceilings}); machine {machine.id} was never made and "
+                  "holds nothing")
+            return NO_OFFER if market else 2
         SSH_KEY()   # a key that cannot be made fails before money is spent
-        instance = found.create(offer.offer, image=wanted.image, disk_gb=wanted.disk_gb,
-                                env={"FLOTILLA_WATCHDOG_MINUTES": str(watchdog),
-                                     "NVIDIA_DRIVER_CAPABILITIES": "all"},
-                                onstart=found.onstart(), label=machine.label)
+        instance, gone = None, []
+        for offer in offers:   # a stale ask lists but no longer rents (field report of 2026-10-14)
+            try:
+                instance = found.create(offer.offer, image=wanted.image, disk_gb=wanted.disk_gb,
+                                        env={"FLOTILLA_WATCHDOG_MINUTES": str(watchdog),
+                                             "NVIDIA_DRIVER_CAPABILITIES": "all"},
+                                        onstart=found.onstart(), label=machine.label)
+                break
+            except provider.OfferGone as err:   # nothing was made: the next offer may be tried
+                gone.append(offer.offer)
+                passed_over.add(offer.offer)
+                print(f"note: offer {offer.offer} is gone ({str(err)[:160]}); trying the next")
+        if instance is None:
+            if not _never_made(rig, machine.id, f"{len(gone)} offers tried, all gone"):
+                _changed(machine.id)
+                return 2
+            print(f"refused: {len(gone)} offers tried, all gone - vast still listed them but no longer rents them "
+                  f"({ceilings}); machine {machine.id} was never made and holds nothing")
+            return NO_OFFER if market else 2
     except (provider.ProviderError, sshkey.KeyError_) as err:
         rig.move(machine.id, j.FAILED, reason=f"create failed: {str(err)[:200]}")
         print(f"refused: {err}; machine {machine.id} is failed - if the service made it anyway, the reaper finds it "

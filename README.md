@@ -445,7 +445,10 @@ rented machine with `flotilla rig run` and gets its output, its exit code and it
   image is refused and its request relayed as `! flotilla rig allow-image <image> --for rN`.
 - **Inside a session a seat raises a machine with `flotilla rig up`** - short calls (`--wait`, 90 seconds by default) that
   resume the machine coming up rather than make a second one. It refuses an image you have not allowed and a machine
-  that would pass the session's budget. vast datacenter hosts only.
+  that would pass the session's budget. vast datacenter hosts only. It takes the cheapest offer within your
+  ceilings, and when vast answers that the offer can no longer be rented - its listing lags behind its market - the
+  next one, up to five, all within the same ceilings; any other failure is refused at once, since it may come after
+  the machine was made. A try that rented nothing frees the machine ceiling at once rather than at the next reap.
 - **A watchdog runs on the machine** and asks the service to destroy it (or, failing that, to stop it)
   `--watchdog-minutes` (default 45, 5 to 45) after our last heartbeat. `rig run` renews the heartbeat and the lease every 5
   minutes while it runs; an idle machine is given back after 15 minutes. It needs curl, node or python3 in the image. On vast the destroy is allowed (live check, 2026-10-07).
@@ -457,7 +460,9 @@ rented machine with `flotilla rig run` and gets its output, its exit code and it
     memory and GPU memory fit what the running runs leave (and past two runs, its cores), the longest first and
     short ones filling the rest; a run waiting 10 minutes is senior, and later runs leave it the room it needs.
     Past two runs the machine's live free memory and GPU memory must agree too. A waiting run says why it waits,
-    and keeps waiting for `--wait` (900 s);
+    and keeps waiting for `--wait` (900 s) - for an offer too: with nothing to rent within your ceilings it asks the
+    market again every minute, spending nothing until something is rented and never trying again an offer it
+    found gone;
   - the revision travels once per machine (`git archive`, checked by sha256 there); each run works in its own copy
     and runs the profile's setup (`[rig] setup_command`, else `[tests] setup_command`) itself, with download caches
     shared on the machine;
@@ -473,7 +478,8 @@ rented machine with `flotilla rig run` and gets its output, its exit code and it
   - ssh reads none of your ssh config (no agent forwarding to a stranger's host);
   - the exit code is the command's; `124` its ceiling (`[rig] max_run_seconds`, default 1800); `75` the connection
     broke (the machine is asked how the run ended; one that cannot be asked for two minutes is drained, under every
-    run on it); `130` stopped by a signal; `2` refused; `3` no room within `--wait`. The last line, on stdout and
+    run on it); `130` stopped by a signal; `2` refused (with no offer within `--wait`, it says so); `3` no room
+    within `--wait`. The last line, on stdout and
     stderr, names the verdict; `flotilla rig` keeps it;
   - each run is measured on the machine (seconds, peak memory, cores, GPU memory), and those measurements are the
     estimates the next runs are packed by; the machine's size is its container's, not its host's.
@@ -506,7 +512,8 @@ rented machine with `flotilla rig run` and gets its output, its exit code and it
   only when a later listing no longer shows it. After three passes it says STUCK. An instance without this machine's
   flotilla label - one you made by hand - is never touched.
 - If cron does not run on this machine (WSL by default), `flotilla rig` and `flotilla doctor` say the reaper is
-  silent while anything lives.
+  silent while anything lives. Silence is counted from the later of the reaper's last pass and the opening of the
+  session that needed it again, since its line was gone while nothing needed it.
 - Limits of `rig run`: host keys are trusted on first use, per machine; a process that clears its environment
   escapes the run's tag and outlives its stop; the image needs GNU tar and coreutils.
 - Limit: every session runs as your user. A shell command that writes these files is not caught; the guards close

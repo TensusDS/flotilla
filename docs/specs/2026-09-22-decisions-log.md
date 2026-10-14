@@ -1592,6 +1592,31 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    is known by the name it was started under; in the person's own session a push hidden in a script is not told
    apart from theirs.
 
+237. **A stale offer is passed over; nothing rented frees the ceiling; a run waits for an offer** (Claude Code
+   session with the person, 2026-10-14; field report from twosuns on 0.10.2). `raise_machine` took `offers[0]` and
+   created it once; vast's search still listed an ask it no longer rented (400, "error 404/3603: no_such_ask ...
+   is not available"), so two runs a minute apart failed on the same id. Now up to five offers are tried, within
+   the same ceilings, and only on that answer: the vast adapter raises `OfferGone` for a 400/404/410 naming
+   `no_such_ask` or "Instance type by id" (not "is not available" alone, which may be said of an image that no
+   other offer cures), the wrapper keeps the type, and anything else - a timeout above all, which
+   may come after vast made the machine - is refused at once, since a second create could pay for two. A machine
+   that was never made (no offer, or every offer gone) moves failed and then gone in the same call and frees the
+   machine ceiling; one that may have been made stays failed for the reaper. `rig run --wait` waited for room but
+   not for an offer: `raise_machine(market=True)` answers `NO_OFFER` and the run asks again every 60 s until its
+   deadline, refused "no offer within the ceilings within --wait"; `rig up` keeps its exit 2. A waiting run
+   carries the offers it found gone (`passed_over`) so five stale asks at the top are not the only five it ever
+   tries, and the two journal moves of a machine never made expect it requested with no instance - a machine the
+   reaper drained or a peer took over meanwhile is left as it stands. The report's third
+   item, "REAPER SILENT" with cron running, was not an idle pass that records nothing - every pass stamps
+   `last-reap` - but the reaper's self-removing crontab line: the last session closed at 05:05, the line went, the
+   evening's session put it back, and until the first pass the status compared now with 05:05. Silence is counted
+   from the later of the last pass and an open session's `opened` - only opening a session arms the reaper again;
+   a machine's `requested`, as first written, let each new request restart the clock - and a mark ahead of now
+   counts for nothing, in one function for `flotilla rig`, `flotilla doctor` and the attention list. A fresh
+   reader found the blocker in the first version: one "no offer" answer marked the whole wait as a wait for an
+   offer, so a run left waiting for a machine coming up ended "no offer" (exit 2) instead of "no room" (exit 3);
+   the run now reads only its last answer. 25 mutations of the fix, each seen red.
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

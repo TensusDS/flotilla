@@ -18,6 +18,10 @@ class ProviderError(RuntimeError):
     """The service could not be asked, or its answer cannot be trusted."""
 
 
+class OfferGone(ProviderError):
+    """The service says the offer can no longer be rented: nothing was made, so another offer may be tried."""
+
+
 @dataclass(frozen=True)
 class Listed:
     instance: str
@@ -96,8 +100,14 @@ class Rented:
         return [item for item in found if item.datacenter and item.offer.isascii() and item.offer.isdigit()]
 
     def create(self, offer: str, *, image: str, disk_gb: float, env: dict, onstart: str, label: str) -> str:
-        found = self._ask(lambda key: self.adapter.create(key, offer, image=image, disk_gb=disk_gb, env=env,
-                                                           onstart=onstart, label=label))
+        gone = getattr(self.adapter, "OfferGone", None)
+        secret = self._secret()
+        try:
+            found = self.adapter.create(secret, offer, image=image, disk_gb=disk_gb, env=env, onstart=onstart,
+                                        label=label)
+        except self.adapter.AdapterError as err:
+            said = scrub_text(str(err), [secret])
+            raise (OfferGone(said) if gone is not None and isinstance(err, gone) else ProviderError(said)) from None
         if not isinstance(found, str) or not found.isascii() or not found.isdigit():
             raise ProviderError(f"{self.name} answered no instance id for offer {offer}")
         return found
