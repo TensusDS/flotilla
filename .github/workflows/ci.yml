@@ -20,7 +20,8 @@ jobs:
         os: [ubuntu-latest, macos-latest]
         python: ["3.11", "3.12", "3.13"]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    # The macOS legs take 11-15 minutes (v0.15.0: 14:51 on 3.12; v0.14.0 ran out on 3.13).
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
