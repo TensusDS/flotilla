@@ -3,6 +3,22 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.16.0 - 2026-10-15
+
+- **The hours and budget in the line you paste are yours to set.** When a seat asks for a machine and no session
+  is open, the orchestrator hands you `! flotilla rig open --hours 2 --budget 1 --for rN`; the 2 and the 1 were
+  written into the code in three places. They are now `rig_default_hours` and `rig_default_budget` in
+  `machine.toml`, kept when the machine is measured again, and one function writes the line for all three. The
+  suggested hours never go above `rig_max_hours`, and the numbers read back exactly as set, so the line is never
+  refused by the ceiling it came from. `rig open` still takes `--hours` and `--budget` from you every time: the
+  suggestion fills in the line, it opens nothing.
+- **A ceiling or suggestion that is not a positive finite number reads as its default.** TOML spells infinity
+  `inf`: `rig_max_hours = inf` was taken as written, so no session was ever too long, and `rig_max_hourly = inf`
+  refused every machine with a misleading "would pass 90 % of its budget" (`rig_max_machines = inf` already read
+  as 1). Both now read as their defaults, 8 hours and 0.60 $. An integer too large for a float, which TOML also
+  allows, made every reader of the settings fail - the orchestrator's attention list among them; it reads as its
+  default too.
+
 ## 0.15.0 - 2026-10-14
 
 From a field report on twosuns (flotilla 0.10.2, 2026-10-14): two runs a minute apart failed on the same stale vast

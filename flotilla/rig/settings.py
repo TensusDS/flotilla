@@ -3,6 +3,8 @@ sections 4-6).
 
 Off unless the person ran `flotilla rig enable` (which writes exactly `rig = "on"`): a value nobody meant - `yes`,
 `1`, a torn file - is off. A malformed ceiling falls back to its default, never above it: doubt lowers a ceiling.
+The person's suggested hours and budget only fill in the `rig open` line the orchestrator hands them to paste; they
+never open anything, and `rig open` still takes both numbers from the person each time.
 
 The machine key names which field machine made an instance, so two machines on one provider account never reap each
 other's. It is written once with a backup; a damaged one is recovered from the backup and never silently replaced,
@@ -13,6 +15,7 @@ review of 2026-10-06).
 
 from __future__ import annotations
 
+import math
 import os
 import re
 import secrets as _secrets
@@ -27,7 +30,8 @@ from flotilla.onboard.machine import read_machine
 LABEL_PREFIX = "flotilla:"
 OFF_LINE = ("rig is off on this machine: rented machines are used only after the person runs "
             "`flotilla rig enable --provider <service>` (README, section \"Rented machines (rig)\")")
-DEFAULTS = {"rig_max_machines": 1, "rig_max_hourly": 0.60, "rig_max_hours": 8.0}
+DEFAULTS = {"rig_max_machines": 1, "rig_max_hourly": 0.60, "rig_max_hours": 8.0, "rig_default_hours": 2.0,
+            "rig_default_budget": 1.0}
 #: Node 24 (its Dockerfile's NODE_VERSION, read 2026-10-08): live check 2 met v1.48's node 20.18, which vite 8 refuses.
 DEFAULT_IMAGE = "mcr.microsoft.com/playwright:v1.64.0-noble"
 DEFAULT_IMAGES = (DEFAULT_IMAGE,)
@@ -49,15 +53,23 @@ class RigSettings:
     max_hourly: float = 0.60
     max_hours: float = 8.0
     images: tuple = DEFAULT_IMAGES
+    default_hours: float = 2.0
+    default_budget: float = 1.0
 
 
 def _number(data: dict, key: str, *, whole: bool):
     value = data.get(key, DEFAULTS[key])
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value or value <= 0:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return DEFAULTS[key]
+    try:
+        number = float(value)
+    except OverflowError:   # a TOML integer has no size limit
+        return DEFAULTS[key]
+    if not math.isfinite(number) or number <= 0:
         return DEFAULTS[key]
     if whole:
-        return int(value) if float(value).is_integer() else DEFAULTS[key]
-    return float(value)
+        return int(value) if number.is_integer() else DEFAULTS[key]
+    return number
 
 
 def settings(state: Path) -> RigSettings:
@@ -75,7 +87,24 @@ def settings(state: Path) -> RigSettings:
     return RigSettings(on=data.get("rig") == "on", provider=provider if isinstance(provider, str) else "",
                        max_machines=_number(data, "rig_max_machines", whole=True),
                        max_hourly=_number(data, "rig_max_hourly", whole=False),
-                       max_hours=_number(data, "rig_max_hours", whole=False), images=images)
+                       max_hours=_number(data, "rig_max_hours", whole=False), images=images,
+                       default_hours=_number(data, "rig_default_hours", whole=False),
+                       default_budget=_number(data, "rig_default_budget", whole=False))
+
+
+def _plain(value: float) -> str:
+    """A number as the person pastes it: short, and read back as exactly this number - a rounded one could land
+    above the ceiling, and `rig open` would refuse the very line it was handed."""
+    short = f"{value:g}"
+    return short if float(short) == value else repr(value)
+
+
+def open_line(settings: RigSettings, request: str) -> str:
+    """The line the person pastes to open a session for a request: their suggested hours, never above the hours
+    ceiling, and their suggested budget (machine.toml rig_default_hours, rig_default_budget)."""
+    hours = min(settings.default_hours, settings.max_hours)
+    return (f"! flotilla rig open --hours {_plain(hours)} --budget {_plain(settings.default_budget)} "
+            f"--for {request}")
 
 
 def key_path(provider: str, env: Mapping[str, str] = os.environ) -> Path:
