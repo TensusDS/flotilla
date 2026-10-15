@@ -3,6 +3,22 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.16.1 - 2026-10-15
+
+- **A stopped lane run stops all of it.** Past its ceiling, or on `flotilla lane stop`, the lane sent SIGTERM to
+  the run's group and waited for its first process only. A shell script dies on SIGTERM at once, so nothing was
+  killed after it, and a process inside that held SIGTERM - a test runner writing to a file - kept computing after
+  the lane said the run was stopped; the next run then waited behind it as a foreign run. The lane now waits until
+  the whole group is gone and kills what is left after 5 s - and returns only once that is done, where the
+  ceiling's stop ran in a thread `lane run` exited without. A `lane stop` that came while the lane waited for a
+  command that had closed its output stopped nothing; it now stops the group too, and a second signal during the
+  5 s kills what is left at once.
+- **A rented machine's run counts only its own machine's runs as neighbours.** A run's GPU figure is marked shared
+  when another run is on the machine. Any tagged process on the host counted, which on a rented machine is right,
+  but two test suites side by side on one computer saw each other's runs.
+- **The test suite no longer swallows SIGTERM**, and a killed rig run whose verdict goes missing in CI now shows
+  its own output in the failure (it went missing twice on ubuntu with Python 3.13 and could not be reproduced).
+
 ## 0.16.0 - 2026-10-15
 
 - **The hours and budget in the line you paste are yours to set.** When a seat asks for a machine and no session

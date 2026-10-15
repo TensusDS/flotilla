@@ -248,7 +248,10 @@ def test_a_killed_rig_run_stops_its_run_on_the_machine(world, box, tree, tmp_pat
     child.send_signal(signal.SIGTERM)
     child.wait(60)
     run = journal(world).runs()["j1"]
-    assert run.verdict == "stopped" and tagged(box, run.tag) == []
+    # CI lost this verdict twice on ubuntu 3.13 (2026-10-09, 2026-10-15) and nothing here reproduces it: a failure
+    # carries the killed process's own output, so the next one names its cause
+    said = (run.state, run.verdict, child.returncode, (tmp_path / "child.log").read_text(errors="replace")[-3000:])
+    assert run.verdict == "stopped" and tagged(box, run.tag) == [], said
     assert journal(world).machines()["m1"].state == j.READY
 
 

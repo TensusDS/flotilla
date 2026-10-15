@@ -15,6 +15,7 @@ import signal as signals
 import subprocess
 import sys
 import threading
+import time
 from collections import deque
 from dataclasses import dataclass
 
@@ -60,13 +61,32 @@ def _signal_group(process, number) -> None:
         pass
 
 
-def _stop(process) -> None:
-    _signal_group(process, signals.SIGTERM)
+def _group_left(process) -> bool:
+    """Whether anything of the command's group is still there. The leader is reaped first: an unreaped leader
+    would keep the group alive by itself."""
+    process.poll()
     try:
-        process.wait(5)
-    except subprocess.TimeoutExpired:
-        _signal_group(process, signals.SIGKILL)
-        process.wait()
+        os.killpg(process.pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:   # a member that changed its user: still there, and no longer ours to signal
+        return True
+    return True
+
+
+def _stop(process) -> None:
+    """SIGTERM to the group, then SIGKILL to whatever of it is left after 5 s. The leader's death is no sign the
+    group is gone: a shell leader dies at once, while a member that holds SIGTERM - a test runner whose output went
+    to a file - computed on after the lane said stopped (2026-10-15)."""
+    _signal_group(process, signals.SIGTERM)
+    end = time.monotonic() + 5
+    try:
+        while _group_left(process) and time.monotonic() < end:
+            time.sleep(0.05)
+    finally:   # a second signal cutting the grace short means: now
+        if _group_left(process):
+            _signal_group(process, signals.SIGKILL)
+    process.wait()
 
 
 def execute(command: list[str], *, cwd=None, popen=subprocess.Popen, out=None, ceiling: float | None = None) -> RunResult:
@@ -94,14 +114,17 @@ def execute(command: list[str], *, cwd=None, popen=subprocess.Popen, out=None, c
             out.write(line)
             out.flush()
             tail.append(line.rstrip("\n"))
-    except BaseException:
+        status = process.wait()   # inside: a command that closed its output is waited for here, and a signal
+    except BaseException:         # meanwhile must stop its group as one during the reading does
         _stop(process)   # the booking is about to be released; the command must not go on computing under it
         measurer.__exit__(None, None, None)
         raise
     finally:
         if timer is not None:
             timer.cancel()
-    verdict, signal_number, code = verdict_of(process.wait())
+            if over.is_set():   # the ceiling's stop may still be waiting the group out: the lane is not let go first
+                timer.join()
+    verdict, signal_number, code = verdict_of(status)
     measurer.__exit__(None, None, None)
     usage = measurer.usage
     summary = summarize(tail)
