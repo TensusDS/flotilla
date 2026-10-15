@@ -1632,6 +1632,27 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    attention list; it falls back too. A fresh reader of the branch found both the wrong account of `inf` in the
    first wording here and the overflow.
 
+239. **A stop waits for the group; a neighbour is a run of this machine** (Claude Code session with the person,
+   2026-10-15). Three things seen while releasing 0.16.0. The lane's `_stop` sent SIGTERM to the run's group and
+   waited for the leader only: a shell leader dies at once, no SIGKILL followed, and a member holding SIGTERM
+   computed on - a full suite cut at the lane's ceiling outlived it and the next run met it as a foreign run. The
+   stop now polls the group (reaping the leader first, since an unreaped one keeps `killpg(pgid, 0)` answering) and
+   SIGKILLs what is left after 5 s, or at once when a second signal cuts the grace short. A fresh reader found the
+   first version did not reach the case it was for: the ceiling's stop runs in a daemon timer, `execute` returned
+   when the leader died, and `lane run` exited before the timer's SIGKILL - its test passed only because pytest
+   outlived the timer. `execute` now joins that timer, and waits for the command inside its `try`, since a signal
+   during that wait (a command that closed its output) skipped the stop altogether. Their tests run the lane in a
+   process that ends when `execute` returns, as the CLI does. The member held SIGTERM because lane commands run inside pytest leave their
+   SystemExit handler set; a conftest fixture now puts SIGTERM and SIGHUP back after every test (46 tests of two
+   files left it). The rig sampler marked a run shared when any process on the host carried another
+   `FLOTILLA_RUN`; tests run a machine as a directory, so a suite beside another failed
+   `test_a_run_sharing_the_machine_marks_its_measure_shared`. A run now carries `FLOTILLA_CACHE`, its machine's
+   cache, and only tagged processes with the same cache are neighbours; a run started by a plugin before this one
+   carries no cache and is not counted - for the minutes two versions share a machine, a GPU figure may be read as
+   the run's own. The third, `test_a_killed_rig_run_stops_its_run_on_the_machine[0.0]` losing its verdict on
+   ubuntu with Python 3.13 (2026-10-09, 2026-10-15), is not found: CI's Python 3.13.16, one loaded CPU and 28
+   pairings of the two signals' timing all pass here, so the failure now carries the killed process's output.
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
