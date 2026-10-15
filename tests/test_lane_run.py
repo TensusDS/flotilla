@@ -54,10 +54,15 @@ def test_a_run_interrupted_on_our_side_stops_its_command():
     class Broken(io.StringIO):
         def write(self, text):
             raise BrokenPipeError("the reader went away")
+    import time
+    began = time.monotonic()
     with pytest.raises(BrokenPipeError):
         run.execute([sys.executable, "-c", "import time\nwhile True:\n    print('tick', flush=True); time.sleep(0.05)"],
                     popen=popen, out=Broken())
     assert started[0].poll() is not None
+    # a group that obeys SIGTERM is gone at once: its leader, dead but not yet reaped, must not hold the stop for
+    # the whole grace
+    assert time.monotonic() - began < 3
 
 
 def test_a_coloured_summary_is_recorded_plain():
@@ -102,6 +107,31 @@ def test_a_run_past_its_ceiling_is_stopped_with_everything_it_started(tmp_path):
         time.sleep(0.1)
     else:
         raise AssertionError("the grandchild outlived the ceiling")
+
+
+def test_a_member_that_outlives_sigterm_is_killed_though_its_leader_died(tmp_path):
+    """A shell leader dies on SIGTERM at once; a member that outlives it - a test runner holding SIGTERM, its
+    output in a file rather than the lane's pipe - computed on after the lane said stopped, and the next run met
+    it as a foreign run (2026-10-15). The leader's death is no sign the group is gone."""
+    import os
+    import time
+    child = tmp_path / "child.pid"
+    member = "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)"
+    script = (f"import subprocess, sys, time; p = subprocess.Popen([sys.executable, '-c', {member!r}], "
+              f"stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); open(r'{child}', 'w').write(str(p.pid)); "
+              f"time.sleep(60)")
+    result = run.execute([sys.executable, "-c", script], out=io.StringIO(), ceiling=1.5)
+    assert result.verdict == "killed"
+    pid = int(child.read_text())
+    for _ in range(100):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.1)
+    else:
+        os.kill(pid, 9)
+        raise AssertionError("a member that held SIGTERM outlived the stop")
 
 
 def test_a_run_under_its_ceiling_is_untouched():
