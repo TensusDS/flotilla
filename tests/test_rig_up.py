@@ -240,3 +240,10 @@ def test_raise_machine_is_what_up_does(world):
     code = commands.raise_machine(world["state"], rs.settings(world["state"]), who="minor 8", why="x",
                                   root=world["root"], wait=60.0, watchdog=45)
     assert code == 0 and [m.state for m in journal(world).machines().values()] == [j.READY]
+
+
+def test_up_without_a_session_suggests_the_persons_hours_and_budget(world):
+    (world["state"] / "machine.toml").write_text(render_toml({"rig": "on", "rig_provider": "vast",
+                                                              "rig_default_hours": 4, "rig_default_budget": 3}))
+    code, out = up(world, "--why", "frames")
+    assert code == 2 and "! flotilla rig open --hours 4 --budget 3 --for r1" in out

@@ -53,7 +53,8 @@ def _loud(now: dt.datetime) -> str:
 
 
 def items(state: Path, now: dt.datetime, project: str = "") -> list[Item]:
-    on = rs.settings(state).on
+    settings = rs.settings(state)
+    on = settings.on
     rig = j.Rig(LocalLogStore(state / "rig"), clock=lambda: now)
     try:
         machines, sessions, requests = rig.machines(), rig.sessions(), rig.requests()
@@ -106,7 +107,7 @@ def items(state: Path, now: dt.datetime, project: str = "") -> list[Item]:
         elif open_:
             continue
         else:
-            line = f"! flotilla rig open --hours 2 --budget 1 --for {request.id}"
+            line = rs.open_line(settings, request.id)
             first = "" if on else "rig is off: the person runs `! flotilla rig enable --provider vast` first, then "
             text = (f"{_who(request.who)} asks for a machine; no session is open - {first}ask the person to paste: "
                     f"{line}")

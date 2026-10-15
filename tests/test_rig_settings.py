@@ -170,3 +170,53 @@ def test_the_allowed_images_default_to_the_shipped_one_and_are_the_persons(tmp_p
     write(state, render_toml({"rig": "on", "rig_images": []}))
     assert rs.settings(state).images == ()
     assert "rig_images" in PERSON_KEYS
+
+
+def test_the_suggested_open_line_is_two_hours_and_one_dollar_on_a_fresh_machine(tmp_path):
+    got = rs.settings(tmp_path / "state")
+    assert (got.default_hours, got.default_budget) == (2.0, 1.0)
+    assert rs.open_line(got, "r1") == "! flotilla rig open --hours 2 --budget 1 --for r1"
+
+
+def test_the_person_sets_the_suggested_hours_and_budget_and_measuring_keeps_them(tmp_path):
+    state = tmp_path / "state"
+    write_machine(state, {"schema": 1})
+    set_person_keys(state, rig_default_hours=4, rig_default_budget=3.5)
+    write_machine(state, {"schema": 1, "cpu_count": 8})
+    got = rs.settings(state)
+    assert (got.default_hours, got.default_budget) == (4.0, 3.5)
+    assert rs.open_line(got, "r5") == "! flotilla rig open --hours 4 --budget 3.5 --for r5"
+    assert {"rig_default_hours", "rig_default_budget"} <= set(PERSON_KEYS)
+
+
+@pytest.mark.parametrize("value", ['"four"', "-1", "0", "true", "inf", "nan", "[2]"])
+def test_a_malformed_suggestion_falls_back_to_its_default(tmp_path, value):
+    state = tmp_path / "state"
+    write(state, f"rig = \"on\"\nrig_default_hours = {value}\nrig_default_budget = {value}\n")
+    got = rs.settings(state)
+    assert (got.default_hours, got.default_budget) == (2.0, 1.0)
+
+
+def test_the_suggested_hours_are_never_above_the_hours_ceiling(tmp_path):
+    state = tmp_path / "state"
+    write(state, render_toml({"rig": "on", "rig_default_hours": 10, "rig_max_hours": 8}))
+    assert rs.open_line(rs.settings(state), "r2") == "! flotilla rig open --hours 8 --budget 1 --for r2"
+    write(state, render_toml({"rig": "on", "rig_max_hours": 1.5}))
+    assert rs.open_line(rs.settings(state), "r2") == "! flotilla rig open --hours 1.5 --budget 1 --for r2"
+
+
+def test_the_pasted_numbers_read_back_as_exactly_the_numbers_meant(tmp_path):
+    """A rounded print could land above the ceiling, and `rig open` would refuse the very line it was given."""
+    state = tmp_path / "state"
+    write(state, render_toml({"rig": "on", "rig_max_hours": 1.9999996, "rig_default_budget": 0.1234567}))
+    line = rs.open_line(rs.settings(state), "r3").split()
+    assert float(line[line.index("--hours") + 1]) == 1.9999996
+    assert float(line[line.index("--budget") + 1]) == 0.1234567
+
+
+def test_an_infinite_ceiling_is_malformed_not_unlimited(tmp_path):
+    """TOML spells infinity `inf`; read as a ceiling it would be no ceiling at all, so doubt lowers it."""
+    state = tmp_path / "state"
+    write(state, "rig = \"on\"\nrig_max_machines = inf\nrig_max_hourly = inf\nrig_max_hours = inf\n")
+    got = rs.settings(state)
+    assert (got.max_machines, got.max_hourly, got.max_hours) == (1, 0.60, 8.0)

@@ -629,7 +629,7 @@ def raise_machine(state: Path, settings: rs.RigSettings, *, who: str, why: str, 
     if not open_:
         asked = rig.ask(who, why, project=project)
         print(f"refused: no rig session is open; request {asked.id} is recorded for the orchestrator, who asks the "
-              f"person to paste: ! flotilla rig open --hours 2 --budget 1 --for {asked.id}")
+              f"person to paste: {rs.open_line(settings, asked.id)}")
         return 2
     session = open_[0]
     found = PROVIDERS(settings.provider)

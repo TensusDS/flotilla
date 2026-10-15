@@ -401,7 +401,7 @@ def _main(state: Path, settings: rs.RigSettings, args) -> int:
     if session is None:
         asked = rig.ask(who, args.why, project=key)
         _say(f"rig run: refused (exit 2) - no rig session is open; request {asked.id} is recorded for the "
-             f"orchestrator, who asks the person to paste: ! flotilla rig open --hours 2 --budget 1 --for {asked.id}")
+             f"orchestrator, who asks the person to paste: {rs.open_line(settings, asked.id)}")
         return 2
     one_pass = reaper.PASS.total_seconds() / 3600
     ahead = rig.spent(session.id) + (rig.rate(session.id) + settings.max_hourly) * one_pass

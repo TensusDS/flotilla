@@ -438,7 +438,10 @@ rented machine with `flotilla rig run` and gets its output, its exit code and it
 - **Money is spent only inside a session you open.** A seat that needs a machine and finds no session open is
   refused, and its request goes to the orchestrator, which relays a ready line to paste:
   `! flotilla rig open --hours 2 --budget 1 --for r3`. The line carries the request's id, never a session's text;
-  `--for` reads the reason back from the journal. `flotilla rig close` ends the session and the reaper drains its
+  `--for` reads the reason back from the journal. Its hours and budget are your suggestions in `machine.toml`,
+  `rig_default_hours` (2, never above `rig_max_hours`) and `rig_default_budget` (1 $); they only fill in the line,
+  so you still name the money each time you paste it, and you change the numbers before pasting when one task
+  needs more. `flotilla rig close` ends the session and the reaper drains its
   machines. Requests belong to the project that made them and expire after a day.
 - **Images are yours to allow.** `rig enable` writes `rig_images` into `machine.toml` with one default
   (`mcr.microsoft.com/playwright:v1.64.0-noble`, Node 24); a project's `[rig] image` is only a wish. A seat asking for another
@@ -495,7 +498,7 @@ rented machine with `flotilla rig run` and gets its output, its exit code and it
 - `flotilla fleet` shows rig lines first: the open session, each machine, and loud lines for a STUCK machine, a
   silent reaper or a failed one, repeated every half hour until they clear.
 - Ceilings, yours too, in `~/.local/state/flotilla/machine.toml`: `rig_max_machines` (1), `rig_max_hourly`
-  (0.60 $), `rig_max_hours` (8).
+  (0.60 $), `rig_max_hours` (8). A value that is not a positive finite number reads as its default.
 - `flotilla rig` shows sessions, machines, what they cost at least, and when the reaper last ran. Beside the local
   count it shows the account's credit at the session's open and now, and how far it moved, read when the session
   opens and at the end of every reaper pass. The local count is a floor for the session (traffic and storage are

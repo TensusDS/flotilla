@@ -253,3 +253,13 @@ def test_a_credit_never_read_says_so(tmp_path):
     rig(state).open_session("p", "night frames", hours=3, budget=2.0)
     said = "\n".join(surface.lines(state, T0))
     assert "account credit not read yet" in said
+
+
+def test_the_line_for_a_request_carries_the_persons_suggested_hours_and_budget(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "machine.toml").write_text(render_toml({"rig": "on", "rig_provider": "vast", "rig_default_hours": 4,
+                                                     "rig_default_budget": 3}))
+    rig(state).ask("main session 3", "night frames", project="/work/twosuns")
+    [text] = texts(state, T0)
+    assert text.endswith("! flotilla rig open --hours 4 --budget 3 --for r1")

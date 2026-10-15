@@ -1617,6 +1617,17 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    offer, so a run left waiting for a machine coming up ended "no offer" (exit 2) instead of "no room" (exit 3);
    the run now reads only its last answer. 25 mutations of the fix, each seen red.
 
+238. **The suggested hours and budget are the person's, and only suggest** (Claude Code session with the person,
+   2026-10-14/15). The line the orchestrator relays to open a session for a request carried `--hours 2 --budget 1`
+   as literals in three places (`rig up`'s and `rig run`'s refusal, the attention list). They are now
+   `rig_default_hours` and `rig_default_budget` in `machine.toml`, among `PERSON_KEYS`, read like the ceilings, and
+   `settings.open_line` writes the line for all three. `rig open` keeps both flags required, as the person agreed:
+   if it took the budget from the file, the person would stop seeing the money at the moment it is spent. The
+   suggested hours are capped by `rig_max_hours`, and a number is printed short only when it reads back exactly,
+   else in full, so a rounded print never lands above the ceiling and gets the line refused. Reading the ceilings
+   for this showed `math.isfinite` missing: `inf` is valid TOML and passed as a ceiling no number is over; it now
+   falls back to the default like nan, zero or a word - doubt lowers a ceiling.
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

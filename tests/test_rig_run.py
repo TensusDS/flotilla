@@ -691,3 +691,11 @@ def test_a_run_waits_while_its_sessions_machine_is_being_given_back(world, box, 
     task = waiting_task(world, tree, rig, session, ("exact:a",), pid=80)
     assert not task.take_room(rig.sessions()[session.id], time.monotonic() + 0.5)
     assert task.verdict == "waited" and task.code == 3
+
+
+def test_no_session_suggests_the_persons_hours_and_budget(world, box, tree):
+    from flotilla.onboard.tomlw import render_toml
+    (world["state"] / "machine.toml").write_text(render_toml({"rig": "on", "rig_provider": "vast",
+                                                              "rig_default_hours": 4, "rig_default_budget": 3}))
+    code, out = rig_run(world, tree, "--", "true")
+    assert code == 2 and "! flotilla rig open --hours 4 --budget 3 --for r1" in out
