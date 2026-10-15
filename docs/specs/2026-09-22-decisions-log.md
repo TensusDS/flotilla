@@ -1625,8 +1625,12 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    if it took the budget from the file, the person would stop seeing the money at the moment it is spent. The
    suggested hours are capped by `rig_max_hours`, and a number is printed short only when it reads back exactly,
    else in full, so a rounded print never lands above the ceiling and gets the line refused. Reading the ceilings
-   for this showed `math.isfinite` missing: `inf` is valid TOML and passed as a ceiling no number is over; it now
-   falls back to the default like nan, zero or a word - doubt lowers a ceiling.
+   for this showed `math.isfinite` missing: `inf` is valid TOML, and `rig_max_hours = inf` was a ceiling no session
+   was over, while `rig_max_hourly = inf` refused every machine through the budget check (the machine ceiling
+   already fell back, since `inf` is not whole). Both now fall back to the default like nan, zero or a word. An
+   integer past a float's range, also valid TOML, raised `OverflowError` from `settings()` - and so from the
+   attention list; it falls back too. A fresh reader of the branch found both the wrong account of `inf` in the
+   first wording here and the overflow.
 
 ## Open questions (for the foundation spec)
 

@@ -59,11 +59,17 @@ class RigSettings:
 
 def _number(data: dict, key: str, *, whole: bool):
     value = data.get(key, DEFAULTS[key])
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return DEFAULTS[key]
+    try:
+        number = float(value)
+    except OverflowError:   # a TOML integer has no size limit
+        return DEFAULTS[key]
+    if not math.isfinite(number) or number <= 0:
         return DEFAULTS[key]
     if whole:
-        return int(value) if float(value).is_integer() else DEFAULTS[key]
-    return float(value)
+        return int(value) if number.is_integer() else DEFAULTS[key]
+    return number
 
 
 def settings(state: Path) -> RigSettings:

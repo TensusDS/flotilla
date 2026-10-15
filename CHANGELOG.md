@@ -12,9 +12,12 @@ each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2
   suggested hours never go above `rig_max_hours`, and the numbers read back exactly as set, so the line is never
   refused by the ceiling it came from. `rig open` still takes `--hours` and `--budget` from you every time: the
   suggestion fills in the line, it opens nothing.
-- **An infinite ceiling is no longer read as no ceiling.** TOML spells infinity `inf`, and `rig_max_hours = inf`
-  (or the hourly or machine ceiling) was taken as written, so nothing was ever over it. Like any other value that
-  is not a positive number, it now reads as its default.
+- **A ceiling or suggestion that is not a positive finite number reads as its default.** TOML spells infinity
+  `inf`: `rig_max_hours = inf` was taken as written, so no session was ever too long, and `rig_max_hourly = inf`
+  refused every machine with a misleading "would pass 90 % of its budget" (`rig_max_machines = inf` already read
+  as 1). Both now read as their defaults, 8 hours and 0.60 $. An integer too large for a float, which TOML also
+  allows, made every reader of the settings fail - the orchestrator's attention list among them; it reads as its
+  default too.
 
 ## 0.15.0 - 2026-10-14
 

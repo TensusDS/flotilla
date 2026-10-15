@@ -220,3 +220,16 @@ def test_an_infinite_ceiling_is_malformed_not_unlimited(tmp_path):
     write(state, "rig = \"on\"\nrig_max_machines = inf\nrig_max_hourly = inf\nrig_max_hours = inf\n")
     got = rs.settings(state)
     assert (got.max_machines, got.max_hourly, got.max_hours) == (1, 0.60, 8.0)
+
+
+@pytest.mark.parametrize("key", ["rig_max_hourly", "rig_max_hours", "rig_default_hours", "rig_default_budget"])
+def test_an_integer_too_large_for_a_float_falls_back_and_breaks_nothing(tmp_path, key):
+    """TOML integers have no size limit; one past a float's range used to raise from every reader of the settings,
+    the orchestrator's attention list among them."""
+    from flotilla.rig import surface
+    import datetime as dt
+    state = tmp_path / "state"
+    write(state, f"rig = \"on\"\n{key} = 1{'0' * 400}\n")
+    got = rs.settings(state)
+    assert (got.max_hourly, got.max_hours, got.default_hours, got.default_budget) == (0.60, 8.0, 2.0, 1.0)
+    assert surface.items(state, dt.datetime(2026, 10, 15, tzinfo=dt.timezone.utc)) == []
