@@ -1,6 +1,8 @@
 import io
 import sys
 
+import pytest
+
 from flotilla.lane import run
 
 
@@ -61,8 +63,8 @@ def test_a_run_interrupted_on_our_side_stops_its_command():
                     popen=popen, out=Broken())
     assert started[0].poll() is not None
     # a group that obeys SIGTERM is gone at once: its leader, dead but not yet reaped, must not hold the stop for
-    # the whole grace
-    assert time.monotonic() - began < 3
+    # the whole grace of 5 s
+    assert time.monotonic() - began < 4
 
 
 def test_a_coloured_summary_is_recorded_plain():
@@ -109,29 +111,104 @@ def test_a_run_past_its_ceiling_is_stopped_with_everything_it_started(tmp_path):
         raise AssertionError("the grandchild outlived the ceiling")
 
 
+# A member that holds SIGTERM and writes its pid only once it does; its leader starts it and sleeps, dying on SIGTERM.
+_MEMBER = ("import os, signal, sys, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+           "open(sys.argv[1], 'w').write(str(os.getpid())); time.sleep(60)")
+
+
+def _leader(pidfile, *, quiet: bool) -> str:
+    """The leader: starts the member with its output away from the lane's pipe, then sleeps. `quiet` also closes
+    the leader's own output, as `exec >log 2>&1` in a script does, so the lane meets the end of its pipe."""
+    close = ("import os; null = os.open(os.devnull, os.O_WRONLY); os.dup2(null, 1); os.dup2(null, 2); "
+             if quiet else "")
+    return (f"{close}import subprocess, sys, time; subprocess.Popen([sys.executable, '-c', {_MEMBER!r}, "
+            f"r'{pidfile}'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); time.sleep(60)")
+
+
+def _gone(pidfile, seconds=12.0) -> bool:
+    import os
+    import time
+    end = time.monotonic() + seconds
+    while not pidfile.exists() and time.monotonic() < end:
+        time.sleep(0.05)
+    pid = int(pidfile.read_text())
+    while time.monotonic() < end:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True
+        time.sleep(0.1)
+    os.killpg(os.getpgid(pid), 9)   # a failed test leaves nothing of the group behind
+    return False
+
+
 def test_a_member_that_outlives_sigterm_is_killed_though_its_leader_died(tmp_path):
     """A shell leader dies on SIGTERM at once; a member that outlives it - a test runner holding SIGTERM, its
     output in a file rather than the lane's pipe - computed on after the lane said stopped, and the next run met
     it as a foreign run (2026-10-15). The leader's death is no sign the group is gone."""
-    import os
-    import time
-    child = tmp_path / "child.pid"
-    member = "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)"
-    script = (f"import subprocess, sys, time; p = subprocess.Popen([sys.executable, '-c', {member!r}], "
-              f"stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); open(r'{child}', 'w').write(str(p.pid)); "
-              f"time.sleep(60)")
-    result = run.execute([sys.executable, "-c", script], out=io.StringIO(), ceiling=1.5)
+    pidfile = tmp_path / "member.pid"
+    result = run.execute([sys.executable, "-c", _leader(pidfile, quiet=False)], out=io.StringIO(), ceiling=3)
     assert result.verdict == "killed"
-    pid = int(child.read_text())
-    for _ in range(100):
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            break
-        time.sleep(0.1)
-    else:
-        os.kill(pid, 9)
-        raise AssertionError("a member that held SIGTERM outlived the stop")
+    assert _gone(pidfile), "a member that held SIGTERM outlived the stop"
+
+
+def test_a_ceilings_stop_is_done_before_the_lane_process_ends(tmp_path):
+    """The ceiling's stop ran in a daemon timer the lane did not wait for: `lane run` returned, released the lane
+    and exited, and the timer died before its SIGKILL (review of 0.16.1). The lane runs here in a process that
+    ends as soon as `execute` returns, as `flotilla lane run` does."""
+    import subprocess
+    pidfile = tmp_path / "member.pid"
+    lane = (f"import io, sys; from flotilla.lane import run; "
+            f"r = run.execute([sys.executable, '-c', {_leader(pidfile, quiet=False)!r}], out=io.StringIO(), "
+            f"ceiling=3); print(r.verdict)")
+    done = subprocess.run([sys.executable, "-c", lane], capture_output=True, text=True, timeout=60)
+    assert done.stdout.strip() == "killed", done.stderr
+    assert _gone(pidfile, seconds=2), "the member outlived the lane process that stopped it"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals")
+def test_a_signal_while_the_lane_waits_for_a_quiet_command_stops_its_group(tmp_path):
+    """A command that closed its output (`exec >log 2>&1`) leaves the lane waiting for it, not reading: a SIGTERM
+    there (`flotilla lane stop`) skipped the stop and left the whole group running (review of 0.16.1)."""
+    import signal
+    import subprocess
+    import time
+    pidfile = tmp_path / "member.pid"
+    lane = (f"import io, signal, sys; from flotilla.lane import run\n"
+            f"def leave(number, frame): raise SystemExit(128 + number)\n"
+            f"signal.signal(signal.SIGTERM, leave)\n"
+            f"run.execute([sys.executable, '-c', {_leader(pidfile, quiet=True)!r}], out=io.StringIO())\n")
+    process = subprocess.Popen([sys.executable, "-c", lane], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    end = time.monotonic() + 15
+    while not pidfile.exists() and time.monotonic() < end:
+        time.sleep(0.05)
+    time.sleep(0.5)   # the leader's output is closed: the lane has met the end of its pipe and waits
+    process.send_signal(signal.SIGTERM)
+    process.wait(30)
+    assert _gone(pidfile, seconds=10), "the group outlived a stop that came while the lane waited"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals")
+def test_a_second_signal_during_the_grace_kills_what_is_left_at_once(tmp_path):
+    """`flotilla lane stop`, then the session ending (SIGHUP) within the 5 s grace: the second signal cut the stop
+    short before its SIGKILL, and the member that held SIGTERM ran on."""
+    import signal
+    import subprocess
+    import time
+    pidfile = tmp_path / "member.pid"
+    lane = (f"import io, signal, sys; from flotilla.lane import run\n"
+            f"def leave(number, frame): raise SystemExit(128 + number)\n"
+            f"signal.signal(signal.SIGTERM, leave); signal.signal(signal.SIGHUP, leave)\n"
+            f"run.execute([sys.executable, '-c', {_leader(pidfile, quiet=False)!r}], out=io.StringIO())\n")
+    process = subprocess.Popen([sys.executable, "-c", lane], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    end = time.monotonic() + 15
+    while not pidfile.exists() and time.monotonic() < end:
+        time.sleep(0.05)
+    process.send_signal(signal.SIGTERM)
+    time.sleep(1.0)   # inside the grace: the member holds SIGTERM, the leader is gone
+    process.send_signal(signal.SIGHUP)
+    process.wait(30)
+    assert _gone(pidfile, seconds=2), "a second signal during the grace left the member running"
 
 
 def test_a_run_under_its_ceiling_is_untouched():
