@@ -2,6 +2,19 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def signal_handlers_are_put_back():
+    """A lane command run in this process sets SIGTERM and SIGHUP to raise SystemExit, for the rest of a CLI
+    process's short life. Left in the test process, a SIGTERM became a failure of whichever test was running and
+    the suite computed on: a run the lane stopped outlived it (2026-10-15)."""
+    import signal
+    numbers = (signal.SIGTERM, signal.SIGHUP)
+    before = {number: signal.getsignal(number) for number in numbers}
+    yield
+    for number, handler in before.items():
+        signal.signal(number, handler)
+
+
+@pytest.fixture(autouse=True)
 def state_dir_per_test(tmp_path, monkeypatch):
     """No test writes into the real state directory: each gets its own unless it sets one."""
     monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "flotilla-state"))
