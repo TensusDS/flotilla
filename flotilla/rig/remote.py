@@ -197,7 +197,7 @@ cp -a "$tmp/." "$run/"
 rm -rf "$tmp" "$file"
 '''
 
-_SAMPLER = r'''tag=$1 out=$2 parent=$3
+_SAMPLER = r'''tag=$1 out=$2 parent=$3 cache=$4
 peak=0 gpu=-1 shared=0   # -1: no nvidia-smi on this machine, so no GPU figure at all
 declare -A ticks
 gpu_used() {
@@ -220,8 +220,10 @@ while kill -0 "$parent" 2>/dev/null; do   # it ends with its run, however the ru
     used=$(( $(gpu_used) - base ))
     [ "$used" -gt "$gpu" ] && gpu=$used
   fi
-  # another run on this machine makes the machine-wide GPU figure no measure of this run alone
-  if grep -hzoE '^FLOTILLA_RUN=j[0-9]+-[0-9a-f]{8}$' /proc/[0-9]*/environ 2>/dev/null | tr '\0' '\n' | sort -u |
+  # another run on this machine makes the machine-wide GPU figure no measure of this run alone; a run of this
+  # machine shares its cache, so a tagged process with another (another box on one host) is no neighbour
+  mine=$(grep -lzxF "FLOTILLA_CACHE=$cache" /proc/[0-9]*/environ 2>/dev/null)
+  if [ -n "$mine" ] && grep -hzoE '^FLOTILLA_RUN=j[0-9]+-[0-9a-f]{8}$' $mine 2>/dev/null | tr '\0' '\n' | sort -u |
      grep -qvxF "FLOTILLA_RUN=$tag"; then shared=1; fi
   [ "$total" -gt "$peak" ] && peak=$total
   sum=0
@@ -247,9 +249,9 @@ done
 read -r -a stat < "/proc/$$/stat"
 echo "pgrp=${stat[4]} started=$(date +%s)" > "$status.running"
 started=$(date +%s)
-env -u FLOTILLA_RUN bash -c ''' + "'" + _SAMPLER.replace("'", "'\\''") + "'" + r''' sampler "$tag" "$status.peak" "$$" &
+env -u FLOTILLA_RUN bash -c ''' + "'" + _SAMPLER.replace("'", "'\\''") + "'" + r''' sampler "$tag" "$status.peak" "$$" "$cache" &
 sampler=$!
-export FLOTILLA_RUN="$tag" npm_config_cache="$cache/npm" UV_CACHE_DIR="$cache/uv" PIP_CACHE_DIR="$cache/pip"
+export FLOTILLA_RUN="$tag" FLOTILLA_CACHE="$cache" npm_config_cache="$cache/npm" UV_CACHE_DIR="$cache/uv" PIP_CACHE_DIR="$cache/pip"
 export YARN_CACHE_FOLDER="$cache/yarn"
 stopped=0
 timeout -k 10 "$limit" "$@" &

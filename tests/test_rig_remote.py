@@ -244,6 +244,23 @@ def test_cpu_of_a_helper_that_left_the_group_is_counted(tmp_path, monkeypatch):
 
 
 @linux
+def test_a_run_of_another_machine_on_the_same_host_is_not_a_neighbour(tmp_path, monkeypatch):
+    """Runs of one machine share its cache; a tagged process with another cache - another box on this host, as two
+    test suites side by side - is no run on this machine, and must not mark the measure shared."""
+    box = machine(tmp_path, monkeypatch)
+    for tag in (T1, T2):
+        (box / "work/P/runs" / tag).mkdir(parents=True)
+    line = list(run_line(box, T2, "sleep", "8", status=box / "st2"))
+    line[4] = tmp_path / "elsewhere" / "cache"
+    other = subprocess.Popen(remote.ssh_argv("h:1", tmp_path / "k", tmp_path / "kh", remote.line(*line)),
+                             stdin=subprocess.DEVNULL)
+    wait_tagged(box, T2, 1)
+    ssh(tmp_path, *run_line(box, T1, "sleep", "3"), timeout=40)
+    other.wait(30)
+    assert "shared=0" in ssh(tmp_path, remote.STATUS, box / "st").stdout.decode()
+
+
+@linux
 def test_a_run_sharing_the_machine_marks_its_measure_shared(tmp_path, monkeypatch):
     box = machine(tmp_path, monkeypatch)
     for tag in (T1, T2):
