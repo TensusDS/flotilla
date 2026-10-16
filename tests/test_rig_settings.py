@@ -220,6 +220,15 @@ def test_an_infinite_ceiling_is_malformed_not_unlimited(tmp_path):
     write(state, "rig = \"on\"\nrig_max_machines = inf\nrig_max_hourly = inf\nrig_max_hours = inf\n")
     got = rs.settings(state)
     assert (got.max_machines, got.max_hourly, got.max_hours) == (1, 0.60, 8.0)
+    assert got.unusable == ("rig_max_machines", "rig_max_hourly", "rig_max_hours")
+
+
+def test_only_a_key_that_is_set_and_unusable_is_named(tmp_path):
+    """A key left out is the default by choice; a key set to something unreadable is a default by accident."""
+    state = tmp_path / "state"
+    write(state, render_toml({"rig": "on", "rig_max_hours": 5, "rig_default_budget": "x"}))
+    got = rs.settings(state)
+    assert got.unusable == ("rig_default_budget",) and got.max_hours == 5.0
 
 
 @pytest.mark.parametrize("key", ["rig_max_hourly", "rig_max_hours", "rig_default_hours", "rig_default_budget"])

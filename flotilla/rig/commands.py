@@ -97,6 +97,8 @@ def _status(state: Path, settings: rs.RigSettings) -> int:
     word = "on" if settings.on else "OFF (what is still live is drained by the reaper)"
     print(f"rig: {word}, provider {settings.provider or 'none'}; ceilings: {settings.max_machines} machine(s), "
           f"{settings.max_hourly:.2f} $/h, {settings.max_hours:g} h")
+    if settings.unusable:
+        print(f"  not usable numbers in machine.toml, their defaults apply: {', '.join(settings.unusable)}")
     for item in live:
         if item.state == j.STUCK:
             print(f"  STUCK machine {item.id}: instance {item.instance} may still cost money "
@@ -302,7 +304,15 @@ def _open(state: Path, settings: rs.RigSettings, args) -> int:
         print(f"refused: {err}")
         return 2
     if hours > settings.max_hours:
-        print(f"refused: {hours:g} hours is over the {settings.max_hours:g}-hour ceiling (machine.toml rig_max_hours)")
+        source = "machine.toml rig_max_hours"
+        if "rig_max_hours" in settings.unusable:
+            source += f" is not a usable number, so the default {settings.max_hours:g} applies"
+        print(f"refused: {hours:g} hours is over the {settings.max_hours:g}-hour ceiling ({source})")
+        return 2
+    try:
+        _now() + dt.timedelta(hours=hours)
+    except OverflowError:   # a ceiling the person set very high lets through an end no date can hold
+        print(f"refused: {hours:g} hours from now is past the last date the rig journal can write")
         return 2
     rig = _rig(state)
 

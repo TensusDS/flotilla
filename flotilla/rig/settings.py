@@ -55,21 +55,27 @@ class RigSettings:
     images: tuple = DEFAULT_IMAGES
     default_hours: float = 2.0
     default_budget: float = 1.0
+    #: Keys the person set to something that is not a usable number: each reads as its default, and says so.
+    unusable: tuple = ()
 
 
-def _number(data: dict, key: str, *, whole: bool):
-    value = data.get(key, DEFAULTS[key])
+def _number(value, *, whole: bool):
+    """The person's value as a ceiling or a suggestion, or None when it cannot be one."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return DEFAULTS[key]
+        return None
     try:
         number = float(value)
     except OverflowError:   # a TOML integer has no size limit
-        return DEFAULTS[key]
+        return None
     if not math.isfinite(number) or number <= 0:
-        return DEFAULTS[key]
+        return None
     if whole:
-        return int(value) if number.is_integer() else DEFAULTS[key]
+        return int(value) if number.is_integer() else None
     return number
+
+
+_NUMBERS = (("rig_max_machines", True), ("rig_max_hourly", False), ("rig_max_hours", False),
+            ("rig_default_hours", False), ("rig_default_budget", False))
 
 
 def settings(state: Path) -> RigSettings:
@@ -84,12 +90,19 @@ def settings(state: Path) -> RigSettings:
     else:
         images = tuple(item for item in (named if isinstance(named, list) else []) if isinstance(item, str)
                        and IMAGE.fullmatch(item))
+    numbers, unusable = {}, []
+    for key, whole in _NUMBERS:
+        # a key left out is the default by choice; one set to something unusable is a default the person is told of
+        found = _number(data[key], whole=whole) if key in data else DEFAULTS[key]
+        if found is None:
+            found = DEFAULTS[key]
+            unusable.append(key)
+        numbers[key] = found
     return RigSettings(on=data.get("rig") == "on", provider=provider if isinstance(provider, str) else "",
-                       max_machines=_number(data, "rig_max_machines", whole=True),
-                       max_hourly=_number(data, "rig_max_hourly", whole=False),
-                       max_hours=_number(data, "rig_max_hours", whole=False), images=images,
-                       default_hours=_number(data, "rig_default_hours", whole=False),
-                       default_budget=_number(data, "rig_default_budget", whole=False))
+                       max_machines=numbers["rig_max_machines"], max_hourly=numbers["rig_max_hourly"],
+                       max_hours=numbers["rig_max_hours"], images=images,
+                       default_hours=numbers["rig_default_hours"], default_budget=numbers["rig_default_budget"],
+                       unusable=tuple(unusable))
 
 
 def _plain(value: float) -> str:

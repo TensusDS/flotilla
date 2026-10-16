@@ -91,6 +91,30 @@ def test_open_refuses_what_the_ceilings_do_not_allow(world, hours, budget):
     assert code == 2 and journal(world).sessions() == {}
 
 
+def test_a_refusal_at_an_unusable_ceiling_says_the_default_stands(world):
+    """`rig_max_hours = inf` reads as the default 8; a refusal naming only the key sends the person to a file that
+    says inf."""
+    (world["state"] / "machine.toml").write_text('rig = "on"\nrig_provider = "vast"\nrig_max_hours = inf\n',
+                                                 encoding="utf-8")
+    code, out = run_cli("rig", "open", "--hours", "10", "--budget", "1", "--why", "x")
+    assert code == 2 and "rig_max_hours is not a usable number, so the default 8 applies" in out
+
+
+def test_a_refusal_at_a_set_ceiling_names_the_key_only(world):
+    code, out = run_cli("rig", "open", "--hours", "9", "--budget", "1", "--why", "x")
+    assert code == 2 and "(machine.toml rig_max_hours)" in out and "default" not in out
+
+
+@pytest.mark.parametrize("hours", ["1e8", "1e11"])
+def test_open_refuses_hours_whose_end_no_date_can_hold(world, hours):
+    """A huge ceiling lets a huge number through: past year 9999 the end is no date, and past 2.4e10 hours not even
+    a span - both used to crash `rig open` with a traceback."""
+    (world["state"] / "machine.toml").write_text(
+        render_toml({"rig": "on", "rig_provider": "vast", "rig_max_hours": 1e12}), encoding="utf-8")
+    code, out = run_cli("rig", "open", "--hours", hours, "--budget", "1", "--why", "x")
+    assert code == 2 and "refused:" in out and journal(world).sessions() == {}
+
+
 def test_one_session_at_a_time(world):
     assert run_cli("rig", "open", "--hours", "1", "--budget", "1", "--why", "a")[0] == 0
     code, out = run_cli("rig", "open", "--hours", "1", "--budget", "1", "--why", "b")
