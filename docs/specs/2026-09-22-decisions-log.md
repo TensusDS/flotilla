@@ -1667,6 +1667,42 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    reader found that every display shows it in local time, so east of UTC an end in the last hours of 9999 was
    written and then crashed each reader until the session was closed. The check keeps a day to spare.
 
+241. **A stuck builder consults blind helpers, not a council** (Claude Code session with the person, 2026-10-16). The
+   person proposed a council for a builder that keeps failing: a shared file where the builder, the orchestrator, a
+   domain expert and optionally the person debate until a solution holds. Published work on multi-agent debate does
+   not support the council as such: debates of one model's copies do not reliably beat one model sampled several
+   times (Smit et al., ICML 2024; a 2025 follow-up found the same with more compute), they collapse toward agreement,
+   and self-correction without an outside signal does not improve reasoning (Huang et al., ICLR 2024). What does help
+   is an outside signal - a probe's output - a reader whose context differs, and one writer. The person chose the
+   smaller form: the builder itself calls for help. Stuck is three approaches failed on one goal or 45 minutes with
+   no new probe result; the row is marked `wait --on "consult"`; the facts are written down without guesses; an
+   expert and a researcher run as in-session subagents with the facts and the builder's tree and none of its
+   guesses; the builder runs their probes and names the explanation that held in the fix's commit message; two
+   rounds, then the person. Only technical stuckness is covered - work the person refused is a question of what was
+   asked, which a domain expert does not answer, and the posts say a returned verdict is not being stuck. Tried in a
+   sandbox (a test fixed in `src/` while pytest imported a frozen copy first): with the procedure forced after the
+   first failure, the blind expert's first explanation was the cause and its probe proved it, at about 2.5 times the
+   cost of a run that needed no help; the builder's first brief to the researcher named the answer ("pytest docs on
+   `pythonpath`"), so the post forbids guesses in where a helper is sent to look too, and the rerun's briefs were
+   clean. A fresh reader then found what a sandbox run cannot show, since it is not a seat: the first text kept the
+   facts in `git rev-parse --git-path consult`, which a seat - started in the main checkout - resolves to one file
+   shared by every seat, inside the checkout no seat may edit; the facts now travel in the helpers' briefs and no
+   file is kept. Its example reason held a `;`, which takes the call off the own-command path and turns it into a
+   permission question for the person; the example has none, a test runs it through `own_command`, and the posts
+   name the signs a reason may hold, which are the broker's own (a `?` ends most questions sent `--on "the person"`
+   and made them permission prompts too). A wait silenced the watch, and nothing ends a `consult` wait but the
+   builder: the dropped-ball line and an open break now ignore it, and - found by a second reader, since the first
+   fix left it - `whose.mine` keeps the row as the builder's own, so the stop guard does not let a builder stop
+   under the mark with nothing in flight (without that, no break was ever recorded for such a row). The post says
+   the facts go into the briefs and no file is kept, that the expert runs its probes in the home tree (a seat's
+   shell starts in the main checkout), that the builder commits before a probe that edits so undoing it touches
+   nothing of its own, and that being stuck while doing what a returned verdict asks is covered. An escalation
+   re-marks the row `--on "the person"`; the orchestrator post says a `consult` mark is no question. Not measured:
+   what the census reports for a builder whose turn ended while its background helpers still run - if it reads as
+   idle, the dropped-ball line fires during a consult that is going fine.
+   Unforced, a builder with and without the procedure found the cause before its first edit, so whether the
+   trigger fires on its own is not measured; the thresholds are a first guess.
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

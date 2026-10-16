@@ -3,6 +3,20 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.17.0 - 2026-10-16
+
+- **A stuck builder gets help in a set form.** The main and minor posts say when a session counts as stuck on a
+  technical problem - one goal has not given way to three different approaches, or 45 minutes brought no new result
+  from a probe - and what it does then: marks its row `wait --on "consult"`, writes down the facts (commands and their
+  output, no guesses), and raises two in-session subagents that get the facts and its tree and none of its guesses -
+  an expert with up to three explanations, each with a probe, and a researcher who names the failure. It runs the
+  probes itself, names the explanation that held in the fix's commit message, and after two rounds without one takes
+  the question to the person through the orchestrator. The move stays the builder's under a `consult` mark: the stop
+  guard does not let it stop with nothing in flight, and the orchestrator's watch calls it a dropped ball if it sits
+  idle. The posts also say which signs a reason in a flotilla command may hold - any other, a question mark too,
+  makes the call a permission question for the person. Post templates main v10, minor v8 and orchestrator v17:
+  compare your project's posts with them.
+
 ## 0.16.2 - 2026-10-16
 
 - **A ceiling you set to something unusable says so.** `rig_max_hours = inf` in `machine.toml` reads as the
