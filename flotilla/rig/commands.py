@@ -310,7 +310,8 @@ def _open(state: Path, settings: rs.RigSettings, args) -> int:
         print(f"refused: {hours:g} hours is over the {settings.max_hours:g}-hour ceiling ({source})")
         return 2
     try:
-        _now() + dt.timedelta(hours=hours)
+        # a day to spare: the journal writes the end in UTC, and every reader shows it in local time (UTC+14 at most)
+        _now() + dt.timedelta(hours=hours) + dt.timedelta(days=1)
     except OverflowError:   # a ceiling the person set very high lets through an end no date can hold
         print(f"refused: {hours:g} hours from now is past the last date the rig journal can write")
         return 2
