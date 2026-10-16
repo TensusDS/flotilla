@@ -1653,6 +1653,20 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    ubuntu with Python 3.13 (2026-10-09, 2026-10-15), is not found: CI's Python 3.13.16, one loaded CPU and 28
    pairings of the two signals' timing all pass here, so the failure now carries the killed process's output.
 
+240. **An unusable setting is a default the person is told of** (Claude Code session with the person, 2026-10-16).
+   Two minors the first reviewer of 0.16.0 deferred. A rig number in `machine.toml` that is not a positive finite
+   number reads as its default (decision 238), silently: `rig_max_hours = inf`, meant as "no ceiling", became 8,
+   and the refusal at 8 named only the key. `RigSettings.unusable` now carries each key the person set to such a
+   value; the hours refusal says the default applies, and `flotilla rig` lists the keys. An absent key is not
+   listed - it is the default by choice. The machine and hourly ceilings do refuse ("the machine ceiling (1) is
+   reached", "no offer within the ceilings") but name no key, so they never pointed at a file that says otherwise;
+   the status line is where their stand-in default is told. Second, `rig open` checked hours against the ceiling
+   only, and a ceiling set high let `--hours 1e8` through to a session end past year 9999 - an OverflowError from
+   the journal. `rig open` now refuses an end no date can hold rather than lowering a ceiling the person set: a
+   cap of its own would be a second ceiling nobody chose. The first version checked the end in UTC; a fresh
+   reader found that every display shows it in local time, so east of UTC an end in the last hours of 9999 was
+   written and then crashed each reader until the session was closed. The check keeps a day to spare.
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

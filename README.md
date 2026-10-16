@@ -498,7 +498,8 @@ rented machine with `flotilla rig run` and gets its output, its exit code and it
 - `flotilla fleet` shows rig lines first: the open session, each machine, and loud lines for a STUCK machine, a
   silent reaper or a failed one, repeated every half hour until they clear.
 - Ceilings, yours too, in `~/.local/state/flotilla/machine.toml`: `rig_max_machines` (1), `rig_max_hourly`
-  (0.60 $), `rig_max_hours` (8). A value that is not a positive finite number reads as its default.
+  (0.60 $), `rig_max_hours` (8). A value that is not a positive finite number reads as its default; `flotilla
+  rig` names such a key, and a refusal at the hours ceiling says the default stands in for it.
 - `flotilla rig` shows sessions, machines, what they cost at least, and when the reaper last ran. Beside the local
   count it shows the account's credit at the session's open and now, and how far it moved, read when the session
   opens and at the end of every reaper pass. The local count is a floor for the session (traffic and storage are

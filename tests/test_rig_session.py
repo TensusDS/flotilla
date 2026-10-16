@@ -91,6 +91,49 @@ def test_open_refuses_what_the_ceilings_do_not_allow(world, hours, budget):
     assert code == 2 and journal(world).sessions() == {}
 
 
+def test_a_refusal_at_an_unusable_ceiling_says_the_default_stands(world):
+    """`rig_max_hours = inf` reads as the default 8; a refusal naming only the key sends the person to a file that
+    says inf."""
+    (world["state"] / "machine.toml").write_text('rig = "on"\nrig_provider = "vast"\nrig_max_hours = inf\n',
+                                                 encoding="utf-8")
+    code, out = run_cli("rig", "open", "--hours", "10", "--budget", "1", "--why", "x")
+    assert code == 2 and "rig_max_hours is not a usable number, so the default 8 applies" in out
+
+
+def test_a_refusal_at_a_set_ceiling_names_the_key_only(world):
+    (world["state"] / "machine.toml").write_text(
+        render_toml({"rig": "on", "rig_provider": "vast", "rig_max_hours": 5}), encoding="utf-8")
+    code, out = run_cli("rig", "open", "--hours", "6", "--budget", "1", "--why", "x")
+    assert code == 2 and "over the 5-hour ceiling (machine.toml rig_max_hours)" in out and "default" not in out
+
+
+@pytest.mark.parametrize("hours", ["1e8", "1e11"])
+def test_open_refuses_hours_whose_end_no_date_can_hold(world, hours):
+    """A huge ceiling lets a huge number through: past year 9999 the end is no date, and past 2.4e10 hours not even
+    a span - both used to crash `rig open` with a traceback."""
+    (world["state"] / "machine.toml").write_text(
+        render_toml({"rig": "on", "rig_provider": "vast", "rig_max_hours": 1e12}), encoding="utf-8")
+    code, out = run_cli("rig", "open", "--hours", hours, "--budget", "1", "--why", "x")
+    assert code == 2 and "past the last date" in out and journal(world).sessions() == {}
+
+
+def test_an_end_that_fits_in_utc_but_not_in_local_time_is_refused(world, monkeypatch):
+    """The journal writes the end in UTC and every reader shows it in local time: east of UTC an end in the last
+    hours of 9999 was written, then crashed `rig open`'s own reply and every `flotilla rig` after it (review of
+    0.16.2)."""
+    (world["state"] / "machine.toml").write_text(
+        render_toml({"rig": "on", "rig_provider": "vast", "rig_max_hours": 1e12}), encoding="utf-8")
+    monkeypatch.setenv("TZ", "Asia/Tokyo")
+    time.tzset()
+    try:
+        code, out = run_cli("rig", "open", "--hours", "69891914", "--budget", "1", "--why", "x")
+        assert code == 2 and "past the last date" in out and journal(world).sessions() == {}
+        assert run_cli("rig")[0] == 0
+    finally:
+        monkeypatch.setenv("TZ", "UTC")
+        time.tzset()
+
+
 def test_one_session_at_a_time(world):
     assert run_cli("rig", "open", "--hours", "1", "--budget", "1", "--why", "a")[0] == 0
     code, out = run_cli("rig", "open", "--hours", "1", "--budget", "1", "--why", "b")

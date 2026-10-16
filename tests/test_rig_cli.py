@@ -128,6 +128,21 @@ def test_status_shows_the_session_its_money_the_machine_and_the_reaper(world):
     assert "reaper: last pass 20:10" in out
 
 
+def test_status_names_the_settings_it_could_not_use(world):
+    world["state"].mkdir(parents=True, exist_ok=True)
+    (world["state"] / "machine.toml").write_text(
+        'rig = "on"\nrig_provider = "vast"\nrig_max_hours = inf\nrig_default_budget = "x"\n', encoding="utf-8")
+    code, out = run_cli("rig")
+    assert code == 0 and "ceilings: 1 machine(s), 0.60 $/h, 8 h" in out
+    assert "not usable numbers in machine.toml, their defaults apply: rig_max_hours, rig_default_budget" in out
+
+
+def test_status_says_nothing_of_unusable_settings_when_all_are_usable(world):
+    turn(world["state"], "on")
+    code, out = run_cli("rig")
+    assert code == 0 and "not usable" not in out
+
+
 def test_status_says_the_reaper_is_silent(world):
     turn(world["state"], "on")
     machine(world)
