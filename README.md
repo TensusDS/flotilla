@@ -363,6 +363,16 @@ Each move asks for the evidence that makes it true:
 `flotilla work show <branch>` prints a row and its history. `flotilla status --stalled 2` adds the rows that have not
 moved for two hours. The ledger lives in the state directory, not in git, and every session reads the same one.
 
+**When a builder is stuck.** A main or minor session that is stuck - one goal has not given way to three different
+approaches, or 45 minutes brought no new result from a probe - marks its row `wait --on "consult"` and writes a stuck
+record of facts in its tree's own git directory: each command it ran and the tail of its output, no guesses. It raises
+two in-session subagents that get the record and the code and nothing of its guesses: an expert, who returns up to
+three explanations, each with a command that would confirm or refute it, and a researcher, who names the failure and
+the usual cure. The builder runs the probes itself and goes on from the explanation that held; after two rounds
+without one, the question comes to you through the orchestrator, with the record. A second opinion that has read the
+builder's reasoning tends to agree with it, which is why the helpers start from facts. The thresholds are a first
+guess, not yet measured on live work.
+
 ## The person's part
 
 flotilla is built so that you are asked as rarely as possible, and so that what you are asked is exactly what you
