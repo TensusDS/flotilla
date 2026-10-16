@@ -132,9 +132,11 @@ def test_a_builder_post_says_how_to_get_help_when_stuck(name):
     person after two rounds. Help that reads the builder's guesses agrees with them."""
     from flotilla.posts import TEMPLATE_DIR, load_post
     body = " ".join(load_post(TEMPLATE_DIR / f"{name}.md").body.split())
-    assert "A verdict a reviewer or the person returned is not being stuck" in body
+    assert "Being stuck is about the code, never about a verdict" in body
+    assert "into each helper's brief and keep no file" in body
+    assert "commit what you have first" in body and "with your home tree as its working directory" in body
     assert '--on "consult"' in body and "--clear" in body and "Unless the row already waits on something" in body
-    assert "No guesses about the cause" in body
+    assert "no guesses about the cause" in body
     assert "nothing of your guesses - not in the question, and not in where you send it to look" in body
     assert "An expert:" in body and "it runs only probes that change nothing" in body and "A researcher:" in body
     assert "Run their probes yourself" in body and "name it in the commit message" in body
@@ -154,6 +156,12 @@ def test_the_consult_mark_written_as_the_post_shows_it_asks_the_person_nothing(n
     filled = re.sub(r"<([^>]*)>", r"\1", shown.replace("<branch>", "fix/totals"))   # the placeholder's own words
     command = str(CLI) + filled[len("flotilla"):]
     assert own_command({"tool_name": "Bash", "tool_input": {"command": command}}), command
+    # the rule the post states is the broker's own: every sign it lets through passes, the next ones do not
+    assert "only letters, digits, spaces and , . - / :" in body
+    allowed = command.replace("did not work", "did not work, see src/x.py - 3 left: totals.py")
+    assert own_command({"tool_name": "Bash", "tool_input": {"command": allowed}}), allowed
+    for sign in "?![]#>()*;":
+        assert not own_command({"tool_name": "Bash", "tool_input": {"command": command.replace("goal", f"goal{sign}")}})
 
 
 def test_a_post_reads_its_model_and_permission_mode(tmp_path):

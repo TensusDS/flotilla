@@ -26,9 +26,6 @@ SEATS = "seats"
 SEATS_HINT = ("`flotilla spawn --fill` raises them again (dry run first, and the person's yes); `flotilla fleet` lists "
               "them, `flotilla fleet down` stands the fleet down")
 THE_PERSON = "the person"
-#: A builder getting help inside its own session (main and minor posts): a mark for the reader, not something to wait
-#: on - nothing ever ends it but the builder, so it silences no watch.
-CONSULT = "consult"
 
 
 def not_working(session) -> bool:
@@ -143,11 +140,7 @@ def idle_seats(rows: dict, profile: dict, live: set[str], post_of, claimers, now
 
 def _waits(row, rows: dict, live: set[str] | None = None) -> bool:
     """A recorded wait that still has something to wait on; one whose object is gone silences nothing."""
-    return bool(row.waiting_on) and not _consulting(row) and not views.wait_over(row, rows, live)
-
-
-def _consulting(row) -> bool:
-    return row.waiting_on.strip().lower() == CONSULT
+    return bool(row.waiting_on) and not views.consulting(row) and not views.wait_over(row, rows, live)
 
 
 def piled(rows: dict, profile: dict, live: set[str], post_of, claimers, census: set[str] | None = None) -> list[Item]:
@@ -231,7 +224,7 @@ def open_breaks(state_dir, repo_key: str, rows: dict, profile: dict, post_of) ->
         stopped, moved = _moment(at), _moment(row.updated_at) if row is not None else None
         if row is None or stopped is None or moved is None or moved > stopped:
             continue
-        if (row.waiting_on and not _consulting(row)) or row.held_until or not holds_move(row, profile, name,
+        if (row.waiting_on and not views.consulting(row)) or row.held_until or not holds_move(row, profile, name,
                                                                                           post_of(name), rows):
             continue
         items.append(Item(BREAK, branch, f"{name} stopped twice while holding this move ({row.state}), and "

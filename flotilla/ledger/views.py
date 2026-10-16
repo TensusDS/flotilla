@@ -169,6 +169,15 @@ def hold_lifted(row: Row, rows: dict[str, Row], live: set[str] | None = None) ->
     return not any(other.reader == until and other.state in READING and other.is_open for other in rows.values())
 
 
+#: A builder getting help inside its own session (main and minor posts): a mark for the reader, not something to wait
+#: on - nothing ends it but the builder, so the move stays the builder's and no watch is silenced by it.
+CONSULT = "consult"
+
+
+def consulting(row) -> bool:
+    return row.waiting_on.strip().lower() == CONSULT
+
+
 def clear_wait(branch: str) -> str:
     """The line that clears a wait, as a session copies it into a shell: git allows `$(...)` in a branch (F2)."""
     return "flotilla work wait " + shlex.quote(branch) + " --clear"

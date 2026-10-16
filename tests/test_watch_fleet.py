@@ -40,6 +40,8 @@ def test_a_consult_wait_is_the_builders_own_work_and_hides_no_dropped_ball():
     waiting = row(state="claimed", waiting_on="consult", note="goal, what failed")
     found = fleet.fleet(rows(waiting), PR, [sess("main session 1")], post_of=post_of)
     assert ("dropped", "feat/x") in kinds(found)
+    spaced = row(state="claimed", waiting_on=" Consult ", note="goal, what failed")   # as `--on` may be typed
+    assert ("dropped", "feat/x") in kinds(fleet.fleet(rows(spaced), PR, [sess("main session 1")], post_of=post_of))
     busy = fleet.fleet(rows(waiting), PR, [sess("main session 1", state="working")], post_of=post_of)
     assert busy == []
 

@@ -70,6 +70,10 @@ def mine(rows: dict[str, Row], profile: dict, name: str, *, post: str = "", may=
             continue
         if not holds_move(row, profile, name, post, rows):
             continue
+        if views.consulting(row):   # help runs inside the builder's own session: the move is still its own
+            items.append(Item(WORKING, row.branch, "marked consult: go on from your helpers' answers, or clear the "
+                                                   f"mark (`{views.clear_wait(row.branch)}`)", row.updated_at))
+            continue
         over = views.wait_over(row, rows, live) if row.waiting_on else ""
         if over:
             gone = "has no open row left" if over == "lifted" else "is not alive"
