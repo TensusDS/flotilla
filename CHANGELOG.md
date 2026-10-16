@@ -3,6 +3,19 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.16.2 - 2026-10-16
+
+- **A ceiling you set to something unusable says so.** `rig_max_hours = inf` in `machine.toml` reads as the
+  default 8 hours, as any value that is not a positive finite number does - and `rig open --hours 10` then refused
+  with "over the 8-hour ceiling (machine.toml rig_max_hours)", pointing at a file that says inf. The refusal now
+  says the key is not a usable number and the default applies, and `flotilla rig` lists every such key under its
+  ceilings. A key left out is the default by choice and is not listed.
+- **A very high hours ceiling no longer crashes `rig open`.** With `rig_max_hours` set high, `--hours 1e8` passed
+  the ceiling and the session's end fell past year 9999 (`--hours 1e11` past what a time span holds); `rig open`
+  died with a traceback. East of UTC an end in the last hours of 9999 was even written first, and `flotilla rig`
+  crashed showing it until the session was closed. `rig open` now refuses an end within a day of the last date
+  the journal can write.
+
 ## 0.16.1 - 2026-10-15
 
 - **A stopped lane run stops all of it.** Past its ceiling, or on `flotilla lane stop`, the lane sent SIGTERM to
