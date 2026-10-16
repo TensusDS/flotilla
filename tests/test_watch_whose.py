@@ -28,6 +28,15 @@ def test_a_recorded_wait_is_not_a_ball():
     assert kinds(found) == [("waiting", "feat/x")] and "the person" in found[0].text
 
 
+def test_a_consult_mark_keeps_the_move_with_the_builder():
+    """A builder getting help runs it in its own session: the stop guard must still see the row as its own, or it
+    lets the builder stop silently with nothing in flight (review of 0.17.0)."""
+    found = whose.mine(rows(row(state="fixing", waiting_on="consult", note="goal, what failed")), PR,
+                       "main session 1")
+    assert kinds(found) == [("working", "feat/x")] and found[0].kind in whose.HELD_BY_ME
+    assert "--clear" in found[0].text
+
+
 def test_a_held_row_is_not_a_ball():
     found = whose.mine(rows(row(held_by="orchestrator 1", held_until="feat/y", held_why="stacked")), PR,
                        "main session 1")

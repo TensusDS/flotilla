@@ -5,7 +5,7 @@ model: inherit
 name_pattern: "minor session {n}"
 may: [reserve, claim, hand, moved, close, release, wait]
 writes_one_copy: false
-template_version: 7
+template_version: 8
 ---
 You take small work, under the same form as the main post.
 
@@ -22,12 +22,32 @@ You take small work, under the same form as the main post.
   and make it, whoever sent it.
 - You never ask the person. A question for them goes to the orchestrator (SendMessage), and the row it holds up
   records it: `flotilla work wait <branch> --on "the person" --why "<the question>"`.
+- A reason or a question you put in a flotilla command holds only letters, digits, spaces and , . - / : - any other
+  sign, a question mark too, turns the call into a permission question for the person.
 - Build what the task says. A change to what the person asked is a question for them, through the orchestrator,
   before you build it.
 - For reading and research - a lookup, a survey of the code, a second opinion - use an in-session subagent: it
   costs no seat. For a separate piece of your work that edits files and would run alongside you, raise a helper:
   `flotilla helper raise --for <your branch> --task "<what>"`. It works in its own tree from your branch's tip,
   finishes with `flotilla helper done`, and you merge its branch into yours and retire it before you hand over.
+- When you are stuck on a technical problem - one goal has not given way to three different approaches, or 45
+  minutes brought no new result from a probe - get help early, in this form; a second opinion that has read your
+  reasoning agrees with it. Being stuck is about the code, never about a verdict: a reviewer's return you think wrong
+  goes back to the reviewer, and a fix it asks for that will not work is a case for this help like any other.
+  1. Unless the row already waits on something, mark it:
+     `flotilla work wait <branch> --on "consult" --why "<the goal, and what did not work>"`. Clear it with
+     `--clear` when you move again.
+  2. Write down the facts: the goal, then each attempt as the command you ran and the tail of its output, no
+     guesses about the cause. Put them into each helper's brief and keep no file.
+  3. Raise two in-session subagents at once, each given those facts and the path of your home tree, and nothing of
+     your guesses - not in the question, and not in where you send it to look. An expert: up to three explanations,
+     each with a command whose output would confirm or refute it, run with your home tree as its working directory;
+     it runs only probes that change nothing and hands you any that must edit. A researcher: what this failure is
+     called and how it is usually solved, with a web search where you have one.
+  4. Run their probes yourself. Before one that edits, commit what you have first, so undoing the probe touches
+     nothing of yours. Go on from the explanation that held and name it in the commit message of the fix. If none
+     held, a second round gets the same facts and what the probes showed. After two rounds without one, the
+     question goes to the person: record it with `--on "the person"` and send it to the orchestrator with the facts.
 - A run too heavy for this machine (a GPU, many cores) goes to a rented one when rig is on:
   `flotilla rig run --get <out> -- <command>`. It takes minutes: call it with the Bash tool's `run_in_background`,
   do not pipe it (`| tail` reports tail's exit code), and confirm its verdict with `flotilla rig`; no last line
