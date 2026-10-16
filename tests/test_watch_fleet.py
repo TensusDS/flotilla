@@ -34,6 +34,16 @@ def test_a_wait_on_the_person_is_the_orchestrators_to_carry_not_a_dropped_ball()
     assert [(item.kind, item.text) for item in found] == [(fleet.PERSON, "waits on the person: asked")]
 
 
+def test_a_consult_wait_is_the_builders_own_work_and_hides_no_dropped_ball():
+    """A builder getting help runs it inside its own session (main post): idle under that mark, it dropped the
+    ball - and the mark never ends on its own, so it must not silence the watch."""
+    waiting = row(state="claimed", waiting_on="consult", note="goal, what failed")
+    found = fleet.fleet(rows(waiting), PR, [sess("main session 1")], post_of=post_of)
+    assert ("dropped", "feat/x") in kinds(found)
+    busy = fleet.fleet(rows(waiting), PR, [sess("main session 1", state="working")], post_of=post_of)
+    assert busy == []
+
+
 def test_an_interactive_session_is_read_by_its_status():
     assert fleet.not_working(sess("x", kind="interactive", status="idle"))
     assert not fleet.not_working(sess("x", kind="interactive", status="busy"))
@@ -67,6 +77,12 @@ def test_a_break_closes_when_a_wait_is_recorded(tmp_path):
     fleet.record_break(tmp_path, "repo", "main session 1", ["feat/x"], at="2026-09-27T11:00:00+00:00")
     waiting = row(state="fixing", waiting_on="the person", note="asked")
     assert fleet.open_breaks(tmp_path, "repo", rows(waiting), PR, post_of) == []
+
+
+def test_a_consult_wait_does_not_close_a_break(tmp_path):
+    fleet.record_break(tmp_path, "repo", "main session 1", ["feat/x"], at="2026-09-27T11:00:00+00:00")
+    waiting = row(state="fixing", waiting_on="consult", note="goal, what failed", updated_at="2026-09-27T10:00:00+00:00")
+    assert [item.kind for item in fleet.open_breaks(tmp_path, "repo", rows(waiting), PR, post_of)] == ["break"]
 
 
 def test_nothing_recorded_is_no_break(tmp_path):

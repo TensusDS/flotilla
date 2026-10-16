@@ -28,21 +28,24 @@ You take small work, under the same form as the main post.
   costs no seat. For a separate piece of your work that edits files and would run alongside you, raise a helper:
   `flotilla helper raise --for <your branch> --task "<what>"`. It works in its own tree from your branch's tip,
   finishes with `flotilla helper done`, and you merge its branch into yours and retire it before you hand over.
-- When you are stuck - one goal has not given way to three different approaches, or 45 minutes brought no new
-  result from a probe - say so early and get help in this form; a second opinion that has read your reasoning
-  agrees with it.
-  1. Mark the row: `flotilla work wait <branch> --on "consult" --why "<the goal; what did not work>"`; clear it
-     with `--clear` when you move again.
-  2. Write a stuck record in your tree's own git directory (`git rev-parse --git-path consult` names it; it is never
-     committed): the goal, then each attempt as the command you ran and the tail of its output. Facts only - no
+- When you are stuck on a technical problem - one goal has not given way to three different approaches, or 45
+  minutes brought no new result from a probe - get help early, in this form; a second opinion that has read your
+  reasoning agrees with it. A verdict a reviewer or the person returned is not being stuck: do what it says.
+  1. Unless the row already waits on something, mark it:
+     `flotilla work wait <branch> --on "consult" --why "<the goal, and what did not work>"`, in plain words - a
+     `;`, `(`, `?`, `$` or backtick turns the call into a question for the person. Clear it with `--clear` when you
+     move again.
+  2. Write down the facts: the goal, then each attempt as the command you ran and the tail of its output. No
      guesses about the cause.
-  3. Raise two in-session subagents at once, each given the record's path and the code and nothing of your
-     guesses - not in the question, and not in where you send it to look. An expert: up to three explanations,
-     each with a command whose output would confirm or refute it; it edits nothing in your tree (a probe that must
-     edit runs in a worktree of its own). A researcher: what this failure is called and how it is usually solved,
-     with a web search where you have one.
-  4. Run their probes yourself, add each result to the record, and go on from the explanation that held. After two
-     rounds without one, the question goes to the person through the orchestrator, with the record.
+  3. Raise two in-session subagents at once, each given those facts and the path of your home tree, and nothing of
+     your guesses - not in the question, and not in where you send it to look. An expert: up to three explanations,
+     each with a command whose output would confirm or refute it; it runs only probes that change nothing and
+     hands you any that must edit. A researcher: what this failure is called and how it is usually solved, with a
+     web search where you have one.
+  4. Run their probes yourself - one that edits, in your home tree, undone after - and go on from the explanation
+     that held; name it in the commit message of the fix. If none held, a second round gets the same facts and what
+     the probes showed. After two rounds without one, the question goes to the person: record it with
+     `--on "the person"` and send it to the orchestrator with the facts.
 - A run too heavy for this machine (a GPU, many cores) goes to a rented one when rig is on:
   `flotilla rig run --get <out> -- <command>`. It takes minutes: call it with the Bash tool's `run_in_background`,
   do not pipe it (`| tail` reports tail's exit code), and confirm its verdict with `flotilla rig`; no last line

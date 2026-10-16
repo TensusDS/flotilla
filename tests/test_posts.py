@@ -128,15 +128,32 @@ def test_the_main_post_says_a_wiring_row_requires_its_part():
 
 @pytest.mark.parametrize("name", ["main", "minor"])
 def test_a_builder_post_says_how_to_get_help_when_stuck(name):
-    """Stuck: mark the row, write facts only, raise a blind expert and a researcher, run their probes, then the
+    """Stuck: mark the row, write the facts, raise a blind expert and a researcher, run their probes, then the
     person after two rounds. Help that reads the builder's guesses agrees with them."""
     from flotilla.posts import TEMPLATE_DIR, load_post
     body = " ".join(load_post(TEMPLATE_DIR / f"{name}.md").body.split())
-    assert '--on "consult"' in body and "--clear" in body
-    assert "git rev-parse --git-path consult" in body and "Facts only" in body
+    assert "A verdict a reviewer or the person returned is not being stuck" in body
+    assert '--on "consult"' in body and "--clear" in body and "Unless the row already waits on something" in body
+    assert "No guesses about the cause" in body
     assert "nothing of your guesses - not in the question, and not in where you send it to look" in body
-    assert "An expert:" in body and "A researcher:" in body and "Run their probes yourself" in body
-    assert "After two rounds without one, the question goes to the person through the orchestrator" in body
+    assert "An expert:" in body and "it runs only probes that change nothing" in body and "A researcher:" in body
+    assert "Run their probes yourself" in body and "name it in the commit message" in body
+    assert 'record it with `--on "the person"`' in body and "git-path" not in body
+
+
+@pytest.mark.parametrize("name", ["main", "minor"])
+def test_the_consult_mark_written_as_the_post_shows_it_asks_the_person_nothing(name):
+    """A `;`, `(` or `?` in the reason takes the call off flotilla's own-command path, and in ask mode it becomes a
+    permission question for the person - the one thing a technical problem should not cost them."""
+    import re
+    from flotilla.broker.decide import own_command
+    from flotilla.hooks import CLI
+    from flotilla.posts import TEMPLATE_DIR, load_post
+    body = " ".join(load_post(TEMPLATE_DIR / f"{name}.md").body.split())
+    shown = re.search(r'`(flotilla work wait <branch> --on "consult" --why "[^`]*")`', body).group(1)
+    filled = re.sub(r"<([^>]*)>", r"\1", shown.replace("<branch>", "fix/totals"))   # the placeholder's own words
+    command = str(CLI) + filled[len("flotilla"):]
+    assert own_command({"tool_name": "Bash", "tool_input": {"command": command}}), command
 
 
 def test_a_post_reads_its_model_and_permission_mode(tmp_path):
