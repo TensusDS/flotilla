@@ -119,7 +119,7 @@ def build_profile(det: dict, answers: dict) -> dict:
     # the word every seat name starts with (`worldcore-orchestrator 1`): numbers then run per project (W11)
     data["fleet"] = {"name": clean(Path(det["root"]).name), "default": suggest_composition(answers),
                      "model": answers.get("model", "one")}
-    effort = _effort(answers.get("effort", "default"))
+    effort = _effort(answers.get("effort", "default"), det)
     if effort:   # one level per post, so the person reads what each seat runs at and edits one line to change it
         data["fleet"]["effort"] = effort
     chosen_guards = answers.get("guards") or []
@@ -160,10 +160,9 @@ def write_profile(root: Path, data: dict, *, force: bool = False) -> Path:
     return path
 
 
-def _effort(answer: str) -> dict[str, str]:
-    from flotilla.onboard.questions import efforts
-    from flotilla.posts import template_posts
-    posts = template_posts()
+def _effort(answer: str, det: dict) -> dict[str, str]:
+    from flotilla.onboard.questions import efforts, onboarding_posts
+    posts = onboarding_posts(det)
     if answer == "default":
         return {}
     if answer == "reviewer-max":
@@ -205,5 +204,6 @@ def plain_words(data: dict) -> list[str]:
     effort = (data.get("fleet") or {}).get("effort") or {}
     if isinstance(effort, dict) and effort:   # a higher effort costs tokens: said before the yes, never when unset
         said.append("effort: " + ", ".join(f"{name} at {level}" for name, level in effort.items())
-                    + "; a post not named takes Claude Code's default")
+                    + "; a post whose own file names an effort keeps it (its own `effort` wins), and any other post takes "
+                    "Claude Code's default")
     return said

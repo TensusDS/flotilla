@@ -284,3 +284,19 @@ def test_plain_words_name_an_effort_only_when_one_is_set():
 def test_quick_onboarding_leaves_the_effort_to_claude_code(project):
     det = detect(project)
     assert quick_answers(det, {})["effort"] == "default"
+
+
+def test_plain_words_say_a_posts_own_effort_still_wins():
+    from flotilla.onboard.profile import plain_words
+    assert "own `effort`" in " ".join(plain_words({"fleet": {"effort": {"reviewer": "max"}}}))
+
+
+def test_a_stored_effort_that_no_longer_fits_is_refused_at_write_not_a_traceback(project):
+    """Review of 0.18.0, M6: the answers file is plain; an effort naming no post raised AnswerError out of write."""
+    assert run_cli("onboard", "quick", "--root", str(project))[0] == 0
+    code, out = run_cli("onboard", "answer", "effort", "reviewer=max", "--root", str(project))
+    assert code == 0, out
+    store = next((project.parent / "state" / "onboarding").glob("*.json"))
+    store.write_text(store.read_text(encoding="utf-8").replace("reviewer=max", "builder=max"), encoding="utf-8")
+    code, out = run_cli("onboard", "write", "--root", str(project))
+    assert code == 2 and "builder" in out and "Traceback" not in out

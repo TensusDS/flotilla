@@ -171,3 +171,26 @@ def test_an_effort_typed_wrong_is_refused(typed, why):
     with pytest.raises(qs.AnswerError, match=why):
         qs.validate_answer(q, [typed])
 
+
+
+@pytest.mark.parametrize("typed, why", [("reviewer=max, reviewer=low", "twice"), ("", "required")])
+def test_an_effort_named_twice_or_empty_is_refused(typed, why):
+    q = next(q for q in qs.all_questions(detection(), {}) if q["id"] == "effort")
+    with pytest.raises(qs.AnswerError, match=why):
+        qs.validate_answer(q, [typed])
+
+
+def test_a_trailing_comma_is_forgiven_and_the_alias_is_taken():
+    q = next(q for q in qs.all_questions(detection(), {}) if q["id"] == "effort")
+    assert qs.validate_answer(q, ["review=max,"]) == "review=max,"
+    assert qs.efforts("review=max,", q["posts"]) == {"reviewer": "max"}
+
+
+def test_the_effort_question_knows_the_projects_own_posts(tmp_path):
+    """Review of 0.18.0, I3: re-onboarding keeps the project's posts, and a custom one was refused as no post."""
+    posts = tmp_path / ".flotilla" / "posts"
+    posts.mkdir(parents=True)
+    (posts / "lead.md").write_text("---\nname: lead\nname_pattern: \"lead {n}\"\nmay: [assign]\n---\n", encoding="utf-8")
+    q = next(q for q in qs.all_questions(detection(root=str(tmp_path)), {}) if q["id"] == "effort")
+    assert {"lead", "reviewer"} <= set(q["posts"])
+    assert qs.validate_answer(q, ["lead=max"]) == "lead=max"

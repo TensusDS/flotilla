@@ -233,3 +233,12 @@ def test_the_opt_in_is_written_off_and_turned_on_where_it_stands(tmp_path):
 def test_the_effort_answer_is_written_as_one_level_per_post(tmp_path, answer, table):
     data = build_profile(detection(tmp_path), {**BASE_ANSWERS, "effort": answer})
     assert data["fleet"].get("effort") == table
+
+
+def test_a_custom_post_kept_at_re_onboarding_takes_its_effort(tmp_path):
+    posts = tmp_path / ".flotilla" / "posts"
+    posts.mkdir(parents=True)
+    (posts / "lead.md").write_text("---\nname: lead\nname_pattern: \"lead {n}\"\nmay: [assign]\n---\n", encoding="utf-8")
+    data = build_profile(detection(tmp_path), {**BASE_ANSWERS, "effort": "lead=max"})
+    assert data["fleet"]["effort"] == {"lead": "max"}
+    assert "lead" in build_profile(detection(tmp_path), {**BASE_ANSWERS, "effort": "all-high"})["fleet"]["effort"]
