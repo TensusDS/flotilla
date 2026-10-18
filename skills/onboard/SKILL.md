@@ -41,7 +41,7 @@ Ask the person with AskUserQuestion, header "Setup", question "How do you want t
 - **"Quick (Recommended)"** - "flotilla takes what it found and the recommended answer to every other question:
   every branch reviewed, Claude Code's auto mode deciding what to ask you, every guard on. You confirm the result
   once."
-- **"Custom"** - "Answer each question yourself: how work reaches trunk, review, permissions, tests, CI, models."
+- **"Custom"** - "Answer each question yourself: how work reaches trunk, review, permissions, tests, CI, models, effort."
 
 **Quick:** run `flotilla onboard quick`. It records the recommended answer to every question that applies and prints
 one line per answer. Go to step 4.

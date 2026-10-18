@@ -1702,6 +1702,19 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    idle, the dropped-ball line fires during a consult that is going fine.
    Unforced, a builder with and without the procedure found the cause before its first edit, so whether the
    trigger fires on its own is not measured; the thresholds are a first guess.
+242. **A post names its effort; onboarding asks for one per post** (Claude Code session with the person,
+   2026-10-18). A session onboarding a project found that a post could name its model but not its effort, which
+   `claude --effort` takes (low, medium, high, xhigh, max; Claude Code 2.1.302). A post may now say `effort:`, and
+   the launch passes it. The person asked for it to be set per post at onboarding too: one question - Claude Code's
+   default (the quick answer), the reviewer at max, all high, or typed `post=level` pairs - written as
+   `[fleet.effort]`, one level per post, the way `[fleet] model` stands beside a post's `model`; a post's own value
+   wins, so one edit sets one post apart. One level per post, not a word the launch interprets, so the profile the
+   person reads says what each seat runs at. The templates name no effort: putting one in would raise every
+   template's version and ask every project to compare its posts for a value that changes nothing. Checked against
+   Claude Code: an unknown level is not refused - `--effort hight` warned "ignoring it" and ran at the default - so
+   flotilla stops an unknown level itself, at loading the post and at the launch before a tree is cut, since a
+   background seat's warning reaches nobody. Plain words before the onboarding yes name any level set, since a
+   higher one costs tokens.
 
 ## Open questions (for the foundation spec)
 
