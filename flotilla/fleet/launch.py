@@ -87,8 +87,9 @@ def model_for(profile: dict, post) -> str:
 
 def effort_for(profile: dict, post) -> str:
     """A post's own effort wins; else the one the profile names for that post (`[fleet.effort]`); else none, and
-    Claude Code's default applies. The profile is a file a session can edit, so a level Claude Code would refuse
-    stops the launch here, before a tree is cut."""
+    Claude Code's default applies. The profile is a file a session can edit, and Claude Code takes an unknown level
+    as its default with only a warning a background session's person never sees: such a level stops the launch
+    here, before a tree is cut."""
     from flotilla.posts import EFFORTS
     if post.effort:
         return post.effort

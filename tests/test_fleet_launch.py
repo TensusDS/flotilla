@@ -154,7 +154,8 @@ def test_the_profile_names_an_effort_per_post_and_a_posts_own_wins():
 
 @pytest.mark.parametrize("effort", [{"main": "hight"}, {"main": 3}, "max"])
 def test_an_effort_the_profile_cannot_mean_refuses_the_launch(effort):
-    """The profile is a plain file a session can edit: a value Claude Code would refuse stops the seat before its
-    tree is cut, with the reason, instead of a session that never starts."""
+    """The profile is a plain file a session can edit. Claude Code runs an unknown level at its default with a
+    warning (measured, 2.1.302: `--effort hight` printed "ignoring it" and answered), which a background seat's person
+    never reads: the launch stops before a tree is cut, with the reason."""
     with pytest.raises(launch.LaunchError, match="effort"):
         launch.effort_for({"fleet": {"effort": effort}}, POSTS["main"])

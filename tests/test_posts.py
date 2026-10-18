@@ -247,7 +247,7 @@ def test_a_post_reads_its_effort(tmp_path):
 
 
 def test_a_post_refuses_an_effort_claude_code_does_not_take(tmp_path):
-    """A typo would load, then every seat of the post would be refused by Claude Code at launch."""
+    """A typo would load, and Claude Code would run every seat of the post at its default with only a warning."""
     import pytest
     from flotilla.posts import PostError, load_post
     path = tmp_path / "lead.md"

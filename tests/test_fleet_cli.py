@@ -387,3 +387,29 @@ def test_fleet_size_names_a_container_limit(tmp_path, monkeypatch):
     monkeypatch.setattr(resources, "memory_mb", lambda **kw: (3000, "the memory limit of 4096 MB on cgroup /x"))
     code, out = run_cli("fleet", "size", "--root", str(root))
     assert "3000 MB free" in out and "the memory limit of 4096 MB on cgroup /x" in out, out
+
+
+def _with_effort(root, effort):
+    profile = {**PROFILE, "fleet": {**PROFILE["fleet"], "effort": effort}}
+    (root / ".flotilla" / "project.toml").write_text(render_toml(profile), encoding="utf-8")
+    git(root, "add", ".flotilla")
+    commit(root, "efforts")
+    git(root, "push", "-q", "origin", "main")   # the rules that count are trunk's
+
+
+def test_a_dry_run_shows_the_effort_each_seat_runs_at(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    _with_effort(root, {"reviewer": "max"})
+    code, out = run_cli("spawn", "--default", "--dry-run", "--root", str(root))
+    assert code == 0, out
+    assert "--effort max" in seat_block(out, "review session 1")
+    assert "--effort" not in seat_block(out, "main session 1")
+
+
+def test_an_effort_claude_code_does_not_take_is_named_before_any_seat(tmp_path, monkeypatch):
+    """A real spawn computes the same command before it cuts a tree (`raise_seat`); the dry run shows the refusal."""
+    root = onboarded(tmp_path, monkeypatch)
+    _with_effort(root, {"reviewer": "hight"})
+    code, out = run_cli("spawn", "--post", "reviewer=1", "--dry-run", "--root", str(root))
+    assert code == 2 and "fleet.effort.reviewer" in out
+    assert not (tmp_path / "app-reviewer-1").exists()
