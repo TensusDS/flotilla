@@ -136,7 +136,57 @@ def all_questions(det: dict, answers: dict) -> list[dict]:
         ("sonnet", "Sonnet", "Every post runs on Sonnet."),
         ("opus", "Opus", "Every post runs on Opus."),
     ], free_text=True))
+    effort = _q("effort", "Effort", "How hard does each post think? A post's own `effort` still wins. Type your "
+                  "own as post=level pairs, such as reviewer=max, main=high.", [
+        ("default", "Default", "No post is given an effort: every session takes Claude Code's default."),
+        ("reviewer-max", "Reviewer at max", "Posts that may accept a branch think at max; higher effort costs more "
+                                            "tokens. The others take the default."),
+        ("all-high", "All high", "Every post thinks at high effort, at a higher token cost."),
+    ], free_text=True)
+    effort["posts"] = sorted(onboarding_posts(det))   # what a typed pair may name
+    out.append(effort)
     return out
+
+
+def onboarding_posts(det: dict) -> dict:
+    """The posts the project has once onboarding writes: the templates it installs and its own, which it keeps
+    (review of 0.18.0, I3: a custom post kept at re-onboarding was refused as no post). A post that cannot be read
+    is left out; loading the posts says why."""
+    from pathlib import Path
+
+    from flotilla.posts import POSTS_DIR, PostError, load_post, template_posts
+    posts = template_posts()
+    folder = Path(det["root"]) / POSTS_DIR if det.get("root") else None
+    if folder is not None and folder.is_dir() and not folder.is_symlink():
+        for path in sorted(folder.glob("*.md")):
+            try:
+                posts[path.stem] = load_post(path)
+            except PostError:
+                continue
+    return posts
+
+
+def efforts(text: str, posts) -> dict[str, str]:
+    """`reviewer=max, main=high` as {post: level}, `review` read as the reviewer; refused with the reason when a pair
+    names no post in `posts`, names one twice, or a level `claude --effort` does not take."""
+    from flotilla.fleet.compose import ALIASES
+    from flotilla.posts import EFFORTS
+    table = {}
+    for pair in (part.strip() for part in text.split(",") if part.strip()):
+        name, sep, level = (side.strip() for side in pair.partition("="))
+        if not sep or not name or not level:
+            raise AnswerError(f"effort: {pair!r} is not a post=level pair, such as reviewer=max")
+        name = ALIASES.get(name, name)
+        if name in table:
+            raise AnswerError(f"effort: {name} is named twice; say one level for it")
+        if name not in posts:
+            raise AnswerError(f"effort: no post is called {name!r}; the posts are {', '.join(sorted(posts))}")
+        if level not in EFFORTS:
+            raise AnswerError(f"effort: {level!r} for {name} must be one of {', '.join(EFFORTS)}")
+        table[name] = level
+    if not table:
+        raise AnswerError("effort: name at least one post=level pair, such as reviewer=max")
+    return table
 
 
 GUARDS = ["revert", "line_edit", "push_receipt"]
@@ -145,7 +195,8 @@ GUARDS = ["revert", "line_edit", "push_receipt"]
 #: second service (a gate command, a tracker, a deployed build for a judge).
 QUICK = {"merge_auth": "sender", "review": "every", "permissions": "auto", "ci_where": "cloud", "gate_command": "later",
          "tracker": "nowhere", "repos": "this-first", "release": "none", "deploy": "none", "shared": "reserve",
-         "sequential": "claim", "guards": GUARDS, "model": "one"}
+         "sequential": "claim", "guards": GUARDS, "model": "one",
+         "effort": "default"}
 
 
 def recommended(question: dict, det: dict):
@@ -213,6 +264,8 @@ def validate_answer(question: dict, values: list[str]):
         if question["id"] == "model" and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._\[\]-]*", value):
             raise AnswerError(f"model: {value!r} is not a model name; pick an option, or type one name such as "
                               "claude-opus-5-5 - a post's own `model` sets one post apart")   # field test W3
+        if question["id"] == "effort":
+            efforts(value, question.get("posts") or ())
         if question["id"] == "tracker":
             try:
                 re.compile(value)

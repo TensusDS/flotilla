@@ -189,6 +189,12 @@ def plan(ledger, counts: dict, *, census, store, reserve: bool,
     if HELPER in wanted:
         raise SpawnRefused("a helper is raised by the session it helps, for one piece of its work: "
                            "`flotilla helper raise --for <branch> --task \"<what>\"`")
+    try:   # what the launch would refuse, refused before any seat is up (review of 0.18.0, I1)
+        launch.efforts(ledger.profile, ledger.posts)
+        for post_name in wanted:
+            launch.permission_mode(ledger.profile, ledger.posts[post_name])
+    except launch.LaunchError as err:
+        raise SpawnRefused(f"{err}; nothing was raised") from err
     short = "" if anyway else memory_short(ledger, sum(wanted.values()))
     if short and strict:
         raise SpawnRefused("; ".join(memory_settings(ledger)[2] + [short]) + "; nothing was raised")

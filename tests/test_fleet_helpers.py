@@ -161,3 +161,11 @@ def test_a_helper_number_whose_tree_an_earlier_fleet_left_is_skipped(tmp_path):
     left.mkdir()
     raised = raise_one(ledger, fake)
     assert raised.seat.name == "helper 2" and left.is_dir()
+
+
+def test_a_helper_with_an_effort_the_profile_cannot_mean_reserves_no_name(tmp_path):
+    root, ledger, fake, row, tip = world(tmp_path, {**PROFILE, "permissions": {"mode": "auto"},
+                                                    "fleet": {"effort": {"helper": "hight"}}})
+    with pytest.raises(MoveRefused, match="fleet.effort.helper"):
+        raise_one(ledger, fake)
+    assert fake.launched == [] and not any(r.owner == "helper 1" for r in ledger.rows().values())

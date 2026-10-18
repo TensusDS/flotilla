@@ -62,7 +62,11 @@ def _write(det: dict, given: dict, args, state: Path) -> int:
     if target.exists() and not args.force:
         print(f"{target} already exists; run `flotilla onboard check`, or re-onboard with --force")
         return 2
-    data = build_profile(det, given)
+    try:
+        data = build_profile(det, given)
+    except AnswerError as err:   # the stored answers are a plain file; an answer that no longer fits is asked again
+        print(f"{err}; answer it again with `flotilla onboard answer`")
+        return 2
     text = render_toml(data, header=HEADER)
     mark = confirmation_mark(text)
     if args.confirm != mark:   # the answers are a plain file a session can edit: the whole profile is shown here

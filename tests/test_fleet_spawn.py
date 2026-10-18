@@ -477,3 +477,39 @@ def test_a_session_id_already_on_another_open_row_is_not_recorded_twice(tmp_path
     ledger.run = same_id
     run(ledger, store, fake, {"main": 1})
     assert seat_row(ledger, "main session 2").session_id == ""
+
+
+@pytest.mark.parametrize("effort, said", [({"main": "High"}, "fleet.effort.main"),
+                                          ({"builder": "max"}, "builder")])
+def test_an_effort_the_profile_cannot_mean_raises_no_seat_at_all(tmp_path, effort, said):
+    """Review of 0.18.0, I1 and I2: the level was checked as each seat launched, so the reviewer was already up when
+    the main seat's typo stopped the spawn as a plain refusal; and a key naming no post was silently ignored."""
+    fake = FakeClaude()
+    root, ledger, store = world(tmp_path, fake, {**PROFILE, "permissions": {"mode": "auto"},
+                                                 "fleet": {"effort": effort}})
+    with pytest.raises(spawn.SpawnRefused, match=said) as refused:
+        run(ledger, store, fake, {"main": 1, "review": 1})
+    assert "nothing was raised" in str(refused.value) and not isinstance(refused.value, spawn.SpawnStopped)
+    assert fake.launched == [] and not (tmp_path / "app-reviewer-1").exists()
+
+
+def test_the_effort_table_takes_the_composition_alias(tmp_path):
+    """`[fleet.default] review = 1` stands in the same profile; `review = "max"` beside it means the reviewer."""
+    fake = FakeClaude()
+    root, ledger, store = world(tmp_path, fake, {**PROFILE, "permissions": {"mode": "auto"},
+                                                 "fleet": {"effort": {"review": "max"}}})
+    run(ledger, store, fake, {"review": 1})
+    launched = fake.launched[0]
+    assert launched[launched.index("--effort") + 1] == "max"
+
+
+def test_a_permission_mode_the_launch_would_refuse_raises_no_seat_at_all(tmp_path):
+    """The same class as the effort typo, older: a post asking a mode wider than the profile's was refused at its own
+    launch, after the seats raised before it."""
+    import dataclasses
+    fake = FakeClaude()
+    root, ledger, store = world(tmp_path, fake, {**PROFILE, "permissions": {"mode": "ask"}})
+    ledger.posts["main"] = dataclasses.replace(ledger.posts["main"], permission_mode="auto")
+    with pytest.raises(spawn.SpawnRefused, match="nothing was raised") as refused:
+        run(ledger, store, fake, {"main": 1, "review": 1})
+    assert "wider than" in str(refused.value) and fake.launched == []

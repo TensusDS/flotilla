@@ -81,7 +81,8 @@ and then asks one question: **quick or custom**.
   reviewed, what you are asked - shows every shell command the profile will run, and asks for one yes.
 - **Custom** asks the few things it cannot read, one at a time: how work reaches trunk (pull requests, direct push, or
   local only), who authorizes a merge, how much work is reviewed, how background sessions get permission for their
-  tools, which test commands must be green before shipping, and which models the seats run.
+  tools, which test commands must be green before shipping, which models the seats run, and how hard each post
+  thinks (Claude Code's effort level).
 
 Either way nothing is written before your yes. Then it runs each test tier once on this machine, so a tier that is red
 today is caught now and not by the first session that hands work over, and writes `.flotilla/project.toml` plus the
@@ -335,6 +336,16 @@ Every post may also `reserve` its home branch. A post's file is yours to edit: c
 the `plugins` it keeps, or narrow its permission mode (a post can narrow the profile's mode, never widen it). One
 exception to a post's own `model`: when onboarding chose the strongest model for reviewers, every post that may accept
 runs on it, whatever its file says.
+
+A post may also say `effort:` - `low`, `medium`, `high`, `xhigh` or `max` - and its seats start with
+`claude --effort` at that level; a higher level thinks longer and costs more tokens. Without the key a seat takes
+Claude Code's default; the templates name none. Onboarding asks once and writes the answer to the profile, one level
+per post (`[fleet.effort]`, such as `reviewer = "max"`; `review` means the reviewer, as in `[fleet.default]`); a post's
+own `effort` wins over it. Claude Code runs a level it does not know at its default, with a warning nobody sees in a
+background session, so flotilla checks instead: a post whose `effort:` is outside the list does not load - like any
+post that cannot be read, which refuses ledger moves until it is fixed - and a `[fleet.effort]` level outside the list,
+or a key naming no post, refuses `spawn` and `helper raise` before any seat is raised. `flotilla spawn --dry-run` shows
+the level each seat would run at. The flag came with Claude Code's effort levels; 2.1.302 has it.
 
 **Plugin updates change the templates, not your posts.** When you update flotilla, compare `.flotilla/posts/` with the
 new templates (`template_version` in each file's header says which you have) and bring them up to date, keeping your

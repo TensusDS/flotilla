@@ -57,6 +57,11 @@ def raise_helper(ledger, actor: Actor, branch: str, *, task: str, census, store,
     if len(helping) >= limit:
         raise MoveRefused(f"`{branch}` already has {len(helping)} live helper(s) "
                           f"({', '.join(row.owner for row in helping)}); the limit is fleet.helpers_per_seat = {limit}")
+    try:   # before a name is reserved: what the launch would refuse (review of 0.18.0, I1)
+        launch.efforts(ledger.profile, ledger.posts)
+        launch.permission_mode(ledger.profile, post)
+    except launch.LaunchError as err:
+        raise MoveRefused(str(err)) from err
     short = "" if anyway else spawn.memory_short(ledger)
     if short:
         raise MoveRefused(short)

@@ -3,6 +3,19 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.18.0 - 2026-10-18
+
+- **A post can say how hard its seats think.** `effort:` in a post's header - `low`, `medium`, `high`, `xhigh` or
+  `max` - starts its seats with `claude --effort` at that level. Onboarding asks once: Claude Code's default, the
+  reviewer at max, every post at high, or your own `post=level` pairs; the answer goes to the profile as
+  `[fleet.effort]`, one level per post, and a post's own `effort` wins. The templates name none, so nothing changes
+  until you set one. Claude Code runs an unknown level at its default with a warning nobody sees, so flotilla checks
+  it: a post naming one does not load, and an unknown level or a key naming no post in `[fleet.effort]` refuses the
+  spawn before any seat is raised. `spawn --dry-run` shows each seat's level.
+- **A spawn that the launch would refuse raises nothing.** A post asking for a permission mode wider than the
+  profile's was refused at its own launch, after the seats before it were already up; spawn and `helper raise` now
+  ask every launch check first.
+
 ## 0.17.0 - 2026-10-16
 
 - **A stuck builder gets help in a set form.** The main and minor posts say when a session counts as stuck on a

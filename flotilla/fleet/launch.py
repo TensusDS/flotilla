@@ -85,6 +85,33 @@ def model_for(profile: dict, post) -> str:
     return "" if fleet_model in FLEET_MODEL_WORDS else fleet_model
 
 
+def efforts(profile: dict, posts: dict | None) -> dict[str, str]:
+    """The profile's `[fleet.effort]` as {post: level}, its keys read through the composition's aliases (`review`
+    beside `[fleet.default] review = 1`). The profile is a file a session can edit, and Claude Code runs an unknown
+    level at its default with only a warning a background seat's person never sees: a level outside the list, or -
+    given the project's `posts` - a key naming no post, is refused by name. Spawn asks this before any seat."""
+    from flotilla.fleet.compose import ALIASES
+    from flotilla.posts import EFFORTS
+    table = (profile.get("fleet") or {}).get("effort") or {}
+    if not isinstance(table, dict):
+        raise LaunchError("`fleet.effort` must be a table of post = level, such as reviewer = \"max\"")
+    found = {}
+    for key, level in table.items():
+        name = ALIASES.get(key, key)
+        if posts is not None and name not in posts:
+            raise LaunchError(f"`fleet.effort.{key}` names no post in .flotilla/posts/; posts: {', '.join(sorted(posts))}")
+        if level not in EFFORTS:
+            raise LaunchError(f"`fleet.effort.{key}` is {level!r}; it must be one of {', '.join(EFFORTS)}")
+        found[name] = level
+    return found
+
+
+def effort_for(profile: dict, post) -> str:
+    """A post's own effort wins; else the one the profile names for that post; else "", and Claude Code's default
+    applies."""
+    return post.effort or efforts(profile, None).get(post.name, "")
+
+
 def system_prompt(seat: Seat, post, *, main: Path) -> str:
     return (f"You are the session named \"{seat.name}\", holding the post `{post.name}` in a flotilla fleet on "
             f"this machine. Your home worktree is {seat.tree} (branch {seat.branch}). The main checkout {main} "
@@ -116,6 +143,9 @@ def argv(seat: Seat, post, profile: dict, *, main: Path, settings_json: str = ""
     model = model_for(profile, post)
     if model:
         command += ["--model", model]
+    effort = effort_for(profile, post)
+    if effort:
+        command += ["--effort", effort]
     if settings_json:
         command += ["--settings", settings_json]
     return command + ["--append-system-prompt", system_prompt(seat, post, main=main), first_prompt or FIRST_PROMPT]
