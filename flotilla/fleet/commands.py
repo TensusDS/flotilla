@@ -201,9 +201,10 @@ def _spawn(ledger, args) -> int:
         for seat in seats:
             post = ledger.posts[seat.post]
             model = launch.model_for(ledger.profile, post)
+            effort = launch.effort_for(ledger.profile, post)
             print(f"{seat.name}  ({seat.post})  tree {seat.tree}  branch {seat.branch}")
             print(f"    claude --bg -n \"{seat.name}\" --add-dir {seat.tree} --permission-mode "
-                  f"{launch.permission_mode(ledger.profile, post)}" + (f" --model {model}" if model else "")
+                  f"{launch.permission_mode(ledger.profile, post)}" + (f" --model {model}" if model else "") + (f" --effort {effort}" if effort else "")
                   + f"  (from {main})")
             off = ", ".join(narrow.turned_off(post)) or "none"
             print(f"    turns off: {off if narrow.entries is not None else 'unknown, ' + plugins.NOT_NARROWED}")

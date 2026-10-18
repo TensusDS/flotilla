@@ -221,3 +221,15 @@ def test_the_opt_in_is_written_off_and_turned_on_where_it_stands(tmp_path):
     assert f"{OPT_IN} = false" in text and not opted_in(config.load_project(tmp_path).data)
     path.write_text(text.replace(f"{OPT_IN} = false", f"{OPT_IN} = true"), encoding="utf-8")   # the README's step
     assert opted_in(config.load_project(tmp_path).data)
+
+
+@pytest.mark.parametrize("answer, table", [
+    ("default", None),
+    ("reviewer-max", {"reviewer": "max"}),
+    ("all-high", {name: "high" for name in ("helper", "judge", "main", "minor", "orchestrator", "reviewer",
+                                            "sender")}),
+    ("reviewer=max, main=high", {"reviewer": "max", "main": "high"}),
+])
+def test_the_effort_answer_is_written_as_one_level_per_post(tmp_path, answer, table):
+    data = build_profile(detection(tmp_path), {**BASE_ANSWERS, "effort": answer})
+    assert data["fleet"].get("effort") == table

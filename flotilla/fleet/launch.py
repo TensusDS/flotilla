@@ -85,6 +85,22 @@ def model_for(profile: dict, post) -> str:
     return "" if fleet_model in FLEET_MODEL_WORDS else fleet_model
 
 
+def effort_for(profile: dict, post) -> str:
+    """A post's own effort wins; else the one the profile names for that post (`[fleet.effort]`); else none, and
+    Claude Code's default applies. The profile is a file a session can edit, so a level Claude Code would refuse
+    stops the launch here, before a tree is cut."""
+    from flotilla.posts import EFFORTS
+    if post.effort:
+        return post.effort
+    table = (profile.get("fleet") or {}).get("effort") or {}
+    if not isinstance(table, dict):
+        raise LaunchError("`fleet.effort` must be a table of post = level, such as reviewer = \"max\"")
+    level = table.get(post.name, "")
+    if level not in ("", *EFFORTS):
+        raise LaunchError(f"`fleet.effort.{post.name}` is {level!r}; it must be one of {', '.join(EFFORTS)}")
+    return level
+
+
 def system_prompt(seat: Seat, post, *, main: Path) -> str:
     return (f"You are the session named \"{seat.name}\", holding the post `{post.name}` in a flotilla fleet on "
             f"this machine. Your home worktree is {seat.tree} (branch {seat.branch}). The main checkout {main} "
@@ -116,6 +132,9 @@ def argv(seat: Seat, post, profile: dict, *, main: Path, settings_json: str = ""
     model = model_for(profile, post)
     if model:
         command += ["--model", model]
+    effort = effort_for(profile, post)
+    if effort:
+        command += ["--effort", effort]
     if settings_json:
         command += ["--settings", settings_json]
     return command + ["--append-system-prompt", system_prompt(seat, post, main=main), first_prompt or FIRST_PROMPT]

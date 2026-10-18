@@ -271,3 +271,16 @@ def test_plain_words_say_nothing_false(data, says, never):
     from flotilla.onboard.profile import plain_words
     said = " ".join(plain_words(data))
     assert says in said and never not in said
+
+
+def test_plain_words_name_an_effort_only_when_one_is_set():
+    """Effort costs tokens: a higher one is said before the yes; none set says nothing."""
+    from flotilla.onboard.profile import plain_words
+    said = " ".join(plain_words({"fleet": {"effort": {"reviewer": "max", "main": "high"}}}))
+    assert "reviewer at max" in said and "main at high" in said and "Claude Code's default" in said
+    assert "effort" not in " ".join(plain_words({"fleet": {"model": "one"}}))
+
+
+def test_quick_onboarding_leaves_the_effort_to_claude_code(project):
+    det = detect(project)
+    assert quick_answers(det, {})["effort"] == "default"

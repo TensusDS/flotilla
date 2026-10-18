@@ -156,3 +156,18 @@ def test_the_model_question_offers_model_names_and_takes_one_typed():
 
 def test_a_local_project_is_not_asked_about_a_judge():
     assert "deploy" not in ids(qs.all_questions(detection(remote=False, ci={"provider": "none"}), {}))
+
+
+def test_the_effort_question_offers_levels_and_takes_pairs_typed():
+    q = next(q for q in qs.all_questions(detection(), {}) if q["id"] == "effort")
+    assert q["options"][0]["value"] == "default" and q["free_text"] and len(q["header"]) <= 12
+    assert qs.validate_answer(q, ["reviewer=max, main=high"]) == "reviewer=max, main=high"
+
+
+@pytest.mark.parametrize("typed, why", [("reviewer=hight", "low, medium, high, xhigh, max"),
+                                         ("builder=max", "builder"), ("max", "post=level")])
+def test_an_effort_typed_wrong_is_refused(typed, why):
+    q = next(q for q in qs.all_questions(detection(), {}) if q["id"] == "effort")
+    with pytest.raises(qs.AnswerError, match=why):
+        qs.validate_answer(q, [typed])
+

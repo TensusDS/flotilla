@@ -136,7 +136,31 @@ def all_questions(det: dict, answers: dict) -> list[dict]:
         ("sonnet", "Sonnet", "Every post runs on Sonnet."),
         ("opus", "Opus", "Every post runs on Opus."),
     ], free_text=True))
+    out.append(_q("effort", "Effort", "How hard does each post think? A post's own `effort` still wins. Type your "
+                  "own as post=level pairs, such as reviewer=max, main=high.", [
+        ("default", "Default", "No post is given an effort: every session takes Claude Code's default."),
+        ("reviewer-max", "Reviewer at max", "Posts that may accept a branch think at max; higher effort costs more "
+                                            "tokens. The others take the default."),
+        ("all-high", "All high", "Every post thinks at high effort, at a higher token cost."),
+    ], free_text=True))
     return out
+
+
+def efforts(text: str, posts) -> dict[str, str]:
+    """`reviewer=max, main=high` as {post: level}; refused with the reason when a pair names no post in `posts` or
+    a level `claude --effort` does not take."""
+    from flotilla.posts import EFFORTS
+    table = {}
+    for pair in (part.strip() for part in text.split(",")):
+        name, sep, level = (side.strip() for side in pair.partition("="))
+        if not sep or not name or not level:
+            raise AnswerError(f"effort: {pair!r} is not a post=level pair, such as reviewer=max")
+        if name not in posts:
+            raise AnswerError(f"effort: no post is called {name!r}; the posts are {', '.join(sorted(posts))}")
+        if level not in EFFORTS:
+            raise AnswerError(f"effort: {level!r} for {name} must be one of {', '.join(EFFORTS)}")
+        table[name] = level
+    return table
 
 
 GUARDS = ["revert", "line_edit", "push_receipt"]
@@ -145,7 +169,8 @@ GUARDS = ["revert", "line_edit", "push_receipt"]
 #: second service (a gate command, a tracker, a deployed build for a judge).
 QUICK = {"merge_auth": "sender", "review": "every", "permissions": "auto", "ci_where": "cloud", "gate_command": "later",
          "tracker": "nowhere", "repos": "this-first", "release": "none", "deploy": "none", "shared": "reserve",
-         "sequential": "claim", "guards": GUARDS, "model": "one"}
+         "sequential": "claim", "guards": GUARDS, "model": "one",
+         "effort": "default"}
 
 
 def recommended(question: dict, det: dict):
@@ -213,6 +238,9 @@ def validate_answer(question: dict, values: list[str]):
         if question["id"] == "model" and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._\[\]-]*", value):
             raise AnswerError(f"model: {value!r} is not a model name; pick an option, or type one name such as "
                               "claude-opus-5-5 - a post's own `model` sets one post apart")   # field test W3
+        if question["id"] == "effort":
+            from flotilla.posts import template_posts
+            efforts(value, template_posts())
         if question["id"] == "tracker":
             try:
                 re.compile(value)

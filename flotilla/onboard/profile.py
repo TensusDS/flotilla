@@ -119,6 +119,9 @@ def build_profile(det: dict, answers: dict) -> dict:
     # the word every seat name starts with (`worldcore-orchestrator 1`): numbers then run per project (W11)
     data["fleet"] = {"name": clean(Path(det["root"]).name), "default": suggest_composition(answers),
                      "model": answers.get("model", "one")}
+    effort = _effort(answers.get("effort", "default"))
+    if effort:   # one level per post, so the person reads what each seat runs at and edits one line to change it
+        data["fleet"]["effort"] = effort
     chosen_guards = answers.get("guards") or []
     data["guards"] = {guard: guard in chosen_guards and "none" not in chosen_guards for guard in GUARDS}
     tracker = answers.get("tracker", "nowhere")
@@ -157,6 +160,19 @@ def write_profile(root: Path, data: dict, *, force: bool = False) -> Path:
     return path
 
 
+def _effort(answer: str) -> dict[str, str]:
+    from flotilla.onboard.questions import efforts
+    from flotilla.posts import template_posts
+    posts = template_posts()
+    if answer == "default":
+        return {}
+    if answer == "reviewer-max":
+        return {name: "max" for name, post in posts.items() if "accept" in post.may}
+    if answer == "all-high":
+        return {name: "high" for name in posts}
+    return efforts(answer, posts)
+
+
 def plain_words(data: dict) -> list[str]:
     """What the profile means for the person, one line each - printed by `write` before the yes, so it reaches the
     person through the command's own output whatever the session retells (worldcore field test W12)."""
@@ -185,4 +201,9 @@ def plain_words(data: dict) -> list[str]:
     tiers = [tier.get("command", "") for tier in (data.get("tests") or {}).get("tier") or []]
     tests = ("tests before every handover and push: " + "; ".join(tiers)) if tiers else \
         "tests: none - nothing is run before a handover or a push"
-    return [merges, review, asks, tests]
+    said = [merges, review, asks, tests]
+    effort = (data.get("fleet") or {}).get("effort") or {}
+    if isinstance(effort, dict) and effort:   # a higher effort costs tokens: said before the yes, never when unset
+        said.append("effort: " + ", ".join(f"{name} at {level}" for name, level in effort.items())
+                    + "; a post not named takes Claude Code's default")
+    return said

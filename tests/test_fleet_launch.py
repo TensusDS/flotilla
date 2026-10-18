@@ -127,3 +127,34 @@ def test_every_seat_is_told_to_hand_the_person_a_refusal_and_a_safe_proposal(tmp
     assert "Never propose skipping or overriding a check (`--no-verify`, an override variable)" in text
     assert "An approve is never yours to propose" in text and "never worked around" in text
     assert "the orchestrator: the person" in text and "a helper: the session that raised it" in text
+
+
+def test_a_posts_effort_reaches_the_launch():
+    import dataclasses
+    seat = launch.seat_for(MAIN, POSTS["reviewer"], "review session 3")
+    post = dataclasses.replace(POSTS["reviewer"], effort="max")
+    argv = launch.argv(seat, post, {"permissions": {"mode": "auto"}}, main=MAIN)
+    assert argv[argv.index("--effort") + 1] == "max"
+
+
+def test_no_effort_named_passes_no_flag():
+    seat = launch.seat_for(MAIN, POSTS["main"], "main session 3")
+    assert "--effort" not in launch.argv(seat, POSTS["main"], {"permissions": {"mode": "auto"}}, main=MAIN)
+
+
+def test_the_profile_names_an_effort_per_post_and_a_posts_own_wins():
+    import dataclasses
+    profile = {"fleet": {"effort": {"reviewer": "max", "main": "high"}}}
+    assert launch.effort_for(profile, POSTS["reviewer"]) == "max"
+    assert launch.effort_for(profile, POSTS["main"]) == "high"
+    assert launch.effort_for(profile, POSTS["sender"]) == ""
+    assert launch.effort_for(profile, dataclasses.replace(POSTS["main"], effort="low")) == "low"
+    assert launch.effort_for({}, POSTS["main"]) == ""
+
+
+@pytest.mark.parametrize("effort", [{"main": "hight"}, {"main": 3}, "max"])
+def test_an_effort_the_profile_cannot_mean_refuses_the_launch(effort):
+    """The profile is a plain file a session can edit: a value Claude Code would refuse stops the seat before its
+    tree is cut, with the reason, instead of a session that never starts."""
+    with pytest.raises(launch.LaunchError, match="effort"):
+        launch.effort_for({"fleet": {"effort": effort}}, POSTS["main"])

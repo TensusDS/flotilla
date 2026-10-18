@@ -236,3 +236,28 @@ def test_a_session_of_a_fleet_before_its_name_is_known_by_its_former_post(tmp_pa
     assert P.post_or_former(posts, "twosuns-main session 2") == "main"
     assert P.post_or_former(posts, "worldcore-main session 2") == ""        # another project's seat is not ours
     assert P.post_or_former(P.load_posts(tmp_path), "main session 19") == "main"
+
+
+def test_a_post_reads_its_effort(tmp_path):
+    from flotilla.posts import load_post
+    path = tmp_path / "lead.md"
+    path.write_text("---\nname: lead\nname_pattern: \"lead {n}\"\nmay: [assign]\neffort: xhigh\n---\nbody\n",
+                    encoding="utf-8")
+    assert load_post(path).effort == "xhigh"
+
+
+def test_a_post_refuses_an_effort_claude_code_does_not_take(tmp_path):
+    """A typo would load, then every seat of the post would be refused by Claude Code at launch."""
+    import pytest
+    from flotilla.posts import PostError, load_post
+    path = tmp_path / "lead.md"
+    path.write_text("---\nname: lead\nname_pattern: \"lead {n}\"\nmay: [assign]\neffort: hight\n---\n",
+                    encoding="utf-8")
+    with pytest.raises(PostError, match="low, medium, high, xhigh, max"):
+        load_post(path)
+
+
+def test_template_posts_leave_the_effort_to_claude_code():
+    from flotilla.posts import TEMPLATE_DIR, load_post
+    for path in TEMPLATE_DIR.glob("*.md"):
+        assert load_post(path).effort == "", path.name

@@ -19,6 +19,8 @@ MOVES = ("reserve", "claim", "hand", "moved", "fix", "assign", "recuse", "take",
          "inbatch", "ship", "walked", "broke", "unbroke", "close", "release", "offledger", "wait", "hold",
          "unhold", "adopt", "urgent", "walkable", "vouch", "return")
 PERMISSION_MODES = ("acceptEdits", "auto", "bypassPermissions", "default", "manual", "dontAsk", "plan")
+#: The levels `claude --effort` takes (Claude Code 2.1.302); a post or the profile names one, or none for its default.
+EFFORTS = ("low", "medium", "high", "xhigh", "max")
 TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates" / "posts"
 POSTS_DIR = Path(".flotilla") / "posts"
 
@@ -41,6 +43,7 @@ class Post:
     plugins: tuple = ()   # the MCP-bearing plugins a seat of this post keeps; the rest are turned off (decision 154)
     plugins_written: bool = False   # whether the post says `plugins:` at all (a post older than the key does not)
     project: str = ""   # the fleet's name its seats carry (`worldcore-orchestrator 1`); "" for a profile without one
+    effort: str = ""   # `claude --effort` for its seats; "" leaves Claude Code's default
 
     def matches(self, session_name: str) -> bool:
         regex = "^" + re.escape(self.name_pattern).replace(re.escape("{n}"), r"\d+") + "$"
@@ -105,11 +108,14 @@ def load_post(path: Path) -> Post:
     mode = meta.get("permission_mode", "")
     if mode and mode not in PERMISSION_MODES:
         raise PostError(f"{path}: `permission_mode` must be one of {', '.join(PERMISSION_MODES)}")
+    effort = meta.get("effort", "")
+    if effort and effort not in EFFORTS:
+        raise PostError(f"{path}: `effort` must be one of {', '.join(EFFORTS)}, or left out for Claude Code's default")
     kept = meta.get("plugins", [])
     if not isinstance(kept, list):
         raise PostError(f"{path}: `plugins` must be a list of plugin ids like [playwright@claude-plugins-official]")
     return Post(name, pattern, frozenset(may), one_copy, version, path, body, model, mode, tuple(kept),
-                "plugins" in meta)
+                "plugins" in meta, effort=effort)
 
 
 def _folder(root: Path) -> Path:
@@ -153,6 +159,11 @@ def behind(posts: dict, *, template_dir: Path = TEMPLATE_DIR) -> list[tuple[str,
         if post.template_version < shipped:
             found.append((template.stem, post.template_version, shipped))
     return found
+
+
+def template_posts(template_dir: Path = TEMPLATE_DIR) -> dict[str, Post]:
+    """The posts onboarding installs, by name."""
+    return {post.name: post for post in (load_post(path) for path in sorted(Path(template_dir).glob("*.md")))}
 
 
 def install_templates(root: Path, *, template_dir: Path = TEMPLATE_DIR) -> list[Path]:
