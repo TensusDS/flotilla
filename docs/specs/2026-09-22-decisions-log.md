@@ -1712,9 +1712,15 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    person reads says what each seat runs at. The templates name no effort: putting one in would raise every
    template's version and ask every project to compare its posts for a value that changes nothing. Checked against
    Claude Code: an unknown level is not refused - `--effort hight` warned "ignoring it" and ran at the default - so
-   flotilla stops an unknown level itself, at loading the post and at the launch before a tree is cut, since a
-   background seat's warning reaches nobody. Plain words before the onboarding yes name any level set, since a
-   higher one costs tokens.
+   flotilla stops an unknown level itself, since a background seat's warning reaches nobody: a post naming one does
+   not load (as any unreadable post, refusing ledger moves until fixed), and the profile's table is checked whole -
+   levels, and keys against the project's posts, `review` read as the reviewer as in `[fleet.default]` - by spawn and
+   helper raise before any seat. A fresh reader found the first version checked it as each seat launched, so a typo
+   stopped a spawn after its first seats were up, reported as a plain refusal; the permission mode had the same
+   flaw from before and is now asked first too. The same reader found onboarding checked typed pairs against the
+   templates only, refusing a custom post kept at re-onboarding; it now reads the project's posts. Plain words before
+   the onboarding yes name any level set, since a higher one costs tokens, and say a post's own effort still wins.
+   Not checked: which Claude Code versions between the doctor's floor and 2.1.302 take `--effort`.
 
 ## Open questions (for the foundation spec)
 

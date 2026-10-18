@@ -340,9 +340,12 @@ runs on it, whatever its file says.
 A post may also say `effort:` - `low`, `medium`, `high`, `xhigh` or `max` - and its seats start with
 `claude --effort` at that level; a higher level thinks longer and costs more tokens. Without the key a seat takes
 Claude Code's default; the templates name none. Onboarding asks once and writes the answer to the profile, one level
-per post (`[fleet.effort]`, such as `reviewer = "max"`); a post's own `effort` wins over it. A level outside that list
-stops loading the post, or the launch before a tree is cut: Claude Code would run it at the default with a warning
-nobody sees in a background session. `flotilla spawn --dry-run` shows the level each seat would run at.
+per post (`[fleet.effort]`, such as `reviewer = "max"`; `review` means the reviewer, as in `[fleet.default]`); a post's
+own `effort` wins over it. Claude Code runs a level it does not know at its default, with a warning nobody sees in a
+background session, so flotilla checks instead: a post whose `effort:` is outside the list does not load - like any
+post that cannot be read, which refuses ledger moves until it is fixed - and a `[fleet.effort]` level outside the list,
+or a key naming no post, refuses `spawn` and `helper raise` before any seat is raised. `flotilla spawn --dry-run` shows
+the level each seat would run at. The flag came with Claude Code's effort levels; 2.1.302 has it.
 
 **Plugin updates change the templates, not your posts.** When you update flotilla, compare `.flotilla/posts/` with the
 new templates (`template_version` in each file's header says which you have) and bring them up to date, keeping your

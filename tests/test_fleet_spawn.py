@@ -501,3 +501,15 @@ def test_the_effort_table_takes_the_composition_alias(tmp_path):
     run(ledger, store, fake, {"review": 1})
     launched = fake.launched[0]
     assert launched[launched.index("--effort") + 1] == "max"
+
+
+def test_a_permission_mode_the_launch_would_refuse_raises_no_seat_at_all(tmp_path):
+    """The same class as the effort typo, older: a post asking a mode wider than the profile's was refused at its own
+    launch, after the seats raised before it."""
+    import dataclasses
+    fake = FakeClaude()
+    root, ledger, store = world(tmp_path, fake, {**PROFILE, "permissions": {"mode": "ask"}})
+    ledger.posts["main"] = dataclasses.replace(ledger.posts["main"], permission_mode="auto")
+    with pytest.raises(spawn.SpawnRefused, match="nothing was raised") as refused:
+        run(ledger, store, fake, {"main": 1, "review": 1})
+    assert "wider than" in str(refused.value) and fake.launched == []
