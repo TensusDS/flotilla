@@ -74,3 +74,20 @@ def test_pull_requests_that_could_not_be_listed_are_said():
 def test_a_title_cannot_carry_control_characters_into_the_output():
     pulls = {"source": "github", "open": [{"number": 1, "branch": "b", "title": "x\x1b[2Jy"}]}
     assert "\x1b" not in " ".join(dp.outside_lines(pulls, GUARDED, known=set()))
+
+
+import pytest
+
+
+@pytest.mark.parametrize("branch", ["x$(touch pwned)", "-upload-pack=evil", "a;b", "x`id`"])
+def test_a_branch_name_a_shell_would_read_is_never_put_into_a_suggested_command(branch):
+    """Security review of this change: a pull request's head branch is its author's to name, and git allows `$`, `(`,
+    backquotes and `;` in it - a suggested command carrying it runs whatever the author wrote once pasted."""
+    pulls = {"source": "github", "open": [{"number": 7, "branch": branch, "title": "t"}]}
+    said = " ".join(dp.outside_lines(pulls, GUARDED, known=set()))
+    assert "git fetch" not in said and "flotilla work claim" not in said and "#7" in said
+
+
+def test_a_plain_branch_name_still_gets_the_command():
+    pulls = {"source": "github", "open": [{"number": 7, "branch": "fix/a-b_1.2", "title": "t"}]}
+    assert "`flotilla work claim fix/a-b_1.2`" in " ".join(dp.outside_lines(pulls, GUARDED, known=set()))

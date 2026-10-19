@@ -6,6 +6,7 @@ work that already landed, not work still waiting to. Warned, never refused: they
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 
 from flotilla.core.text import visible
@@ -13,6 +14,7 @@ from flotilla.onboard.detect_ci import github_slug
 
 LIMIT = 100
 SHOWN = 5
+PLAIN_BRANCH = re.compile(r"[A-Za-z0-9_][A-Za-z0-9._/-]*")   # nothing a shell expands, splits or reads as a flag
 
 
 def open_pull_requests(normalized_origin: str | None, run=subprocess.run) -> dict:
@@ -56,8 +58,12 @@ def outside_lines(pulls: dict, profile: dict, *, known: set[str]) -> list[str]:
     more = f"; and {count - SHOWN} more" if count > SHOWN else ""
     approval = (" and your approval of its ledger row, which these do not have"
                 if (profile.get("flow") or {}).get("merge_authorized_by") == "human" else "")
-    branch = visible(outside[0]["branch"])
+    first = outside[0]
+    if PLAIN_BRANCH.fullmatch(first["branch"]):
+        takes = f"(`git fetch origin {first['branch']}`, then `flotilla work claim {first['branch']}`)"
+    else:   # the author of a pull request names its branch: a name a shell reads is never offered as a command
+        takes = f"(#{first['number']}'s branch name holds characters a shell reads, so no command is offered for it)"
     return [f"{many}{count} open pull request{'s' if count != 1 else ''} made outside the ledger: {named}{more}",
             f"once the profile is on trunk, `gh pr merge` from a session needs a green push receipt over the head"
-            f"{approval}: merge them before publishing, or a builder takes one in (`git fetch origin {branch}`, then "
-            f"`flotilla work claim {branch}`), or you merge it yourself with `!`"]
+            f"{approval}: merge them before publishing, or a builder takes one in {takes}, or you merge it yourself "
+            "with `!`"]
