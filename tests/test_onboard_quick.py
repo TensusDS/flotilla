@@ -300,3 +300,53 @@ def test_a_stored_effort_that_no_longer_fits_is_refused_at_write_not_a_traceback
     store.write_text(store.read_text(encoding="utf-8").replace("reviewer=max", "builder=max"), encoding="utf-8")
     code, out = run_cli("onboard", "write", "--root", str(project))
     assert code == 2 and "builder" in out and "Traceback" not in out
+
+
+@pytest.mark.parametrize("data, says", [
+    ({"flow": {"mode": "pr", "merge_authorized_by": "human"}, "pr": {"merged_by": "sender"}},
+     "only the sender session runs `gh pr merge`, after you approve"),
+    ({"flow": {"mode": "pr", "merge_authorized_by": "sender"}, "pr": {"merged_by": "sender"}},
+     "only the sender session runs `gh pr merge`;"),
+    ({"flow": {"mode": "direct", "merge_authorized_by": "human"}}, "only the sender session pushes to trunk, after"),
+    ({"flow": {"mode": "local"}}, "only the sender session merges into trunk"),
+])
+def test_plain_words_name_the_door_not_only_the_approval(data, says):
+    """A new project's onboarding (2026-10-19): the session read "nothing reaches trunk until you approve it" as the
+    person's routine being refused - who runs the merge, and who never does, was in the posts and nowhere before
+    the yes."""
+    from flotilla.onboard.profile import plain_words
+    said = " ".join(plain_words(data))
+    assert says in said and "the orchestrator" in said and "never" in said
+
+
+def test_plain_words_name_no_merging_session_where_the_person_merges():
+    from flotilla.onboard.profile import plain_words
+    said = " ".join(plain_words({"flow": {"mode": "pr"}, "pr": {"merged_by": "human"}}))
+    assert "only the sender session" not in said and "no session merges" in said
+
+
+@pytest.mark.parametrize("who, approval", [("human", True), ("sender", False)])
+def test_plain_words_say_the_push_guard_judges_every_session_the_persons_own_included(who, approval):
+    """The same onboarding: a project with its own merge routine learned only from guards/push.py that the guard
+    judges an interactive session holding no post too. Said before the yes, with what `!` leaves to the person."""
+    from flotilla.onboard.profile import plain_words
+    data = {"flow": {"mode": "pr", "merge_authorized_by": who}, "pr": {"merged_by": "sender"},
+            "guards": {"push_receipt": True, "revert": True}}
+    said = " ".join(plain_words(data))
+    assert "every Claude Code session" in said and "your own" in said and "holds no post" in said
+    assert "`gh pr merge`" in said and "green push receipt" in said and "after `!`" in said and "pre-push" in said
+    assert ("your approval" in said) is approval
+
+
+def test_plain_words_say_other_guards_judge_every_session_without_promising_a_receipt():
+    from flotilla.onboard.profile import plain_words
+    said = " ".join(plain_words({"flow": {"mode": "direct", "merge_authorized_by": "sender"},
+                                 "guards": {"revert": True, "push_receipt": False}}))
+    assert "every Claude Code session" in said and "after `!`" in said and "push receipt" not in said
+
+
+def test_plain_words_say_nothing_of_guards_when_none_is_on():
+    from flotilla.onboard.profile import plain_words
+    said = " ".join(plain_words({"flow": {"mode": "direct", "merge_authorized_by": "sender"},
+                                 "guards": {"revert": False, "push_receipt": False}}))
+    assert "every Claude Code session" not in said
