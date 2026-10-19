@@ -6,20 +6,24 @@ each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2
 ## 0.19.0 - 2026-10-19
 
 - **Onboarding says who merges, not only who approves.** The plain words before the yes now name the session that
-  runs the merge - only the sender runs `gh pr merge` or pushes to trunk, the orchestrator never does - and, where you
-  merge pull requests yourself, that no session merges them.
+  runs the merge - of the fleet's seats only the sender runs `gh pr merge` or pushes to trunk, the orchestrator never
+  does, and whether the push guard holds them to it - and, where you merge pull requests yourself, that no session
+  merges them.
 - **It says whom the guards judge.** Every Claude Code session that has flotilla on and works in the repository, your
   own interactive one included, even one that holds no post: with the push guard on, its pushes to trunk or a tag,
-  `gh pr create` and `gh pr merge` need a green push receipt and, where you authorize merges, your approval. What you
-  type yourself after `!` is not asked, unless you install the `pre-push` hook.
-- **Open pull requests made outside the ledger are named before you publish.** Detection lists the repository's open
-  pull requests on GitHub; `onboard write` and `onboard publish` name those no ledger row knows, since a session can no
-  longer merge them once the rules are on trunk, with three ways out: merge them first, have a builder claim the
-  branch, or merge it yourself with `!`. A warning, not a refusal; a `gh` that cannot answer is said. A branch name
-  holding characters a shell reads is never put into a suggested command.
-- **The manual says the onboarding branch is guarded already.** Until origin's trunk carries a profile the guards
-  judge by the tree's own, so a pull request with `.flotilla/` needs a push receipt; README, the user manual (with
-  three troubleshooting rows) and the onboard skill say so.
+  `gh pr create` and `gh pr merge` need a green push receipt, and where you authorize merges a push to trunk and
+  `gh pr merge` also need your approval of the work's ledger row - so work no row carries you merge yourself after
+  `!`. What you type after `!` is not asked; the `pre-push` hook, where installed, asks your own git pushes.
+- **Open pull requests made outside the ledger are named.** Where a session merges pull requests and the push guard is
+  on, `onboard write` names the open pull requests on GitHub that no open ledger row knows before the yes, and
+  `onboard publish` again once the rules are on trunk, with the ways out: merge them first, have a builder claim the
+  branch, or merge it yourself with `!`. A warning, not a refusal; a `gh` that cannot answer is said. Titles are cut
+  short and marked as their authors' words; a fork's pull request, a branch named like trunk, or a branch name a
+  shell would read gets no suggested command.
+- **The onboarding's own pull request.** Until origin's trunk carries a profile the guards judge by the tree's own,
+  so a pull request with `.flotilla/` needs a push receipt - and where you authorize merges, no session can merge it,
+  since your approval cannot be asked yet: `publish` and the docs now say to merge it yourself. README, the user
+  manual (with three troubleshooting rows) and the onboard skill say all of this.
 
 ## 0.18.0 - 2026-10-18
 

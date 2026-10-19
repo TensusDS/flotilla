@@ -572,7 +572,8 @@ The guards judge every Claude Code session that has flotilla on and works in the
 a project with its own merge routine keeps it through the sender, or by your own hand after `!`, which the command
 guards never see. They read the rules from origin's trunk; until trunk carries a profile - the onboarding's own
 branch - they judge by the tree's. Onboarding says both before your yes, and names open pull requests made outside
-the ledger, which a session can no longer merge once a person authorizes merges.
+the ledger, which a session merges only with a receipt - and, where you authorize merges, an approved row it does
+not have. Where you authorize merges, the onboarding's own pull request is yours to merge: no session can yet.
 
 Two git hooks back them, installed only with your yes, one each (`/flotilla:guard`): `pre-commit` refuses a rewrite of
 a shared file another open row has reserved (appends always pass), and `pre-push` asks git what is actually pushed,

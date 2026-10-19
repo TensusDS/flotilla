@@ -304,11 +304,11 @@ def test_a_stored_effort_that_no_longer_fits_is_refused_at_write_not_a_traceback
 
 @pytest.mark.parametrize("data, says", [
     ({"flow": {"mode": "pr", "merge_authorized_by": "human"}, "pr": {"merged_by": "sender"}},
-     "only the sender session runs `gh pr merge`, after you approve"),
+     "only the sender runs `gh pr merge`, after you approve"),
     ({"flow": {"mode": "pr", "merge_authorized_by": "sender"}, "pr": {"merged_by": "sender"}},
-     "only the sender session runs `gh pr merge`;"),
-    ({"flow": {"mode": "direct", "merge_authorized_by": "human"}}, "only the sender session pushes to trunk, after"),
-    ({"flow": {"mode": "local"}}, "only the sender session merges into trunk"),
+     "only the sender runs `gh pr merge`;"),
+    ({"flow": {"mode": "direct", "merge_authorized_by": "human"}}, "only the sender pushes to trunk, after"),
+    ({"flow": {"mode": "local"}}, "only the sender merges into trunk"),
 ])
 def test_plain_words_name_the_door_not_only_the_approval(data, says):
     """A new project's onboarding (2026-10-19): the session read "nothing reaches trunk until you approve it" as the
@@ -322,7 +322,7 @@ def test_plain_words_name_the_door_not_only_the_approval(data, says):
 def test_plain_words_name_no_merging_session_where_the_person_merges():
     from flotilla.onboard.profile import plain_words
     said = " ".join(plain_words({"flow": {"mode": "pr"}, "pr": {"merged_by": "human"}}))
-    assert "only the sender session" not in said and "no session merges" in said
+    assert "only the sender" not in said and "no session merges" in said
 
 
 @pytest.mark.parametrize("who, approval", [("human", True), ("sender", False)])
@@ -377,3 +377,100 @@ def test_publish_warns_of_open_pull_requests_and_still_publishes(project, monkey
     code, out = run_cli("onboard", "publish", "--root", str(project))
     assert code == 0, out
     assert "#12 `feat/theirs`" in out and "pushed" in out
+
+
+@pytest.mark.parametrize("data, held", [
+    ({"flow": {"mode": "pr", "merge_authorized_by": "human"}, "pr": {"merged_by": "sender"},
+      "guards": {"push_receipt": True}}, "the push guard refuses it to any other seat"),
+    ({"flow": {"mode": "direct", "merge_authorized_by": "sender"}, "guards": {"push_receipt": False}},
+     "no guard enforces it here"),
+    ({"flow": {"mode": "local"}, "guards": {"push_receipt": True}}, "no guard enforces it here"),
+])
+def test_the_door_line_says_whether_anything_holds_seats_to_it(data, held):
+    """Review of this change, I2 and M2: "never merge" read as a rule for every session, the person's own included,
+    while the code lets a session with no post merge, and holds seats to it only with the push guard on and a flow
+    that pushes."""
+    from flotilla.onboard.profile import plain_words
+    said = " ".join(plain_words(data))
+    assert "of the fleet's sessions" in said and held in said
+
+
+def test_the_guard_line_says_approval_is_a_ledger_row_and_asked_of_trunk_and_merges_only():
+    """Review of this change, I2, M1 and M3: approval is asked only of a push to trunk and `gh pr merge`, only through
+    a ledger row, so the person's own work with no row is merged by them after `!`; pre-push never sees gh pr merge."""
+    from flotilla.onboard.profile import plain_words
+    said = " ".join(plain_words({"flow": {"mode": "pr", "merge_authorized_by": "human"}, "pr": {"merged_by": "sender"},
+                                 "guards": {"push_receipt": True}}))
+    assert "a push to trunk and `gh pr merge` also need your approval of the work's ledger row" in said
+    assert "you merge yourself after `!`" in said and "never a `gh pr merge`" in said
+
+
+def test_write_does_not_ask_gh_where_no_session_merge_would_be_refused(project, monkeypatch):
+    from flotilla.onboard import detect_prs
+
+    def asked(*args, **kwargs):
+        raise AssertionError("gh asked although nothing would refuse a merge")
+    monkeypatch.setattr(detect_prs, "open_pull_requests", asked)
+    assert run_cli("onboard", "quick", "--root", str(project))[0] == 0
+    assert run_cli("onboard", "answer", "guards", "revert", "--root", str(project))[0] == 0
+    assert run_cli("onboard", "write", "--root", str(project))[0] == 5
+
+
+def test_detection_does_not_ask_gh_for_pull_requests(project, monkeypatch):
+    """Review of this change, M6: detection runs on every onboarding command; the list is asked by write and publish."""
+    from flotilla.onboard import detect_prs
+    monkeypatch.setattr(detect_prs, "open_pull_requests", lambda *a, **k: (_ for _ in ()).throw(AssertionError()))
+    assert run_cli("onboard", "next", "--root", str(project))[0] == 0
+
+
+def test_a_branch_only_a_closed_row_names_is_outside_the_ledger_again(project, monkeypatch):
+    """Review of this change, M5: a released or closed row approves nothing, so an open pull request on a reused
+    branch is still made outside the ledger; an open row's branch is not."""
+    from types import SimpleNamespace
+    from flotilla.ledger import commands as ledger_commands
+    from flotilla.onboard.commands import _pull_request_lines
+    rows = {"1": SimpleNamespace(branch="feat/old", is_open=False), "2": SimpleNamespace(branch="feat/live",
+                                                                                          is_open=True)}
+    monkeypatch.setattr(ledger_commands, "open_ledger", lambda root: SimpleNamespace(rows=lambda: rows))
+    from flotilla.onboard import detect_prs
+    monkeypatch.setattr(detect_prs, "open_pull_requests", lambda origin, run=None: {"source": "github", "open": [
+        {"number": 1, "branch": "feat/old", "title": "a"}, {"number": 2, "branch": "feat/live", "title": "b"}]})
+    said = " ".join(_pull_request_lines({"root": str(project), "origin": "github.com/o/app"},
+                                        {"flow": {"mode": "pr", "merge_authorized_by": "human"},
+                                         "pr": {"merged_by": "sender"}, "guards": {"push_receipt": True}}))
+    assert "#1 `feat/old`" in said and "#2" not in said
+
+
+def test_publish_names_open_pull_requests_after_the_push_not_before(project, monkeypatch):
+    """Review of this change, M8: said before the push in the same command, "merge them before publishing" could not
+    be acted on; said after it, it speaks of what to do now the rules are on trunk."""
+    import sys
+    from test_onboard_cli import write_confirmed
+    _open_pull(monkeypatch)
+    assert run_cli("onboard", "quick", "--root", str(project))[0] == 0
+    command = f"{sys.executable} -c \"print('1 passed')\""
+    assert run_cli("onboard", "answer", "tiers", command, "--root", str(project))[0] == 0
+    assert write_confirmed(project)[0] == 0
+    code, out = run_cli("onboard", "publish", "--root", str(project))
+    assert code == 0, out
+    assert out.index("pushed to origin") < out.index("#12") and "now that the profile is on trunk" in out
+    assert "merge them before publishing" not in out
+
+
+def test_publish_that_cannot_push_tells_a_person_who_authorizes_merges_to_merge_the_pull_request_themselves(
+        project, monkeypatch, tmp_path):
+    """Review of this change, I1: until trunk carries a profile the approval cannot be asked of a ledger, and that
+    refusal has no override - where the person authorizes merges, no session can merge the onboarding's pull
+    request, and "open one and merge it" sent the session into it."""
+    import sys
+    from test_onboard_cli import write_confirmed
+    hook = tmp_path / "origin.git" / "hooks" / "pre-receive"
+    hook.write_text("#!/bin/sh\necho 'trunk takes pull requests only' >&2\nexit 1\n", encoding="utf-8")
+    hook.chmod(0o755)
+    assert run_cli("onboard", "quick", "--root", str(project))[0] == 0
+    assert run_cli("onboard", "answer", "merge_auth", "human", "--root", str(project))[0] == 0
+    command = f"{sys.executable} -c \"print('1 passed')\""
+    assert run_cli("onboard", "answer", "tiers", command, "--root", str(project))[0] == 0
+    assert write_confirmed(project)[0] == 0
+    code, out = run_cli("onboard", "publish", "--root", str(project))
+    assert code == 2 and "merge it yourself" in out and "no session can merge it" in out
