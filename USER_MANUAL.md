@@ -72,6 +72,17 @@ Worktrees and receipts:
     flotilla onboard write [--confirm <mark>]       show the profile, then write it after your yes
     flotilla onboard publish                        commit .flotilla/, run the tiers over it, push it to trunk
 
+Once the profile is on origin's trunk, its guards judge **every** Claude Code session that has flotilla on and works
+in the repository - your own interactive session too, even one that holds no post. With `push_receipt` on, a push to
+trunk or a tag, `gh pr create` and `gh pr merge` from a session's tools need a green push receipt and, where you
+authorize merges, your approval of the ledger row; only the sender's post may land, and the orchestrator never merges.
+A project with its own merge routine ("the agent runs `gh pr merge` after my word") keeps it only through the sender,
+or by merging itself with `!`: what you type after `!` is not asked, unless you install the `pre-push` hook
+(`/flotilla:guard`). Before the profile reaches trunk the guards already judge by the tree's own profile, so the
+onboarding branch is guarded too. `write` and `publish` name open pull requests made outside the ledger: once the
+rules are on trunk, merging one from a session needs approved rows it does not have (`offledger` covers work that has
+landed, not work waiting to) - merge them first, have a builder claim the branch, or merge it yourself with `!`.
+
 **Machine and guards**
 
     flotilla lane                         who holds the machine
@@ -148,6 +159,9 @@ Worktrees and receipts:
 | a push is refused: `holds the post ... which may not land` | only a post with the `land` move (the sender) pushes to trunk or a tag, or merges a pull request; there is no override | hand the branch over (`flotilla work hand`); with no live sender, `flotilla spawn -s 1` - or push it yourself with `!` or from a terminal |
 | a push is refused: not approved | a person authorizes merges and has not approved that work | `flotilla work approve <branch>` by the person |
 | `gh pr merge` is refused | it does not pin the checked head | add `--match-head-commit <sha>` as the refusal names it |
+| your own session's push or `gh pr merge` is refused | the guards judge every session with flotilla on, one that holds no post included | run the receipt (`flotilla receipt run --purpose push`) and approve the work, or type it yourself after `!` |
+| the onboarding branch's push or `gh pr create` is refused before publishing | until origin's trunk carries a profile, the guards judge by the tree's own profile | `flotilla onboard publish` runs the receipt; for a pull request, `flotilla receipt run --purpose push` in that tree first |
+| a pull request opened before onboarding cannot be merged: not approved | it has no ledger row, and you authorize merges; `offledger` covers landed work only | merge it yourself with `!`, or a builder claims the branch (`flotilla work claim <branch>`) and it goes through the ledger |
 | a retired session is alive again | a message to a stopped background session resumes it | `claude stop <id>`; address letters to the live holder of a post |
 | the hooks say nothing | `python3` on PATH is older than 3.11, or the project is not onboarded | `/flotilla:doctor` |
 | `could not tell who calls` / census errors | `claude agents --json` did not answer | wait and retry; `/flotilla:doctor` checks the census |
