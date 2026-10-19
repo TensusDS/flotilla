@@ -83,6 +83,11 @@ def _write(det: dict, given: dict, args, state: Path) -> int:
         print("in plain words:")
         for line in plain_words(data):
             print(f"  - {visible(line)}")
+        warned = _pull_request_lines(det, data)
+        if warned:
+            print("before publishing:")
+            for line in warned:
+                print(f"  - {line}")
         print("show the person the profile; when the person agrees, run "
               f"`flotilla onboard write --confirm {mark}` (with the same other options)")
         return 5
@@ -118,6 +123,20 @@ def _write(det: dict, given: dict, args, state: Path) -> int:
     print("next: `flotilla onboard publish` commits .flotilla/ and pushes it to origin's trunk - every session reads "
           "its rules from there, so until then every ledger move is refused")
     return 0
+
+
+def _pull_request_lines(det: dict, profile: dict) -> list[str]:
+    """Open pull requests no ledger row knows, said - never refused - before the profile reaches trunk."""
+    from flotilla.onboard.detect_prs import outside_lines
+    pulls = det.get("pull_requests") or {}
+    if not pulls.get("open") and pulls.get("source") != "unknown":
+        return []
+    try:   # a project onboarding for the first time has no ledger: every pull request is outside it
+        from flotilla.ledger.commands import open_ledger
+        known = {row.branch for row in open_ledger(Path(det["root"])).rows().values()}
+    except Exception:  # noqa: BLE001 - a ledger that cannot be read knows no branch; the warning errs towards saying
+        known = set()
+    return outside_lines(pulls, profile, known=known)
 
 
 def _git(root: Path, *args) -> "subprocess.CompletedProcess":
@@ -205,6 +224,8 @@ def _publish(root: Path, det: dict, state: Path) -> int:
     if not det.get("remote"):
         print("committed; this repository has no origin, so the profile is on its trunk already")
         return 0
+    for line in _pull_request_lines(det, profile):   # said once more at the step that puts the rules on trunk
+        print(f"note: {line}")
     done = _git(root, "push", "origin", trunk)
     if done.returncode != 0:
         print(f"not pushed: git push origin {trunk} failed: {(done.stderr or done.stdout).strip()[:300]}. If origin "

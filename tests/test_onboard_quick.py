@@ -350,3 +350,30 @@ def test_plain_words_say_nothing_of_guards_when_none_is_on():
     said = " ".join(plain_words({"flow": {"mode": "direct", "merge_authorized_by": "sender"},
                                  "guards": {"revert": False, "push_receipt": False}}))
     assert "every Claude Code session" not in said
+
+
+def _open_pull(monkeypatch):
+    from flotilla.onboard import detect_prs
+    monkeypatch.setattr(detect_prs, "open_pull_requests", lambda origin, run=None: {
+        "source": "github", "open": [{"number": 12, "branch": "feat/theirs", "title": "Made by hand"}]})
+
+
+def test_write_says_open_pull_requests_made_outside_the_ledger_before_the_yes(project, monkeypatch):
+    _open_pull(monkeypatch)
+    assert run_cli("onboard", "quick", "--root", str(project))[0] == 0
+    code, out = run_cli("onboard", "write", "--root", str(project))
+    assert code == 5 and "#12 `feat/theirs`" in out and "flotilla work claim feat/theirs" in out
+    assert out.index("#12") < out.index("--confirm ")   # said before the line that asks for the yes
+
+
+def test_publish_warns_of_open_pull_requests_and_still_publishes(project, monkeypatch, tmp_path):
+    import sys
+    from test_onboard_cli import write_confirmed
+    _open_pull(monkeypatch)
+    assert run_cli("onboard", "quick", "--root", str(project))[0] == 0
+    command = f"{sys.executable} -c \"print('1 passed')\""
+    assert run_cli("onboard", "answer", "tiers", command, "--root", str(project))[0] == 0
+    assert write_confirmed(project)[0] == 0
+    code, out = run_cli("onboard", "publish", "--root", str(project))
+    assert code == 0, out
+    assert "#12 `feat/theirs`" in out and "pushed" in out
