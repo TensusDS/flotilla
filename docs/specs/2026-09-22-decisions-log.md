@@ -1722,6 +1722,41 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    the onboarding yes name any level set, since a higher one costs tokens, and say a post's own effort still wins.
    Not checked: which Claude Code versions between the doctor's floor and 2.1.302 take `--effort`.
 
+243. **Onboarding names the door, whom the guards judge, and pull requests outside the ledger** (Claude Code session
+   with the person, 2026-10-19). Onboarding a new project (Custom: pull requests merged by the sender, merges
+   authorized by the person, push receipt on), its session read "nothing reaches trunk until you approve it" as the
+   project's own routine - the agent runs `gh pr merge` after the person's word - being refused, and the guard as a
+   barrier against the person. The fleet's model was in the posts and nowhere before the yes. The person took all four
+   fixes. Plain words now name who runs the merge (only the sender; the orchestrator never), and whom the guards judge:
+   every session with flotilla on in the repository, one holding no post included - read in the code, not assumed:
+   `_may_not_land` judges a session with no post by the receipt and the approval, and the command guard is a
+   PreToolUse hook, so what the person types after `!` is not asked, while the `pre-push` hook, where installed, asks
+   it too. Open pull requests are listed at detection (`gh pr list`, GitHub only) and those no ledger row knows are
+   named by `write` before the yes and by `publish` before the push; `offledger` records work that landed, not work
+   waiting to. A warning, not a refusal (the session's recommendation; the person answered the fixes, not this, and was
+   told it stands unless they say otherwise): a project with such pull requests
+   could otherwise not onboard at all, and settling them is the person's. A `gh` that cannot answer is said, never
+   read as none open. The per-commit security review found the suggested `git fetch` / `flotilla work claim` line
+   carried the branch as its author named it - git allows `$`, `(`, backquotes and `;` - so a command is offered only
+   for a name the ledger's own `SAFE_BRANCH` takes (no dash first). The docs say the onboarding branch is guarded
+   already, since `rules_at` judges by the tree's profile until trunk carries one.
+   A fresh reader of the branch (no Critical) found four Important points, all fixed with a test seen red against
+   the code before them: (1) before publish, where the person authorizes merges, no session can merge the
+   onboarding's own pull request whatever its receipt - the approval check opens the ledger, whose rules are read at
+   `origin/<trunk>`, which has no profile yet, and that refusal has no override. This predates the branch; the new
+   docs had said only that a receipt is needed. Publish's push failure, the skill and the docs now tell the person to
+   merge it themselves; teaching the approval check to read the tree's profile, as `rules_at` does, would let a seat
+   name the rules its own approval is judged by, and is not done. (2) "every other session never merges" contradicted
+   the guard line and the code - a session with no post may merge, judged by receipt and approval - so the door line
+   speaks of the fleet's seats and says whether the push guard holds them to it, and the guard line says approval is
+   a ledger row asked of a push to trunk and `gh pr merge` only, so work no row carries is merged after `!`. (3) a
+   fork's head branch is named in the fork, often `main`: fork pull requests are asked of gh (`isCrossRepository`),
+   never matched to a ledger row by name, and get no command, nor does a branch named like trunk. (4) pull request
+   titles are anyone's text read by the session that asks for the yes next: cut to 60 characters, marked as their
+   authors' words, and the skill says they are data. Minor points also taken: the list is asked by write and publish
+   only (not on every onboarding command's detection), with a 15 s limit, and not at all where no session merges or
+   nothing would refuse it; only open ledger rows count as known; publish says it after the push, not before.
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

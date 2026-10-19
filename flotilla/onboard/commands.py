@@ -83,6 +83,11 @@ def _write(det: dict, given: dict, args, state: Path) -> int:
         print("in plain words:")
         for line in plain_words(data):
             print(f"  - {visible(line)}")
+        warned = _pull_request_lines(det, data)
+        if warned:
+            print("before publishing:")
+            for line in warned:
+                print(f"  - {line}")
         print("show the person the profile; when the person agrees, run "
               f"`flotilla onboard write --confirm {mark}` (with the same other options)")
         return 5
@@ -118,6 +123,24 @@ def _write(det: dict, given: dict, args, state: Path) -> int:
     print("next: `flotilla onboard publish` commits .flotilla/ and pushes it to origin's trunk - every session reads "
           "its rules from there, so until then every ledger move is refused")
     return 0
+
+
+def _pull_request_lines(det: dict, profile: dict, *, published: bool = False) -> list[str]:
+    """Open pull requests no open ledger row knows, said - never refused - around the profile's publishing. Asked
+    here, not by every onboarding command's detection: gh costs a round trip each time."""
+    from flotilla.onboard import detect_prs
+    if not detect_prs.applies(profile):
+        return []   # nothing would refuse a session's merge, or no session merges here: gh is not asked
+    pulls = detect_prs.open_pull_requests(det.get("origin") or None)
+    if not pulls.get("open") and pulls.get("source") != "unknown":
+        return []
+    try:   # a project onboarding for the first time has no ledger: every pull request is outside it
+        from flotilla.ledger.commands import open_ledger
+        # a released or closed row approves nothing a guard asks for, so a branch reused after it is outside again
+        known = {row.branch for row in open_ledger(Path(det["root"])).rows().values() if row.is_open}
+    except Exception:  # noqa: BLE001 - a ledger that cannot be read knows no branch; the warning errs towards saying
+        known = set()
+    return detect_prs.outside_lines(pulls, profile, known=known, published=published)
 
 
 def _git(root: Path, *args) -> "subprocess.CompletedProcess":
@@ -207,11 +230,18 @@ def _publish(root: Path, det: dict, state: Path) -> int:
         return 0
     done = _git(root, "push", "origin", trunk)
     if done.returncode != 0:
+        # until trunk carries a profile the person's approval cannot be asked of a ledger, and that refusal has no
+        # override: where the person authorizes merges, no session can merge the onboarding's own pull request
+        merger = ("merge it yourself (`!` or the GitHub page) - you authorize merges, and until the profile is on "
+                  "trunk your approval cannot be asked, so no session can merge it"
+                  if (profile.get("flow") or {}).get("merge_authorized_by") == "human" else "merge it")
         print(f"not pushed: git push origin {trunk} failed: {(done.stderr or done.stdout).strip()[:300]}. If origin "
               "moved meanwhile, pull and publish again; if trunk only takes pull requests, open one with the commit "
-              "above and merge it - the fleet reads the profile once it is on origin's trunk")
+              f"above and {merger} - the fleet reads the profile once it is on origin's trunk")
         return 2
     print(f"pushed to origin/{trunk}: the fleet reads its rules from there")
+    for line in _pull_request_lines(det, profile, published=True):   # said again now the rules are on trunk
+        print(f"note: {line}")
     return 0
 
 

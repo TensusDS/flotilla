@@ -187,6 +187,19 @@ def plain_words(data: dict) -> list[str]:
         merges = "merges into trunk: nothing reaches trunk until you approve it (`! flotilla work approve <branch>`)"
     else:
         merges = f"merges into trunk: the sender session merges {work} on its own, without asking you"
+    guards = data.get("guards") or {}
+    after = ", after you approve" if who == "human" else ""
+    # the fleet's arrangement, which the push guard holds seats to only when it is on and something is pushed
+    held = ("the push guard refuses it to any other seat" if guards.get("push_receipt") and mode != "local"
+            else "the posts say so; no guard enforces it here")
+    door = {"pr": f"of the fleet's sessions only the sender runs `gh pr merge`{after}; the orchestrator and the other "
+                  f"seats hand their work over and never merge - {held}",
+            "direct": f"of the fleet's sessions only the sender pushes to trunk{after}; the orchestrator and the other "
+                      f"seats hand their work over and never push to trunk - {held}",
+            "local": "of the fleet's sessions only the sender merges into trunk; the orchestrator and the other seats "
+                     f"hand their work over and never merge - {held}"}.get(mode, "")
+    if mode == "pr" and (data.get("pr") or {}).get("merged_by") == "human":
+        door = "you; the sender session opens the pull request, no session merges it and the orchestrator never does"
     review = {"every": "review: every branch is read by another session before it can ship",
               "main-only": "review: large work is read by another session; small fixes go straight on",
               "none": "review: nobody reads a branch before it ships"}.get(depth, f"review: {depth}")
@@ -200,7 +213,20 @@ def plain_words(data: dict) -> list[str]:
     tiers = [tier.get("command", "") for tier in (data.get("tests") or {}).get("tier") or []]
     tests = ("tests before every handover and push: " + "; ".join(tiers)) if tiers else \
         "tests: none - nothing is run before a handover or a push"
-    said = [merges, review, asks, tests]
+    said = [merges] + ([f"who merges: {door}"] if door else []) + [review, asks, tests]
+    judged = ("every Claude Code session that has flotilla on and works in this repository, your own included - "
+              "even one that holds no post")
+    if guards.get("push_receipt"):   # a new project's merge routine met this only in guards/push.py (2026-10-19)
+        # approval is asked of a push to trunk and of `gh pr merge` alone, and only through a ledger row
+        approval = ("; a push to trunk and `gh pr merge` also need your approval of the work's ledger row (`flotilla "
+                    "work approve`), so work no row carries - your own session's included - you merge yourself "
+                    "after `!`") if who == "human" else ""
+        said.append(f"guards: the push guard judges {judged}: a push to trunk or a tag, `gh pr create` and "
+                    f"`gh pr merge` from its tools need a green push receipt over what they send{approval}; what you "
+                    "type yourself after `!` is not asked, unless you install the `pre-push` git hook "
+                    "(`/flotilla:guard`), which asks your own git pushes too (never a `gh pr merge`)")
+    elif any(guards.get(name) for name in GUARDS):
+        said.append(f"guards: the command guards judge {judged}; what you type yourself after `!` is not asked")
     effort = (data.get("fleet") or {}).get("effort") or {}
     if isinstance(effort, dict) and effort:   # a higher effort costs tokens: said before the yes, never when unset
         said.append("effort: " + ", ".join(f"{name} at {level}" for name, level in effort.items())
