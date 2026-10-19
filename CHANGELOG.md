@@ -3,6 +3,24 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.19.0 - 2026-10-19
+
+- **Onboarding says who merges, not only who approves.** The plain words before the yes now name the session that
+  runs the merge - only the sender runs `gh pr merge` or pushes to trunk, the orchestrator never does - and, where you
+  merge pull requests yourself, that no session merges them.
+- **It says whom the guards judge.** Every Claude Code session that has flotilla on and works in the repository, your
+  own interactive one included, even one that holds no post: with the push guard on, its pushes to trunk or a tag,
+  `gh pr create` and `gh pr merge` need a green push receipt and, where you authorize merges, your approval. What you
+  type yourself after `!` is not asked, unless you install the `pre-push` hook.
+- **Open pull requests made outside the ledger are named before you publish.** Detection lists the repository's open
+  pull requests on GitHub; `onboard write` and `onboard publish` name those no ledger row knows, since a session can no
+  longer merge them once the rules are on trunk, with three ways out: merge them first, have a builder claim the
+  branch, or merge it yourself with `!`. A warning, not a refusal; a `gh` that cannot answer is said. A branch name
+  holding characters a shell reads is never put into a suggested command.
+- **The manual says the onboarding branch is guarded already.** Until origin's trunk carries a profile the guards
+  judge by the tree's own, so a pull request with `.flotilla/` needs a push receipt; README, the user manual (with
+  three troubleshooting rows) and the onboard skill say so.
+
 ## 0.18.0 - 2026-10-18
 
 - **A post can say how hard its seats think.** `effort:` in a post's header - `low`, `medium`, `high`, `xhigh` or

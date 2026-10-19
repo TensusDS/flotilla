@@ -1722,6 +1722,25 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    the onboarding yes name any level set, since a higher one costs tokens, and say a post's own effort still wins.
    Not checked: which Claude Code versions between the doctor's floor and 2.1.302 take `--effort`.
 
+243. **Onboarding names the door, whom the guards judge, and pull requests outside the ledger** (Claude Code session
+   with the person, 2026-10-19). Onboarding a new project (Custom: pull requests merged by the sender, merges
+   authorized by the person, push receipt on), its session read "nothing reaches trunk until you approve it" as the
+   project's own routine - the agent runs `gh pr merge` after the person's word - being refused, and the guard as a
+   barrier against the person. The fleet's model was in the posts and nowhere before the yes. The person took all four
+   fixes. Plain words now name who runs the merge (only the sender; the orchestrator never), and whom the guards judge:
+   every session with flotilla on in the repository, one holding no post included - read in the code, not assumed:
+   `_may_not_land` judges a session with no post by the receipt and the approval, and the command guard is a
+   PreToolUse hook, so what the person types after `!` is not asked, while the `pre-push` hook, where installed, asks
+   it too. Open pull requests are listed at detection (`gh pr list`, GitHub only) and those no ledger row knows are
+   named by `write` before the yes and by `publish` before the push; `offledger` records work that landed, not work
+   waiting to. A warning, not a refusal (the session's recommendation; the person answered the fixes, not this, and was
+   told it stands unless they say otherwise): a project with such pull requests
+   could otherwise not onboard at all, and settling them is the person's. A `gh` that cannot answer is said, never
+   read as none open. The per-commit security review found the suggested `git fetch` / `flotilla work claim` line
+   carried the branch as its author named it - git allows `$`, `(`, backquotes and `;` - so a command is offered only
+   for a name of letters, digits and `._/-` not starting with a dash. The docs say the onboarding branch is guarded
+   already, since `rules_at` judges by the tree's profile until trunk carries one.
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
