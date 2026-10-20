@@ -8,6 +8,49 @@ something through, B a bug a user meets, P polish, tests or docs), or `open, des
 run). A later triage re-checks only items whose named files changed since that version. An item that is done -
 fixed by a release, or found fixed - leaves its section for **Done** at the bottom, one line with the version.
 
+## From watching the twosuns fleet on 0.20.0 (2026-10-20)
+
+- **Seat trees pile up: 89 beside the main checkout, and `fleet clean` would remove 7.** A plan run (`flotilla fleet
+  clean`, no `--yes`) kept 82 trees. 69 of them for one reason: "<tip> is not on origin's trunk, and no shipped row
+  carries it". Their tips sit on branches that live on origin unmerged: `research/thunder-model-v2` holds three
+  kept trees' tips, `feat/cloud-two-stream` holds another. The work is not at risk: the remote branch holds it. Only
+  the tree is stale, a detached checkout of a seat long gone. Other reasons the plan gave: 31 trees with "ignored
+  files that nothing makes again" (`gpu-checks-out/`, `figure3d-in/`, `spire3d-in/`, build outputs of the project
+  that flotilla does not know), 24 with commits only the reflog reaches (a real doubt), and 9 with uncommitted
+  files. Branches: 248 deletable, 305 kept, many of those as "flotilla did not make it", including the sender's own
+  `batch/*` branches. Ideas: a detached tree whose tip a branch on origin reaches holds nothing of its own beyond
+  its reflog, so it can go while the branch stays; the profile names the project's own rebuildable outputs; a batch
+  branch is recognised as the fleet's. The person's rule (decision 206) still stands: a doubt keeps the tree.
+  *(seen 2026-10-20 on 0.20.0: B - flotilla/fleet/cleanup.py)*
+- **"Waits on the person" holds questions the person already answered through the orchestrator.** `watch` lists 111
+  open rows with `waiting_on` the person, the oldest from 2026-10-04. A sender's `wait` set 75 of them and a main
+  seat's set 36. The person says some were answered in the orchestrator's session. Nothing then clears the row: only
+  a move by the seat that waits clears it, and that seat is gone. Some notes are not questions at all but parked
+  work ("отложено словом человека: ... не трогать"), which is a hold, not a wait. Ideas: the orchestrator records the
+  person's answer on the row (a move that clears `waiting_on` and keeps the answer as evidence); `watch` puts a wait
+  older than N days whose seat is gone into its own line ("waits on an answer nobody will read"); parked work is
+  moved to `hold`. *(seen 2026-10-20 on 0.20.0: B - flotilla/watch/fleet.py:81)*
+- **`flotilla status` in twosuns did not finish in 60 s.** `watch --once` takes 3.6 s and `fleet` takes 1.1 s on the
+  same ledger: 9259 lines, 5.5 MB. Not yet established where the time goes. *(seen 2026-10-20 on 0.20.0: measure)*
+
+## From the organize final review (2026-10-20, 0.20.0)
+
+- **The organize text guard: further ways around it are logged here, not fixed one at a time** (decision 245). The
+  guard reads the command's text, so `sh -c`, gh aliases and spellings not yet thought of stay past it (`CEILING` in
+  `flotilla/guards/__init__.py`). The guarantee is the person's recorded answer carried out by `flotilla organize
+  apply`. Known: a chain member or a row's `closes` can be closed by branch name, not number, past the guard;
+  `store.numbers` ignores `stack:N` members; whether `gh issue close <n>` closes a pull request is not measured.
+  *(checked 2026-10-20 on 0.20.0: still S - flotilla/guards/organize.py)*
+- **Other trees get `git status` before the person's yes for that tree**, which may refresh their index.
+  *(checked 2026-10-20 on 0.20.0: still P - flotilla/organize/trees.py)*
+- **A stack only partly the person's falls through as a plain chain.** `queue` later refuses it as stacked, and no
+  item offers the unstack. *(checked 2026-10-20 on 0.20.0: still B - flotilla/organize/walk.py)*
+- **Split leftovers.** Split stops on an entry whose paths equal HEAD (an empty commit), and a dirty submodule path
+  raises `IsADirectoryError`. Either leaves a worktree in the state dir; nothing is lost.
+  *(checked 2026-10-20 on 0.20.0: still B - flotilla/organize/split.py)*
+- **`data["trees"]` is written and never read**, so a tree's yes is never forgotten.
+  *(checked 2026-10-20 on 0.20.0: still P - flotilla/organize/store.py)*
+
 ## From the khrushchevka demo fleet (2026-10-12, 0.13.0 beside another fleet on 0.10.2)
 
 - **A rig run wrapped in the lane holds this machine for a job that runs elsewhere.** A reviewer ran

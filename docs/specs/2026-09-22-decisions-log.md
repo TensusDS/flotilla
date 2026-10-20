@@ -1769,6 +1769,13 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    plain chain, so taking one in unstacks it first. Two rounds of specialist review (Claude Code plugins; code
    review, delivery and git) shaped the design; a background security reviewer read every commit of the branch, and
    each of its findings was fixed with a test seen red first.
+245. **The organize text guard stops a mistaken session, not a determined one; its gaps are logged, not chased**
+   (the person, 2026-10-20, after six rounds of security review on 0.20.0). Each round found another spelling of
+   the same move: shell expansion, a REST or GraphQL equivalent, a grouped flag, a brace, a percent-encoding. Each
+   fix was real, but text cannot close the class: `sh -c`, aliases and spellings not yet thought of stay past it
+   (`CEILING`). What holds is the person's recorded answer carried out only by `flotilla organize apply`, which
+   re-checks what was shown. Later findings of this class go to `TODO.md` under the organize guard and are fixed
+   when a plan takes them, not one by one as they arrive.
 
 ## Open questions (for the foundation spec)
 
