@@ -121,10 +121,13 @@ def test_the_workflow_digest_at_a_revision_is_onboardings_digest(tmp_path):
     assert push.workflow_at(root, sha) == fingerprint(root, workflow_files(root))
 
 
-def fake_gh(answer):
+def fake_gh(answer, base="main"):
+    """gh answering every call with `answer`, except the pull request's base, which is `base` (trunk unless said)."""
     def run(cmd, **kwargs):
         if cmd[0] == "gh":
             code, out = answer
+            if code == 0 and "baseRefName" in cmd:
+                out = base + "\n"
             return subprocess.CompletedProcess(cmd, code, out, "" if code == 0 else "gh: no")
         return subprocess.run(cmd, **kwargs)
     return run
@@ -566,3 +569,16 @@ def test_a_workflow_with_a_non_ascii_name_gives_both_sides_one_digest(tmp_path):
     git(root, *IDENTITY, "commit", "-q", "-m", "ci")
     sha = git(root, "rev-parse", "HEAD")
     assert push.workflow_at(root, sha) == fingerprint(root, workflow_files(root))
+
+
+
+def test_a_merge_into_a_base_that_is_not_trunk_is_refused(tmp_path):
+    """Organize spec, section 5: with no retarget such a merge lands in the lower branch, not trunk - a stacked pull
+    request merged out of turn. The receipt is not what is missing; the base is (final review, finding 7a)."""
+    root = onboarded(tmp_path)
+    head = git(root, "rev-parse", "HEAD")
+    receipt(root, tmp_path / "state")
+    found = judge(f"gh pr merge 43 --match-head-commit {head}", root, tmp_path,
+                  run=fake_gh((0, head + "\n"), base="docs/relations-model"))
+    assert found.refuse and "`docs/relations-model`, not trunk" in found.text
+    assert judge(f"gh pr merge 43 --match-head-commit {head}", root, tmp_path, run=fake_gh((0, head + "\n"))) is None
