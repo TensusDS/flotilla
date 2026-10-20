@@ -246,7 +246,7 @@ def all_questions(walk: Walk, data: dict) -> list[dict]:
         if tree == "ask" and found.facts["tree"] not in asked_trees:
             asked_trees.add(found.facts["tree"])
             out.append(_q(f"tree:{found.facts['tree']}", "Other tree",
-                          f"May organize look into the tree {shown(found.facts['tree'], 120)}? Nobody works in it now; "
+                          f"May organize look into the tree {shown(found.facts['tree'], 1000)}? Nobody works in it now; "
                           "its edits are then asked about like this tree's.",
                           [("yes", "Yes", "Read its edits and ask about them."),
                            ("no", "No", "Leave that tree alone.")], free_text=False))

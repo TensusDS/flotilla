@@ -241,7 +241,7 @@ def _trunk(root: Path, item: Item, value: str, *, walked, run, ledger) -> list[s
     if value != "move":
         raise Skip(f"`{value}` is not an answer for the local trunk")
     if where and Path(where).resolve() != here:
-        raise Skip(f"{trunk} is checked out in {shown(where, 120)}; it is not moved from here - switch that tree "
+        raise Skip(f"{trunk} is checked out in {shown(where, 1000)}; it is not moved from here - switch that tree "
                    "first, or answer in your own words")
     branch = f"work/local-{head[:7]}"
     made = _git(root, "branch", branch, head, run=run)
@@ -341,7 +341,7 @@ def _edits(root: Path, item: Item, value: str, data: dict, *, walked, run, ledge
     from flotilla.organize import keep, secrets, split
     tree = Path(item.facts["tree"])
     if value == "leave":
-        return [f"the edits in {shown(str(tree), 120)} are left as they are; the fleet does not see them"]
+        return [f"the edits in {shown(str(tree), 1000)} are left as they are; the fleet does not see them"]
     plan = questions.confirmed(item, data, "plan")
     if plan is None:
         raise Skip("its plan was not confirmed as it stands; it is asked again")
@@ -352,7 +352,7 @@ def _edits(root: Path, item: Item, value: str, data: dict, *, walked, run, ledge
         kept = keep.create_ref(root, "kept", keep.keep_all(tree, run=run), run=run)
     except RuntimeError as err:
         raise Skip(f"the edits could not be kept first ({err}); nothing was done") from err
-    out = [f"every edit in {shown(str(tree), 120)} is kept under {kept} first"]
+    out = [f"every edit in {shown(str(tree), 1000)} is kept under {kept} first"]
     hits = {hit.path: hit for hit in secrets.scan(tree, [p for entry in plan for p in entry["paths"]], run=run)}
     for path, hit in sorted(hits.items()):
         out.append(f"`{shown(path)}` stays where it is, out of every branch: {hit.why} - a secret is never committed")
@@ -394,7 +394,7 @@ def _onboard(root: Path, item: Item, value: str, data: dict, *, walked, run) -> 
         raise Skip(f"`{value}` is not an answer for onboarding's branch")
     where = _trunk_tree(root, trunk, run)
     if where:
-        raise Skip(f"{trunk} is checked out in {shown(where, 120)}; trunk is moved only where no tree holds it")
+        raise Skip(f"{trunk} is checked out in {shown(where, 1000)}; trunk is moved only where no tree holds it")
     if _git(root, "symbolic-ref", "-q", "--short", "HEAD", run=run).stdout.strip() != branch:
         raise Skip(f"this tree is not on `{branch}`; run organize from the tree onboarding wrote the profile in")
     if _git(root, "status", "--porcelain", "--untracked-files=no", run=run).stdout.strip():

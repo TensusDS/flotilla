@@ -322,7 +322,7 @@ def _edits_items(out: Walk, tree: Path, run, *, other: str = "") -> None:
     paths = local.dirty(tree, run=run)
     if not paths:
         return
-    where = f"tree {shown(str(tree), 120)} ({shown(other)})" if other else "this tree"
+    where = f"tree {shown(str(tree), 1000)} ({shown(other)})" if other else "this tree"
     signs = [path for path in paths if whose.is_path_sign(path)]
     if signs:
         out.listed.append(f"not touched: {where} - its edits carry another AI's files "
@@ -346,6 +346,6 @@ def _other_trees(out: Walk, root: Path, rows: dict, proc_root, run) -> None:
         if why:
             if local.dirty(tree.path, run=run):
                 branch = shown(tree.branch or "detached")
-                out.listed.append(f"not touched: tree {shown(str(tree.path), 120)} ({branch}) - in use: {why}")
+                out.listed.append(f"not touched: tree {shown(str(tree.path), 1000)} ({branch}) - in use: {why}")
             continue
         _edits_items(out, tree.path, run, other=tree.branch or "detached")
