@@ -128,3 +128,26 @@ def test_every_spelling_of_a_tracked_api_path_is_judged(command):
     """Background security review of 4170045: a leading slash, a full URL or another case passed as another path."""
     found = judge(command)
     assert found is not None and found.refuse
+
+
+@pytest.mark.parametrize("command", [
+    "gh api -X $M repos/o/r/pulls/43 -f base=main",           # the method is the shell's to say
+    "gh api -X PATCH $P -f base=main",                         # the path is the shell's to say
+    "gh api -X PATCH repos/o/r/pul%6Cs/43 -f base=main",       # percent-encoded
+    "gh api -X PATCH repos/o/r/x/../pulls/43 -f base=main",    # dot segments
+    "gh api -X PATCH repos/o/r//pulls/43 -f base=main",        # an empty segment
+    "gh api graphql -f query=$Q",                              # the query text is the shell's to say
+])
+def test_an_api_write_whose_target_cannot_be_read_is_refused(command):
+    """Background security review of 6d55101: rather than chase each spelling, a `gh api` write whose method, path
+    or query cannot be read plainly from the text is refused."""
+    found = judge(command)
+    assert found is not None and found.refuse
+
+
+@pytest.mark.parametrize("command", [
+    "gh api repos/$OWNER/r/pulls/43",                          # a read: refusing it would protect nothing
+    "gh api repos/o/r/pulls?state=open",
+])
+def test_an_api_read_with_an_unclear_path_still_passes(command):
+    assert judge(command) is None

@@ -102,10 +102,15 @@ def door(segment) -> str:
     if words[1] == "api":
         path = _api_path(words[2:])
         if path == "graphql" or path.endswith("/graphql"):   # a query read from a file or stdin cannot be told from the text (push review)
-            hidden = any("=@" in word or word == "--input" or word.startswith("--input=") for word in words)
+            hidden = any("=@" in word or word == "--input" or word.startswith("--input=") or EXPANDS.search(word)
+                         for word in words[2:])
             return "api" if hidden or "mutation" in " ".join(words).lower() else ""
         if _method(words[2:]) == "GET":
             return ""
+        raw = _target(words[2:], API_VALUES) or ""
+        if EXPANDS.search(raw) or "%" in raw or any(part in (".", "..") for part in path.split("/")) or \
+                "//" in path:
+            return "api"   # a write whose endpoint the text does not spell plainly is refused, not decoded (6d55101)
         if "/stacks" in f"/{path}":
             return "api"
         return "api-pull" if ISSUE.search(f"/{path}") else ""
