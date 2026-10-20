@@ -1,0 +1,207 @@
+"""Organize's questions, through onboarding's question door (spec, section 4).
+
+Each item's first question is take in / ignore / ignore the rest (or its kind's own answers); a chain or stack
+taken in gets a second, its shape. Every question has 2-4 options and none is recommended - the person takes the
+choice on themselves - and every question takes typed words: own words, which the session turns into steps the
+person confirms. Rounds hold at most four questions, and a later round holds what the earlier answers opened.
+"""
+
+from __future__ import annotations
+
+from flotilla.onboard.questions import MAX_PER_ROUND, AnswerError, _q, validate_answer
+from flotilla.organize.items import Item, seen, shown
+from flotilla.organize.walk import Walk
+
+TAKE = [("take", "Take it in", "Bring it into the ledger; the fleet reviews and delivers it."),
+        ("ignore", "Ignore it", "Leave it; flotilla does not touch it and does not ask again."),
+        ("ignore-rest", "Ignore the rest", "Leave this and every item not answered yet.")]
+FIRST = {
+    "cache": [("exclude", "Exclude it", "Add it to .git/info/exclude, so it is never committed or asked about."),
+              ("leave", "Leave it", "Leave it untracked as it is.")],
+    "trunk": [("leave", "Leave as is", "Nothing moves; publish refuses while trunk is ahead with these, and you push "
+                                       "them yourself."),
+              ("move", "Move to a branch", "A new branch holds them and is taken in; trunk goes back to origin's."),
+              ("drop", "Drop them", "Kept under refs/flotilla/dropped first; you run the drop yourself after !.")],
+    "onboard": [("land", "Land with the profile", "Trunk takes these commits together with the profile."),
+                ("own-branch", "A branch of their own", "They move to their own branch, taken in after publishing.")],
+    "edits": [("discretion", "Claude organizes them", "Claude proposes branches by what each edit is about; you see "
+                                                      "the plan once and it is carried out exactly."),
+              ("leave", "Leave as is", "Nothing moves; the fleet does not see these edits."),
+              ("words", "I say what goes where", "Tell Claude in your own words which edits go to which branch.")],
+}
+SHAPE_TEXT = {
+    "separate": ("Separate works", "One row per pull request, each reviewed over its own commits, landing in order."),
+    "parts": ("One work in parts", "As separate works, linked as parts: an upper part is not queued before the one "
+                                   "below is delivered, and the judge walks the whole path."),
+    "whole": ("One work whole", "One row on the top branch, one review over everything; the lower pull requests "
+                                "close once it lands."),
+    "claude": ("Claude works it out", "Claude reads the pull requests and proposes one of the three shapes, with its "
+                                      "reasons; you decide."),
+}
+YES_NO = [("yes", "Yes", "Carry it out exactly as shown."), ("no", "No", "Change nothing; ask me again next time.")]
+TAKEABLE = ("pr", "chain", "stack", "branch")
+
+
+def _first_options(found: Item) -> list[tuple]:
+    if found.kind in TAKEABLE:
+        if found.kind in ("chain", "stack") and not found.offered:
+            return TAKE[1:]
+        return TAKE
+    return FIRST[found.kind]
+
+
+def _answer(data: dict, qid: str) -> dict | None:
+    return data["answers"].get(qid)
+
+
+def _value(data: dict, qid: str) -> str:
+    return (_answer(data, qid) or {}).get("value", "")
+
+
+def _tree_state(found: Item, data: dict) -> str:
+    """"" for an item that needs no tree yes; "ask", "yes" or "no" otherwise."""
+    if not found.facts.get("needs_yes"):
+        return ""
+    return _value(data, f"tree:{found.facts['tree']}") or "ask"
+
+
+def _header(found: Item) -> str:
+    return {"cache": "Tool cache", "trunk": "Local trunk", "onboard": "With profile", "edits": "Edits"}.get(
+        found.kind, "Take in?")
+
+
+def _first(found: Item) -> dict:
+    said = f"{found.title}" + ("\n" + "\n".join(f"  {line}" for line in found.lines[:12]) if found.lines else "")
+    return _q(found.key, _header(found), said, _first_options(found), free_text=True)
+
+
+def shape_of(found: Item, data: dict) -> str:
+    """The shape the person chose for a taken-in chain or stack, or ""."""
+    if found.kind not in ("chain", "stack"):
+        return ""
+    if len(found.offered) == 1:
+        return found.offered[0]
+    shape = _value(data, f"{found.key}:shape")
+    return _value(data, f"{found.key}:proposal") if shape == "claude" else shape
+
+
+def _follow_up(found: Item, data: dict) -> dict | None:
+    """The next question this item's answers opened, if any is ready to ask."""
+    first = _answer(data, found.key) or {}
+    value, key = first.get("value"), found.key
+    proposal = data["proposals"].get(key) or {}
+    if value == "words" and "words" in first:
+        return _q(f"{key}:steps", "Your words", _steps_text(proposal), YES_NO, free_text=True) \
+            if proposal.get("steps") and not _answer(data, f"{key}:steps") else None
+    if value == "take" and found.kind in ("chain", "stack") and len(found.offered) > 1:
+        if not _answer(data, f"{key}:shape"):
+            return _q(f"{key}:shape", "Shape", "Are these separate works, one work in parts, one work whole, or should "
+                                               "Claude work it out?",
+                      [(shape, *SHAPE_TEXT[shape]) for shape in found.offered], free_text=True)
+        if _value(data, f"{key}:shape") == "claude" and proposal.get("shape") and \
+                not _answer(data, f"{key}:proposal"):
+            proposed = proposal["shape"]
+            rest = [shape for shape in found.offered if shape not in ("claude", proposed)]
+            why = shown(proposal.get("why") or "", 300)
+            options = [(proposed, f"{SHAPE_TEXT[proposed][0]} (proposed)", f"Claude's reasons: {why}")] + \
+                [(shape, *SHAPE_TEXT[shape]) for shape in rest]
+            return _q(f"{key}:proposal", "Proposal", "Claude read the pull requests and proposes a shape. Which one?",
+                      options, free_text=True)
+    if found.kind == "edits" and value in ("discretion", "words") and proposal.get("plan") and \
+            not _answer(data, f"{key}:plan"):
+        return _q(f"{key}:plan", "Plan", _plan_text(proposal), YES_NO, free_text=True)
+    return None
+
+
+def _plan_text(proposal: dict) -> str:
+    lines = [f"  {shown(entry.get('branch', ''))}: {', '.join(shown(path) for path in entry.get('paths', []))}"
+             for entry in proposal.get("plan") or []]
+    return "Carry out this plan? Each branch is committed in its own tree and taken in:\n" + "\n".join(lines)
+
+
+def _steps_text(proposal: dict) -> str:
+    lines = [f"  {shown(' '.join(f'{name}={value}' for name, value in step.items()), 120)}"
+             for step in proposal.get("steps") or []]
+    return "Claude read your words as these steps. Carry them out?\n" + "\n".join(lines)
+
+
+def all_questions(walk: Walk, data: dict) -> list[dict]:
+    """Every question that applies now, in order: a tree's yes before its items, first questions, follow-ups."""
+    out, asked_trees = [], set()
+    for found in walk.items:
+        tree = _tree_state(found, data)
+        if tree == "ask" and found.facts["tree"] not in asked_trees:
+            asked_trees.add(found.facts["tree"])
+            out.append(_q(f"tree:{found.facts['tree']}", "Other tree",
+                          f"May organize look into the tree {shown(found.facts['tree'], 120)}? Nobody works in it now; "
+                          "its edits are then asked about like this tree's.",
+                          [("yes", "Yes", "Read its edits and ask about them."),
+                           ("no", "No", "Leave that tree alone.")], free_text=False))
+    for found in walk.items:
+        if _tree_state(found, data) not in ("", "yes") or _answer(data, found.key):
+            continue
+        out.append(_first(found))
+    for found in walk.items:
+        if _tree_state(found, data) in ("", "yes") and _answer(data, found.key):
+            follow = _follow_up(found, data)
+            if follow:
+                out.append(follow)
+    return out
+
+
+def next_round(walk: Walk, data: dict) -> list[dict]:
+    return all_questions(walk, data)[:MAX_PER_ROUND]
+
+
+def record(walk: Walk, data: dict, qid: str, values: list[str]) -> str:
+    question = next((q for q in all_questions(walk, data) if q["id"] == qid), None)
+    if question is None:
+        raise AnswerError(f"no question `{qid}` applies now; run `flotilla organize next`")
+    allowed = {option["value"] for option in question["options"]}
+    words = " ".join(value.strip() for value in values if value and value.strip())
+    if len(values) > 1 and question["free_text"] and not set(values) <= allowed:
+        values = [words]
+    value = validate_answer(question, values)
+    if qid.startswith("tree:"):
+        tree = qid[len("tree:"):]
+        data["answers"][qid] = {"value": value}
+        if value == "yes" and tree not in data["trees"]:
+            data["trees"].append(tree)
+        return f"recorded {qid}: {value}"
+    found = max((item for item in walk.items if qid == item.key or qid.startswith(f"{item.key}:")),
+                key=lambda item: len(item.key))   # a key may hold a colon itself (a tree's path)
+    key = found.key
+    if value not in allowed:   # typed words: the session proposes steps from them, the person confirms
+        data["answers"][qid] = {"value": "words", "words": value, "seen": seen(found)}
+        return f"recorded {qid}: in your own words - Claude turns them into steps for your yes"
+    if value == "ignore-rest":
+        for other in walk.items:
+            if not _answer(data, other.key) and other.key != key:
+                data["answers"][other.key] = {"value": "ignore", "seen": seen(other)}
+                data["ignored"][other.key] = seen(other)
+        value = "ignore"
+    data["answers"][qid] = {"value": value, "seen": seen(found)}
+    if qid == key and value == "ignore":
+        data["ignored"][key] = seen(found)
+    return f"recorded {qid}: {value}"
+
+
+def waiting(walk: Walk, data: dict) -> list[str]:
+    """What waits on the session, not the person: a proposal to write before the person can be asked."""
+    out = []
+    for found in walk.items:
+        key, first = found.key, _answer(data, found.key) or {}
+        proposal = data["proposals"].get(key) or {}
+        if first.get("value") == "words" and not proposal.get("steps"):
+            out.append(f"{key}: turn the person's words into steps (`flotilla organize propose {key} --steps <file>`)")
+        elif _value(data, f"{key}:shape") == "claude" and not proposal.get("shape"):
+            out.append(f"{key}: read it (`flotilla organize show {key}`) and propose a shape (`flotilla organize "
+                       f"propose {key} --shape <shape> --why \"...\"`)")
+        elif found.kind == "edits" and first.get("value") in ("discretion", "words") and not proposal.get("plan"):
+            out.append(f"{key}: read the edits (`flotilla organize show {key}`) and propose a plan (`flotilla organize "
+                       f"propose {key} --plan <file>`)")
+    return out
+
+
+def done(walk: Walk, data: dict) -> bool:
+    return not all_questions(walk, data) and not waiting(walk, data)
