@@ -63,8 +63,15 @@ def _target(words: list[str], values: tuple) -> str | None:
 EXPANDS = re.compile(r"[$`*?\[]|\{[^{}]*(?:,|\.\.)|[@+!]\(")
 #: Makes several words of one whatever it holds; the closing brace is not asked for - the splitter may drop it.
 SPLITS = re.compile(r"\{[^{}]*(?:,|\.\.)|[@+!]\(")
-#: A short-flag group (`-iX PATCH`) whose last letter takes a value: gh reads it otherwise than a word-by-word scan.
-GROUP = re.compile(r"^-[A-Za-z]*[XfFHqtp][A-Za-z]*$")
+PLACEHOLDER = re.compile(r"\{(?:owner|repo|branch)\}")   # gh's own, filled in by gh, not by the shell
+
+
+def _unreadable(words) -> bool:
+    """Whether gh or the shell would read these words otherwise than a word-by-word scan does: any short-flag group
+    (`-iX`, `-Rc`, `-XPATCH` - pflag reads letters and attached values a scan cannot), or any brace but gh's own
+    placeholders. Refused as a class rather than decoded one spelling at a time (security review of 763a240)."""
+    return any((word.startswith("-") and not word.startswith("--") and len(word) > 2) or
+               "{" in PLACEHOLDER.sub("", word) for word in words)
 ISSUE = re.compile(r"/(?:pulls|issues)/([^/?#]*)")   # what follows is read as a number, or refused
 
 
@@ -102,11 +109,18 @@ def door(segment) -> str:
     if segment.program != "gh" or len(words) < 2:
         return ""
     if words[1] == "pr" and len(words) >= 3 and words[2] in ("close", "edit"):
+        if _unreadable(words[3:]):
+            return "api"   # refused outright: which pull request, or whether --base is given, cannot be told
         if words[2] == "edit" and not any(word in ("-B", "--base") or word.startswith("--base=") for word in words):
             return ""
         return "pr"
     if words[1] == "api":
-        if any(SPLITS.search(word) or (len(word) > 2 and GROUP.match(word)) for word in words[2:]):
+        judged = words[2:]
+        if (_api_path(words[2:]) or "").endswith("graphql"):   # a query's own braces are its text, not the shell's
+            fields = ("-f", "-F", "--field", "--raw-field")
+            judged = [word for i, word in enumerate(words[2:]) if not (i and words[2:][i - 1] in fields)
+                      and not word.startswith(("--field=", "--raw-field="))]
+        if _unreadable(judged) or any(SPLITS.search(word) for word in judged):
             return "api"   # what gh would read cannot be told by this scan: refused, not guessed (review of bf2a47a)
         path = _api_path(words[2:])
         if path == "graphql" or path.endswith("/graphql"):   # a query read from a file or stdin cannot be told from the text (push review)

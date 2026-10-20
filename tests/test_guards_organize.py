@@ -169,3 +169,24 @@ def test_what_gh_or_the_shell_would_read_otherwise_is_refused(command):
 
 def test_ghs_own_placeholders_are_not_brace_expansion():
     assert judge("gh api -X PATCH repos/{owner}/{repo}/pulls/99 -f base=main") is None
+
+
+@pytest.mark.parametrize("command", [
+    "gh api -iXPATCH repos/o/r/pulls/99 -f base=main",          # a group, any letters - untracked #99 on purpose
+    "gh api -X PATCH -ifbase=main repos/o/r/pulls/99",
+    "gh pr close -Rcx 99",                                        # a group in a gh pr door
+    "gh pr edit -RB o/r 99 main",
+    "gh api -X PATCH repos/o/r/pulls/{9{8,9}} -f base=main",     # nested braces
+    "gh api -X PATCH repos/{x}/r/pulls/99 -f base=main",         # a brace that is no gh placeholder
+])
+def test_grouped_flags_and_stray_braces_are_refused_as_a_class(command):
+    """Background security review of 763a240: rather than decode each group or brace, every multi-letter short-flag
+    group and every brace but gh's own placeholders makes the call unreadable."""
+    found = judge(command)
+    assert found is not None and found.refuse
+
+
+@pytest.mark.parametrize("command", ["gh api repos/{owner}/{repo}/pulls/43", "gh pr view 43 -R o/r",
+                                     "gh api -X PATCH repos/{owner}/{repo}/pulls/99 -f base=main"])
+def test_plain_calls_and_gh_placeholders_still_pass(command):
+    assert judge(command) is None
