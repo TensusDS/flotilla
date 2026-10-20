@@ -58,8 +58,30 @@ def _target(words: list[str], values: tuple) -> str | None:
     return None
 
 
-EXPANDS = re.compile(r"[$`*?\[]")   # what the shell turns into other words before gh sees them
-ISSUE = re.compile(r"/(?:pulls|issues)/(\d+)(?:/|$)")
+#: What the shell turns into other words before gh sees them: variables, substitutions, globs, brace expansion
+#: (`{a,b}`, `{1..3}` - never gh's own `{owner}`) and extglobs.
+EXPANDS = re.compile(r"[$`*?\[]|\{[^{}]*(?:,|\.\.)|[@+!]\(")
+#: Makes several words of one whatever it holds; the closing brace is not asked for - the splitter may drop it.
+SPLITS = re.compile(r"\{[^{}]*(?:,|\.\.)|[@+!]\(")
+PLACEHOLDER = re.compile(r"\{(?:owner|repo|branch)\}")   # gh's own, filled in by gh, not by the shell
+
+
+def _unreadable(words) -> bool:
+    """Whether gh or the shell would read these words otherwise than a word-by-word scan does: any short-flag group
+    (`-iX`, `-Rc`, `-XPATCH` - pflag reads letters and attached values a scan cannot), or any brace but gh's own
+    placeholders. Refused as a class rather than decoded one spelling at a time (security review of 763a240)."""
+    return any((word.startswith("-") and not word.startswith("--") and len(word) > 2) or
+               "{" in PLACEHOLDER.sub("", word) for word in words)
+ISSUE = re.compile(r"/(?:pulls|issues)/([^/?#]*)")   # what follows is read as a number, or refused
+
+
+def _api_path(words: list[str]) -> str:
+    """The endpoint `gh api` calls, as one spelling: no scheme or host, no leading slash, no query or fragment,
+    lowercased - so `/graphql`, `https://api.github.com/repos/...` and `PULLS` are judged as what they reach
+    (security review of 4170045)."""
+    raw = _target(words, API_VALUES) or ""
+    path = re.sub(r"^(?:https?://[^/]+)?/*", "", raw, flags=re.IGNORECASE)
+    return re.split(r"[?#]", path, maxsplit=1)[0].rstrip("/").lower()
 
 
 def _method(words: list[str]) -> str:
@@ -87,18 +109,33 @@ def door(segment) -> str:
     if segment.program != "gh" or len(words) < 2:
         return ""
     if words[1] == "pr" and len(words) >= 3 and words[2] in ("close", "edit"):
+        if _unreadable(words[3:]):
+            return "api"   # refused outright: which pull request, or whether --base is given, cannot be told
         if words[2] == "edit" and not any(word in ("-B", "--base") or word.startswith("--base=") for word in words):
             return ""
         return "pr"
     if words[1] == "api":
-        path = _target(words[2:], API_VALUES) or ""
-        if path == "graphql":
-            return "api" if "mutation" in " ".join(words).lower() else ""
+        judged = words[2:]
+        if (_api_path(words[2:]) or "").endswith("graphql"):   # a query's own braces are its text, not the shell's
+            fields = ("-f", "-F", "--field", "--raw-field")
+            judged = [word for i, word in enumerate(words[2:]) if not (i and words[2:][i - 1] in fields)
+                      and not word.startswith(("--field=", "--raw-field="))]
+        if _unreadable(judged) or any(SPLITS.search(word) for word in judged):
+            return "api"   # what gh would read cannot be told by this scan: refused, not guessed (review of bf2a47a)
+        path = _api_path(words[2:])
+        if path == "graphql" or path.endswith("/graphql"):   # a query read from a file or stdin cannot be told from the text (push review)
+            hidden = any("=@" in word or word == "--input" or word.startswith("--input=") or EXPANDS.search(word)
+                         for word in words[2:])
+            return "api" if hidden or "mutation" in " ".join(words).lower() else ""
         if _method(words[2:]) == "GET":
             return ""
-        if "/stacks" in path:
+        raw = _target(words[2:], API_VALUES) or ""
+        if EXPANDS.search(raw) or "%" in raw or any(part in (".", "..") for part in path.split("/")) or \
+                "//" in path:
+            return "api"   # a write whose endpoint the text does not spell plainly is refused, not decoded (6d55101)
+        if "/stacks" in f"/{path}":
             return "api"
-        return "api-pull" if ISSUE.search(path) else ""
+        return "api-pull" if ISSUE.search(f"/{path}") else ""
     if words[1] == "stack" and len(words) >= 3 and words[2] in STACK_DOORS:
         return "stack"
     return ""
@@ -113,7 +150,9 @@ def check(segment, *, rows: dict, numbers: set[int]) -> Finding | None:
     if kind in ("api", "stack") or any(EXPANDS.search(word) for word in words):
         return refused   # a stack's members, a mutation's target, a word the shell rewrites: none told by the text
     if kind == "api-pull":
-        target = ISSUE.search(_target(words[2:], API_VALUES) or "").group(1)
+        target = ISSUE.search(f"/{_api_path(words[2:])}").group(1)
+        if not target.isdigit():
+            return refused   # `pulls/$N`, `pulls/forty-three`: which pull request cannot be told from the text
     else:
         target = _target(words[3:], VALUES[words[2]])
     if target is None:

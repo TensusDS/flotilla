@@ -97,3 +97,96 @@ def test_equivalent_api_doors_are_refused(command):
 ])
 def test_reading_and_untracked_api_calls_pass(command):
     assert judge(command) is None
+
+
+# --- background security review of the push 67a497f..a82ba84 ------------------------------------------------------
+
+@pytest.mark.parametrize("command", [
+    "gh api graphql -F query=@close.graphql",                 # the query comes from a file: not told by the text
+    "gh api graphql --input body.json",
+    "gh api -X PATCH 'repos/o/r/pulls/43?x=1' -f base=main",   # a query string after the number
+    "gh api -X PATCH repos/o/r/pulls/43#x -f base=main",
+    "gh api -X PATCH repos/o/r/pulls/$N -f base=main",
+    "gh api -X PATCH repos/o/r/pulls/forty-three -f base=main",  # a number that cannot be read: not told
+])
+def test_what_the_api_text_cannot_tell_is_refused(command):
+    found = judge(command)
+    assert found is not None and found.refuse
+
+
+@pytest.mark.parametrize("command", [
+    "gh api /graphql -F query=@close.graphql",
+    "gh api https://api.github.com/graphql -f query='mutation { x }'",
+    "gh api GraphQL --input body.json",
+    "gh api -X PATCH /repos/o/r/pulls/43 -f base=main",
+    "gh api -X PATCH https://api.github.com/repos/o/r/pulls/43 -f base=main",
+    "gh api -X PATCH repos/o/r/PULLS/43 -f base=main",
+    "gh api -X POST /repos/o/r/stacks/7/unstack",
+    "gh api -X POST repos/o/r/Stacks/7/unstack",
+])
+def test_every_spelling_of_a_tracked_api_path_is_judged(command):
+    """Background security review of 4170045: a leading slash, a full URL or another case passed as another path."""
+    found = judge(command)
+    assert found is not None and found.refuse
+
+
+@pytest.mark.parametrize("command", [
+    "gh api -X $M repos/o/r/pulls/43 -f base=main",           # the method is the shell's to say
+    "gh api -X PATCH $P -f base=main",                         # the path is the shell's to say
+    "gh api -X PATCH repos/o/r/pul%6Cs/43 -f base=main",       # percent-encoded
+    "gh api -X PATCH repos/o/r/x/../pulls/43 -f base=main",    # dot segments
+    "gh api -X PATCH repos/o/r//pulls/43 -f base=main",        # an empty segment
+    "gh api graphql -f query=$Q",                              # the query text is the shell's to say
+])
+def test_an_api_write_whose_target_cannot_be_read_is_refused(command):
+    """Background security review of 6d55101: rather than chase each spelling, a `gh api` write whose method, path
+    or query cannot be read plainly from the text is refused."""
+    found = judge(command)
+    assert found is not None and found.refuse
+
+
+@pytest.mark.parametrize("command", [
+    "gh api repos/$OWNER/r/pulls/43",                          # a read: refusing it would protect nothing
+    "gh api repos/o/r/pulls?state=open",
+])
+def test_an_api_read_with_an_unclear_path_still_passes(command):
+    assert judge(command) is None
+
+
+@pytest.mark.parametrize("command", [
+    "gh api -iX PATCH repos/o/r/pulls/43 -f base=main",        # a short-flag group whose last letter takes a value
+    "gh api -X PATCH -if base=main repos/o/r/pulls/43",
+    "gh api -X PATCH repos/o/r/{pulls,issues}/43 -f base=main", # brace expansion
+    "gh api -X PATCH repos/o/r/pulls/{43,44} -f base=main",
+    "gh pr close {42,43}",
+    "gh api -X PATCH repos/o/r/@(pulls)/43 -f base=main",       # an extglob
+])
+def test_what_gh_or_the_shell_would_read_otherwise_is_refused(command):
+    """Background security review of the guard's last fix: grouped short flags and brace expansion read otherwise."""
+    found = judge(command)
+    assert found is not None and found.refuse
+
+
+def test_ghs_own_placeholders_are_not_brace_expansion():
+    assert judge("gh api -X PATCH repos/{owner}/{repo}/pulls/99 -f base=main") is None
+
+
+@pytest.mark.parametrize("command", [
+    "gh api -iXPATCH repos/o/r/pulls/99 -f base=main",          # a group, any letters - untracked #99 on purpose
+    "gh api -X PATCH -ifbase=main repos/o/r/pulls/99",
+    "gh pr close -Rcx 99",                                        # a group in a gh pr door
+    "gh pr edit -RB o/r 99 main",
+    "gh api -X PATCH repos/o/r/pulls/{9{8,9}} -f base=main",     # nested braces
+    "gh api -X PATCH repos/{x}/r/pulls/99 -f base=main",         # a brace that is no gh placeholder
+])
+def test_grouped_flags_and_stray_braces_are_refused_as_a_class(command):
+    """Background security review of 763a240: rather than decode each group or brace, every multi-letter short-flag
+    group and every brace but gh's own placeholders makes the call unreadable."""
+    found = judge(command)
+    assert found is not None and found.refuse
+
+
+@pytest.mark.parametrize("command", ["gh api repos/{owner}/{repo}/pulls/43", "gh pr view 43 -R o/r",
+                                     "gh api -X PATCH repos/{owner}/{repo}/pulls/99 -f base=main"])
+def test_plain_calls_and_gh_placeholders_still_pass(command):
+    assert judge(command) is None

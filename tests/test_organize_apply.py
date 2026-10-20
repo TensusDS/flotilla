@@ -430,3 +430,18 @@ def test_tracked_edits_in_the_tree_stop_the_switch(tmp_path, monkeypatch):
     lines, complete = w.apply()
     assert not complete and git(w.root, "symbolic-ref", "--short", "HEAD") == "chore/flotilla-onboard"
     assert git(w.root, "rev-parse", "main") != w.profile_sha
+
+
+def test_a_long_tree_path_is_named_whole(world, tmp_path):
+    """CI on macOS, a82ba84: temporary paths there are long, and a tree's path cut at 120 characters lost the very
+    name the person needs to find the tree that holds trunk."""
+    w = world(names=())
+    head = local_commit(w)
+    git(w.root, "checkout", "-q", "-b", "elsewhere")
+    deep = tmp_path / ("d" * 90) / ("e" * 90) / "trunk-tree"
+    deep.parent.mkdir(parents=True)
+    git(w.root, "worktree", "add", "-q", str(deep), "main")
+    w.answer("trunk:main", "move")
+    lines, complete = w.apply()
+    assert not complete and git(w.root, "rev-parse", "main") == head
+    assert any(str(deep) in line for line in lines)
