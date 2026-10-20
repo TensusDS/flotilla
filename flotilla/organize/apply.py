@@ -98,9 +98,151 @@ def _carry_out(root: Path, item: Item, data: dict, *, walked, profile: dict, run
     value = (data["answers"].get(item.key) or {}).get("value")
     if value == "ignore":
         return []
-    if value == "take" and item.kind in ("pr", "chain", "branch"):
-        return _take(root, item, data, walked=walked, run=run, ledger=_ledger(root, ledger))
+    if value == "words":
+        return _steps(root, item, data, walked=walked, run=run, ledger=ledger)
+    if value == "take" and item.kind in ("pr", "chain", "branch", "stack"):
+        return _take(root, item, questions.shape_of(item, data), walked=walked, run=run, ledger=ledger)
+    if item.kind == "cache":
+        return [exclude(root, item.facts["dir"], run=run)] if value == "exclude" else []
+    if item.kind == "trunk":
+        return _trunk(root, item, value, walked=walked, run=run, ledger=ledger)
     raise Skip(f"`{value}` for a {item.kind} is not carried out by this version yet")
+
+
+def exclude(root: Path, directory: str, run=subprocess.run) -> str:
+    """Add a tool's cache to `.git/info/exclude` once: the repository's own, never committed."""
+    where = _git(root, "rev-parse", "--git-path", "info/exclude", run=run).stdout.strip()
+    path = Path(where) if Path(where).is_absolute() else Path(root) / where
+    line = "/" + directory.strip("/") + "/"
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    if line in text.splitlines():
+        return f"{directory} is excluded already"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text + ("" if not text or text.endswith("\n") else "\n") + line + "\n", encoding="utf-8")
+    return f"{directory} added to .git/info/exclude"
+
+
+def _slug(root: Path, run) -> str:
+    from flotilla.organize import github
+    slug = github.slug_of(root, run=run)
+    if not slug:
+        raise Skip("this repository's origin is not on GitHub")
+    return slug
+
+
+def _unstack(root: Path, item: Item, run) -> str:
+    """Unstack a native stack and read it back: every open member must have left it, or nothing else is done."""
+    from flotilla.organize import github
+    slug = _slug(root, run)
+    number = item.facts["stack"]
+    try:
+        github.unstack(slug, number, run)
+        left = github.stacks(slug, run)
+    except github.GitHubUnknown as err:
+        raise Skip(f"GitHub did not unstack stack {number} ({shown(str(err))}); nothing else was done") from err
+    members = {pull["number"] for pull in item.facts["pulls"]}
+    still = sorted(members & {n for stack in left for n in stack.members})
+    if still:
+        raise Skip(f"#{', #'.join(str(n) for n in still)} still stacked on GitHub (queued, or set to auto-merge?); "
+                   "nothing else was done - settle it on GitHub, then run organize again")
+    return f"stack {number} unstacked on GitHub; its pull requests are a plain chain now"
+
+
+def _steps(root: Path, item: Item, data: dict, *, walked, run, ledger) -> list[str]:
+    """The steps the person confirmed for their own words, each held to this item: own words about #42 never
+    close #99."""
+    from flotilla.organize import github
+    steps = questions.confirmed(item, data, "steps")
+    if steps is None:
+        raise Skip("its steps were not confirmed as they stand; it is asked again")
+    numbers = {pull["number"] for pull in item.facts.get("pulls", [])}
+    branches = {pull["branch"] for pull in item.facts.get("pulls", [])} | {item.facts.get("branch", "")}
+    for step in steps:   # checked whole before the first one runs
+        if step["do"] == "close" and step["pr"] not in numbers:
+            raise Skip(f"step `close #{step['pr']}` names a pull request outside this item; nothing was done")
+        if step["do"] == "unstack" and step["stack"] != item.facts.get("stack"):
+            raise Skip(f"step `unstack {step['stack']}` names a stack outside this item; nothing was done")
+        if step["do"] == "delete-branch" and step["branch"] not in branches - {""}:
+            raise Skip(f"step `delete {step['branch']}` names a branch outside this item; nothing was done")
+        if step["do"] == "take" and item.kind not in ("pr", "chain", "branch", "stack"):
+            raise Skip(f"a {item.kind} is not taken in that way; nothing was done")
+    out = []
+    for step in steps:
+        if step["do"] == "ignore":
+            data["ignored"][item.key] = seen(item)
+            out.append(f"{item.key}: ignored")
+        elif step["do"] == "take":
+            out += _take(root, item, step["shape"], walked=walked, run=run, ledger=ledger)
+        elif step["do"] == "close":
+            try:
+                github.close(_slug(root, run), step["pr"], "Closed on the person's word (flotilla organize)", run)
+            except github.GitHubUnknown as err:
+                raise Skip(f"GitHub did not close #{step['pr']} ({shown(str(err))})") from err
+            out.append(f"closed #{step['pr']}")
+        elif step["do"] == "unstack":
+            out.append(_unstack(root, item, run))
+        elif step["do"] == "delete-branch":
+            out.append(_drop_branch(root, step["branch"], run))
+    return out
+
+
+def _drop_branch(root: Path, branch: str, run) -> str:
+    from flotilla.organize import keep
+    tip = gitq.resolve(root, f"refs/heads/{branch}", run=run)
+    if tip is None:
+        raise Skip(f"there is no local `{branch}` to delete")
+    try:
+        ref = keep.create_ref(root, "dropped", tip, run=run)
+    except RuntimeError:
+        ref = f"refs/flotilla/dropped/{tip}"   # kept already, by an earlier run
+    return (f"`{branch}` is kept under {ref}; deleting it loses work, so it is yours to type: "
+            f"! git branch -D {branch}")
+
+
+def _trunk_tree(root: Path, trunk: str, run) -> str:
+    from flotilla.organize.walk import checked_out
+    return checked_out(root, run).get(trunk, "")
+
+
+def _trunk(root: Path, item: Item, value: str, *, walked, run, ledger) -> list[str]:
+    from flotilla.organize import keep
+    trunk, head = item.facts["trunk"], item.facts["head"]
+    if value == "leave":
+        return [f"your local {trunk} is left as is: publish refuses while it is ahead with these; push them "
+                "yourself after `!` when you mean to"]
+    where = _trunk_tree(root, trunk, run)
+    here = Path(root).resolve()
+    command = (f"git reset --keep origin/{trunk}" if where and Path(where).resolve() == here
+               else f"git branch -f {trunk} origin/{trunk}")
+    if value == "drop":
+        try:
+            ref = keep.create_ref(root, "dropped", head, run=run)
+        except RuntimeError:
+            ref = f"refs/flotilla/dropped/{head}"
+        return [f"the {len(item.facts['commits'])} commit(s) are kept under {ref}; dropping them is yours to type: "
+                f"! {command}"]
+    if value != "move":
+        raise Skip(f"`{value}` is not an answer for the local trunk")
+    if where and Path(where).resolve() != here:
+        raise Skip(f"{trunk} is checked out in {shown(where, 120)}; it is not moved from here - switch that tree "
+                   "first, or answer in your own words")
+    branch = f"work/local-{head[:7]}"
+    made = _git(root, "branch", branch, head, run=run)
+    if made.returncode != 0:
+        raise Skip(f"git could not create `{branch}`: {made.stderr.strip()[:200]}")
+    moved = _git(root, *(["reset", "--keep", f"origin/{trunk}"] if where else
+                         ["branch", "-f", trunk, f"origin/{trunk}"]), run=run)
+    if moved.returncode != 0:
+        raise Skip(f"`{branch}` holds the commits, but {trunk} did not move: {moved.stderr.strip()[:200]}")
+    out = [f"`{branch}` holds the {len(item.facts['commits'])} commit(s); {trunk} is back at origin's"]
+    if walked.phase == "after":
+        base = _fork_point(root, trunk, head, run)
+        from flotilla.ledger import takein
+        row = takein.take_in(_ledger(root, ledger), branch, base=base)
+        out.append(f"took `{branch}` in as {row.id}")
+    else:
+        out.append(f"`{branch}` is asked about once the profile is on origin's trunk")
+    return out
 
 
 def _fork_point(root: Path, trunk: str, tip: str, run) -> str:
@@ -123,8 +265,9 @@ def _local_branch(root: Path, branch: str, head: str, run) -> None:
                    "together (push or pull it), then run apply again")
 
 
-def _take(root: Path, item: Item, data: dict, *, walked, run, ledger) -> list[str]:
+def _take(root: Path, item: Item, shape: str, *, walked, run, ledger) -> list[str]:
     from flotilla.ledger import takein
+    ledger = _ledger(root, ledger)
     trunk = walked.trunk
     if item.kind == "branch":
         base = item.facts.get("base") or _fork_point(root, trunk, item.facts["tip"], run)
@@ -133,7 +276,17 @@ def _take(root: Path, item: Item, data: dict, *, walked, run, ledger) -> list[st
     pulls = item.facts["pulls"]
     for pull in pulls:
         _local_branch(root, pull["branch"], pull["head"], run)
-    shape = "separate" if item.kind == "pr" else questions.shape_of(item, data)
+    if item.kind == "pr":
+        shape = "separate"
+    if shape not in ("separate", "parts", "whole"):
+        raise Skip(f"no shape is settled for it (`{shape or 'none'}`)")
+    said = [_unstack(root, item, run)] if item.kind == "stack" else []
+    return said + _take_pulls(root, item, shape, trunk=trunk, run=run, ledger=ledger)
+
+
+def _take_pulls(root: Path, item: Item, shape: str, *, trunk: str, run, ledger) -> list[str]:
+    from flotilla.ledger import takein
+    pulls = item.facts["pulls"]
     bottom_off = pulls[0]["base"] != trunk   # a lower pull request merged without deleting its branch
     if shape == "whole":
         top = pulls[-1]

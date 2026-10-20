@@ -33,7 +33,9 @@ class World:
 
 @pytest.fixture()
 def world(tmp_path, monkeypatch):
+    from flotilla.organize import github
     monkeypatch.setattr(caller, "person_refusal", lambda what: "")
+    monkeypatch.setattr(github, "slug_of", lambda root, run=None: "o/r")
 
     def build(profile=MERGE_PROFILE, names=("docs/a", "docs/b", "docs/c"), push=True):
         root = project(tmp_path, profile=profile)
@@ -164,3 +166,151 @@ def test_an_item_gone_since_the_question_is_not_carried_out(world):
     assert not complete and [row.branch for row in w.rows()] == ["docs/b"]
     assert any("chain:42-43-44" in line and "no longer" in line for line in lines)
     assert not any(qid.startswith("chain:42-43-44") for qid in w.data["answers"])
+
+
+# --- outward answers: unstack, own words, the local trunk, caches -----------------------------------------------
+
+from organizekit import stack  # noqa: E402
+
+
+def stacked_world(world, stuck=()):
+    w = world(names=("docs/a", "docs/b"))
+    w.hub.stacks = [stack(7, 42, 43)]
+    w.hub.stuck = set(stuck)
+    return w
+
+
+def test_a_native_stack_is_unstacked_then_taken_in_as_a_chain(world):
+    w = stacked_world(world)
+    w.answer("stack:7", "take")
+    w.answer("stack:7:shape", "separate")
+    lines, complete = w.apply()
+    assert complete, lines
+    assert ["api", "-X", "POST", "repos/o/r/stacks/7/unstack"] in w.hub.calls
+    a, b = w.rows()
+    assert (a.pr, b.pr, b.base, b.retarget) == ("42", "43", w.heads["docs/a"], "main")
+
+
+def test_a_member_left_stacked_stops_the_take_in(world):
+    """Review Focus 3: GitHub leaves a member with auto-merge stacked; nothing else is done for that stack."""
+    w = stacked_world(world, stuck={43})
+    w.answer("stack:7", "take")
+    w.answer("stack:7:shape", "separate")
+    lines, complete = w.apply()
+    assert not complete and w.rows() == []
+    assert any("#43" in line and "still stacked" in line for line in lines)
+
+
+def propose_steps(w, key, steps):
+    w.data["proposals"][key] = {"steps": steps}
+    w.answer(f"{key}:steps", "yes")
+
+
+def test_own_words_close_runs_only_the_confirmed_step(world):
+    w = world()
+    w.answer("chain:42-43-44", "#43", "is", "stale,", "close", "it")
+    propose_steps(w, "chain:42-43-44", [{"do": "close", "pr": 43}])
+    lines, complete = w.apply()
+    assert complete, lines
+    closed = [call for call in w.hub.calls if call[:2] == ["pr", "close"]]
+    assert [call[2] for call in closed] == ["43"]
+    assert w.rows() == []
+
+
+def test_own_words_may_not_reach_beyond_their_item(world):
+    w = world(names=("docs/a",))
+    w.answer("pr:42", "close", "the", "other", "one")
+    propose_steps(w, "pr:42", [{"do": "close", "pr": 99}])
+    lines, complete = w.apply()
+    assert not complete and not any(call[:2] == ["pr", "close"] for call in w.hub.calls)
+    assert any("#99" in line for line in lines)
+
+
+def test_own_words_take_with_a_shape(world):
+    w = world()
+    w.answer("chain:42-43-44", "take", "it", "as", "one", "piece")
+    propose_steps(w, "chain:42-43-44", [{"do": "take", "shape": "whole"}])
+    w.apply()
+    [row] = w.rows()
+    assert (row.branch, row.closes) == ("docs/c", [43])
+
+
+def test_own_words_delete_a_branch_keep_it_and_leave_the_drop_to_the_person(world):
+    w = world(names=())
+    git(w.root, "checkout", "-q", "-b", "feat/old")
+    (Path(w.root) / "o.txt").write_text("o\n", encoding="utf-8")
+    git(w.root, "add", "o.txt")
+    git(w.root, "commit", "-q", "-m", "old")
+    tip = git(w.root, "rev-parse", "HEAD")
+    git(w.root, "checkout", "-q", "main")
+    w.answer("branch:feat/old", "delete", "it")
+    propose_steps(w, "branch:feat/old", [{"do": "delete-branch", "branch": "feat/old"}])
+    lines, _ = w.apply()
+    assert git(w.root, "rev-parse", "refs/heads/feat/old") == tip          # still there: the person deletes it
+    assert git(w.root, "rev-parse", f"refs/flotilla/dropped/{tip}") == tip
+    assert any("! git branch -D feat/old" in line for line in lines)
+
+
+def local_commit(w, message="local only"):
+    (Path(w.root) / "local.txt").write_text(message + "\n", encoding="utf-8")
+    git(w.root, "add", "local.txt")
+    git(w.root, "commit", "-q", "-m", message)
+    return git(w.root, "rev-parse", "HEAD")
+
+
+def test_moving_local_trunk_commits_never_uses_hard(world):
+    w = world(names=())
+    head = local_commit(w)
+    calls = []
+    real = w.hub.run
+
+    def spy(cmd, **kwargs):
+        calls.append(list(cmd))
+        return real(cmd, **kwargs)
+    w.hub.run = spy
+    w.answer("trunk:main", "move")
+    lines, complete = w.apply()
+    assert complete, lines
+    assert not any("--hard" in call for call in calls)
+    assert git(w.root, "rev-parse", "main") == git(w.root, "rev-parse", "origin/main")
+    assert git(w.root, "rev-parse", f"refs/heads/work/local-{head[:7]}") == head
+    [row] = w.rows()
+    assert row.branch == f"work/local-{head[:7]}"
+
+
+def test_dropping_prints_the_command_and_keeps_the_commits(world):
+    w = world(names=())
+    head = local_commit(w)
+    w.answer("trunk:main", "drop")
+    lines, _ = w.apply()
+    assert git(w.root, "rev-parse", "main") == head
+    assert git(w.root, "rev-parse", f"refs/flotilla/dropped/{head}") == head
+    assert any("! git reset --keep origin/main" in line for line in lines)
+
+
+def test_trunk_checked_out_in_another_tree_is_not_moved(world, tmp_path):
+    w = world(names=())
+    head = local_commit(w)
+    git(w.root, "checkout", "-q", "-b", "elsewhere")
+    git(w.root, "worktree", "add", "-q", str(tmp_path / "trunk-tree"), "main")
+    w.answer("trunk:main", "move")
+    lines, complete = w.apply()
+    assert not complete and git(w.root, "rev-parse", "main") == head
+    assert any("trunk-tree" in line for line in lines)
+
+
+def test_a_cache_is_excluded_once(tmp_path, monkeypatch):
+    monkeypatch.setattr(caller, "person_refusal", lambda what: "")
+    root = project(tmp_path, published=False)
+    (root / ".flotilla").mkdir()
+    (root / ".flotilla" / "project.toml").write_text('schema = 1\n[trunk]\nbranch = "main"\n', encoding="utf-8")
+    (root / ".serena").mkdir()
+    (root / ".serena" / "c").write_text("x", encoding="utf-8")
+    hub = Hub()
+    w = World(root, make_ledger(root, tmp_path / "state", run=hub.run), hub, MERGE_PROFILE)
+    w.answer("cache:.serena/", "exclude")
+    w.apply()
+    assert not [item for item in w.walk().items if item.kind == "cache"]
+    applying.exclude(root, ".serena/", run=hub.run)   # a second exclude adds nothing
+    exclude = (root / ".git" / "info" / "exclude").read_text(encoding="utf-8")
+    assert exclude.count("/.serena/") == 1
