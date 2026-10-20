@@ -76,6 +76,86 @@ def _check_pr(ledger: Ledger, pr: int, branch: str, tip: str) -> dict:
     return {"pr_head": head}
 
 
+def stacked(ledger: Ledger, pr: int) -> bool | None:
+    """Whether GitHub holds the pull request in an open native stack, whose members can be neither retargeted nor
+    merged with `gh pr merge`; None where gh could not answer (organize's probe of 2026-10-20)."""
+    try:
+        done = ledger.run(["gh", "api", "--paginate", "repos/{owner}/{repo}/stacks"], cwd=str(ledger.root),
+                          capture_output=True, text=True, check=False, timeout=GH_TIMEOUT)
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if done.returncode != 0:
+        return None
+    try:
+        listed = json.loads(done.stdout or "null")
+    except ValueError:
+        return None
+    if not isinstance(listed, list):
+        return None
+    return any(stack.get("open") and any(member.get("number") == pr and member.get("state") == "open"
+                                         for member in stack.get("pull_requests") or [])
+               for stack in listed if isinstance(stack, dict))
+
+
+def restack_refusal(ledger: Ledger, row: Row) -> str:
+    """Why a taken-in row cannot go to trunk as it stands, or "": its base must already be on origin's trunk, or the
+    commits under it - a lower layer rewritten after it was taken in - would reach trunk with no verdict over them."""
+    if not row.base:
+        return ""
+    _fetch(ledger)
+    if gitq.is_ancestor(ledger.root, row.base, f"refs/remotes/origin/{ledger.trunk}", run=ledger.run) is True:
+        return ""
+    return (f"`{row.branch}` needs a restack onto origin/{ledger.trunk} before it can target trunk: its base "
+            f"{row.base[:7]} is not on origin/{ledger.trunk}; return it (`flotilla work return {shlex.quote(row.branch)} "
+            f"--why \"restack onto origin/{ledger.trunk}\"`)")
+
+
+def _taken_in_pr(ledger: Ledger, row: Row, pr: int) -> None:
+    """What a taken-in row's pull request needs before `_check_pr`: not stacked, a base on trunk, and the retarget
+    the person's answer recorded - made here, by the sender's own move, and only when it is still needed."""
+    if stacked(ledger, pr) is True:
+        raise MoveRefused(f"PR #{pr} is in a native GitHub stack, whose members GitHub will not retarget or merge one "
+                          "by one; unstack it first (`flotilla organize apply` does, on the person's answer)")
+    if row.adopted_at:
+        refused = restack_refusal(ledger, row)
+        if refused:
+            raise MoveRefused(refused)
+    if row.retarget != ledger.trunk:
+        return
+    if pr_view(ledger, pr, "baseRefName").get("baseRefName") == ledger.trunk:
+        return
+    try:
+        done = ledger.run(["gh", "pr", "edit", str(pr), "--base", ledger.trunk], cwd=str(ledger.root),
+                          capture_output=True, text=True, check=False, timeout=GH_TIMEOUT)
+    except (subprocess.TimeoutExpired, OSError) as err:
+        raise NotYet(f"could not retarget PR #{pr} to `{ledger.trunk}`: {err}") from err
+    if done.returncode != 0:
+        raise NotYet(f"could not retarget PR #{pr} to `{ledger.trunk}`: {(done.stderr or done.stdout).strip()[:300]}")
+
+
+def _close_recorded(ledger: Ledger, row: Row) -> None:
+    """The lower pull requests the person's answer said close once this row ships; a failure is said, the ship
+    stands."""
+    closed = []
+    for number in row.closes or []:
+        try:
+            if pr_view(ledger, int(number), "state").get("state") != "OPEN":
+                continue
+            done = ledger.run(["gh", "pr", "close", str(number), "--comment",
+                               f"Delivered with #{row.pr} (flotilla organize)"], cwd=str(ledger.root),
+                              capture_output=True, text=True, check=False, timeout=GH_TIMEOUT)
+        except (MoveRefused, NotYet, subprocess.TimeoutExpired, OSError) as err:
+            ledger.notices.append(f"PR #{number} was not closed ({err}); close it yourself")
+            continue
+        if done.returncode != 0:
+            ledger.notices.append(f"PR #{number} was not closed ({(done.stderr or done.stdout).strip()[:200]}); "
+                                  "close it yourself")
+        else:
+            closed.append(f"#{number}")
+    if closed:
+        ledger.notices.append(f"closed {', '.join(closed)}, delivered with #{row.pr}")
+
+
 def approve(ledger: Ledger, branch: str) -> Row:
     """The person approves accepted work for trunk, at the revision that was read (merge_authorized_by = human).
     Only a person: the yes a sender waited for came as a message, and a message can be written by anyone (F24)."""
@@ -140,6 +220,11 @@ def queue(ledger: Ledger, actor: Actor, branch: str, *, pr: int | None = None) -
                               f"{current[:7]}: the person types `! {approve_command(ledger, branch)}` in their own "
                               f"session, or runs it in a terminal; record the wait with `flotilla work wait {branch} --on "
                               "\"the person\" --why \"approve before queue\"`")
+        if pr is not None and (row.adopted_at or row.retarget):
+            _taken_in_pr(ledger, row, pr)
+        elif pr is not None and stacked(ledger, pr) is True:
+            raise MoveRefused(f"PR #{pr} is in a native GitHub stack, whose members GitHub will not merge one by one; "
+                              "unstack it first")
         evidence = _check_pr(ledger, pr, branch, current) if pr is not None else {}
         fields = {"tip": current}
         if pr is not None:
@@ -332,8 +417,11 @@ def ship(ledger: Ledger, actor: Actor, branch: str) -> Row:
         if current.id != row.id or current.state != row.state:
             raise MoveRefused(f"`{branch}` changed while origin was asked; run it again")
         state = s.next_state(current, "ship")
-        return s.append(actor, current.id, "ship", state, fields={"merge": commit, "gate": found.text},
-                        evidence=evidence)
+        shipped = s.append(actor, current.id, "ship", state, fields={"merge": commit, "gate": found.text},
+                           evidence=evidence)
+    if shipped.closes:
+        _close_recorded(ledger, shipped)
+    return shipped
 
 
 def reconcile(ledger: Ledger, actor: Actor) -> list[str]:
