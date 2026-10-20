@@ -352,33 +352,6 @@ def test_plain_words_say_nothing_of_guards_when_none_is_on():
     assert "every Claude Code session" not in said
 
 
-def _open_pull(monkeypatch):
-    from flotilla.onboard import detect_prs
-    monkeypatch.setattr(detect_prs, "open_pull_requests", lambda origin, run=None: {
-        "source": "github", "open": [{"number": 12, "branch": "feat/theirs", "title": "Made by hand"}]})
-
-
-def test_write_says_open_pull_requests_made_outside_the_ledger_before_the_yes(project, monkeypatch):
-    _open_pull(monkeypatch)
-    assert run_cli("onboard", "quick", "--root", str(project))[0] == 0
-    code, out = run_cli("onboard", "write", "--root", str(project))
-    assert code == 5 and "#12 `feat/theirs`" in out and "flotilla work claim feat/theirs" in out
-    assert out.index("#12") < out.index("--confirm ")   # said before the line that asks for the yes
-
-
-def test_publish_warns_of_open_pull_requests_and_still_publishes(project, monkeypatch, tmp_path):
-    import sys
-    from test_onboard_cli import write_confirmed
-    _open_pull(monkeypatch)
-    assert run_cli("onboard", "quick", "--root", str(project))[0] == 0
-    command = f"{sys.executable} -c \"print('1 passed')\""
-    assert run_cli("onboard", "answer", "tiers", command, "--root", str(project))[0] == 0
-    assert write_confirmed(project)[0] == 0
-    code, out = run_cli("onboard", "publish", "--root", str(project))
-    assert code == 0, out
-    assert "#12 `feat/theirs`" in out and "pushed" in out
-
-
 @pytest.mark.parametrize("data, held", [
     ({"flow": {"mode": "pr", "merge_authorized_by": "human"}, "pr": {"merged_by": "sender"},
       "guards": {"push_receipt": True}}, "the push guard refuses it to any other seat"),
@@ -405,58 +378,6 @@ def test_the_guard_line_says_approval_is_a_ledger_row_and_asked_of_trunk_and_mer
     assert "you merge yourself after `!`" in said and "never a `gh pr merge`" in said
 
 
-def test_write_does_not_ask_gh_where_no_session_merge_would_be_refused(project, monkeypatch):
-    from flotilla.onboard import detect_prs
-
-    def asked(*args, **kwargs):
-        raise AssertionError("gh asked although nothing would refuse a merge")
-    monkeypatch.setattr(detect_prs, "open_pull_requests", asked)
-    assert run_cli("onboard", "quick", "--root", str(project))[0] == 0
-    assert run_cli("onboard", "answer", "guards", "revert", "--root", str(project))[0] == 0
-    assert run_cli("onboard", "write", "--root", str(project))[0] == 5
-
-
-def test_detection_does_not_ask_gh_for_pull_requests(project, monkeypatch):
-    """Review of this change, M6: detection runs on every onboarding command; the list is asked by write and publish."""
-    from flotilla.onboard import detect_prs
-    monkeypatch.setattr(detect_prs, "open_pull_requests", lambda *a, **k: (_ for _ in ()).throw(AssertionError()))
-    assert run_cli("onboard", "next", "--root", str(project))[0] == 0
-
-
-def test_a_branch_only_a_closed_row_names_is_outside_the_ledger_again(project, monkeypatch):
-    """Review of this change, M5: a released or closed row approves nothing, so an open pull request on a reused
-    branch is still made outside the ledger; an open row's branch is not."""
-    from types import SimpleNamespace
-    from flotilla.ledger import commands as ledger_commands
-    from flotilla.onboard.commands import _pull_request_lines
-    rows = {"1": SimpleNamespace(branch="feat/old", is_open=False), "2": SimpleNamespace(branch="feat/live",
-                                                                                          is_open=True)}
-    monkeypatch.setattr(ledger_commands, "open_ledger", lambda root: SimpleNamespace(rows=lambda: rows))
-    from flotilla.onboard import detect_prs
-    monkeypatch.setattr(detect_prs, "open_pull_requests", lambda origin, run=None: {"source": "github", "open": [
-        {"number": 1, "branch": "feat/old", "title": "a"}, {"number": 2, "branch": "feat/live", "title": "b"}]})
-    said = " ".join(_pull_request_lines({"root": str(project), "origin": "github.com/o/app"},
-                                        {"flow": {"mode": "pr", "merge_authorized_by": "human"},
-                                         "pr": {"merged_by": "sender"}, "guards": {"push_receipt": True}}))
-    assert "#1 `feat/old`" in said and "#2" not in said
-
-
-def test_publish_names_open_pull_requests_after_the_push_not_before(project, monkeypatch):
-    """Review of this change, M8: said before the push in the same command, "merge them before publishing" could not
-    be acted on; said after it, it speaks of what to do now the rules are on trunk."""
-    import sys
-    from test_onboard_cli import write_confirmed
-    _open_pull(monkeypatch)
-    assert run_cli("onboard", "quick", "--root", str(project))[0] == 0
-    command = f"{sys.executable} -c \"print('1 passed')\""
-    assert run_cli("onboard", "answer", "tiers", command, "--root", str(project))[0] == 0
-    assert write_confirmed(project)[0] == 0
-    code, out = run_cli("onboard", "publish", "--root", str(project))
-    assert code == 0, out
-    assert out.index("pushed to origin") < out.index("#12") and "now that the profile is on trunk" in out
-    assert "merge them before publishing" not in out
-
-
 def test_publish_that_cannot_push_tells_a_person_who_authorizes_merges_to_merge_the_pull_request_themselves(
         project, monkeypatch, tmp_path):
     """Review of this change, I1: until trunk carries a profile the approval cannot be asked of a ledger, and that
@@ -474,3 +395,73 @@ def test_publish_that_cannot_push_tells_a_person_who_authorizes_merges_to_merge_
     assert write_confirmed(project)[0] == 0
     code, out = run_cli("onboard", "publish", "--root", str(project))
     assert code == 2 and "merge it yourself" in out and "no session can merge it" in out
+
+
+# --- organize: the 0.19.0 warning is replaced, and a profile already committed is published -----------------------
+
+def test_write_and_publish_no_longer_warn_about_pull_requests(project, tmp_path):
+    """Organize walks open pull requests now (spec 2026-10-19-organize-design, section 9); write and publish name
+    the step instead of warning."""
+    _ready(project)
+    code, out = run_cli("onboard", "publish", "--root", str(project))
+    assert code == 0, out
+    assert "made outside the ledger" not in out
+    assert "/flotilla:organize" in out
+
+
+def _committed_profile_on_a_side_branch(project):
+    """The test bed's shape: the profile committed on onboarding's branch, straight on origin's trunk, and a commit
+    of the person's above it."""
+    subprocess.run(["git", "-C", str(project), "push", "-q", "origin", "main"], check=True)
+    _ready(project)
+    _git(project, "checkout", "-q", "-b", "chore/flotilla-onboard")
+    _git(project, "add", ".flotilla")
+    _git(project, "commit", "-q", "-m", "chore: onboard flotilla (profile and posts)")
+    profile = _git(project, "rev-parse", "HEAD").stdout.strip()
+    (project / "t053.md").write_text("T-053\n", encoding="utf-8")
+    _git(project, "add", "t053.md")
+    _git(project, "commit", "-q", "-m", "docs: open T-053")
+    return profile, _git(project, "rev-parse", "HEAD").stdout.strip()
+
+
+def test_publish_accepts_a_profile_commit_already_made(project, tmp_path):
+    profile, extra = _committed_profile_on_a_side_branch(project)
+    _git(project, "checkout", "-q", "main")
+    _git(project, "merge", "-q", "--ff-only", profile)   # trunk at the profile commit, as organize leaves it
+    code, out = run_cli("onboard", "publish", "--root", str(project))
+    assert code == 0, out
+    assert _git(tmp_path / "origin.git", "rev-parse", "main").stdout.strip() == profile
+
+
+def test_land_with_the_profile_publishes_both_commits(project, tmp_path, monkeypatch):
+    from flotilla.core import repo
+    from flotilla.organize import store
+    profile, extra = _committed_profile_on_a_side_branch(project)
+    _git(project, "checkout", "-q", "main")
+    _git(project, "merge", "-q", "--ff-only", extra)
+    key = repo.identify(project).key
+    data = store.empty()
+    data["publish_named"] = [extra]
+    store.save(tmp_path / "state", key, data)
+    code, out = run_cli("onboard", "publish", "--root", str(project))
+    assert code == 0, out
+    assert _git(tmp_path / "origin.git", "rev-parse", "main").stdout.strip() == extra
+
+
+def test_publish_still_refuses_a_commit_nobody_named(project):
+    profile, extra = _committed_profile_on_a_side_branch(project)
+    _git(project, "checkout", "-q", "main")
+    _git(project, "merge", "-q", "--ff-only", extra)
+    code, out = run_cli("onboard", "publish", "--root", str(project))
+    assert code == 2 and "docs: open T-053" in out
+
+
+def test_a_failed_push_says_the_second_half_waits(project, tmp_path):
+    hook = tmp_path / "origin.git" / "hooks" / "pre-receive"
+    hook.write_text("#!/bin/sh\necho trunk takes only pull requests >&2\nexit 1\n", encoding="utf-8")
+    hook.chmod(0o755)
+    _ready(project)
+    code, out = run_cli("onboard", "publish", "--root", str(project))
+    assert code == 2
+    assert "pull requests, chains and branches are asked by `/flotilla:organize` once the profile is on origin's " \
+           "trunk" in out

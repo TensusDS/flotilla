@@ -364,3 +364,69 @@ def test_a_plan_proposed_against_other_paths_is_refused_at_apply(world):
     w.answer(f"{key}:plan", "yes")
     lines, complete = w.apply()
     assert not complete and w.rows() == [] and (Path(w.root) / "fix.py").exists()
+
+
+# --- onboarding's branch beside its profile commit -------------------------------------------------------------
+
+def onboard_world(tmp_path, monkeypatch):
+    """The test bed's shape: the profile committed on chore/flotilla-onboard straight on origin's main, T-053 above
+    it, the tree on that branch, main checked out nowhere."""
+    from flotilla.organize import github
+    monkeypatch.setattr(caller, "person_refusal", lambda what: "")
+    monkeypatch.setattr(github, "slug_of", lambda root, run=None: "o/r")
+    root = project(tmp_path, published=False)
+    git(root, "checkout", "-q", "-b", "chore/flotilla-onboard")
+    (root / ".flotilla").mkdir()
+    (root / ".flotilla" / "project.toml").write_text('schema = 1\n[trunk]\nbranch = "main"\n', encoding="utf-8")
+    git(root, "add", ".flotilla")
+    git(root, "commit", "-q", "-m", "chore: onboard flotilla")
+    profile = git(root, "rev-parse", "HEAD")
+    (root / "t053.md").write_text("T-053\n", encoding="utf-8")
+    git(root, "add", "t053.md")
+    git(root, "commit", "-q", "-m", "docs: open T-053 onboarding docs")
+    extra = git(root, "rev-parse", "HEAD")
+    hub = Hub()
+    w = World(root, make_ledger(root, tmp_path / "state", run=hub.run), hub, MERGE_PROFILE)
+    w.profile_sha, w.extra = profile, extra
+    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
+    return w
+
+
+def test_own_branch_keeps_the_work_on_a_branch_of_its_own(tmp_path, monkeypatch):
+    w = onboard_world(tmp_path, monkeypatch)
+    w.answer("onboard:chore/flotilla-onboard", "own-branch")
+    lines, complete = w.apply()
+    assert complete, lines
+    assert git(w.root, "rev-parse", "main") == w.profile_sha
+    assert git(w.root, "symbolic-ref", "--short", "HEAD") == "main"
+    assert git(w.root, "rev-parse", "refs/heads/work/docs-open-t-053-onboarding-docs") == w.extra
+    assert w.data["publish_named"] == []
+    assert any("flotilla onboard publish" in line for line in lines)
+
+
+def test_land_with_the_profile_names_the_commits_for_publish(tmp_path, monkeypatch):
+    w = onboard_world(tmp_path, monkeypatch)
+    w.answer("onboard:chore/flotilla-onboard", "land")
+    lines, complete = w.apply()
+    assert complete, lines
+    assert git(w.root, "rev-parse", "main") == w.extra
+    assert w.data["publish_named"] == [w.extra]
+
+
+def test_trunk_checked_out_in_another_tree_is_refused(tmp_path, monkeypatch):
+    w = onboard_world(tmp_path, monkeypatch)
+    git(w.root, "worktree", "add", "-q", str(tmp_path / "trunk-tree"), "main")
+    w.answer("onboard:chore/flotilla-onboard", "own-branch")
+    lines, complete = w.apply()
+    assert not complete and git(w.root, "rev-parse", "main") != w.profile_sha
+    assert any("trunk-tree" in line for line in lines)
+
+
+def test_tracked_edits_in_the_tree_stop_the_switch(tmp_path, monkeypatch):
+    w = onboard_world(tmp_path, monkeypatch)
+    (Path(w.root) / "t053.md").write_text("edited\n", encoding="utf-8")
+    w.answer("onboard:chore/flotilla-onboard", "own-branch")
+    w.answer(f"edits:{w.root}", "leave")
+    lines, complete = w.apply()
+    assert not complete and git(w.root, "symbolic-ref", "--short", "HEAD") == "chore/flotilla-onboard"
+    assert git(w.root, "rev-parse", "main") != w.profile_sha

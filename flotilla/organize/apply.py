@@ -108,6 +108,8 @@ def _carry_out(root: Path, item: Item, data: dict, *, walked, profile: dict, run
         return _trunk(root, item, value, walked=walked, run=run, ledger=ledger)
     if item.kind == "edits":
         return _edits(root, item, value, data, walked=walked, run=run, ledger=ledger)
+    if item.kind == "onboard":
+        return _onboard(root, item, value, data, walked=walked, run=run)
     raise Skip(f"`{value}` for a {item.kind} is not carried out by this version yet")
 
 
@@ -352,4 +354,58 @@ def _edits(root: Path, item: Item, value: str, data: dict, *, walked, run, ledge
     for branch in made:
         row = takein.take_in(_ledger(root, ledger), branch, base=_fork_point(root, walked.trunk, branch, run))
         out.append(f"took `{branch}` in as {row.id}")
+    return out
+
+
+def _slug_branch(subject: str) -> str:
+    import re
+    from flotilla.ledger.core import SAFE_BRANCH
+    slug = re.sub(r"[^a-z0-9]+", "-", subject.lower()).strip("-")[:40].strip("-") or "work"
+    name = f"work/{slug}"
+    return name if SAFE_BRANCH.fullmatch(name) else "work/beside-the-profile"
+
+
+def _onboard(root: Path, item: Item, value: str, data: dict, *, walked, run) -> list[str]:
+    """Onboarding's branch beside its profile commit (spec, section 6): trunk is fast-forwarded to the profile - or,
+    on `land`, to the branch's tip - and the organizing tree switched to it, so `onboard publish` carries a profile
+    already committed. Trunk is never rewritten: only fast-forwarded, and refused where another tree holds it."""
+    facts, trunk = item.facts, walked.trunk
+    branch, profile, tip = facts["branch"], facts["profile"], facts["tip"]
+    if value not in ("land", "own-branch"):
+        raise Skip(f"`{value}` is not an answer for onboarding's branch")
+    where = _trunk_tree(root, trunk, run)
+    if where:
+        raise Skip(f"{trunk} is checked out in {shown(where, 120)}; trunk is moved only where no tree holds it")
+    if _git(root, "symbolic-ref", "-q", "--short", "HEAD", run=run).stdout.strip() != branch:
+        raise Skip(f"this tree is not on `{branch}`; run organize from the tree onboarding wrote the profile in")
+    if _git(root, "status", "--porcelain", "--untracked-files=no", run=run).stdout.strip():
+        raise Skip("this tree has uncommitted changes to tracked files; settle them first, so switching to "
+                   f"{trunk} loses nothing")
+    target = tip if value == "land" else profile
+    if gitq.is_ancestor(root, facts["origin"], target, run=run) is not True:
+        raise Skip(f"{target[:7]} does not stand on origin's {trunk}; trunk is only fast-forwarded")
+    name = ""
+    if value == "own-branch":
+        subject = _git(root, "log", "-1", "--format=%s", facts["extra"][0], run=run).stdout.strip()
+        name = _slug_branch(subject)
+        if gitq.resolve(root, f"refs/heads/{name}", run=run):
+            raise Skip(f"`{name}` exists already; answer in your own words where these commits go")
+    moved = _git(root, "branch", "-f", trunk, target, run=run)
+    if moved.returncode != 0:
+        raise Skip(f"git did not move {trunk}: {moved.stderr.strip()[:200]}")
+    switched = _git(root, "switch", "-q", trunk, run=run)
+    if switched.returncode != 0:
+        raise Skip(f"{trunk} is at {target[:7]}, but this tree did not switch to it: {switched.stderr.strip()[:200]}")
+    out = []
+    if value == "own-branch":
+        renamed = _git(root, "branch", "-m", branch, name, run=run)
+        if renamed.returncode != 0:
+            raise Skip(f"git did not rename `{branch}`: {renamed.stderr.strip()[:200]}")
+        data["publish_named"] = []
+        out.append(f"`{name}` holds the {len(facts['extra'])} commit(s) beside the profile; it is asked about once "
+                   "the profile is on origin's trunk")
+    else:
+        data["publish_named"] = list(facts["extra"])
+        out.append(f"{trunk} carries the profile and the {len(facts['extra'])} commit(s) beside it")
+    out.append(f"{trunk} is at {target[:7]} and this tree is on it; next: `flotilla onboard publish`")
     return out
