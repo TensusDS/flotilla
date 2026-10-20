@@ -112,3 +112,19 @@ def test_reading_and_untracked_api_calls_pass(command):
 def test_what_the_api_text_cannot_tell_is_refused(command):
     found = judge(command)
     assert found is not None and found.refuse
+
+
+@pytest.mark.parametrize("command", [
+    "gh api /graphql -F query=@close.graphql",
+    "gh api https://api.github.com/graphql -f query='mutation { x }'",
+    "gh api GraphQL --input body.json",
+    "gh api -X PATCH /repos/o/r/pulls/43 -f base=main",
+    "gh api -X PATCH https://api.github.com/repos/o/r/pulls/43 -f base=main",
+    "gh api -X PATCH repos/o/r/PULLS/43 -f base=main",
+    "gh api -X POST /repos/o/r/stacks/7/unstack",
+    "gh api -X POST repos/o/r/Stacks/7/unstack",
+])
+def test_every_spelling_of_a_tracked_api_path_is_judged(command):
+    """Background security review of 4170045: a leading slash, a full URL or another case passed as another path."""
+    found = judge(command)
+    assert found is not None and found.refuse

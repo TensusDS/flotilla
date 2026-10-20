@@ -62,6 +62,15 @@ EXPANDS = re.compile(r"[$`*?\[]")   # what the shell turns into other words befo
 ISSUE = re.compile(r"/(?:pulls|issues)/([^/?#]*)")   # what follows is read as a number, or refused
 
 
+def _api_path(words: list[str]) -> str:
+    """The endpoint `gh api` calls, as one spelling: no scheme or host, no leading slash, no query or fragment,
+    lowercased - so `/graphql`, `https://api.github.com/repos/...` and `PULLS` are judged as what they reach
+    (security review of 4170045)."""
+    raw = _target(words, API_VALUES) or ""
+    path = re.sub(r"^(?:https?://[^/]+)?/*", "", raw, flags=re.IGNORECASE)
+    return re.split(r"[?#]", path, maxsplit=1)[0].rstrip("/").lower()
+
+
 def _method(words: list[str]) -> str:
     """The HTTP method `gh api` sends: the last one given, as gh reads its flags; POST when fields are given and no
     method is (security review of 8e5b605..d2a55bd: the first one was read)."""
@@ -91,15 +100,15 @@ def door(segment) -> str:
             return ""
         return "pr"
     if words[1] == "api":
-        path = _target(words[2:], API_VALUES) or ""
-        if path == "graphql":   # a query read from a file or stdin cannot be told from the text (push review)
+        path = _api_path(words[2:])
+        if path == "graphql" or path.endswith("/graphql"):   # a query read from a file or stdin cannot be told from the text (push review)
             hidden = any("=@" in word or word == "--input" or word.startswith("--input=") for word in words)
             return "api" if hidden or "mutation" in " ".join(words).lower() else ""
         if _method(words[2:]) == "GET":
             return ""
-        if "/stacks" in path:
+        if "/stacks" in f"/{path}":
             return "api"
-        return "api-pull" if ISSUE.search(path) else ""
+        return "api-pull" if ISSUE.search(f"/{path}") else ""
     if words[1] == "stack" and len(words) >= 3 and words[2] in STACK_DOORS:
         return "stack"
     return ""
@@ -114,7 +123,7 @@ def check(segment, *, rows: dict, numbers: set[int]) -> Finding | None:
     if kind in ("api", "stack") or any(EXPANDS.search(word) for word in words):
         return refused   # a stack's members, a mutation's target, a word the shell rewrites: none told by the text
     if kind == "api-pull":
-        target = ISSUE.search(_target(words[2:], API_VALUES) or "").group(1)
+        target = ISSUE.search(f"/{_api_path(words[2:])}").group(1)
         if not target.isdigit():
             return refused   # `pulls/$N`, `pulls/forty-three`: which pull request cannot be told from the text
     else:
