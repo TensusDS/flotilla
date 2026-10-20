@@ -30,6 +30,23 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
   person's answer on the row (a move that clears `waiting_on` and keeps the answer as evidence); `watch` puts a wait
   older than N days whose seat is gone into its own line ("waits on an answer nobody will read"); parked work is
   moved to `hold`. *(seen 2026-10-20 on 0.20.0: B - flotilla/watch/fleet.py:81)*
+- **The person guard reads a quoted heredoc's body as shell, and refuses Python subscripts in it.** In a session
+  outside any fleet, `python3 - <<'EOF'` with a script body was refused: "the program, command or move here is a
+  variable or a substitution". The body lines `cur["at"] = r["at"]` and `setter[(r["move"], r.get("post"))] += 1`
+  each read as a command whose program word is a glob, with `r["at"]` taken as a glob that may expand to `rig`.
+  `evaluate` judges every line with `bodies=True` on purpose, since a body piped to `bash` is shell. A quoted
+  delimiter fed to an interpreter other than a shell is data, though, as `heredoc_check` already says. Workaround: the
+  script as a file. Idea: skip a quoted heredoc's body when the program word is not a shell (`python3`, `node`,
+  `jq`), or judge such a body only for `flotilla` words. *(seen 2026-10-20 on 0.20.0: P - flotilla/guards/run.py:34,
+  flotilla/guards/person.py:176)*
+- **The person guard takes a path argument named `flotilla` for flotilla itself.** `find
+  /home/max/.local/state/flotilla -name '*snake*'` was refused with the same "variable or a substitution" text.
+  `_reads` treats any word whose basename is `flotilla` as a flotilla run, so the path argument counts. Its first
+  non-option word after it, the quoted `'*snake*'`, is then read as the command, and `_opaque` refuses it as a glob.
+  The same line with `-name snake`, or with `cd` into the directory and `find .`, passes. Any path to the plugin
+  repo or its state dir followed by a glob is caught alike. Idea: only the program word of a segment (or the word
+  after `-m`, `uv run`, `exec`) runs flotilla; an argument does not. *(seen 2026-10-20 on 0.20.0: P -
+  flotilla/guards/person.py:35, flotilla/guards/person.py:152)*
 - **`flotilla status` in twosuns did not finish in 60 s.** `watch --once` takes 3.6 s and `fleet` takes 1.1 s on the
   same ledger: 9259 lines, 5.5 MB. Not yet established where the time goes. *(seen 2026-10-20 on 0.20.0: measure)*
 
