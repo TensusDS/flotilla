@@ -25,7 +25,8 @@ PATTERNS = (
     ("a Stripe live key", re.compile(r"[rs]k_live_[0-9A-Za-z]{24,}")),
 )
 TIMEOUT = 60
-MAX_BYTES = 2_000_000
+CHUNK = 1_000_000
+OVERLAP = 256   # longer than any real token of these kinds, so one across two chunks is still seen
 
 
 @dataclass(frozen=True)
@@ -39,11 +40,22 @@ def _tool(which) -> str | None:
 
 
 def _patterns(file: Path) -> str:
+    """What the file holds that looks like a secret, read whole in overlapping chunks (security review of
+    1f67d17: a cap let a secret past it through); a file that cannot be read is a hit, never clean."""
     try:
-        text = file.read_bytes()[:MAX_BYTES].decode("utf-8", "replace")
+        with file.open("rb") as handle:
+            tail = ""
+            while True:
+                chunk = handle.read(CHUNK)
+                if not chunk:
+                    return ""
+                text = tail + chunk.decode("utf-8", "replace")
+                found = next((what for what, pattern in PATTERNS if pattern.search(text)), "")
+                if found:
+                    return found
+                tail = text[-OVERLAP:]
     except OSError:
-        return ""
-    return next((what for what, pattern in PATTERNS if pattern.search(text)), "")
+        return "something it could not read (the file cannot be opened)"
 
 
 def scan(tree: Path, paths: list[str], run=subprocess.run, which=None) -> list[Hit]:

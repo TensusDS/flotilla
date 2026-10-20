@@ -104,3 +104,22 @@ def test_ignored_files_are_never_added(tree, tmp_path):
 
 def test_leave_as_is_touches_nothing(tree):
     assert Path(tree / "tracked.txt").read_text(encoding="utf-8") == "one\n"
+
+
+def test_a_secret_past_the_first_chunk_is_found(tree, monkeypatch):
+    """Background security review of 1f67d17: only the first 2 MB were read, so a secret further in passed."""
+    monkeypatch.setattr(secrets, "CHUNK", 1024)
+    (tree / "big.txt").write_text("x" * 5000 + TOKEN + "\n", encoding="utf-8")
+    (tree / "edge.txt").write_text("x" * (1024 - 10) + TOKEN + "\n", encoding="utf-8")   # across a chunk's end
+    hits = secrets.scan(tree, ["big.txt", "edge.txt"], which=none_installed)
+    assert sorted(hit.path for hit in hits) == ["big.txt", "edge.txt"]
+
+
+def test_a_file_that_cannot_be_read_counts_as_a_hit(tree):
+    (tree / "locked.txt").write_text("x\n", encoding="utf-8")
+    (tree / "locked.txt").chmod(0)
+    try:
+        hits = secrets.scan(tree, ["locked.txt"], which=none_installed)
+    finally:
+        (tree / "locked.txt").chmod(0o644)
+    assert [hit.path for hit in hits] == ["locked.txt"] or __import__("os").geteuid() == 0
