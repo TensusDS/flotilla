@@ -9,6 +9,7 @@ tree is treated as in use. A free tree is still entered only on the person's yes
 
 from __future__ import annotations
 
+import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -38,6 +39,14 @@ def worktrees(root: Path, run=subprocess.run) -> list[Tree]:
     return found
 
 
+def _zombie(entry: Path) -> bool:
+    try:
+        stat = (entry / "stat").read_text(encoding="utf-8", errors="replace")
+        return stat[stat.rindex(")") + 2:].split()[0] == "Z"
+    except (OSError, ValueError, IndexError):
+        return False
+
+
 def in_use(tree: Tree, *, seats: list[Path], me: Path, proc_root: Path | None = None) -> str:
     """"" when the tree is free to ask about; otherwise why it is not touched."""
     from flotilla.fleet import leftovers
@@ -49,10 +58,23 @@ def in_use(tree: Tree, *, seats: list[Path], me: Path, proc_root: Path | None = 
         return "a flotilla seat"
     root = leftovers.PROC_ROOT if proc_root is None else Path(proc_root)
     try:
-        table = leftovers._table(root)
+        entries = sorted((entry for entry in root.iterdir() if entry.name.isdigit()), key=lambda e: int(e.name))
     except OSError:
         return "whether a process works in it cannot be told (procfs cannot be read)"
-    for pid, proc in sorted(table.items()):
-        if leftovers._inside(proc.cwd, tree.path.resolve()):
-            return f"process {pid} works in it"
+    target = tree.path.resolve()
+    for entry in entries:
+        try:
+            cwd = os.readlink(entry / "cwd")
+        except OSError:
+            # gone since the listing, or another user's: neither works in this tree. One's own process that cannot
+            # be read is "cannot tell", never "nobody" (security review of 4ec6c7c)
+            try:
+                mine = entry.stat().st_uid == os.getuid()
+            except OSError:
+                continue
+            if mine and not _zombie(entry):   # a zombie has no directory and works nowhere
+                return f"whether process {entry.name} works in it cannot be told (its directory cannot be read)"
+            continue
+        if leftovers._inside(cwd, target):
+            return f"process {entry.name} works in it"
     return ""

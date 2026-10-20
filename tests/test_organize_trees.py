@@ -94,3 +94,13 @@ def test_a_tree_with_another_ais_files_is_listed(tmp_path):
     found = _walk(root, tmp_path / "proc")
     assert not [item for item in found.items if item.kind == "edits"]
     assert any("codex" in line and "another AI" in line for line in found.listed)
+
+
+def test_a_process_of_mine_whose_directory_cannot_be_read_keeps_the_tree_untouched(tmp_path):
+    """Background security review of 4ec6c7c: an entry procfs listed but whose working directory could not be read
+    was skipped, and the tree read as free. One's own process that cannot be read is "cannot tell", not "nobody"."""
+    tree = a_tree(tmp_path)
+    tree.path.mkdir(parents=True)
+    (tmp_path / "proc" / "700").mkdir(parents=True)   # listed, no cwd link: reading it fails
+    said = trees.in_use(tree, seats=[], me=tmp_path / "app", proc_root=tmp_path / "proc")
+    assert "cannot be told" in said and "700" in said
