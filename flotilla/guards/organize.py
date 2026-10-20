@@ -7,7 +7,10 @@ moves typed by a session: `gh pr close`, `gh pr edit --base`, a non-GET `gh api`
 `gh stack` commands that push, merge or unstack. A `gh pr` door is refused when its pull request is one a ledger row
 names (its own, or one it closes once it ships) or an open organize answer names, and when it names none - the
 current branch's pull request cannot be told from the text. Stack calls are refused outright: which pull requests a
-stack holds cannot be told from the text either. Where the ledger cannot be read, a door is refused.
+stack holds cannot be told from the text either, nor a GraphQL mutation's target, nor a word the shell expands. A
+write to a pull request through the REST API (`gh api -X PATCH .../pulls/<n>`) is judged like `gh pr edit`. Where the
+ledger cannot be read, a door is refused. What no text guard sees - a gh alias, `sh -c '...'`, a script - is the
+guards' common ceiling (`flotilla guard --help`); it is not closed here.
 """
 
 from __future__ import annotations
@@ -55,8 +58,31 @@ def _target(words: list[str], values: tuple) -> str | None:
     return None
 
 
+EXPANDS = re.compile(r"[$`*?\[]")   # what the shell turns into other words before gh sees them
+ISSUE = re.compile(r"/(?:pulls|issues)/(\d+)(?:/|$)")
+
+
+def _method(words: list[str]) -> str:
+    """The HTTP method `gh api` sends: the last one given, as gh reads its flags; POST when fields are given and no
+    method is (security review of 8e5b605..d2a55bd: the first one was read)."""
+    method = None
+    for i, word in enumerate(words):
+        if word in ("-X", "--method") and i + 1 < len(words):
+            method = words[i + 1]
+        elif word.startswith("--method="):
+            method = word.split("=", 1)[1]
+        elif word.startswith("-X") and len(word) > 2:
+            method = word[2:]
+    if method is None and any(word in ("-f", "--raw-field", "-F", "--field", "--input") or
+                              word.startswith(("--raw-field=", "--field=", "--input=")) for word in words):
+        method = "POST"
+    return (method or "GET").upper()
+
+
 def door(segment) -> str:
-    """"" when the segment is no door this guard judges; else its kind: `pr`, `api` or `stack`."""
+    """"" when the segment is no door this guard judges; else its kind: `pr` (gh pr close / edit --base),
+    `api-pull` (a write to a pull request or issue through the REST API), `api` (a stack call, or a GraphQL mutation)
+    or `stack` (gh stack that pushes, merges or unstacks)."""
     words = list(segment.words)
     if segment.program != "gh" or len(words) < 2:
         return ""
@@ -65,13 +91,14 @@ def door(segment) -> str:
             return ""
         return "pr"
     if words[1] == "api":
-        method = next((words[i + 1] for i, word in enumerate(words[:-1]) if word in ("-X", "--method")), None)
-        method = method or next((word.split("=", 1)[1] for word in words if word.startswith("--method=")), None)
-        method = method or next((word[2:] for word in words if word.startswith("-X") and len(word) > 2), None)
-        if method is None and any(word in ("-f", "--raw-field", "-F", "--field", "--input") for word in words):
-            method = "POST"   # gh sends fields with POST unless told otherwise
         path = _target(words[2:], API_VALUES) or ""
-        return "api" if "/stacks" in path and (method or "GET").upper() != "GET" else ""
+        if path == "graphql":
+            return "api" if "mutation" in " ".join(words).lower() else ""
+        if _method(words[2:]) == "GET":
+            return ""
+        if "/stacks" in path:
+            return "api"
+        return "api-pull" if ISSUE.search(path) else ""
     if words[1] == "stack" and len(words) >= 3 and words[2] in STACK_DOORS:
         return "stack"
     return ""
@@ -82,10 +109,13 @@ def check(segment, *, rows: dict, numbers: set[int]) -> Finding | None:
     if not kind:
         return None
     refused = Finding(GUARD, True, REFUSAL.format(command=" ".join(segment.words)[:120]))
-    if kind in ("api", "stack"):
-        return refused
     words = list(segment.words)
-    target = _target(words[3:], VALUES[words[2]])
+    if kind in ("api", "stack") or any(EXPANDS.search(word) for word in words):
+        return refused   # a stack's members, a mutation's target, a word the shell rewrites: none told by the text
+    if kind == "api-pull":
+        target = ISSUE.search(_target(words[2:], API_VALUES) or "").group(1)
+    else:
+        target = _target(words[3:], VALUES[words[2]])
     if target is None:
         return refused   # the current branch's pull request: which one cannot be told from the text
     named = PULL.search(target)

@@ -63,3 +63,37 @@ def test_a_ledger_that_cannot_be_read_refuses_a_door(tmp_path, monkeypatch):
 def test_outside_a_flotilla_project_the_guard_is_quiet(tmp_path):
     found = guard_run.evaluate("gh pr close 43", tmp_path, None)
     assert not [item for item in found if item.guard == organize.GUARD]
+
+
+# --- background security review of 8e5b605..d2a55bd: what the text cannot tell is refused; equivalent doors -------
+
+@pytest.mark.parametrize("command", [
+    'gh pr close "$N"', "gh pr close $(echo 43)", "gh pr close `echo 43`", "gh pr close 4*",
+    "gh pr edit ${PR} --base main",
+])
+def test_a_target_the_shell_expands_cannot_be_told_and_is_refused(command):
+    found = judge(command)
+    assert found is not None and found.refuse
+
+
+@pytest.mark.parametrize("command", [
+    "gh api -X GET -X POST repos/o/r/stacks/7/unstack",       # gh keeps the last method
+    "gh api --method GET --method=POST repos/o/r/stacks/7/unstack",
+    "gh api -X PATCH repos/o/r/pulls/43 -f base=main",        # retarget through the REST API
+    "gh api repos/o/r/pulls/43 -f state=closed",              # fields mean POST/PATCH-like writes
+    "gh api -X PATCH repos/o/r/issues/43 -f state=closed",
+    "gh api graphql -f query='mutation { closePullRequest(input: {pullRequestId: \"x\"}) { clientMutationId } }'",
+])
+def test_equivalent_api_doors_are_refused(command):
+    found = judge(command)
+    assert found is not None and found.refuse
+
+
+@pytest.mark.parametrize("command", [
+    "gh api -X POST -X GET repos/o/r/stacks",                 # the last method is GET
+    "gh api -X PATCH repos/o/r/pulls/99 -f base=main",        # not tracked
+    "gh api graphql -f query='query { viewer { login } }'",
+    "gh api repos/o/r/pulls/43",
+])
+def test_reading_and_untracked_api_calls_pass(command):
+    assert judge(command) is None
