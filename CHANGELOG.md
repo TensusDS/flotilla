@@ -3,6 +3,39 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.20.0 - 2026-10-20
+
+- **Organize: the work already here is taken in.** `/flotilla:organize`, run by onboarding before and after
+  publishing and on its own at any time, walks what was made before flotilla - open pull requests, chains and native
+  GitHub stacks of them, branches, commits on your local trunk, commits riding beside the profile on onboarding's
+  branch, uncommitted edits - and asks you about each piece of your own: take it in, ignore it, or your own words.
+  Other people's and other AIs' work is listed and never touched unless you name it. A chain is asked about once:
+  separate works, one work in parts, one work whole, or Claude works it out and proposes one, with no answer
+  recommended. Nothing leaves the ledger but through `flotilla organize apply`, from your recorded answer; a dismissed
+  or timed-out question changes nothing, and an item that moved since you were asked is asked again.
+- **Taken-in work is reviewed like any other.** A new person-class move, take-in, opens the row as work in progress
+  under `(taken in)`, pinned to the post its review follows, with the adoption point where accounting starts and the
+  retarget and closes your answer authorized; the orchestrator gives it to a seat. `queue` retargets its pull request
+  to trunk itself, and refuses one whose base is not on origin's trunk (a restack) or that GitHub holds in a native
+  stack; `ship` closes the lower pull requests the row records.
+- **A native stack is unstacked before it is taken in**, through GitHub's REST endpoint (no extension needed), and
+  read back: a member GitHub leaves stacked stops it, said by number. Measured on a scratch repository: a stack
+  member can be neither retargeted nor merged with `gh pr merge`.
+- **Nothing is lost on the way.** Uncommitted edits are split into branches only by a plan you confirmed: everything
+  is kept first under `refs/flotilla/kept/<sha>` (untracked files included), each branch is committed with the
+  repository's hooks in a tree of its own and compared byte for byte before anything leaves the tree, and secrets are
+  never committed (betterleaks or gitleaks when installed, high-signal patterns otherwise). Dropping commits or
+  deleting a branch is kept under `refs/flotilla/dropped/<sha>` and left to you to type after `!`.
+- **Publish takes a profile already committed**, by fast-forwarding trunk - the shape a half-finished onboarding
+  leaves - and the commits beside it you named; any other commit ahead of origin is still refused. The 0.19.0 warning
+  about pull requests outside the ledger is replaced by organize.
+- **`gh pr merge` into a base other than trunk is refused** by the push guard: with no retarget such a merge lands
+  the work in the lower branch.
+- **A guard keeps sessions' hands off tracked pull requests**: `gh pr close`, `gh pr edit --base`, REST and GraphQL
+  writes to them, and `gh stack` are refused from a session; a word the shell expands is refused as not told.
+- The sender and orchestrator post templates gain one line each (versions 10 and 18). README, the user manual (four
+  troubleshooting rows) and both skills say all of this.
+
 ## 0.19.0 - 2026-10-19
 
 - **Onboarding says who merges, not only who approves.** The plain words before the yes now name the session that

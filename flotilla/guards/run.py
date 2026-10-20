@@ -53,6 +53,7 @@ def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run, who
                                                  "the revert and line-number guards did not run")]
     on = profile.get("guards") or {}
     findings: list[Finding] = list(persons)
+    findings += _organized(segments, root)
     for segment in segments:
         if on.get(revert.GUARD):
             findings += _safely(revert.GUARD, lambda: revert.check(segment, run=run))
@@ -65,6 +66,21 @@ def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run, who
         if lane.is_on(profile):
             findings += _safely(lane.GUARD, lambda: lane.check(segment, profile, command))
     return findings
+
+
+def _organized(segments, root) -> list[Finding]:
+    """The organize guard over every segment; the ledger is read only when a segment is one of its doors."""
+    from flotilla.guards import organize
+    doors = [segment for segment in segments if organize.door(segment)]
+    if not doors:
+        return []
+    try:
+        rows, numbers = organize.tracked(Path(root))
+    except Exception as err:  # noqa: BLE001 - what the ledger tracks is unknown: a door is refused
+        return [Finding(organize.GUARD, True, f"flotilla cannot tell whether this pull request is tracked (the "
+                                              f"ledger could not be read: {err}); only `flotilla organize apply` "
+                                              "acts on tracked pull requests")]
+    return [found for found in (organize.check(segment, rows=rows, numbers=numbers) for segment in doors) if found]
 
 
 def _own(command: str, root) -> bool:

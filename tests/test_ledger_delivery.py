@@ -874,3 +874,167 @@ def test_a_queued_pull_request_is_not_held(pr_world):
     delivery.queue(ledger, actor(ledger, SENDER), "feat/x", pr=12)
     with pytest.raises(MoveRefused, match="before it is queued"):
         steering.hold(ledger, actor(ledger, "orchestrator 1"), "feat/x", until="the person", why="later")
+
+
+# --- taken-in work: the recorded retarget, the restack check, a stacked pull request, the recorded closes ---------
+
+def organize_handler(answers, calls):
+    """GitHub for a taken-in row: `pr view` answers per number, `pr edit --base` moves the base, `pr close` closes,
+    `api .../stacks` lists the stacks in `answers["stacks"]`."""
+    def handler(args):
+        calls.append(args)
+        if args[:2] == ["pr", "view"]:
+            return 0, answers["prs"][int(args[2])]
+        if args[:2] == ["pr", "edit"] and "--base" in args:
+            answers["prs"][int(args[2])]["baseRefName"] = args[args.index("--base") + 1]
+            return 0, ""
+        if args[:2] == ["pr", "close"]:
+            if int(args[2]) in answers.get("refuse_close", ()):
+                return 1, "", "gh: could not close"
+            answers["prs"][int(args[2])]["state"] = "CLOSED"
+            return 0, ""
+        if args[:1] == ["api"] and any(word.endswith("/stacks") for word in args):
+            return 0, answers.get("stacks", [])
+        if args[:2] == ["run", "list"]:
+            return (0, answers["runs"]) if "runs" in answers else (1, "")
+        if args[:2] == ["run", "view"]:
+            return 0, {"jobs": answers.get("jobs", [])}
+        return 1, ""
+    return handler
+
+
+@pytest.fixture()
+def taken(tmp_path, monkeypatch):
+    from flotilla.core import caller
+    monkeypatch.setattr(caller, "person_refusal", lambda what: "")
+    root = repo_with_origin(tmp_path)
+    answers, calls = {"prs": {}}, []
+    ledger = make_ledger(root, tmp_path / "state", run=fake_gh(organize_handler(answers, calls)))
+    return root, ledger, answers, calls
+
+
+def accept_taken(root, ledger, name, **take):
+    """Take `name` in, give it to main session 1, hand it over and accept it."""
+    from flotilla.ledger import handover, reading, steering, takein
+    takein.take_in(ledger, name, **take)
+    steering.adopt(ledger, actor(ledger, "orchestrator 1"), name, to="main session 1")
+    row = handover.hand(ledger, actor(ledger, "main session 1"), name)
+    reading.take(ledger, actor(ledger, "review session 1"), name)
+    return reading.accept(ledger, actor(ledger, "review session 1"), name, reviewed=row.tip)
+
+
+def stacked_chain(root):
+    """feat/a from main, feat/b from feat/a."""
+    fork = git(root, "rev-parse", "HEAD")
+    head_a = branch(root, "feat/a", "lower part")
+    git(root, "checkout", "-q", "feat/a")
+    tip_b = branch(root, "feat/b", "upper part")
+    git(root, "checkout", "-q", "main")
+    return fork, head_a, tip_b
+
+
+def lower_delivered(root):
+    merge(root, "feat/a")
+    git(root, "push", "-q", "origin", "main")
+
+
+def test_queue_retargets_a_row_that_records_it(taken):
+    root, ledger, answers, calls = taken
+    fork, head_a, tip_b = stacked_chain(root)
+    lower_delivered(root)
+    accept_taken(root, ledger, "feat/b", base=head_a, pr=43, retarget="main")
+    answers["prs"][43] = open_pr("feat/b", tip_b, baseRefName="feat/a")
+    row = delivery.queue(ledger, actor(ledger, SENDER), "feat/b", pr=43)
+    assert row.state == "queued"
+    assert ["pr", "edit", "43", "--base", "main"] in calls
+
+
+def test_queue_retarget_is_idempotent(taken):
+    root, ledger, answers, calls = taken
+    fork, head_a, tip_b = stacked_chain(root)
+    lower_delivered(root)
+    accept_taken(root, ledger, "feat/b", base=head_a, pr=43, retarget="main")
+    answers["prs"][43] = open_pr("feat/b", tip_b)
+    delivery.queue(ledger, actor(ledger, SENDER), "feat/b", pr=43)
+    assert not any(call[:2] == ["pr", "edit"] for call in calls)
+
+
+def test_queue_refuses_a_retarget_the_row_does_not_record(taken):
+    root, ledger, answers, calls = taken
+    fork, head_a, tip_b = stacked_chain(root)
+    lower_delivered(root)
+    accept_taken(root, ledger, "feat/b", base=head_a, pr=43)
+    answers["prs"][43] = open_pr("feat/b", tip_b, baseRefName="feat/a")
+    with pytest.raises(MoveRefused, match="targets `feat/a`, not trunk"):
+        delivery.queue(ledger, actor(ledger, SENDER), "feat/b", pr=43)
+    assert not any(call[:2] == ["pr", "edit"] for call in calls)
+
+
+def test_queue_refuses_a_row_whose_base_is_not_on_origin_trunk(taken):
+    """The lower layer never reached trunk (or was rewritten): its commits would ride in unread."""
+    root, ledger, answers, calls = taken
+    fork, head_a, tip_b = stacked_chain(root)
+    accept_taken(root, ledger, "feat/b", base=head_a, pr=43, retarget="main")
+    answers["prs"][43] = open_pr("feat/b", tip_b, baseRefName="feat/a")
+    with pytest.raises(MoveRefused, match="restack onto origin/main"):
+        delivery.queue(ledger, actor(ledger, SENDER), "feat/b", pr=43)
+    assert not any(call[:2] == ["pr", "edit"] for call in calls)
+
+
+def test_queue_refuses_a_stacked_pull_request(taken):
+    root, ledger, answers, calls = taken
+    fork, head_a, tip_b = stacked_chain(root)
+    accept_taken(root, ledger, "feat/a", base=fork, pr=42)
+    answers["prs"][42] = open_pr("feat/a", head_a)
+    answers["stacks"] = [{"number": 7, "open": True, "base": {"ref": "main"},
+                          "pull_requests": [{"number": 42, "state": "open"}, {"number": 43, "state": "open"}]}]
+    with pytest.raises(MoveRefused, match="unstack"):
+        delivery.queue(ledger, actor(ledger, SENDER), "feat/a", pr=42)
+
+
+def test_ship_closes_the_pull_requests_the_row_records(taken):
+    root, ledger, answers, calls = taken
+    ledger.profile = {**ledger.profile, "ci": GITHUB}
+    fork, head_a, tip_b = stacked_chain(root)
+    row = accept_taken(root, ledger, "feat/b", base=fork, pr=44, retarget="main", closes=[42, 43, 45])
+    answers["prs"].update({44: open_pr("feat/b", tip_b), 42: {"state": "MERGED"}, 43: {"state": "OPEN"},
+                           45: {"state": "OPEN"}})
+    answers["refuse_close"] = {45}
+    delivery.queue(ledger, actor(ledger, SENDER), "feat/b", pr=44)
+    head = merge(root, "feat/b")
+    git(root, "push", "-q", "origin", "main")
+    answers["prs"][44] = {"state": "MERGED", "headRefOid": row.tip, "mergeCommit": {"oid": head}}
+    answers["runs"] = [{"databaseId": 5, "event": "push"}]
+    answers["jobs"] = [{"name": "test", "status": "completed", "conclusion": "success"}]
+    shipped = delivery.ship(ledger, actor(ledger, SENDER), "feat/b")
+    assert shipped.state == "shipped"
+    closed = [call[2] for call in calls if call[:2] == ["pr", "close"]]
+    assert closed == ["43", "45"]
+    assert any("#45" in notice for notice in ledger.notices)
+
+
+def test_a_stack_gh_cannot_list_does_not_block_the_queue(taken):
+    """The stack check is a courtesy: GitHub's own merge refuses a stacked pull request for real."""
+    root, ledger, answers, calls = taken
+    fork, head_a, tip_b = stacked_chain(root)
+    accept_taken(root, ledger, "feat/a", base=fork, pr=42)
+    answers["prs"][42] = open_pr("feat/a", head_a)
+    answers["stacks"] = None
+    assert delivery.queue(ledger, actor(ledger, SENDER), "feat/a", pr=42).state == "queued"
+
+
+def test_queue_never_retargets_a_pull_request_the_row_does_not_name(taken):
+    """Security review of 799bdc1: --pr named another pull request, and it was retargeted before _check_pr asked
+    whose it was. A taken-in row's PR is the one it records, and its head is checked before anything changes."""
+    root, ledger, answers, calls = taken
+    fork, head_a, tip_b = stacked_chain(root)
+    lower_delivered(root)
+    accept_taken(root, ledger, "feat/b", base=head_a, pr=43, retarget="main")
+    answers["prs"][43] = open_pr("feat/b", tip_b, baseRefName="feat/a")
+    answers["prs"][99] = open_pr("someone/else", "e" * 40, baseRefName="feat/a")
+    with pytest.raises(MoveRefused, match="records PR #43"):
+        delivery.queue(ledger, actor(ledger, SENDER), "feat/b", pr=99)
+    answers["prs"][43]["headRefOid"] = "d" * 40
+    with pytest.raises(MoveRefused, match="head is ddddddd"):
+        delivery.queue(ledger, actor(ledger, SENDER), "feat/b", pr=43)
+    assert not any(call[:2] == ["pr", "edit"] for call in calls)

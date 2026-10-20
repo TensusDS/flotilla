@@ -83,11 +83,6 @@ def _write(det: dict, given: dict, args, state: Path) -> int:
         print("in plain words:")
         for line in plain_words(data):
             print(f"  - {visible(line)}")
-        warned = _pull_request_lines(det, data)
-        if warned:
-            print("before publishing:")
-            for line in warned:
-                print(f"  - {line}")
         print("show the person the profile; when the person agrees, run "
               f"`flotilla onboard write --confirm {mark}` (with the same other options)")
         return 5
@@ -125,32 +120,26 @@ def _write(det: dict, given: dict, args, state: Path) -> int:
     return 0
 
 
-def _pull_request_lines(det: dict, profile: dict, *, published: bool = False) -> list[str]:
-    """Open pull requests no open ledger row knows, said - never refused - around the profile's publishing. Asked
-    here, not by every onboarding command's detection: gh costs a round trip each time."""
-    from flotilla.onboard import detect_prs
-    if not detect_prs.applies(profile):
-        return []   # nothing would refuse a session's merge, or no session merges here: gh is not asked
-    pulls = detect_prs.open_pull_requests(det.get("origin") or None)
-    if not pulls.get("open") and pulls.get("source") != "unknown":
-        return []
-    try:   # a project onboarding for the first time has no ledger: every pull request is outside it
-        from flotilla.ledger.commands import open_ledger
-        # a released or closed row approves nothing a guard asks for, so a branch reused after it is outside again
-        known = {row.branch for row in open_ledger(Path(det["root"])).rows().values() if row.is_open}
-    except Exception:  # noqa: BLE001 - a ledger that cannot be read knows no branch; the warning errs towards saying
-        known = set()
-    return detect_prs.outside_lines(pulls, profile, known=known, published=published)
-
-
 def _git(root: Path, *args) -> "subprocess.CompletedProcess":
     import subprocess
     return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, check=False)
 
 
-def _before_publish(root: Path, trunk: str, paths: list[str], *, remote: bool) -> str:
+PROFILE_PATHS = (".flotilla/", ".claude/settings.json")
+WAITS = ("pull requests, chains and branches are asked by `/flotilla:organize` once the profile is on origin's "
+         "trunk")
+
+
+def _profile_only(root: Path, sha: str) -> bool:
+    from flotilla.organize.local import profile_only
+    return profile_only(root, sha)
+
+
+def _before_publish(root: Path, trunk: str, paths: list[str], *, remote: bool, named=()) -> str:
     """Why publishing would carry more than the profile, or "" (review of 0.5.0, C1 and I1): checked before anything
-    is committed, so a refusal leaves the tree and the history as they were."""
+    is committed, so a refusal leaves the tree and the history as they were. A profile already committed rides, and
+    so do the commits the person named to organize (`land it with the profile`, spec 2026-10-19-organize-design,
+    section 6); any other commit ahead of origin is refused as before."""
     excluded = [f":(exclude){path}" for path in paths]
     dirty = [line[3:] for line in _git(root, "status", "--porcelain", "--", ".", *excluded).stdout.splitlines()]
     if dirty:
@@ -168,7 +157,9 @@ def _before_publish(root: Path, trunk: str, paths: list[str], *, remote: bool) -
     if _git(root, "cat-file", "-e", f"{theirs}^{{commit}}").returncode != 0 or \
             _git(root, "merge-base", "--is-ancestor", theirs, "HEAD").returncode != 0:
         return f"origin's {trunk} has commits this tree lacks; pull them (`git pull origin {trunk}`), then publish again"
-    ahead = _git(root, "log", "--format=%h %s", f"{theirs}..HEAD").stdout.splitlines()
+    ahead = [line for line in _git(root, "log", "--format=%H %s", f"{theirs}..HEAD").stdout.splitlines()
+             if line.split(" ", 1)[0] not in set(named) and not _profile_only(root, line.split(" ", 1)[0])]
+    ahead = [f"{line[:7]}{line[40:]}" for line in ahead]
     if ahead:
         more = f"; and {len(ahead) - 5} more" if len(ahead) > 5 else ""
         return (f"{trunk} has {len(ahead)} commit(s) origin has not ({'; '.join(ahead[:5])}{more}); publish pushes "
@@ -193,7 +184,9 @@ def _publish(root: Path, det: dict, state: Path) -> int:
               "profile names")
         return 2
     paths = [path for path in (".flotilla", ".claude/settings.json") if (root / path).exists()]
-    refused = _before_publish(root, trunk, paths, remote=bool(det.get("remote")))
+    from flotilla.organize import store as organized
+    refused = _before_publish(root, trunk, paths, remote=bool(det.get("remote")),
+                              named=organized.publish_named(state, det["repo_key"]))
     if refused:
         print(f"not published: {refused}")
         return 2
@@ -238,10 +231,11 @@ def _publish(root: Path, det: dict, state: Path) -> int:
         print(f"not pushed: git push origin {trunk} failed: {(done.stderr or done.stdout).strip()[:300]}. If origin "
               "moved meanwhile, pull and publish again; if trunk only takes pull requests, open one with the commit "
               f"above and {merger} - the fleet reads the profile once it is on origin's trunk")
+        print(WAITS)
         return 2
     print(f"pushed to origin/{trunk}: the fleet reads its rules from there")
-    for line in _pull_request_lines(det, profile, published=True):   # said again now the rules are on trunk
-        print(f"note: {line}")
+    print("next: `/flotilla:organize` asks about the work already here - pull requests, chains, branches - and "
+          "takes in what you answer")
     return 0
 
 

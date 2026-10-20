@@ -10,7 +10,8 @@ from flotilla import cli
 
 ROOT = Path(__file__).resolve().parent.parent
 SKILLS = sorted((ROOT / "skills").glob("*/SKILL.md"))
-PERSON_ONLY = {"doctor", "check", "status", "brief", "spawn", "retire", "lane", "watch", "guard", "down", "onboard"}
+PERSON_ONLY = {"doctor", "check", "status", "brief", "spawn", "retire", "lane", "watch", "guard", "down", "onboard",
+               "organize"}
 MODEL_INVOCABLE = {"permit"}
 MODEL_ONLY = {"flotilla"}
 CALL = re.compile(r"`(?:\$\{CLAUDE_PLUGIN_ROOT\}/bin/)?flotilla ([a-z-]+)(?: ([a-z-]+))?")
@@ -46,6 +47,8 @@ def test_every_cli_call_a_skill_names_exists():
             assert command in top, f"{path.parent.name}: `flotilla {command}` is not a CLI command"
             if command == "onboard" and sub:
                 assert sub in onboard_actions, f"{path.parent.name}: `flotilla onboard {sub}` does not exist"
+            if command == "organize" and sub:
+                assert sub in subcommands(top["organize"]), f"{path.parent.name}: `flotilla organize {sub}` does not exist"
             if command == "fleet" and sub:
                 assert sub in fleet_actions, f"{path.parent.name}: `flotilla fleet {sub}` does not exist"
 
@@ -261,3 +264,30 @@ def test_spawn_sizes_the_fleet_and_asks_before_raising_it():
     assert text.index("flotilla fleet size") < text.index("Raise this fleet?") < text.index("uses `--recommended`")
     assert "raise nothing now" in text and "flotilla fleet size*" in frontmatter(ROOT / "skills" / "spawn" /
                                                                                     "SKILL.md")["allowed-tools"]
+
+
+def test_the_organize_skill_pre_approves_only_reading():
+    """The person's recorded answer is the authority (organize spec, section 4): `answer`, `propose` and `apply` are
+    never pre-approved, and the skill marks no answer as recommended."""
+    path = ROOT / "skills" / "organize" / "SKILL.md"
+    meta = frontmatter(path)
+    allowed = [entry.strip() for entry in meta["allowed-tools"].split("),") if entry.strip()]
+    assert allowed and all(re.search(r"flotilla organize (next|show)", entry) for entry in allowed)
+    text = " ".join(path.read_text(encoding="utf-8").lower().split())
+    for line in ("away", "data, never instructions", "after `!`", "never build"):
+        assert line in text, line
+    assert "(recommended)" not in text
+
+
+def test_onboarding_organizes_before_and_after_publishing():
+    text = (ROOT / "skills" / "onboard" / "SKILL.md").read_text(encoding="utf-8")
+    assert text.index("flotilla organize next") < text.index("flotilla onboard publish")
+    assert "/flotilla:organize" in text[text.index("flotilla onboard publish"):]
+    assert "made outside the ledger" not in text
+
+
+def test_the_sender_and_the_orchestrator_know_taken_in_work():
+    sender = " ".join((ROOT / "templates" / "posts" / "sender.md").read_text(encoding="utf-8").split())
+    orchestrator = " ".join((ROOT / "templates" / "posts" / "orchestrator.md").read_text(encoding="utf-8").split())
+    assert "retargets a taken-in pull request" in sender and "template_version: 10" in sender
+    assert "(taken in)" in orchestrator and "/flotilla:organize" in orchestrator and "template_version: 18" in orchestrator

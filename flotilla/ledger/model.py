@@ -17,7 +17,7 @@ TERMINAL = frozenset({"closed", "released", "offledger", "inbatch"})
 ROW_FIELDS = ("branch", "owner", "tree", "base", "ref", "requires", "after", "tip", "reader", "taken", "verdict",
               "waiting_on", "note", "why", "pr", "gate", "merge", "held_by", "held_until", "held_why",
               "urgent_at", "urgent_why", "adopted_from", "broken", "fixes", "last_run", "walkable",
-              "vouched", "helper_of", "approved", "session_id")
+              "vouched", "helper_of", "approved", "session_id", "judged_as", "adopted_at", "retarget", "closes")
 DELIVERED = frozenset({"shipped", "walked", "closed", "offledger", "inbatch"})
 
 
@@ -60,6 +60,10 @@ class Row:
     approved: str = ""   # the revision the person approved for trunk (merge_authorized_by = human)
     helper_of: str = ""
     session_id: str = ""   # a seat's Claude Code session, learned once it shows in the census (`launched`)
+    judged_as: str = ""   # taken-in work: the post its review follows, whoever owns it (organize, section 5)
+    adopted_at: str = ""   # taken-in work: origin's trunk when it was taken in; accounting starts there
+    retarget: str = ""   # taken-in work: the base its pull request may be moved to, as the person answered
+    closes: list = field(default_factory=list)   # taken-in work: pull requests closed once it ships, as answered
     updated_at: str = ""
     history: list = field(default_factory=list)
 

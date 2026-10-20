@@ -94,6 +94,18 @@ change the rules it works under - and until the profile is there, every ledger m
 pushes the profile and nothing else: if your tree has uncommitted work of your own, trunk has commits origin has not
 (or the reverse), or trunk only takes pull requests, it says so and pushes nothing.
 
+**Work already here.** A project rarely meets flotilla empty: open pull requests, branches, commits on your local
+trunk, edits never committed. Onboarding walks them with `/flotilla:organize`, in two halves - before publishing what
+would stand in its way (a tool's cache, your local trunk's own commits, commits riding beside the profile on
+onboarding's branch, this tree's edits), after publishing the rest - and asks you about each piece of **your own**
+work: take it in, ignore it, or say in your own words what you want. A chain of pull requests is asked about once, as
+a whole: separate works, one work in parts, one work whole, or Claude works it out and proposes one. A native GitHub
+stack is offered the same, and taking it in turns it into a plain chain on GitHub first. Other people's work, and
+other AIs', is listed and never touched unless you name it. Nothing leaves the ledger but through `flotilla organize
+apply`, from your recorded answer: no answer, or a question that timed out, changes nothing. Taken-in work enters the
+ledger as work in progress under `(taken in)`; the orchestrator gives it to a seat, and it is reviewed like any other.
+Run `/flotilla:organize` again at any time.
+
 The permission question matters most:
 
 | answer | what background sessions do | when to choose it |
@@ -571,9 +583,11 @@ Before a Bash command runs, flotilla refuses a few commands that do silent damag
 The guards judge every Claude Code session that has flotilla on and works in the repository, not only the fleet's:
 a project with its own merge routine keeps it through the sender, or by your own hand after `!`, which the command
 guards never see. They read the rules from origin's trunk; until trunk carries a profile - the onboarding's own
-branch - they judge by the tree's. Onboarding says both before your yes, and names open pull requests made outside
-the ledger, which a session merges only with a receipt - and, where you authorize merges, an approved row it does
-not have. Where you authorize merges, the onboarding's own pull request is yours to merge: no session can yet.
+branch - they judge by the tree's. Onboarding says both before your yes; work made before flotilla, open pull requests
+among it, is organize's to offer. Where you authorize merges, the onboarding's own pull request is yours to merge: no
+session can yet. A pull request the ledger or organize tracks is changed only by `flotilla organize apply` and the
+sender's own moves: the organize guard refuses `gh pr close`, `gh pr edit --base`, a REST or GraphQL write to it, and
+`gh stack` from a session.
 
 Two git hooks back them, installed only with your yes, one each (`/flotilla:guard`): `pre-commit` refuses a rewrite of
 a shared file another open row has reserved (appends always pass), and `pre-push` asks git what is actually pushed,

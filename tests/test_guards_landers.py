@@ -223,10 +223,10 @@ def env(tmp_path):
     return {"FLOTILLA_STATE_DIR": str(tmp_path / "state")}
 
 
-def gh_answers(head):
+def gh_answers(head, base="main"):
     def run(cmd, **kwargs):
         if cmd[0] == "gh":
-            return subprocess.CompletedProcess(cmd, 0, head + "\n", "")
+            return subprocess.CompletedProcess(cmd, 0, (base if "baseRefName" in cmd else head) + "\n", "")
         return subprocess.run(cmd, **kwargs)
     return run
 

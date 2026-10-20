@@ -215,6 +215,18 @@ def revisions(d: Door, trunk: str, *, run=subprocess.run) -> list[tuple[str, str
         if pinned != sha:   # gh merges the head the PR has when it merges; --auto, a later one (F20, F22)
             raise Unknown(f"merges whatever head the pull request has then, not the one whose receipt was checked; "
                           f"pin it: add --match-head-commit {sha}")
+        # a base other than trunk lands the work in the lower branch, not trunk (organize spec, section 5); the
+        # receipt is still asked whatever gh says - a base can change after this - this refuses only what gh names
+        argv = ["gh", "pr", "view", *([target] if target else []), "--json", "baseRefName", "-q", ".baseRefName"]
+        try:
+            asked = run(argv, cwd=str(d.directory), capture_output=True, text=True, check=False, timeout=10)
+            base = asked.stdout.strip() if asked.returncode == 0 else ""
+        except (OSError, subprocess.SubprocessError):
+            base = ""
+        if base and base != trunk:
+            raise Unknown(f"merges into `{base}`, not trunk `{trunk}`: the work would land in the lower branch; "
+                          "retarget the pull request to trunk first (a taken-in row's `queue` does it), or merge it "
+                          "yourself after `!`")
         return [(f"PR {target or '(this branch)'}", sha)]
     return [("HEAD", _need(_resolve(d.directory, "HEAD", run), "HEAD"))]
 

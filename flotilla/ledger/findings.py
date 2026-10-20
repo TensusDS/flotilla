@@ -28,8 +28,9 @@ def _item(kind: str, row: Row, sha: str, why: str) -> dict:
 
 
 def _horizon(ledger, rows: dict[str, Row], trunk: str) -> str:
-    """The oldest recorded base that trunk contains: commits after it happened while the ledger was kept."""
-    bases = {row.base for row in rows.values() if row.base}
+    """The oldest recorded base that trunk contains: commits after it happened while the ledger was kept. Taken-in
+    work counts from its adoption point, not its base: what lies between happened before flotilla."""
+    bases = {row.adopted_at or row.base for row in rows.values() if row.adopted_at or row.base}
     oldest = ""
     for base in bases:
         if gitq.is_ancestor(ledger.root, base, trunk, run=ledger.run) is not True:
