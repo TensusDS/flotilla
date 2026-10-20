@@ -151,3 +151,21 @@ def test_an_api_write_whose_target_cannot_be_read_is_refused(command):
 ])
 def test_an_api_read_with_an_unclear_path_still_passes(command):
     assert judge(command) is None
+
+
+@pytest.mark.parametrize("command", [
+    "gh api -iX PATCH repos/o/r/pulls/43 -f base=main",        # a short-flag group whose last letter takes a value
+    "gh api -X PATCH -if base=main repos/o/r/pulls/43",
+    "gh api -X PATCH repos/o/r/{pulls,issues}/43 -f base=main", # brace expansion
+    "gh api -X PATCH repos/o/r/pulls/{43,44} -f base=main",
+    "gh pr close {42,43}",
+    "gh api -X PATCH repos/o/r/@(pulls)/43 -f base=main",       # an extglob
+])
+def test_what_gh_or_the_shell_would_read_otherwise_is_refused(command):
+    """Background security review of the guard's last fix: grouped short flags and brace expansion read otherwise."""
+    found = judge(command)
+    assert found is not None and found.refuse
+
+
+def test_ghs_own_placeholders_are_not_brace_expansion():
+    assert judge("gh api -X PATCH repos/{owner}/{repo}/pulls/99 -f base=main") is None

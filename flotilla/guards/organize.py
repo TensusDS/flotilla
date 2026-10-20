@@ -58,7 +58,13 @@ def _target(words: list[str], values: tuple) -> str | None:
     return None
 
 
-EXPANDS = re.compile(r"[$`*?\[]")   # what the shell turns into other words before gh sees them
+#: What the shell turns into other words before gh sees them: variables, substitutions, globs, brace expansion
+#: (`{a,b}`, `{1..3}` - never gh's own `{owner}`) and extglobs.
+EXPANDS = re.compile(r"[$`*?\[]|\{[^{}]*(?:,|\.\.)|[@+!]\(")
+#: Makes several words of one whatever it holds; the closing brace is not asked for - the splitter may drop it.
+SPLITS = re.compile(r"\{[^{}]*(?:,|\.\.)|[@+!]\(")
+#: A short-flag group (`-iX PATCH`) whose last letter takes a value: gh reads it otherwise than a word-by-word scan.
+GROUP = re.compile(r"^-[A-Za-z]*[XfFHqtp][A-Za-z]*$")
 ISSUE = re.compile(r"/(?:pulls|issues)/([^/?#]*)")   # what follows is read as a number, or refused
 
 
@@ -100,6 +106,8 @@ def door(segment) -> str:
             return ""
         return "pr"
     if words[1] == "api":
+        if any(SPLITS.search(word) or (len(word) > 2 and GROUP.match(word)) for word in words[2:]):
+            return "api"   # what gh would read cannot be told by this scan: refused, not guessed (review of bf2a47a)
         path = _api_path(words[2:])
         if path == "graphql" or path.endswith("/graphql"):   # a query read from a file or stdin cannot be told from the text (push review)
             hidden = any("=@" in word or word == "--input" or word.startswith("--input=") or EXPANDS.search(word)
