@@ -60,6 +60,8 @@ class Ledger:
         return fold(self.store.read(self.repo_key).records)
 
     def owner_post(self, row: Row) -> str:
+        if row.judged_as:   # taken-in work keeps the post it was pinned to, so review is never skipped by an owner
+            return row.judged_as
         try:
             post = post_for_session(self.posts, row.owner)
         except PostError:

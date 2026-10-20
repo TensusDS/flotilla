@@ -159,6 +159,8 @@ class Accounting:
             if row.state not in REVIEWED or not revision:
                 continue
             span = [revision, f"^{row.base}"] if row.base else [revision]
+            if row.adopted_at:   # trunk merged in below the adoption point was never this verdict's to read
+                span.append(f"^{row.adopted_at}")
             for sha in (_git(ledger, "rev-list", *span) or "").split():
                 self.read.setdefault(sha, row)
             if row.base:
