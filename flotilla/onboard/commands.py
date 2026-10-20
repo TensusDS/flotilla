@@ -131,8 +131,18 @@ WAITS = ("pull requests, chains and branches are asked by `/flotilla:organize` o
 
 
 def _profile_only(root: Path, sha: str) -> bool:
+    """A commit that touches only the profile and holds exactly the profile being published - its `.flotilla/` and
+    settings as HEAD has them - so no profile content the person did not confirm rides along (security review of
+    the push 67a497f..a82ba84: any `.flotilla`-only commit rode)."""
     from flotilla.organize.local import profile_only
-    return profile_only(root, sha)
+    if not profile_only(root, sha):
+        return False
+    for path in (".flotilla", ".claude/settings.json"):
+        theirs = _git(root, "rev-parse", "--verify", "--quiet", f"{sha}:{path}").stdout.strip()
+        ours = _git(root, "rev-parse", "--verify", "--quiet", f"HEAD:{path}").stdout.strip()
+        if theirs != ours:
+            return False
+    return True
 
 
 def _before_publish(root: Path, trunk: str, paths: list[str], *, remote: bool, named=()) -> str:

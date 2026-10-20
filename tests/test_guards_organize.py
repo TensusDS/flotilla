@@ -97,3 +97,18 @@ def test_equivalent_api_doors_are_refused(command):
 ])
 def test_reading_and_untracked_api_calls_pass(command):
     assert judge(command) is None
+
+
+# --- background security review of the push 67a497f..a82ba84 ------------------------------------------------------
+
+@pytest.mark.parametrize("command", [
+    "gh api graphql -F query=@close.graphql",                 # the query comes from a file: not told by the text
+    "gh api graphql --input body.json",
+    "gh api -X PATCH 'repos/o/r/pulls/43?x=1' -f base=main",   # a query string after the number
+    "gh api -X PATCH repos/o/r/pulls/43#x -f base=main",
+    "gh api -X PATCH repos/o/r/pulls/$N -f base=main",
+    "gh api -X PATCH repos/o/r/pulls/forty-three -f base=main",  # a number that cannot be read: not told
+])
+def test_what_the_api_text_cannot_tell_is_refused(command):
+    found = judge(command)
+    assert found is not None and found.refuse

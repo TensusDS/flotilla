@@ -465,3 +465,21 @@ def test_a_failed_push_says_the_second_half_waits(project, tmp_path):
     assert code == 2
     assert "pull requests, chains and branches are asked by `/flotilla:organize` once the profile is on origin's " \
            "trunk" in out
+
+
+def test_publish_lets_through_only_a_profile_commit_holding_the_profile_it_publishes(project, tmp_path):
+    """Background security review of the push 67a497f..a82ba84: any commit touching only `.flotilla/` rode with
+    publish. Only one whose profile is the one published (or one organize recorded) does."""
+    subprocess.run(["git", "-C", str(project), "push", "-q", "origin", "main"], check=True)
+    _ready(project)
+    posts = project / ".flotilla" / "posts"
+    _git(project, "add", ".flotilla")
+    _git(project, "commit", "-q", "-m", "chore: onboard flotilla (profile and posts)")
+    target = next(posts.glob("*.md"))
+    original = target.read_text(encoding="utf-8")
+    target.write_text(original + "\nEXTRA RULE NOBODY CONFIRMED\n", encoding="utf-8")
+    _git(project, "commit", "-q", "-am", "chore: tweak a post")
+    target.write_text(original, encoding="utf-8")
+    _git(project, "commit", "-q", "-am", "chore: tweak it back")
+    code, out = run_cli("onboard", "publish", "--root", str(project))
+    assert code == 2 and "tweak a post" in out

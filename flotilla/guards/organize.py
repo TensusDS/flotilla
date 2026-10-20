@@ -59,7 +59,7 @@ def _target(words: list[str], values: tuple) -> str | None:
 
 
 EXPANDS = re.compile(r"[$`*?\[]")   # what the shell turns into other words before gh sees them
-ISSUE = re.compile(r"/(?:pulls|issues)/(\d+)(?:/|$)")
+ISSUE = re.compile(r"/(?:pulls|issues)/([^/?#]*)")   # what follows is read as a number, or refused
 
 
 def _method(words: list[str]) -> str:
@@ -92,8 +92,9 @@ def door(segment) -> str:
         return "pr"
     if words[1] == "api":
         path = _target(words[2:], API_VALUES) or ""
-        if path == "graphql":
-            return "api" if "mutation" in " ".join(words).lower() else ""
+        if path == "graphql":   # a query read from a file or stdin cannot be told from the text (push review)
+            hidden = any("=@" in word or word == "--input" or word.startswith("--input=") for word in words)
+            return "api" if hidden or "mutation" in " ".join(words).lower() else ""
         if _method(words[2:]) == "GET":
             return ""
         if "/stacks" in path:
@@ -114,6 +115,8 @@ def check(segment, *, rows: dict, numbers: set[int]) -> Finding | None:
         return refused   # a stack's members, a mutation's target, a word the shell rewrites: none told by the text
     if kind == "api-pull":
         target = ISSUE.search(_target(words[2:], API_VALUES) or "").group(1)
+        if not target.isdigit():
+            return refused   # `pulls/$N`, `pulls/forty-three`: which pull request cannot be told from the text
     else:
         target = _target(words[3:], VALUES[words[2]])
     if target is None:
