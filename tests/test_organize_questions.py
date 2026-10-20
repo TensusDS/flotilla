@@ -163,3 +163,56 @@ def test_a_label_is_not_a_value():
     label = questions.next_round(walk, data)[0]["options"][0]["label"]
     with pytest.raises(AnswerError, match="label"):
         questions.record(walk, data, "chain:42-43-44", [label])
+
+
+# --- background security review of 0dda1a3..02139b1: what the person agrees to is shown whole and stays bound ------
+
+def test_steps_are_shown_whole_with_their_fields_quoted():
+    long_branch = "feat/" + "x" * 200
+    walk, data = Walk(phase="after", items=[chain()]), store.empty()
+    questions.record(walk, data, "chain:42-43-44", ["close", "it"])
+    data["proposals"]["chain:42-43-44"] = {"steps": [{"do": "delete-branch", "branch": long_branch},
+                                                     {"do": "close", "pr": 43}]}
+    text = questions.next_round(walk, data)[0]["question"]
+    assert f'branch="{long_branch}"' in text and 'do="close", pr=43' in text
+
+
+def test_a_plan_is_shown_whole_and_escaped():
+    walk = Walk(phase="after", items=[item("edits:/app", "edits", tree="/app")])
+    data = store.empty()
+    questions.record(walk, data, "edits:/app", ["discretion"])
+    path = "docs/" + "y" * 150 + "\nfake line"
+    data["proposals"]["edits:/app"] = {"plan": [{"branch": "fix/a", "paths": [path]}]}
+    text = questions.next_round(walk, data)[0]["question"]
+    assert "y" * 150 in text and "\\nfake line" in text and "\nfake line" not in text
+
+
+def test_an_items_lines_are_made_safe_before_the_person_reads_them():
+    found = item("pr:50", "pr")
+    found.lines = ["#50 feat/x \x1b[2J\x1b[Hall clear"]
+    found.title = "pull request \x1b]0;title\x07"
+    text = questions.next_round(Walk(phase="after", items=[found]), store.empty())[0]["question"]
+    assert "\x1b" not in text and "\x07" not in text
+
+
+def test_a_yes_holds_only_for_the_proposal_it_was_given_to():
+    walk, data = Walk(phase="after", items=[chain()]), store.empty()
+    questions.record(walk, data, "chain:42-43-44", ["close", "it"])
+    data["proposals"]["chain:42-43-44"] = {"steps": [{"do": "close", "pr": 43}]}
+    questions.record(walk, data, "chain:42-43-44:steps", ["yes"])
+    assert questions.confirmed(walk.items[0], data, "steps") == [{"do": "close", "pr": 43}]
+    data["proposals"]["chain:42-43-44"] = {"steps": [{"do": "close", "pr": 42}]}   # changed after the yes
+    assert questions.confirmed(walk.items[0], data, "steps") is None
+    assert [question["id"] for question in questions.next_round(walk, data)] == ["chain:42-43-44:steps"]
+    assert not questions.done(walk, data)
+
+
+def test_a_proposed_shape_answer_is_bound_to_the_proposal():
+    walk, data = Walk(phase="after", items=[chain()]), store.empty()
+    questions.record(walk, data, "chain:42-43-44", ["take"])
+    questions.record(walk, data, "chain:42-43-44:shape", ["claude"])
+    data["proposals"]["chain:42-43-44"] = {"shape": "whole", "why": "a"}
+    questions.record(walk, data, "chain:42-43-44:proposal", ["whole"])
+    data["proposals"]["chain:42-43-44"] = {"shape": "separate", "why": "b"}
+    assert questions.shape_of(walk.items[0], data) == ""
+    assert [question["id"] for question in questions.next_round(walk, data)] == ["chain:42-43-44:proposal"]

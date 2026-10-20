@@ -8,6 +8,10 @@ person confirms. Rounds hold at most four questions, and a later round holds wha
 
 from __future__ import annotations
 
+import hashlib
+import json
+
+from flotilla.core.text import visible
 from flotilla.onboard.questions import MAX_PER_ROUND, AnswerError, _q, validate_answer
 from flotilla.organize.items import Item, seen, shown
 from flotilla.organize.walk import Walk
@@ -71,8 +75,41 @@ def _header(found: Item) -> str:
 
 
 def _first(found: Item) -> dict:
-    said = f"{found.title}" + ("\n" + "\n".join(f"  {line}" for line in found.lines[:12]) if found.lines else "")
-    return _q(found.key, _header(found), said, _first_options(found), free_text=True)
+    lines = "".join(f"\n  {shown(line, 200)}" for line in found.lines[:12])
+    return _q(found.key, _header(found), shown(found.title, 300) + lines, _first_options(found), free_text=True)
+
+
+#: Which part of a proposal each confirming question confirms: a yes holds for that content only.
+CONFIRMS = {"steps": "steps", "plan": "plan", "proposal": "shape"}
+
+
+def _part(proposal: dict, name: str):
+    return {"shape": proposal.get("shape"), "why": proposal.get("why")} if name == "shape" else proposal.get(name)
+
+
+def _digest(value) -> str:
+    return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
+
+
+def _bound(data: dict, key: str, suffix: str) -> bool:
+    """Whether the person's answer to `<key>:<suffix>` was given to the proposal as it stands now (security
+    review of 0dda1a3..02139b1: a proposal changed after the yes must be asked again)."""
+    answer = _answer(data, f"{key}:{suffix}")
+    proposal = data["proposals"].get(key) or {}
+    return bool(answer) and answer.get("proposal") == _digest(_part(proposal, CONFIRMS[suffix]))
+
+
+def confirmed(found: Item, data: dict, part: str):
+    """The proposal's `steps` or `plan` the person said yes to, exactly as it stands; None otherwise."""
+    suffix = part
+    if _value(data, f"{found.key}:{suffix}") != "yes" or not _bound(data, found.key, suffix):
+        return None
+    return (data["proposals"].get(found.key) or {}).get(part)
+
+
+def _quoted(value) -> str:
+    """A field shown for consent: whole, quoted, its controls escaped - never cut, so nothing hides past an end."""
+    return visible(json.dumps(value, ensure_ascii=False))
 
 
 def shape_of(found: Item, data: dict) -> str:
@@ -82,7 +119,9 @@ def shape_of(found: Item, data: dict) -> str:
     if len(found.offered) == 1:
         return found.offered[0]
     shape = _value(data, f"{found.key}:shape")
-    return _value(data, f"{found.key}:proposal") if shape == "claude" else shape
+    if shape != "claude":
+        return shape
+    return _value(data, f"{found.key}:proposal") if _bound(data, found.key, "proposal") else ""
 
 
 def _follow_up(found: Item, data: dict) -> dict | None:
@@ -92,14 +131,14 @@ def _follow_up(found: Item, data: dict) -> dict | None:
     proposal = data["proposals"].get(key) or {}
     if value == "words" and "words" in first:
         return _q(f"{key}:steps", "Your words", _steps_text(proposal), YES_NO, free_text=True) \
-            if proposal.get("steps") and not _answer(data, f"{key}:steps") else None
+            if proposal.get("steps") and not _bound(data, key, "steps") else None
     if value == "take" and found.kind in ("chain", "stack") and len(found.offered) > 1:
         if not _answer(data, f"{key}:shape"):
             return _q(f"{key}:shape", "Shape", "Are these separate works, one work in parts, one work whole, or should "
                                                "Claude work it out?",
                       [(shape, *SHAPE_TEXT[shape]) for shape in found.offered], free_text=True)
         if _value(data, f"{key}:shape") == "claude" and proposal.get("shape") and \
-                not _answer(data, f"{key}:proposal"):
+                not _bound(data, key, "proposal"):
             proposed = proposal["shape"]
             rest = [shape for shape in found.offered if shape not in ("claude", proposed)]
             why = shown(proposal.get("why") or "", 300)
@@ -108,20 +147,20 @@ def _follow_up(found: Item, data: dict) -> dict | None:
             return _q(f"{key}:proposal", "Proposal", "Claude read the pull requests and proposes a shape. Which one?",
                       options, free_text=True)
     if found.kind == "edits" and value in ("discretion", "words") and proposal.get("plan") and \
-            not _answer(data, f"{key}:plan"):
+            not _bound(data, key, "plan"):
         return _q(f"{key}:plan", "Plan", _plan_text(proposal), YES_NO, free_text=True)
     return None
 
 
 def _plan_text(proposal: dict) -> str:
-    lines = [f"  {shown(entry.get('branch', ''))}: {', '.join(shown(path) for path in entry.get('paths', []))}"
+    lines = [f"  {_quoted(entry.get('branch', ''))}: {', '.join(_quoted(path) for path in entry.get('paths', []))}"
              for entry in proposal.get("plan") or []]
     return "Carry out this plan? Each branch is committed in its own tree and taken in:\n" + "\n".join(lines)
 
 
 def _steps_text(proposal: dict) -> str:
-    lines = [f"  {shown(' '.join(f'{name}={value}' for name, value in step.items()), 120)}"
-             for step in proposal.get("steps") or []]
+    lines = ["  " + ", ".join(f"{visible(str(name))}={_quoted(value)}" for name, value in step.items())
+             for step in proposal.get("steps") or [] if isinstance(step, dict)]
     return "Claude read your words as these steps. Carry them out?\n" + "\n".join(lines)
 
 
@@ -181,6 +220,9 @@ def record(walk: Walk, data: dict, qid: str, values: list[str]) -> str:
                 data["ignored"][other.key] = seen(other)
         value = "ignore"
     data["answers"][qid] = {"value": value, "seen": seen(found)}
+    suffix = qid[len(key) + 1:]
+    if suffix in CONFIRMS:   # the yes is bound to the proposal it was given to
+        data["answers"][qid]["proposal"] = _digest(_part(data["proposals"].get(key) or {}, CONFIRMS[suffix]))
     if qid == key and value == "ignore":
         data["ignored"][key] = seen(found)
     return f"recorded {qid}: {value}"
