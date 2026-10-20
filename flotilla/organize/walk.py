@@ -98,7 +98,9 @@ def walk(root: Path, *, rows: dict, profile: dict, ignored=frozenset(), run=subp
         _branch_items(out, root, trunk, person, rows, only, slug, pull_branches, run)
     elif slug:
         out.notes.append("pull requests, chains and branches are asked once the profile is on origin's trunk")
-    _edits_items(out, root, person, run)
+    _edits_items(out, root, run)
+    if out.phase == "after":
+        _other_trees(out, root, rows, proc_root, run)
     if only:
         out.items = [item for item in out.items if _wanted(item, only) or item.kind in ("edits", "cache", "trunk")]
     skipped = [item.key for item in out.items if item.key in ignored]
@@ -292,15 +294,36 @@ def _branch_items(out: Walk, root: Path, trunk: str, person, rows: dict, only, s
                           "them yourself: " + ", ".join(f"`{shown(name)}`" for name in unsafe))
 
 
-def _edits_items(out: Walk, root: Path, person, run) -> None:
-    paths = local.dirty(root, run=run)
+def _edits_items(out: Walk, tree: Path, run, *, other: str = "") -> None:
+    """The tree's uncommitted edits as one item; `other` names the branch of a tree that is not the organizing one,
+    entered only on the person's yes for it."""
+    paths = local.dirty(tree, run=run)
     if not paths:
         return
+    where = f"tree {shown(str(tree), 120)} ({shown(other)})" if other else "this tree"
     signs = [path for path in paths if whose.is_path_sign(path)]
     if signs:
-        out.listed.append(f"not touched: this tree's edits carry another AI's files ({', '.join(signs[:3])})")
+        out.listed.append(f"not touched: {where} - its edits carry another AI's files "
+                          f"({', '.join(shown(path) for path in signs[:3])})")
         return
-    digest = (_git(root, "status", "--porcelain=v1", "--untracked-files=all", run=run) or "")
-    out.items.append(Item(key=f"edits:{root}", kind="edits", phase=out.phase,
-                          title=f"uncommitted edits in this tree ({len(paths)} path(s))", lines=paths[:20],
-                          facts={"tree": str(root), "paths": paths, "status": digest}))
+    digest = (_git(tree, "status", "--porcelain=v1", "--untracked-files=all", run=run) or "")
+    out.items.append(Item(key=f"edits:{tree}", kind="edits", phase=out.phase,
+                          title=f"uncommitted edits in {where} ({len(paths)} path(s))", lines=paths[:20],
+                          facts={"tree": str(tree), "paths": paths, "status": digest, "needs_yes": bool(other)}))
+
+
+def _other_trees(out: Walk, root: Path, rows: dict, proc_root, run) -> None:
+    from flotilla.fleet.strangers import seat_trees
+    from flotilla.organize import trees
+    me = root.resolve()
+    seats = seat_trees(rows)
+    for tree in trees.worktrees(root, run=run):
+        if tree.path == me:
+            continue
+        why = trees.in_use(tree, seats=seats, me=me, proc_root=proc_root)
+        if why:
+            if local.dirty(tree.path, run=run):
+                branch = shown(tree.branch or "detached")
+                out.listed.append(f"not touched: tree {shown(str(tree.path), 120)} ({branch}) - in use: {why}")
+            continue
+        _edits_items(out, tree.path, run, other=tree.branch or "detached")
