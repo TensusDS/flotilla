@@ -106,6 +106,8 @@ def _carry_out(root: Path, item: Item, data: dict, *, walked, profile: dict, run
         return [exclude(root, item.facts["dir"], run=run)] if value == "exclude" else []
     if item.kind == "trunk":
         return _trunk(root, item, value, walked=walked, run=run, ledger=ledger)
+    if item.kind == "edits":
+        return _edits(root, item, value, data, walked=walked, run=run, ledger=ledger)
     raise Skip(f"`{value}` for a {item.kind} is not carried out by this version yet")
 
 
@@ -310,4 +312,44 @@ def _take_pulls(root: Path, item: Item, shape: str, *, trunk: str, run, ledger) 
         below = row.id
         out.append(f"took #{pull['number']} `{shown(pull['branch'])}` in as {row.id}"
                    + (f" ({'after' if shape == 'separate' else 'a part above'} {links[0]})" if links else ""))
+    return out
+
+
+def _edits(root: Path, item: Item, value: str, data: dict, *, walked, run, ledger) -> list[str]:
+    """Keep every edit first, keep secrets out, then carry out the plan the person confirmed, exactly."""
+    from flotilla.core import paths
+    from flotilla.organize import keep, secrets, split
+    tree = Path(item.facts["tree"])
+    if value == "leave":
+        return [f"the edits in {shown(str(tree), 120)} are left as they are; the fleet does not see them"]
+    plan = questions.confirmed(item, data, "plan")
+    if plan is None:
+        raise Skip("its plan was not confirmed as it stands; it is asked again")
+    errors = split.validate_plan(plan, item.facts["paths"])
+    if errors:
+        raise Skip("the plan does not fit the tree's edits (" + "; ".join(errors) + "); nothing was done")
+    try:
+        kept = keep.create_ref(root, "kept", keep.keep_all(tree, run=run), run=run)
+    except RuntimeError as err:
+        raise Skip(f"the edits could not be kept first ({err}); nothing was done") from err
+    out = [f"every edit in {shown(str(tree), 120)} is kept under {kept} first"]
+    hits = {hit.path: hit for hit in secrets.scan(tree, [p for entry in plan for p in entry["paths"]], run=run)}
+    for path, hit in sorted(hits.items()):
+        out.append(f"`{shown(path)}` stays where it is, out of every branch: {hit.why} - a secret is never committed")
+    plan = [{"branch": entry["branch"], "paths": [p for p in entry["paths"] if p not in hits]} for entry in plan]
+    plan = [entry for entry in plan if entry["paths"]]
+    if not plan:
+        return out
+    start = _git(tree, "rev-parse", "HEAD", run=run).stdout.strip()
+    try:
+        said, made = split.carry_out(root, tree, plan, start=start, state=paths.state_dir(), run=run)
+    except split.Stopped as err:
+        raise Skip(f"{err}; every edit is still in the tree, and kept under {kept}") from err
+    out += said
+    if walked.phase != "after":
+        return out + [f"{', '.join(made)} are asked about once the profile is on origin's trunk"]
+    from flotilla.ledger import takein
+    for branch in made:
+        row = takein.take_in(_ledger(root, ledger), branch, base=_fork_point(root, walked.trunk, branch, run))
+        out.append(f"took `{branch}` in as {row.id}")
     return out

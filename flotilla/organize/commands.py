@@ -123,7 +123,11 @@ def _propose(found: Walk, data: dict, args) -> str:
             raise Refused(f"{source} could not be read as JSON: {err}") from err
         if not isinstance(loaded, list):
             raise Refused(f"{source} must hold a JSON list")
-        errors = questions.plan_errors(loaded) if args.plan else questions.steps_errors(loaded)
+        if args.plan:
+            from flotilla.organize import split
+            errors = split.validate_plan(loaded, item.facts.get("paths") or [])
+        else:
+            errors = questions.steps_errors(loaded)
         if errors:
             raise Refused(f"{source}: " + "; ".join(errors))
         proposal["plan" if args.plan else "steps"] = loaded

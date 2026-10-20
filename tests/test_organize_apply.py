@@ -314,3 +314,53 @@ def test_a_cache_is_excluded_once(tmp_path, monkeypatch):
     applying.exclude(root, ".serena/", run=hub.run)   # a second exclude adds nothing
     exclude = (root / ".git" / "info" / "exclude").read_text(encoding="utf-8")
     assert exclude.count("/.serena/") == 1
+
+
+# --- uncommitted edits ------------------------------------------------------------------------------------------
+
+def edits_world(world):
+    w = world(names=())
+    (Path(w.root) / "fix.py").write_text("fixed\n", encoding="utf-8")
+    (Path(w.root) / "notes.md").write_text("notes\n", encoding="utf-8")
+    (Path(w.root) / "config.py").write_text("TOKEN = 'ghp_" + "A1b2C3d4E5" * 4 + "'\n", encoding="utf-8")
+    return w
+
+
+def test_the_plan_is_carried_out_exactly_and_each_branch_is_taken_in(world, monkeypatch):
+    from flotilla.organize import secrets
+    monkeypatch.setattr(secrets.shutil, "which", lambda name: None)
+    w = edits_world(world)
+    key = f"edits:{w.root}"
+    w.answer(key, "discretion")
+    w.data["proposals"][key] = {"plan": [{"branch": "fix/a", "paths": ["fix.py", "config.py"]},
+                                         {"branch": "docs/n", "paths": ["notes.md"]}]}
+    w.answer(f"{key}:plan", "yes")
+    lines, complete = w.apply()
+    assert complete, lines
+    assert git(w.root, "show", "fix/a:fix.py") == "fixed"
+    assert "config.py" not in git(w.root, "ls-tree", "--name-only", "fix/a")       # the secret stayed out
+    assert (Path(w.root) / "config.py").exists() and not (Path(w.root) / "fix.py").exists()
+    assert any("config.py" in line and "secret" in line for line in lines)
+    assert sorted(row.branch for row in w.rows()) == ["docs/n", "fix/a"]
+    kept = git(w.root, "for-each-ref", "--format=%(refname)", "refs/flotilla/kept")
+    assert kept and git(w.root, "show", f"{kept.split()[0]}:fix.py") == "fixed"
+
+
+def test_leave_as_is_touches_nothing(world):
+    w = edits_world(world)
+    key = f"edits:{w.root}"
+    before = git(w.root, "status", "--porcelain")
+    w.answer(key, "leave")
+    lines, complete = w.apply()
+    assert complete and git(w.root, "status", "--porcelain") == before and w.rows() == []
+    assert any("fleet does not see" in line for line in lines)
+
+
+def test_a_plan_proposed_against_other_paths_is_refused_at_apply(world):
+    w = edits_world(world)
+    key = f"edits:{w.root}"
+    w.answer(key, "discretion")
+    w.data["proposals"][key] = {"plan": [{"branch": "fix/a", "paths": ["nope.py"]}]}
+    w.answer(f"{key}:plan", "yes")
+    lines, complete = w.apply()
+    assert not complete and w.rows() == [] and (Path(w.root) / "fix.py").exists()
