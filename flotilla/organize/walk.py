@@ -251,7 +251,7 @@ def _chain_lines(root: Path, chain: list, trunk: str, origin: str, run) -> list[
 
 def _branch_items(out: Walk, root: Path, trunk: str, person, rows: dict, only, slug, pull_branches: set[str],
                   run) -> None:
-    merged = set()
+    merged: dict[str, set[str]] = {}
     if slug:
         try:
             merged = github.merged_branches(slug, run)
@@ -260,7 +260,7 @@ def _branch_items(out: Walk, root: Path, trunk: str, person, rows: dict, only, s
     skip = pull_branches | {row.branch for row in rows.values() if row.is_open}
     trees = checked_out(root, run)
     found = local.branches(root, trunk, skip=skip, checked_out=set(trees),
-                           merged_pr_branches=merged, run=run)
+                           merged_pr_heads=merged, run=run)
     origin = f"refs/remotes/origin/{trunk}"
     named = {str(name) for name in only}
     others = []
@@ -282,10 +282,14 @@ def _branch_items(out: Walk, root: Path, trunk: str, person, rows: dict, only, s
                               lines=[], facts={"branch": name, "tip": tip, "local": local_branch, "base": base}))
     if others:
         out.listed.append("not touched (not yours, or another AI's - name it to take it in): " + "; ".join(others))
-    if found["no_own"]:
-        out.listed.append("no commits of their own, may be deleted: " + ", ".join(found["no_own"]))
-    if found["merged"]:
-        out.listed.append("merged, may be deleted: " + ", ".join(found["merged"]))
+    unsafe = [name for name in found["no_own"] + found["merged"] if not SAFE_BRANCH.fullmatch(name)]
+    for label, names in (("no commits of their own", found["no_own"]), ("merged", found["merged"])):
+        plain = [name for name in names if SAFE_BRANCH.fullmatch(name)]
+        if plain:
+            out.listed.append(f"{label}, may be deleted: " + ", ".join(plain))
+    if unsafe:
+        out.listed.append("on trunk, but named so a shell would read the name - a name a shell would read, look at "
+                          "them yourself: " + ", ".join(f"`{shown(name)}`" for name in unsafe))
 
 
 def _edits_items(out: Walk, root: Path, person, run) -> None:

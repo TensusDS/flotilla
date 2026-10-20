@@ -41,7 +41,13 @@ def branch_tips(root: Path, run) -> dict[str, tuple[str, bool]]:
     return found
 
 
-def branches(root: Path, trunk: str, *, skip: set[str], checked_out: set[str], merged_pr_branches: set[str],
+def _merged_here(root: Path, tip: str, heads: set[str], run) -> bool:
+    """Whether a merged pull request merged this tip: its head, or a head this tip is part of. A name alone proves
+    nothing - a branch may be reused after its pull request merged (security review of 5196c72)."""
+    return any(head == tip or gitq.is_ancestor(root, tip, head, run=run) is True for head in heads if head)
+
+
+def branches(root: Path, trunk: str, *, skip: set[str], checked_out: set[str], merged_pr_heads: dict[str, set[str]],
              run=subprocess.run) -> dict[str, list[str]]:
     origin = f"refs/remotes/origin/{trunk}"
     target = origin if gitq.resolve(root, origin, run=run) else f"refs/heads/{trunk}"
@@ -53,7 +59,7 @@ def branches(root: Path, trunk: str, *, skip: set[str], checked_out: set[str], m
         if not inside:
             cherry = _lines(_git(root, "cherry", target, tip, run=run))
             squashed = bool(cherry) and all(line.startswith("-") for line in cherry)
-            if name in merged_pr_branches or squashed:
+            if squashed or _merged_here(root, tip, merged_pr_heads.get(name, set()), run):
                 if name not in checked_out:
                     found["merged"].append(name)
             else:
@@ -61,7 +67,8 @@ def branches(root: Path, trunk: str, *, skip: set[str], checked_out: set[str], m
             continue
         if name in checked_out:
             continue
-        if name in merged_pr_branches or gitq.on_first_parent(root, tip, target, run=run) is not True:
+        if _merged_here(root, tip, merged_pr_heads.get(name, set()), run) or \
+                gitq.on_first_parent(root, tip, target, run=run) is not True:
             found["merged"].append(name)
         else:
             found["no_own"].append(name)

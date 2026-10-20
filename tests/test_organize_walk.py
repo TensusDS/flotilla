@@ -186,3 +186,29 @@ def test_local_trunk_commits_are_an_item(proj):
 def test_a_clean_repository_walks_to_nothing(proj):
     found = walk(proj, Hub())
     assert found.items == [] and found.listed == []
+
+
+def test_a_branch_reused_after_its_pull_request_merged_is_work_not_merged(proj):
+    """Background security review of 5196c72: a merged pull request's name alone called a branch merged, so new
+    commits on a reused name would have been offered for deletion. A merged pull request counts only for the head it
+    merged."""
+    heads = stacked_branches(proj, "feat/reused")
+    hub = Hub(merged=[("feat/reused", "f" * 40)])
+    found = walk(proj, hub)
+    assert not any("feat/reused" in line and "may be deleted" in line for line in found.listed)
+    assert any("feat/reused" in line for line in found.listed)   # work - another author's here, so only listed
+    hub = Hub(merged=[("feat/reused", heads["feat/reused"])])
+    assert "merged, may be deleted: feat/reused" in walk(proj, hub).listed
+
+
+def test_a_fork_pull_requests_merged_name_says_nothing_of_a_branch_here(proj):
+    git(proj, "branch", "feat/forked")
+    hub = Hub(merged=[("feat/forked", git(proj, "rev-parse", "HEAD"), True)])
+    assert "no commits of their own, may be deleted: feat/forked" in walk(proj, hub).listed
+
+
+def test_a_shell_active_name_is_never_listed_for_deletion_as_it_stands(proj):
+    git(proj, "branch", "feat/a;b")
+    found = walk(proj, Hub())
+    assert not any("feat/a;b" in line and "may be deleted" in line for line in found.listed)
+    assert any("a name a shell would read" in line for line in found.listed)

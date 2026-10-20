@@ -22,12 +22,18 @@ def stack(number, *members, base="main", merged=()):
                                "head": {"ref": f"b{n}", "sha": "0" * 40}} for n in members]}
 
 
+def _merged(entry) -> dict:
+    """A merged pull request: a branch name, or (name, head) or (name, head, from a fork)."""
+    name, head, fork = (entry, "0" * 40, False) if isinstance(entry, str) else (*entry, False)[:3]
+    return {"headRefName": name, "headRefOid": head, "isCrossRepository": fork}
+
+
 class Hub:
     """A fake GitHub. `stuck` holds pull requests an unstack leaves stacked (queued, or with auto-merge on)."""
 
     def __init__(self, pulls=(), stacks=(), login="me", stuck=(), fail=(), merged=()):
         self.pulls = {item["number"]: dict(item) for item in pulls}
-        self.merged = [{"headRefName": name} for name in merged]
+        self.merged = [_merged(entry) for entry in merged]
         self.stacks = [dict(item) for item in stacks]
         self.login = login
         self.stuck = set(stuck)
