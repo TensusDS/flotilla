@@ -216,3 +216,39 @@ def test_a_proposed_shape_answer_is_bound_to_the_proposal():
     data["proposals"]["chain:42-43-44"] = {"shape": "separate", "why": "b"}
     assert questions.shape_of(walk.items[0], data) == ""
     assert [question["id"] for question in questions.next_round(walk, data)] == ["chain:42-43-44:proposal"]
+
+
+# --- background security review of e876731: a proposal is held to a strict shape, so what is shown is all there is
+
+@pytest.mark.parametrize("steps", [
+    ["close 43"],                                              # not a step object
+    [{"do": "close", "pr": 43, "also": "rm -rf"}],             # a field the step does not take
+    [{"do": "close", "pr": "43; x"}],                          # a number that is not one
+    [{"do": "push", "branch": "main"}],                        # not in the vocabulary
+    [{"do": "delete-branch", "branch": "feat/$(x)"}],          # a name a shell would read
+    [{"do‮": "close", "pr": 43}],                         # a key that hides
+])
+def test_malformed_steps_are_never_put_to_the_person(steps):
+    assert questions.steps_errors(steps)
+    walk, data = Walk(phase="after", items=[chain()]), store.empty()
+    questions.record(walk, data, "chain:42-43-44", ["close", "it"])
+    data["proposals"]["chain:42-43-44"] = {"steps": steps}
+    assert questions.next_round(walk, data) == []
+    assert any("malformed" in line for line in questions.waiting(walk, data))
+
+
+@pytest.mark.parametrize("plan", [
+    [{"branch": "fix/a", "paths": ["a.py"], "also": "x"}],
+    [{"branch": "fix/a", "paths": "a.py"}],
+    ["fix/a: a.py"],
+    [{"branch": "fix/$(x)", "paths": ["a.py"]}],
+])
+def test_malformed_plans_are_never_put_to_the_person(plan):
+    assert questions.plan_errors(plan)
+
+
+def test_good_steps_and_plans_pass():
+    assert questions.steps_errors([{"do": "close", "pr": 43}, {"do": "take", "shape": "whole"},
+                                   {"do": "unstack", "stack": 7}, {"do": "delete-branch", "branch": "feat/x"},
+                                   {"do": "ignore"}]) == []
+    assert questions.plan_errors([{"branch": "fix/a", "paths": ["a.py", "b/c.md"]}]) == []

@@ -123,6 +123,9 @@ def _propose(found: Walk, data: dict, args) -> str:
             raise Refused(f"{source} could not be read as JSON: {err}") from err
         if not isinstance(loaded, list):
             raise Refused(f"{source} must hold a JSON list")
+        errors = questions.plan_errors(loaded) if args.plan else questions.steps_errors(loaded)
+        if errors:
+            raise Refused(f"{source}: " + "; ".join(errors))
         proposal["plan" if args.plan else "steps"] = loaded
     else:
         raise Refused("propose a --shape with --why, a --plan file, or a --steps file")

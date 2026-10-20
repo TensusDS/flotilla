@@ -79,6 +79,69 @@ def _first(found: Item) -> dict:
     return _q(found.key, _header(found), shown(found.title, 300) + lines, _first_options(found), free_text=True)
 
 
+#: The own-words vocabulary: each step's `do`, and the one field it takes with that field's kind. Nothing else is
+#: accepted, so what the person is shown is everything a step holds (security review of e876731).
+STEPS = {"take": ("shape", str), "ignore": None, "close": ("pr", int), "unstack": ("stack", int),
+         "delete-branch": ("branch", str)}
+
+
+def steps_errors(steps) -> list[str]:
+    from flotilla.ledger.core import SAFE_BRANCH
+    if not isinstance(steps, list) or not steps:
+        return ["steps are a non-empty JSON list"]
+    errors = []
+    for index, step in enumerate(steps):
+        if not isinstance(step, dict) or not isinstance(step.get("do"), str):
+            errors.append(f"step {index + 1} is not an object with a `do`")
+            continue
+        wanted = STEPS.get(step["do"], "unknown")
+        if wanted == "unknown":
+            errors.append(f"step {index + 1}: `{visible(step['do'])}` is none of {', '.join(STEPS)}")
+            continue
+        fields = {"do"} | ({wanted[0]} if wanted else set())
+        if set(step) != fields:
+            errors.append(f"step {index + 1} ({step['do']}) takes exactly: {', '.join(sorted(fields))}")
+            continue
+        if wanted:
+            name, kind = wanted
+            value = step[name]
+            if kind is int and (not isinstance(value, int) or isinstance(value, bool) or value <= 0):
+                errors.append(f"step {index + 1}: `{name}` is a positive whole number")
+            elif kind is str and not isinstance(value, str):
+                errors.append(f"step {index + 1}: `{name}` is text")
+            elif name == "branch" and not SAFE_BRANCH.fullmatch(value):
+                errors.append(f"step {index + 1}: `{visible(value)}` is not a branch name flotilla files")
+            elif name == "shape" and value not in ("separate", "parts", "whole"):
+                errors.append(f"step {index + 1}: shape is separate, parts or whole")
+    return errors
+
+
+def plan_errors(plan) -> list[str]:
+    from flotilla.ledger.core import SAFE_BRANCH
+    if not isinstance(plan, list) or not plan:
+        return ["a plan is a non-empty JSON list"]
+    errors = []
+    for index, entry in enumerate(plan):
+        if not isinstance(entry, dict) or set(entry) != {"branch", "paths"}:
+            errors.append(f"entry {index + 1} holds exactly `branch` and `paths`")
+            continue
+        if not isinstance(entry["branch"], str) or not SAFE_BRANCH.fullmatch(entry["branch"]):
+            errors.append(f"entry {index + 1}: `{visible(str(entry['branch']))}` is not a branch name flotilla files")
+        paths = entry["paths"]
+        if not isinstance(paths, list) or not paths or not all(isinstance(path, str) and path for path in paths):
+            errors.append(f"entry {index + 1}: `paths` is a non-empty list of paths")
+    return errors
+
+
+def _proposal_errors(proposal: dict) -> list[str]:
+    errors = []
+    if "steps" in proposal:
+        errors += steps_errors(proposal["steps"])
+    if "plan" in proposal:
+        errors += plan_errors(proposal["plan"])
+    return errors
+
+
 #: Which part of a proposal each confirming question confirms: a yes holds for that content only.
 CONFIRMS = {"steps": "steps", "plan": "plan", "proposal": "shape"}
 
@@ -103,6 +166,8 @@ def confirmed(found: Item, data: dict, part: str):
     """The proposal's `steps` or `plan` the person said yes to, exactly as it stands; None otherwise."""
     suffix = part
     if _value(data, f"{found.key}:{suffix}") != "yes" or not _bound(data, found.key, suffix):
+        return None
+    if _proposal_errors(data["proposals"].get(found.key) or {}):
         return None
     return (data["proposals"].get(found.key) or {}).get(part)
 
@@ -129,6 +194,8 @@ def _follow_up(found: Item, data: dict) -> dict | None:
     first = _answer(data, found.key) or {}
     value, key = first.get("value"), found.key
     proposal = data["proposals"].get(key) or {}
+    if _proposal_errors(proposal):
+        return None   # never put a malformed proposal to the person; `waiting` says so
     if value == "words" and "words" in first:
         return _q(f"{key}:steps", "Your words", _steps_text(proposal), YES_NO, free_text=True) \
             if proposal.get("steps") and not _bound(data, key, "steps") else None
@@ -159,8 +226,8 @@ def _plan_text(proposal: dict) -> str:
 
 
 def _steps_text(proposal: dict) -> str:
-    lines = ["  " + ", ".join(f"{visible(str(name))}={_quoted(value)}" for name, value in step.items())
-             for step in proposal.get("steps") or [] if isinstance(step, dict)]
+    lines = ["  " + ", ".join(f"{name}={_quoted(value)}" for name, value in step.items())
+             for step in proposal.get("steps") or []]   # held to STEPS: every key is one of its own names
     return "Claude read your words as these steps. Carry them out?\n" + "\n".join(lines)
 
 
@@ -234,7 +301,10 @@ def waiting(walk: Walk, data: dict) -> list[str]:
     for found in walk.items:
         key, first = found.key, _answer(data, found.key) or {}
         proposal = data["proposals"].get(key) or {}
-        if first.get("value") == "words" and not proposal.get("steps"):
+        errors = _proposal_errors(proposal)
+        if errors:
+            out.append(f"{key}: the proposal is malformed ({'; '.join(errors)}); propose it again")
+        elif first.get("value") == "words" and not proposal.get("steps"):
             out.append(f"{key}: turn the person's words into steps (`flotilla organize propose {key} --steps <file>`)")
         elif _value(data, f"{key}:shape") == "claude" and not proposal.get("shape"):
             out.append(f"{key}: read it (`flotilla organize show {key}`) and propose a shape (`flotilla organize "
