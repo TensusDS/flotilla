@@ -110,9 +110,19 @@ def restack_refusal(ledger: Ledger, row: Row) -> str:
             f"--why \"restack onto origin/{ledger.trunk}\"`)")
 
 
-def _taken_in_pr(ledger: Ledger, row: Row, pr: int) -> None:
-    """What a taken-in row's pull request needs before `_check_pr`: not stacked, a base on trunk, and the retarget
-    the person's answer recorded - made here, by the sender's own move, and only when it is still needed."""
+def _taken_in_pr(ledger: Ledger, row: Row, pr: int, tip: str) -> None:
+    """What a taken-in row's pull request needs before `_check_pr`: the one the row records, for its branch at its
+    tip, not stacked, a base on trunk, and the retarget the person's answer recorded - made here, by the sender's own
+    move, and only when it is still needed. Nothing changes on GitHub before the identity is checked (security
+    review of 799bdc1: a `--pr` naming another pull request was retargeted first)."""
+    if row.pr and row.pr != str(pr):
+        raise MoveRefused(f"`{row.branch}` records PR #{row.pr}; queue it with --pr {row.pr}")
+    view = pr_view(ledger, pr, "state,headRefName,headRefOid,baseRefName")
+    if view.get("headRefName") != row.branch:
+        raise MoveRefused(f"PR #{pr} is for `{view.get('headRefName')}`, not `{row.branch}`")
+    if (view.get("headRefOid") or "") != tip:
+        raise MoveRefused(f"PR #{pr} head is {(view.get('headRefOid') or 'unknown')[:7]}, but `{row.branch}` is at "
+                          f"{tip[:7]}; push the branch first")
     if stacked(ledger, pr) is True:
         raise MoveRefused(f"PR #{pr} is in a native GitHub stack, whose members GitHub will not retarget or merge one "
                           "by one; unstack it first (`flotilla organize apply` does, on the person's answer)")
@@ -120,9 +130,7 @@ def _taken_in_pr(ledger: Ledger, row: Row, pr: int) -> None:
         refused = restack_refusal(ledger, row)
         if refused:
             raise MoveRefused(refused)
-    if row.retarget != ledger.trunk:
-        return
-    if pr_view(ledger, pr, "baseRefName").get("baseRefName") == ledger.trunk:
+    if row.retarget != ledger.trunk or view.get("baseRefName") == ledger.trunk:
         return
     try:
         done = ledger.run(["gh", "pr", "edit", str(pr), "--base", ledger.trunk], cwd=str(ledger.root),
@@ -221,7 +229,7 @@ def queue(ledger: Ledger, actor: Actor, branch: str, *, pr: int | None = None) -
                               f"session, or runs it in a terminal; record the wait with `flotilla work wait {branch} --on "
                               "\"the person\" --why \"approve before queue\"`")
         if pr is not None and (row.adopted_at or row.retarget):
-            _taken_in_pr(ledger, row, pr)
+            _taken_in_pr(ledger, row, pr, current)
         elif pr is not None and stacked(ledger, pr) is True:
             raise MoveRefused(f"PR #{pr} is in a native GitHub stack, whose members GitHub will not merge one by one; "
                               "unstack it first")

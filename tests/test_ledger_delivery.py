@@ -1021,3 +1021,20 @@ def test_a_stack_gh_cannot_list_does_not_block_the_queue(taken):
     answers["prs"][42] = open_pr("feat/a", head_a)
     answers["stacks"] = None
     assert delivery.queue(ledger, actor(ledger, SENDER), "feat/a", pr=42).state == "queued"
+
+
+def test_queue_never_retargets_a_pull_request_the_row_does_not_name(taken):
+    """Security review of 799bdc1: --pr named another pull request, and it was retargeted before _check_pr asked
+    whose it was. A taken-in row's PR is the one it records, and its head is checked before anything changes."""
+    root, ledger, answers, calls = taken
+    fork, head_a, tip_b = stacked_chain(root)
+    lower_delivered(root)
+    accept_taken(root, ledger, "feat/b", base=head_a, pr=43, retarget="main")
+    answers["prs"][43] = open_pr("feat/b", tip_b, baseRefName="feat/a")
+    answers["prs"][99] = open_pr("someone/else", "e" * 40, baseRefName="feat/a")
+    with pytest.raises(MoveRefused, match="records PR #43"):
+        delivery.queue(ledger, actor(ledger, SENDER), "feat/b", pr=99)
+    answers["prs"][43]["headRefOid"] = "d" * 40
+    with pytest.raises(MoveRefused, match="head is ddddddd"):
+        delivery.queue(ledger, actor(ledger, SENDER), "feat/b", pr=43)
+    assert not any(call[:2] == ["pr", "edit"] for call in calls)
