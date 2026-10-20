@@ -41,6 +41,25 @@ def build_parser() -> argparse.ArgumentParser:
     write.add_argument("--keep-unmeasured", action="store_true", help="write even if a tier is not green")
     write.add_argument("--timeout", type=float, default=1800.0, help="seconds per tier (default 1800)")
     write.add_argument("--confirm", default="", help="the mark `write` printed with the commands the person agreed to")
+    organize = sub.add_parser("organize", help="take in work the ledger never saw: walk, ask, carry out answers")
+    organize_actions = organize.add_subparsers(dest="action", required=True)
+    organize_next = organize_actions.add_parser("next", help="the next round of questions, as JSON")
+    organize_next.add_argument("--only", nargs="+", help="only these branches or #numbers, whoever's they are")
+    organize_show = organize_actions.add_parser("show", help="one item as data for the session to read")
+    organize_show.add_argument("key")
+    organize_answer = organize_actions.add_parser("answer", help="record the person's answer to one question")
+    organize_answer.add_argument("question")
+    organize_answer.add_argument("values", nargs="+")
+    organize_propose = organize_actions.add_parser("propose", help="record the session's proposal for the person's yes")
+    organize_propose.add_argument("key")
+    organize_propose.add_argument("--shape", default="")
+    organize_propose.add_argument("--why", default="")
+    organize_propose.add_argument("--plan", default="", help="a JSON file: [{branch, paths}]")
+    organize_propose.add_argument("--steps", default="", help="a JSON file: [{do, ...}]")
+    organize_apply = organize_actions.add_parser("apply", help="carry out what the person answered")
+    organize_apply.add_argument("keys", nargs="*")
+    for parser_ in (organize_next, organize_show, organize_answer, organize_propose, organize_apply):
+        parser_.add_argument("--root", default=".")
     work = sub.add_parser("work", help="move a row of the work ledger")
     moves = work.add_subparsers(dest="move", required=True)
 
@@ -358,6 +377,9 @@ def main(argv: list[str]) -> int:
     if args.command == "onboard":
         from flotilla.onboard.commands import run_onboard
         return run_onboard(args)
+    if args.command == "organize":
+        from flotilla.organize.commands import run_organize
+        return run_organize(args)
     if args.command in ("work", "tree", "receipt", "events", "status", "brief", "metrics"):
         from flotilla.ledger.commands import run_ledger_command
         return run_ledger_command(args)
