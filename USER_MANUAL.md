@@ -9,6 +9,7 @@ You run these in an interactive Claude Code session in the project's main checko
 | command | what it does |
 |---|---|
 | `/flotilla:doctor` | checks Python, git, Claude Code, the session census, the state directory and the project profile |
+| `/flotilla:organize` | asks about the work made before flotilla - open pull requests, chains and stacks, branches, local trunk commits, uncommitted edits - and takes in, ignores or does what you answer; others' work is shown, never touched |
 | `/flotilla:onboard` | sets the project up: reads what it declares, takes the recommended answers (quick) or asks you each one (custom), shows the profile, writes `.flotilla/`, pushes it to trunk, and offers to raise the fleet with your session as orchestrator |
 | `/flotilla:check` | reports drift between the profile and the repository as it is now (CI, trunk, test tiers) |
 | `/flotilla:spawn` | raises background sessions, each with a post and its own worktree |
@@ -72,6 +73,14 @@ Worktrees and receipts:
     flotilla onboard write [--confirm <mark>]       show the profile, then write it after your yes
     flotilla onboard publish                        commit .flotilla/, run the tiers over it, push it to trunk
 
+**Organize** (the person only; `/flotilla:organize` runs these for you)
+
+    flotilla organize next [--only <branch|#n> ...]  the next round of questions, as JSON
+    flotilla organize show <key>                     one item as data: titles, commits, files
+    flotilla organize answer <id> <value...>         one answer; typed words are your own words
+    flotilla organize propose <key> --shape|--plan|--steps   the session's proposal, for your yes
+    flotilla organize apply [<key> ...]              carry out what you answered
+
 Once the profile is on origin's trunk, its guards judge **every** Claude Code session that has flotilla on and works
 in the repository - your own interactive session too, even one that holds no post. With `push_receipt` on, a push to
 trunk or a tag, `gh pr create` and `gh pr merge` from a session's tools need a green push receipt; where you authorize
@@ -83,10 +92,10 @@ after `!` is not asked by the command guards; the `pre-push` hook (`/flotilla:gu
 git pushes too, never a `gh pr merge`, which merges on GitHub. Before the profile reaches trunk the guards already
 judge by the tree's own profile, so the onboarding branch is guarded too - and where you authorize merges, no session
 can merge the onboarding's own pull request (your approval cannot be asked until the rules are on trunk): merge it
-yourself. `write` and `publish` name open pull requests made outside the ledger where a session merges pull
-requests: once the rules are on trunk, merging one from a session needs a receipt and, where you authorize merges,
-an approved row it does not have (`offledger` covers work that has landed, not work waiting to) - merge them first,
-have a builder claim the branch, or merge it yourself with `!`.
+yourself. Work made before flotilla - open pull requests among it - is asked about by `/flotilla:organize`, which
+onboarding runs before and after publishing: a pull request taken in becomes a ledger row the fleet reviews and
+delivers, with the retarget and the closes your answer authorized recorded on it; one you ignore is left alone and
+not asked about again.
 
 **Machine and guards**
 
@@ -155,6 +164,10 @@ have a builder claim the branch, or merge it yourself with `!`.
 | every move refused: no profile on trunk | `.flotilla/` is committed locally but not on origin's trunk | `flotilla onboard publish`, or push it to origin's trunk yourself |
 | `work approve` refused as a tool call | approving is the person's own move; Claude's Bash call never is | type `! <command>` in your own session, or run it in a terminal |
 | `onboard publish` refuses: trunk is ahead or behind origin | publish pushes only the profile | push or move your own trunk commits, or `git pull`, then publish again |
+| a taken-in pull request will not queue: it needs a restack | the branch under it was rewritten after it was taken in, so its base is not on origin's trunk | the sender returns it with the `--why` the refusal prints; its builder rebases it onto origin's trunk and hands it over again |
+| `apply` says a stack stayed stacked | GitHub leaves a member that is queued or set to auto-merge in its stack | turn off auto-merge or take it out of the queue on GitHub, then `/flotilla:organize` again |
+| `gh pr close` (or `gh pr edit --base`) is refused | the pull request is one the ledger or organize tracks; only `flotilla organize apply` and the sender's moves change it | answer it in `/flotilla:organize` (own words: "close #43"), or type the command yourself after `!` |
+| `apply` says an item changed since you were asked | a head, a base or the tree moved between the question and `apply` | it is asked again: run `/flotilla:organize` |
 | `onboard publish` refuses: your own changes | the tree has uncommitted work besides `.flotilla/` | commit or stash it, then publish again |
 | `onboard publish` could not push | origin moved meanwhile, or trunk takes pull requests only | pull and publish again, or open a pull request with `.flotilla/` and merge it |
 | the orchestrator's own permission request is refused | it cannot put a question to itself | attach to the orchestrator and answer there |

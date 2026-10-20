@@ -1757,6 +1757,19 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    only (not on every onboarding command's detection), with a 15 s limit, and not at all where no session merges or
    nothing would refuse it; only open ledger rows count as known; publish says it after the push, not before.
 
+244. **Organize takes in the work made before flotilla, and the person's recorded answer is the authority** (Claude
+   Code session with the person, 2026-10-19..20; spec `docs/specs/2026-10-19-organize-design.md`, v3). Interactive
+   Claude Code sessions start in auto mode since v2.1.283, where a command left out of a skill's `allowed-tools` goes
+   to the classifier, not to the person, so leaving it out is no gate. The person's answer is therefore recorded by a
+   person-class command and carried out only by `flotilla organize apply`, which re-checks that what was shown still
+   holds; a new guard refuses the same moves typed by a session. Taking work in is a person-class move, not `claim`:
+   the onboarding session holds no post, the orchestrator may not claim, and post templates are never rewritten in a
+   project already onboarded. Native stacks were decided on a probe the person asked for (a scratch repository,
+   deleted after): members can be neither retargeted nor merged one by one, the REST unstack turns a stack into a
+   plain chain, so taking one in unstacks it first. Two rounds of specialist review (Claude Code plugins; code
+   review, delivery and git) shaped the design; a background security reviewer read every commit of the branch, and
+   each of its findings was fixed with a test seen red first.
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
