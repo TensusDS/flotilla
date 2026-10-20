@@ -25,8 +25,9 @@ def stack(number, *members, base="main", merged=()):
 class Hub:
     """A fake GitHub. `stuck` holds pull requests an unstack leaves stacked (queued, or with auto-merge on)."""
 
-    def __init__(self, pulls=(), stacks=(), login="me", stuck=(), fail=()):
+    def __init__(self, pulls=(), stacks=(), login="me", stuck=(), fail=(), merged=()):
         self.pulls = {item["number"]: dict(item) for item in pulls}
+        self.merged = [{"headRefName": name} for name in merged]
         self.stacks = [dict(item) for item in stacks]
         self.login = login
         self.stuck = set(stuck)
@@ -39,7 +40,9 @@ class Hub:
         if said in self.fail or (args and args[0] in self.fail):
             return 1, "", "gh: could not reach api.github.com"
         if args[:2] == ["pr", "list"]:
-            return 0, [item for item in self.pulls.values()]
+            if "merged" in args:
+                return 0, self.merged
+            return 0, [item for item in self.pulls.values() if item.get("state", "OPEN") == "OPEN"]
         if args[:2] == ["pr", "view"]:
             item = self.pulls[int(args[2])]
             return 0, {"state": item.get("state", "OPEN"), "headRefOid": item["headRefOid"],
@@ -94,3 +97,30 @@ def _toml(data: dict) -> str:
 
 def as_json(value) -> str:
     return json.dumps(value)
+
+
+def stacked_branches(root, *names, start="main", push=True):
+    """Branches each cut from the one before (the first from `start`), one commit each; pushed to origin.
+    Returns {name: head sha}."""
+    heads, base = {}, start
+    for name in names:
+        git(root, "checkout", "-q", base)
+        git(root, "checkout", "-q", "-b", name)
+        heads[name] = commit(root, f"work on {name}", name.replace("/", "_") + ".txt")
+        base = name
+    git(root, "checkout", "-q", "main")
+    if push:
+        git(root, "push", "-q", "origin", *names)
+    return heads
+
+
+def chain_pulls(heads, *, start="main", author="me"):
+    """The pull requests of a chain made by `stacked_branches`, numbered from 42."""
+    found, base = [], start
+    for number, (name, head) in enumerate(heads.items(), start=42):
+        found.append(pull(number, name, base, head, author=author))
+        base = name
+    return found
+
+
+MERGE_PROFILE = {**PROFILE, "pr": {"merge_method": "merge"}}

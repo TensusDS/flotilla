@@ -85,6 +85,15 @@ def pulls(slug: str, run=subprocess.run) -> tuple[list[Pull], bool]:
     return found, len(found) >= LIMIT
 
 
+def merged_branches(slug: str, run=subprocess.run) -> set[str]:
+    """The head branches of merged pull requests: how a squash- or rebase-merged branch is recognized."""
+    listed = _json(_gh(["pr", "list", "-R", slug, "--state", "merged", "--limit", str(LIMIT), "--json", "headRefName"],
+                       run), "merged pull requests")
+    if not isinstance(listed, list):
+        raise GitHubUnknown("gh's list of merged pull requests is not a list")
+    return {str(item.get("headRefName") or "") for item in listed if isinstance(item, dict)} - {""}
+
+
 def stacks(slug: str, run=subprocess.run) -> list[Stack]:
     """The open native stacks, each with its open members bottom first."""
     listed = _json(_gh(["api", "--paginate", f"repos/{slug}/stacks"], run), "stacks")
