@@ -82,6 +82,12 @@ def trunk_commits(root: Path, trunk: str, run=subprocess.run) -> list[str]:
     return _lines(_git(root, "rev-list", "--reverse", f"refs/remotes/origin/{trunk}..refs/heads/{trunk}", run=run))
 
 
+def profile_only(root: Path, sha: str, run=subprocess.run) -> bool:
+    """A commit that touches nothing but the profile, its posts and the settings onboarding writes."""
+    changed = _lines(_git(root, "diff-tree", "--no-commit-id", "--name-only", "-r", "--root", sha, run=run))
+    return bool(changed) and all(path.startswith(PROFILE_PATHS) for path in changed)
+
+
 def _adds_profile(root: Path, sha: str, run) -> bool:
     added = _git(root, "diff-tree", "--no-commit-id", "--name-only", "--diff-filter=A", "-r", sha, run=run)
     return ".flotilla/project.toml" in _lines(added)
@@ -122,14 +128,21 @@ def dirty(tree: Path, run=subprocess.run) -> list[str] | None:
     if said.returncode != 0:
         return None
     entries = [entry for entry in said.stdout.split("\0") if entry]
-    paths, skip_next = [], False
+    paths, skip_next, renamed_from = [], False, False
     for entry in entries:
         if skip_next:
             skip_next = False
             continue
+        if renamed_from:   # the old path of the rename before it (final review, finding 4)
+            renamed_from = False
+            if not entry.startswith(PROFILE_PATHS) and not any(entry.startswith(cache) for cache in CACHES):
+                paths.append(entry)
+            continue
         status, path = entry[:2], entry[3:]
-        if status[0] in "RC":
-            skip_next = True   # a rename's second entry is its old path
+        if status[0] == "C":
+            skip_next = True   # a copy's second entry is its source, which is not changed
+        elif status[0] == "R":
+            renamed_from = True   # a rename's second entry is its old path: the deletion half of the edit
         if path.startswith(PROFILE_PATHS) or any(path.startswith(cache) for cache in CACHES):
             continue
         paths.append(path)

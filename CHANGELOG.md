@@ -29,6 +29,8 @@ each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2
 - **Publish takes a profile already committed**, by fast-forwarding trunk - the shape a half-finished onboarding
   leaves - and the commits beside it you named; any other commit ahead of origin is still refused. The 0.19.0 warning
   about pull requests outside the ledger is replaced by organize.
+- **`gh pr merge` into a base other than trunk is refused** by the push guard: with no retarget such a merge lands
+  the work in the lower branch.
 - **A guard keeps sessions' hands off tracked pull requests**: `gh pr close`, `gh pr edit --base`, REST and GraphQL
   writes to them, and `gh stack` are refused from a session; a word the shell expands is refused as not told.
 - The sender and orchestrator post templates gain one line each (versions 10 and 18). README, the user manual (four

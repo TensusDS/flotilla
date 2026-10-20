@@ -34,11 +34,14 @@ FIRST = {
               ("words", "I say what goes where", "Tell Claude in your own words which edits go to which branch.")],
 }
 SHAPE_TEXT = {
-    "separate": ("Separate works", "One row per pull request, each reviewed over its own commits, landing in order."),
+    "separate": ("Separate works", "One row per pull request, each reviewed over its own commits, landing in order; "
+                                   "flotilla changes each upper pull request's base to trunk on GitHub once the one "
+                                   "below has landed."),
     "parts": ("One work in parts", "As separate works, linked as parts: an upper part is not queued before the one "
-                                   "below is delivered, and the judge walks the whole path."),
-    "whole": ("One work whole", "One row on the top branch, one review over everything; the lower pull requests "
-                                "close once it lands."),
+                                   "below is delivered, and the judge walks the whole path; bases change to trunk on "
+                                   "GitHub as each part below lands."),
+    "whole": ("One work whole", "One row on the top branch, one review over everything; flotilla changes its base to "
+                                "trunk on GitHub, and closes the lower pull requests there once it lands."),
     "claude": ("Claude works it out", "Claude reads the pull requests and proposes one of the three shapes, with its "
                                       "reasons; you decide."),
 }
@@ -196,6 +199,10 @@ def _follow_up(found: Item, data: dict) -> dict | None:
     proposal = data["proposals"].get(key) or {}
     if _proposal_errors(proposal):
         return None   # never put a malformed proposal to the person; `waiting` says so
+    if found.kind == "edits":   # the person's words about edits become a plan, never steps (final review, 2)
+        if value in ("discretion", "words") and proposal.get("plan") and not _bound(data, key, "plan"):
+            return _q(f"{key}:plan", "Plan", _plan_text(proposal), YES_NO, free_text=True)
+        return None
     if value == "words" and "words" in first:
         return _q(f"{key}:steps", "Your words", _steps_text(proposal), YES_NO, free_text=True) \
             if proposal.get("steps") and not _bound(data, key, "steps") else None
@@ -304,7 +311,11 @@ def waiting(walk: Walk, data: dict) -> list[str]:
         errors = _proposal_errors(proposal)
         if errors:
             out.append(f"{key}: the proposal is malformed ({'; '.join(errors)}); propose it again")
-        elif first.get("value") == "words" and not proposal.get("steps"):
+        elif found.kind == "edits" and first.get("value") in ("discretion", "words") and not proposal.get("plan"):
+            out.append(f"{key}: read the edits (`flotilla organize show {key}`) and propose a plan (`flotilla organize "
+                       f"propose {key} --plan <file>`)" + (f" from the person's words: {_quoted(first['words'])}"
+                                                           if first.get("words") else ""))
+        elif first.get("value") == "words" and found.kind != "edits" and not proposal.get("steps"):
             out.append(f"{key}: turn the person's words into steps (`flotilla organize propose {key} --steps <file>`)")
         elif _value(data, f"{key}:shape") == "claude" and not proposal.get("shape"):
             out.append(f"{key}: read it (`flotilla organize show {key}`) and propose a shape (`flotilla organize "

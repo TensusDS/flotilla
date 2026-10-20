@@ -54,7 +54,7 @@ def is_path_sign(path: str) -> bool:
 
 def other_ai_signs(root: Path, base: str, tip: str, run=subprocess.run) -> list[str]:
     """Another AI's signs that base..tip adds or changes: its files, and other tools' co-author trailers."""
-    found = [path for path in (_git(root, "diff", "--name-only", base, tip, run=run) or "").splitlines()
+    found = [path for path in (_git(root, "diff", "--name-only", f"{base}...{tip}", run=run) or "").splitlines()
              if path and is_path_sign(path)]
     messages = _git(root, "log", "--format=%B", f"{base}..{tip}", run=run) or ""
     found += sorted({match.group(0).strip() for match in OTHER_AI_TRAILER.finditer(messages)})

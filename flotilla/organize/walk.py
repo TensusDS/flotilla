@@ -92,7 +92,7 @@ def walk(root: Path, *, rows: dict, profile: dict, ignored=frozenset(), run=subp
             out.notes.append(f"GitHub could not say who you are ({shown(str(err))}); no pull request is offered")
     person = whose.person_of(root, login, run=run)
     origin = gitq.resolve(root, f"refs/remotes/origin/{trunk}", run=run) or ""
-    _before_items(out, root, trunk, origin, run)
+    _before_items(out, root, trunk, origin, run, slug)
     if out.phase == "after":
         pull_branches = _pull_items(out, root, trunk, origin, slug, person, rows, profile, only, run)
         _branch_items(out, root, trunk, person, rows, only, slug, pull_branches, run)
@@ -110,7 +110,21 @@ def walk(root: Path, *, rows: dict, profile: dict, ignored=frozenset(), run=subp
     return out
 
 
-def _before_items(out: Walk, root: Path, trunk: str, origin: str, run) -> None:
+def _conflicts(root: Path, tip: str, slug, run) -> list[str]:
+    """The open pull requests these commits would conflict with once on trunk (spec, sections 1 and 6)."""
+    if not slug:
+        return []
+    try:
+        pulls, _ = github.pulls(slug, run)
+    except github.GitHubUnknown as err:
+        return [f"whether these conflict with open pull requests could not be asked ({shown(str(err))})"]
+    found = [f"#{pull.number}" for pull in pulls
+             if gitq.resolve(root, pull.head, run=run) and gitq.merges_cleanly(root, tip, pull.head, run=run) is False]
+    return [f"conflicts with {', '.join(found)}: landing them sends those pull requests back for a merge with trunk"] \
+        if found else []
+
+
+def _before_items(out: Walk, root: Path, trunk: str, origin: str, run, slug=None) -> None:
     if out.phase == "before":
         for cache in local.caches(root, run=run):
             out.items.append(Item(key=f"cache:{cache}", kind="cache", phase="before",
@@ -119,6 +133,7 @@ def _before_items(out: Walk, root: Path, trunk: str, origin: str, run) -> None:
         found = local.onboard_branch(root, trunk, run=run)
         if found and found["extra"]:
             lines = [f"{sha[:7]} {_subject(root, sha, run)}" for sha in found["extra"]]
+            lines += _conflicts(root, found["tip"], slug, run)
             if not found["direct"]:
                 out.notes.append(f"`{found['branch']}` holds the profile, but not directly on origin's {trunk}; "
                                  "publish cannot fast-forward to it - settle it yourself")
@@ -128,6 +143,13 @@ def _before_items(out: Walk, root: Path, trunk: str, origin: str, run) -> None:
                                             "profile: land them with the profile, or move them to a branch of their own?",
                                       lines=lines, facts={**found, "origin": origin}))
     commits = local.trunk_commits(root, trunk, run=run)
+    profile_commits = [sha for sha in commits if local.profile_only(root, sha, run=run)]
+    if profile_commits:   # onboarding's own commit is never offered to move or drop (final review, finding 5)
+        own = len(commits) - len(profile_commits)
+        if own:
+            out.notes.append(f"your local {trunk} carries the profile commit beside {own} commit(s) of yours; "
+                             "organize does not move them with it - publish, or settle them yourself")
+        commits = []
     if commits:
         head = gitq.resolve(root, f"refs/heads/{trunk}", run=run) or ""
         out.items.append(Item(key=f"trunk:{trunk}", kind="trunk", phase=out.phase,

@@ -17,6 +17,9 @@ from flotilla.organize import questions, store
 from flotilla.organize.items import Item, seen, shown
 
 FOLLOW_UPS = (":shape", ":proposal", ":plan", ":steps")
+#: The order answers are carried out in: the local trunk is settled before onboarding's branch moves trunk, so no
+#: move of trunk ever passes the person's own commits on it (final review of 67a497f..7a44d0c, finding 1).
+ORDER = ("cache", "trunk", "onboard", "edits")
 
 
 class Skip(RuntimeError):
@@ -48,7 +51,10 @@ def apply(root, data: dict, *, keys=(), walked, profile: dict, run=subprocess.ru
     root = Path(root)
     lines, complete = [], True
     current = {item.key: item for item in walked.items}
-    for key in _item_keys(data):
+    order = {kind: index for index, kind in enumerate(ORDER)}
+    keys_now = sorted(_item_keys(data), key=lambda key: (order.get(current[key].kind, len(ORDER))
+                                                          if key in current else len(ORDER), key))
+    for key in keys_now:
         if keys and key not in keys:
             continue
         answer = data["answers"].get(key) or {}
@@ -98,7 +104,7 @@ def _carry_out(root: Path, item: Item, data: dict, *, walked, profile: dict, run
     value = (data["answers"].get(item.key) or {}).get("value")
     if value == "ignore":
         return []
-    if value == "words":
+    if value == "words" and item.kind != "edits":
         return _steps(root, item, data, walked=walked, run=run, ledger=ledger)
     if value == "take" and item.kind in ("pr", "chain", "branch", "stack"):
         return _take(root, item, questions.shape_of(item, data), walked=walked, run=run, ledger=ledger)
@@ -190,15 +196,25 @@ def _steps(root: Path, item: Item, data: dict, *, walked, run, ledger) -> list[s
     return out
 
 
+def _kept(root: Path, sha: str, run) -> str:
+    """The dropped ref holding `sha`: made now, or found from an earlier run - and proved to hold it before any
+    command that loses work is printed (final review, finding 11: a lock or a full disk read as "kept already")."""
+    from flotilla.organize import keep
+    ref = f"refs/flotilla/dropped/{sha}"
+    try:
+        keep.create_ref(root, "dropped", sha, run=run)
+    except RuntimeError as err:
+        if gitq.resolve(root, ref, run=run) != sha:
+            raise Skip(f"the commits could not be kept under {ref} ({err}); nothing is dropped") from err
+    return ref
+
+
 def _drop_branch(root: Path, branch: str, run) -> str:
     from flotilla.organize import keep
     tip = gitq.resolve(root, f"refs/heads/{branch}", run=run)
     if tip is None:
         raise Skip(f"there is no local `{branch}` to delete")
-    try:
-        ref = keep.create_ref(root, "dropped", tip, run=run)
-    except RuntimeError:
-        ref = f"refs/flotilla/dropped/{tip}"   # kept already, by an earlier run
+    ref = _kept(root, tip, run)
     return (f"`{branch}` is kept under {ref}; deleting it loses work, so it is yours to type: "
             f"! git branch -D {branch}")
 
@@ -219,10 +235,7 @@ def _trunk(root: Path, item: Item, value: str, *, walked, run, ledger) -> list[s
     command = (f"git reset --keep origin/{trunk}" if where and Path(where).resolve() == here
                else f"git branch -f {trunk} origin/{trunk}")
     if value == "drop":
-        try:
-            ref = keep.create_ref(root, "dropped", head, run=run)
-        except RuntimeError:
-            ref = f"refs/flotilla/dropped/{head}"
+        ref = _kept(root, head, run)
         return [f"the {len(item.facts['commits'])} commit(s) are kept under {ref}; dropping them is yours to type: "
                 f"! {command}"]
     if value != "move":
@@ -234,8 +247,12 @@ def _trunk(root: Path, item: Item, value: str, *, walked, run, ledger) -> list[s
     made = _git(root, "branch", branch, head, run=run)
     if made.returncode != 0:
         raise Skip(f"git could not create `{branch}`: {made.stderr.strip()[:200]}")
-    moved = _git(root, *(["reset", "--keep", f"origin/{trunk}"] if where else
-                         ["branch", "-f", trunk, f"origin/{trunk}"]), run=run)
+    if where:
+        if gitq.resolve(root, "HEAD", run=run) != head:
+            raise Skip(f"`{branch}` holds the commits, but {trunk} moved since you were asked; it is not moved")
+        moved = _git(root, "reset", "--keep", f"origin/{trunk}", run=run)
+    else:   # compare-and-swap: a commit made since the walk is never left on no branch
+        moved = _git(root, "update-ref", f"refs/heads/{trunk}", item.facts["origin"], head, run=run)
     if moved.returncode != 0:
         raise Skip(f"`{branch}` holds the commits, but {trunk} did not move: {moved.stderr.strip()[:200]}")
     out = [f"`{branch}` holds the {len(item.facts['commits'])} commit(s); {trunk} is back at origin's"]
@@ -318,6 +335,7 @@ def _take_pulls(root: Path, item: Item, shape: str, *, trunk: str, run, ledger) 
 
 
 def _edits(root: Path, item: Item, value: str, data: dict, *, walked, run, ledger) -> list[str]:
+    # "discretion", "words" and typed words all come here: each is carried out by a plan the person confirmed
     """Keep every edit first, keep secrets out, then carry out the plan the person confirmed, exactly."""
     from flotilla.core import paths
     from flotilla.organize import keep, secrets, split
@@ -369,6 +387,7 @@ def _onboard(root: Path, item: Item, value: str, data: dict, *, walked, run) -> 
     """Onboarding's branch beside its profile commit (spec, section 6): trunk is fast-forwarded to the profile - or,
     on `land`, to the branch's tip - and the organizing tree switched to it, so `onboard publish` carries a profile
     already committed. Trunk is never rewritten: only fast-forwarded, and refused where another tree holds it."""
+    from flotilla.organize import keep
     facts, trunk = item.facts, walked.trunk
     branch, profile, tip = facts["branch"], facts["profile"], facts["tip"]
     if value not in ("land", "own-branch"):
@@ -384,14 +403,18 @@ def _onboard(root: Path, item: Item, value: str, data: dict, *, walked, run) -> 
     target = tip if value == "land" else profile
     if gitq.is_ancestor(root, facts["origin"], target, run=run) is not True:
         raise Skip(f"{target[:7]} does not stand on origin's {trunk}; trunk is only fast-forwarded")
+    before = gitq.resolve(root, f"refs/heads/{trunk}", run=run)
+    if before and gitq.is_ancestor(root, before, target, run=run) is not True:
+        raise Skip(f"your local {trunk} has commits {target[:7]} does not carry ({before[:7]}); trunk is only "
+                   f"fast-forwarded, so settle the local trunk first (`trunk:{trunk}`), then this is asked again")
     name = ""
     if value == "own-branch":
         subject = _git(root, "log", "-1", "--format=%s", facts["extra"][0], run=run).stdout.strip()
         name = _slug_branch(subject)
         if gitq.resolve(root, f"refs/heads/{name}", run=run):
             raise Skip(f"`{name}` exists already; answer in your own words where these commits go")
-    moved = _git(root, "branch", "-f", trunk, target, run=run)
-    if moved.returncode != 0:
+    moved = _git(root, "update-ref", f"refs/heads/{trunk}", target, before or keep.ZERO, run=run)
+    if moved.returncode != 0:   # compare-and-swap: trunk moved since it was checked, so nothing is moved
         raise Skip(f"git did not move {trunk}: {moved.stderr.strip()[:200]}")
     switched = _git(root, "switch", "-q", trunk, run=run)
     if switched.returncode != 0:

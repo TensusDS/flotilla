@@ -131,9 +131,8 @@ WAITS = ("pull requests, chains and branches are asked by `/flotilla:organize` o
 
 
 def _profile_only(root: Path, sha: str) -> bool:
-    """A commit that touches nothing but the profile, its posts and the settings onboarding writes."""
-    changed = _git(root, "diff-tree", "--no-commit-id", "--name-only", "-r", "--root", sha).stdout.split()
-    return bool(changed) and all(path.startswith(PROFILE_PATHS) for path in changed)
+    from flotilla.organize.local import profile_only
+    return profile_only(root, sha)
 
 
 def _before_publish(root: Path, trunk: str, paths: list[str], *, remote: bool, named=()) -> str:
