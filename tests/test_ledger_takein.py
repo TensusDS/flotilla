@@ -80,3 +80,78 @@ def test_the_new_fields_fold_into_the_row(tmp_path):
 def test_every_new_field_is_a_row_field(name):
     from flotilla.ledger.model import ROW_FIELDS
     assert name in ROW_FIELDS
+
+
+# --- the take-in move --------------------------------------------------------------------------------------------
+
+from flotilla.core import caller  # noqa: E402
+from flotilla.ledger import handover, reading, steering, takein, views  # noqa: E402
+from flotilla.ledger.errors import MoveRefused  # noqa: E402
+from ledgerkit import actor  # noqa: E402
+
+
+class World:
+    def __init__(self, root, ledger, fork):
+        self.root, self.ledger, self.fork = root, ledger, fork
+
+
+@pytest.fixture()
+def world(tmp_path, monkeypatch):
+    monkeypatch.setattr(caller, "person_refusal", lambda what: "")
+    root = repo_with_origin(tmp_path)
+    fork = git(root, "rev-parse", "HEAD")
+    git(root, "checkout", "-q", "-b", "feat/a")
+    commit(root, "work from before flotilla", "a.txt")
+    git(root, "checkout", "-q", "main")
+    return World(root, make_ledger(root, tmp_path / "state"), fork)
+
+
+def test_take_in_writes_a_claimed_row_under_the_reserved_owner(world):
+    row = takein.take_in(world.ledger, "feat/a", base=world.fork, pr=42, retarget="main", closes=[43])
+    assert (row.state, row.owner, row.pr, row.base) == ("claimed", takein.TAKEN_IN, "42", world.fork)
+    assert (row.judged_as, row.retarget, row.closes) == ("main", "main", [43])
+    assert row.adopted_at == git(world.root, "rev-parse", "origin/main")
+    assert row.history[-1]["move"] == "take-in"
+
+
+def test_take_in_is_the_persons(world, monkeypatch):
+    monkeypatch.setattr(caller, "person_refusal", lambda what: "`x` is a background session")
+    with pytest.raises(MoveRefused, match="background"):
+        takein.take_in(world.ledger, "feat/a", base=world.fork)
+    assert world.ledger.rows() == {}
+
+
+@pytest.mark.parametrize("branch, base", [("feat/a", ""), ("feat/$(x)", "f" * 40)])
+def test_take_in_refuses_an_empty_base_and_an_unsafe_branch(world, branch, base):
+    with pytest.raises(MoveRefused):
+        takein.take_in(world.ledger, branch, base=base or "")
+    assert world.ledger.rows() == {}
+
+
+def test_take_in_refuses_a_branch_an_open_row_holds(world):
+    takein.take_in(world.ledger, "feat/a", base=world.fork)
+    with pytest.raises(MoveRefused, match="already claimed"):
+        takein.take_in(world.ledger, "feat/a", base=world.fork)
+
+
+def test_the_reserved_owner_is_no_post_and_no_session(world):
+    from flotilla.posts import post_for_session
+    assert post_for_session(world.ledger.posts, takein.TAKEN_IN) is None
+    assert takein.TAKEN_IN not in world.ledger.live_names()
+
+
+def test_a_taken_in_row_is_orphaned_and_adopted_by_a_seat(world):
+    takein.take_in(world.ledger, "feat/a", base=world.fork)
+    entries = views.roster(world.ledger.rows(), world.ledger.profile, world.ledger.live_names())
+    assert {entry["who"]: entry["state"] for entry in entries}[takein.TAKEN_IN] == "orphaned"
+    row = steering.adopt(world.ledger, actor(world.ledger, "orchestrator 1"), "feat/a", to="main session 1")
+    assert (row.owner, row.adopted_from, row.judged_as) == ("main session 1", takein.TAKEN_IN, "main")
+
+
+def test_a_returned_taken_in_row_reaches_a_seat(world):
+    takein.take_in(world.ledger, "feat/a", base=world.fork)
+    steering.adopt(world.ledger, actor(world.ledger, "orchestrator 1"), "feat/a", to="minor session 1")
+    handover.hand(world.ledger, actor(world.ledger, "minor session 1"), "feat/a")
+    reading.take(world.ledger, actor(world.ledger, "review session 1"), "feat/a")
+    row = reading.fix(world.ledger, actor(world.ledger, "review session 1"), "feat/a", why="name the file")
+    assert (row.state, row.owner, row.judged_as) == ("fixing", "minor session 1", "main")
