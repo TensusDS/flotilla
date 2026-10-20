@@ -26,7 +26,7 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
   open rows with `waiting_on` the person, the oldest from 2026-10-04. A sender's `wait` set 75 of them and a main
   seat's set 36. The person says some were answered in the orchestrator's session. Nothing then clears the row: only
   a move by the seat that waits clears it, and that seat is gone. Some notes are not questions at all but parked
-  work ("отложено словом человека: ... не трогать"), which is a hold, not a wait. Ideas: the orchestrator records the
+  work ("deferred by the person's word: ... do not touch", written in Russian), which is a hold, not a wait. Ideas: the orchestrator records the
   person's answer on the row (a move that clears `waiting_on` and keeps the answer as evidence); `watch` puts a wait
   older than N days whose seat is gone into its own line ("waits on an answer nobody will read"); parked work is
   moved to `hold`. *(seen 2026-10-20 on 0.20.0: B - flotilla/watch/fleet.py:81)*
