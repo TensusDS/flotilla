@@ -278,5 +278,6 @@ def test_the_orchestrator_cleans_as_its_last_step():
 def test_the_down_command_says_what_cleaning_removes():
     from pathlib import Path
     text = (Path(__file__).resolve().parents[1] / "skills" / "down" / "SKILL.md").read_text(encoding="utf-8")
-    assert "Trees are kept" not in text and "exists elsewhere are removed" in text
+    text = " ".join(text.split())
+    assert "Trees are kept" not in text and "every file in it is committed or made again" in text
     assert "Never remove a tree yourself" in text

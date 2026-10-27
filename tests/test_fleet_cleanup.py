@@ -282,6 +282,10 @@ def test_a_lock_flotilla_put_on_a_dead_seats_tree_does_not_hold_it(tmp_path):
     root, ledger = world(tmp_path)
     dead = seat(root, tmp_path, "app-main-1", "fleet/main-1")
     git(root, "worktree", "lock", "--reason", "flotilla: main session 1", str(dead))
+    import os
+    import time
+    then = time.time() - 3600   # a fleet stopped by force long ago (final review of gc stage 1, I3)
+    os.utime(tmp_path / "app" / ".git" / "worktrees" / "app-main-1" / "locked", (then, then))
     alive_lock = seat(root, tmp_path, "app-main-2", "fleet/main-2")
     git(root, "worktree", "lock", "--reason", "flotilla: main session 2", str(alive_lock))
     theirs = seat(root, tmp_path, "app-main-3", "fleet/main-3")

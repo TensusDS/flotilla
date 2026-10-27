@@ -122,6 +122,7 @@ def test_a_flotilla_lock_of_a_gone_seat_does_not_hold_it(tmp_path):
     root, ledger = world(tmp_path)
     tree = seat(root, tmp_path)
     git(root, "worktree", "lock", "--reason", "flotilla: main session 9", str(tree))
+    age_lock(tree)
     found = judge(ledger, tree)
     assert found.removable and found.lock == "flotilla: main session 9"
 
@@ -171,3 +172,47 @@ def test_a_populated_submodule_keeps_the_tree(tmp_path):
     (tree / "lib" / "lib.txt").write_text("edited inside the submodule\n", encoding="utf-8")
     found = judge(ledger, tree)
     assert not found.removable and any("submodule" in reason for reason in found.reasons), found.reasons
+
+
+
+def age_lock(tree, seconds=3600):
+    """A lock written an hour ago: past spawn's launch window, so its seat would be in the census by now."""
+    import os
+    import time
+    locked = Path(git(tree, "rev-parse", "--absolute-git-dir")) / "locked"
+    then = time.time() - seconds
+    os.utime(locked, (then, then))
+
+
+def test_a_fresh_flotilla_lock_with_no_row_is_a_seat_being_raised(tmp_path):
+    """Final review of gc stage 1, I3: spawn adds and locks a tree before it reserves the row, and asks the census in
+    between; a pass in that window read the new seat's lock as a gone seat's, lifted it and removed the tree."""
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    git(root, "worktree", "lock", "--reason", "flotilla: main session 1", str(tree))
+    found = judge(ledger, tree)
+    assert not found.removable and "being raised" in found.reasons[0]
+    age_lock(tree)
+    assert judge(ledger, tree).removable
+
+
+def test_a_row_reserved_moments_ago_holds_its_seats_lock(tmp_path):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    git(root, "worktree", "lock", "--reason", "flotilla: main session 1", str(tree))
+    age_lock(tree)
+    with ledger.session() as s:
+        s.append(actor(ledger, "main session 1"), "r1", "reserve", "reserved",
+                 fields={"branch": "fleet/main-1", "owner": "main session 1", "tree": str(tree)})
+    found = judge(ledger, tree)
+    assert not found.removable and "moments ago" in found.reasons[0]
+
+
+def test_a_tree_with_another_worktree_inside_it_stays(tmp_path):
+    """Final review of gc stage 1, C1: Claude Code keeps its own worktrees under `.claude/worktrees/`; removing the
+    tree around one deletes the work in it."""
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    git(tree, "worktree", "add", "-q", "-b", "feat/nested", str(tree / ".claude" / "worktrees" / "x"), "main")
+    found = judge(ledger, tree)
+    assert not found.removable and any("another worktree lies inside it" in reason for reason in found.reasons)

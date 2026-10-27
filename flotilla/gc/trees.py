@@ -20,6 +20,8 @@ from flotilla.gc import ignored, refs
 DONE = {"shipped", "closed", "released"}
 #: The lock reason spawn writes on a seat's tree.
 LOCK_PREFIX = "flotilla: "
+#: The lock the collector itself holds on a tree while it removes it: its own, never a seat being raised.
+GC_LOCK = "flotilla: gc"
 #: What git leaves in a tree's git directory while an operation is in progress; `git worktree remove` ignores
 #: `index.lock` (git 2.53), so the collector looks itself.
 MARKERS = ("index.lock", "MERGE_HEAD", "REBASE_HEAD", "rebase-merge", "rebase-apply", "CHERRY_PICK_HEAD",
@@ -54,7 +56,36 @@ def locks(ledger) -> dict[Path, str]:
     return found
 
 
-def _alive(ledger, here: Path, sessions, spare_rows, lock: str | None) -> str:
+def _raising(ledger, holder: str, gitdir: str) -> str:
+    """Whether flotilla's lock names a seat spawn may still be raising: spawn adds and locks the tree before it
+    reserves the row, and asks the census in between (final review of gc stage 1, I3)."""
+    import time
+
+    from flotilla.fleet.spawn import LAUNCH_WINDOW, _moment
+    rows = [row for row in ledger.rows().values() if row.owner == holder]
+    if not rows:
+        try:
+            age = time.time() - (Path(gitdir) / "locked").stat().st_mtime
+        except OSError:
+            return ""
+        return f"a seat is being raised in it (its lock is {int(age)} s old and no row names it yet)" \
+            if age < LAUNCH_WINDOW else ""
+    now = _moment(ledger.now())
+    for row in rows:
+        reserved = _moment((row.history[0].get("at") if row.history else "") or row.updated_at)
+        if now is None or reserved is None or (now - reserved).total_seconds() < LAUNCH_WINDOW:
+            return f"{holder} was reserved moments ago and may still be launching"
+    return ""
+
+
+def _nested(ledger, here: Path) -> str:
+    listing = _git(ledger.root, "worktree", "list", "--porcelain", run=ledger.run).stdout
+    inside = [Path(line[len("worktree "):]) for line in listing.splitlines() if line.startswith("worktree ")]
+    found = [path for path in inside if path.resolve() != here and here in path.resolve().parents]
+    return f"another worktree lies inside it: {found[0]}" if found else ""
+
+
+def _alive(ledger, here: Path, sessions, spare_rows, lock: str | None, gitdir: str = "") -> str:
     live = {item.name for item in sessions if item.name}
     # a seat works in its tree from the main checkout (decision 208): an open row for a live session is its tree
     for row in ledger.rows().values():
@@ -70,11 +101,13 @@ def _alive(ledger, here: Path, sessions, spare_rows, lock: str | None) -> str:
             return f"locked by someone else ({lock or 'no reason given'})"
         if holder in live:
             return f"{holder} is alive and holds its lock"
+        raising = "" if lock == GC_LOCK else _raising(ledger, holder, gitdir)
+        if raising:
+            return raising
     return ""
 
 
-def _in_use(tree: Path, proc_root, notes: list[str], *, run) -> str:
-    gitdir = _git(tree, "rev-parse", "--absolute-git-dir", run=run).stdout.strip()
+def _in_use(tree: Path, gitdir: str, proc_root, notes: list[str], *, run) -> str:
     if gitdir:
         for marker in MARKERS:
             if (Path(gitdir) / marker).exists():
@@ -135,12 +168,13 @@ def judge_tree(ledger, tree, *, holders: list[str], sessions, spare_rows=(), pro
         return verdict
     here = tree.resolve()
     lock = locks(ledger).get(here)
-    alive = _alive(ledger, here, list(sessions), set(spare_rows), lock)
+    gitdir = _git(tree, "rev-parse", "--absolute-git-dir", run=run).stdout.strip()
+    alive = _alive(ledger, here, list(sessions), set(spare_rows), lock, gitdir) or _nested(ledger, here)
     if alive:
         verdict.reasons.append(alive)
         return verdict
     verdict.lock = lock or ""
-    busy = _in_use(tree, proc_root, verdict.notes, run=run)
+    busy = _in_use(tree, gitdir, proc_root, verdict.notes, run=run)
     if busy:
         verdict.reasons.append(busy)
         return verdict

@@ -145,11 +145,12 @@ not asked about again.
 4. **A session done or stuck:** `/flotilla:retire "<name>"`. Its open rows are named; the orchestrator adopts them, all
    at once with `flotilla work adopt --from "<name>" --to "<session>"`.
 5. **End of day:** ask the orchestrator to stand the fleet down, or run `/flotilla:down`. `fleet down` ends by
-   cleaning up: a tree goes when every commit and file in it exists elsewhere, a branch when its work has landed, and
-   commits only a reflog reaches are parked under `refs/flotilla/parked/` - never delete those by hand. What stays
-   is listed once per reason. The orchestrator also cleans as its own last step before it closes. Declare long-lived
-   lines branches land on with `[gc] trunks = ["<branch>"]`, and the project's own rebuildable outputs with
-   `[gc] regenerable = ["<name>"]`. `flotilla fleet clean` is the same pass by hand, a plan until `--yes`.
+   cleaning up: a tree goes when every commit in it is on a ref that stays and every file is committed or made
+   again by an install, a branch when its work has landed, and commits only a reflog reaches are parked under
+   `refs/flotilla/parked/` - never delete those by hand. What stays is listed once per reason. The orchestrator
+   also cleans as its own last step before it closes. Declare long-lived lines branches land on with
+   `[gc] trunks = ["<branch>"]`, and the project's own rebuildable outputs with `[gc] regenerable = ["<name>"]`.
+   `flotilla fleet clean` is the same pass by hand, a plan until `--yes`.
 6. **After a plugin update:** stand the fleet down, update, bring `.flotilla/posts/` up to the new templates, raise
    the fleet again.
 

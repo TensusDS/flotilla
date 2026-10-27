@@ -15,10 +15,8 @@ from pathlib import Path
 from flotilla.gc import refs
 from flotilla.gc.branches import BranchVerdict
 from flotilla.gc.park import ParkFailed, park
-from flotilla.gc.trees import TreeVerdict, judge_tree
+from flotilla.gc.trees import GC_LOCK, TreeVerdict, judge_tree
 from flotilla.ledger import core
-
-GC_LOCK = "flotilla: gc"
 
 
 def _git(ledger, *args):

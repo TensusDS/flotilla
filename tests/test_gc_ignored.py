@@ -50,7 +50,7 @@ def test_evidence_beside_a_directory_makes_it_regenerable(tmp_path):
 
 def test_claude_runtime_state_is_regenerable_but_granted_permissions_are_not(tmp_path):
     root, tree = tree_with(tmp_path, ".claude/\n")
-    put(tree, ".claude/projects/x.json")
+    put(tree, ".claude/scheduled_tasks.json")
     assert holding(root, tree) == []
     put(tree, ".claude/settings.local.json", '{"permissions": {"allow": ["Bash(make)"]}}')
     assert holding(root, tree) == [".claude/"]
@@ -84,3 +84,34 @@ def test_a_nested_repository_under_an_ignored_path_holds_the_tree(tmp_path):
     put(tree, "work/__pycache__/a.pyc")
     git(tree / "work", "init", "-q")
     assert holding(root, tree) == ["work/"]
+
+
+
+def test_only_named_runtime_state_under_claude_is_regenerable(tmp_path):
+    """Final review of gc stage 1, C1: everything under an ignored `.claude/` passed, a plan another AI wrote among
+    it; only Claude Code's own runtime state does (the eleven paths a field project excludes)."""
+    root, tree = tree_with(tmp_path, ".claude/\n")
+    put(tree, ".claude/plans/plan.md")
+    assert holding(root, tree) == [".claude/"]
+
+
+def test_a_cache_name_inside_a_folded_directory_does_not_vouch_for_a_secret(tmp_path):
+    """Final review of gc stage 1, C2: inside a walked directory `build/` vouched for `deploy/build/prod.env` - the
+    I1 hole again. Within a walk only suffixes, true caches and an install beside its manifest vouch."""
+    root, tree = tree_with(tmp_path, "deploy/\n")
+    put(tree, "deploy/build/prod.env")
+    assert holding(root, tree) == ["deploy/"]
+    (tmp_path / "second").mkdir()
+    root2, tree2 = tree_with(tmp_path / "second", "tools/\n")
+    put(tree2, "tools/crystal3d/__pycache__/a.cpython-312.pyc")
+    assert holding(root2, tree2) == []
+    put(tree2, "tools/renders/dist/final.mp4")
+    assert holding(root2, tree2) == ["tools/"]
+
+
+def test_a_regenerable_entry_that_is_a_repository_holds_the_tree(tmp_path):
+    """gc design 6, rule 5: a nested repository is the person's, whatever its directory is called."""
+    root, tree = tree_with(tmp_path, "build/\n")
+    put(tree, "build/x.o")
+    git(tree / "build", "init", "-q")
+    assert holding(root, tree) == ["build/"]

@@ -25,50 +25,69 @@ REGENERABLE = {"node_modules", ".venv", "venv", "__pycache__", "dist", "build", 
                ".turbo", ".parcel-cache", ".eslintcache", ".DS_Store", ".gradle", "htmlcov"}
 REGENERABLE_SUFFIXES = (".pyc", ".pyo", ".tsbuildinfo")
 #: A directory an install makes again when one of these files sits beside it.
-EVIDENCE = {"vendor": ("composer.lock", "go.mod"), "Pods": ("Podfile.lock",), "bower_components": ("bower.json",),
+EVIDENCE = {"node_modules": ("package.json",), ".venv": ("pyproject.toml", "requirements.txt", "uv.lock"),
+            "vendor": ("composer.lock", "go.mod"), "Pods": ("Podfile.lock",), "bower_components": ("bower.json",),
             ".bundle": ("Gemfile.lock",), "elm-stuff": ("elm.json",)}
-CLAUDE = ".claude/"
+#: Inside a directory being walked, only these vouch for what is under them: true caches. A name like `build` or
+#: `dist` there vouches for nothing - `deploy/build/prod.env` (final review of gc stage 1, C2; review of the cleanup,
+#: I1).
+CACHES = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
+#: Claude Code's own runtime state under `.claude/`, by name (a field project excludes these). Not
+#: `.claude/worktrees/` (Claude Code's own worktrees, with work in them), not agent memory, not plans: those are
+#: somebody's (final review of gc stage 1, C1).
+CLAUDE_RUNTIME = (".claude/scheduled_tasks.lock", ".claude/scheduled_tasks.json", ".claude/routines/.state/",
+                  ".claude/checkpoints/", ".claude/mailbox/", ".claude/agent-registry.json", ".claude/first-run",
+                  ".claude/assistant-daemon-state.json", ".claude/shell-snapshots/", ".claude/todos/",
+                  ".claude/statsig/")
 GRANTED = ".claude/settings.local.json"
 
 
-def _names(profile: dict) -> set[str]:
-    extra = (profile.get("gc") or {}).get("regenerable") or []
-    return REGENERABLE | {str(item) for item in extra if isinstance(item, str)}
+def _extra(profile: dict) -> set[str]:
+    found = (profile.get("gc") or {}).get("regenerable") or []
+    return {str(item) for item in found if isinstance(item, str)}
 
 
-def _by_name(parts: list[str], names: set[str]) -> bool:
-    return any(part in names for part in parts) or (bool(parts) and parts[-1].endswith(REGENERABLE_SUFFIXES))
+def _runtime(path: str) -> bool:
+    return any(path == item.rstrip("/") or (item.endswith("/") and path.startswith(item)) for item in CLAUDE_RUNTIME)
 
 
-def _file_regenerable(tree: Path, main: Path, path: str, within: list[str], names: set[str]) -> bool:
+def _file_regenerable(tree: Path, main: Path, path: str, within: list[str], vouching: set[str]) -> bool:
     """`path` is relative to the tree; `within` its components below the entry, the only ones that vouch."""
     if path == GRANTED:
         mine, theirs = tree / GRANTED, main / GRANTED
         return theirs.is_file() and filecmp.cmp(mine, theirs, shallow=False)
-    return path.startswith(CLAUDE) or _by_name(within, names)
+    if _runtime(path):
+        return True
+    return any(part in vouching for part in within[:-1]) or (bool(within) and within[-1].endswith(
+        REGENERABLE_SUFFIXES))
 
 
-def _evidence(tree: Path, entry: str) -> bool:
-    path = Path(entry.rstrip("/"))
-    beside = tree / path.parent
-    return any((beside / name).is_file() for name in EVIDENCE.get(path.name, ()))
+def _evidence(where: Path, name: str) -> bool:
+    return any((where / item).is_file() for item in EVIDENCE.get(name, ()))
 
 
-def _entry_regenerable(tree: Path, main: Path, entry: str, names: set[str]) -> bool:
+def _entry_regenerable(tree: Path, main: Path, entry: str, profile: dict) -> bool:
     bare = entry.rstrip("/")
     own = bare.rsplit("/", 1)[-1]
-    if _by_name([own], names) or _evidence(tree, entry):
+    top = tree / bare
+    if (top / ".git").exists():   # a nested repository is the person's, whatever it is called (gc design 6, rule 5)
+        return False
+    if own in REGENERABLE | _extra(profile) or own.endswith(REGENERABLE_SUFFIXES) or _evidence(top.parent, own):
         return True
     if not entry.endswith("/"):
-        return _file_regenerable(tree, main, bare, [own], names)
-    top = tree / bare
+        return _file_regenerable(tree, main, bare, [own], CACHES | _extra(profile))
+    vouching = CACHES | _extra(profile)
     for here, dirs, files in os.walk(top, followlinks=False):
-        below = Path(here).relative_to(top).parts
-        links = [name for name in dirs if (Path(here) / name).is_symlink()]
-        dirs[:] = [name for name in dirs if name not in links and name not in names]   # a regenerable dir is whole
+        here_path = Path(here)
+        below = here_path.relative_to(top).parts
+        if ".git" in dirs or ".git" in files:
+            return False
+        links = [name for name in dirs if (here_path / name).is_symlink()]
+        dirs[:] = [name for name in dirs if name not in links and name not in vouching
+                   and not (name in EVIDENCE and _evidence(here_path, name))]   # a cache or an install is whole
         for name in files + links:
             path = f"{bare}/{'/'.join([*below, name])}"
-            if not _file_regenerable(tree, main, path, [own, *below, name][1:], names):
+            if not _file_regenerable(tree, main, path, [*below, name], vouching):
                 return False
     return True
 
@@ -80,6 +99,5 @@ def holding(tree, *, main, profile: dict, run=subprocess.run) -> list[str] | Non
                  "--untracked-files=all", "--ignored=matching"], capture_output=True, text=True, check=False)
     if shown.returncode != 0:
         return None
-    names = _names(profile)
     entries = [item[3:] for item in shown.stdout.split("\0") if item.startswith("!! ")]
-    return [entry for entry in entries if not _entry_regenerable(tree, main, entry, names)]
+    return [entry for entry in entries if not _entry_regenerable(tree, main, entry, profile)]

@@ -36,8 +36,28 @@ def _git(ledger, *args):
     return ledger.run(["git", "-C", str(ledger.root), *args], capture_output=True, text=True, check=False)
 
 
+def _held_by_operation(tree: Path) -> str:
+    """The branch a rebase or a bisect in `tree` has detached from: `git worktree list` shows such a tree as
+    detached, and deleting its branch breaks the operation (final review of gc stage 1, I4)."""
+    try:
+        pointer = (tree / ".git").read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+    gitdir = Path(pointer[len("gitdir: "):]) if pointer.startswith("gitdir: ") else None
+    if gitdir is None:
+        return ""
+    for name in ("rebase-merge/head-name", "rebase-apply/head-name", "BISECT_START"):
+        try:
+            found = (gitdir / name).read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        return found[len("refs/heads/"):] if found.startswith("refs/heads/") else found
+    return ""
+
+
 def worktrees(ledger) -> list[tuple[Path, str, bool]]:
-    """(tree, branch, missing) for every worktree of the project but the main checkout."""
+    """(tree, branch, missing) for every worktree of the project but the main checkout; a detached tree in the
+    middle of a rebase or bisect counts as holding the branch it left."""
     listing = _git(ledger, "worktree", "list", "--porcelain").stdout
     found, current, branch, gone, first = [], None, "", False, True
     for line in listing.splitlines() + [""]:
@@ -49,7 +69,8 @@ def worktrees(ledger) -> list[tuple[Path, str, bool]]:
             gone = True
         elif not line and current is not None:
             if not first:   # git lists the main checkout first
-                found.append((current, branch, gone or not current.is_dir()))
+                missing = gone or not current.is_dir()
+                found.append((current, branch or ("" if missing else _held_by_operation(current)), missing))
             first, current = False, None
     return found
 
@@ -90,6 +111,7 @@ def run_pass(ledger, *, sessions, act: bool, proc_root=None) -> Report:
     listed = worktrees(ledger)
     staying: set[str] = set()
     judged: dict[Path, trees.TreeVerdict] = {}
+    holds = {tree: branch for tree, branch, _ in listed}   # a rebase's or bisect's branch too, not only HEAD's
     for tree, branch, gone in listed:
         if gone:
             report.missing.append(str(tree))
@@ -107,7 +129,7 @@ def run_pass(ledger, *, sessions, act: bool, proc_root=None) -> Report:
         holders = refs.holders(ledger, dropping=dropping) + planned
         for tree in judged:
             judged[tree] = trees.judge_tree(ledger, tree, holders=holders, sessions=sessions, proc_root=proc_root)
-        now_staying = staying | {item.branch for item in judged.values() if item.branch and not item.removable}
+        now_staying = staying | {holds[tree] for tree, item in judged.items() if holds[tree] and not item.removable}
         verdicts = {item.name: item for item in branches.judge_branches(
             ledger, found_trunks, staying_checkouts=now_staying, ours=ours_branches)}
         if {name for name, item in verdicts.items() if item.delete} == deleting:
@@ -123,18 +145,18 @@ def run_pass(ledger, *, sessions, act: bool, proc_root=None) -> Report:
         if not act:
             report.removed.append(tree.name)
             report.parked += len(verdict.park)
-            gone_trees.add(verdict.branch)
+            gone_trees.add(holds[tree])
             continue
         line = remove.remove_tree(ledger, verdict, dropping=dropping, sessions=sessions, proc_root=proc_root,
                                   also_held=planned)[0]
         if line.startswith("removed "):
             report.removed.append(tree.name)
             report.parked += len(verdict.park)
-            gone_trees.add(verdict.branch)
+            gone_trees.add(holds[tree])
         else:
             _keep(report, "tree", line.split(": ", 1)[1] if ": " in line else line, tree.name)
-            staying.add(verdict.branch)
-    checked_out = {item.branch for item in judged.values() if item.branch} - gone_trees
+            staying.add(holds[tree])
+    checked_out = {holds[tree] for tree in judged if holds[tree]} - gone_trees
     for name, verdict in sorted(verdicts.items()):
         if not verdict.delete or name in checked_out or name in staying:
             reason = verdict.reason if not verdict.delete else "checked out in a tree that stays"
