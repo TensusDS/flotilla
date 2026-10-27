@@ -133,3 +133,20 @@ def test_a_vouched_merge_is_judged_by_what_it_changes_on_its_own_line(tmp_path):
     ledger = SimpleNamespace(root=root, run=subprocess.run,
                              profile={"flow": {"merge_authorized_by": "human", "approve_paths": CODE}})
     assert batch.commit_needs_person(ledger, merged) is True
+
+
+
+def test_a_type_exclude_covers_files_never_a_directory_named_like_one():
+    """Security review of the code-paths change, 8: `!*.md` read as gitignore covered a directory `x.md/` and the
+    code in it."""
+    patterns = ["**", "!*.md"]
+    assert approval.matches("notes/a.md", patterns) is False
+    assert approval.matches("x.md/evil.ts", patterns) is True
+
+
+@pytest.mark.parametrize("name", ["CLAUDE.md", "src/CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", "docs/AGENTS.md",
+                                  "GEMINI.md", ".cursorrules", ".windsurfrules", "CMakeLists.txt",
+                                  "constraints-dev.txt"])
+def test_what_instructs_an_agent_or_a_build_always_waits(name):
+    """Security review of the code-paths change, 7 and 9: agent instructions steer the fleet as much as its rules."""
+    assert approval.matches(name, approval.ALWAYS)

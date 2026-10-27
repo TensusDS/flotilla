@@ -36,9 +36,11 @@ def _regex(pattern: str) -> re.Pattern:
         else:
             out.append(re.escape(body[at]))
             at += 1
-    # a pattern without a slash names a file or directory anywhere, as in .gitignore; a directory covers its files
+    # a pattern without a slash names a file or directory anywhere, as in .gitignore; a directory covers its files -
+    # but a type (`*.md`) names files only, or a directory `x.md/` would carry code past it (security review, 8)
     lead = "" if anchored else "(?:.*/)?"
-    return re.compile(f"{lead}{''.join(out)}(?:/.*)?")
+    tail = "" if body.startswith("*.") and "/" not in body else "(?:/.*)?"
+    return re.compile(f"{lead}{''.join(out)}{tail}")
 
 
 def matches(path: str, patterns) -> bool:
@@ -57,7 +59,10 @@ ALWAYS = (".flotilla/**", ".github/**", ".gitlab/**", ".circleci/**", ".husky/**
           ".pre-commit-config.yaml", ".envrc", ".npmrc", ".yarnrc", ".yarnrc.yml", "package.json", "package-lock.json",
           "pnpm-lock.yaml", "yarn.lock", "pyproject.toml", "uv.lock", "setup.py", "setup.cfg", "requirements*.txt",
           "Cargo.toml", "Cargo.lock", "go.mod", "go.sum", "Gemfile", "Gemfile.lock", "Makefile", "Dockerfile",
-          "docker-compose.yml", "docker-compose.yaml", "conftest.py", "*.pth", "sitecustomize.py")
+          "docker-compose.yml", "docker-compose.yaml", "conftest.py", "*.pth", "sitecustomize.py", "CMakeLists.txt",
+          "constraints*.txt",
+          # what instructs an agent steers the fleet as much as its rules (security review, 7 and 9)
+          "CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", "GEMINI.md", ".cursorrules", ".windsurfrules")
 
 
 def _person(profile: dict) -> bool:
