@@ -10,6 +10,18 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 
 ## From watching the twosuns fleet on 0.20.0 (2026-10-20)
 
+- **Garbage collection, stage 2: the archive and the person's word.** Design sections 6 (rules 2 to 5: a twin
+  elsewhere by sha256, identical copies across removed trees, unique ignored data to the archive, global excludes
+  as the person's), 7 (`<project>-gc-archive/`, the manifest, `flotilla gc restore`, small told after and large
+  asked before) and 9 (questions with ids grouped by piece of work, answers recorded through the question door and
+  applied only by the collector, a guard against removing fleet trees, branches or the archive by hand, letters to
+  the orchestrator). Until then stage 1 keeps such trees, named. *(open, design: docs/specs/2026-10-21-gc-design.md)*
+- **Garbage collection, stage 3: occasions and the disk.** Design sections 4 e to k (a dead session's tree judged
+  by whoever notices, a pass after `shipped` and `helper done`, released work as a question, the daily pass the
+  orchestrator keeps, stopping the fleet's own orphans in a tree), 8 (low disk: shrink regenerable entries of idle
+  trees, no new session or lane run with no room, a letter to a live session about outputs piling up in its tree)
+  and 7's lifetime (one month, asked three days ahead, media only, never on silence). *(open, design:
+  docs/specs/2026-10-21-gc-design.md)*
 - **Seat trees pile up: 89 beside the main checkout, and `fleet clean` would remove 7.** A plan run (`flotilla fleet
   clean`, no `--yes`) kept 82 trees. 69 of them for one reason: "<tip> is not on origin's trunk, and no shipped row
   carries it". Their tips sit on branches that live on origin unmerged: `research/thunder-model-v2` holds three
@@ -21,7 +33,8 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
   `batch/*` branches. Ideas: a detached tree whose tip a branch on origin reaches holds nothing of its own beyond
   its reflog, so it can go while the branch stays; the profile names the project's own rebuildable outputs; a batch
   branch is recognised as the fleet's. The person's rule (decision 206) still stands: a doubt keeps the tree.
-  *(seen 2026-10-20 on 0.20.0: B - flotilla/fleet/cleanup.py)*
+  *(checked 2026-10-27 on 0.22.0: mostly fixed by gc stage 1 - stale detached trees, reflog-only commits, batch
+  branches and folded caches go; unique ignored data waits for stage 2 - flotilla/gc/)*
 - **"Waits on the person" holds questions the person already answered through the orchestrator.** `watch` lists 111
   open rows with `waiting_on` the person, the oldest from 2026-10-04. A sender's `wait` set 75 of them and a main
   seat's set 36. The person says some were answered in the orchestrator's session. Nothing then clears the row: only

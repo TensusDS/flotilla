@@ -245,11 +245,13 @@ relays your answers, and tells you when the queue is empty and the work is ready
     /flotilla:down
 
 It retires every session but your own and names the work left open so the next fleet can pick it up with
-`flotilla work adopt`. A seat's tree and branch go with it when their work is surely on trunk - nothing uncommitted,
-untracked or stashed, nothing ignored but what an install or a build makes again, no open row, every commit on
-origin's trunk (or a squash whose exact tip the ledger shipped), no commit only its reflog reaches. Anything in doubt
-stays, and says why. `flotilla fleet clean` sweeps the same way for what a forced stop or an older fleet left - only
-what the fleet made, never a tree or branch of your own: a plan first, `--yes` to act.
+`flotilla work adopt`. Then it cleans up: a tree goes when it holds nothing that exists nowhere else - nothing
+uncommitted, untracked or stashed, nothing ignored but what an install or a build makes again, its commits on a ref
+that stays - and its branch goes when its work has landed (origin's trunk, a squash whose exact tip the ledger
+shipped, or a line declared under `[gc] trunks`). Commits only a reflog reaches are parked under
+`refs/flotilla/parked/`, not lost. Anything in doubt stays, and says why. `flotilla fleet clean` sweeps the same
+way for what a forced stop or an older fleet left - only what the fleet made, never a tree or branch of your own: a
+plan first, `--yes` to act.
 
 ## Examples
 

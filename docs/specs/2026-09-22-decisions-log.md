@@ -1791,6 +1791,21 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    keeps the sender: it puts no question to the person. A background security reviewer read each commit; its six
    findings were fixed with a test seen red first.
 
+247. **A tree and its branch are two decisions; the orchestrator cleans as its last step** (the person, 2026-10-21
+   and 2026-10-27; gc design `docs/specs/2026-10-21-gc-design.md`, stage 1). Decision 206's one test made a tree
+   wait for its branch to land, so 70 of twosuns' 90 trees stayed though a branch held every commit in them. A tree
+   now goes when it holds nothing that exists nowhere else: clean, nothing in use, its HEAD reached by a ref that
+   survives the pass - any ref, the person's `refs/attic/*` included - and its ignored files regenerable, a directory
+   judged by what is in it. A branch goes when it has landed: origin's trunk as origin answers, the local trunk in
+   local flow, a line declared under `[gc] trunks` at its local tip, or a squash the ledger shipped; the sender's
+   branches by the ledger's merge record, no name pattern; branches on origin never. Commits only a reflog reaches,
+   a squash-shipped tip and a tip landed on a trunk origin does not hold are parked under `refs/flotilla/parked/`,
+   which never expire. Removal runs under the ledger's lock with a worktree lock as a mutex and a second judgement;
+   a populated submodule, a process in the tree or an operation in progress keeps it. `fleet down` ends with the
+   pass: the orchestrator runs it when the person asks to stand down and once more before it closes; the person
+   never runs the collector. Stages 2 (the archive, the person's recorded answers, a guard) and 3 (dead sessions,
+   the daily pass, a low disk) are not built yet; until then what is not tier 1 stays, named.
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

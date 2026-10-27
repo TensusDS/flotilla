@@ -86,6 +86,9 @@ headed "flotilla - the fleet" names dropped balls: message the session it names.
 
 ## What is not a fault
 
+- **`refs/flotilla/parked/*`** are commits the collector kept when their last tree or branch went. They are no
+  clutter: never delete them by hand.
+
 Some answers are the fleet's rules or Claude Code working as meant. None of them is a flotilla defect, and none
 goes into a report:
 

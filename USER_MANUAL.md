@@ -35,7 +35,7 @@ The CLI is `${CLAUDE_PLUGIN_ROOT}/bin/flotilla`. Every command takes `--help`.
     flotilla spawn --lead                your own session leads the fleet; its name comes with your next message
     flotilla fleet                 the seats, their trees and their work
     flotilla fleet down            retire every seat but your own
-    flotilla fleet clean [--yes]   remove trees and branches whose work is surely on trunk (a plan without --yes)
+    flotilla fleet clean [--yes]   remove trees holding nothing of their own, branches that landed (plan without --yes)
     flotilla retire "<name>"       stop one session, release its post
     flotilla helper raise --for <branch> --task "<what>"     a helper in its own tree (from a working session)
     flotilla helper done --summary "<what was done>"         finish as a helper
@@ -144,8 +144,12 @@ not asked about again.
    paths are gitignore-like, `!` excludes; `.flotilla/`, CI, hooks, manifests and build files always wait for you.
 4. **A session done or stuck:** `/flotilla:retire "<name>"`. Its open rows are named; the orchestrator adopts them, all
    at once with `flotilla work adopt --from "<name>" --to "<session>"`.
-5. **End of day:** `/flotilla:down`. Trees and branches whose work is surely on trunk go with their seats; the rest
-   stay and say why. `flotilla fleet clean` shows what is left to remove, `--yes` removes it.
+5. **End of day:** ask the orchestrator to stand the fleet down, or run `/flotilla:down`. `fleet down` ends by
+   cleaning up: a tree goes when every commit and file in it exists elsewhere, a branch when its work has landed, and
+   commits only a reflog reaches are parked under `refs/flotilla/parked/` - never delete those by hand. What stays
+   is listed once per reason. The orchestrator also cleans as its own last step before it closes. Declare long-lived
+   lines branches land on with `[gc] trunks = ["<branch>"]`, and the project's own rebuildable outputs with
+   `[gc] regenerable = ["<name>"]`. `flotilla fleet clean` is the same pass by hand, a plan until `--yes`.
 6. **After a plugin update:** stand the fleet down, update, bring `.flotilla/posts/` up to the new templates, raise
    the fleet again.
 

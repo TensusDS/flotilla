@@ -3,6 +3,25 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.22.0 - 2026-10-27
+
+- **Finished sessions clean up after themselves (garbage collection, stage 1).** A tree goes when it holds nothing
+  that exists nowhere else, and its branch is judged on its own: a clean tree of a seat that died on an unlanded
+  branch goes, the branch keeps the commits. Every ref holds a commit - tags, the remote's branches, your own
+  `refs/attic/*`. Commits only a reflog reaches are parked under `refs/flotilla/parked/` (they never expire) instead
+  of keeping the tree. A branch has landed on origin's trunk, on the local trunk in local flow, or on a long-lived
+  line you declare under `[gc] trunks`; the sender's batch branches are recognised by the ledger's merge record,
+  never by their name; branches on origin are listed, never deleted. An ignored directory is judged by what is in
+  it (a folder holding only `__pycache__` no longer keeps a tree); `[gc] regenerable` adds names; Claude Code's
+  runtime state under `.claude/` is regenerable, granted permissions are not. A tree is removed under the ledger's
+  lock, judged again first; a submodule, a process working in the tree or an operation in progress keeps it.
+- **The orchestrator cleans, you never do.** `fleet down` ends with one cleaning pass and its report - what was
+  removed, parked and kept, one line per reason. The orchestrator runs it when you ask to stand the fleet down, and
+  once more as its own last step before it closes (orchestrator template 19). `flotilla fleet clean` stays as the
+  manual sweep.
+- Not yet: the archive for unique ignored files, questions to you with recorded answers, the dead-session and
+  daily passes, a low disk (stages 2 and 3 of the design). Until then what is not plainly garbage stays, named.
+
 ## 0.21.0 - 2026-10-27
 
 - **Your yes is asked only of code.** Where you authorize merges, `approve_paths` under `[flow]` - gitignore-like,
