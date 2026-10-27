@@ -139,6 +139,15 @@ def test_a_part_is_not_walked_while_the_row_building_on_it_is_not_shipped(tmp_pa
         judging.walked(ledger, actor(ledger, JUDGE), "feat/x", build="main", steps="s", saw="w")
 
 
+
+def test_a_part_waiting_for_its_whole_is_a_wait_not_a_fault(tmp_path):
+    """The person, 2026-10-27, on twosuns field report A5: the part gate is the order working, so a judge must not
+    read it as a flotilla defect to report."""
+    from flotilla.ledger.errors import NotYet
+    root, ledger, part = part_and_whole(tmp_path)
+    with pytest.raises(NotYet, match="the order working"):
+        judging.walked(ledger, actor(ledger, JUDGE), "feat/x", build="main", steps="s", saw="w")
+
 def test_the_judge_holds_no_move_on_a_part_yet(tmp_path):
     from flotilla.ledger import views
     root, ledger, part = part_and_whole(tmp_path)

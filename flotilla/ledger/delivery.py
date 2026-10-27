@@ -25,8 +25,8 @@ from flotilla.ledger import batch, gitq
 from flotilla.ledger import gate as gates
 from flotilla.ledger.actor import Actor, require_may
 from flotilla.ledger.core import Ledger
-from flotilla.ledger.errors import MoveRefused, NotYet
-from flotilla.ledger.model import Row, blocked_by
+from flotilla.ledger.errors import MoveRefused, NotYet, OrderWait
+from flotilla.ledger.model import Row, blocked_by, settled_by
 from flotilla.ledger.transitions import moves_from, next_state
 from flotilla.ledger.views import approve_command
 
@@ -212,6 +212,13 @@ def queue(ledger: Ledger, actor: Actor, branch: str, *, pr: int | None = None) -
         state = s.next_state(row, "queue")
         _not_held(row)
         waiting = blocked_by(s.rows, row, ledger.profile)
+        gone = [other for other in waiting if other.state == "released" and not settled_by(other)]
+        if gone:
+            names = ", ".join(f"`{other.branch or other.id}`" for other in gone)
+            raise MoveRefused(f"`{branch}` requires {names}, which was released and will never be delivered, so "
+                              f"nothing it builds on reaches trunk. Its owner cuts the work afresh from trunk, or "
+                              f"rebases it there, under a new claim, then ends this row: `flotilla work release "
+                              f"{branch} --why \"rebuilt without {gone[0].branch or gone[0].id}\"`")
         if waiting:
             def named(links):
                 return ", ".join(f"`{other.branch or other.id}` ({other.state or 'unknown'})" for other in links)
@@ -219,7 +226,7 @@ def queue(ledger: Ledger, actor: Actor, branch: str, *, pr: int | None = None) -
             orders = [other for other in waiting if other.id not in (row.requires or [])]
             said = ([f"requires {named(builds)}"] if builds else []) + ([f"goes after {named(orders)}"] if orders
                                                                         else [])
-            raise MoveRefused(f"`{branch}` {' and '.join(said)}; it is queued once they are delivered")
+            raise OrderWait(f"`{branch}` {' and '.join(said)}; it is queued once they are delivered")
         if row.verdict and current != row.verdict:
             raise MoveRefused(f"`{branch}` moved since it was accepted ({row.verdict[:7]} -> {current[:7]}); the "
                               "owner records it with `flotilla work moved` and the reader accepts again")

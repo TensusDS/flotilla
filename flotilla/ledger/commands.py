@@ -23,7 +23,7 @@ from flotilla.ledger import (core, delivery, events, findings, gitq, handover, j
 from flotilla.ledger import tree as tree_mod
 from flotilla.ledger.actor import resolve_actor
 from flotilla.lane.acquire import LaneRefused
-from flotilla.ledger.errors import MoveRefused, NotYet
+from flotilla.ledger.errors import MoveRefused, NotYet, OrderWait
 from flotilla.ledger.model import LedgerVersionError, Row
 from flotilla.posts import PostError, load_posts
 
@@ -216,6 +216,11 @@ def _show(ledger: core.Ledger, branch: str) -> int:
 STUCK = ("next: if no move named above is yours to make, record whom you wait on (`flotilla work wait <branch> "
          "--on \"<whom>\" --why \"<why>\"`) and tell the orchestrator. A refusal that names no way forward is a "
          "flotilla defect: send it to the orchestrator verbatim, and never work around flotilla with git plumbing.")
+#: Printed after a wait the rules intend (`not yet`): the session must not read it as a fault to report (the person,
+#: 2026-10-27, on twosuns field report A5).
+WAITING = ("next: nothing is wrong; this waits on what is named above, as the fleet's order intends. Ask again once "
+           "it moves, and if the wait is yours record it (`flotilla work wait <branch> --on \"<whom>\" --why "
+           "\"<why>\"`). This is not a flotilla defect and there is nothing to report.")
 #: Printed after an error that is not a move refused: no ledger move helps, so none is suggested.
 CANNOT_RUN = ("next: flotilla cannot run here as things stand; send this text to the orchestrator verbatim, and never "
               "work around flotilla with git plumbing.")
@@ -556,6 +561,8 @@ def run_ledger_command(args) -> int:
             row = result
     except NotYet as err:
         print(f"not yet: {err}")
+        if isinstance(err, OrderWait):
+            print(WAITING)
         return 3
     except (MoveRefused, PostError, receipts.ReceiptRefused, config.ConfigError, repo.NotARepository,
             StorageCorrupt, LedgerVersionError, LaneRefused) as err:

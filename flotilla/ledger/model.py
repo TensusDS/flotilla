@@ -79,14 +79,36 @@ def delivered(row: Row, profile: dict) -> bool:
     return row.state == "landed" and (profile.get("flow") or {}).get("mode") == "local"
 
 
+def settled_by(row: Row) -> str:
+    """The id of the delivered work a released row was settled by (`release --settled-by`), or ""."""
+    if row.state != "released" or not row.history:
+        return ""
+    return (row.history[-1].get("evidence") or {}).get("settled_by") or ""
+
+
 def blocked_by(rows: dict[str, Row], row: Row, profile: dict) -> list[Row]:
     """The rows this one requires, or goes after, that are not delivered yet (spec, section 6.4); an unknown id
-    stands as a bare row. Only `requires` makes a part (`views.pending_dependents`); `after` only orders."""
+    stands as a bare row. Only `requires` makes a part (`views.pending_dependents`); `after` only orders.
+
+    A released row stands for the work it was settled by. One released unsettled will never be delivered: an order
+    behind it orders nothing any more, so `after` stops waiting (twosuns A3); work built on it still waits, and the
+    queue says how out."""
     waiting = []
     for wanted in dict.fromkeys([*(row.requires or []), *(row.after or [])]):
         other = rows.get(wanted)
-        if other is None or not delivered(other, profile):
-            waiting.append(other or Row(id=wanted))
+        if other is None:
+            waiting.append(Row(id=wanted))
+            continue
+        if delivered(other, profile):
+            continue
+        settler = rows.get(settled_by(other))
+        if settler is not None:
+            if not delivered(settler, profile):
+                waiting.append(other)
+            continue
+        if other.state == "released" and wanted not in (row.requires or []):
+            continue
+        waiting.append(other)
     return waiting
 
 

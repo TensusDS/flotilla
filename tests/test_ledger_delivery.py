@@ -115,6 +115,41 @@ def test_an_after_link_blocks_the_queue_until_that_row_ships(tmp_path):
         delivery.queue(ledger, actor(ledger, SENDER), "tool/measure-a")
 
 
+
+def test_a_dependency_not_delivered_yet_is_a_wait_not_a_fault(tmp_path):
+    """The person, 2026-10-27: a refusal the rules intend must not read to a seat as a flotilla defect."""
+    from flotilla.ledger.errors import NotYet
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile=DIRECT)
+    drive(root, ledger, "feat/a", to="claimed")
+    drive(root, ledger, "feat/b", requires=["feat/a"])
+    with pytest.raises(NotYet):
+        delivery.queue(ledger, actor(ledger, SENDER), "feat/b")
+
+
+def test_an_after_link_to_released_work_lets_the_queue_go(tmp_path):
+    from flotilla.ledger import core
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile={**DIRECT, "review": {"depth": "none"}})
+    drive(root, ledger, "feat/a", to="claimed")
+    branch(root, "tool/measure-a", "a measurement")
+    core.claim(ledger, actor(ledger, "main session 1"), "tool/measure-a", after=["feat/a"])
+    core.release(ledger, actor(ledger, "main session 1"), "feat/a", why="superseded")
+    assert delivery.queue(ledger, actor(ledger, SENDER), "tool/measure-a").state == "queued"
+
+
+def test_work_built_on_released_work_is_refused_with_the_way_out(tmp_path):
+    from flotilla.ledger import core
+    from flotilla.ledger.errors import NotYet
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile=DIRECT)
+    drive(root, ledger, "feat/a", to="claimed")
+    drive(root, ledger, "feat/b", requires=["feat/a"])
+    core.release(ledger, actor(ledger, "main session 1"), "feat/a", why="superseded")
+    with pytest.raises(MoveRefused, match=r"requires `feat/a`, which was released") as caught:
+        delivery.queue(ledger, actor(ledger, SENDER), "feat/b")
+    assert not isinstance(caught.value, NotYet) and "flotilla work release feat/b" in str(caught.value)
+
 def test_a_branch_that_moved_since_acceptance_is_not_queued(tmp_path):
     root = repo_with_origin(tmp_path)
     ledger = make_ledger(root, tmp_path / "state", profile=DIRECT)

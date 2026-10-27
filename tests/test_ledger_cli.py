@@ -327,6 +327,37 @@ def test_every_refusal_names_a_way_forward(tmp_path, monkeypatch):
     assert "work wait" in last and "tell the orchestrator" in last and "git plumbing" in last
 
 
+
+def test_a_wait_the_rules_intend_tells_the_session_it_is_no_fault(tmp_path, monkeypatch):
+    """The person, 2026-10-27: a refusal by design must not read to a seat as a flotilla defect to report."""
+    root = onboarded(tmp_path, monkeypatch, {**DIRECT_PLAIN, "review": {"depth": "none"}})
+    for name, extra in (("feat/a", ()), ("feat/b", ("--after", "feat/a"))):
+        git(root, "branch", name)
+        assert run_cli("work", "claim", name, *extra, "--root", str(root), "--as", "main session 1")[0] == 0
+    code, out = run_cli("work", "queue", "feat/b", "--root", str(root), "--as", "sender 1")
+    lines = out.rstrip().splitlines()
+    assert code == 3 and lines[0].startswith("not yet: ") and "goes after `feat/a`" in lines[0]
+    assert lines[-1] == commands_module().WAITING and "defect" not in lines[0]
+
+
+def test_a_not_yet_that_may_be_a_fault_does_not_say_nothing_is_wrong(tmp_path, monkeypatch):
+    """gh not answering is a not-yet too, and something may well be wrong there: only a wait the rules intend
+    carries the no-fault line."""
+    from flotilla.ledger import commands
+    from flotilla.ledger.errors import NotYet
+    root = onboarded(tmp_path, monkeypatch, DIRECT_PLAIN)
+
+    def silent(*args, **kwargs):
+        raise NotYet("gh did not answer about PR #4 within 30 s; ask again")
+    monkeypatch.setitem(commands.MOVES, "queue", silent)
+    code, out = run_cli("work", "queue", "feat/b", "--root", str(root), "--as", "sender 1")
+    assert code == 3 and out.startswith("not yet: gh did not answer") and commands.WAITING not in out
+
+
+def commands_module():
+    from flotilla.ledger import commands
+    return commands
+
 def test_the_way_forward_is_one_fixed_line():
     from flotilla.ledger import commands
     assert commands.STUCK.startswith("next: ")

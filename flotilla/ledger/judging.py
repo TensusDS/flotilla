@@ -15,7 +15,7 @@ import subprocess
 from flotilla.ledger import core, gitq, views
 from flotilla.ledger.actor import Actor, require_may
 from flotilla.ledger.core import Ledger
-from flotilla.ledger.errors import MoveRefused
+from flotilla.ledger.errors import MoveRefused, OrderWait
 from flotilla.ledger.model import Row, delivered, next_row_id
 
 
@@ -52,9 +52,10 @@ def _whole_or_walkable(ledger: Ledger, rows: dict[str, Row], row: Row) -> None:
     waiting = [] if row.walkable else views.pending_dependents(rows, row, ledger.profile)
     if waiting:
         names = ", ".join(f"`{other.branch or other.id}` ({other.state})" for other in waiting)
-        raise MoveRefused(f"`{row.branch}` is a part: {names} build on it and are not shipped yet. Walk the path "
-                          "once they ship; the orchestrator may mark this row walkable on its own "
-                          f"(`flotilla work walkable {row.branch} --why \"<why>\"`)")
+        raise OrderWait(f"`{row.branch}` is a part: {names} build on it and are not shipped yet. This is the order "
+                     "working, not a fault: walk the path once they ship. If this part is whole to a person on its "
+                     "own, the orchestrator may mark it walkable "
+                     f"(`flotilla work walkable {row.branch} --why \"<why>\"`)")
 
 
 def walked(ledger: Ledger, actor: Actor, branch: str, *, build: str, steps: str, saw: str) -> Row:

@@ -75,6 +75,41 @@ def test_blocked_by_names_what_is_not_delivered_yet():
     assert [(r.id, r.state) for r in blocked_by(rows, rows["r3"], {})] == [("r1", "claimed"), ("r9", "")]
 
 
+
+def _released(rid, branch, settled_by=""):
+    from flotilla.ledger.model import Row
+    evidence = {"settled_by": settled_by} if settled_by else {}
+    return Row(id=rid, branch=branch, state="released", history=[{"move": "release", "evidence": evidence}])
+
+
+def test_an_after_link_to_a_released_row_no_longer_orders_anything():
+    """twosuns field report A3: r754 went after r520, r520 was released as superseded, and r754 could never be
+    queued - a released row is never delivered, so an order behind it waits for ever."""
+    from flotilla.ledger.model import Row, blocked_by
+    rows = {"r1": _released("r1", "a"), "r3": Row(id="r3", branch="c", state="accepted", after=["r1"])}
+    assert blocked_by(rows, rows["r3"], {}) == []
+
+
+def test_a_row_built_on_a_released_row_still_waits():
+    from flotilla.ledger.model import Row, blocked_by
+    rows = {"r1": _released("r1", "a"), "r3": Row(id="r3", branch="c", state="accepted", requires=["r1"])}
+    assert [r.id for r in blocked_by(rows, rows["r3"], {})] == ["r1"]
+
+
+def test_a_released_row_settled_by_delivered_work_stands_delivered():
+    from flotilla.ledger.model import Row, blocked_by
+    for link in ("requires", "after"):
+        rows = {"r1": _released("r1", "a", settled_by="r2"), "r2": Row(id="r2", branch="b", state="shipped"),
+                "r3": Row(id="r3", branch="c", state="accepted", **{link: ["r1"]})}
+        assert blocked_by(rows, rows["r3"], {}) == [], link
+
+
+def test_a_released_row_settled_by_undelivered_work_waits_for_it():
+    from flotilla.ledger.model import Row, blocked_by
+    rows = {"r1": _released("r1", "a", settled_by="r2"), "r2": Row(id="r2", branch="b", state="claimed"),
+            "r3": Row(id="r3", branch="c", state="accepted", after=["r1"])}
+    assert [r.id for r in blocked_by(rows, rows["r3"], {})] == ["r1"]
+
 def test_a_helper_seat_names_its_parent_row():
     from flotilla.ledger.model import ROW_FIELDS, Row
     assert "helper_of" in ROW_FIELDS and Row(id="r1").helper_of == ""

@@ -13,7 +13,7 @@ import datetime as dt
 import re
 import shlex
 
-from flotilla.ledger.model import Row, blocked_by, delivered
+from flotilla.ledger.model import Row, blocked_by, delivered, settled_by
 
 SENDER, JUDGE = "the sender", "the judge"
 POST_OF_MOVER = {SENDER: "sender", JUDGE: "judge"}   # a post-named mover and the post it stands for
@@ -204,10 +204,7 @@ def fix_delivery(rows: dict[str, Row], fix: Row, profile: dict) -> Row | None:
     """The delivered row that carries a fix: the fix row itself, or the delivered row it was settled by (G9)."""
     if delivered(fix, profile):
         return fix
-    if fix.state != "released" or not fix.history:
-        return None
-    wanted = (fix.history[-1].get("evidence") or {}).get("settled_by") or ""
-    other = rows.get(wanted)
+    other = rows.get(settled_by(fix))
     return other if other is not None and delivered(other, profile) else None
 
 
