@@ -1787,9 +1787,9 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    `merge_authorized_by = "human"` to work touching those paths, judged by every commit of the work (not the net
    diff) and by what landing changes on trunk, per vouched commit, with the fleet's rules and what runs whatever its
    type (CI, hooks, manifests, build files) always the person's; onboarding proposes `**` less what it finds
-   plainly not code, so the question carries its answer and a directory added later still asks. Quick onboarding keeps the sender:
-   it puts no question to the person. A background security reviewer read each commit; its four findings were fixed
-   with a test seen red first.
+   plainly not code, so the question carries its answer and a directory added later still asks. Quick onboarding
+   keeps the sender: it puts no question to the person. A background security reviewer read each commit; its six
+   findings were fixed with a test seen red first.
 
 ## Open questions (for the foundation spec)
 
