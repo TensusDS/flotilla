@@ -116,8 +116,8 @@ Ask with AskUserQuestion, header "Fleet", question "Raise the fleet now?":
 
 - **"This session leads it (Recommended)"** - "This session becomes the orchestrator: you talk to the fleet here and
   answer its permission questions here. The other sessions start in the background." When the profile's
-  `flow.merge_authorized_by` is `human`, add "and approve its merges" after "permission questions"; otherwise do not
-  promise approvals.
+  `flow.merge_authorized_by` is `human`, add "and approve its merges" after "permission questions" - "and approve
+  its merges of code" when the profile also names `flow.approve_paths`; otherwise do not promise approvals.
 - **"A background orchestrator"** - "Every session starts in the background; you attach to the orchestrator to talk."
 - **"Not now"** - "Raise it later with /flotilla:spawn."
 

@@ -3,6 +3,32 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.21.0 - 2026-10-27
+
+- **Your yes is asked only of code.** Where you authorize merges, `approve_paths` under `[flow]` - gitignore-like,
+  `!` excludes - narrows it to work touching those paths: `queue` refuses such work without your `approve` and names
+  the files, the brief marks which rows ship without your yes, and the push guard counts unapproved work off the
+  paths. Every commit of the work counts, not only the net diff; work on `.flotilla/` always waits for you.
+  Onboarding offers "a human, for code" with the paths found where the project's code lies, data under it left out
+  and CI, hooks, manifests and build files kept in.
+- **A wait is not a fault.** Work waiting on other work - a dependency not delivered, a part whose whole has not
+  shipped - prints `not yet` and says nothing is wrong, instead of a refusal that told the session to report it. A
+  guard that cannot read a command says it is a guard; the skill lists what is not a fault, Claude Code's own
+  behaviour included.
+- **Landing no longer stops on a binary diff.** A file git diffs as text but whose bytes are not UTF-8 (a float16
+  table) crashed the batch accounting for every row; diffs and patch ids now travel as bytes, and command output is
+  read with replacement.
+- **An order behind released work no longer waits for ever.** A row going after a released row is queued; a released
+  row settled by delivered work stands for it; work built on released work is refused with the way out.
+- **Moves that were missing.** A reader takes back its own acceptance before the queue (`fix` from `accepted`); a judge
+  records a walk the person reversed as a break (`broke` from `walked`); a refused `close` or `hand` names `release` or
+  `moved --tip`.
+- **Adopt frees the gone owner's tree**, as release does, so the heir can switch to the branch.
+- **Rig:** `open` passes a session already past its end; `--get` of a type that never comes back is refused before a
+  machine is rented, naming `[rig] get_types`.
+- **Smaller:** a tree switch held up by untracked files names them and suggests `.gitignore`; a session in a seat's
+  tree that holds no post is named as the subagent or fork it most often is.
+
 ## 0.20.0 - 2026-10-20
 
 - **Organize: the work already here is taken in.** `/flotilla:organize`, run by onboarding before and after

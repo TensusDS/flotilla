@@ -138,7 +138,10 @@ not asked about again.
    questions with `/flotilla:permit` in the orchestrator's session.
 3. **Merges you authorize:** the orchestrator shows the batch and the command; for each branch you agree to, you type
    `! <command>` in your own Claude Code session (the orchestrator's, when your session leads the fleet) or run it in a
-   terminal. Claude's own Bash call of it is refused, and so is `!` in a background orchestrator's prompt.
+   terminal. Claude's own Bash call of it is refused, and so is `!` in a background orchestrator's prompt. Where you
+   authorize code only - `approve_paths` under `[flow]`, offered by onboarding from where the project's code lies -
+   only work touching those paths waits for you, and the brief says which rows ship without your yes. The paths are
+   gitignore-like, `!` excludes; work on `.flotilla/` always waits for you.
 4. **A session done or stuck:** `/flotilla:retire "<name>"`. Its open rows are named; the orchestrator adopts them, all
    at once with `flotilla work adopt --from "<name>" --to "<session>"`.
 5. **End of day:** `/flotilla:down`. Trees and branches whose work is surely on trunk go with their seats; the rest

@@ -45,10 +45,30 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
   non-option word after it, the quoted `'*snake*'`, is then read as the command, and `_opaque` refuses it as a glob.
   The same line with `-name snake`, or with `cd` into the directory and `find .`, passes. Any path to the plugin
   repo or its state dir followed by a glob is caught alike. Idea: only the program word of a segment (or the word
-  after `-m`, `uv run`, `exec`) runs flotilla; an argument does not. *(seen 2026-10-20 on 0.20.0: P -
-  flotilla/guards/person.py:35, flotilla/guards/person.py:152)*
+  after `-m`, `uv run`, `exec`) runs flotilla; an argument does not. A brace after such a path is refused too
+  (`git -C <repo>/flotilla rev-parse 'v0.20.0^{commit}'`: "holds what bash expands"), and so is a heredoc script
+  whose body names `flotilla work wait` beside braces (2026-10-27, fixing the twosuns field report). *(seen
+  2026-10-20 on 0.20.0: P - flotilla/guards/person.py:35, flotilla/guards/person.py:152)*
 - **`flotilla status` in twosuns did not finish in 60 s.** `watch --once` takes 3.6 s and `fleet` takes 1.1 s on the
   same ledger: 9259 lines, 5.5 MB. Not yet established where the time goes. *(seen 2026-10-20 on 0.20.0: measure)*
+
+## From the twosuns field report (2026-10-24..27, 0.20.0)
+
+- **Accept races a moving trunk; files rebuilt from others make it worse** (A6). r379 bounced three times: clean when
+  read, conflicting by the time the tiers finished, because almost every research row adds to `src/data/credits.ts`
+  and the then-tracked `CREDITS.md`. The project's own row (CREDITS untracked and generated, credits sorted into
+  parts) eased it; the person deferred a flotilla change until that is seen to fall short. Ideas: the profile names
+  rebuilt files with their command, accept checks mergeability without them and land rebuilds them after the merge;
+  or accept binds to the read sha and the trunk merge becomes a reviewed vouch. *(seen 2026-10-26 on 0.20.0: open,
+  design - flotilla/ledger/reading.py)*
+- **A pipeline inside a lane run reads green over a red test** (twosuns memory `lane-green-pipeline`). `flotilla lane
+  run -- sh -c 'npx vitest ... | tail -40'` recorded green: the exit is tail's, inside a shell flotilla does not read.
+  The skill says so; the run does not. Idea: warn when a lane command is `sh -c` / `bash -c` whose script ends in a
+  pipe without `pipefail`. *(seen 2026-10-01 on 0.7.x: P - flotilla/lane/run.py)*
+- **Existing projects get the code paths only by hand.** Onboarding offers `approve_paths` to a new project; a
+  project onboarded before 0.21.0 keeps its `merge_authorized_by` until a project row adds the paths. Idea: `onboard
+  check` names the detected paths where the person authorizes merges and the profile names none. *(seen 2026-10-27
+  on 0.21.0: P - flotilla/onboard/check.py)*
 
 ## From the organize final review (2026-10-20, 0.20.0)
 
