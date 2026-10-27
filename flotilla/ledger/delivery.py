@@ -194,7 +194,7 @@ def approve(ledger: Ledger, branch: str) -> Row:
 
 def _whose_yes(ledger: Ledger, row: Row, revision: str) -> str:
     """Why this work waits for the person: every merge, or the code paths it touches (twosuns B1)."""
-    if not approval.paths_of(ledger.profile):
+    if not (ledger.profile.get("flow") or {}).get("approve_paths"):
         return "a person authorizes every merge into trunk here"
     found = approval.touched(ledger.root, ledger.profile, row.base, revision, run=ledger.run) or []
     shown = ", ".join(found[:3]) + (f" and {len(found) - 3} more" if len(found) > 3 else "")

@@ -152,7 +152,9 @@ def _vouch_on_trunk(ledger: Ledger, actor: Actor, s, sha: str) -> Row:
     trunk, so the commit is accounted the way any vouched commit is."""
     if actor.post is not None and ("land" in actor.post.may or actor.post.writes_one_copy):
         raise MoveRefused(f"{actor.name}'s post may land; the one who merges never vouches for a commit on trunk")
-    if (ledger.profile.get("flow") or {}).get("merge_authorized_by") == "human":
+    if batch.commit_needs_person(ledger, sha) if (ledger.profile.get("flow") or {}).get("approve_paths") else (
+            (ledger.profile.get("flow") or {}).get("merge_authorized_by") == "human"):
+        # off the code paths a reader settles it, as the finding says (final review of 0.21.0, I3)
         raise MoveRefused("where a person authorizes merges, a commit that reached trunk unapproved is the "
                           "person's to settle; a reader's vouch does not account it")
     trunk = gitq.trunk_ref(ledger.root, ledger.trunk, run=ledger.run)

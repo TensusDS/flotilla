@@ -118,12 +118,12 @@ def test_an_after_link_blocks_the_queue_until_that_row_ships(tmp_path):
 
 def test_a_dependency_not_delivered_yet_is_a_wait_not_a_fault(tmp_path):
     """The person, 2026-10-27: a refusal the rules intend must not read to a seat as a flotilla defect."""
-    from flotilla.ledger.errors import NotYet
+    from flotilla.ledger.errors import OrderWait
     root = repo_with_origin(tmp_path)
     ledger = make_ledger(root, tmp_path / "state", profile=DIRECT)
     drive(root, ledger, "feat/a", to="claimed")
     drive(root, ledger, "feat/b", requires=["feat/a"])
-    with pytest.raises(NotYet):
+    with pytest.raises(OrderWait):
         delivery.queue(ledger, actor(ledger, SENDER), "feat/b")
 
 
@@ -1137,3 +1137,27 @@ def test_with_code_paths_a_vouch_carries_no_code_past_the_person(tmp_path):
     outside.vouch(ledger, actor(ledger, "review session 1"), "docs/notes", commit=code)
     merge(root, "docs/notes")
     assert code in batch.unaccounted(ledger, ledger.rows(), "main")
+
+
+
+def test_a_repointed_local_origin_ref_hides_no_code_from_the_person(tmp_path):
+    """Final review of 0.21.0, C1: a seat repointed its local refs/remotes/origin/main at a code commit under a docs
+    row; the approval check took everything below that ref as shipped, and the code was accounted with no yes."""
+    from flotilla.ledger import batch, core, handover, reading
+    root = repo_with_origin(tmp_path)
+    real_origin = git(root, "rev-parse", "refs/remotes/origin/main")
+    ledger = make_ledger(root, tmp_path / "state", profile=CODE_ONLY)
+    git(root, "checkout", "-q", "-b", "docs/notes")
+    (root / "src" / "core").mkdir(parents=True)
+    code = commit(root, "code", "src/core/evil.ts", "x\n")
+    (root / "docs").mkdir()
+    commit(root, "notes", "docs/notes.md", "x\n")
+    git(root, "checkout", "-q", "main")
+    core.claim(ledger, actor(ledger, "main session 1"), "docs/notes")
+    row = handover.hand(ledger, actor(ledger, "main session 1"), "docs/notes")
+    reading.take(ledger, actor(ledger, "review session 1"), "docs/notes")
+    reading.accept(ledger, actor(ledger, "review session 1"), "docs/notes", reviewed=row.tip)
+    merge(root, "docs/notes")
+    assert code in batch.unaccounted(ledger, ledger.rows(), "main", since=real_origin)
+    git(root, "update-ref", "refs/remotes/origin/main", code)
+    assert code in batch.unaccounted(ledger, ledger.rows(), "main", since=real_origin)

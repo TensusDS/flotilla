@@ -26,7 +26,7 @@ def test_everything_waits_for_the_person_but_what_is_plainly_not_code(tmp_path):
     """The person, 2026-10-27: the paths that need a yes are asked in onboarding from the project and where its code
     lies, so the question is one and its answer is ready."""
     found = code_paths(project(tmp_path))
-    assert found == ["**", "!docs/**", "!public/**", "!src/data/**", "!tests/**", "!*.md"]
+    assert found == ["**", "!docs/**", "!src/data/**", "!tests/**", "!*.md", "!*.png"]
     waiting = [name for name in FILES if asks(found, name)]
     assert waiting == ["src/core/storm-wall.ts", "src/render/sky-shaders.ts", "scripts/credits-md.mjs",
                        "vite.config.ts", "package.json"]
@@ -49,3 +49,12 @@ def test_a_name_that_reads_as_a_pattern_is_never_excluded(tmp_path):
 
 def test_a_project_without_code_has_no_code_paths(tmp_path):
     assert code_paths(project(tmp_path, ["docs/a.md", "notes.txt"])) == []
+
+
+
+def test_code_served_from_public_or_static_waits_for_the_person(tmp_path):
+    """Final review of 0.21.0, I1: a service worker under public/ is code, whatever directory it is served from."""
+    found = code_paths(project(tmp_path, ["src/a.ts", "web/public/js/sw.js", "app/static/main.js",
+                                          "web/public/logo.png", "src/data/credits.ts"]))
+    assert asks(found, "web/public/js/sw.js") and asks(found, "app/static/main.js")
+    assert not asks(found, "web/public/logo.png") and not asks(found, "src/data/credits.ts")

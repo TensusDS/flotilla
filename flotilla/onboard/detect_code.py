@@ -17,8 +17,9 @@ from pathlib import Path, PurePosixPath
 #: Directories whose changes do not change the product.
 NOT_PRODUCT = frozenset({"tests", "test", "__tests__", "spec", "specs", "e2e", "docs", "doc", "examples", "example",
                          "fixtures", "benchmarks", "bench"})
-#: Directories that hold data rather than code.
-DATA = frozenset({"data", "assets", "content", "locales", "locale", "i18n", "public", "static", "media", "fonts"})
+#: Directories that hold data rather than code. Not `public`, `static` or `assets`: code is served from them (a service
+#: worker, a bundle), so there the type decides, file by file (final review of 0.21.0, I1).
+DATA = frozenset({"data", "content", "locales", "locale", "i18n"})
 #: Types that are text or media, never run.
 NOT_CODE = ("md", "markdown", "rst", "txt", "adoc", "png", "jpg", "jpeg", "gif", "webp", "svg", "ico", "bmp", "tif",
             "tiff", "mp3", "wav", "ogg", "flac", "mp4", "webm", "mov", "pdf", "csv", "tsv", "woff", "woff2", "ttf",

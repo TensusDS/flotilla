@@ -42,18 +42,20 @@ def person_must_approve(ledger, row: Row, revision: str = "") -> bool:
     profile = ledger.profile
     if (profile.get("flow") or {}).get("merge_authorized_by") != "human":
         return False
-    if not approval.paths_of(profile):
+    if not (profile.get("flow") or {}).get("approve_paths"):
         return True
     if row.state == "inbatch":
         revision, base = revision or row.merge, f"{row.merge}^1" if row.merge else ""
     else:
         revision, base = revision or revision_of(row), row.base
+    if not base and row.vouched:   # a vouch on trunk carries no range: its commits are what it carries (review, I3)
+        return any(commit_needs_person(ledger, sha) for sha in row.vouched)
     if delivered(row, profile):
         return approval.needs_person(ledger.root, profile, base, revision, run=ledger.run)
-    origin = f"refs/remotes/origin/{ledger.trunk}"
-    shipped = origin if gitq.resolve(ledger.root, origin, run=ledger.run) else ""
-    return approval.needs_person(ledger.root, profile, base, revision, run=ledger.run, trunk=shipped,
-                                 against=shipped or ledger.trunk)
+    # nothing is excluded by a local ref: a seat can repoint refs/remotes/origin/<trunk> at code it wants past the
+    # person (final review of 0.21.0, C1). The landing diff only adds what to ask about, so a local ref may name it.
+    against = gitq.trunk_ref(ledger.root, ledger.trunk, run=ledger.run)
+    return approval.needs_person(ledger.root, profile, base, revision, run=ledger.run, against=against)
 
 
 def commit_needs_person(ledger, sha: str) -> bool:
@@ -174,6 +176,8 @@ class Accounting:
         profile = ledger.profile
         human = (profile.get("flow") or {}).get("merge_authorized_by") == "human"
         for row in rows.values():
+            if not (row.is_open or delivered(row, profile) or row.state in REVIEWED or row.state == "inbatch"):
+                continue   # a released row accounts for nothing, so its git questions are never asked (review, M3)
             if rules_tree and any(step.get("rules_tree") != rules_tree for step in row.history):
                 continue   # a move checked against other rules - a repointed trunk ref - vouches for nothing here
             asks = human and person_must_approve(ledger, row)

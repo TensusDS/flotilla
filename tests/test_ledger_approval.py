@@ -173,3 +173,23 @@ def test_an_exclude_written_as_a_directory_covers_what_is_under_it():
 def test_whatever_hides_behind_a_dot_always_waits(name):
     """Security review of the code-paths change, 11: a list of agent and tool names is never whole (decision 245)."""
     assert approval.matches(name, approval.ALWAYS)
+
+
+
+@pytest.mark.parametrize("paths", [["!docs/**"], ["./src"], ["src/[ab]*.py"], ["src/ "], [""], [7]])
+def test_patterns_that_cannot_be_read_ask_the_person_of_everything(tmp_path, paths):
+    """Final review of 0.21.0, I1: a list matching nothing turned the yes off for everything but .flotilla/."""
+    root, base = _world(tmp_path)
+    tip = put(root, "src/a.py")
+    profile = {"flow": {"merge_authorized_by": "human", "approve_paths": paths}}
+    assert approval.needs_person(root, profile, base, tip) is True
+
+
+def test_a_name_a_pattern_cannot_read_asks_the_person(tmp_path):
+    """Security review of the code-paths change, 12: `.` did not match a newline, so a file named with one slipped
+    past every include; and a name with a control character in it is the person's, whatever the patterns say."""
+    assert approval.matches("src/a\nb.ts", ["**", "!*.md"]) is True
+    root, base = _world(tmp_path)
+    tip = put(root, "docs/a\nb.md")
+    profile = {"flow": {"merge_authorized_by": "human", "approve_paths": ["**", "!docs/**"]}}
+    assert approval.needs_person(root, profile, base, tip) is True

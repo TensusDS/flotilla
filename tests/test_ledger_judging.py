@@ -386,3 +386,28 @@ def test_a_walk_the_person_reverses_is_recorded_as_a_break(tmp_path):
                                 saw="the person hears the old timbre")
     assert (broken.state, broken.broken) == ("shipped", "the footsteps")
     assert (fix.state, fix.fixes) == ("claimed", broken.id)
+
+
+
+def test_a_reversed_walk_waits_for_its_own_fix_not_an_earlier_one(tmp_path):
+    """Final review of 0.21.0, I2: after a break, its fix shipped and a walk, the person reversed the walk; close
+    passed on the first break's fix."""
+    from flotilla.ledger import delivery, handover, reading
+    from flotilla.ledger import tree as tree_mod
+    from ledgerkit import commit, git, merge
+    root, ledger, row = world(tmp_path)
+    judging.broke(ledger, actor(ledger, JUDGE), "feat/x", where="Export", saw="nothing")
+    tree_mod.cut(ledger, actor(ledger, OWNER), "fix/x", tmp_path / "fix-tree")
+    tip = commit(tmp_path / "fix-tree", "fix", "fix-tree.txt")
+    handover.hand(ledger, actor(ledger, OWNER), "fix/x")
+    reading.take(ledger, actor(ledger, "review session 1"), "fix/x")
+    reading.accept(ledger, actor(ledger, "review session 1"), "fix/x", reviewed=tip)
+    delivery.queue(ledger, actor(ledger, SENDER), "fix/x")
+    merge(root, "fix/x")
+    delivery.land(ledger, actor(ledger, SENDER), "fix/x")
+    git(root, "push", "-q", "origin", "main")
+    delivery.ship(ledger, actor(ledger, SENDER), "fix/x")
+    judging.walked(ledger, actor(ledger, JUDGE), "feat/x", build="main", steps="s", saw="works now")
+    judging.broke(ledger, actor(ledger, JUDGE), "feat/x", where="Footsteps", saw="old timbre")
+    with pytest.raises(MoveRefused, match="Footsteps"):
+        judging.close(ledger, actor(ledger, OWNER), "feat/x")

@@ -31,7 +31,7 @@ BASE = {
 #: The move that does what a refused one was reached for, named in the refusal (twosuns field report A4).
 INSTEAD = {
     "close": ("claimed", "handed", "fixing", "accepted", "queued"),
-    "hand": ("accepted", "queued"),
+    "hand": ("accepted",),
 }
 INSTEAD_TEXT = {
     "close": "work that will not ship ends with `flotilla work release <branch> --why \"<why>\"`",

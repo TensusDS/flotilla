@@ -14,8 +14,8 @@ def label(tree: str, started: str = "") -> str:
         return (f"a headless session a plugin hook started ({started}) in {tree}: it reviews the change it was "
                 "started for and holds no post; not a fleet session")
     # most are a seat's own subagents and forks (twosuns A9): said, so nobody reads them as a fault
-    return (f"not a fleet session (started in {tree}): a subagent, a fork or a hand-opened session there; nothing "
-            "to do")
+    return (f"not a fleet session (started in {tree}): most often a seat's subagent or fork, nothing to do; one "
+            "opened there by hand is a second writer in the tree")
 
 
 def started_by(session) -> str:

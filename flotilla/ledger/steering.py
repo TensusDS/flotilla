@@ -40,7 +40,11 @@ def adopt(ledger: Ledger, actor: Actor, branch: str, *, to: str) -> Row:
         trail = f"{row.owner} <- {row.adopted_from}" if row.adopted_from else row.owner
         evidence = {"from": row.owner}
         if row.tree:   # the gone owner's clean tree lets go of the branch, so the heir can switch to it (twosuns A7)
-            evidence["tree"] = core.free_seat_tree(ledger, row.owner, row.tree)
+            held = ledger.run(["git", "-C", row.tree, "symbolic-ref", "--quiet", "--short", "HEAD"],
+                              capture_output=True, text=True, check=False).stdout.strip()
+            # only while it still holds this branch: by now it may be on another, perhaps a later seat's (review, M2)
+            evidence["tree"] = (core.free_seat_tree(ledger, row.owner, row.tree) if held == row.branch else
+                                f"not freed: {row.tree} holds `{held or 'no branch'}` now, not `{row.branch}`")
         return s.append(actor, row.id, "adopt", state, fields={"owner": heir, "adopted_from": trail},
                         evidence=evidence)
 

@@ -41,8 +41,13 @@ def fixes_of(rows: dict[str, Row], row: Row) -> list[Row]:
 
 
 def _fixed(ledger: Ledger, rows: dict[str, Row], row: Row) -> list[Row]:
-    """The delivered rows carrying this row's fixes; a fix settled by another row counts as that row (G10)."""
-    found = [views.fix_delivery(rows, other, ledger.profile) for other in fixes_of(rows, row)]
+    """The delivered rows carrying this row's fixes; a fix settled by another row counts as that row (G10). Only the
+    fix filed by the latest break counts, where the break named it: a walk the person reversed waits for its own
+    fix, not an earlier break's (final review of 0.21.0, I2)."""
+    last = next((step for step in reversed(row.history) if step.get("move") == "broke"), None)
+    named = ((last or {}).get("evidence") or {}).get("fix", "")
+    fixes = [other for other in fixes_of(rows, row) if not named or other.id == named]
+    found = [views.fix_delivery(rows, other, ledger.profile) for other in fixes]
     return [other for other in found if other is not None]
 
 
@@ -131,8 +136,9 @@ def broke(ledger: Ledger, actor: Actor, branch: str, *, where: str, saw: str,
         if gitq.branch_tip(ledger.root, name, run=ledger.run):
             raise MoveRefused(f"branch `{name}` already exists; name the fix branch with --fix-branch")
         fields = {"branch": name, "owner": row.owner, "fixes": row.id, "ref": row.ref, "tree": "", "base": ""}
-        broken, fix = s.append_all([(actor, row.id, "broke", state, {"broken": where}, {"saw": saw}),
-                                    (actor, next_row_id(s.rows), "claim", "claimed", fields, {"broke": where})])
+        fix_id = next_row_id(s.rows)
+        broken, fix = s.append_all([(actor, row.id, "broke", state, {"broken": where}, {"saw": saw, "fix": fix_id}),
+                                    (actor, fix_id, "claim", "claimed", fields, {"broke": where})])
     return broken, fix
 
 

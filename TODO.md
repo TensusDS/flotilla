@@ -65,6 +65,15 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
   run -- sh -c 'npx vitest ... | tail -40'` recorded green: the exit is tail's, inside a shell flotilla does not read.
   The skill says so; the run does not. Idea: warn when a lane command is `sh -c` / `bash -c` whose script ends in a
   pipe without `pipefail`. *(seen 2026-10-01 on 0.7.x: P - flotilla/lane/run.py)*
+- **The ledger the push guard asks reads its profile at the local remote-tracking ref.** `open_ledger` in
+  `_unapproved` takes the profile at `trunk_ref` (local `origin/<trunk>`), which a seat can repoint at a commit
+  carrying an edited `.flotilla/project.toml`; the guard itself reads origin's profile. Found by the final review
+  of 0.21.0 alongside C1 (which no longer trusts that ref for the approval check), not reproduced. *(seen
+  2026-10-27 on 0.21.0: S - flotilla/ledger/commands.py:99, flotilla/guards/push.py:454)*
+- **Code paths ask about trunk's work merged into a branch.** Since the final review of 0.21.0 (C1) nothing is
+  excluded by a local ref, so a docs branch that merged trunk is asked about the code trunk brought, unless the
+  landing diff alone is used. Idea: exclude below the last shipped row's merge, which `ship` verified on origin.
+  *(seen 2026-10-27 on 0.21.0: P - flotilla/ledger/batch.py)*
 - **Existing projects get the code paths only by hand.** Onboarding offers `approve_paths` to a new project; a
   project onboarded before 0.21.0 keeps its `merge_authorized_by` until a project row adds the paths. Idea: `onboard
   check` names the detected paths where the person authorizes merges and the profile names none. *(seen 2026-10-27

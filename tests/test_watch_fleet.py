@@ -266,8 +266,8 @@ def test_a_stranger_in_a_seat_tree_is_named_and_not_counted_as_a_seat():
                         post_of=post_of)
     named = [item for item in found if item.kind == fleet.STRANGER]
     assert [(item.who, item.text) for item in named] == [
-        ("app-main-1-2", "app-main-1-2: not a fleet session (started in /work/app-main-1): a subagent, a fork or a "
-                         "hand-opened session there; nothing to do")]
+        ("app-main-1-2", "app-main-1-2: not a fleet session (started in /work/app-main-1): most often a seat's "
+                         "subagent or fork, nothing to do; one opened there by hand is a second writer in the tree")]
     (done,) = [item for item in found if item.kind == fleet.DONE]
     assert "3 session(s) stay alive" in done.text   # the two seats' sessions and the person's own, not the stranger
 

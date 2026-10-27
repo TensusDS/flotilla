@@ -86,3 +86,11 @@ def test_a_refused_close_before_shipping_names_release():
 def test_a_refused_hand_after_acceptance_names_moved():
     with pytest.raises(MoveRefused, match=r"`flotilla work moved <branch> --tip"):
         next_state("accepted", "hand", {})
+
+
+
+def test_a_refused_hand_from_the_queue_names_no_move_that_is_refused_there():
+    """Final review of 0.21.0, M1: from queued, `moved` is not legal either."""
+    with pytest.raises(MoveRefused) as caught:
+        next_state("queued", "hand", {})
+    assert "flotilla work moved" not in str(caught.value)

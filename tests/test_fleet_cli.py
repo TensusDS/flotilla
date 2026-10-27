@@ -192,8 +192,8 @@ def test_the_fleet_names_a_stranger_in_a_seat_tree(tmp_path, monkeypatch):
     monkeypatch.setattr("flotilla.fleet.commands.census", lambda: fake.census() + [stranger])
     code, out = run_cli("fleet", "--root", str(root))
     assert code == 0, out
-    assert f"{tree.name}-3  not a fleet session (started in {tree}): a subagent, a fork" in out
-    assert "nothing to do" in out
+    assert f"{tree.name}-3  not a fleet session (started in {tree}): most often a seat's subagent or fork" in out
+    assert "nothing to do" in out and "second writer" in out
     assert out.count("main session 1") == 1
 
 

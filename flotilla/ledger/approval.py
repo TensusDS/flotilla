@@ -40,7 +40,8 @@ def _regex(pattern: str, whole: bool = False) -> re.Pattern:
             at += 1
     # a pattern without a slash names a file or directory anywhere, as in .gitignore; a directory covers its files
     lead = "" if anchored else "(?:.*/)?"
-    return re.compile(f"{lead}{''.join(out)}{'' if whole else '(?:/.*)?'}")
+    # DOTALL: a file name may hold a newline, and `.` must match it (security review, 12)
+    return re.compile(f"{lead}{''.join(out)}{'' if whole else '(?:/.*)?'}", re.DOTALL)
 
 
 def matches(path: str, patterns) -> bool:
@@ -78,6 +79,23 @@ def paths_of(profile: dict) -> list[str]:
     return [str(p) for p in found] if isinstance(found, list) else []
 
 
+def readable(patterns) -> bool:
+    """Whether a pattern list says what it seems to: strings with no space at either end, none empty, no `[`
+    class or escape this matcher does not read, no `./`, and at least one include. One that is not asks the person
+    of everything (final review of 0.21.0, I1: `["!docs/**"]` matched nothing and switched the yes off)."""
+    if not patterns or not all(isinstance(p, str) for p in patterns):
+        return False
+    for pattern in patterns:
+        body = pattern[1:] if pattern.startswith("!") else pattern
+        if not body or body != body.strip() or set("[]\\") & set(body) or body.startswith("./"):
+            return False
+    return any(not p.startswith("!") for p in patterns)
+
+
+def _unreadable_name(name: str) -> bool:
+    return any(ord(char) < 32 or ord(char) == 127 for char in name)
+
+
 def _names(raw: bytes) -> list[str]:
     return [name.strip(b"\n").decode("utf-8", "surrogateescape") for name in raw.split(b"\0") if name.strip(b"\n")]
 
@@ -111,8 +129,12 @@ def touched(root: Path, profile: dict, base: str, revision: str, run=subprocess.
     names = _changed(root, base, revision, run, trunk, against)
     if names is None:
         return None
+    raw = (profile.get("flow") or {}).get("approve_paths")
     patterns = paths_of(profile)
-    return [name for name in names if matches(name, patterns) or matches(name, ALWAYS)]
+    if not readable(raw if isinstance(raw, list) else None):
+        return names   # patterns that cannot be read decide nothing: everything is the person's
+    return [name for name in names
+            if matches(name, patterns) or matches(name, ALWAYS) or _unreadable_name(name)]
 
 
 def needs_person(root: Path, profile: dict, base: str, revision: str, run=subprocess.run, *,
@@ -120,7 +142,7 @@ def needs_person(root: Path, profile: dict, base: str, revision: str, run=subpro
     """Whether the work `base..revision` (less what `trunk` holds) waits for the person's yes on its way to trunk."""
     if not _person(profile):
         return False
-    if not paths_of(profile):
+    if not (profile.get("flow") or {}).get("approve_paths"):
         return True
     found = touched(root, profile, base, revision, run=run, trunk=trunk, against=against)
     return found is None or bool(found)

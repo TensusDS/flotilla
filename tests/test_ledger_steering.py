@@ -181,3 +181,18 @@ def test_adopt_keeps_a_dirty_tree_on_its_branch_and_says_so(world, tmp_path):
     row = steering.adopt(ledger, actor(ledger, ORCH), "feat/held", to="main session 2")
     assert git(tree, "rev-parse", "--abbrev-ref", "HEAD") == "feat/held"
     assert "uncommitted" in row.history[-1]["evidence"]["tree"]
+
+
+
+def test_adopt_leaves_a_tree_that_no_longer_holds_the_branch(world, tmp_path):
+    """Final review of 0.21.0, M2: the gone owner's tree may be on another branch by now, perhaps a later seat's."""
+    from flotilla.ledger import core
+    from ledgerkit import branch, git
+    root, ledger = world
+    tree = _seat_tree_holding(root, tmp_path)
+    core.claim(ledger, actor(ledger, "main session 1"), "feat/held", tree=str(tree))
+    branch(root, "feat/other", "other")
+    git(tree, "switch", "-q", "feat/other")
+    row = steering.adopt(ledger, actor(ledger, ORCH), "feat/held", to="main session 2")
+    assert git(tree, "rev-parse", "--abbrev-ref", "HEAD") == "feat/other"
+    assert "not freed" in row.history[-1]["evidence"]["tree"]
