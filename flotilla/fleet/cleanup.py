@@ -32,12 +32,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from flotilla.gc import refs
+from flotilla.gc.ignored import REGENERABLE, REGENERABLE_SUFFIXES
 
-#: Ignored paths an install or a build makes again; anything else ignored is somebody's and holds the tree.
-REGENERABLE = {"node_modules", ".venv", "venv", "__pycache__", "dist", "build", ".next", ".nuxt", ".svelte-kit",
-               "target", "coverage", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox", ".nox", ".cache",
-               ".turbo", ".parcel-cache", ".eslintcache", ".DS_Store", ".gradle", "htmlcov"}
-REGENERABLE_SUFFIXES = (".pyc", ".pyo", ".tsbuildinfo")
 #: Row states whose work is done with: the row no longer holds the branch.
 DONE = {"shipped", "closed", "released"}
 
