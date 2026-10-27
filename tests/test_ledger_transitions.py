@@ -74,3 +74,15 @@ def test_urgent_is_an_annotation():
 
 def test_landed_work_can_still_be_released_or_found_offledger():
     assert {"release", "offledger"} <= set(moves_from("landed", DIRECT))
+
+
+
+def test_a_refused_close_before_shipping_names_release():
+    """twosuns field report A4: `close` on a debug row that will never ship was refused with no word of `release`."""
+    with pytest.raises(MoveRefused, match=r"work that will not ship ends with `flotilla work release"):
+        next_state("claimed", "close", {})
+
+
+def test_a_refused_hand_after_acceptance_names_moved():
+    with pytest.raises(MoveRefused, match=r"`flotilla work moved <branch> --tip"):
+        next_state("accepted", "hand", {})

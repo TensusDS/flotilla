@@ -196,3 +196,17 @@ def test_accept_does_not_refuse_when_git_cannot_say(tmp_path):
     ledger = make_ledger(root, tmp_path / "state", run=run)
     row = handed_against_a_moved_trunk(root, ledger)
     assert reading.accept(ledger, actor(ledger, "review session 1"), "feat/x", reviewed=row.tip).state == "accepted"
+
+
+
+def test_the_reader_returns_its_own_accepted_verdict_before_the_queue(world):
+    """twosuns field report A4: a reviewer who found a fault in work it had accepted had no move; the orchestrator
+    had none either, and only the sender's `return` from the queue was left."""
+    root, ledger = world
+    row = handed(root, ledger)
+    reading.take(ledger, actor(ledger, "review session 1"), "feat/x")
+    reading.accept(ledger, actor(ledger, "review session 1"), "feat/x", reviewed=row.tip)
+    with pytest.raises(MoveRefused, match="assigned to review session 1"):
+        reading.fix(ledger, actor(ledger, "review session 2"), "feat/x", why="another reader's opinion")
+    back = reading.fix(ledger, actor(ledger, "review session 1"), "feat/x", why="the wiring is untested")
+    assert (back.state, back.verdict) == ("fixing", "")

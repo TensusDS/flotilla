@@ -374,3 +374,15 @@ def test_a_product_file_renamed_into_the_rules_is_not_rules_only(tmp_path):
     walked_on = git(root, "rev-parse", "main")                          # walked: the product lost it
     with pytest.raises(MoveRefused, match="walk what is deployed"):
         judging.walked(ledger, actor(ledger, JUDGE), "feat/x", build=walked_on, steps="s", saw="s")
+
+
+
+def test_a_walk_the_person_reverses_is_recorded_as_a_break(tmp_path):
+    """twosuns field report A4 and E: rows walked on a word that later proved wrong had no way back; `broke` from
+    `walked` takes the walk back into a broken shipped row and files its fix row, as from shipped."""
+    root, ledger, row = world(tmp_path)
+    judging.walked(ledger, actor(ledger, JUDGE), "feat/x", build="main", steps="opened the page", saw="it looked fine")
+    broken, fix = judging.broke(ledger, actor(ledger, JUDGE), "feat/x", where="the footsteps",
+                                saw="the person hears the old timbre")
+    assert (broken.state, broken.broken) == ("shipped", "the footsteps")
+    assert (fix.state, fix.fixes) == ("claimed", broken.id)

@@ -18,13 +18,25 @@ BASE = {
                "accept": "accepted", "release": "released", "offledger": "offledger"},
     "fixing": {"hand": "handed", "assign": "fixing", "recuse": "fixing", "release": "released",
                "offledger": "offledger"},
-    "accepted": {"queue": "queued", "moved": "handed", "return": "fixing", "release": "released",
+    # the reader takes its own verdict back while nothing is queued yet (twosuns A4)
+    "accepted": {"queue": "queued", "moved": "handed", "return": "fixing", "fix": "fixing", "release": "released",
                  "offledger": "offledger"},
     "queued": {"land": "landed", "ship": "shipped", "return": "fixing", "release": "released",
                "offledger": "offledger"},
     "landed": {"ship": "shipped", "close": "closed", "release": "released", "offledger": "offledger"},
     "shipped": {"walked": "walked", "broke": "shipped", "unbroke": "shipped", "close": "closed"},
-    "walked": {"close": "closed"},
+    # a walk the person reverses is a break: the row is shipped and broken again, with its fix row (twosuns A4)
+    "walked": {"close": "closed", "broke": "shipped"},
+}
+#: The move that does what a refused one was reached for, named in the refusal (twosuns field report A4).
+INSTEAD = {
+    "close": ("claimed", "handed", "fixing", "accepted", "queued"),
+    "hand": ("accepted", "queued"),
+}
+INSTEAD_TEXT = {
+    "close": "work that will not ship ends with `flotilla work release <branch> --why \"<why>\"`",
+    "hand": "new commits after a verdict are recorded with `flotilla work moved <branch> --tip <sha>`, and the "
+            "reader reads again",
 }
 ANNOTATIONS = ("wait", "hold", "unhold", "adopt", "urgent", "run", "walkable", "vouch", "approve", "launched")
 
@@ -53,5 +65,7 @@ def next_state(state: str, move: str, profile: dict, owner_post: str = "") -> st
     legal = moves_from(state, profile, owner_post)
     if move not in legal:
         options = ", ".join(sorted(legal)) or "none (the row is finished)"
-        raise MoveRefused(f"`{move}` is not legal from `{state}` in this project. Legal from here: {options}")
+        instead = f"; {INSTEAD_TEXT[move]}" if state in INSTEAD.get(move, ()) else ""
+        raise MoveRefused(f"`{move}` is not legal from `{state}` in this project{instead}. Legal from here: "
+                          f"{options}")
     return legal[move]
