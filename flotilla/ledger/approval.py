@@ -97,7 +97,8 @@ def _unreadable_name(name: str) -> bool:
 
 
 def _names(raw: bytes) -> list[str]:
-    return [name.strip(b"\n").decode("utf-8", "surrogateescape") for name in raw.split(b"\0") if name.strip(b"\n")]
+    """NUL-separated names, taken whole: a newline at a name's edge belongs to the name (security review, 13)."""
+    return [name.decode("utf-8", "surrogateescape") for name in raw.split(b"\0") if name]
 
 
 def _changed(root: Path, base: str, revision: str, run, trunk: str = "", against: str = "") -> list[str] | None:
@@ -108,12 +109,19 @@ def _changed(root: Path, base: str, revision: str, run, trunk: str = "", against
     (security review of the code-paths change, 2)."""
     if not base or not revision:
         return None
-    # --no-renames: a file moved out of the code paths changes them as much as one edited there
-    done = run(["git", "-C", str(root), "log", "--no-renames", "--format=", "--name-only", "-z", "--cc",
-                f"{base}..{revision}", *([f"^{trunk}"] if trunk else []), "--"], capture_output=True, check=False)
-    if done.returncode != 0:
+    listed = run(["git", "-C", str(root), "rev-list", f"{base}..{revision}", *([f"^{trunk}"] if trunk else []),
+                  "--"], capture_output=True, check=False)
+    if listed.returncode != 0:
         return None
-    names = _names(done.stdout)
+    names: list[str] = []
+    # one commit per call: `git log -z` frames commits with a newline a name can also hold (review, 13)
+    for sha in listed.stdout.decode("ascii", "replace").split():
+        # --no-renames: a file moved out of the code paths changes them as much as one edited there
+        done = run(["git", "-C", str(root), "diff-tree", "-r", "--root", "--no-commit-id", "--name-only", "-z",
+                    "--no-renames", "--cc", sha], capture_output=True, check=False)
+        if done.returncode != 0:
+            return None
+        names += _names(done.stdout)
     if against:
         landing = run(["git", "-C", str(root), "diff", "--no-renames", "--no-ext-diff", "--name-only", "-z",
                        f"{against}...{revision}", "--"], capture_output=True, check=False)

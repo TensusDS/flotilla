@@ -193,3 +193,14 @@ def test_a_name_a_pattern_cannot_read_asks_the_person(tmp_path):
     tip = put(root, "docs/a\nb.md")
     profile = {"flow": {"merge_authorized_by": "human", "approve_paths": ["**", "!docs/**"]}}
     assert approval.needs_person(root, profile, base, tip) is True
+
+
+
+def test_a_newline_at_the_edge_of_a_name_is_never_cut_away(tmp_path):
+    """Security review of the code-paths change, 13: names were stripped of newlines at their edges, so a file
+    `\\ndocs/evil.py` read as `docs/evil.py` and fell under `!docs/**`."""
+    root, base = _world(tmp_path)
+    put(root, "a.txt")
+    tip = put(root, "\ndocs/evil.py")
+    profile = {"flow": {"merge_authorized_by": "human", "approve_paths": ["**", "!docs/**", "!*.txt"]}}
+    assert approval.touched(root, profile, base, tip) == ["\ndocs/evil.py"]
