@@ -150,3 +150,26 @@ def test_a_type_exclude_covers_files_never_a_directory_named_like_one():
 def test_what_instructs_an_agent_or_a_build_always_waits(name):
     """Security review of the code-paths change, 7 and 9: agent instructions steer the fleet as much as its rules."""
     assert approval.matches(name, approval.ALWAYS)
+
+
+
+@pytest.mark.parametrize("exclude", ["!*.md", "!**/*.md", "!docs/*.md", "!*-notes.md", "!x.md"])
+def test_an_exclude_covers_what_is_under_it_only_when_written_as_a_directory(exclude):
+    """Security review of the code-paths change, 10: an exclude naming a file covered a directory of that name and
+    the code in it, whatever its form."""
+    patterns = ["**", exclude]
+    assert approval.matches("docs/x.md/evil.py", patterns) is True
+    assert approval.matches("docs/a-notes.md/evil.py", patterns) is True
+    assert approval.matches("x.md/evil.py", patterns) is True
+
+
+def test_an_exclude_written_as_a_directory_covers_what_is_under_it():
+    assert approval.matches("docs/a/b.md", ["**", "!docs/**"]) is False
+    assert approval.matches("docs/a/b.md", ["**", "!docs/"]) is False
+
+
+@pytest.mark.parametrize("name", [".gemini/settings.json", ".windsurf/rules.md", ".clinerules", ".roo/x",
+                                  "src/.codex/config.toml", ".amazonq/rules/a.md", ".anything-new/x"])
+def test_whatever_hides_behind_a_dot_always_waits(name):
+    """Security review of the code-paths change, 11: a list of agent and tool names is never whole (decision 245)."""
+    assert approval.matches(name, approval.ALWAYS)

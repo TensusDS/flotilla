@@ -16,7 +16,9 @@ from pathlib import Path
 
 
 @lru_cache(maxsize=256)
-def _regex(pattern: str) -> re.Pattern:
+def _regex(pattern: str, whole: bool = False) -> re.Pattern:
+    """`whole`: the pattern names a path, never what is under it - so an exclude written as a file does not cover a
+    directory of that name and the code in it (security review of the code-paths change, 10)."""
     anchored = "/" in pattern.rstrip("/")
     body = pattern.strip("/")
     out, at = [], 0
@@ -36,25 +38,27 @@ def _regex(pattern: str) -> re.Pattern:
         else:
             out.append(re.escape(body[at]))
             at += 1
-    # a pattern without a slash names a file or directory anywhere, as in .gitignore; a directory covers its files -
-    # but a type (`*.md`) names files only, or a directory `x.md/` would carry code past it (security review, 8)
+    # a pattern without a slash names a file or directory anywhere, as in .gitignore; a directory covers its files
     lead = "" if anchored else "(?:.*/)?"
-    tail = "" if body.startswith("*.") and "/" not in body else "(?:/.*)?"
-    return re.compile(f"{lead}{''.join(out)}{tail}")
+    return re.compile(f"{lead}{''.join(out)}{'' if whole else '(?:/.*)?'}")
 
 
 def matches(path: str, patterns) -> bool:
     """Whether `path` falls under an include pattern and under no `!` exclude."""
     includes = [p for p in patterns if p and not p.startswith("!")]
     excludes = [p[1:] for p in patterns if p.startswith("!")]
+    # an include covers what is under it, which asks more; an exclude only where written as a directory, so doubt
+    # asks the person (security review of the code-paths change, 8 and 10)
     return (any(_regex(p).fullmatch(path) for p in includes)
-            and not any(_regex(p).fullmatch(path) for p in excludes))
+            and not any(_regex(p, whole=not (p.endswith("/") or p.endswith("/**"))).fullmatch(path)
+                        for p in excludes))
 
 
 #: Always the person's where they authorize code only: the fleet's own rules - a row editing them could take this very
 #: gate away - and what runs whatever its type: CI, hooks, the tools' settings, manifests and build files (security
 #: review of the code-paths change, 4 and 5). Held here, not in the profile, so no profile and no `!` leaves them out.
-ALWAYS = (".flotilla/**", ".github/**", ".gitlab/**", ".circleci/**", ".husky/**", ".devcontainer/**", ".claude/**",
+ALWAYS = (".*",   # whatever hides behind a dot: agents' and tools' settings, a list of whose names is never whole
+          ".flotilla/**", ".github/**", ".gitlab/**", ".circleci/**", ".husky/**", ".devcontainer/**", ".claude/**",
           ".vscode/**", ".idea/**", ".cursor/**", ".mcp.json", ".gitlab-ci.yml", ".gitattributes", ".gitmodules",
           ".pre-commit-config.yaml", ".envrc", ".npmrc", ".yarnrc", ".yarnrc.yml", "package.json", "package-lock.json",
           "pnpm-lock.yaml", "yarn.lock", "pyproject.toml", "uv.lock", "setup.py", "setup.cfg", "requirements*.txt",
