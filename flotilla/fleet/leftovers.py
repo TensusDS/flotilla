@@ -132,6 +132,18 @@ def _subtree(root: int, children: dict[int, list[int]]) -> list[int]:
     return found
 
 
+def working_in(tree, *, proc_root: Path | None = None, me: int | None = None) -> list[tuple[int, str]] | None:
+    """Every process whose working directory is inside `tree`, orphan or not, as (pid, command), this process left
+    out; None where procfs cannot be read. A tree something works in is in use, whoever started it (gc design 5.1)."""
+    proc_root = PROC_ROOT if proc_root is None else Path(proc_root)
+    if not proc_root.is_dir():
+        return None
+    tree = Path(tree).resolve()
+    me = os.getpid() if me is None else me
+    return [(pid, proc.command) for pid, proc in sorted(_table(proc_root).items())
+            if pid != me and _inside(proc.cwd, tree)]
+
+
 def in_tree(tree, *, keep: set[int], proc_root: Path | None = None, me: int | None = None,
             started_before: int | None = None) -> list[Leftover] | None:
     """The orphans that started before `started_before` (default: now) and work in `tree`, each followed by what
