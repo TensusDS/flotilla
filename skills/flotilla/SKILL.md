@@ -84,6 +84,22 @@ someone else. The Stop guard blocks a background session that tries to stop whil
 flight and no wait recorded; answer it the same way, never by stopping again. If you are the orchestrator, a line
 headed "flotilla - the fleet" names dropped balls: message the session it names.
 
+## What is not a fault
+
+Some answers are the fleet's rules or Claude Code working as meant. None of them is a flotilla defect, and none
+goes into a report:
+
+- `not yet:` followed by "nothing is wrong" - work waits on other work (a dependency not delivered, a part whose
+  whole has not shipped). Record the wait if it is yours and ask again once it moves.
+- a guard that says "a guard, not a fault" - write each flotilla command out in full, one per call.
+- `rig run --get` refused for a file type - the project's `[rig] get_types` decides what comes back; ask the
+  orchestrator for a project row that adds the type.
+- Claude Code's auto-mode classifier refusing `flotilla rig down` after your run - the reaper returns an idle
+  machine within 15 minutes; do not retry. A classifier "no verdict" is passing: retry once later, and tell the
+  orchestrator only if it repeats.
+- SendMessage asking to confirm a name once after Claude Code relaunched a seat - check `flotilla fleet` lists that
+  name as a live seat, then confirm. A lane run the relaunch killed is recorded as killed; run it again.
+
 ## Who talks to the person
 
 Only the orchestrator. Every other post runs in the background, where nobody is attached: a question asked there
