@@ -31,6 +31,8 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from flotilla.gc import refs
+
 #: Ignored paths an install or a build makes again; anything else ignored is somebody's and holds the tree.
 REGENERABLE = {"node_modules", ".venv", "venv", "__pycache__", "dist", "build", ".next", ".nuxt", ".svelte-kit",
                "target", "coverage", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox", ".nox", ".cache",
@@ -62,23 +64,11 @@ def _regenerable(path: str) -> bool:
 
 def _trunk_on_origin(ledger) -> tuple[str | None, str]:
     """(origin's trunk commit, present here) or (None, why not)."""
-    trunk = (ledger.profile.get("trunk") or {}).get("branch", "main")
-    listed = _git(ledger.root, "ls-remote", "origin", f"refs/heads/{trunk}", run=ledger.run)
-    sha = listed.stdout.split()[0] if listed.returncode == 0 and listed.stdout.split() else ""
-    if not sha:
-        return None, f"origin could not be asked for its trunk `{trunk}`"
-    if _git(ledger.root, "cat-file", "-e", f"{sha}^{{commit}}", run=ledger.run).returncode != 0:
-        _git(ledger.root, "fetch", "-q", "origin", trunk, run=ledger.run)
-        if _git(ledger.root, "cat-file", "-e", f"{sha}^{{commit}}", run=ledger.run).returncode != 0:
-            return None, f"origin's trunk {sha[:7]} is not here and could not be fetched"
-    return sha, ""
+    return refs.origin_tip(ledger, (ledger.profile.get("trunk") or {}).get("branch", "main"))
 
 
 def _shipped_tips(ledger) -> set[str]:
-    """Tips the ledger SHIPPED - a ship move is checked against origin; a close alone is not (a local flow closes
-    after landing on a local trunk; review of the cleanup, I4)."""
-    return {row.tip for row in ledger.rows().values()
-            if row.tip and any(step.get("move") == "ship" for step in row.history)}
+    return refs.shipped_tips(ledger)
 
 
 def _on_trunk(ledger, tip: str, branch: str, trunk_sha: str) -> bool:
