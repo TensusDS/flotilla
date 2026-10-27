@@ -10,6 +10,7 @@ lifted. `urgent` is a person's request to ship a row out of turn; it changes onl
 from __future__ import annotations
 
 from flotilla.ledger.actor import Actor, require_may
+from flotilla.ledger import core
 from flotilla.ledger.core import Ledger
 from flotilla.ledger.errors import MoveRefused
 from flotilla.ledger.model import Row
@@ -37,8 +38,11 @@ def adopt(ledger: Ledger, actor: Actor, branch: str, *, to: str) -> Row:
         if post is None or ("claim" not in post.may and post.name != ledger.owner_post(row)):
             raise MoveRefused(f"{heir} holds no post that owns this work")
         trail = f"{row.owner} <- {row.adopted_from}" if row.adopted_from else row.owner
+        evidence = {"from": row.owner}
+        if row.tree:   # the gone owner's clean tree lets go of the branch, so the heir can switch to it (twosuns A7)
+            evidence["tree"] = core.free_seat_tree(ledger, row.owner, row.tree)
         return s.append(actor, row.id, "adopt", state, fields={"owner": heir, "adopted_from": trail},
-                        evidence={"from": row.owner})
+                        evidence=evidence)
 
 
 def _live_or_empty(ledger: Ledger) -> set[str]:

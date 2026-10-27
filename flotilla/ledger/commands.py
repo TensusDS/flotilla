@@ -228,12 +228,18 @@ CANNOT_RUN = ("next: flotilla cannot run here as things stand; send this text to
 def _adopt(ledger, actor, args):
     if bool(args.branch) == bool(getattr(args, "from_", None)):
         raise MoveRefused("name one branch, or --from <gone session> for all of its open work - not both")
+    def trees(rows):
+        said = [(row.branch, (row.history[-1].get("evidence") or {}).get("tree")) for row in rows]
+        return [f"tree of `{branch}`: {tree}" for branch, tree in said if tree]
     if args.branch:
-        return steering.adopt(ledger, actor, args.branch, to=args.to)
+        row = steering.adopt(ledger, actor, args.branch, to=args.to)
+        said = trees([row])
+        return (row, "\n".join(said)) if said else row
     moved, refused = steering.adopt_from(ledger, actor, args.from_, to=args.to)
     lines = []
     if moved:
         lines.append("adopted: " + ", ".join(f"`{row.branch}` ({row.state})" for row in moved) + f" -> {args.to}")
+        lines += trees(moved)
     lines += [f"NOT adopted: `{branch}`: {why}" for branch, why in refused]
     if not moved:
         raise MoveRefused("; ".join(lines))

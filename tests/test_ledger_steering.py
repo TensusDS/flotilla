@@ -145,3 +145,39 @@ def test_adopt_from_reports_what_moved_when_a_row_is_refused(world, monkeypatch)
     assert sorted(row.branch for row in moved) == ["feat/x", "feat/z"]
     assert refused == [("feat/y", "the census could not be asked")]
 
+
+
+
+def _seat_tree_holding(root, tmp_path, name="feat/held"):
+    from pathlib import Path as P
+    from ledgerkit import branch, git
+    branch(root, name, "work")
+    tree = P(tmp_path) / "seat-tree"
+    git(root, "worktree", "add", "-q", "-b", "fleet/main-1", str(tree))
+    git(tree, "switch", "-q", name)
+    return tree
+
+
+def test_adopt_frees_the_branch_a_gone_owners_clean_tree_held(world, tmp_path):
+    """twosuns field report A7: after adopt, the heir's `tree switch` failed - the branch was still checked out in
+    the gone seat's tree, and the orchestrator detached three trees by hand."""
+    from flotilla.ledger import core
+    from ledgerkit import git
+    root, ledger = world
+    tree = _seat_tree_holding(root, tmp_path)
+    core.claim(ledger, actor(ledger, "main session 1"), "feat/held", tree=str(tree))
+    row = steering.adopt(ledger, actor(ledger, ORCH), "feat/held", to="main session 2")
+    assert git(tree, "rev-parse", "--abbrev-ref", "HEAD") == "HEAD"
+    assert row.history[-1]["evidence"]["tree"] == "detached"
+
+
+def test_adopt_keeps_a_dirty_tree_on_its_branch_and_says_so(world, tmp_path):
+    from flotilla.ledger import core
+    from ledgerkit import git
+    root, ledger = world
+    tree = _seat_tree_holding(root, tmp_path)
+    core.claim(ledger, actor(ledger, "main session 1"), "feat/held", tree=str(tree))
+    (tree / "wip.txt").write_text("unsaved\n", encoding="utf-8")
+    row = steering.adopt(ledger, actor(ledger, ORCH), "feat/held", to="main session 2")
+    assert git(tree, "rev-parse", "--abbrev-ref", "HEAD") == "feat/held"
+    assert "uncommitted" in row.history[-1]["evidence"]["tree"]
