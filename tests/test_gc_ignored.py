@@ -76,3 +76,11 @@ def test_a_regenerable_entry_is_not_walked(tmp_path, monkeypatch):
     put(tree, "node_modules/x/index.js")
     monkeypatch.setattr(ignored.os, "walk", lambda *a, **k: (_ for _ in ()).throw(AssertionError("walked")))
     assert holding(root, tree) == []
+
+
+def test_a_nested_repository_under_an_ignored_path_holds_the_tree(tmp_path):
+    """Security review of gc stage 1; gc design 6, rule 5: a `.git` under an ignored path is a nested repository."""
+    root, tree = tree_with(tmp_path, "node_modules/\nwork/\n")
+    put(tree, "work/__pycache__/a.pyc")
+    git(tree / "work", "init", "-q")
+    assert holding(root, tree) == ["work/"]

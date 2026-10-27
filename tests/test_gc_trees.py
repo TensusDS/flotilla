@@ -151,3 +151,23 @@ def test_any_doubt_keeps_the_tree_and_names_it(tmp_path, doubt, reason):
         git(tree, "update-index", "--skip-worktree", "t.txt")
     found = judge(ledger, tree)
     assert not found.removable and any(reason in line for line in found.reasons), found.reasons
+
+
+def test_a_populated_submodule_keeps_the_tree(tmp_path):
+    """Security review of gc stage 1: a submodule's edits hide from status under `submodule.<name>.ignore=all`, and
+    its commits live in the tree's own git directory - a nested repository is the person's to decide (gc design 6,
+    rule 5)."""
+    root, ledger = world(tmp_path)
+    sub = tmp_path / "lib-src"
+    sub.mkdir()
+    git(sub, "init", "-q", "-b", "main")
+    commit(sub, "lib", "lib.txt", "l\n")
+    git(root, "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(sub), "lib")
+    git(root, "config", "-f", ".gitmodules", "submodule.lib.ignore", "all")
+    git(root, "add", ".gitmodules")
+    commit(root, "add lib")
+    tree = seat(root, tmp_path)
+    git(tree, "-c", "protocol.file.allow=always", "submodule", "update", "-q", "--init")
+    (tree / "lib" / "lib.txt").write_text("edited inside the submodule\n", encoding="utf-8")
+    found = judge(ledger, tree)
+    assert not found.removable and any("submodule" in reason for reason in found.reasons), found.reasons

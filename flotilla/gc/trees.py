@@ -92,8 +92,8 @@ def _in_use(tree: Path, proc_root, notes: list[str], *, run) -> str:
 def _unclean(ledger, tree: Path, branch: str, spare_rows) -> list[str] | None:
     run = ledger.run
     # options spelled out: a person's status.showUntrackedFiles=no hid untracked work (review of the cleanup, C1)
-    status = _git(tree, "-c", "status.showUntrackedFiles=all", "status", "--porcelain", "--untracked-files=all",
-                  run=run)
+    status = _git(tree, "-c", "status.showUntrackedFiles=all", "-c", "diff.ignoreSubmodules=none", "status",
+                  "--porcelain", "--untracked-files=all", "--ignore-submodules=none", run=run)
     if status.returncode != 0:
         return None
     reasons = []
@@ -101,6 +101,13 @@ def _unclean(ledger, tree: Path, branch: str, spare_rows) -> list[str] | None:
               if line[:1] == "S" or line[:1].islower()]
     if hidden:   # skip-worktree or assume-unchanged: an edit there shows in no status (review of the cleanup, I2)
         reasons.append(f"files git is told not to look at: {', '.join(hidden[:3])}")
+    # a populated submodule is a nested repository: its edits can hide from status (`ignore = all`) and its commits
+    # live in this tree's own git directory, so it is the person's to decide (security review of gc stage 1)
+    nested = [line.split("\t", 1)[1] for line in _git(tree, "ls-files", "--stage", run=run).stdout.splitlines()
+              if line.startswith("160000 ") and "\t" in line]
+    populated = [path for path in nested if (tree / path / ".git").exists()]
+    if populated:
+        reasons.append(f"a populated submodule: {', '.join(populated[:3])}")
     changed = [line[3:] for line in status.stdout.splitlines() if line]
     if changed:
         reasons.append(f"{len(changed)} uncommitted or untracked file(s): {', '.join(changed[:3])}")
