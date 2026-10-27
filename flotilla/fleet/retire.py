@@ -139,7 +139,7 @@ def retire(ledger, name: str, *, caller: str, census, wait: float = 60.0, poll: 
     # judged before the tree lets go of its branch: which branch it is, is the question (decision 206)
     # never the main checkout or another repository's tree, whatever git would allow (F13; review of the cleanup, M2)
     judged = row.tree and Path(row.tree).is_dir() and not core.seat_tree_refusal(ledger, row.tree)
-    verdict = cleanup.judge(ledger, row.tree, spare_rows={row.id}) if judged else None
+    verdict = cleanup.judge(ledger, row.tree, spare_rows={row.id}, sessions=_sessions(census)) if judged else None
     cleaned = cleanup.remove(ledger, verdict) if verdict is not None and verdict.removable else []
     removed = bool(cleaned) and not Path(row.tree).exists()
     # a removal git refused keeps the tree: it still lets go of its branch, and the refusal is said (review, I6)
@@ -257,8 +257,28 @@ def down(ledger, *, caller: str, me: str, census, wait: float = 60.0, poll: floa
             lines.append(f"refused {row.owner}: {err}")
     if not lines:
         lines.append("no post rows: nobody was spawned, or everyone was retired")
+    lines += clean_up(ledger, census)
     lines += still_alive(ledger, census, me)
     return lines, refused
+
+
+def _sessions(census) -> list:
+    try:
+        return list(census())
+    except CensusUnavailable:
+        return []
+
+
+def clean_up(ledger, census) -> list[str]:
+    """The last step of standing down: one collector pass over the trees and branches the fleet left (the person,
+    2026-10-27: cleaning is the orchestrator's last step, never the person's). The census is asked again, after the
+    retires, so the seats just stopped count as gone; a census that cannot be asked skips the pass - never a pass
+    without liveness."""
+    try:
+        sessions = census()
+    except CensusUnavailable:
+        return ["cleaning up: skipped, the census could not be asked; `flotilla fleet down` again cleans"]
+    return ["cleaning up:"] + [f"  {line}" for line in cleanup.sweep(ledger, sessions=sessions, act=True)]
 
 
 def _trees(ledger) -> list[Path]:

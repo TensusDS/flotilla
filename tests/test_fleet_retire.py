@@ -383,3 +383,59 @@ def test_a_removal_git_refuses_still_frees_the_branch_and_says_why(tmp_path, mon
     lines = "\n".join(do_retire(ledger, fake))
     assert seat.seat.tree.is_dir() and "git refused" in lines and "submodules" in lines
     assert "HEAD detached" in git(seat.seat.tree, "status") or not git(seat.seat.tree, "branch", "--show-current")
+
+
+# --- gc stage 1: retire judges the tree by what it alone holds; fleet down ends by cleaning (the person, 2026-10-27)
+
+def test_retiring_a_seat_whose_tree_has_reflog_only_commits_parks_them(tmp_path):
+    fake = FakeClaude()
+    root, ledger, seat = raised_world(tmp_path, fake)
+    dropped = commit(seat.seat.tree, "a trial")
+    git(seat.seat.tree, "reset", "-q", "--hard", "HEAD~1")
+    do_retire(ledger, fake)
+    assert not seat.seat.tree.exists()
+    assert dropped in git(root, "for-each-ref", "--format=%(objectname)", "refs/flotilla/parked/").split()
+
+
+def leftover(tmp_path, name="app-main-9", branch="fleet/main-9"):
+    """An older fleet's seat tree no row names, its work on trunk."""
+    tree = tmp_path / name
+    git(tmp_path / "app", "worktree", "add", "-q", "-b", branch, str(tree))
+    return tree
+
+
+def test_down_ends_with_the_pass(tmp_path):
+    fake = FakeClaude()
+    ledger = fleet_world(tmp_path, fake, {"main": 1})
+    old = leftover(tmp_path)
+    lines, refused = do_down(ledger, fake)
+    assert refused == 0 and not old.exists() and not (tmp_path / "app-main-1").exists()
+    at = lines.index("cleaning up:")
+    assert lines[at + 1].startswith("  removed ")
+
+
+def test_down_with_only_the_caller_left_still_cleans(tmp_path):
+    fake = FakeClaude()
+    ledger = fleet_world(tmp_path, fake, {"orchestrator": 1})
+    old = leftover(tmp_path)
+    lines, _ = do_down(ledger, fake, me="orchestrator 1")
+    assert not old.exists()
+    assert any("kept orchestrator 1" in line for line in lines) and "cleaning up:" in lines
+
+
+def test_down_skips_the_pass_when_the_census_fails_after_the_retires(tmp_path):
+    from flotilla.core.census import CensusUnavailable
+    fake = FakeClaude()
+    ledger = fleet_world(tmp_path, fake, {"orchestrator": 1})
+    old = leftover(tmp_path)
+    calls = []
+
+    def census():
+        calls.append(1)
+        if len(calls) > 2:   # down asks twice before standing anyone down
+            raise CensusUnavailable("`claude agents --json` did not answer within 30s")
+        return fake.census()
+    lines, _ = retire.down(ledger, caller="fleet down by the person", me="orchestrator 1", census=census, wait=0.2,
+                           poll=0.05, sleep=lambda seconds: None)
+    assert old.exists()
+    assert any(line.startswith("cleaning up: skipped, the census could not be asked") for line in lines)
