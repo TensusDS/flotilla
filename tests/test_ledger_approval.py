@@ -1,7 +1,7 @@
 import pytest
 
 from flotilla.ledger import approval
-from ledgerkit import branch, commit, git, repo_with_origin
+from ledgerkit import IDENTITY, branch, commit, git, repo_with_origin
 
 CODE = ["src/**", "!src/data/**", "*.py"]
 
@@ -99,7 +99,7 @@ def test_a_merge_that_drops_trunks_code_still_waits_for_the_person(tmp_path):
     on_trunk = put(root, "src/core/n.ts")
     git(root, "checkout", "-q", "-b", "docs/z", base)
     put(root, "docs/z.md")
-    git(root, "merge", "-q", "-s", "ours", "--no-edit", "main")
+    git(root, *IDENTITY, "merge", "-q", "-s", "ours", "--no-edit", "main")
     tip = git(root, "rev-parse", "HEAD")
     assert approval.needs_person(root, profile, base, tip, trunk=on_trunk, against=on_trunk) is True
     assert approval.touched(root, profile, base, tip, trunk=on_trunk, against=on_trunk) == ["src/core/n.ts"]
@@ -126,7 +126,7 @@ def test_a_vouched_merge_is_judged_by_what_it_changes_on_its_own_line(tmp_path):
     git(root, "checkout", "-q", "-b", "side", base)
     put(root, "docs/side.md")
     git(root, "checkout", "-q", "main")
-    git(root, "merge", "-q", "--no-edit", "side")
+    git(root, *IDENTITY, "merge", "-q", "--no-edit", "side")
     git(root, "rm", "-q", "src/core/n.ts")
     git(root, "-c", "user.email=t@example.invalid", "-c", "user.name=t", "commit", "-q", "--amend", "--no-edit")
     merged = git(root, "rev-parse", "HEAD")
