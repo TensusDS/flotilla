@@ -55,7 +55,6 @@ def test_regenerable_files_do_not_hold_a_tree(tmp_path):
     ("uncommitted", "uncommitted"),
     ("untracked", "uncommitted"),
     ("ignored", ".env"),
-    ("unmerged", "not on origin's trunk"),
     ("stash", "stash"),
     ("open row", "open row"),
 ])
@@ -70,8 +69,6 @@ def test_any_doubt_keeps_the_tree_and_names_it(tmp_path, doubt, reason):
         (tree / "notes.txt").write_text("mine\n", encoding="utf-8")
     elif doubt == "ignored":
         (tree / ".env").write_text("TOKEN=secret\n", encoding="utf-8")
-    elif doubt == "unmerged":
-        commit(tree, "not shipped", "w.txt", "x\n")
     elif doubt == "stash":
         (tree / "README.md").write_text("stashed\n", encoding="utf-8")
         git(tree, "-c", "user.email=t@x", "-c", "user.name=t", "stash", "-q")
@@ -80,6 +77,18 @@ def test_any_doubt_keeps_the_tree_and_names_it(tmp_path, doubt, reason):
     found = cleanup.judge(ledger, tree)
     assert not found.removable and any(reason in why for why in found.reasons), found.reasons
     assert cleanup.remove(ledger, found) == [] and tree.exists()
+
+
+def test_a_clean_tree_on_an_unlanded_branch_goes_and_the_branch_stays(tmp_path):
+    # gc design 5.1: the tree and its branch are two decisions; the branch holds the commits, the tree holds nothing
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    commit(tree, "not shipped", "w.txt", "x\n")
+    found = cleanup.judge(ledger, tree)
+    assert found.removable, found.reasons
+    lines = cleanup.remove(ledger, found)
+    assert not tree.exists() and "fleet/main-1" in git(root, "branch", "--list")
+    assert any("kept branch `fleet/main-1`" in line and "not on any trunk" in line for line in lines)
 
 
 def test_a_squash_shipped_branch_counts_when_the_ledger_shipped_that_tip(tmp_path):
@@ -91,19 +100,22 @@ def test_a_squash_shipped_branch_counts_when_the_ledger_shipped_that_tip(tmp_pat
     git(root, "merge", "-q", "--squash", "feat/x")
     commit(root, "squashed")
     git(root, "push", "-q", "origin", "HEAD:main")
-    assert not cleanup.judge(ledger, tree).removable          # no record: commits not on trunk, kept
+    # gc design 5.1: the tree goes either way, its branch holds the commits; the branch waits for the ship record
+    first = cleanup.judge(ledger, tree)
+    assert first.removable and not first.branch_verdict.delete      # no record: commits not on trunk, kept
     with ledger.session() as s:
         s.append(actor(ledger, "sender 1"), "r9", "ship", "shipped", fields={"branch": "feat/x", "tip": tip})
     found = cleanup.judge(ledger, tree)
-    assert found.removable, found.reasons
+    assert found.removable and found.branch_verdict.delete and found.branch_verdict.park == [tip]
 
 
-def test_origin_that_cannot_be_asked_is_a_doubt(tmp_path):
+def test_origin_that_cannot_be_asked_keeps_the_branch_not_the_tree(tmp_path):
+    # gc design 5.1: the tree's HEAD is held by its own branch, which stays, so the tree may go
     root, ledger = world(tmp_path)
     tree = seat(root, tmp_path)
     git(root, "remote", "set-url", "origin", str(tmp_path / "gone.git"))
     found = cleanup.judge(ledger, tree)
-    assert not found.removable and any("origin" in why for why in found.reasons)
+    assert found.removable and not found.branch_verdict.delete and "origin" in found.branch_verdict.reason
 
 
 def test_the_sweep_removes_what_is_sure_and_lists_the_rest(tmp_path):
@@ -113,13 +125,14 @@ def test_the_sweep_removes_what_is_sure_and_lists_the_rest(tmp_path):
     ship(root, done, "fleet/main-1")
     kept = seat(root, tmp_path, "app-main-2", "fleet/main-2")
     commit(kept, "not shipped", "y.txt", "y\n")
+    (kept / "notes.txt").write_text("mine\n", encoding="utf-8")   # gc design 5.1: only what it alone holds keeps it
     git(root, "branch", "fleet/main-7", "HEAD")      # an older seat's home branch, its work on trunk
     git(root, "branch", "old-merged", "HEAD")        # a person's: merged, but not the fleet's to delete
     preview = cleanup.sweep(ledger, sessions=[], act=False)
     assert done.exists() and any("would remove" in line and "app-main-1" in line for line in preview)
     lines = cleanup.sweep(ledger, sessions=[], act=True)
     assert not done.exists() and kept.exists()
-    assert any("kept" in line and "app-main-2" in line for line in lines)
+    assert any(line.startswith("kept 1 tree: uncommitted or untracked") and "app-main-2" in line for line in lines)
     branches = git(root, "branch", "--list")
     assert "fleet/main-7" not in branches and "fleet/main-2" in branches and "main" in branches
     assert "old-merged" in branches
@@ -147,7 +160,9 @@ def test_work_added_after_a_squash_ship_is_a_doubt(tmp_path):
         s.append(actor(ledger, "sender 1"), "r9", "ship", "shipped", fields={"branch": "feat/x", "tip": tip})
     commit(tree, "more work, after the ship", "more.txt", "y\n")
     found = cleanup.judge(ledger, tree)
-    assert not found.removable and any("not on origin's trunk" in why for why in found.reasons)
+    # gc design 5.1: the branch holds the later commit, so the tree may go; the branch is not landed and stays
+    assert found.removable and not found.branch_verdict.delete
+    assert "not on any trunk" in found.branch_verdict.reason
 
 
 # --- review of the cleanup (decision 207): each of these lost work in a probe of the first version ---
@@ -184,7 +199,7 @@ def test_files_git_is_told_not_to_look_at_are_a_doubt(tmp_path):
 
 
 @pytest.mark.parametrize("move_away", ["detach", "reset"])
-def test_commits_only_its_reflog_reaches_are_a_doubt(tmp_path, move_away):
+def test_commits_only_its_reflog_reaches_are_parked(tmp_path, move_away):
     """I3: a commit left behind by a detach or a reset survives only in the tree's or the branch's reflog, which go
     with the tree and the branch."""
     root, ledger = world(tmp_path)
@@ -197,7 +212,10 @@ def test_commits_only_its_reflog_reaches_are_a_doubt(tmp_path, move_away):
         commit(tree, "work nobody shipped", "w.txt", "x\n")
         git(tree, "reset", "-q", "--hard", "origin/main")
     found = cleanup.judge(ledger, tree)
-    assert not found.removable and any("reflog" in why for why in found.reasons)
+    # gc design 5.4: parked under refs/flotilla/parked/ before the tree goes, so they are no doubt
+    assert found.removable, found.reasons   # parked by the tree (detach) or by its branch (reset)
+    cleanup.remove(ledger, found)
+    assert not tree.exists() and git(root, "for-each-ref", "refs/flotilla/parked/")
 
 
 def test_a_closed_row_that_never_shipped_is_not_trunk(tmp_path):
@@ -207,7 +225,8 @@ def test_a_closed_row_that_never_shipped_is_not_trunk(tmp_path):
     tip = commit(tree, "work", "w.txt", "x\n")
     with ledger.session() as s:
         s.append(actor(ledger, "main session 1"), "r9", "close", "closed", fields={"branch": "feat/x", "tip": tip})
-    assert not cleanup.judge(ledger, tree).removable
+    found = cleanup.judge(ledger, tree)
+    assert found.removable and not found.branch_verdict.delete   # gc design 5.1: the branch is what stays
 
 
 def test_the_sweep_leaves_what_flotilla_did_not_make(tmp_path):

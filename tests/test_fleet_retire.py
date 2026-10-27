@@ -44,12 +44,22 @@ def test_retire_stops_the_session_unlocks_the_tree_and_releases_the_post_row(tmp
     assert "fleet/main-1" not in git(root, "branch", "--list")
 
 
-def test_retire_keeps_a_tree_whose_work_is_not_on_trunk_and_says_why(tmp_path):
+def test_retiring_a_seat_on_an_unlanded_branch_removes_the_clean_tree_and_keeps_the_branch(tmp_path):
+    # gc design 5.1: the tree and its branch are two decisions; the branch holds the unlanded commits
     fake = FakeClaude()
     root, ledger, seat = raised_world(tmp_path, fake)
     commit(seat.seat.tree, "not shipped", "w.txt", "x\n")
     lines = "\n".join(do_retire(ledger, fake))
-    assert seat.seat.tree.is_dir() and "not on origin's trunk" in lines and "fleet clean" in lines
+    assert not seat.seat.tree.exists() and "fleet/main-1" in git(root, "branch", "--list")
+    assert "kept branch `fleet/main-1`: its commits are not on any trunk" in lines
+
+
+def test_retire_keeps_a_tree_with_untracked_work_and_says_why(tmp_path):
+    fake = FakeClaude()
+    root, ledger, seat = raised_world(tmp_path, fake)
+    (seat.seat.tree / "notes.txt").write_text("mine\n", encoding="utf-8")
+    lines = "\n".join(do_retire(ledger, fake))
+    assert seat.seat.tree.is_dir() and "uncommitted or untracked" in lines and "fleet clean" in lines
     assert "locked" not in git(root, "worktree", "list", "--porcelain")
 
 

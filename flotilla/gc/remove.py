@@ -25,8 +25,10 @@ def _git(ledger, *args):
     return ledger.run(["git", "-C", str(ledger.root), *args], capture_output=True, text=True, check=False)
 
 
-def remove_tree(ledger, verdict: TreeVerdict, *, dropping: set[str], sessions, proc_root=None) -> list[str]:
-    """Remove a tree judged removable; one line saying what happened."""
+def remove_tree(ledger, verdict: TreeVerdict, *, dropping: set[str], sessions, proc_root=None,
+                spare_rows=(), also_held=()) -> list[str]:
+    """Remove a tree judged removable; one line saying what happened. `also_held` are commits the same pass
+    parks (a squash-shipped branch's tip): they hold what they reach, as their refs will."""
     tree = verdict.tree
     if not verdict.removable:
         return []
@@ -35,8 +37,9 @@ def remove_tree(ledger, verdict: TreeVerdict, *, dropping: set[str], sessions, p
             _git(ledger, "worktree", "unlock", tree)
         if _git(ledger, "worktree", "lock", "--reason", GC_LOCK, tree).returncode != 0:
             return [f"kept {tree}: a session locked it while it was judged"]
-        again = judge_tree(ledger, tree, holders=refs.holders(ledger, dropping=dropping), sessions=sessions,
-                           proc_root=proc_root)
+        again = judge_tree(ledger, tree, holders=refs.holders(ledger, dropping=dropping) + list(also_held),
+                           sessions=sessions,
+                           spare_rows=spare_rows, proc_root=proc_root)
         why = ("its HEAD moved since it was judged" if again.head != verdict.head
                else "; ".join(again.reasons) if not again.removable
                else "its reflog moved since it was judged" if set(again.park) != set(verdict.park) else "")

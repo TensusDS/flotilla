@@ -46,8 +46,9 @@ def _sender_tips(ledger) -> set[str]:
             if row.merge and any(step.get("move") == "ship" for step in row.history)}
 
 
-def judge_branches(ledger, trunks: list[refs.Trunk], *, staying_checkouts: set[str], ours: set[str]) \
-        -> list[BranchVerdict]:
+def judge_branches(ledger, trunks: list[refs.Trunk], *, staying_checkouts: set[str], ours: set[str],
+                   spare_rows=()) -> list[BranchVerdict]:
+    """`spare_rows` do not hold a branch (the retiring seat's own post row)."""
     declared = _declared(ledger)
     staying = set(staying_checkouts)
     main = _git(ledger, "symbolic-ref", "-q", "--short", "HEAD").stdout.strip()
@@ -72,7 +73,8 @@ def judge_branches(ledger, trunks: list[refs.Trunk], *, staying_checkouts: set[s
         if name in staying:
             verdict.reason = "checked out in a tree that stays"
             continue
-        held = [row for row in rows if row.branch == name and row.is_open and row.state not in DONE]
+        held = [row for row in rows if row.branch == name and row.is_open and row.state not in DONE
+                and row.id not in spare_rows]
         if held:
             verdict.reason = f"open row {held[0].id} ({held[0].state})"
             continue
