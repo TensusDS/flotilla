@@ -84,6 +84,21 @@ def _undo(ledger: core.Ledger, branch: str, tree: Path) -> None:
     ledger.run([*git, "branch", "-D", branch], capture_output=True, text=True, check=False)
 
 
+def _unclean(ledger: core.Ledger, home: Path) -> str:
+    """Why the home tree cannot switch, naming what is in the way (twosuns C3: an untracked output folder blocked a
+    switch and the refusal named nothing)."""
+    listed = ledger.run(["git", "-C", str(home), "status", "--porcelain"], capture_output=True, text=True,
+                        errors="replace", check=False)
+    lines = [line for line in listed.stdout.splitlines() if line.strip()] if listed.returncode == 0 else []
+    if not lines:
+        return f"{home} has uncommitted work, or git could not say; commit it on its branch first"
+    shown = ", ".join(line[3:] for line in lines[:5]) + (f" and {len(lines) - 5} more" if len(lines) > 5 else "")
+    if all(line.startswith("??") for line in lines):
+        return (f"{home} holds uncommitted files git does not track: {shown}. Commit what is work on its branch; a run's output belongs "
+                "in .gitignore (a project row), so it never stands in the way again")
+    return f"{home} has uncommitted work: {shown}; commit it on its branch first"
+
+
 def switch(ledger: core.Ledger, actor: Actor, branch: str, *, ref: str = "", requires=(), after=(),
            also: str = "") -> Row:
     require_may(actor, "claim", ledger.posts)
@@ -94,7 +109,7 @@ def switch(ledger: core.Ledger, actor: Actor, branch: str, *, ref: str = "", req
     home = Path(home_row.tree)
     clean = gitq.is_clean(home, run=ledger.run)
     if clean is not True:
-        raise MoveRefused(f"{home} has uncommitted work, or git could not say; commit it on its branch first")
+        raise MoveRefused(_unclean(ledger, home))
     if gitq.resolve(ledger.root, f"refs/remotes/origin/{ledger.trunk}", run=ledger.run):
         ledger.run(["git", "-C", str(ledger.root), "fetch", "--quiet", "origin", ledger.trunk],
                    capture_output=True, text=True, check=False)

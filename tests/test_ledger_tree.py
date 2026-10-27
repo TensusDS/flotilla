@@ -106,6 +106,18 @@ def test_switch_refuses_a_home_tree_with_uncommitted_work(tmp_path):
     assert git(home, "rev-parse", "--abbrev-ref", "HEAD") == "fleet/main-1" and len(ledger.rows()) == 1
 
 
+def test_a_switch_held_up_by_untracked_output_names_it_and_the_way_out(tmp_path):
+    """twosuns field report C3: an untracked output folder a run left blocked the next switch, and the refusal named
+    nothing; removing it ran into Claude Code's own rm guard."""
+    root, ledger, home = home_world(tmp_path)
+    (home / "walk-audio-out").mkdir()
+    (home / "walk-audio-out" / "a.wav").write_bytes(b"RIFF")
+    with pytest.raises(MoveRefused) as caught:
+        tree_mod.switch(ledger, actor(ledger, "main session 1"), "feat/x")
+    said = str(caught.value)
+    assert "walk-audio-out/" in said and ".gitignore" in said
+
+
 def test_switch_needs_a_home_tree(tmp_path):
     root = repo_with_origin(tmp_path)
     ledger = make_ledger(root, tmp_path / "state")
