@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 
-from flotilla.ledger import gitq
+from flotilla.ledger import approval, gitq
 from flotilla.ledger.model import Row, delivered
 
 REVIEWED = frozenset({"accepted", "queued", "landed", "shipped", "walked", "closed"})
@@ -33,6 +33,24 @@ def approved(row: Row) -> bool:
     """Whether the person approved this row at the revision it carries (its merge, for work born in the batch)."""
     target = row.merge if row.state == "inbatch" else revision_of(row)
     return bool(row.approved) and row.approved == target
+
+
+def person_must_approve(ledger, row: Row, revision: str = "") -> bool:
+    """Whether this row's work waits for the person's yes (`approval`): every row where the person authorizes every
+    merge, only work touching `approve_paths` where the profile names them (twosuns B1). What origin's trunk already
+    holds is no part of undelivered work; a delivered row is judged by all it carried."""
+    profile = ledger.profile
+    if (profile.get("flow") or {}).get("merge_authorized_by") != "human":
+        return False
+    if not approval.paths_of(profile):
+        return True
+    if row.state == "inbatch":
+        revision, base = revision or row.merge, f"{row.merge}^1" if row.merge else ""
+    else:
+        revision, base = revision or revision_of(row), row.base
+    origin = f"refs/remotes/origin/{ledger.trunk}"
+    shipped = "" if delivered(row, profile) or not gitq.resolve(ledger.root, origin, run=ledger.run) else origin
+    return approval.needs_person(ledger.root, profile, base, revision, run=ledger.run, trunk=shipped)
 
 
 def vouched_before_approval(row: Row) -> list[str]:
@@ -148,10 +166,11 @@ class Accounting:
         for row in rows.values():
             if rules_tree and any(step.get("rules_tree") != rules_tree for step in row.history):
                 continue   # a move checked against other rules - a repointed trunk ref - vouches for nothing here
-            if human and not approved(row):   # where a person authorizes merges, only work they approved counts (F24)
+            asks = human and person_must_approve(ledger, row)
+            if asks and not approved(row):   # where a person authorizes merges, only work they approved counts (F24)
                 continue
             if row.is_open or delivered(row, profile):   # a released row's vouch accounts for nothing
-                for sha in (vouched_before_approval(row) if human else row.vouched or []):
+                for sha in (vouched_before_approval(row) if asks else row.vouched or []):
                     self.vouched.setdefault(sha, row)
             if row.state == "inbatch" and row.merge:
                 full = gitq.resolve(ledger.root, row.merge, run=ledger.run)

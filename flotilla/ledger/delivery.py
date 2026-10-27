@@ -21,7 +21,7 @@ import json
 import shlex
 import subprocess
 
-from flotilla.ledger import batch, gitq
+from flotilla.ledger import approval, batch, gitq
 from flotilla.ledger import gate as gates
 from flotilla.ledger.actor import Actor, require_may
 from flotilla.ledger.core import Ledger
@@ -192,6 +192,16 @@ def approve(ledger: Ledger, branch: str) -> Row:
                         evidence={"revision": revision})
 
 
+def _whose_yes(ledger: Ledger, row: Row, revision: str) -> str:
+    """Why this work waits for the person: every merge, or the code paths it touches (twosuns B1)."""
+    if not approval.paths_of(ledger.profile):
+        return "a person authorizes every merge into trunk here"
+    found = approval.touched(ledger.root, ledger.profile, row.base, revision, run=ledger.run) or []
+    shown = ", ".join(found[:3]) + (f" and {len(found) - 3} more" if len(found) > 3 else "")
+    return (f"a person authorizes work on the code paths here ([flow] approve_paths), and this touches "
+            f"{shown or 'what git could not name'}")
+
+
 def _not_held(row: Row) -> None:
     if row.held_until:
         raise MoveRefused(f"`{row.branch}` is held by {row.held_by} until {row.held_until} ({row.held_why}); it stays "
@@ -230,8 +240,8 @@ def queue(ledger: Ledger, actor: Actor, branch: str, *, pr: int | None = None) -
         if row.verdict and current != row.verdict:
             raise MoveRefused(f"`{branch}` moved since it was accepted ({row.verdict[:7]} -> {current[:7]}); the "
                               "owner records it with `flotilla work moved` and the reader accepts again")
-        if (ledger.profile.get("flow") or {}).get("merge_authorized_by") == "human" and row.approved != current:
-            raise MoveRefused(f"a person authorizes every merge into trunk here, and nobody approved `{branch}` at "
+        if row.approved != current and batch.person_must_approve(ledger, row, current):
+            raise MoveRefused(f"{_whose_yes(ledger, row, current)}, and nobody approved `{branch}` at "
                               f"{current[:7]}: the person types `! {approve_command(ledger, branch)}` in their own "
                               f"session, or runs it in a terminal; record the wait with `flotilla work wait {branch} --on "
                               "\"the person\" --why \"approve before queue\"`")

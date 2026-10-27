@@ -1073,3 +1073,50 @@ def test_queue_never_retargets_a_pull_request_the_row_does_not_name(taken):
     with pytest.raises(MoveRefused, match="head is ddddddd"):
         delivery.queue(ledger, actor(ledger, SENDER), "feat/b", pr=43)
     assert not any(call[:2] == ["pr", "edit"] for call in calls)
+
+
+
+CODE_ONLY = {**PROFILE, "flow": {"mode": "direct", "merge_authorized_by": "human",
+                                 "approve_paths": ["src/**", "!src/data/**"]}}
+
+
+def accepted_touching(root, ledger, name, path):
+    """A branch whose one commit writes `path`, accepted by a reader."""
+    from flotilla.ledger import core, handover, reading
+    git(root, "checkout", "-q", "-b", name)
+    (root / path).parent.mkdir(parents=True, exist_ok=True)
+    commit(root, f"write {path}", path, "x\n")
+    git(root, "checkout", "-q", "main")
+    core.claim(ledger, actor(ledger, "main session 1"), name)
+    row = handover.hand(ledger, actor(ledger, "main session 1"), name)
+    reading.take(ledger, actor(ledger, "review session 1"), name)
+    return reading.accept(ledger, actor(ledger, "review session 1"), name, reviewed=row.tip)
+
+
+def test_with_code_paths_only_work_touching_code_waits_for_the_persons_yes(tmp_path):
+    """twosuns field report B1, the person's decision 2026-10-27: code ships on a yes, and the questions put to the
+    person stay few - docs and data go on the sender's word."""
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile=CODE_ONLY)
+    accepted_touching(root, ledger, "docs/notes", "docs/notes.md")
+    accepted_touching(root, ledger, "feat/credits", "src/data/credits.ts")
+    accepted_touching(root, ledger, "feat/storm", "src/core/storm-wall.ts")
+    assert delivery.queue(ledger, actor(ledger, "sender 1"), "docs/notes").state == "queued"
+    assert delivery.queue(ledger, actor(ledger, "sender 1"), "feat/credits").state == "queued"
+    with pytest.raises(MoveRefused, match=r"touches src/core/storm-wall.ts.*flotilla work approve feat/storm"):
+        delivery.queue(ledger, actor(ledger, "sender 1"), "feat/storm")
+
+
+def test_with_code_paths_land_counts_unapproved_work_only_off_them(tmp_path):
+    """The push guard asks the same accounting: unapproved docs ride, unapproved code does not."""
+    from flotilla.ledger import batch
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile=CODE_ONLY)
+    accepted_touching(root, ledger, "docs/notes", "docs/notes.md")
+    merge(root, "docs/notes")
+    assert batch.unaccounted(ledger, ledger.rows(), "main") == []
+    accepted_touching(root, ledger, "feat/storm", "src/core/storm-wall.ts")
+    merge(root, "feat/storm")
+    assert batch.unaccounted(ledger, ledger.rows(), "main") != []
+    delivery.approve(ledger, "feat/storm")
+    assert batch.unaccounted(ledger, ledger.rows(), "main") == []

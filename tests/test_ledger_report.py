@@ -139,3 +139,17 @@ def test_an_accepted_row_whose_branch_is_only_on_origin_names_the_command(tmp_pa
     git(root, "fetch", "-q", "origin")
     git(root, "branch", "-q", "-D", "feat/a")
     assert "git branch feat/a origin/feat/a" in "\n".join(report.brief(ledger))
+
+
+
+def test_with_code_paths_only_work_touching_code_carries_an_approve_line(tmp_path):
+    """twosuns field report B1: the brief lists for the person's yes only what needs it."""
+    from test_ledger_delivery import CODE_ONLY, accepted_touching
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile=CODE_ONLY)
+    accepted_touching(root, ledger, "docs/notes", "docs/notes.md")
+    accepted_touching(root, ledger, "feat/storm", "src/core/storm-wall.ts")
+    text = "\n".join(report.brief(ledger))
+    assert "approve: ! flotilla work approve feat/storm" in text
+    assert "approve: ! flotilla work approve docs/notes" not in text
+    assert "ships without your yes: docs/notes" in text

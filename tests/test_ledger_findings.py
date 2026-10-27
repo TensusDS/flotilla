@@ -223,3 +223,19 @@ def test_a_queued_direct_row_whose_read_revision_is_on_origin_is_lands_not_vanis
     git(root, "branch", "-q", "-D", "feat/pushed")
     found = [item for item in findings.findings(ledger) if item["branch"] == "feat/pushed"]
     assert [item["kind"] for item in found] != ["vanished"]
+
+
+
+def test_with_code_paths_a_direct_commit_off_them_is_a_readers_to_settle(tmp_path):
+    """twosuns B1: only a commit touching [flow] approve_paths is the person's to settle; the rest a reader vouches."""
+    root = repo_with_origin(tmp_path)
+    profile = {**PROFILE, "flow": {"mode": "direct", "merge_authorized_by": "human", "approve_paths": ["src/**"]}}
+    ledger = make_ledger(root, tmp_path / "state", profile=profile)
+    drive(root, ledger)
+    merge(root, "feat/x")
+    notes = commit(root, "notes straight to trunk", "notes.md")
+    (root / "src").mkdir()
+    code = commit(root, "code straight to trunk", "src/a.ts")
+    git(root, "push", "-q", "origin", "main")
+    why = {item["sha"]: item["why"] for item in findings.findings(ledger) if item["kind"] == "direct_commit"}
+    assert "flotilla work vouch main" in why[notes] and "the person" in why[code]

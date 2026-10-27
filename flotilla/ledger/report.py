@@ -86,10 +86,13 @@ def brief(ledger, rows: dict[str, Row] | None = None) -> list[str]:
         if row.urgent_at:
             lines.append(f"     urgent since {row.urgent_at}: {row.urgent_why or 'no reason given'}")
         if human and not (read and row.approved == read):
-            lines.append(f"     approve: ! {approve_command(ledger, row.branch)}")
+            if batch.person_must_approve(ledger, row):
+                lines.append(f"     approve: ! {approve_command(ledger, row.branch)}")
+            else:   # off the code paths ([flow] approve_paths): said, so the person sees why no yes is asked (B1)
+                lines.append(f"     ships without your yes: {row.branch} touches none of [flow] approve_paths")
     trunk = gitq.trunk_ref(ledger.root, ledger.trunk, run=ledger.run)
     born = [row for row in rows.values() if human and row.state == "inbatch" and row.merge
-            and row.approved != row.merge
+            and row.approved != row.merge and batch.person_must_approve(ledger, row)
             and gitq.is_ancestor(ledger.root, row.merge, trunk, run=ledger.run) is not True]   # not landed yet
     if born:   # a change born in the batch waits for the same yes, and its approve line is only ever copied from here
         lines.append("Born in the batch, for the same yes:")
