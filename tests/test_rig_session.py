@@ -140,6 +140,18 @@ def test_one_session_at_a_time(world):
     assert code == 2 and "s1" in out
 
 
+
+def test_a_session_past_its_end_does_not_stand_in_the_way(world, monkeypatch):
+    """twosuns field report A8: at 18:25 `rig open` was refused for a session open until 18:23, and `rig close`
+    then said nothing was open, because the reaper had passed in between."""
+    assert run_cli("rig", "open", "--hours", "1", "--budget", "1", "--why", "a")[0] == 0
+    later = T0 + dt.timedelta(hours=1, minutes=2)
+    monkeypatch.setattr(commands, "CLOCK", lambda: later)
+    code, out = run_cli("rig", "open", "--hours", "1", "--budget", "1", "--why", "b")
+    sessions = j.Rig(LocalLogStore(world["state"] / "rig"), clock=lambda: later).sessions()
+    assert code == 0, out
+    assert sessions["s1"].state == j.CLOSING and sessions["s2"].state == j.OPEN
+
 def test_open_refuses_while_rig_is_off(world):
     (world["state"] / "machine.toml").write_text(render_toml({"rig": "off"}), encoding="utf-8")
     code, out = run_cli("rig", "open", "--hours", "1", "--budget", "1", "--why", "a")

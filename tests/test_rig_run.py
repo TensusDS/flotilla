@@ -353,6 +353,16 @@ def test_max_above_the_profiles_ceiling_is_refused(world, box, tree):
     assert code == 2 and "max_run_seconds" in out and world["fake"].created == 0
 
 
+def test_a_get_of_a_type_that_never_comes_back_is_refused_before_any_money(world, box, tree):
+    """twosuns field report A8: a 3.3 GB dust map was converted on the machine and could not come back, because
+    .f16 is no artifact type; the run learnt it only at the end. The refusal comes first, and says it is the
+    project's setting, not a fault (the person, 2026-10-27)."""
+    opened(world)
+    code, out = rig_run(world, tree, "--get", "out/dust.f16", "--get", "shots/", "--", "true")
+    assert code == 2 and world["fake"].created == 0
+    assert "`.f16`" in out and "get_types" in out and "not a fault" in out and "shots" not in out
+
+
 def rig_stop(world, run_id, who):
     out = io.StringIO()
     with redirect_stdout(out):

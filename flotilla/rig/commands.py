@@ -319,6 +319,10 @@ def _open(state: Path, settings: rs.RigSettings, args) -> int:
 
     def opened():
         open_ = [s for s in rig.sessions().values() if s.state == j.OPEN]
+        for ended in [s for s in open_ if s.until and _now() >= j._parse(s.until)]:
+            # past its end it is over, whether or not the reaper has passed yet (twosuns A8); the reaper drains it
+            rig.set_session(ended.id, j.CLOSING, reason="session ended")
+            open_.remove(ended)
         if open_:
             return None, f"session {open_[0].id} is open until {_hhmm(open_[0].until)}; `flotilla rig close` first"
         why = args.why

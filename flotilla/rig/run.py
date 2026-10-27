@@ -21,7 +21,7 @@ import sys
 import tempfile
 import threading
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from flotilla.lane import run as lane_run
 from flotilla.lane import signature
@@ -136,6 +136,19 @@ def _readings(box: Box) -> dict:
 
 def _status(text: str) -> dict:
     return dict(item.split("=", 1) for item in text.split() if "=" in item)
+
+
+def _comes_back(asked, types) -> None:
+    """A `--get` naming a file whose type never comes back is refused before a machine is rented: it would stay on the
+    machine and be lost with it (twosuns A8). A directory - no suffix, or a trailing slash - is unpacked by type."""
+    for text in asked:
+        suffix = PurePosixPath(text).suffix.lower().lstrip(".")
+        if text.endswith("/") or not suffix or suffix in types:
+            continue
+        raise Refused(f"--get {text}: `.{suffix}` is not a type that comes back from a machine. This is the "
+                      f"project's setting, not a fault: a project row adds \"{suffix}\" to `get_types` under [rig] in "
+                      ".flotilla/project.toml, and the run starts once it lands; a directory is named with a trailing "
+                      "slash")
 
 
 class Run:
@@ -388,6 +401,7 @@ def _main(state: Path, settings: rs.RigSettings, args) -> int:
         gets = transfer.check_gets(root, [transfer.relative(root, g) for g in args.get or []])
         revision = transfer.gate(root, puts)
         key, profile = commands._project(root)
+        _comes_back(args.get or [], profile.get_types)
         who = commands._who(args.as_name)
         if args.max is not None and not 1 <= args.max <= profile.max_run_seconds:
             raise Refused(f"--max {args.max} is not 1-{profile.max_run_seconds} s: a run's ceiling may only lower "
