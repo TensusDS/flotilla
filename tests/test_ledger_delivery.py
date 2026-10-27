@@ -1120,3 +1120,20 @@ def test_with_code_paths_land_counts_unapproved_work_only_off_them(tmp_path):
     assert batch.unaccounted(ledger, ledger.rows(), "main") != []
     delivery.approve(ledger, "feat/storm")
     assert batch.unaccounted(ledger, ledger.rows(), "main") == []
+
+
+
+def test_with_code_paths_a_vouch_carries_no_code_past_the_person(tmp_path):
+    """Security review of the code-paths change, 1: a reader's vouch on a docs row accounted every commit it named,
+    so code a docs row vouched for reached trunk with no yes. Each vouched commit is judged by what it touches."""
+    from flotilla.ledger import batch, outside
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile=CODE_ONLY)
+    accepted_touching(root, ledger, "docs/notes", "docs/notes.md")
+    git(root, "checkout", "-q", "docs/notes")
+    (root / "src" / "core").mkdir(parents=True)
+    code = commit(root, "code under a docs row", "src/core/x.ts")
+    git(root, "checkout", "-q", "main")
+    outside.vouch(ledger, actor(ledger, "review session 1"), "docs/notes", commit=code)
+    merge(root, "docs/notes")
+    assert code in batch.unaccounted(ledger, ledger.rows(), "main")

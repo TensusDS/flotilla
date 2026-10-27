@@ -48,9 +48,18 @@ def person_must_approve(ledger, row: Row, revision: str = "") -> bool:
         revision, base = revision or row.merge, f"{row.merge}^1" if row.merge else ""
     else:
         revision, base = revision or revision_of(row), row.base
+    if delivered(row, profile):
+        return approval.needs_person(ledger.root, profile, base, revision, run=ledger.run)
     origin = f"refs/remotes/origin/{ledger.trunk}"
-    shipped = "" if delivered(row, profile) or not gitq.resolve(ledger.root, origin, run=ledger.run) else origin
-    return approval.needs_person(ledger.root, profile, base, revision, run=ledger.run, trunk=shipped)
+    shipped = origin if gitq.resolve(ledger.root, origin, run=ledger.run) else ""
+    return approval.needs_person(ledger.root, profile, base, revision, run=ledger.run, trunk=shipped,
+                                 against=shipped or ledger.trunk)
+
+
+def commit_needs_person(ledger, sha: str) -> bool:
+    """Whether one commit - a vouched one - waits for the person's yes by what it touches (security review of the
+    code-paths change, 1: a vouch on a docs row must not carry code past the person)."""
+    return approval.needs_person(ledger.root, ledger.profile, f"{sha}^", sha, run=ledger.run)
 
 
 def vouched_before_approval(row: Row) -> list[str]:
@@ -170,7 +179,13 @@ class Accounting:
             if asks and not approved(row):   # where a person authorizes merges, only work they approved counts (F24)
                 continue
             if row.is_open or delivered(row, profile):   # a released row's vouch accounts for nothing
-                for sha in (vouched_before_approval(row) if asks else row.vouched or []):
+                if asks:
+                    shas = vouched_before_approval(row)
+                elif human:   # a row off the code paths vouches only for commits off them too
+                    shas = [sha for sha in row.vouched or [] if not commit_needs_person(ledger, sha)]
+                else:
+                    shas = row.vouched or []
+                for sha in shas:
                     self.vouched.setdefault(sha, row)
             if row.state == "inbatch" and row.merge:
                 full = gitq.resolve(ledger.root, row.merge, run=ledger.run)

@@ -88,3 +88,18 @@ def test_what_trunk_already_holds_is_no_part_of_the_work(tmp_path):
     tip = put(root, "docs/y.md")
     assert approval.needs_person(root, profile, base, tip) is True
     assert approval.needs_person(root, profile, base, tip, trunk=on_trunk) is False
+
+
+
+def test_a_merge_that_drops_trunks_code_still_waits_for_the_person(tmp_path):
+    """Security review of the code-paths change, 2: `--cc` lists only what a merge resolved apart from both parents,
+    so a merge keeping one side whole - dropping trunk's code - showed nothing; landing it takes that code out."""
+    root, base = _world(tmp_path)
+    profile = {"flow": {"merge_authorized_by": "human", "approve_paths": CODE}}
+    on_trunk = put(root, "src/core/n.ts")
+    git(root, "checkout", "-q", "-b", "docs/z", base)
+    put(root, "docs/z.md")
+    git(root, "merge", "-q", "-s", "ours", "--no-edit", "main")
+    tip = git(root, "rev-parse", "HEAD")
+    assert approval.needs_person(root, profile, base, tip, trunk=on_trunk, against=on_trunk) is True
+    assert approval.touched(root, profile, base, tip, trunk=on_trunk, against=on_trunk) == ["src/core/n.ts"]

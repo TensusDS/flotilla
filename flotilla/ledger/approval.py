@@ -58,10 +58,16 @@ def paths_of(profile: dict) -> list[str]:
     return [str(p) for p in found] if isinstance(found, list) else []
 
 
-def _changed(root: Path, base: str, revision: str, run, trunk: str = "") -> list[str] | None:
+def _names(raw: bytes) -> list[str]:
+    return [name.strip(b"\n").decode("utf-8", "surrogateescape") for name in raw.split(b"\0") if name.strip(b"\n")]
+
+
+def _changed(root: Path, base: str, revision: str, run, trunk: str = "", against: str = "") -> list[str] | None:
     """Every file any commit of the work touches - not the net diff: a commit that adds code and one that takes it
     back cancel in the diff, and the first can reach trunk alone. A merge counts by what it resolved (--cc); what
-    trunk already holds is no part of the work."""
+    `trunk` already holds is no part of the work. With `against`, also every file landing would change there
+    (`against...revision`): a merge that keeps one side whole resolves nothing --cc shows, yet takes trunk's code out
+    (security review of the code-paths change, 2)."""
     if not base or not revision:
         return None
     # --no-renames: a file moved out of the code paths changes them as much as one edited there
@@ -69,14 +75,20 @@ def _changed(root: Path, base: str, revision: str, run, trunk: str = "") -> list
                 f"{base}..{revision}", *([f"^{trunk}"] if trunk else []), "--"], capture_output=True, check=False)
     if done.returncode != 0:
         return None
-    names = [name.strip(b"\n").decode("utf-8", "surrogateescape") for name in done.stdout.split(b"\0")]
-    return list(dict.fromkeys(name for name in names if name))
+    names = _names(done.stdout)
+    if against:
+        landing = run(["git", "-C", str(root), "diff", "--no-renames", "--no-ext-diff", "--name-only", "-z",
+                       f"{against}...{revision}", "--"], capture_output=True, check=False)
+        if landing.returncode != 0:
+            return None
+        names += _names(landing.stdout)
+    return list(dict.fromkeys(names))
 
 
 def touched(root: Path, profile: dict, base: str, revision: str, run=subprocess.run, *,
-            trunk: str = "") -> list[str] | None:
+            trunk: str = "", against: str = "") -> list[str] | None:
     """The changed files that need the person's yes, or None when git cannot say what changed."""
-    names = _changed(root, base, revision, run, trunk)
+    names = _changed(root, base, revision, run, trunk, against)
     if names is None:
         return None
     patterns = paths_of(profile)
@@ -84,11 +96,11 @@ def touched(root: Path, profile: dict, base: str, revision: str, run=subprocess.
 
 
 def needs_person(root: Path, profile: dict, base: str, revision: str, run=subprocess.run, *,
-                 trunk: str = "") -> bool:
+                 trunk: str = "", against: str = "") -> bool:
     """Whether the work `base..revision` (less what `trunk` holds) waits for the person's yes on its way to trunk."""
     if not _person(profile):
         return False
     if not paths_of(profile):
         return True
-    found = touched(root, profile, base, revision, run=run, trunk=trunk)
+    found = touched(root, profile, base, revision, run=run, trunk=trunk, against=against)
     return found is None or bool(found)
