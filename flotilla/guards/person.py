@@ -32,6 +32,13 @@ GUARD = "person"
 MOVES = ("accept", "adopt", "approve", "assign", "broke", "claim", "close", "fix", "hand", "hold", "inbatch", "land",
          "moved", "offledger", "queue", "reconcile", "recuse", "release", "reserve", "return", "ship", "show", "take", "unbroke",
          "unhold", "urgent", "vouch", "wait", "walkable", "walked")
+
+#: Closes every refusal of a command flotilla cannot read: it is the guard working, and the way past it is plain
+#: (twosuns field report C4; the person, 2026-10-27: a refusal by design must not read as a defect).
+PLAINLY = ("This is a guard, not a fault, and there is nothing to report: write each flotilla command out in full, one "
+           "per call - a loop over moves becomes separate calls.")
+
+
 def _runs_flotilla(word: str, previous: str) -> bool:
     return os.path.basename(word) == "flotilla" or (previous == "-m" and word.split(".")[0] == "flotilla")
 
@@ -301,7 +308,7 @@ def check(segment) -> Finding | None:
     if live and any(_is(command, "rig") for command, _move in readings):
         return Finding(GUARD, True, "flotilla: this rig line holds a command substitution (`$(..)`, a backtick, "
                                     "`<(..)`), which your own shell runs before flotilla starts - and some rig moves "
-                                    "spend money. Write the command plainly; quote it in single quotes if it is data.")
+                                    "spend money. Quote it in single quotes if it is data. " + PLAINLY)
     if words and os.path.basename(words[0]) == "flotilla":
         for at in dashes:      # the `--` ending a `flotilla rig run`, as flotilla's own parser reads the words before it
             if ("rig", "run") in _parsed(argv(text[:at])):
@@ -311,12 +318,12 @@ def check(segment) -> Finding | None:
         return Finding(GUARD, True, "flotilla: this flotilla command holds what bash expands or continues "
                                     "(braces, $'...', $\"...\", an extglob, a trailing backslash), so the move it "
                                     "runs cannot be read before it runs - and `approve` is the person's own move. "
-                                    "Write the command plainly.")
+                                    "" + PLAINLY)
     rest = words[1:]
     braces = _brace_expands(text)
     if braces and "flotilla" in text:
         return Finding(GUARD, True, "flotilla: a brace here may expand into flotilla or its command (`{a,b}`), so the "
-                                    "move it runs cannot be read before it runs. Write the command plainly.")
+                                    "move it runs cannot be read before it runs. " + PLAINLY)
     built = (braces or any("$" in word or "`" in word for word in rest)) and any(word in GUARDED for word in rest)
     named = built or any(_may_be(word, "rig") or _may_be(word, "work") for word in rest)
     if (words and _opaque(words[0]) and named) or any(
@@ -324,7 +331,7 @@ def check(segment) -> Finding | None:
             for command, move in _reads(words)):
         return Finding(GUARD, True, "flotilla: the program, command or move here is a variable or a substitution, so "
                                     "what it runs cannot be read before it runs - and some flotilla moves are the "
-                                    "person's own. Write the command plainly.")
+                                    "person's own. " + PLAINLY)
     rig_move = _rig_move(words)
     if rig_move:
         return Finding(GUARD, True, f"flotilla: `rig {rig_move}` is the person's own move - it turns rented machines "

@@ -187,6 +187,19 @@ def test_claude_running_the_persons_approval_is_refused(tmp_path, monkeypatch, c
     assert "`!`" in answer["permissionDecisionReason"]
 
 
+@pytest.mark.parametrize("command", [
+    f"for c in moved hand claim; do {CLI_PATH} work $c --help; done",
+    f"{CLI_PATH} work show feat/{{a,b}}",
+])
+def test_a_command_flotilla_cannot_read_is_refused_as_a_guard_not_a_fault(tmp_path, monkeypatch, command):
+    """twosuns field report C4: a harmless read-only loop costs a retry each time; the person, 2026-10-27: a refusal
+    by design must not read to a session as a defect, so it says what it is and how to write the command."""
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    reason = answer["permissionDecisionReason"]
+    assert answer["permissionDecision"] == "deny"
+    assert "a guard, not a fault" in reason and "one per call" in reason
+
+
 def test_approval_is_refused_to_claude_outside_any_project_too(tmp_path, monkeypatch):
     answer = ask(tmp_path, f"{CLI_PATH} work approve feat/x --root /elsewhere", monkeypatch, tmp_path)
     assert answer["permissionDecision"] == "deny"
