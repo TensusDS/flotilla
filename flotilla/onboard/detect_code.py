@@ -18,6 +18,13 @@ CODE = frozenset({"py", "ts", "tsx", "js", "jsx", "mjs", "cjs", "mts", "cts", "r
 #: Directories whose changes do not change the product: no yes is asked for them.
 NOT_PRODUCT = frozenset({"tests", "test", "__tests__", "spec", "specs", "e2e", "docs", "doc", "examples", "example",
                          "fixtures", "benchmarks", "bench"})
+#: What runs whatever its suffix - CI, hooks, the tools' settings, manifests and build files - asked of the person
+#: wherever it lies (security review of the code-paths change, 4). Named when the project tracks it.
+RUNS_DIRS = (".github", ".gitlab", ".claude", ".husky", ".circleci", ".devcontainer")
+RUNS_NAMES = ("package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "pyproject.toml", "uv.lock",
+              "setup.py", "setup.cfg", "Cargo.toml", "Cargo.lock", "go.mod", "go.sum", "Gemfile", "Gemfile.lock",
+              "Makefile", "Dockerfile", "docker-compose.yml", "docker-compose.yaml", ".gitlab-ci.yml", ".gitattributes",
+              ".gitmodules", ".pre-commit-config.yaml", ".envrc", ".npmrc")
 #: Directories under code that hold data rather than code: excluded with `!`.
 DATA = frozenset({"data", "assets", "content", "locales", "locale", "i18n", "public", "static", "media", "fonts"})
 
@@ -34,9 +41,16 @@ def code_paths(root: Path, run=subprocess.run) -> list[str]:
     tops: set[str] = set()
     singles: set[str] = set()
     data: dict[str, set[str]] = {}
+    runs: set[str] = set()
     for name in _tracked(root, run):
         path = PurePosixPath(name)
         dirs = path.parts[:-1]
+        if dirs and dirs[0] in RUNS_DIRS:
+            runs.add(f"{dirs[0]}/**")
+            continue
+        if path.name in RUNS_NAMES or path.name.startswith("requirements") and path.suffix == ".txt":
+            runs.add(path.name)   # by name, anywhere
+            continue
         if any(part.startswith(".") for part in path.parts):
             continue   # the fleet's and the tools' own (.github, .flotilla, .claude) are not the product
         if any(part.lower() in NOT_PRODUCT for part in dirs):
@@ -52,7 +66,7 @@ def code_paths(root: Path, run=subprocess.run) -> list[str]:
             tops.add(dirs[0])
         else:
             singles.add(name)
-    found = [f"/{name}" for name in sorted(singles)]
+    found = sorted(runs) + [f"/{name}" for name in sorted(singles)]
     for top in sorted(tops):
         found.append(f"{top}/**")
         found += [f"!{inner}/**" for inner in sorted(data.get(top, ()))]

@@ -49,6 +49,11 @@ def matches(path: str, patterns) -> bool:
             and not any(_regex(p).fullmatch(path) for p in excludes))
 
 
+#: Always the person's where they authorize merges: the fleet's own rules - a row editing them could take this very
+#: gate away (security review of the code-paths change, 4). No `!` pattern excludes them.
+ALWAYS = (".flotilla/**",)
+
+
 def _person(profile: dict) -> bool:
     return (profile.get("flow") or {}).get("merge_authorized_by") == "human"
 
@@ -92,7 +97,7 @@ def touched(root: Path, profile: dict, base: str, revision: str, run=subprocess.
     if names is None:
         return None
     patterns = paths_of(profile)
-    return [name for name in names if matches(name, patterns)]
+    return [name for name in names if matches(name, patterns) or matches(name, ALWAYS)]
 
 
 def needs_person(root: Path, profile: dict, base: str, revision: str, run=subprocess.run, *,

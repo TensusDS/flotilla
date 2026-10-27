@@ -194,3 +194,20 @@ def test_the_effort_question_knows_the_projects_own_posts(tmp_path):
     q = next(q for q in qs.all_questions(detection(root=str(tmp_path)), {}) if q["id"] == "effort")
     assert {"lead", "reviewer"} <= set(q["posts"])
     assert qs.validate_answer(q, ["lead=max"]) == "lead=max"
+
+
+
+def test_with_code_detected_the_merge_question_offers_code_only_first():
+    """The person, 2026-10-27 (twosuns B1): code ships on a yes, the paths come from the project itself, so the one
+    question carries its own answer. Quick onboarding stays with the sender: it puts no question to the person."""
+    det = detection(code_paths=["src/**", "!src/data/**"])
+    question = next(q for q in qs.all_questions(det, {"flow": "direct"}) if q["id"] == "merge_auth")
+    first = question["options"][0]
+    assert first["value"] == "code" and "src/**" in first["description"]
+    assert qs.quick_answers(det, {"flow": "direct"})["merge_auth"] == "sender"
+
+
+def test_without_code_detected_there_is_no_code_only_answer():
+    question = next(q for q in qs.all_questions(detection(), {"flow": "direct"}) if q["id"] == "merge_auth")
+    assert "code" not in [o["value"] for o in question["options"]]
+    assert qs.quick_answers(detection(), {"flow": "direct"})["merge_auth"] == "sender"

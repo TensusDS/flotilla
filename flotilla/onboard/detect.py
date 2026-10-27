@@ -7,6 +7,7 @@ from pathlib import Path
 
 from flotilla.core import repo
 from flotilla.onboard.detect_ci import detect_ci
+from flotilla.onboard.detect_code import code_paths
 from flotilla.onboard.detect_repo import commit_convention, has_remote, release_info, trunk_branch
 from flotilla.onboard.detect_signals import detect_signals
 from flotilla.onboard.detect_tests import detect_tiers, tree_setup
@@ -31,4 +32,5 @@ def detect(root: Path, run=subprocess.run) -> dict:
         "release": release_info(top, run=run),
         "commit_convention": commit_convention(top, run=run),
         "signals": detect_signals(top),
+        "code_paths": code_paths(top, run=run),
     }

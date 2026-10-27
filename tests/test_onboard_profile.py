@@ -242,3 +242,15 @@ def test_a_custom_post_kept_at_re_onboarding_takes_its_effort(tmp_path):
     data = build_profile(detection(tmp_path), {**BASE_ANSWERS, "effort": "lead=max"})
     assert data["fleet"]["effort"] == {"lead": "max"}
     assert "lead" in build_profile(detection(tmp_path), {**BASE_ANSWERS, "effort": "all-high"})["fleet"]["effort"]
+
+
+
+def test_code_only_writes_the_detected_paths_and_says_so_in_plain_words(tmp_path):
+    from flotilla.onboard.profile import plain_words
+    det = detection(tmp_path, code_paths=["src/**", "!src/data/**"])
+    data = build_profile(det, {**BASE_ANSWERS, "flow": "direct", "merge_auth": "code"})
+    assert data["flow"] == {"mode": "direct", "merge_authorized_by": "human",
+                            "approve_paths": ["src/**", "!src/data/**"]}
+    said = " ".join(plain_words(data))
+    assert "work touching src/**, !src/data/** waits for your approval" in said
+    assert "docs and data ship on the sender's word" in said

@@ -59,7 +59,8 @@ def person_must_approve(ledger, row: Row, revision: str = "") -> bool:
 def commit_needs_person(ledger, sha: str) -> bool:
     """Whether one commit - a vouched one - waits for the person's yes by what it touches (security review of the
     code-paths change, 1: a vouch on a docs row must not carry code past the person)."""
-    return approval.needs_person(ledger.root, ledger.profile, f"{sha}^", sha, run=ledger.run)
+    # against its first parent too: a merge whose tree drops that parent's code shows nothing under --cc (review, 3)
+    return approval.needs_person(ledger.root, ledger.profile, f"{sha}^", sha, run=ledger.run, against=f"{sha}^")
 
 
 def vouched_before_approval(row: Row) -> list[str]:

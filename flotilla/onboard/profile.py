@@ -87,7 +87,10 @@ def build_profile(det: dict, answers: dict) -> dict:
     signals = det.get("signals") or {}
     data: dict = {"schema": 1, "trunk": {"branch": det.get("trunk", "main")},
                   "flow": {"mode": FLOW_MODES.get(flow, "local")}}
-    if "merge_auth" in answers:
+    if answers.get("merge_auth") == "code":   # a human, for the code paths detected (twosuns B1)
+        data["flow"]["merge_authorized_by"] = "human"
+        data["flow"]["approve_paths"] = list(det.get("code_paths") or [])
+    elif "merge_auth" in answers:
         data["flow"]["merge_authorized_by"] = answers["merge_auth"]
     if flow in ("pr-sender", "pr-human"):
         methods = (det.get("ci") or {}).get("merge_methods") or []
@@ -183,6 +186,9 @@ def plain_words(data: dict) -> list[str]:
         merges = "merges into trunk: work stays on this machine; nothing is pushed"
     elif mode == "pr" and (data.get("pr") or {}).get("merged_by") == "human":
         merges = f"merges into trunk: the sender opens a pull request for {work}; you merge each pull request yourself"
+    elif who == "human" and flow.get("approve_paths"):
+        merges = (f"merges into trunk: work touching {', '.join(flow['approve_paths'])} waits for your approval (`! "
+                  "flotilla work approve <branch>`); docs and data ship on the sender's word")
     elif who == "human":
         merges = "merges into trunk: nothing reaches trunk until you approve it (`! flotilla work approve <branch>`)"
     else:

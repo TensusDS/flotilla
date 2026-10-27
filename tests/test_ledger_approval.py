@@ -103,3 +103,33 @@ def test_a_merge_that_drops_trunks_code_still_waits_for_the_person(tmp_path):
     tip = git(root, "rev-parse", "HEAD")
     assert approval.needs_person(root, profile, base, tip, trunk=on_trunk, against=on_trunk) is True
     assert approval.touched(root, profile, base, tip, trunk=on_trunk, against=on_trunk) == ["src/core/n.ts"]
+
+
+
+def test_the_fleets_own_rules_always_wait_for_the_person(tmp_path):
+    """Security review of the code-paths change, 4: a row editing .flotilla/ could take the gate itself away with no
+    yes; the fleet's rules are always the person's, whatever the patterns or their excludes say."""
+    root, base = _world(tmp_path)
+    profile = {"flow": {"merge_authorized_by": "human", "approve_paths": ["src/**", "!.flotilla/**"]}}
+    tip = put(root, ".flotilla/project.toml")
+    assert approval.needs_person(root, profile, base, tip) is True
+
+
+def test_a_vouched_merge_is_judged_by_what_it_changes_on_its_own_line(tmp_path):
+    """Security review of the code-paths change, 3: a merge whose tree drops its first parent's code shows nothing
+    under --cc, since it equals the other parent there."""
+    from types import SimpleNamespace
+    import subprocess
+    from flotilla.ledger import batch
+    root, base = _world(tmp_path)
+    put(root, "src/core/n.ts")
+    git(root, "checkout", "-q", "-b", "side", base)
+    put(root, "docs/side.md")
+    git(root, "checkout", "-q", "main")
+    git(root, "merge", "-q", "--no-edit", "side")
+    git(root, "rm", "-q", "src/core/n.ts")
+    git(root, "-c", "user.email=t@example.invalid", "-c", "user.name=t", "commit", "-q", "--amend", "--no-edit")
+    merged = git(root, "rev-parse", "HEAD")
+    ledger = SimpleNamespace(root=root, run=subprocess.run,
+                             profile={"flow": {"merge_authorized_by": "human", "approve_paths": CODE}})
+    assert batch.commit_needs_person(ledger, merged) is True
