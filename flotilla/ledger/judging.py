@@ -24,8 +24,8 @@ def _deployed(ledger: Ledger) -> str:
     if not command:
         return ""
     try:
-        done = ledger.run(command, shell=True, cwd=str(ledger.root), capture_output=True, text=True, check=False,
-                          timeout=60)
+        done = ledger.run(command, shell=True, cwd=str(ledger.root), capture_output=True, text=True, errors="replace",
+                          check=False, timeout=60)
     except subprocess.TimeoutExpired as err:
         raise MoveRefused("deploy.revision_command did not answer within 60 s; the deployed revision is "
                           "unknown") from err

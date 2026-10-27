@@ -122,13 +122,15 @@ def clean_merge(ledger, sha: str) -> bool | None:
 
 
 def _patch_ids(ledger, *log_args: str) -> list[str]:
+    # bytes, as in gitq.patch_fingerprint: a diff may carry bytes no codec reads (twosuns A1)
     log = ledger.run(["git", "-C", str(ledger.root), "log", "-p", "--no-merges", "--no-color", *log_args],
-                     capture_output=True, text=True, check=False)
+                     capture_output=True, check=False)
     if log.returncode != 0 or not log.stdout:
         return []
     done = ledger.run(["git", "-C", str(ledger.root), "patch-id", "--verbatim"], input=log.stdout,
-                      capture_output=True, text=True, check=False)
-    return [line.split()[0] for line in done.stdout.splitlines() if line.split()] if done.returncode == 0 else []
+                      capture_output=True, check=False)
+    return ([line.split()[0].decode("ascii") for line in done.stdout.splitlines() if line.split()]
+            if done.returncode == 0 else [])
 
 
 class Accounting:

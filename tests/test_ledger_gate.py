@@ -89,6 +89,13 @@ def test_the_gate_command_answers_by_exit_code(tmp_path):
         assert gate.gate_for(ledger, git(root, "rev-parse", "HEAD")).status == status
 
 
+def test_a_gate_command_printing_bytes_no_codec_reads_still_answers(tmp_path):
+    """A test runner may print raw bytes (a snapshot of a binary table); the gate answers by its exit code all the
+    same, never by a crash in the decode (twosuns field report A1, the same class)."""
+    script = "import sys; sys.stdout.buffer.write(bytes(range(0x80, 0x100))); sys.exit(1)"
+    root, ledger = ledger_with(tmp_path, {"provider": "command", "gate_command": f"{sys.executable} -c \"{script}\""})
+    assert gate.gate_for(ledger, git(root, "rev-parse", "HEAD")).status == gate.RED
+
 def test_without_ci_a_push_receipt_is_the_gate(tmp_path):
     tiers = [{"name": "unit", "command": GREEN_CMD, "required_for": ["push"]}]
     root, ledger = ledger_with(tmp_path, {"provider": "none"}, tiers=tiers)

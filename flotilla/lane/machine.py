@@ -224,7 +224,8 @@ def _gh_json(run, root, *args):
 def _queue(command: str, root, run) -> Answer:
     """The project's own answer to "is CI using this machine now": exit 0 no, 1 yes, anything else unknown."""
     try:   # through the shell, as the gate and revision commands are run
-        done = run(command, shell=True, cwd=str(root), capture_output=True, text=True, check=False, timeout=25)
+        done = run(command, shell=True, cwd=str(root), capture_output=True, text=True, errors="replace", check=False,
+                   timeout=25)
     except (OSError, subprocess.SubprocessError) as err:
         return Answer("ci", None, f"the CI queue command could not be run ({err}): not asked is not free")
     first = (done.stdout or "").strip().splitlines()[:1]

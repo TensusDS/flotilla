@@ -99,7 +99,7 @@ def _command(ledger, sha: str) -> Gate:
         return Gate(UNKNOWN, "the profile has no gate command; the sender asks the human")
     try:
         done = ledger.run(f"{command} {shlex.quote(sha)}", shell=True, cwd=str(ledger.root), capture_output=True,
-                          text=True, check=False, timeout=600)
+                          text=True, errors="replace", check=False, timeout=600)
     except subprocess.TimeoutExpired:
         return Gate(UNKNOWN, "the gate command did not answer within 600 s")
     tail = ((done.stdout or "") + (done.stderr or "")).strip().splitlines()[-1:] or [""]

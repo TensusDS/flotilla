@@ -405,3 +405,13 @@ def test_the_floor_of_a_limited_cgroup_is_a_quarter_of_its_limit(monkeypatch):
     monkeypatch.setattr(resources, "cgroup_limit_mb", lambda **kw: 2048)
     assert copy._memtotal() == 2048 * 1024
     assert copy.memory_floor_mb({}, copy._memtotal()) == 512
+
+
+def test_a_queue_command_printing_bytes_no_codec_reads_still_answers(tmp_path):
+    """Run for real: the CI queue command's own output may hold bytes that are not UTF-8 (twosuns A1, same class)."""
+    import sys
+    script = "import sys; sys.stdout.buffer.write(bytes(range(0x80, 0x100)) + b'\\n'); sys.exit(1)"
+    profile = {"ci": {"provider": "command", "runs_on": "this-machine",
+                      "queue_command": f"{sys.executable} -c \"{script}\""}}
+    answer = machine.ci_here(profile, run=subprocess.run, root=tmp_path)
+    assert answer.blocks is True

@@ -105,3 +105,36 @@ def test_a_submodule_pointer_move_is_a_change_whatever_gitmodules_says(tmp_path)
     g("update-index", "--cacheinfo", f"160000,{second},sub")
     g("commit", "-q", "-m", "move the pointer")
     assert gitq.patch_fingerprint(tmp_path, base, g("rev-parse", "HEAD")) not in (None, "empty")
+
+
+def _commit_bytes(root, name, data):
+    """A file git diffs as text (no NUL in its first 8000 bytes) whose bytes are not UTF-8: a float16 table (twosuns
+    field report A1, 2026-10-26)."""
+    (root / name).write_bytes(data)
+    git(root, "add", name)
+    git(root, "-c", "user.email=t@example.invalid", "-c", "user.name=t", "commit", "-q", "-m", f"add {name}")
+    return git(root, "rev-parse", "HEAD")
+
+
+NOT_UTF8 = bytes(range(0x80, 0x100)) * 64 + b"\n"   # every byte invalid as a UTF-8 start, and no NUL
+
+
+def test_patch_fingerprint_reads_a_diff_that_is_not_utf8(tmp_path):
+    root = repo_with_origin(tmp_path)
+    base = git(root, "rev-parse", "HEAD")
+    tip = _commit_bytes(root, "table.f16", NOT_UTF8)
+    first = gitq.patch_fingerprint(root, base, tip)
+    assert first not in (None, "empty")
+    other = _commit_bytes(root, "table.f16", NOT_UTF8 + b"\xa8\n")
+    assert gitq.patch_fingerprint(root, tip, other) not in (None, "empty", first)
+
+
+def test_patch_ids_of_a_log_that_is_not_utf8(tmp_path):
+    from types import SimpleNamespace
+    import subprocess
+    from flotilla.ledger import batch
+    root = repo_with_origin(tmp_path)
+    base = git(root, "rev-parse", "HEAD")
+    tip = _commit_bytes(root, "table.f16", NOT_UTF8)
+    ids = batch._patch_ids(SimpleNamespace(root=root, run=subprocess.run), f"{base}..{tip}")
+    assert len(ids) == 1 and ids[0] == gitq.patch_fingerprint(root, base, tip)

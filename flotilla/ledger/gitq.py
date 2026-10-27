@@ -105,17 +105,18 @@ def on_first_parent(root: Path, sha: str, ref: str, *, run=subprocess.run, depth
 def patch_fingerprint(root: Path, base: str, tip: str, run=subprocess.run) -> str | None:
     """What a branch brings, by content: survives a rebase onto a new base, changes with the change."""
     # a submodule pointer is a change whatever .gitmodules says, and no diff driver of the repository's runs here
-    diff = _git(root, "diff", "--no-color", "--ignore-submodules=none", "--no-ext-diff", "--no-textconv", base, tip,
-                run=run)
+    # bytes, never text: a file git diffs as text may hold bytes no codec reads (a float16 table, twosuns A1)
+    diff = run(["git", "-C", str(root), "diff", "--no-color", "--ignore-submodules=none", "--no-ext-diff",
+                "--no-textconv", base, tip], capture_output=True, check=False)
     if diff.returncode != 0:
         return None
     if not diff.stdout:
         return "empty"
     # --verbatim, not --stable: --stable drops whitespace, and in Python indentation is meaning (F15)
     done = run(["git", "-C", str(root), "patch-id", "--verbatim"], input=diff.stdout, capture_output=True,
-               text=True, check=False)
+               check=False)
     words = done.stdout.split()
-    return words[0] if done.returncode == 0 and words else None
+    return words[0].decode("ascii") if done.returncode == 0 and words else None
 
 
 def is_clean(tree: Path, run=subprocess.run) -> bool | None:
