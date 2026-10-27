@@ -261,3 +261,22 @@ def test_template_posts_leave_the_effort_to_claude_code():
     from flotilla.posts import TEMPLATE_DIR, load_post
     for path in TEMPLATE_DIR.glob("*.md"):
         assert load_post(path).effort == "", path.name
+
+
+def test_the_orchestrator_cleans_as_its_last_step():
+    """The person (2026-10-27): the person never runs the collector; the orchestrator stands the fleet down when
+    asked, and cleaning is its last step - also when it is the last session of the fleet, before it closes."""
+    from flotilla.posts import TEMPLATE_DIR, load_post
+    post = load_post(TEMPLATE_DIR / "orchestrator.md")
+    body = " ".join((TEMPLATE_DIR / "orchestrator.md").read_text(encoding="utf-8").split())
+    assert post.template_version == 19
+    assert "run `flotilla fleet down` yourself" in body
+    assert "run `flotilla fleet down` once more as your last step" in body
+    assert "run `flotilla fleet clean`" not in body
+
+
+def test_the_down_command_says_what_cleaning_removes():
+    from pathlib import Path
+    text = (Path(__file__).resolve().parents[1] / "skills" / "down" / "SKILL.md").read_text(encoding="utf-8")
+    assert "Trees are kept" not in text and "exists elsewhere are removed" in text
+    assert "Never remove a tree yourself" in text

@@ -290,4 +290,4 @@ def test_the_sender_and_the_orchestrator_know_taken_in_work():
     sender = " ".join((ROOT / "templates" / "posts" / "sender.md").read_text(encoding="utf-8").split())
     orchestrator = " ".join((ROOT / "templates" / "posts" / "orchestrator.md").read_text(encoding="utf-8").split())
     assert "retargets a taken-in pull request" in sender and "template_version: 10" in sender
-    assert "(taken in)" in orchestrator and "/flotilla:organize" in orchestrator and "template_version: 18" in orchestrator
+    assert "(taken in)" in orchestrator and "/flotilla:organize" in orchestrator and "template_version: 19" in orchestrator
