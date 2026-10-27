@@ -94,8 +94,8 @@ def _unclean(ledger: core.Ledger, home: Path) -> str:
         return f"{home} has uncommitted work, or git could not say; commit it on its branch first"
     shown = ", ".join(line[3:] for line in lines[:5]) + (f" and {len(lines) - 5} more" if len(lines) > 5 else "")
     if all(line.startswith("??") for line in lines):
-        return (f"{home} holds uncommitted files git does not track: {shown}. Commit what is work on its branch; a run's output belongs "
-                "in .gitignore (a project row), so it never stands in the way again")
+        return (f"{home} holds uncommitted files git does not track: {shown}. Commit what is work on its branch; "
+                "a run's output belongs in .gitignore (a project row), so it never stands in the way again")
     return f"{home} has uncommitted work: {shown}; commit it on its branch first"
 
 
