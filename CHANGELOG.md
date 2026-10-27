@@ -9,8 +9,9 @@ each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2
   `!` excludes - narrows it to work touching those paths: `queue` refuses such work without your `approve` and names
   the files, the brief marks which rows ship without your yes, and the push guard counts unapproved work off the
   paths. Every commit of the work counts, not only the net diff; work on `.flotilla/` always waits for you.
-  Onboarding offers "a human, for code" with the paths found where the project's code lies, data under it left out
-  and CI, hooks, manifests and build files kept in.
+  Onboarding offers "a human, for code": everything waits for you but what it finds plainly not code - docs, tests,
+  data and assets, text and media - so a directory added later is yours too; CI, hooks, manifests and build files
+  always wait.
 - **A wait is not a fault.** Work waiting on other work - a dependency not delivered, a part whose whole has not
   shipped - prints `not yet` and says nothing is wrong, instead of a refusal that told the session to report it. A
   guard that cannot read a command says it is a guard; the skill lists what is not a fault, Claude Code's own

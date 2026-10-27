@@ -49,9 +49,15 @@ def matches(path: str, patterns) -> bool:
             and not any(_regex(p).fullmatch(path) for p in excludes))
 
 
-#: Always the person's where they authorize merges: the fleet's own rules - a row editing them could take this very
-#: gate away (security review of the code-paths change, 4). No `!` pattern excludes them.
-ALWAYS = (".flotilla/**",)
+#: Always the person's where they authorize code only: the fleet's own rules - a row editing them could take this very
+#: gate away - and what runs whatever its type: CI, hooks, the tools' settings, manifests and build files (security
+#: review of the code-paths change, 4 and 5). Held here, not in the profile, so no profile and no `!` leaves them out.
+ALWAYS = (".flotilla/**", ".github/**", ".gitlab/**", ".circleci/**", ".husky/**", ".devcontainer/**", ".claude/**",
+          ".vscode/**", ".idea/**", ".cursor/**", ".mcp.json", ".gitlab-ci.yml", ".gitattributes", ".gitmodules",
+          ".pre-commit-config.yaml", ".envrc", ".npmrc", ".yarnrc", ".yarnrc.yml", "package.json", "package-lock.json",
+          "pnpm-lock.yaml", "yarn.lock", "pyproject.toml", "uv.lock", "setup.py", "setup.cfg", "requirements*.txt",
+          "Cargo.toml", "Cargo.lock", "go.mod", "go.sum", "Gemfile", "Gemfile.lock", "Makefile", "Dockerfile",
+          "docker-compose.yml", "docker-compose.yaml", "conftest.py", "*.pth", "sitecustomize.py")
 
 
 def _person(profile: dict) -> bool:

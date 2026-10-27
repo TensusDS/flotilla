@@ -247,10 +247,10 @@ def test_a_custom_post_kept_at_re_onboarding_takes_its_effort(tmp_path):
 
 def test_code_only_writes_the_detected_paths_and_says_so_in_plain_words(tmp_path):
     from flotilla.onboard.profile import plain_words
-    det = detection(tmp_path, code_paths=["src/**", "!src/data/**"])
+    det = detection(tmp_path, code_paths=["**", "!docs/**", "!*.md"])
     data = build_profile(det, {**BASE_ANSWERS, "flow": "direct", "merge_auth": "code"})
     assert data["flow"] == {"mode": "direct", "merge_authorized_by": "human",
-                            "approve_paths": ["src/**", "!src/data/**"]}
+                            "approve_paths": ["**", "!docs/**", "!*.md"]}
     said = " ".join(plain_words(data))
-    assert "work touching src/**, !src/data/** waits for your approval" in said
-    assert "docs and data ship on the sender's word" in said
+    assert "work waits for your approval" in said and "unless it touches only docs/**, *.md" in said
+    assert "CI, manifests and the fleet's rules always wait" in said

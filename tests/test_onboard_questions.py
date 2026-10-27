@@ -203,7 +203,7 @@ def test_with_code_detected_the_merge_question_offers_code_only_first():
     det = detection(code_paths=["src/**", "!src/data/**"])
     question = next(q for q in qs.all_questions(det, {"flow": "direct"}) if q["id"] == "merge_auth")
     first = question["options"][0]
-    assert first["value"] == "code" and "src/**" in first["description"]
+    assert first["value"] == "code" and "src/data/**" in first["description"]
     assert qs.quick_answers(det, {"flow": "direct"})["merge_auth"] == "sender"
 
 

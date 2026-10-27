@@ -42,10 +42,12 @@ def all_questions(det: dict, answers: dict) -> list[dict]:
     if flow in ("pr-sender", "direct"):
         code = det.get("code_paths") or []
         # the person's decision 2026-10-27 (twosuns B1): code ships on a yes, and the paths come from the project
-        shown = ", ".join(code[:4]) + (f" and {len(code) - 4} more" if len(code) > 4 else "")
+        free = [pattern[1:] for pattern in code if pattern.startswith("!")]
+        shown = ", ".join(free[:5]) + (f" and {len(free) - 5} more" if len(free) > 5 else "")
         out.append(_q("merge_auth", "Merge auth", "Who authorizes a merge into trunk?", [
             *([("code", "A human, for code",
-                f"Work touching the code ({shown}) waits for your yes; docs and data ship on the sender's word.")]
+                "Work waits for your yes unless it touches only docs, tests, data or media"
+                + (f" ({shown})" if shown else "") + "; CI, manifests and the fleet's rules always wait.")]
               if code else []),
             ("human", "A human, per batch", "The sender shows the batch in one block and waits for a yes."),
             ("sender", "The sender", "The sender merges on its own once the push receipt is green."),

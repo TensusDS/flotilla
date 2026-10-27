@@ -1,10 +1,12 @@
-"""Where a project's code lies: the paths a person's yes is asked for, when they authorize code only (twosuns field
-report B1; the person, 2026-10-27: asked in onboarding from the project and where its code lies, so the questions
-put to the person stay few).
+"""The paths a person's yes is asked for, when they authorize code only (twosuns field report B1; the person,
+2026-10-27: asked in onboarding from the project and where its code lies, so the questions put to the person stay
+few).
 
-A code file is one by its suffix. Its top directory becomes `<dir>/**`, a code file at the root is named on its own;
-tests, docs and examples change no product and ask no yes; data, assets and content under a code directory are
-excluded with `!`, as credits and tables ship on the sender's word. Read from what git tracks, never from the disk.
+Everything waits for the person but what is plainly not code: docs, tests and examples, data and assets under the
+code, and files whose type is text or media. So a directory or a file the project adds later is the person's until
+said otherwise - a snapshot of today's code would let tomorrow's through (security review of the change, 5). What
+runs whatever its type - CI, hooks, manifests, the fleet's rules - is the person's in every case (`approval.ALWAYS`).
+Read from what git tracks, never from the disk; a name that would read as a pattern is never written as one.
 """
 
 from __future__ import annotations
@@ -12,62 +14,52 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path, PurePosixPath
 
-CODE = frozenset({"py", "ts", "tsx", "js", "jsx", "mjs", "cjs", "mts", "cts", "rs", "go", "java", "kt", "kts", "swift",
-                  "c", "h", "cc", "cpp", "hpp", "cs", "rb", "php", "lua", "scala", "dart", "vue", "svelte", "zig",
-                  "glsl", "wgsl", "vert", "frag", "hlsl", "sh", "bash", "sql", "ex", "exs", "erl", "clj", "hs", "ml"})
-#: Directories whose changes do not change the product: no yes is asked for them.
+#: Directories whose changes do not change the product.
 NOT_PRODUCT = frozenset({"tests", "test", "__tests__", "spec", "specs", "e2e", "docs", "doc", "examples", "example",
                          "fixtures", "benchmarks", "bench"})
-#: What runs whatever its suffix - CI, hooks, the tools' settings, manifests and build files - asked of the person
-#: wherever it lies (security review of the code-paths change, 4). Named when the project tracks it.
-RUNS_DIRS = (".github", ".gitlab", ".claude", ".husky", ".circleci", ".devcontainer")
-RUNS_NAMES = ("package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "pyproject.toml", "uv.lock",
-              "setup.py", "setup.cfg", "Cargo.toml", "Cargo.lock", "go.mod", "go.sum", "Gemfile", "Gemfile.lock",
-              "Makefile", "Dockerfile", "docker-compose.yml", "docker-compose.yaml", ".gitlab-ci.yml", ".gitattributes",
-              ".gitmodules", ".pre-commit-config.yaml", ".envrc", ".npmrc")
-#: Directories under code that hold data rather than code: excluded with `!`.
+#: Directories that hold data rather than code.
 DATA = frozenset({"data", "assets", "content", "locales", "locale", "i18n", "public", "static", "media", "fonts"})
+#: Types that are text or media, never run.
+NOT_CODE = ("md", "markdown", "rst", "txt", "adoc", "png", "jpg", "jpeg", "gif", "webp", "svg", "ico", "bmp", "tif",
+            "tiff", "mp3", "wav", "ogg", "flac", "mp4", "webm", "mov", "pdf", "csv", "tsv", "woff", "woff2", "ttf",
+            "otf")
+#: A character that would make a name read as a pattern (approval's matcher, or a leading `!`).
+_PATTERN = set("*?[]\\!")
 
 
-def _tracked(root: Path, run) -> list[str]:
+def _tracked(root: Path, run) -> list[str] | None:
     done = run(["git", "-C", str(root), "ls-files", "-z"], capture_output=True, check=False)
     if done.returncode != 0:
-        return []
+        return None
     return [name.decode("utf-8", "surrogateescape") for name in done.stdout.split(b"\0") if name]
 
 
+def _plain(text: str) -> bool:
+    return not (_PATTERN & set(text))
+
+
 def code_paths(root: Path, run=subprocess.run) -> list[str]:
-    """The approve_paths patterns for this project's code, includes first, each followed by its excludes."""
-    tops: set[str] = set()
-    singles: set[str] = set()
-    data: dict[str, set[str]] = {}
-    runs: set[str] = set()
-    for name in _tracked(root, run):
+    """approve_paths for this project: `**`, less what is plainly not code - or [] when it holds no code at all."""
+    names = _tracked(root, run)
+    if not names:
+        return []
+    dirs: set[str] = set()
+    types: set[str] = set()
+    code = False
+    for name in names:
         path = PurePosixPath(name)
-        dirs = path.parts[:-1]
-        if dirs and dirs[0] in RUNS_DIRS:
-            runs.add(f"{dirs[0]}/**")
+        parts = path.parts[:-1]
+        cut = next((at for at, part in enumerate(parts) if part.lower() in NOT_PRODUCT | DATA), None)
+        if cut is not None:
+            where = "/".join(parts[:cut + 1])
+            if _plain(where):   # a name that reads as a pattern is never excluded: it stays the person's
+                dirs.add(where)
             continue
-        if path.name in RUNS_NAMES or path.name.startswith("requirements") and path.suffix == ".txt":
-            runs.add(path.name)   # by name, anywhere
-            continue
-        if any(part.startswith(".") for part in path.parts):
-            continue   # the fleet's and the tools' own (.github, .flotilla, .claude) are not the product
-        if any(part.lower() in NOT_PRODUCT for part in dirs):
-            continue
-        held = next((at for at, part in enumerate(dirs) if part.lower() in DATA), None)
-        if held is not None:
-            if held > 0:
-                data.setdefault(dirs[0], set()).add("/".join(dirs[:held + 1]))
-            continue
-        if path.suffix.lower().lstrip(".") not in CODE:
-            continue
-        if dirs:
-            tops.add(dirs[0])
+        suffix = path.suffix.lower().lstrip(".")
+        if suffix in NOT_CODE:
+            types.add(suffix)
         else:
-            singles.add(name)
-    found = sorted(runs) + [f"/{name}" for name in sorted(singles)]
-    for top in sorted(tops):
-        found.append(f"{top}/**")
-        found += [f"!{inner}/**" for inner in sorted(data.get(top, ()))]
-    return found
+            code = True
+    if not code:
+        return []
+    return ["**", *(f"!{where}/**" for where in sorted(dirs)), *(f"!*.{suffix}" for suffix in sorted(types))]

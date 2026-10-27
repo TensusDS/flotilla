@@ -187,8 +187,12 @@ def plain_words(data: dict) -> list[str]:
     elif mode == "pr" and (data.get("pr") or {}).get("merged_by") == "human":
         merges = f"merges into trunk: the sender opens a pull request for {work}; you merge each pull request yourself"
     elif who == "human" and flow.get("approve_paths"):
-        merges = (f"merges into trunk: work touching {', '.join(flow['approve_paths'])} waits for your approval (`! "
-                  "flotilla work approve <branch>`); docs and data ship on the sender's word")
+        paths = flow["approve_paths"]
+        free = [pattern[1:] for pattern in paths if pattern.startswith("!")]
+        unless = f" unless it touches only {', '.join(free)}" if paths[:1] == ["**"] and free else ""
+        on = "" if paths[:1] == ["**"] else f" when it touches {', '.join(paths)}"
+        merges = (f"merges into trunk: work waits for your approval (`! flotilla work approve <branch>`){on}{unless} "
+                  "- those ship on the sender's word; CI, manifests and the fleet's rules always wait")
     elif who == "human":
         merges = "merges into trunk: nothing reaches trunk until you approve it (`! flotilla work approve <branch>`)"
     else:
