@@ -124,7 +124,9 @@ def _inside(tree: Path, target: Path) -> bool:
         relative = target.relative_to(tree)
     except ValueError:
         return False
-    if not relative.parts or ".." in relative.parts or ".git" in relative.parts:
+    if not relative.parts or ".." in relative.parts:
+        return False
+    if any(part.rstrip(". ").lower() == ".git" for part in relative.parts):   # a case-insensitive file system too
         return False
     here = tree
     for part in relative.parts[:-1]:
@@ -197,9 +199,13 @@ def _git(ledger, *args):
     return ledger.run(["git", "-C", str(ledger.root), *args], capture_output=True, text=True, check=False)
 
 
-def _worktrees(ledger) -> set[str]:
+def _listed(ledger) -> list[str]:
     listed = _git(ledger, "worktree", "list", "--porcelain").stdout.splitlines()
-    return {str(Path(line[len("worktree "):]).resolve()) for line in listed if line.startswith("worktree ")}
+    return [str(Path(line[len("worktree "):]).resolve()) for line in listed if line.startswith("worktree ")]
+
+
+def _worktrees(ledger) -> set[str]:
+    return set(_listed(ledger))
 
 
 def _copy_back(stored: Path, target: Path) -> None:
@@ -230,7 +236,8 @@ def restore(ledger, key: str) -> list[str]:
         if wanted is not None and record["tree"] not in wanted:
             continue
         tree, fresh = Path(record["tree"]), False
-        if tree.resolve() == Path(ledger.root).resolve():
+        listed = _listed(ledger)   # git names the main checkout first, whichever tree the ledger stands in
+        if tree.resolve() == Path(ledger.root).resolve() or (listed and str(tree.resolve()) == listed[0]):
             lines.append(f"refused: {visible(str(tree))} is the main checkout; nothing is restored into it")
             continue
         if tree.exists() and str(tree.resolve()) not in _worktrees(ledger):

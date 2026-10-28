@@ -94,3 +94,43 @@ def test_the_hook_runs_the_gc_guard(tmp_path):
     root = onboarded(tmp_path)
     found = guard_run.evaluate("git worktree prune", root, root)
     assert any(item.guard == gc.GUARD and item.refuse for item in found), found
+
+
+# Security review of 7590fff: the guard reads what the tools read - a glob's literal prefix, abbreviated long options,
+# git's worktree suffix match, and update-ref's other ways to delete.
+
+def test_a_glob_reaching_seat_trees_from_elsewhere_is_refused(tmp_path):
+    seat, store = layout(tmp_path)
+    (tmp_path / "scratch").mkdir()
+    assert refused(judge("rm -rf ../app-main-*", tmp_path / "scratch", seats=[seat], archive=store))
+    (tmp_path / "scratch" / "own").mkdir()
+    assert judge("rm -rf own/*", tmp_path / "scratch", seats=[seat], archive=store) is None
+
+
+@pytest.mark.parametrize("command", ["rm --recur app-main-1", "rm --recursive=x app-main-1",
+                                     "git worktree remove --forc app-main-1", "git branch --del --forc fleet/main-1"])
+def test_abbreviated_long_options_count_as_the_option(tmp_path, command):
+    seat, store = layout(tmp_path)
+    assert refused(judge(command, tmp_path, seats=[seat], archive=store)), command
+
+
+def test_a_worktree_named_by_its_suffix_is_refused(tmp_path):
+    seat, store = layout(tmp_path)
+    (tmp_path / "scratch").mkdir()
+    assert refused(judge("git worktree remove --force app-main-1", tmp_path / "scratch", seats=[seat],
+                         archive=store))
+
+
+@pytest.mark.parametrize("command", ["git update-ref -d refs/heads/fleet/main-1",
+                                     "git update-ref --delete refs/heads/feat/tracked",
+                                     "git update-ref -d refs/flotilla/dropped/x",
+                                     "git update-ref refs/heads/fleet/main-1 " + "0" * 40,
+                                     "git update-ref --stdin"])
+def test_update_ref_deletions_of_fleet_refs_are_refused(tmp_path, command):
+    seat, store = layout(tmp_path)
+    assert refused(judge(command, tmp_path, seats=[seat], branches=["feat/tracked"], archive=store)), command
+
+
+def test_update_ref_of_a_persons_branch_is_let_through(tmp_path):
+    seat, store = layout(tmp_path)
+    assert judge("git update-ref -d refs/heads/experiment", tmp_path, seats=[seat], archive=store) is None

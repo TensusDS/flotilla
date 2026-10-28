@@ -316,3 +316,32 @@ def test_put_refuses_a_path_through_a_git_directory(tmp_path):
     put_file(tree, "vendor/.git/config", b"[core]\n")
     with pytest.raises(archive.ArchiveFailed):
         stash(ledger, tree, ["vendor/.git/config"])
+
+
+# Security review of 06edd1c: `.git` by any case or trailing dot (case-insensitive file systems), and the main checkout
+# as git names it, not as the ledger's root.
+
+@pytest.mark.parametrize("part", [".GIT", ".Git", ".git.", ".git "])
+def test_restore_never_writes_into_a_git_directory_by_any_spelling(tmp_path, part):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    put_file(tree, "a.bin", b"payload")
+    entry = stash(ledger, tree, ["a.bin"])
+    target = tree / part / "hooks" / "post-commit"
+    tampered(ledger, entry, lambda data: data["files"][0].update(**{"from": str(target)}))
+    lines = archive.restore(ledger, entry.id)
+    assert not target.exists() and any("refused" in line for line in lines), lines
+
+
+def test_restore_refuses_the_main_checkout_when_the_ledger_stands_in_a_linked_tree(tmp_path):
+    root, _ = world(tmp_path)
+    tree = seat(root, tmp_path)
+    ledger = make_ledger(tree, tmp_path / "state2", profile=PROFILE, live=())
+    other = seat(root, tmp_path, "app-main-2", "fleet/main-2")
+    put_file(other, "a.bin", b"payload")
+    entry = stash(ledger, other, ["a.bin"])
+    target = root / "planted.sh"
+    tampered(ledger, entry, lambda data: (data["trees"][0].update(tree=str(root)),
+                                          data["files"][0].update(tree=str(root), **{"from": str(target)})))
+    lines = archive.restore(ledger, entry.id)
+    assert not target.exists() and any("refused" in line for line in lines), lines
