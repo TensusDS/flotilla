@@ -42,9 +42,10 @@ def _keys(found) -> list[tuple[str, str]]:
 
 
 def last_copies(tree: str, verdict: TreeVerdict) -> list[dict]:
-    """Files removed on a twin a person curates (a store) or keeps (the main checkout): where the last copy is."""
+    """Files removed on a twin, where the last copy is: every twin used (gc design 7; second review of the branch,
+    m-7) but the archive's, whose file the tree's own record names."""
     return [{"from": str(Path(tree) / path), "where": twin.where} for path, twin in verdict.twins
-            if twin.kind in ("store", "checkout")]
+            if twin.kind != "archive"]
 
 
 def remove_tree(ledger, verdict: TreeVerdict, *, dropping: set[str], sessions, proc_root=None,

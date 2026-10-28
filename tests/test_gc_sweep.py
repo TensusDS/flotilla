@@ -359,3 +359,22 @@ def test_an_unreadable_directory_among_ignored_files_waits_on_the_person(tmp_pat
     assert (tree / "out" / "sub" / "data.bin").read_bytes() == b"precious", sweep.lines(report)
     assert any(line.startswith("kept 1 tree: waits on the person") for line in sweep.lines(report)), \
         sweep.lines(report)
+
+
+# Second review of the branch, m-7: spec 7 records the last copy "for each file whose twin was used"; a twin in a tree
+# that stays was used and not recorded, though that tree can go later.
+
+def test_a_twin_in_a_tree_that_stays_names_the_last_copy(tmp_path):
+    from flotilla.gc import archive
+    root, ledger = world(tmp_path)
+    ignoring(root)
+    staying = tmp_path / "mine"   # a tree flotilla did not make: untouched, it survives the pass
+    git(root, "worktree", "add", "-q", "-b", "mine", str(staying))
+    (staying / "out").mkdir()
+    (staying / "out" / "x.bin").write_bytes(b"12345")
+    tree = ignored_seat(root, tmp_path, 1)
+    shown = sweep.lines(sweep.run_pass(ledger, sessions=[], act=True, proc_root=tmp_path / "no-proc"))
+    assert not tree.exists() and staying.exists(), shown
+    assert f"the last copy of out/x.bin is now in {staying / 'out' / 'x.bin'}" in shown, shown
+    recorded = [copy for entry in archive.entries(ledger) for copy in entry.last_copies]
+    assert {"from": str(tree / "out" / "x.bin"), "where": str(staying / "out" / "x.bin")} in recorded, recorded
