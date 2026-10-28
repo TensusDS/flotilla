@@ -286,3 +286,26 @@ def test_the_hook_passes_the_calling_sessions_id(tmp_path, monkeypatch):
     assert decision(f"rm -rf {seat}/src", "sid-1") != "deny"
     assert decision(f"rm -rf {other}/out", "sid-1") == "deny"
     assert decision(f"rm -rf {seat}/src", "sid-other") == "deny"
+
+
+# Second review of the branch, m-6: an operand starting with `$HOME` or `$PWD` was unbounded and let through when the
+# shell stood outside every seat, as in the main checkout; both are known to the guard, so the path is judged as the
+# shell will expand it.
+
+@pytest.mark.parametrize("operand", ["$HOME/app-main-1", "${HOME}/app-main-1/src", "$PWD/../app-main-1",
+                                     "${PWD}/../app-main-1/src"])
+def test_home_and_pwd_are_judged_as_the_shell_expands_them(tmp_path, monkeypatch, operand):
+    seat, store = layout(tmp_path)
+    main = tmp_path / "app"
+    main.mkdir()
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert refused(judge(f"rm -rf {operand}", main, seats=[seat], archive=store)), operand
+
+
+@pytest.mark.parametrize("operand", ["$HOME/scratch", "${PWD}/build", "$HOMEWORK/app-main-1"])
+def test_home_and_pwd_elsewhere_are_let_through(tmp_path, monkeypatch, operand):
+    seat, store = layout(tmp_path)
+    main = tmp_path / "app"
+    main.mkdir()
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert judge(f"rm -rf {operand}", main, seats=[seat], archive=store) is None, operand

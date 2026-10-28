@@ -18,6 +18,7 @@ a mistaken session, not a determined one (decision 245); what no text guard sees
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 from flotilla.guards import Finding
@@ -79,6 +80,20 @@ def _resolve(base: Path | None, word: str) -> Path | None:
     return path.resolve()
 
 
+KNOWN = re.compile(r"\$\{(HOME|PWD)\}|\$(HOME|PWD)(?![A-Za-z0-9_])")
+
+
+def _known(word: str, base: Path | None) -> str:
+    """`$HOME` and `$PWD` as the shell will expand them: the guard knows both, so a path starting with one is judged
+    like any other (second review of the branch, m-6). Another variable stays unbounded."""
+    values = {"HOME": os.environ.get("HOME", ""), "PWD": str(base) if base else ""}
+
+    def value(match):
+        found = values[match.group(1) or match.group(2)]
+        return found or match.group(0)
+    return KNOWN.sub(value, word)
+
+
 def _touches(path: Path, guarded: list[Path]) -> bool:
     """`path` is a guarded place, lies inside one, or holds one."""
     return any(path == place or place in path.parents or path in place.parents for place in guarded)
@@ -136,6 +151,7 @@ def check(segment, *, seat_trees: set[Path], fleet_branches: set[str], archive: 
         stands = home.resolve() if home else None
         own = {seat for seat in seat_trees if stands is not None and (stands == seat or seat in stands.parents)}
         for word in _operands(segment.words[1:]):
+            word = _known(word, base)
             target = _resolve(base, word)
             if target is None:
                 literal = []
