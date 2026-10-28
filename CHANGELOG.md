@@ -16,9 +16,10 @@ each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2
   `flotilla gc apply` carries out exactly what you answered and nothing that moved since you were shown it.
   `answer`, `apply` and `restore` are yours: a background session is refused. Orchestrator template 20 sends you
   there instead of answering for you.
-- **A guard against removing the fleet's work by hand.** A session's `git worktree remove --force` of a seat tree,
+- **A guard against removing the fleet's work by hand.** A session's `git worktree remove` of a seat tree,
   `git worktree prune`, forced `git branch` deletion of a fleet branch, deletion of a parked ref or `rm -r` of a seat
-  tree or the archive is refused.
+  tree, of anything inside another session's tree or of the archive is refused. Inside the tree the session was
+  started in, `rm -rf dist` still works; a `cd` does not make another tree its own.
 - Not yet: the dead-session and daily passes, the archive's lifetime, a low disk (stage 3).
 
 ## 0.22.0 - 2026-10-27

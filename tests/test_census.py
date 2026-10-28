@@ -104,3 +104,15 @@ def test_a_session_reporting_a_status_is_kept_even_when_its_pid_looks_dead():
             ' "status": "busy", "state": "working"}]')
     assert [s.name for s in census.drop_gone(census.parse_census(text), pid_alive=lambda pid: False)] == \
         ["main session 9"]
+
+
+def test_a_session_is_found_started_where_the_census_says():
+    from flotilla.core import census
+    me = census.Session(name="a", session_id="sid-1", kind="background", pid=None, short_id=None, status=None,
+                        state=None, cwd="/w/app-main-1", started_at_ms=None)
+    blank = census.Session(name="b", session_id="sid-2", kind="background", pid=None, short_id=None, status=None,
+                           state=None, cwd="", started_at_ms=None)
+    assert census.started_in([me, blank], "sid-1") == Path("/w/app-main-1")
+    assert census.started_in([me, blank], "sid-2") is None
+    assert census.started_in([me, blank], "sid-3") is None
+    assert census.started_in([me, blank], "") is None

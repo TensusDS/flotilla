@@ -217,13 +217,54 @@ def test_without_the_sessions_directory_no_tree_is_its_own(tmp_path):
     assert refused(gc.check(segment, seat_trees={seat.resolve()}, fleet_branches=set(), archive=store.resolve()))
 
 
-def test_the_hook_judges_rm_by_the_tree_the_session_stands_in(tmp_path, monkeypatch):
+def two_seats(tmp_path, monkeypatch):
     from flotilla.gc import sweep
     root = onboarded(tmp_path)
     seat, other = tmp_path / "app-main-1", tmp_path / "app-main-2"
     (seat / "src").mkdir(parents=True)
     (other / "out").mkdir(parents=True)
     monkeypatch.setattr(sweep, "made_by_flotilla", lambda ledger: ({seat.resolve(), other.resolve()}, set()))
-    found = guard_run.evaluate("cd ../app-main-2 && rm -rf out", seat, root)
-    assert any(item.guard == gc.GUARD and item.refuse for item in found), found
-    assert not [item for item in guard_run.evaluate("rm -rf src", seat, root) if item.guard == gc.GUARD]
+    return root, seat, other
+
+
+def gc_refusals(found):
+    return [item for item in found if item.guard == gc.GUARD and item.refuse]
+
+
+def test_the_hook_judges_rm_by_the_tree_the_session_was_started_in(tmp_path, monkeypatch):
+    root, seat, other = two_seats(tmp_path, monkeypatch)
+    assert gc_refusals(guard_run.evaluate("cd ../app-main-2 && rm -rf out", seat, root, stands=lambda: seat))
+    assert not gc_refusals(guard_run.evaluate("rm -rf src", seat, root, stands=lambda: seat))
+
+
+# Security review of 9830acb: the hook's cwd follows a `cd` that persisted from an earlier call, so a session's own
+# tree is the directory it was started in, asked of the census by its id - which no command can move.
+
+def test_a_cd_persisted_from_an_earlier_call_does_not_make_a_tree_ones_own(tmp_path, monkeypatch):
+    root, seat, other = two_seats(tmp_path, monkeypatch)
+    assert gc_refusals(guard_run.evaluate("rm -rf out", other, root, stands=lambda: seat))
+
+
+@pytest.mark.parametrize("stands", [None, lambda: None, lambda: 1 / 0])
+def test_a_session_whose_start_is_unknown_owns_no_tree(tmp_path, monkeypatch, stands):
+    root, seat, other = two_seats(tmp_path, monkeypatch)
+    assert gc_refusals(guard_run.evaluate("rm -rf src", seat, root, stands=stands))
+
+
+def test_the_hook_asks_the_census_for_the_calling_sessions_start(tmp_path, monkeypatch):
+    import io
+    import json
+    from flotilla.core import census
+    root, seat, other = two_seats(tmp_path, monkeypatch)
+    me = census.Session(name="main session 1", session_id="sid-1", kind="background", pid=None, short_id=None,
+                        status=None, state=None, cwd=str(seat), started_at_ms=None)
+    monkeypatch.setattr(census, "read_census", lambda **_: [me])
+
+    def decision(command, cwd, session_id):
+        out = io.StringIO()
+        guard_run.guard_hook(command, cwd, root, out, session_id=session_id)
+        return (json.loads(out.getvalue() or "{}").get("hookSpecificOutput") or {}).get("permissionDecision")
+
+    assert decision("rm -rf out", other, "sid-1") == "deny"
+    assert decision("rm -rf src", seat, "sid-1") != "deny"
+    assert decision("rm -rf src", seat, "sid-unknown") == "deny"

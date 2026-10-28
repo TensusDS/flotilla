@@ -115,8 +115,8 @@ def _operands(words) -> list[str]:
 
 def check(segment, *, seat_trees: set[Path], fleet_branches: set[str], archive: Path,
           home: Path | None = None) -> Finding | None:
-    """`home` is where the session stands (the hook's cwd): the seat tree holding it is the session's own, and a `cd`
-    inside the command does not change whose tree it is. Without it no tree is the session's own."""
+    """`home` is where the session was started: the seat tree holding it is the session's own, and a `cd` - in the
+    command or persisted from an earlier call - does not change whose tree it is. Without it no tree is its own."""
     kind = door(segment)
     if not kind:
         return None

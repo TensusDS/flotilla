@@ -11,6 +11,7 @@ import json
 import os
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 
 
 class CensusUnavailable(RuntimeError):
@@ -83,6 +84,13 @@ def drop_gone(sessions: list[Session], pid_alive=_pid_alive) -> list[Session]:
             return False   # a session that reports a status is running; a pid this process cannot see proves nothing
         return session.pid is None or not pid_alive(session.pid)
     return [session for session in sessions if not gone(session)]
+
+
+def started_in(sessions: list[Session], session_id: str) -> Path | None:
+    """The directory the session with this id was started in: unlike the shell's, no command moves it. None when the
+    census does not know the session or its directory."""
+    found = [item.cwd for item in sessions if session_id and item.session_id == session_id and item.cwd]
+    return Path(found[0]) if found else None
 
 
 def read_census(run=subprocess.run, claude: str = "claude", timeout: float = 30,
