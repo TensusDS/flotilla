@@ -182,3 +182,11 @@ def test_rm_inside_another_sessions_tree_is_refused(tmp_path):
     assert refused(judge("rm -rf app-main-2/out", tmp_path, seats=[seat, other], archive=store))
     assert refused(judge("rm -rf ../app-main-2/out", seat, seats=[seat, other], archive=store))
     assert judge("rm -rf src", seat, seats=[seat, other], archive=store) is None
+
+
+# Security review of 70f64bd: a brace or a `..` inside a part after a glob can climb too.
+
+@pytest.mark.parametrize("operand", ["src/{..,x}", "src/*..", "{src,..}"])
+def test_braces_and_dots_after_a_glob_are_judged_by_where_they_run(tmp_path, operand):
+    seat, store = layout(tmp_path)
+    assert refused(judge(f"rm -rf {operand}", seat, seats=[seat], archive=store)), operand

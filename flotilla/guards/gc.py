@@ -100,7 +100,7 @@ def _unsure(word: str) -> bool:
     globbed = next((at for at, part in enumerate(parts) if any(mark in part for mark in UNREADABLE)), None)
     return any(mark in word for mark in ("$", "`")) or any(
         part.startswith(".") and any(mark in part for mark in UNREADABLE) for part in parts) or (
-        globbed is not None and ".." in parts[globbed:])
+        globbed is not None and any(".." in part for part in parts[globbed:])) or "{" in word
 
 
 def _operands(words) -> list[str]:
