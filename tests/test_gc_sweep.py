@@ -293,3 +293,20 @@ def test_identical_content_goes_once_when_the_archive_already_exists(tmp_path):
     for tree in (second, third):   # each tree's record names its file, so each restores (security review dde4c0a)
         assert any(line.startswith("restored 1 file") for line in archive.restore(ledger, tree.name))
         assert (tree / "out" / "x.bin").read_bytes() == b"same"
+
+
+# Second review of the branch, I-3: content archived by an earlier pass is an archive twin at the first judgement too;
+# counting it as moved during the pass kept the tree as "changed" forever, and small trees are never asked.
+
+def test_content_archived_by_an_earlier_pass_lets_a_later_tree_go(tmp_path):
+    from flotilla.gc import archive
+    root, ledger = world(tmp_path)
+    ignoring(root)
+    ignored_seat(root, tmp_path, 1, data=b"same")
+    sweep.run_pass(ledger, sessions=[], act=True, proc_root=tmp_path / "no-proc")
+    later = ignored_seat(root, tmp_path, 2, data=b"same")
+    (later / "out" / "y.bin").write_bytes(b"unique")
+    report = sweep.run_pass(ledger, sessions=[], act=True, proc_root=tmp_path / "no-proc")
+    assert not later.exists(), sweep.lines(report)
+    named = {item["from"] for entry in archive.entries(ledger) for item in entry.files}
+    assert {str(later / "out" / "x.bin"), str(later / "out" / "y.bin")} <= named

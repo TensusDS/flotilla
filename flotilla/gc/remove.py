@@ -41,7 +41,7 @@ def _keys(found) -> list[tuple[str, str]]:
     return sorted((path, digest) for path, _, digest in found)
 
 
-def _last_copies(tree: str, verdict: TreeVerdict) -> list[dict]:
+def last_copies(tree: str, verdict: TreeVerdict) -> list[dict]:
     """Files removed on a twin a person curates (a store) or keeps (the main checkout): where the last copy is."""
     return [{"from": str(Path(tree) / path), "where": twin.where} for path, twin in verdict.twins
             if twin.kind in ("store", "checkout")]
@@ -77,17 +77,20 @@ def remove_tree(ledger, verdict: TreeVerdict, *, dropping: set[str], sessions, p
         if not why and archiving:
             # a file the same pass archived from another tree is now an archive twin of its own: the same content
             # (rule 3, identical copies stored once; final review of gc stage 2, I7)
-            moved = [(path, Path(twin.where).name) for path, twin in again.twins if twin.kind == "archive"]
+            # one already an archive twin when judged is no change (second review of the branch, I-3)
+            before = {path for path, twin in verdict.twins if twin.kind == "archive"}
+            stored = [(path, Path(twin.where).name) for path, twin in again.twins if twin.kind == "archive"]
+            moved = [item for item in stored if item[0] not in before]
             if again.reasons or again.doubts or sorted(_keys(again.archive) + moved) != _keys(verdict.archive):
                 why = "it changed while it was judged: " + ("; ".join(again.why) or "other files to archive")
             else:
                 try:   # a file now an archive twin is put too: the object is kept once, the tree's record names it
                     entry = archive.put(ledger, entry=archive_entry, tree=tree,
-                                        files=[path for path, _, _ in again.archive] + [path for path, _ in moved],
+                                        files=[path for path, _, _ in again.archive] + [path for path, _ in stored],
                                         tier="2",
                                         approved_by="told after: small", branch=again.branch, head=again.head,
-                                        last_copies=_last_copies(tree, again))
-                    out.update(entry=entry.id, files=len(again.archive) + len(moved),
+                                        last_copies=last_copies(tree, again))
+                    out.update(entry=entry.id, files=len(again.archive) + len(stored),
                                moved=sum(size for _, size, _ in again.archive))
                 except archive.ArchiveFailed as err:
                     why = str(err)
@@ -97,14 +100,14 @@ def remove_tree(ledger, verdict: TreeVerdict, *, dropping: set[str], sessions, p
             why = ("; ".join(again.why) if not again.removable
                    else "its reflog moved since it was judged" if set(again.park) != set(verdict.park) else "")
         stored = [path for path, twin in again.twins if twin.kind == "archive"]   # restorable by this tree's name
-        if not why and archive_entry and not archiving and (_last_copies(tree, again) or stored):
+        if not why and archive_entry and not archiving and (last_copies(tree, again) or stored):
             try:
                 archive.put(ledger, entry=archive_entry, tree=tree, files=stored, tier="1",
                             approved_by="tier 1: a twin survives", branch=again.branch, head=again.head,
-                            last_copies=_last_copies(tree, again))
+                            last_copies=last_copies(tree, again))
             except archive.ArchiveFailed as err:
                 why = str(err)
-        out["last_copies"] = _last_copies(tree, again)
+        out["last_copies"] = last_copies(tree, again)
         parked = []
         if not why:
             try:
