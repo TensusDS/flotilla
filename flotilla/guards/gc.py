@@ -84,17 +84,23 @@ def _touches(path: Path, guarded: list[Path]) -> bool:
     return any(path == place or place in path.parents or path in place.parents for place in guarded)
 
 
-def _reaches(path: Path, seats: set[Path], archive: Path) -> bool:
-    """What `rm -r` must not take: a seat tree itself or anything holding one, and the archive, anything in it or
-    holding it. Inside a seat tree is the session's own work (final review of gc stage 2, I3)."""
+def _reaches(path: Path, seats: set[Path], archive: Path, own: set[Path] = frozenset()) -> bool:
+    """What `rm -r` must not take: a seat tree itself or anything holding one, anything inside a seat tree other than
+    the one the command runs in (`own`), and the archive, anything in it or holding it. Inside one's own tree is the
+    session's own work (final review of gc stage 2, I3; security review of dd5d577)."""
     return (path in seats or any(path in seat.parents for seat in seats)
+            or any(seat in path.parents for seat in seats - set(own))
             or path == archive or archive in path.parents or path in archive.parents)
 
 
 def _unsure(word: str) -> bool:
-    """An operand whose expansion may climb: a substitution or a variable, or a glob that can match `..`."""
+    """An operand whose expansion may climb: a substitution or a variable, a glob that can match `..`, or a `..`
+    after a glob (security review of dd5d577)."""
+    parts = Path(word).parts
+    globbed = next((at for at, part in enumerate(parts) if any(mark in part for mark in UNREADABLE)), None)
     return any(mark in word for mark in ("$", "`")) or any(
-        part.startswith(".") and any(mark in part for mark in UNREADABLE) for part in Path(word).parts)
+        part.startswith(".") and any(mark in part for mark in UNREADABLE) for part in parts) or (
+        globbed is not None and ".." in parts[globbed:])
 
 
 def _operands(words) -> list[str]:
@@ -116,6 +122,7 @@ def check(segment, *, seat_trees: set[Path], fleet_branches: set[str], archive: 
         return refusal
     if kind == "rm":
         base = segment.cwd.resolve() if segment.cwd else None
+        own = {seat for seat in seat_trees if base is not None and (base == seat or seat in base.parents)}
         for word in _operands(segment.words[1:]):
             target = _resolve(base, word)
             if target is None:
@@ -126,12 +133,13 @@ def check(segment, *, seat_trees: set[Path], fleet_branches: set[str], archive: 
                     literal.append(part)
                 prefix = _resolve(base, str(Path(*literal))) if literal else None
                 # judged by where it runs whenever the prefix cannot bound it (security review of b4a4213)
-                if (prefix is None or _unsure(word)) and (base is None or _reaches(base, seat_trees, archive)):
+                # an operand that cannot be bounded is refused anywhere in a seat tree or the archive
+                if (prefix is None or _unsure(word)) and (base is None or _touches(base, [*seat_trees, archive])):
                     return refusal
-                if prefix is not None and _reaches(prefix, seat_trees, archive):
+                if prefix is not None and _reaches(prefix, seat_trees, archive, own):
                     return refusal
                 continue
-            if _reaches(target, seat_trees, archive):
+            if _reaches(target, seat_trees, archive, own):
                 return refusal
         return None
     verb, args, directory = segment.git()

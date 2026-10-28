@@ -161,3 +161,24 @@ def test_an_abbreviated_stdin_is_refused(tmp_path):
 def test_a_message_before_the_ref_does_not_hide_it(tmp_path):
     seat, store = layout(tmp_path)
     assert refused(judge("git update-ref -m why -d refs/heads/fleet/main-1", tmp_path, seats=[seat], archive=store))
+
+
+# Security review of dd5d577: inside a seat tree means the tree the command runs in, by a path that can be named.
+
+def test_an_expansion_from_inside_a_seat_tree_is_refused(tmp_path):
+    seat, store = layout(tmp_path)
+    assert refused(judge("rm -rf $X", seat / "src", seats=[seat], archive=store))
+
+
+def test_a_climb_after_a_glob_is_judged_by_where_it_runs(tmp_path):
+    seat, store = layout(tmp_path)
+    assert refused(judge("rm -rf src/*/../..", seat, seats=[seat], archive=store))
+
+
+def test_rm_inside_another_sessions_tree_is_refused(tmp_path):
+    seat, store = layout(tmp_path)
+    other = tmp_path / "app-main-2"
+    (other / "out").mkdir(parents=True)
+    assert refused(judge("rm -rf app-main-2/out", tmp_path, seats=[seat, other], archive=store))
+    assert refused(judge("rm -rf ../app-main-2/out", seat, seats=[seat, other], archive=store))
+    assert judge("rm -rf src", seat, seats=[seat, other], archive=store) is None
