@@ -1,0 +1,160 @@
+"""The archive (gc design, section 7): files moved, not copied; identical content stored once; a manifest in the
+person's line shape; one restore, into a fresh tree of the parked commit when the tree is gone."""
+
+import errno
+import hashlib
+import re
+import subprocess
+
+import pytest
+
+from flotilla.gc import archive, park
+from ledgerkit import PROFILE, commit, git, make_ledger, repo_with_origin
+
+DAY = "2026-10-28"
+
+
+def world(tmp_path):
+    root = repo_with_origin(tmp_path)
+    return root, make_ledger(root, tmp_path / "state", profile=PROFILE, live=())
+
+
+def seat(root, tmp_path, name="app-main-1", branch="fleet/main-1"):
+    tree = tmp_path / name
+    git(root, "worktree", "add", "-q", "-b", branch, str(tree))
+    return tree
+
+
+def put_file(tree, path, data: bytes):
+    target = tree / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+    return target
+
+
+def stash(ledger, tree, files, *, entry=None, patch=b""):
+    head = git(tree, "rev-parse", "HEAD").strip()
+    return archive.put(ledger, entry=entry or archive.entry_id("work:fleet/main-1", DAY), tree=tree, files=files,
+                       tier="2", approved_by="told after: small", branch="fleet/main-1", head=head, patch=patch)
+
+
+def test_files_move_and_the_manifest_names_hash_now_and_from(tmp_path):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    original = put_file(tree, "out/big.bin", b"payload")
+    stash(ledger, tree, ["out/big.bin"])
+    assert not original.exists()
+    lines = (archive.root_of(ledger) / "MANIFEST").read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    assert re.match(r"^[0-9a-f]{64}  objects/[0-9a-f]{2}/[0-9a-f]{64}  <-  /.+/out/big\.bin$", lines[0]), lines
+    digest = hashlib.sha256(b"payload").hexdigest()
+    assert (archive.root_of(ledger) / "objects" / digest[:2] / digest).read_bytes() == b"payload"
+
+
+def test_the_archive_sits_beside_the_main_checkout(tmp_path):
+    root, ledger = world(tmp_path)
+    assert archive.root_of(ledger) == root.parent / f"{root.name}-gc-archive"
+
+
+def test_identical_content_is_stored_once(tmp_path):
+    root, ledger = world(tmp_path)
+    first, second = seat(root, tmp_path), seat(root, tmp_path, "app-main-2", "fleet/main-2")
+    put_file(first, "a.bin", b"same")
+    put_file(second, "b.bin", b"same")
+    stash(ledger, first, ["a.bin"])
+    stash(ledger, second, ["b.bin"], entry=archive.entry_id("work:fleet/main-2", DAY))
+    objects = [path for path in (archive.root_of(ledger) / "objects").rglob("*") if path.is_file()]
+    assert len(objects) == 1
+    assert len((archive.root_of(ledger) / "MANIFEST").read_text(encoding="utf-8").splitlines()) == 2
+
+
+def test_across_filesystems_it_copies_verifies_then_deletes(tmp_path, monkeypatch):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    original = put_file(tree, "a.bin", b"payload")
+
+    def cross(*_args, **_kwargs):
+        raise OSError(errno.EXDEV, "Invalid cross-device link")
+
+    monkeypatch.setattr(archive.os, "rename", cross)
+    stash(ledger, tree, ["a.bin"])
+    digest = hashlib.sha256(b"payload").hexdigest()
+    assert not original.exists()
+    assert (archive.root_of(ledger) / "objects" / digest[:2] / digest).read_bytes() == b"payload"
+
+
+def test_a_copy_that_does_not_verify_leaves_the_original(tmp_path, monkeypatch):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    original = put_file(tree, "a.bin", b"payload")
+
+    def cross(*_args, **_kwargs):
+        raise OSError(errno.EXDEV, "Invalid cross-device link")
+
+    def bad_copy(_source, target, **_kwargs):
+        with open(target, "wb") as handle:
+            handle.write(b"corrupt")
+
+    monkeypatch.setattr(archive.os, "rename", cross)
+    monkeypatch.setattr(archive.shutil, "copy2", bad_copy)
+    with pytest.raises(archive.ArchiveFailed):
+        stash(ledger, tree, ["a.bin"])
+    assert original.read_bytes() == b"payload"
+    digest = hashlib.sha256(b"payload").hexdigest()
+    assert not (archive.root_of(ledger) / "objects" / digest[:2] / digest).exists()
+
+
+def test_a_symlink_is_archived_as_a_link(tmp_path):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    outside = tmp_path / "outside.txt"
+    outside.write_bytes(b"not ours")
+    link = tree / "link.txt"
+    link.symlink_to(outside)
+    entry = stash(ledger, tree, ["link.txt"])
+    stored = archive.root_of(ledger) / "objects" / entry.files[0]["sha256"][:2] / entry.files[0]["sha256"]
+    assert stored.is_symlink() and str(stored.readlink()) == str(outside)
+    assert outside.read_bytes() == b"not ours" and not link.is_symlink()
+
+
+def test_restore_puts_files_back_and_names_a_conflict(tmp_path):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    put_file(tree, "a.bin", b"first")
+    put_file(tree, "b.bin", b"second")
+    entry = stash(ledger, tree, ["a.bin", "b.bin"])
+    put_file(tree, "b.bin", b"someone else's")
+    lines = archive.restore(ledger, entry.id)
+    assert (tree / "a.bin").read_bytes() == b"first"
+    assert (tree / "b.bin").read_bytes() == b"someone else's"
+    assert any("not overwritten" in line and "b.bin" in line for line in lines), lines
+
+
+def test_restore_into_a_fresh_tree_at_the_parked_head(tmp_path):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    head = commit(tree, "unlanded work", "w.txt", "w\n")
+    (tree / "w.txt").write_text("edited\n", encoding="utf-8")
+    patch = subprocess.run(["git", "-C", str(tree), "diff", "--binary", "HEAD"], capture_output=True,
+                           check=True).stdout
+    put_file(tree, "render.exr", b"pixels")
+    stash(ledger, tree, ["render.exr"], patch=patch)
+    park.park(ledger, tree.name, [head])
+    git(root, "worktree", "remove", "--force", str(tree))
+    git(root, "branch", "-D", "fleet/main-1")
+    lines = archive.restore(ledger, tree.name)
+    assert git(tree, "rev-parse", "HEAD").strip() == head, lines
+    assert (tree / "render.exr").read_bytes() == b"pixels"
+    assert (tree / "w.txt").read_text(encoding="utf-8") == "edited\n"
+
+
+def test_one_entry_per_piece_of_work_per_day(tmp_path):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    put_file(tree, "a.bin", b"a")
+    put_file(tree, "b.bin", b"b")
+    stash(ledger, tree, ["a.bin"])
+    stash(ledger, tree, ["b.bin"])
+    found = archive.entries(ledger)
+    assert len(found) == 1 and len(found[0].files) == 2
+    assert archive.entry_id("work:fleet/main-1", DAY) == f"{DAY}-fleet-main-1"
