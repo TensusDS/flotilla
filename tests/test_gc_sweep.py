@@ -290,3 +290,6 @@ def test_identical_content_goes_once_when_the_archive_already_exists(tmp_path):
     report = sweep.run_pass(ledger, sessions=[], act=True, proc_root=tmp_path / "no-proc")
     assert not second.exists() and not third.exists(), sweep.lines(report)
     assert len([path for path in (archive.root_of(ledger) / "objects").rglob("*") if path.is_file()]) == 2
+    for tree in (second, third):   # each tree's record names its file, so each restores (security review dde4c0a)
+        assert any(line.startswith("restored 1 file") for line in archive.restore(ledger, tree.name))
+        assert (tree / "out" / "x.bin").read_bytes() == b"same"
