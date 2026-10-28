@@ -407,3 +407,19 @@ def test_an_archive_that_cannot_be_made_fails_as_an_archive_failure(tmp_path):
     with pytest.raises(archive.ArchiveFailed):
         stash(ledger, tree, ["out/a.bin"], patch=b"edits")
     assert (tree / "out" / "a.bin").read_bytes() == b"first"
+
+
+# Second review of the branch, m-3: run from inside a seat, restore judged "where seat trees are cut" by that seat.
+
+def test_restore_run_from_a_seat_makes_a_gone_seat_beside_the_main_checkout(tmp_path):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    head = git(tree, "rev-parse", "HEAD").strip()
+    put_file(tree, "render.exr", b"pixels")
+    stash(ledger, tree, ["render.exr"])
+    park.park(ledger, tree.name, [head])
+    git(root, "worktree", "remove", "--force", str(tree))
+    other = seat(root, tmp_path, name="app-main-2", branch="fleet/main-2")
+    from_seat = make_ledger(other, tmp_path / "state2", profile=PROFILE, live=())
+    lines = archive.restore(from_seat, tree.name)
+    assert (tree / "render.exr").read_bytes() == b"pixels", lines

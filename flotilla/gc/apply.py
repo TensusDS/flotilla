@@ -25,6 +25,7 @@ from flotilla.gc import archive, ignored, questions, refs
 from flotilla.gc.park import ParkFailed, park
 from flotilla.gc.remove import last_copies
 from flotilla.gc.trees import GC_LOCK, judge_tree
+from flotilla.gc.twins import main_checkout
 
 
 def _git(ledger, where, *args):
@@ -58,7 +59,7 @@ def _left_over(ledger, tree: Path, patch: bytes, twins, saved: Path) -> str:
     """What still stands in the way after the archive, or "": only the saved edits and what comes back may stay."""
     if _untracked(ledger, tree):
         return "untracked files appeared"
-    found = ignored.classify(tree, main=ledger.root, profile=ledger.profile, twins=twins, run=ledger.run)
+    found = ignored.classify(tree, main=main_checkout(ledger), profile=ledger.profile, twins=twins, run=ledger.run)
     if found is None or found.unique or found.personal or found.nested:
         return "ignored files with no copy remain"
     if _patch(ledger, tree) != patch:

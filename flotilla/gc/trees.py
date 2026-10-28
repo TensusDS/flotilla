@@ -20,6 +20,7 @@ from pathlib import Path
 
 from flotilla.fleet import leftovers
 from flotilla.gc import ignored, refs
+from flotilla.gc.twins import main_checkout
 
 #: Row states whose work is done with: the row no longer holds the branch.
 DONE = {"shipped", "closed", "released"}
@@ -241,7 +242,7 @@ def judge_tree(ledger, tree, *, holders: list[str], sessions, spare_rows=(), pro
     else:
         verdict.doubts.append(Doubt("sole", f"it is the only holder of {tip[:7]}: no ref that stays reaches it",
                                     (tip,)))
-    found = ignored.classify(tree, main=ledger.root, profile=ledger.profile, twins=twins, run=run)
+    found = ignored.classify(tree, main=main_checkout(ledger), profile=ledger.profile, twins=twins, run=run)
     if found is None:
         verdict.reasons.append(f"git could not list the ignored files of {tree}")
     else:

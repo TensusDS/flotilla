@@ -263,13 +263,13 @@ def restore(ledger, key: str) -> list[str]:
             continue
         tree, fresh = Path(record["tree"]), False
         listed = _listed(ledger)   # git names the main checkout first, whichever tree the ledger stands in
-        if tree.resolve() == Path(ledger.root).resolve() or (listed and str(tree.resolve()) == listed[0]):
+        main = Path(listed[0]) if listed else Path(ledger.root)   # second review of the branch, m-3
+        if tree.resolve() == Path(ledger.root).resolve() or tree.resolve() == main.resolve():
             lines.append(f"refused: {visible(str(tree))} is the main checkout; nothing is restored into it")
             continue
         if tree.exists() and str(tree.resolve()) not in _worktrees(ledger):
             lines.append(f"refused: {visible(str(tree))} is not a worktree of this repository")
             continue
-        main = Path(ledger.root)
         if not tree.exists() and (tree.parent != main.parent or not tree.name.startswith(f"{main.name}-")):
             lines.append(f"refused: {visible(str(tree))} is gone and is not where seat trees are cut "
                          f"({visible(str(main.parent))}/{visible(main.name)}-...)")
