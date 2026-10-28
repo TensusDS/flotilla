@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat as stat_module
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -34,6 +35,9 @@ def sha256(path: Path, cache: dict, *, fresh: bool = False) -> str:
     inode hold, unless `fresh`."""
     path = Path(path)
     stat = path.lstat()
+    if not stat_module.S_ISREG(stat.st_mode) and not stat_module.S_ISLNK(stat.st_mode):
+        # a pipe or a device is never opened: it would block or read forever (final review of gc stage 2, I4)
+        raise OSError(f"{path} is not a regular file")
     key = str(path)
     stamp = [stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino]
     known = cache.get(key)
@@ -72,12 +76,38 @@ def save_cache(state: Path, repo_key: str, cache: dict) -> None:
     temporary.replace(path)
 
 
-def sources(ledger, *, untouched: list[Path], archive_root: Path) -> list[tuple[Path, str]]:
-    """Where a twin may live: the main checkout, the declared stores, the archive's objects, the untouched trees."""
-    found = [(Path(ledger.root), "checkout")]
+def listed_trees(ledger) -> list[Path]:
+    """Every worktree of the repository, the main checkout first, as git lists them."""
+    done = ledger.run(["git", "-C", str(ledger.root), "worktree", "list", "--porcelain"], capture_output=True,
+                      text=True, check=False)
+    found = [Path(line[len("worktree "):]).resolve() for line in done.stdout.splitlines()
+             if line.startswith("worktree ")] if done.returncode == 0 else []
+    return found or [Path(ledger.root).resolve()]
+
+
+def main_checkout(ledger) -> Path:
+    """The main checkout, whichever tree the ledger stands in (final review of gc stage 2, I8)."""
+    return listed_trees(ledger)[0]
+
+
+def sources(ledger, *, untouched: list[Path], archive_root: Path,
+            warnings: list | None = None) -> list[tuple[Path, str]]:
+    """Where a twin may live: the main checkout, the declared stores, the archive's objects, the untouched trees. A
+    store that is a worktree, holds one, or lies in one other than the main checkout survives nothing: it is left out
+    and named (final review of gc stage 2, I1)."""
+    trees = listed_trees(ledger)
+    main = trees[0]
+    found = [(main, "checkout")]
     for store in (ledger.profile.get("gc") or {}).get("stores") or []:
-        if isinstance(store, str) and store:
-            found.append((Path(ledger.root).parent / store, "store"))
+        if not (isinstance(store, str) and store):
+            continue
+        where = (main.parent / store).resolve()
+        if any(where == tree or where in tree.parents or (tree != main and tree in where.parents) for tree in trees):
+            if warnings is not None:
+                warnings.append(f"[gc] stores: `{store}` is not a store - it is, holds or lies in a worktree; no copy "
+                                "there counts")
+            continue
+        found.append((where, "store"))
     objects = Path(archive_root) / "objects"
     if objects.is_dir():
         found.append((objects, "archive"))
@@ -93,8 +123,11 @@ def _walk(top: Path):
                    and not os.path.lexists(os.path.join(here, name, ".git"))]
         for name in files:
             path = Path(here) / name
-            if not path.is_symlink():
-                yield path
+            try:
+                if stat_module.S_ISREG(path.lstat().st_mode):
+                    yield path
+            except OSError:
+                continue
 
 
 class Twins:
@@ -163,7 +196,10 @@ class Twins:
     def find(self, path: Path) -> Twin | None:
         """A surviving byte-identical copy of `path`, or None. A symlink has no twin."""
         path = Path(path)
-        if path.is_symlink() or not path.is_file():
+        try:
+            if not stat_module.S_ISREG(path.lstat().st_mode):
+                return None
+        except OSError:
             return None
         size, digest = path.lstat().st_size, sha256(path, self.cache, fresh=self.verify)
         for where, kind in self.sources:

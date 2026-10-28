@@ -226,3 +226,67 @@ def test_report_lines_show_control_characters_visibly(tmp_path):
     shown = sweep.lines(sweep.run_pass(ledger, sessions=[], act=True, proc_root=tmp_path / "no-proc"))
     assert any(line.startswith("the last copy of out/a") for line in shown), shown
     assert not any("\x1b" in line for line in shown), shown
+
+
+# Final review of gc stage 2.
+
+def test_an_unreadable_ignored_file_waits_on_the_person_and_the_pass_goes_on(tmp_path):
+    """I4: one chmod 000 file crashed the whole pass, and with it fleet down."""
+    root, ledger = world(tmp_path)
+    ignoring(root)
+    tree = ignored_seat(root, tmp_path, 1)
+    (tree / "out" / "x.bin").chmod(0)
+    try:
+        report = sweep.run_pass(ledger, sessions=[], act=True, proc_root=tmp_path / "no-proc")
+    finally:
+        (tree / "out" / "x.bin").chmod(0o600)
+    assert tree.exists() and any(line.startswith("kept 1 tree: waits on the person") for line in sweep.lines(report))
+
+
+def test_a_named_pipe_among_ignored_files_does_not_hang_the_pass(tmp_path):
+    """I4: open() on a FIFO blocked forever."""
+    import os
+    import signal
+
+    def hung(*_args):
+        raise TimeoutError("the pass hung on a named pipe")
+
+    root, ledger = world(tmp_path)
+    ignoring(root)
+    tree = ignored_seat(root, tmp_path, 1)
+    os.mkfifo(tree / "out" / "pipe")
+    os.mkfifo(root / "pipe-in-checkout")
+    previous = signal.signal(signal.SIGALRM, hung)
+    signal.alarm(20)
+    try:
+        report = sweep.run_pass(ledger, sessions=[], act=True, proc_root=tmp_path / "no-proc")
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
+    assert tree.exists() and any("waits on the person" in line for line in sweep.lines(report))
+
+
+def test_a_declared_store_inside_a_judged_tree_is_no_source(tmp_path):
+    """I1: a store inside the tree made its own two copies twins of each other, and both went."""
+    from flotilla.gc import archive
+    root, ledger = world(tmp_path, {**PROFILE, "gc": {"stores": ["app-main-1/out"]}})
+    ignoring(root)
+    tree = ignored_seat(root, tmp_path, 1, b"only here", "out/a.bin")
+    (tree / "out" / "b.bin").write_bytes(b"only here")
+    report = sweep.run_pass(ledger, sessions=[], act=True, proc_root=tmp_path / "no-proc")
+    objects = [path for path in (archive.root_of(ledger) / "objects").rglob("*") if path.is_file()]
+    assert tree.exists() or [path.read_bytes() for path in objects] == [b"only here"]
+    assert any("app-main-1/out" in line and "not a store" in line for line in report.warnings), report.warnings
+
+
+def test_identical_content_goes_once_when_the_archive_already_exists(tmp_path):
+    """I7: once objects/ existed, the second tree's file had an archive twin and read as 'changed'."""
+    from flotilla.gc import archive
+    root, ledger = world(tmp_path)
+    ignoring(root)
+    ignored_seat(root, tmp_path, 1, b"earlier")
+    sweep.run_pass(ledger, sessions=[], act=True, proc_root=tmp_path / "no-proc")
+    second, third = ignored_seat(root, tmp_path, 2, b"same"), ignored_seat(root, tmp_path, 3, b"same")
+    report = sweep.run_pass(ledger, sessions=[], act=True, proc_root=tmp_path / "no-proc")
+    assert not second.exists() and not third.exists(), sweep.lines(report)
+    assert len([path for path in (archive.root_of(ledger) / "objects").rglob("*") if path.is_file()]) == 2

@@ -75,16 +75,20 @@ def remove_tree(ledger, verdict: TreeVerdict, *, dropping: set[str], sessions, p
         again = judge_again()
         why = "its HEAD moved since it was judged" if again.head != verdict.head else ""
         if not why and archiving:
-            if again.reasons or again.doubts or _keys(again.archive) != _keys(verdict.archive):
+            # a file the same pass archived from another tree is now an archive twin of its own: the same content
+            # (rule 3, identical copies stored once; final review of gc stage 2, I7)
+            moved = [(path, Path(twin.where).name) for path, twin in again.twins if twin.kind == "archive"]
+            if again.reasons or again.doubts or sorted(_keys(again.archive) + moved) != _keys(verdict.archive):
                 why = "it changed while it was judged: " + ("; ".join(again.why) or "other files to archive")
             else:
                 try:
-                    entry = archive.put(ledger, entry=archive_entry, tree=tree,
+                    entry = None if not again.archive else archive.put(ledger, entry=archive_entry, tree=tree,
                                         files=[path for path, _, _ in again.archive], tier="2",
                                         approved_by="told after: small", branch=again.branch, head=again.head,
                                         last_copies=_last_copies(tree, again))
-                    out.update(entry=entry.id, files=len(again.archive),
-                               moved=sum(size for _, size, _ in again.archive))
+                    if entry is not None:
+                        out.update(entry=entry.id, files=len(again.archive),
+                                   moved=sum(size for _, size, _ in again.archive))
                 except archive.ArchiveFailed as err:
                     why = str(err)
                 if not why:

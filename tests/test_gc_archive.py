@@ -345,3 +345,11 @@ def test_restore_refuses_the_main_checkout_when_the_ledger_stands_in_a_linked_tr
                                           data["files"][0].update(tree=str(root), **{"from": str(target)})))
     lines = archive.restore(ledger, entry.id)
     assert not target.exists() and any("refused" in line for line in lines), lines
+
+
+def test_the_archive_follows_the_main_checkout_not_the_ledgers_tree(tmp_path):
+    """Final review of gc stage 2, I8: a pass run from inside a seat archived beside the seat, out of sight."""
+    root, _ = world(tmp_path)
+    tree = seat(root, tmp_path)
+    ledger = make_ledger(tree, tmp_path / "state2", profile=PROFILE, live=())
+    assert archive.root_of(ledger) == root.parent / f"{root.name}-gc-archive"

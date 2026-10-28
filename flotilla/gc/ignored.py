@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import filecmp
 import os
+import stat
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -159,8 +160,14 @@ def classify(tree, *, main, profile: dict, twins=None, run=subprocess.run) -> Ig
             out.nested.append(entry)
             continue
         for path in files:
-            twin = twins.find(tree / path) if twins is not None else None
-            if twin is not None:
+            try:
+                plain = stat.S_ISREG((tree / path).lstat().st_mode) or (tree / path).is_symlink()
+                twin = twins.find(tree / path) if twins is not None and plain else None
+            except OSError:
+                plain, twin = False, None
+            if not plain:   # unreadable, a pipe, a device: the person's (final review of gc stage 2, I4)
+                out.personal.append(path)
+            elif twin is not None:
                 out.twins.append((path, twin))
             else:
                 left.append(path)
@@ -170,6 +177,10 @@ def classify(tree, *, main, profile: dict, twins=None, run=subprocess.run) -> Ig
             out.personal.append(path)
             continue
         full = tree / path
-        digest = twins_module.sha256(full, twins.cache) if twins is not None else ""
+        try:
+            digest = twins_module.sha256(full, twins.cache) if twins is not None else ""
+        except OSError:
+            out.personal.append(path)
+            continue
         out.unique.append((path, full.lstat().st_size, digest))
     return out

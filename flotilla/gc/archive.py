@@ -59,7 +59,9 @@ class Entry:
 
 
 def root_of(ledger) -> Path:
-    root = Path(ledger.root)
+    """Beside the main checkout, whichever tree the ledger stands in (final review of gc stage 2, I8)."""
+    from flotilla.gc.twins import main_checkout
+    root = main_checkout(ledger)
     return root.parent / f"{root.name}-gc-archive"
 
 

@@ -187,7 +187,8 @@ def run_pass(ledger, *, sessions, act: bool, proc_root=None) -> Report:
             judged[tree] = None
     cache = twins.load_cache(ledger.state_dir, ledger.repo_key)
     finder = twins.Twins(ledger, holders=[], cache=cache,
-                         sources=twins.sources(ledger, untouched=untouched, archive_root=archive.root_of(ledger)))
+                         sources=twins.sources(ledger, untouched=untouched, archive_root=archive.root_of(ledger),
+                                               warnings=report.warnings))
     verdicts: dict[str, branches.BranchVerdict] = {}
     going: set[Path] = set()
     for _ in range(len(judged) + 2):   # trees that stay keep their branches; fewer branches go, fewer refs drop
