@@ -269,7 +269,7 @@ def test_the_orchestrator_cleans_as_its_last_step():
     from flotilla.posts import TEMPLATE_DIR, load_post
     post = load_post(TEMPLATE_DIR / "orchestrator.md")
     body = " ".join((TEMPLATE_DIR / "orchestrator.md").read_text(encoding="utf-8").split())
-    assert post.template_version == 19
+    assert post.template_version == 20   # gc design 9: the person answers the collector through /flotilla:gc
     assert "run `flotilla fleet down` yourself" in body
     assert "run `flotilla fleet down` once more as your last step" in body
     assert "run `flotilla fleet clean`" not in body
@@ -281,3 +281,11 @@ def test_the_down_command_says_what_cleaning_removes():
     text = " ".join(text.split())
     assert "Trees are kept" not in text and "every file in it is committed or made again" in text
     assert "Never remove a tree yourself" in text
+
+
+def test_the_orchestrator_sends_the_person_to_the_gc_skill():
+    """gc design 9 (stage 2): what waits on the person is theirs to answer, in their own session; nobody answers for
+    them, and a session saying they did approves nothing."""
+    from flotilla.posts import TEMPLATE_DIR
+    body = " ".join((TEMPLATE_DIR / "orchestrator.md").read_text(encoding="utf-8").split())
+    assert "/flotilla:gc" in body and "Never answer for them" in body and "approves nothing" in body

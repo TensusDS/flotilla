@@ -11,7 +11,7 @@ from flotilla import cli
 ROOT = Path(__file__).resolve().parent.parent
 SKILLS = sorted((ROOT / "skills").glob("*/SKILL.md"))
 PERSON_ONLY = {"doctor", "check", "status", "brief", "spawn", "retire", "lane", "watch", "guard", "down", "onboard",
-               "organize"}
+               "organize", "gc"}
 MODEL_INVOCABLE = {"permit"}
 MODEL_ONLY = {"flotilla"}
 CALL = re.compile(r"`(?:\$\{CLAUDE_PLUGIN_ROOT\}/bin/)?flotilla ([a-z-]+)(?: ([a-z-]+))?")
@@ -290,4 +290,5 @@ def test_the_sender_and_the_orchestrator_know_taken_in_work():
     sender = " ".join((ROOT / "templates" / "posts" / "sender.md").read_text(encoding="utf-8").split())
     orchestrator = " ".join((ROOT / "templates" / "posts" / "orchestrator.md").read_text(encoding="utf-8").split())
     assert "retargets a taken-in pull request" in sender and "template_version: 10" in sender
-    assert "(taken in)" in orchestrator and "/flotilla:organize" in orchestrator and "template_version: 19" in orchestrator
+    assert "(taken in)" in orchestrator and "/flotilla:organize" in orchestrator   # gc design 9: template 20
+    assert "template_version: 20" in orchestrator

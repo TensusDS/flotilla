@@ -278,7 +278,14 @@ def clean_up(ledger, census) -> list[str]:
         sessions = census()
     except CensusUnavailable:
         return ["cleaning up: skipped, the census could not be asked; `flotilla fleet down` again cleans"]
-    return ["cleaning up:"] + [f"  {line}" for line in cleanup.sweep(ledger, sessions=sessions, act=True)]
+    from flotilla.gc import questions, sweep
+    report = sweep.run_pass(ledger, sessions=sessions, act=True)
+    out = ["cleaning up:"] + [f"  {line}" for line in sweep.lines(report)]
+    waiting = questions.items(report.judged, rows=ledger.rows(), small=report.going)
+    if waiting:   # gc design 9: what only the person settles is named once, with where they answer it
+        words = "piece of work waits" if len(waiting) == 1 else "pieces of work wait"
+        out.append(f"  {len(waiting)} {words} on the person: they answer with /flotilla:gc in their own session")
+    return out
 
 
 def _trees(ledger) -> list[Path]:

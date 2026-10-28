@@ -439,3 +439,14 @@ def test_down_skips_the_pass_when_the_census_fails_after_the_retires(tmp_path):
                            poll=0.05, sleep=lambda seconds: None)
     assert old.exists()
     assert any(line.startswith("cleaning up: skipped, the census could not be asked") for line in lines)
+
+
+def test_down_names_what_waits_on_the_person(tmp_path):
+    """gc design 9 (stage 2): a tree only the person can settle is named once, with where they answer."""
+    fake = FakeClaude()
+    ledger = fleet_world(tmp_path, fake, {"main": 1})
+    old = leftover(tmp_path)
+    (old / "notes.txt").write_text("mine\n", encoding="utf-8")
+    lines, _ = do_down(ledger, fake)
+    assert old.exists()
+    assert any("1 piece of work waits on the person" in line and "/flotilla:gc" in line for line in lines), lines

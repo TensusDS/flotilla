@@ -3,6 +3,24 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.23.0 - 2026-10-28
+
+- **Leftovers are settled, not just kept (garbage collection, stage 2).** A file with a byte-identical copy that
+  stays - in the main checkout, in a store you declare under `[gc] stores`, in the archive, in a commit a ref still
+  reaches - lets its tree go. Small unique outputs (`[gc] archive_tree_mb`, 100; `[gc] archive_pass_mb`, 500) move to
+  `<project>-gc-archive/` while the tree is removed, and the report tells you after, with `flotilla gc restore`;
+  identical files from many trees are stored once, and the report keeps space freed apart from space moved.
+- **You answer the rest once per piece of work.** Uncommitted work, files only your own excludes ignore, larger
+  outputs, a nested repository or a commit no ref holds wait for `/flotilla:gc`: one question per piece of work across
+  its trees - archive and remove, junk, keep, or your own words - with "accept all as proposed" for the archive.
+  `flotilla gc apply` carries out exactly what you answered and nothing that moved since you were shown it.
+  `answer`, `apply` and `restore` are yours: a background session is refused. Orchestrator template 20 sends you
+  there instead of answering for you.
+- **A guard against removing the fleet's work by hand.** A session's `git worktree remove --force` of a seat tree,
+  `git worktree prune`, forced `git branch` deletion of a fleet branch, deletion of a parked ref or `rm -r` of a seat
+  tree or the archive is refused.
+- Not yet: the dead-session and daily passes, the archive's lifetime, a low disk (stage 3).
+
 ## 0.22.0 - 2026-10-27
 
 - **Finished sessions clean up after themselves (garbage collection, stage 1).** A tree goes when it holds nothing

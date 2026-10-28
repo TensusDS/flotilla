@@ -88,6 +88,10 @@ headed "flotilla - the fleet" names dropped balls: message the session it names.
 
 - **`refs/flotilla/parked/*`** are commits the collector kept when their last tree or branch went. They are no
   clutter: never delete them by hand.
+- **`<project>-gc-archive/`** holds files the collector moved out of removed trees, with a manifest; `flotilla gc
+  restore` brings them back. A guard refuses a session removing fleet trees, fleet branches, parked refs or the
+  archive by hand (`git worktree remove --force`, `git worktree prune`, `git branch -D`, `rm -r`): only the collector
+  does, from the person's recorded answer.
 
 Some answers are the fleet's rules or Claude Code working as meant. None of them is a flotilla defect, and none
 goes into a report:

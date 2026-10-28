@@ -80,6 +80,12 @@ Worktrees and receipts:
     flotilla organize answer <id> <value...>         one answer; typed words are your own words
     flotilla organize propose <key> --shape|--plan|--steps   the session's proposal, for your yes
     flotilla organize apply [<key> ...]              carry out what you answered
+    flotilla gc next                                 the collector's questions, as JSON
+    flotilla gc show <key>                           one piece of work's trees and files, as data
+    flotilla gc answer <id> <value...>               one answer; typed words are your own words
+    flotilla gc apply [<key> ...]                    carry out what you answered
+    flotilla gc restore <entry|tree>                 put archived files back
+    flotilla gc archive                              the archive's entries
 
 Once the profile is on origin's trunk, its guards judge **every** Claude Code session that has flotilla on and works
 in the repository - your own interactive session too, even one that holds no post. With `push_receipt` on, a push to
@@ -150,7 +156,11 @@ not asked about again.
    `refs/flotilla/parked/` - never delete those by hand. What stays is listed once per reason. The orchestrator
    also cleans as its own last step before it closes. Declare long-lived lines branches land on with
    `[gc] trunks = ["<branch>"]`, and the project's own rebuildable outputs with `[gc] regenerable = ["<name>"]`.
-   `flotilla fleet clean` is the same pass by hand, a plan until `--yes`.
+   `flotilla fleet clean` is the same pass by hand, a plan until `--yes`. Files a copy of which stays elsewhere
+   (the main checkout, a store you declare under `[gc] stores`, a commit) let a tree go; small unique outputs go to
+   `<project>-gc-archive/` and you are told (`[gc] archive_tree_mb`, 100, and `[gc] archive_pass_mb`, 500); anything
+   larger, uncommitted or yours waits for `/flotilla:gc`, one question per piece of work: archive and remove, junk,
+   keep, or your own words. `flotilla gc restore <entry or tree>` brings archived files back.
 6. **After a plugin update:** stand the fleet down, update, bring `.flotilla/posts/` up to the new templates, raise
    the fleet again.
 
@@ -174,6 +184,7 @@ not asked about again.
 | `onboard publish` refuses: trunk is ahead or behind origin | publish pushes only the profile | push or move your own trunk commits, or `git pull`, then publish again |
 | a taken-in pull request will not queue: it needs a restack | the branch under it was rewritten after it was taken in, so its base is not on origin's trunk | the sender returns it with the `--why` the refusal prints; its builder rebases it onto origin's trunk and hands it over again |
 | `apply` says a stack stayed stacked | GitHub leaves a member that is queued or set to auto-merge in its stack | turn off auto-merge or take it out of the queue on GitHub, then `/flotilla:organize` again |
+| `git worktree remove --force`, `git worktree prune`, `git branch -D fleet/...` or `rm -r` of a seat tree is refused | only the collector removes fleet trees, branches, parked commits and the archive | answer the tree in `/flotilla:gc`, or type the command yourself after `!` |
 | `gh pr close` (or `gh pr edit --base`) is refused | the pull request is one the ledger or organize tracks; only `flotilla organize apply` and the sender's moves change it | answer it in `/flotilla:organize` (own words: "close #43"), or type the command yourself after `!` |
 | `apply` says an item changed since you were asked | a head, a base or the tree moved between the question and `apply` | it is asked again: run `/flotilla:organize` |
 | `onboard publish` refuses: your own changes | the tree has uncommitted work besides `.flotilla/` | commit or stash it, then publish again |

@@ -63,7 +63,6 @@ def test_two_trees_of_one_row_are_one_question(tmp_path):
 
 def test_accept_all_records_the_proposal_per_item(tmp_path):
     root, ledger = world(tmp_path)
-    git(root, "commit", "-q", "--allow-empty", "-m", "base")
     (root / ".gitignore").write_text("out/\n", encoding="utf-8")
     git(root, "add", ".gitignore")
     git(root, "-c", "user.email=t@example.invalid", "-c", "user.name=t", "commit", "-q", "-m", "ignore")

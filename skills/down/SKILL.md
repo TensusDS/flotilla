@@ -13,5 +13,6 @@ compatibility: Claude Code only (CLI, IDE or desktop Code tab) - needs the Bash 
 3. Run `${CLAUDE_PLUGIN_ROOT}/bin/flotilla fleet down` and show every line it prints. It ends by cleaning up:
    a tree is removed when every commit in it is on a ref that stays and every file in it is committed or made
    again by an install or a build, and its branch is judged on its own; commits only a reflog reaches are parked
-   under `refs/flotilla/parked/`, and the rest are kept with why. Orphaned rows wait
+   under `refs/flotilla/parked/`, small unique outputs go to the archive with their restore command, and the rest
+   are kept with why; what only the person can settle is named once, for `/flotilla:gc`. Orphaned rows wait
    for `flotilla work adopt`; a seat it could not retire is named with the reason. Never remove a tree yourself.

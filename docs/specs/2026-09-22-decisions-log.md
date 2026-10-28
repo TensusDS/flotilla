@@ -1805,6 +1805,19 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    pass: the orchestrator runs it when the person asks to stand down and once more before it closes; the person
    never runs the collector. Stages 2 (the archive, the person's recorded answers, a guard) and 3 (dead sessions,
    the daily pass, a low disk) are not built yet; until then what is not tier 1 stays, named.
+248. **The collector's archive and the person's word** (the person, 2026-10-21 and 2026-10-28; gc design, stage 2).
+   A file lets its tree go when a byte-identical copy survives the pass: the main checkout, a store the project
+   declares, the archive, a tree the pass does not judge, or a blob a surviving ref reaches; trees the pass judges
+   are never copies of each other, and identical content is archived once. Unique ignored files under 100 MB a tree
+   and 500 MB a pass are moved to `<project>-gc-archive/` inside the removal lock and the person is told after, with
+   the restore command; larger ones, uncommitted work, the person's own excluded files, a nested repository and the
+   sole holder of a commit wait on the person. They are asked once per piece of work across its trees, through
+   onboarding's question door; the question's id carries the fingerprint of what was shown, a stale answer is
+   refused, and `apply` - the collector's own step, person-only like `answer` and `restore` - re-judges under the
+   locks and carries out exactly the recorded answer. Restore never writes through `.git`, into the main checkout or
+   outside a tree's own directory: the archive's records are files any session can edit. A guard refuses sessions
+   removing fleet trees, fleet branches, parked refs or the archive by hand (decision 245's ceiling stands). The
+   report keeps space freed apart from space moved.
 
 ## Open questions (for the foundation spec)
 

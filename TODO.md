@@ -15,7 +15,9 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
   as the person's), 7 (`<project>-gc-archive/`, the manifest, `flotilla gc restore`, small told after and large
   asked before) and 9 (questions with ids grouped by piece of work, answers recorded through the question door and
   applied only by the collector, a guard against removing fleet trees, branches or the archive by hand, letters to
-  the orchestrator). Until then stage 1 keeps such trees, named. *(open, design: docs/specs/2026-10-21-gc-design.md)*
+  the orchestrator). Until then stage 1 keeps such trees, named. *(checked 2026-10-28 on 0.23.0: built - twins,
+  the archive with restore, questions and apply, the guard; letters to the orchestrator wait for stage 3's
+  occasions, since every pass in 0.23.0 runs in a command the orchestrator itself runs)*
 - **Garbage collection, stage 3: occasions and the disk.** Design sections 4 e to k (a dead session's tree judged
   by whoever notices, a pass after `shipped` and `helper done`, released work as a question, the daily pass the
   orchestrator keeps, stopping the fleet's own orphans in a tree), 8 (low disk: shrink regenerable entries of idle
