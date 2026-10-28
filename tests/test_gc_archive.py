@@ -283,3 +283,36 @@ def test_restore_refuses_a_head_that_is_not_an_object_id(tmp_path):
     tampered(ledger, entry, lambda data: data["trees"][0].update(head="--orphan=x"))
     lines = archive.restore(ledger, entry.id)
     assert not tree.exists() and any("refused" in line for line in lines), lines
+
+
+# Security review of de4ae37: a forged record must not reach a git directory or the main checkout.
+
+def test_restore_never_writes_into_a_git_directory(tmp_path):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    put_file(tree, "a.bin", b"#!/bin/sh\n")
+    entry = stash(ledger, tree, ["a.bin"])
+    hook = tree / ".git" / "hooks" / "post-commit"
+    tampered(ledger, entry, lambda data: data["files"][0].update(**{"from": str(hook)}))
+    lines = archive.restore(ledger, entry.id)
+    assert not hook.exists() and any("refused" in line for line in lines), lines
+
+
+def test_restore_never_writes_into_the_main_checkout(tmp_path):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    put_file(tree, "a.bin", b"#!/bin/sh\n")
+    entry = stash(ledger, tree, ["a.bin"])
+    target = root / "scripts" / "a.sh"
+    tampered(ledger, entry, lambda data: (data["trees"][0].update(tree=str(root)),
+                                          data["files"][0].update(tree=str(root), **{"from": str(target)})))
+    lines = archive.restore(ledger, entry.id)
+    assert not target.exists() and any("refused" in line for line in lines), lines
+
+
+def test_put_refuses_a_path_through_a_git_directory(tmp_path):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    put_file(tree, "vendor/.git/config", b"[core]\n")
+    with pytest.raises(archive.ArchiveFailed):
+        stash(ledger, tree, ["vendor/.git/config"])

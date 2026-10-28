@@ -2,8 +2,8 @@
 
 `next` prints the round of questions as JSON, `show` prints one piece of work as data, `answer` records the person's
 answer, `apply` carries out what was answered, `restore` puts an archive entry back and `archive` lists the entries.
-`answer` and `apply` are the person's: a background session is refused, as organize's are. `restore` removes nothing
-and is anyone's.
+`answer`, `apply` and `restore` are the person's: a background session is refused, as organize's are. Restore writes
+files from records any session could edit, so it is the person's too (security review of de4ae37).
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from flotilla.core.text import visible
 from flotilla.gc import apply, archive, questions, store, sweep
 from flotilla.onboard.questions import AnswerError
 
-PERSONS = ("answer", "apply")
+PERSONS = ("answer", "apply", "restore")
 
 
 def _census():
@@ -50,7 +50,8 @@ def _show(found: list, key: str) -> int:
 def run_gc(args, *, ledger=None, census=None) -> int:
     if args.action in PERSONS:
         from flotilla.core import caller
-        refused = caller.person_refusal("answers or carries out the collector's questions")
+        refused = caller.person_refusal("answers or carries out the collector's questions, or restores from its "
+                                        "archive")
         if refused:
             print(f"refused: {refused}")
             return 2

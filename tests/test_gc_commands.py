@@ -59,13 +59,18 @@ def test_answer_then_apply_removes_the_tree(tmp_path, capsys, monkeypatch):
     assert "tier 3" in listed and "answer work:fleet/main-1" in listed
 
 
-def test_restore_needs_no_person(tmp_path, capsys, monkeypatch):
+def test_restore_is_the_persons(tmp_path, capsys, monkeypatch):
+    """Security review of de4ae37: an archive record is a file any session can write, so restoring from it is the
+    person's move, like answering and applying."""
     _, ledger, tree = world(tmp_path)
     qid = next_round(ledger, capsys)["questions"][0]["id"]
     monkeypatch.setattr(caller, "person_refusal", lambda what: "")
     run(ledger, "answer", question=qid, values=["archive"])
     run(ledger, "apply", keys=[])
     monkeypatch.setattr(caller, "person_refusal", lambda what: f"only a person {what}")
+    assert run(ledger, "restore", key=tree.name) == 2
+    assert not tree.exists()
+    monkeypatch.setattr(caller, "person_refusal", lambda what: "")
     assert run(ledger, "restore", key=tree.name) == 0
     assert (tree / "notes.txt").read_text(encoding="utf-8") == "mine\n"
 

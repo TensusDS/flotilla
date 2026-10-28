@@ -17,8 +17,9 @@ sides, and restore writes only into a worktree of this repository, creating each
 (security review of 75eff4b) - the archive's records are files any session could edit. For the same reason a
 record's digest, HEAD and patch name must have their own shapes, an object must hash to its name before it is copied
 back, and a gone tree is made again only where spawn cuts seat trees, beside the main checkout under its name
-(security review of 554be5c). Nothing here deletes from
-the archive: its lifetime is stage 3's, and only on the person's recorded yes.
+(security review of 554be5c). Nothing passes through a `.git` component, and nothing is restored into the main
+checkout: a forged record must not plant a hook (security review of de4ae37); restoring is the person's move.
+Nothing here deletes from the archive: its lifetime is stage 3's, and only on the person's recorded yes.
 """
 
 from __future__ import annotations
@@ -123,7 +124,7 @@ def _inside(tree: Path, target: Path) -> bool:
         relative = target.relative_to(tree)
     except ValueError:
         return False
-    if not relative.parts or ".." in relative.parts:
+    if not relative.parts or ".." in relative.parts or ".git" in relative.parts:
         return False
     here = tree
     for part in relative.parts[:-1]:
@@ -229,6 +230,9 @@ def restore(ledger, key: str) -> list[str]:
         if wanted is not None and record["tree"] not in wanted:
             continue
         tree, fresh = Path(record["tree"]), False
+        if tree.resolve() == Path(ledger.root).resolve():
+            lines.append(f"refused: {visible(str(tree))} is the main checkout; nothing is restored into it")
+            continue
         if tree.exists() and str(tree.resolve()) not in _worktrees(ledger):
             lines.append(f"refused: {visible(str(tree))} is not a worktree of this repository")
             continue
