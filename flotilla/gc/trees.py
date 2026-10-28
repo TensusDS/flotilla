@@ -5,7 +5,12 @@ In order: alive (an open row holds it for a live session, a lock not flotilla's 
 right now (an operation in progress, a session or any process working in it - none is stopped here); clean (status
 with its options spelled out, nothing git is told not to look at, no stash on its branch, no open row on it); its
 HEAD held by a ref that survives the pass (commits only its reflog reaches are parked, not a doubt); its ignored
-files regenerable (`ignored.py`). Anything else is a doubt, named, and the tree stays.
+files regenerable or with a twin that survives (`ignored.py`, `twins.py`).
+
+What would break something is a reason (`reasons`): the tree stays and nobody is asked. What only the person can
+settle is a doubt (`doubts`: edits, hidden files, a submodule, the sole holder of HEAD, the person's excluded files,
+a nested repository); unique ignored files are bound for the archive (`archive`). A tree with no reason but doubts or
+archive files is put to the person (gc design 3 and 9; `asks`).
 """
 
 from __future__ import annotations
@@ -28,6 +33,13 @@ MARKERS = ("index.lock", "MERGE_HEAD", "REBASE_HEAD", "rebase-merge", "rebase-ap
            "BISECT_LOG")
 
 
+@dataclass(frozen=True)
+class Doubt:
+    kind: str    # edits, hidden, submodule, sole, personal, nested
+    text: str
+    paths: tuple[str, ...] = ()
+
+
 @dataclass
 class TreeVerdict:
     tree: str
@@ -38,6 +50,24 @@ class TreeVerdict:
     park: list[str] = field(default_factory=list)    # reflog-only commits, parked before the tree goes
     notes: list[str] = field(default_factory=list)   # said in the report, hold nothing
     lock: str = ""                                    # the lock reason when flotilla's lock of a gone seat is on it
+    doubts: list[Doubt] = field(default_factory=list)   # what only the person settles
+    archive: list = field(default_factory=list)         # (path, size, sha256) of unique ignored files
+    twins: list = field(default_factory=list)           # (path, Twin) of ignored files with a surviving copy
+
+    @property
+    def why(self) -> list[str]:
+        """Every reason the tree stays, in words: what breaks, what the person settles, what the archive would take."""
+        out = self.reasons + [doubt.text for doubt in self.doubts]
+        if self.archive:
+            out.append("unique ignored files bound for the archive: "
+                       + ", ".join(path for path, _, _ in self.archive[:3])
+                       + (f" and {len(self.archive) - 3} more" if len(self.archive) > 3 else ""))
+        return out
+
+
+def asks(verdict: TreeVerdict) -> bool:
+    """Whether the tree is the person's to settle: nothing breaks, but a doubt or archive files stand in the way."""
+    return not verdict.reasons and bool(verdict.doubts or verdict.archive)
 
 
 def _git(where, *args, run):
@@ -122,28 +152,31 @@ def _in_use(tree: Path, gitdir: str, proc_root, notes: list[str], *, run) -> str
     return ""
 
 
-def _unclean(ledger, tree: Path, branch: str, spare_rows) -> list[str] | None:
+def _unclean(ledger, tree: Path, branch: str, spare_rows) -> tuple[list[str], list[Doubt]] | None:
     run = ledger.run
     # options spelled out: a person's status.showUntrackedFiles=no hid untracked work (review of the cleanup, C1)
     status = _git(tree, "-c", "status.showUntrackedFiles=all", "-c", "diff.ignoreSubmodules=none", "status",
                   "--porcelain", "--untracked-files=all", "--ignore-submodules=none", run=run)
     if status.returncode != 0:
         return None
-    reasons = []
+    reasons: list[str] = []
+    doubts: list[Doubt] = []
     hidden = [line[2:] for line in _git(tree, "ls-files", "-v", run=run).stdout.splitlines()
               if line[:1] == "S" or line[:1].islower()]
     if hidden:   # skip-worktree or assume-unchanged: an edit there shows in no status (review of the cleanup, I2)
-        reasons.append(f"files git is told not to look at: {', '.join(hidden[:3])}")
+        doubts.append(Doubt("hidden", f"files git is told not to look at: {', '.join(hidden[:3])}",
+                            tuple(hidden)))
     # a populated submodule is a nested repository: its edits can hide from status (`ignore = all`) and its commits
     # live in this tree's own git directory, so it is the person's to decide (security review of gc stage 1)
     nested = [line.split("\t", 1)[1] for line in _git(tree, "ls-files", "--stage", run=run).stdout.splitlines()
               if line.startswith("160000 ") and "\t" in line]
     populated = [path for path in nested if (tree / path / ".git").exists()]
     if populated:
-        reasons.append(f"a populated submodule: {', '.join(populated[:3])}")
+        doubts.append(Doubt("submodule", f"a populated submodule: {', '.join(populated[:3])}", tuple(populated)))
     changed = [line[3:] for line in status.stdout.splitlines() if line]
     if changed:
-        reasons.append(f"{len(changed)} uncommitted or untracked file(s): {', '.join(changed[:3])}")
+        doubts.append(Doubt("edits", f"{len(changed)} uncommitted or untracked file(s): {', '.join(changed[:3])}",
+                            tuple(changed)))
     if branch:
         stashes = _git(ledger.root, "stash", "list", "--format=%gs", run=run).stdout.splitlines()
         if any(line.startswith((f"WIP on {branch}:", f"On {branch}:")) for line in stashes):
@@ -152,11 +185,13 @@ def _unclean(ledger, tree: Path, branch: str, spare_rows) -> list[str] | None:
                 if row.branch == branch and row.is_open and row.state not in DONE and row.id not in spare_rows]
         if held:
             reasons.append(f"open row {held[0].id} ({held[0].state}) on `{branch}`")
-    return reasons
+    return reasons, doubts
 
 
-def judge_tree(ledger, tree, *, holders: list[str], sessions, spare_rows=(), proc_root=None) -> TreeVerdict:
-    """Whether `tree` can go, judged against `holders` - the refs that survive this pass."""
+def judge_tree(ledger, tree, *, holders: list[str], sessions, spare_rows=(), proc_root=None,
+               twins=None) -> TreeVerdict:
+    """Whether `tree` can go, judged against `holders` - the refs that survive this pass. `twins` (a
+    `twins.Twins`) lets an ignored file with a surviving copy go; without it none is found."""
     tree = Path(tree)
     run = ledger.run
     head = _git(tree, "symbolic-ref", "-q", "--short", "HEAD", run=run)
@@ -182,16 +217,24 @@ def judge_tree(ledger, tree, *, holders: list[str], sessions, spare_rows=(), pro
     if unclean is None:
         verdict.reasons.append(f"git could not read the state of {tree}")
         return verdict
-    verdict.reasons += unclean
+    verdict.reasons += unclean[0]
+    verdict.doubts += unclean[1]
     if refs.held(ledger, tip, holders):
         logged = _git(tree, "reflog", "show", "--format=%H", "HEAD", run=run).stdout.split()
         verdict.park = refs.unheld(ledger, logged, holders)
     else:
-        verdict.reasons.append(f"it is the only holder of {tip[:7]}: no ref that stays reaches it")
-    kept = ignored.holding(tree, main=ledger.root, profile=ledger.profile, run=run)
-    if kept is None:
+        verdict.doubts.append(Doubt("sole", f"it is the only holder of {tip[:7]}: no ref that stays reaches it",
+                                    (tip,)))
+    found = ignored.classify(tree, main=ledger.root, profile=ledger.profile, twins=twins, run=run)
+    if found is None:
         verdict.reasons.append(f"git could not list the ignored files of {tree}")
-    elif kept:
-        verdict.reasons.append(f"ignored files that nothing makes again: {', '.join(kept[:3])}")
-    verdict.removable = not verdict.reasons
+    else:
+        verdict.twins, verdict.archive = found.twins, found.unique
+        if found.personal:
+            verdict.doubts.append(Doubt("personal", "files only the person's own excludes ignore: "
+                                        + ", ".join(found.personal[:3]), tuple(found.personal)))
+        if found.nested:
+            verdict.doubts.append(Doubt("nested", f"a nested repository: {', '.join(found.nested[:3])}",
+                                        tuple(found.nested)))
+    verdict.removable = not verdict.reasons and not verdict.doubts and not verdict.archive
     return verdict

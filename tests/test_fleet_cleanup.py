@@ -132,7 +132,8 @@ def test_the_sweep_removes_what_is_sure_and_lists_the_rest(tmp_path):
     assert done.exists() and any("would remove" in line and "app-main-1" in line for line in preview)
     lines = cleanup.sweep(ledger, sessions=[], act=True)
     assert not done.exists() and kept.exists()
-    assert any(line.startswith("kept 1 tree: uncommitted or untracked") and "app-main-2" in line for line in lines)
+    assert any(line.startswith("kept 1 tree: waits on the person") and "app-main-2" in line   # gc design 9
+               for line in lines)
     branches = git(root, "branch", "--list")
     assert "fleet/main-7" not in branches and "fleet/main-2" in branches and "main" in branches
     assert "old-merged" in branches

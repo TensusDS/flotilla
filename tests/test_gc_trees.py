@@ -38,7 +38,7 @@ def test_a_clean_tree_on_an_unlanded_branch_goes_and_the_branch_holds_its_work(t
     commit(tree, "unlanded work", "w.txt", "x\n")
     assert judge(ledger, tree).removable
     found = judge(ledger, tree, dropping={"refs/heads/fleet/main-1"})
-    assert not found.removable and any("only holder" in reason for reason in found.reasons)
+    assert not found.removable and any("only holder" in reason for reason in found.why)   # gc design 9
 
 
 def test_a_detached_tree_held_by_another_branch_goes(tmp_path):
@@ -151,7 +151,7 @@ def test_any_doubt_keeps_the_tree_and_names_it(tmp_path, doubt, reason):
     elif doubt == "hidden":
         git(tree, "update-index", "--skip-worktree", "t.txt")
     found = judge(ledger, tree)
-    assert not found.removable and any(reason in line for line in found.reasons), found.reasons
+    assert not found.removable and any(reason in line for line in found.why), found.why   # gc design 9
 
 
 def test_a_populated_submodule_keeps_the_tree(tmp_path):
@@ -171,7 +171,7 @@ def test_a_populated_submodule_keeps_the_tree(tmp_path):
     git(tree, "-c", "protocol.file.allow=always", "submodule", "update", "-q", "--init")
     (tree / "lib" / "lib.txt").write_text("edited inside the submodule\n", encoding="utf-8")
     found = judge(ledger, tree)
-    assert not found.removable and any("submodule" in reason for reason in found.reasons), found.reasons
+    assert not found.removable and any("submodule" in reason for reason in found.why), found.why   # gc design 9
 
 
 
@@ -216,3 +216,60 @@ def test_a_tree_with_another_worktree_inside_it_stays(tmp_path):
     git(tree, "worktree", "add", "-q", "-b", "feat/nested", str(tree / ".claude" / "worktrees" / "x"), "main")
     found = judge(ledger, tree)
     assert not found.removable and any("another worktree lies inside it" in reason for reason in found.reasons)
+
+
+# gc design 9 (stage 2): what breaks is a reason and is never asked; what only the person settles is a doubt.
+
+def test_untracked_files_are_a_doubt_not_a_reason(tmp_path):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    (tree / "new.txt").write_text("n\n", encoding="utf-8")
+    found = judge(ledger, tree)
+    assert found.reasons == [] and [doubt.kind for doubt in found.doubts] == ["edits"]
+    assert found.doubts[0].paths == ("new.txt",)
+    assert not found.removable and trees.asks(found)
+
+
+def test_a_live_session_is_a_reason_and_is_never_asked(tmp_path):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    (tree / "new.txt").write_text("n\n", encoding="utf-8")
+    found = judge(ledger, tree, sessions=[session("minor session 3", tree / "src")])
+    assert found.reasons and not trees.asks(found)
+
+
+def test_the_sole_holder_is_a_doubt(tmp_path):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    commit(tree, "unlanded work", "w.txt", "x\n")
+    found = judge(ledger, tree, dropping={"refs/heads/fleet/main-1"})
+    assert found.reasons == [] and [doubt.kind for doubt in found.doubts] == ["sole"]
+
+
+def test_unique_ignored_files_are_archive_entries_with_their_hash(tmp_path):
+    import hashlib
+
+    from flotilla.gc import twins
+    root, ledger = world(tmp_path)
+    commit(root, "ignore", ".gitignore", "*.bin\n")
+    tree = seat(root, tmp_path)
+    (tree / "big.bin").write_bytes(b"12345")
+    finder = twins.Twins(ledger, holders=refs.holders(ledger), cache={},
+                         sources=twins.sources(ledger, untouched=[], archive_root=tmp_path / "none"))
+    found = trees.judge_tree(ledger, tree, holders=refs.holders(ledger), sessions=[], twins=finder)
+    assert found.reasons == [] and found.doubts == []
+    assert found.archive == [("big.bin", 5, hashlib.sha256(b"12345").hexdigest())]
+    assert not found.removable and trees.asks(found)
+
+
+def test_a_twinned_ignored_file_lets_the_tree_go(tmp_path):
+    from flotilla.gc import twins
+    root, ledger = world(tmp_path)
+    commit(root, "ignore", ".gitignore", "*.bin\n")
+    (root / "big.bin").write_bytes(b"12345")
+    tree = seat(root, tmp_path)
+    (tree / "big.bin").write_bytes(b"12345")
+    finder = twins.Twins(ledger, holders=refs.holders(ledger), cache={},
+                         sources=twins.sources(ledger, untouched=[], archive_root=tmp_path / "none"))
+    found = trees.judge_tree(ledger, tree, holders=refs.holders(ledger), sessions=[], twins=finder)
+    assert found.removable and [path for path, _ in found.twins] == ["big.bin"]

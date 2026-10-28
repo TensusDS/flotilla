@@ -64,7 +64,7 @@ def test_a_fleet_like_the_field_one_is_mostly_cleaned(tmp_path):
     lines = sweep.lines(report)
     assert lines[0].startswith("removed 4 trees")
     kept = [line for line in lines if line.startswith("kept ") and " tree" in line.split(":")[0]]
-    assert len(kept) == 2, lines
+    assert len(kept) == 1 and kept[0].startswith("kept 2 trees: waits on the person"), lines   # gc design 9
     assert any("only on this disk" in line for line in lines)
 
 
@@ -125,3 +125,15 @@ def test_a_branch_a_staying_tree_is_rebasing_is_kept(tmp_path):
     assert tree.exists()
     assert "fleet/main-1" in git(root, "branch", "--list", "--format=%(refname:short)").split()
     assert "fleet/main-1" not in report.deleted
+
+
+def test_trees_waiting_on_the_person_share_one_report_line(tmp_path):
+    """gc design 9 (stage 2): doubts are put to the person, so the report names them once, not once per tree."""
+    root, ledger = world(tmp_path)
+    for number in (1, 2, 3):
+        tree = tmp_path / f"app-main-{number}"
+        git(root, "worktree", "add", "-q", "-b", f"fleet/main-{number}", str(tree))
+        (tree / "new.txt").write_text("n\n", encoding="utf-8")
+    report = sweep.run_pass(ledger, sessions=[], act=False, proc_root=tmp_path / "no-proc")
+    kept = [line for line in sweep.lines(report) if line.startswith("kept 3 trees: ")]
+    assert kept and kept[0].startswith("kept 3 trees: waits on the person (flotilla gc next) - ")

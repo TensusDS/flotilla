@@ -18,6 +18,7 @@ from pathlib import Path
 from flotilla.gc import branches, refs, remove, trees
 
 SHOWN = 5   # names per kept line before "and N more"
+WAITS = "waits on the person (flotilla gc next)"   # one line for every tree only the person can settle
 
 
 @dataclass
@@ -140,7 +141,7 @@ def run_pass(ledger, *, sessions, act: bool, proc_root=None) -> Report:
     for tree, verdict in judged.items():
         report.warnings += [note for note in verdict.notes if note not in report.warnings]
         if not verdict.removable:
-            _keep(report, "tree", verdict.reasons[0], tree.name)
+            _keep(report, "tree", verdict.reasons[0] if verdict.reasons else WAITS, tree.name)
             continue
         if not act:
             report.removed.append(tree.name)

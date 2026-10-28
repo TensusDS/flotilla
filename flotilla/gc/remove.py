@@ -39,7 +39,7 @@ def remove_tree(ledger, verdict: TreeVerdict, *, dropping: set[str], sessions, p
                            sessions=sessions,
                            spare_rows=spare_rows, proc_root=proc_root)
         why = ("its HEAD moved since it was judged" if again.head != verdict.head
-               else "; ".join(again.reasons) if not again.removable
+               else "; ".join(again.why) if not again.removable
                else "its reflog moved since it was judged" if set(again.park) != set(verdict.park) else "")
         parked = []
         if not why:

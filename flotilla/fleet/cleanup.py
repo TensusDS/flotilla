@@ -64,7 +64,7 @@ def judge(ledger, tree, *, spare_rows=(), sessions=()) -> Verdict:
         mine, dropping, also = None, set(), []
         judged = trees.judge_tree(ledger, tree, holders=refs.holders(ledger), sessions=list(sessions),
                                   spare_rows=spare_rows)
-    return Verdict(str(tree), judged.branch, judged.removable, judged.reasons, judged.head, judged, mine, dropping,
+    return Verdict(str(tree), judged.branch, judged.removable, judged.why, judged.head, judged, mine, dropping,
                    list(sessions), set(spare_rows), also)
 
 
