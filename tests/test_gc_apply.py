@@ -195,3 +195,21 @@ def test_archive_and_remove_records_twins_and_last_copies(tmp_path):
     assert [copy["from"] for entry in mine for copy in entry.last_copies] == [str(tree / "out" / "kept.bin")]
     archive.restore(ledger, tree.name)
     assert (tree / "out" / "x.bin").read_bytes() == b"archived before"
+
+
+# Second review of the branch, I-2: a nested repository was fingerprinted by its top directory alone, so a junk answer
+# was carried out over files added inside it after the person was shown it.
+
+def test_a_file_added_inside_a_nested_repository_changes_what_was_shown(tmp_path):
+    root, ledger = world(tmp_path)
+    tree = tmp_path / "app-main-1"
+    git(root, "worktree", "add", "-q", "-b", "fleet/main-1", str(tree))
+    nested = tree / "sub"
+    nested.mkdir()
+    git(nested, "init", "-q")
+    (nested / "deep").mkdir()
+    (nested / "deep" / "a.txt").write_text("a", encoding="utf-8")
+    shown = questions.fingerprint(found(ledger, tree)[0])
+    assert questions.fingerprint(found(ledger, tree)[0]) == shown   # judging it does not move it
+    (nested / "deep" / "later.txt").write_text("written after the answer", encoding="utf-8")
+    assert questions.fingerprint(found(ledger, tree)[0]) != shown

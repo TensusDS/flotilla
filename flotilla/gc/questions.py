@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import json
 import mimetypes
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -92,6 +93,29 @@ def items(verdicts: dict, *, rows: dict, small: set) -> list[Item]:
     return list(found.values())
 
 
+def _stat(tree: Path, path: str) -> list:
+    try:   # ctime and inode too: a rewrite can keep size and mtime (final review of gc stage 2, C1)
+        stat = (tree / path).lstat()
+    except OSError:
+        return [path, "missing"]
+    return [path, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino]
+
+
+def _shown(tree: Path, path: str) -> list[list]:
+    """A path and, for a directory (a nested repository), everything under it, links not followed: a file added
+    deep inside is a change (second review of the branch, I-2). A part that cannot be read is named as such."""
+    rows = [_stat(tree, path)]
+    if not (tree / path).is_dir() or (tree / path).is_symlink():
+        return rows
+
+    def unreadable(err):
+        rows.append([os.path.relpath(err.filename, tree) if err.filename else path, "unreadable"])
+    for here, dirs, names in os.walk(tree / path, onerror=unreadable, followlinks=False):
+        dirs.sort()
+        rows += [_stat(tree, os.path.relpath(os.path.join(here, name), tree)) for name in sorted(dirs + names)]
+    return rows
+
+
 def fingerprint(item: Item) -> str:
     """What the person was shown: each tree's HEAD and every path in question with its size and mtime."""
     shown = []
@@ -99,13 +123,7 @@ def fingerprint(item: Item) -> str:
         tree = Path(verdict.tree)
         named = sorted({path for doubt in verdict.doubts if doubt.kind != "sole" for path in doubt.paths}
                        | {path for path, _, _ in verdict.archive})
-        files = []
-        for path in named:
-            try:   # ctime and inode too: a rewrite can keep size and mtime (final review of gc stage 2, C1)
-                stat = (tree / path).lstat()
-                files.append([path, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino])
-            except OSError:
-                files.append([path, "missing"])
+        files = [row for path in named for row in _shown(tree, path)]
         shown.append([str(tree), verdict.head, [doubt.kind for doubt in verdict.doubts], files])
     return hashlib.sha256(json.dumps(sorted(shown)).encode()).hexdigest()
 
