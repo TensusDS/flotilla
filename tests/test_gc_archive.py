@@ -158,3 +158,70 @@ def test_one_entry_per_piece_of_work_per_day(tmp_path):
     found = archive.entries(ledger)
     assert len(found) == 1 and len(found[0].files) == 2
     assert archive.entry_id("work:fleet/main-1", DAY) == f"{DAY}-fleet-main-1"
+
+
+# Security review of 75eff4b: nothing is taken from, or written to, outside the tree it belongs to.
+
+@pytest.mark.parametrize("path", ["../escape.bin", "/etc/hostname", "inner/../../escape.bin"])
+def test_put_refuses_a_path_outside_the_tree(tmp_path, path):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    (tmp_path / "escape.bin").write_bytes(b"not the tree's")
+    with pytest.raises(archive.ArchiveFailed):
+        stash(ledger, tree, [path])
+    assert (tmp_path / "escape.bin").read_bytes() == b"not the tree's"
+
+
+def test_put_refuses_a_file_behind_a_linked_directory(tmp_path):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    put_file(tmp_path / "outside", "x.bin", b"not the tree's")
+    (tree / "out").symlink_to(tmp_path / "outside", target_is_directory=True)
+    with pytest.raises(archive.ArchiveFailed):
+        stash(ledger, tree, ["out/x.bin"])
+    assert (tmp_path / "outside" / "x.bin").exists()
+
+
+def test_restore_never_writes_outside_its_tree(tmp_path):
+    import json
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    put_file(tree, "a.bin", b"payload")
+    entry = stash(ledger, tree, ["a.bin"])
+    path = archive.root_of(ledger) / "entries" / entry.id / "entry.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["files"][0]["from"] = str(tmp_path / "outside" / "evil.bin")
+    path.write_text(json.dumps(data), encoding="utf-8")
+    lines = archive.restore(ledger, entry.id)
+    assert not (tmp_path / "outside" / "evil.bin").exists()
+    assert any("refused" in line for line in lines), lines
+
+
+def test_restore_does_not_follow_a_linked_directory(tmp_path):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    put_file(tree, "out/x.bin", b"payload")
+    entry = stash(ledger, tree, ["out/x.bin"])
+    (tree / "out").rmdir()
+    (tmp_path / "outside").mkdir()
+    (tree / "out").symlink_to(tmp_path / "outside", target_is_directory=True)
+    lines = archive.restore(ledger, entry.id)
+    assert not (tmp_path / "outside" / "x.bin").exists()
+    assert any("refused" in line for line in lines), lines
+
+
+def test_restore_refuses_a_tree_that_is_not_one_of_the_repositorys(tmp_path):
+    import json
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    put_file(tree, "a.bin", b"payload")
+    entry = stash(ledger, tree, ["a.bin"])
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    path = archive.root_of(ledger) / "entries" / entry.id / "entry.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["trees"][0]["tree"] = str(elsewhere)
+    data["files"][0].update(tree=str(elsewhere), **{"from": str(elsewhere / "a.bin")})
+    path.write_text(json.dumps(data), encoding="utf-8")
+    lines = archive.restore(ledger, entry.id)
+    assert not (elsewhere / "a.bin").exists() and any("refused" in line for line in lines), lines

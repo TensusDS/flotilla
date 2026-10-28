@@ -11,7 +11,10 @@ parked HEADs, and where the last copy of a file removed on a twin now lives. Sma
 day share one entry: one line in the report, one restore (the person's decision, 2026-10-21).
 
 Restore copies the files back and keeps the objects (another entry may point to them); a path that now holds other
-bytes is not overwritten, and a tree that is gone is made again at its parked HEAD first. Nothing here deletes from
+bytes is not overwritten, and a tree that is gone is made again at its parked HEAD first. Nothing is taken from or
+written to outside the tree a file belongs to: a path with `..` or a linked directory on the way is refused on both
+sides, and restore writes only into a worktree of this repository, creating each file without following a link
+(security review of 75eff4b) - the archive's records are files any session could edit. Nothing here deletes from
 the archive: its lifetime is stage 3's, and only on the person's recorded yes.
 """
 
@@ -104,6 +107,23 @@ def _store(root: Path, source: Path) -> tuple[str, int]:
     return digest, size
 
 
+def _inside(tree: Path, target: Path) -> bool:
+    """Whether `target` lies under `tree` with no `..` and no linked directory between them (its last component may
+    be a link: that is the file itself)."""
+    try:
+        relative = target.relative_to(tree)
+    except ValueError:
+        return False
+    if not relative.parts or ".." in relative.parts:
+        return False
+    here = tree
+    for part in relative.parts[:-1]:
+        here = here / part
+        if here.is_symlink():
+            return False
+    return True
+
+
 def _entry_path(root: Path, key: str) -> Path:
     return root / "entries" / key / "entry.json"
 
@@ -144,6 +164,9 @@ def put(ledger, *, entry: str, tree, files: list[str], tier: str, approved_by: s
         with open(root / "MANIFEST", "a", encoding="utf-8") as manifest:
             for relative in files:
                 source = tree / relative
+                if Path(relative).is_absolute() or not _inside(tree, source):
+                    raise ArchiveFailed(f"{visible(str(relative))} is not a file of {visible(str(tree))}; nothing "
+                                        "after it moved")
                 digest, size = _store(root, source)
                 found.files.append({"sha256": digest, "size": size, "from": str(source), "tree": str(tree)})
                 manifest.write(f"{digest}  objects/{digest[:2]}/{digest}  <-  {visible(str(source))}\n")
@@ -164,6 +187,22 @@ def _git(ledger, *args):
     return ledger.run(["git", "-C", str(ledger.root), *args], capture_output=True, text=True, check=False)
 
 
+def _worktrees(ledger) -> set[str]:
+    listed = _git(ledger, "worktree", "list", "--porcelain").stdout.splitlines()
+    return {str(Path(line[len("worktree "):]).resolve()) for line in listed if line.startswith("worktree ")}
+
+
+def _copy_back(stored: Path, target: Path) -> None:
+    """Create `target` from the archive's object; never through a link, never over a file that appeared."""
+    if stored.is_symlink():
+        os.symlink(os.readlink(stored), target)
+        return
+    handle = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    with os.fdopen(handle, "wb") as written, open(stored, "rb") as source:
+        shutil.copyfileobj(source, written)
+    shutil.copystat(stored, target)
+
+
 def restore(ledger, key: str) -> list[str]:
     """Put an entry's files back (`key`: an entry id, or a tree's name or path - its newest entry)."""
     known = entries(ledger)
@@ -181,6 +220,9 @@ def restore(ledger, key: str) -> list[str]:
         if wanted is not None and record["tree"] not in wanted:
             continue
         tree, fresh = Path(record["tree"]), False
+        if tree.exists() and str(tree.resolve()) not in _worktrees(ledger):
+            lines.append(f"refused: {visible(str(tree))} is not a worktree of this repository")
+            continue
         if not tree.exists():
             made = _git(ledger, "worktree", "add", "--detach", str(tree), record["head"])
             if made.returncode != 0:
@@ -194,15 +236,18 @@ def restore(ledger, key: str) -> list[str]:
             if item["tree"] != record["tree"]:
                 continue
             target, stored = Path(item["from"]), _object(root, item["sha256"])
+            if not _inside(tree, target):
+                lines.append(f"refused: {visible(str(target))} is not inside {visible(str(tree))}")
+                continue
             if os.path.lexists(target):
                 if not _same(target, item["sha256"]):
                     lines.append(f"not overwritten: {visible(str(target))} holds other bytes now")
                 continue
             _private(target.parent)
-            if stored.is_symlink():
-                os.symlink(os.readlink(stored), target)
-            else:
-                shutil.copy2(stored, target)
+            if not _inside(tree, target):   # a directory made just now could not be a link; one found could
+                lines.append(f"refused: {visible(str(target))} is not inside {visible(str(tree))}")
+                continue
+            _copy_back(stored, target)
             back += 1
         lines.append(f"restored {back} file(s) into {visible(str(tree))}")
         if record.get("patch") and fresh:
