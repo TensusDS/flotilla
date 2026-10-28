@@ -342,3 +342,20 @@ def test_files_moved_before_an_archive_failure_are_reported(tmp_path, monkeypatc
     assert tree.exists()
     assert any(line.startswith("archived 1 file") and "flotilla gc restore" in line for line in sweep.lines(report)), \
         sweep.lines(report)
+
+
+# Second review of the branch, m-4: an unreadable directory under an ignored entry was skipped by the walk, so the
+# entry read as regenerable and the removal half-deleted the tree.
+
+def test_an_unreadable_directory_among_ignored_files_waits_on_the_person(tmp_path):
+    root, ledger = world(tmp_path)
+    ignoring(root)
+    tree = ignored_seat(root, tmp_path, 1, data=b"precious", path="out/sub/data.bin")
+    (tree / "out" / "sub").chmod(0)
+    try:
+        report = sweep.run_pass(ledger, sessions=[], act=True, proc_root=tmp_path / "no-proc")
+    finally:
+        (tree / "out" / "sub").chmod(0o700)
+    assert (tree / "out" / "sub" / "data.bin").read_bytes() == b"precious", sweep.lines(report)
+    assert any(line.startswith("kept 1 tree: waits on the person") for line in sweep.lines(report)), \
+        sweep.lines(report)

@@ -86,7 +86,10 @@ def _unvouched(tree: Path, main: Path, entry: str, profile: dict) -> list[str] |
         return [] if _file_regenerable(tree, main, bare, [own], CACHES | _extra(profile)) else [bare]
     vouching = CACHES | _extra(profile)
     found: list[str] = []
-    for here, dirs, files in os.walk(top, followlinks=False):
+
+    def unreadable(err: OSError) -> None:   # not walked is not vouched for (second review of the branch, m-4)
+        found.append(Path(err.filename).relative_to(tree).as_posix() if err.filename else bare)
+    for here, dirs, files in os.walk(top, onerror=unreadable, followlinks=False):
         here_path = Path(here)
         below = here_path.relative_to(top).parts
         if ".git" in dirs or ".git" in files:
