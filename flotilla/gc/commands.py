@@ -72,8 +72,10 @@ def run_gc(args, *, ledger=None, census=None) -> int:
             print("the archive is empty")
         for entry in found:
             size = sum(item["size"] for item in entry.files)
-            print(f"{entry.id}  tier {entry.tier}  {len(entry.files)} file(s)  {sweep.size_text(size)}  approved by "
-                  f"{visible(entry.approved_by)}")
+            print(f"{visible(entry.id)}  {len(entry.files)} file(s)  {sweep.size_text(size)}")
+            for record in entry.trees:   # an entry made before trees kept their own approval shows the entry's
+                print(f"  {visible(Path(record['tree']).name)}  tier {visible(record.get('tier', entry.tier))}  "
+                      f"approved by {visible(record.get('approved_by', entry.approved_by))}")
         return 0
     from flotilla.core.census import CensusUnavailable
     try:

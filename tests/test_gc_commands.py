@@ -3,6 +3,7 @@ and the archive's list for anyone."""
 
 import argparse
 import json
+from pathlib import Path
 
 from flotilla import cli
 from flotilla.core import caller
@@ -86,3 +87,27 @@ def test_show_names_the_files_as_data(tmp_path, capsys):
 def test_the_cli_knows_gc(monkeypatch):
     monkeypatch.setattr(commands, "run_gc", lambda args, **_: 7 if args.action == "next" else 0)
     assert cli.main(["gc", "next", "--root", "."]) == 7
+
+
+# Second review of the branch, m-5: an entry is one per piece of work per day, and a pass's "told after" and the
+# person's answer can both land in it; each tree keeps its own approval, which the listing shows.
+
+def test_each_tree_in_an_entry_keeps_its_own_approval(tmp_path, capsys):
+    from flotilla.gc import archive
+    root, ledger, tree = world(tmp_path)
+    other = tmp_path / "app-main-2"
+    git(root, "worktree", "add", "-q", "-b", "fleet/main-2", str(other))
+    (other / "x.bin").write_bytes(b"small")
+    archive.put(ledger, entry="2026-10-28-work", tree=other, files=["x.bin"], tier="2",
+                approved_by="told after: small", branch="fleet/main-2", head="")
+    archive.put(ledger, entry="2026-10-28-work", tree=tree, files=["notes.txt"], tier="3",
+                approved_by="answer work:x 2026-10-28T10:00:00+00:00", branch="fleet/main-1", head="")
+    records = {Path(item["tree"]).name: (item["tier"], item["approved_by"])
+               for item in archive.entries(ledger)[0].trees}
+    assert records == {"app-main-2": ("2", "told after: small"),
+                       "app-main-1": ("3", "answer work:x 2026-10-28T10:00:00+00:00")}
+    capsys.readouterr()
+    assert run(ledger, "archive") == 0
+    shown = capsys.readouterr().out
+    assert "app-main-1  tier 3  approved by answer work:x 2026-10-28T10:00:00+00:00" in shown, shown
+    assert "app-main-2  tier 2  approved by told after: small" in shown, shown

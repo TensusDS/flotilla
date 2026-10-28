@@ -58,7 +58,7 @@ class Entry:
     when: str
     tier: str
     approved_by: str
-    trees: list = field(default_factory=list)        # {"tree", "branch", "head", "patch"}
+    trees: list = field(default_factory=list)        # {"tree", "branch", "head", "patch", "tier", "approved_by"}
     files: list = field(default_factory=list)        # {"sha256", "size", "from", "tree"}
     last_copies: list = field(default_factory=list)  # {"from", "where"}
 
@@ -177,6 +177,7 @@ def put(ledger, *, entry: str, tree, files: list[str], tier: str, approved_by: s
         if record is None:
             record = {"tree": str(tree), "branch": branch, "head": head, "patch": ""}
             found.trees.append(record)
+        record.update(tier=tier, approved_by=approved_by)   # each tree its own (second review of the branch, m-5)
         if patch:
             name = f"edits-{_component(tree.name) or 'tree'}.patch"
             (_private(root / "entries" / entry) / name).write_bytes(patch)
