@@ -115,3 +115,69 @@ def test_a_regenerable_entry_that_is_a_repository_holds_the_tree(tmp_path):
     put(tree, "build/x.o")
     git(tree / "build", "init", "-q")
     assert holding(root, tree) == ["build/"]
+
+
+# Rules 2 to 5 (gc stage 2): a classification of every file the name list does not vouch for.
+
+def classify(root, tree, ledger=None, profile=None):
+    from flotilla.gc import refs, twins
+    from ledgerkit import PROFILE, make_ledger
+    ledger = ledger or make_ledger(root, tree.parent / "state", profile=PROFILE, live=())
+    found = twins.Twins(ledger, holders=refs.holders(ledger), cache={},
+                        sources=twins.sources(ledger, untouched=[], archive_root=tree.parent / "none"))
+    return ignored.classify(tree, main=root, profile=profile or {}, twins=found, run=subprocess.run)
+
+
+def test_a_twinned_ignored_file_does_not_hold_the_tree(tmp_path):
+    root, tree = tree_with(tmp_path, "*.log\n")
+    put(root, "out.log", "same bytes")
+    put(tree, "out.log", "same bytes")
+    found = classify(root, tree)
+    assert [(path, twin.kind) for path, twin in found.twins] == [("out.log", "checkout")]
+    assert found.unique == [] and found.personal == []
+
+
+def test_a_unique_ignored_file_is_bound_for_the_archive_with_its_size(tmp_path):
+    import hashlib
+    root, tree = tree_with(tmp_path, "renders/\n")
+    put(tree, "renders/a.exr", "12345")
+    found = classify(root, tree)
+    assert found.unique == [("renders/a.exr", 5, hashlib.sha256(b"12345").hexdigest())]
+
+
+def test_a_file_only_info_exclude_ignores_is_the_persons(tmp_path):
+    root, tree = tree_with(tmp_path, "*.log\n")
+    common = git(tree, "rev-parse", "--path-format=absolute", "--git-common-dir").strip()
+    with open(f"{common}/info/exclude", "a", encoding="utf-8") as handle:
+        handle.write("notes.txt\n")
+    put(tree, "notes.txt", "mine")
+    found = classify(root, tree)
+    assert found.personal == ["notes.txt"] and found.unique == []
+
+
+def test_a_global_exclude_counts_as_the_persons(tmp_path):
+    root, tree = tree_with(tmp_path, "*.log\n")
+    excludes = tmp_path / "global-ignore"
+    excludes.write_text("scratch/\n", encoding="utf-8")
+    git(root, "config", "core.excludesFile", str(excludes))
+    put(tree, "scratch/idea.md", "mine")
+    assert classify(root, tree).personal == ["scratch/idea.md"]
+
+
+def test_a_twin_beats_the_persons_exclude(tmp_path):
+    root, tree = tree_with(tmp_path, "*.log\n")
+    common = git(tree, "rev-parse", "--path-format=absolute", "--git-common-dir").strip()
+    with open(f"{common}/info/exclude", "a", encoding="utf-8") as handle:
+        handle.write("notes.txt\n")
+    put(root, "notes.txt", "shared")
+    put(tree, "notes.txt", "shared")
+    found = classify(root, tree)
+    assert [path for path, _ in found.twins] == ["notes.txt"] and found.personal == []
+
+
+def test_a_git_directory_under_an_ignored_entry_is_nested(tmp_path):
+    root, tree = tree_with(tmp_path, "vendor/\n")
+    put(tree, "vendor/lib/.git/HEAD", "ref: refs/heads/main\n")
+    put(tree, "vendor/lib/a.c", "int a;")
+    found = classify(root, tree)
+    assert found.nested == ["vendor/"] and found.unique == []

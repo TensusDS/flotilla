@@ -9,7 +9,11 @@ named for what a manifest installs is regenerable when that manifest sits beside
 under `.claude/` is regenerable, except `settings.local.json`, which holds permissions a person granted - unless it
 is byte-identical to the main checkout's. The project's `[gc] regenerable` adds names.
 
-Rules 2 to 5 (twins elsewhere, the archive) are stage 2; until then whatever this returns keeps the tree, named.
+`classify` goes on with rules 2 to 5 for every file the name list does not vouch for: a byte-identical twin that
+survives the pass (`twins.py`) lets it go; a file only a global or per-repository exclude ignores is the person's
+(`git check-ignore -v`: no `.gitignore` the tree tracks matches it); a `.git` under an entry makes the whole entry a
+nested repository, the person's; the rest is unique, bound for the archive. `holding` keeps stage 1's answer: the
+entries the name list does not vouch for.
 """
 
 from __future__ import annotations
@@ -17,6 +21,7 @@ from __future__ import annotations
 import filecmp
 import os
 import subprocess
+from dataclasses import dataclass, field
 from pathlib import Path
 
 #: Ignored paths an install or a build makes again; anything else ignored is somebody's and holds the tree.
@@ -66,38 +71,105 @@ def _evidence(where: Path, name: str) -> bool:
     return any((where / item).is_file() for item in EVIDENCE.get(name, ()))
 
 
-def _entry_regenerable(tree: Path, main: Path, entry: str, profile: dict) -> bool:
+def _unvouched(tree: Path, main: Path, entry: str, profile: dict) -> list[str] | None:
+    """The files of an ignored `entry` the name list does not vouch for (paths relative to the tree), or None when a
+    nested repository lies in it - the person's, whatever it is called (gc design 6, rule 5)."""
     bare = entry.rstrip("/")
     own = bare.rsplit("/", 1)[-1]
     top = tree / bare
-    if (top / ".git").exists():   # a nested repository is the person's, whatever it is called (gc design 6, rule 5)
-        return False
+    if (top / ".git").exists():
+        return None
     if own in REGENERABLE | _extra(profile) or own.endswith(REGENERABLE_SUFFIXES) or _evidence(top.parent, own):
-        return True
+        return []
     if not entry.endswith("/"):
-        return _file_regenerable(tree, main, bare, [own], CACHES | _extra(profile))
+        return [] if _file_regenerable(tree, main, bare, [own], CACHES | _extra(profile)) else [bare]
     vouching = CACHES | _extra(profile)
+    found: list[str] = []
     for here, dirs, files in os.walk(top, followlinks=False):
         here_path = Path(here)
         below = here_path.relative_to(top).parts
         if ".git" in dirs or ".git" in files:
-            return False
+            return None
         links = [name for name in dirs if (here_path / name).is_symlink()]
         dirs[:] = [name for name in dirs if name not in links and name not in vouching
                    and not (name in EVIDENCE and _evidence(here_path, name))]   # a cache or an install is whole
-        for name in files + links:
+        for name in sorted(files + links):
             path = f"{bare}/{'/'.join([*below, name])}"
             if not _file_regenerable(tree, main, path, [*below, name], vouching):
-                return False
-    return True
+                found.append(path)
+    return found
+
+
+def _entries(tree: Path, run) -> list[str] | None:
+    shown = run(["git", "-C", str(tree), "-c", "status.showUntrackedFiles=all", "status", "--porcelain", "-z",
+                 "--untracked-files=all", "--ignored=matching"], capture_output=True, text=True, check=False)
+    if shown.returncode != 0:
+        return None
+    return [item[3:] for item in shown.stdout.split("\0") if item.startswith("!! ")]
 
 
 def holding(tree, *, main, profile: dict, run=subprocess.run) -> list[str] | None:
     """The ignored entries that hold `tree` (paths relative to it), or None when git cannot be asked."""
     tree, main = Path(tree), Path(main)
-    shown = run(["git", "-C", str(tree), "-c", "status.showUntrackedFiles=all", "status", "--porcelain", "-z",
-                 "--untracked-files=all", "--ignored=matching"], capture_output=True, text=True, check=False)
-    if shown.returncode != 0:
+    entries = _entries(tree, run)
+    if entries is None:
         return None
-    entries = [item[3:] for item in shown.stdout.split("\0") if item.startswith("!! ")]
-    return [entry for entry in entries if not _entry_regenerable(tree, main, entry, profile)]
+    return [entry for entry in entries if _unvouched(tree, main, entry, profile) != []]
+
+
+@dataclass
+class Ignored:
+    twins: list = field(default_factory=list)      # (path, Twin)
+    unique: list = field(default_factory=list)     # (path, size, sha256); sha256 "" when no twin was looked for
+    personal: list = field(default_factory=list)   # paths only an exclude outside the project ignores
+    nested: list = field(default_factory=list)     # entries holding a nested repository
+
+
+def _persons(tree: Path, candidates: list[str], run) -> set[str]:
+    """Which of `candidates` only a pattern from outside the project ignores: not a `.gitignore` the tree tracks."""
+    if not candidates:
+        return set()
+    tracked = run(["git", "-C", str(tree), "ls-files", "-z", "--", ".gitignore", "*/.gitignore"],
+                  capture_output=True, text=True, check=False)
+    project = set(tracked.stdout.split("\0")) - {""} if tracked.returncode == 0 else set()
+    shown = run(["git", "-C", str(tree), "check-ignore", "-v", "-z", "--no-index", "--stdin"],
+                input="".join(f"{path}\0" for path in candidates), capture_output=True, text=True, check=False)
+    fields = shown.stdout.split("\0")
+    found = set()
+    for at in range(0, len(fields) - 3, 4):
+        source, pattern, path = fields[at], fields[at + 2], fields[at + 3]
+        if source and not pattern.startswith("!") and source not in project:
+            found.add(path)
+    return found
+
+
+def classify(tree, *, main, profile: dict, twins=None, run=subprocess.run) -> Ignored | None:
+    """Every ignored file the name list does not vouch for, sorted by rules 2 to 5; None when git cannot be asked.
+    `twins` is a `twins.Twins`; without it no twin is ever found."""
+    from flotilla.gc import twins as twins_module
+    tree, main = Path(tree), Path(main)
+    entries = _entries(tree, run)
+    if entries is None:
+        return None
+    out = Ignored()
+    left: list[str] = []
+    for entry in entries:
+        files = _unvouched(tree, main, entry, profile)
+        if files is None:
+            out.nested.append(entry)
+            continue
+        for path in files:
+            twin = twins.find(tree / path) if twins is not None else None
+            if twin is not None:
+                out.twins.append((path, twin))
+            else:
+                left.append(path)
+    persons = _persons(tree, left, run)
+    for path in left:
+        if path in persons:
+            out.personal.append(path)
+            continue
+        full = tree / path
+        digest = twins_module.sha256(full, twins.cache) if twins is not None else ""
+        out.unique.append((path, full.lstat().st_size, digest))
+    return out
