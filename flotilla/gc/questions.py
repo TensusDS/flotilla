@@ -101,11 +101,11 @@ def fingerprint(item: Item) -> str:
                        | {path for path, _, _ in verdict.archive})
         files = []
         for path in named:
-            try:
+            try:   # ctime and inode too: a rewrite can keep size and mtime (final review of gc stage 2, C1)
                 stat = (tree / path).lstat()
-                files.append([path, stat.st_size, stat.st_mtime_ns])
+                files.append([path, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino])
             except OSError:
-                files.append([path, -1, -1])
+                files.append([path, "missing"])
         shown.append([str(tree), verdict.head, [doubt.kind for doubt in verdict.doubts], files])
     return hashlib.sha256(json.dumps(sorted(shown)).encode()).hexdigest()
 

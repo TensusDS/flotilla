@@ -174,7 +174,7 @@ def put(ledger, *, entry: str, tree, files: list[str], tier: str, approved_by: s
     found.last_copies += [dict(item) for item in last_copies]
     try:
         with open(root / "MANIFEST", "a", encoding="utf-8") as manifest:
-            for relative in files:
+            for relative in files:   # any other failure becomes ArchiveFailed below: callers keep the tree
                 source = tree / relative
                 if Path(relative).is_absolute() or not _inside(tree, source):
                     raise ArchiveFailed(f"{visible(str(relative))} is not a file of {visible(str(tree))}; nothing "
@@ -182,6 +182,8 @@ def put(ledger, *, entry: str, tree, files: list[str], tier: str, approved_by: s
                 digest, size = _store(root, source)
                 found.files.append({"sha256": digest, "size": size, "from": str(source), "tree": str(tree)})
                 manifest.write(f"{digest}  objects/{digest[:2]}/{digest}  <-  {visible(str(source))}\n")
+    except OSError as err:   # final review of gc stage 2, I5
+        raise ArchiveFailed(f"the archive could not take the files of {visible(str(tree))}: {err}") from err
     finally:
         _save(root, found)
     return found

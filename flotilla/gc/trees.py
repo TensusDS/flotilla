@@ -155,25 +155,41 @@ def _in_use(tree: Path, gitdir: str, proc_root, notes: list[str], *, run) -> str
 def _unclean(ledger, tree: Path, branch: str, spare_rows) -> tuple[list[str], list[Doubt]] | None:
     run = ledger.run
     # options spelled out: a person's status.showUntrackedFiles=no hid untracked work (review of the cleanup, C1)
+    # -z: without it porcelain quotes a name with a space or a non-ASCII letter, and a quoted name is no path
+    # (final review of gc stage 2, C1); a rename names both its paths
     status = _git(tree, "-c", "status.showUntrackedFiles=all", "-c", "diff.ignoreSubmodules=none", "status",
-                  "--porcelain", "--untracked-files=all", "--ignore-submodules=none", run=run)
+                  "--porcelain", "-z", "--untracked-files=all", "--ignore-submodules=none", run=run)
     if status.returncode != 0:
         return None
     reasons: list[str] = []
     doubts: list[Doubt] = []
-    hidden = [line[2:] for line in _git(tree, "ls-files", "-v", run=run).stdout.splitlines()
-              if line[:1] == "S" or line[:1].islower()]
+    hidden = [entry[2:] for entry in _git(tree, "ls-files", "-v", "-z", run=run).stdout.split("\0")
+              if entry and (entry[:1] == "S" or entry[:1].islower())]
     if hidden:   # skip-worktree or assume-unchanged: an edit there shows in no status (review of the cleanup, I2)
         doubts.append(Doubt("hidden", f"files git is told not to look at: {', '.join(hidden[:3])}",
                             tuple(hidden)))
     # a populated submodule is a nested repository: its edits can hide from status (`ignore = all`) and its commits
     # live in this tree's own git directory, so it is the person's to decide (security review of gc stage 1)
-    nested = [line.split("\t", 1)[1] for line in _git(tree, "ls-files", "--stage", run=run).stdout.splitlines()
-              if line.startswith("160000 ") and "\t" in line]
+    nested = [entry.split("\t", 1)[1] for entry in _git(tree, "ls-files", "--stage", "-z", run=run).stdout.split("\0")
+              if entry.startswith("160000 ") and "\t" in entry]
     populated = [path for path in nested if (tree / path / ".git").exists()]
     if populated:
         doubts.append(Doubt("submodule", f"a populated submodule: {', '.join(populated[:3])}", tuple(populated)))
-    changed = [line[3:] for line in status.stdout.splitlines() if line]
+    changed, entries = [], status.stdout.split("\0")
+    at = 0
+    while at < len(entries):
+        entry = entries[at]
+        at += 1
+        if len(entry) < 4:
+            continue
+        changed.append(entry[3:])
+        if "R" in entry[:2] or "C" in entry[:2]:   # the original path follows a rename or a copy
+            changed.append(entries[at])
+            at += 1
+    repositories = [path for path in changed if path.endswith("/") and (tree / path / ".git").exists()]
+    if repositories:   # an untracked nested repository: not plain files to move (final review of gc stage 2, I5)
+        doubts.append(Doubt("nested", f"a nested repository: {', '.join(repositories[:3])}", tuple(repositories)))
+        changed = [path for path in changed if path not in repositories]
     if changed:
         doubts.append(Doubt("edits", f"{len(changed)} uncommitted or untracked file(s): {', '.join(changed[:3])}",
                             tuple(changed)))

@@ -30,9 +30,21 @@ def _git(ledger, where, *args):
     return ledger.run(["git", "-C", str(where), *args], capture_output=True, text=True, check=False)
 
 
-def _patch(ledger, tree: Path) -> bytes:
-    done = ledger.run(["git", "-C", str(tree), "diff", "--binary", "HEAD"], capture_output=True, check=False)
-    return done.stdout if done.returncode == 0 else b""
+def _patch(ledger, tree: Path) -> bytes | None:
+    """The tree's edits against HEAD as a patch `git apply` takes back, whatever the person's diff settings are
+    (colour, no prefix, an external diff or a textconv made it unusable: final review of gc stage 2, C2); None when git
+    cannot say."""
+    done = ledger.run(["git", "-C", str(tree), "-c", "color.ui=never", "-c", "diff.noprefix=false", "diff-index", "-p",
+                       "--binary", "--no-ext-diff", "--no-textconv", "--no-color", "--src-prefix=a/", "--dst-prefix=b/",
+                       "HEAD"], capture_output=True, check=False)
+    return done.stdout if done.returncode == 0 else None
+
+
+def _reproduces(ledger, tree: Path, saved: Path) -> bool:
+    """Whether the saved patch, taken back out of the tree, applies: it describes exactly the edits that are there."""
+    done = ledger.run(["git", "-C", str(tree), "apply", "--check", "--reverse", "--binary", str(saved)],
+                      capture_output=True, check=False)
+    return done.returncode == 0
 
 
 def _untracked(ledger, tree: Path) -> list[str]:
@@ -41,7 +53,7 @@ def _untracked(ledger, tree: Path) -> list[str]:
     return [path for path in listed.stdout.split("\0") if path]
 
 
-def _left_over(ledger, tree: Path, patch: bytes, twins) -> str:
+def _left_over(ledger, tree: Path, patch: bytes, twins, saved: Path) -> str:
     """What still stands in the way after the archive, or "": only the saved edits and what comes back may stay."""
     if _untracked(ledger, tree):
         return "untracked files appeared"
@@ -50,6 +62,8 @@ def _left_over(ledger, tree: Path, patch: bytes, twins) -> str:
         return "ignored files with no copy remain"
     if _patch(ledger, tree) != patch:
         return "its edits changed while they were saved"
+    if patch and not _reproduces(ledger, tree, saved):
+        return "the saved edits would not apply back"
     return ""
 
 
@@ -66,6 +80,8 @@ def _carry_out(ledger, key: str, answer: dict, verdicts: list, twins) -> list[st
             return lines + [f"{visible(key)}: kept {visible(str(tree))}: {err}"]
         if value == "archive":
             patch = _patch(ledger, tree)
+            if patch is None:
+                return lines + [f"{visible(key)}: kept {visible(str(tree))}: git could not show its edits"]
             personal = [path for doubt in verdict.doubts if doubt.kind == "personal" for path in doubt.paths]
             files = _untracked(ledger, tree) + personal + [path for path, _, _ in verdict.archive]
             try:
@@ -74,7 +90,9 @@ def _carry_out(ledger, key: str, answer: dict, verdicts: list, twins) -> list[st
                                     branch=verdict.branch, head=verdict.head, patch=patch)
             except archive.ArchiveFailed as err:
                 return lines + [f"{visible(key)}: kept {visible(str(tree))}: {err}"]
-            left = _left_over(ledger, tree, patch, twins)
+            record = next(item for item in entry.trees if item["tree"] == str(tree))
+            saved = archive.root_of(ledger) / "entries" / entry.id / record["patch"] if record["patch"] else tree
+            left = _left_over(ledger, tree, patch, twins, saved)
             if left:
                 return lines + [f"{visible(key)}: kept {visible(str(tree))} after archiving its files: {left}; "
                                 f"restore with flotilla gc restore {entry.id}"]
@@ -150,9 +168,13 @@ def _locked(ledger, key, answer, item, *, sessions, proc_root, twins) -> tuple[l
             for tree in locked:
                 _git(ledger, ledger.root, "worktree", "unlock", tree)
             return [f"{visible(key)}: changed since you answered; asked again"], False
-        lines = _carry_out(ledger, key, answer, again, checking)
-        for tree in locked:
-            if Path(tree).exists():
-                _git(ledger, ledger.root, "worktree", "unlock", tree)
+        try:
+            lines = _carry_out(ledger, key, answer, again, checking)
+        except OSError as err:   # nothing may leave a tree locked by the collector (final review of gc stage 2, I5)
+            lines = [f"{visible(key)}: stopped: {err}"]
+        finally:
+            for tree in locked:
+                if Path(tree).exists():
+                    _git(ledger, ledger.root, "worktree", "unlock", tree)
         removed = all(not Path(tree).exists() for tree in item.trees)
         return lines, removed

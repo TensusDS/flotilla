@@ -93,9 +93,12 @@ def remove_tree(ledger, verdict: TreeVerdict, *, dropping: set[str], sessions, p
             why = ("; ".join(again.why) if not again.removable
                    else "its reflog moved since it was judged" if set(again.park) != set(verdict.park) else "")
         if not why and archive_entry and not archiving and _last_copies(tree, again):
-            archive.put(ledger, entry=archive_entry, tree=tree, files=[], tier="1",
-                        approved_by="tier 1: a twin survives", branch=again.branch, head=again.head,
-                        last_copies=_last_copies(tree, again))
+            try:
+                archive.put(ledger, entry=archive_entry, tree=tree, files=[], tier="1",
+                            approved_by="tier 1: a twin survives", branch=again.branch, head=again.head,
+                            last_copies=_last_copies(tree, again))
+            except archive.ArchiveFailed as err:
+                why = str(err)
         out["last_copies"] = _last_copies(tree, again)
         parked = []
         if not why:

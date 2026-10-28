@@ -101,3 +101,62 @@ def test_keep_does_nothing(tmp_path):
     lines, complete = carry_out(ledger, tree, data)
     assert complete and (tree / "notes.txt").exists() and any("kept" in line for line in lines)
     assert [answer["value"] for answer in data["answers"].values()] == ["keep"]
+
+
+# Final review of gc stage 2.
+
+def test_a_quoted_file_name_that_changed_since_the_answer_is_asked_again(tmp_path):
+    """C1: porcelain quotes `my render.txt`; the fingerprint stat'ed the quoted name and never saw the rewrite."""
+    root, ledger = world(tmp_path)
+    tree = tmp_path / "app-main-1"
+    git(root, "worktree", "add", "-q", "-b", "fleet/main-1", str(tree))
+    (tree / "my render.txt").write_text("first\n", encoding="utf-8")
+    (tree / "\u0440\u0435\u043d\u0434\u0435\u0440.txt").write_text("x\n", encoding="utf-8")
+    data = answered(ledger, tree, "junk")
+    (tree / "my render.txt").write_text("rewritten, fifty times more\n" * 50, encoding="utf-8")
+    lines, complete = carry_out(ledger, tree, data)
+    assert not complete and tree.exists() and any("changed since you answered" in line for line in lines), lines
+
+
+def test_the_saved_edits_survive_the_persons_diff_settings(tmp_path, monkeypatch):
+    """C2: `color.ui=always` (or an external diff) made the patch unusable, and the tree went anyway."""
+    root, ledger = world(tmp_path)
+    tree, _ = lone_tree(root, tmp_path)
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "2")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "color.ui")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "always")
+    monkeypatch.setenv("GIT_CONFIG_KEY_1", "diff.noprefix")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_1", "true")
+    data = answered(ledger, tree, "archive")
+    lines, complete = carry_out(ledger, tree, data)
+    assert complete and not tree.exists(), lines
+    entry = archive.entries(ledger)[0]
+    patch = (archive.root_of(ledger) / "entries" / entry.id / entry.trees[0]["patch"]).read_bytes()
+    assert b"\x1b[" not in patch and b"a/t.txt" in patch
+
+
+def test_an_untracked_nested_repository_is_never_offered_to_the_archive(tmp_path):
+    """I5: `ls-files --others` names it `sub/`; archiving it crashed apply and left the tree locked."""
+    root, ledger = world(tmp_path)
+    tree = tmp_path / "app-main-1"
+    git(root, "worktree", "add", "-q", "-b", "fleet/main-1", str(tree))
+    (tree / "sub").mkdir()
+    git(tree / "sub", "init", "-q")
+    shown = found(ledger, tree)
+    assert "archive" not in shown[0].offered and "nested" in [d.kind for d in shown[0].verdicts[0].doubts]
+
+
+def test_an_archive_that_fails_leaves_the_tree_unlocked_and_kept(tmp_path, monkeypatch):
+    """I5: an OSError inside the archive left the gc lock on the tree, so every later apply saw 'a session locked'."""
+    root, ledger = world(tmp_path)
+    tree, _ = lone_tree(root, tmp_path)
+    data = answered(ledger, tree, "archive")
+
+    def broken(*_args, **_kwargs):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(archive, "_store", broken)
+    lines, complete = carry_out(ledger, tree, data)
+    assert not complete and tree.exists(), lines
+    listed = git(root, "worktree", "list", "--porcelain")
+    assert "locked" not in listed.split(f"worktree {tree}", 1)[1].split("worktree ", 1)[0]
