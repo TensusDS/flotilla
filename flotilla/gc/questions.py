@@ -7,8 +7,11 @@ populated submodule, files git is told not to look at). The collector proposes o
 (tier 2, large), and "accept all as proposed" records that proposal per item; for tier 3 it shows the evidence and
 proposes nothing.
 
-An answer is bound to the fingerprint of what the person was shown: when anything in the trees moves, the answer no
-longer applies and the question comes back. A "keep" with the same fingerprint is not asked again.
+An answer is bound to the fingerprint of what the person was shown: a question's id carries it
+(`work:<key>@<fingerprint>`, `gc:all@<the proposals' fingerprint>`), an answer to an id that no longer matches is
+refused, and when anything in the trees moves later the recorded answer no longer applies and the question comes back
+(security review of 089743b). A "keep" with the same fingerprint is not asked again. Everything in a question is made
+visible: names of trees, files and branches reach the person's terminal.
 """
 
 from __future__ import annotations
@@ -119,11 +122,16 @@ def _all_seen(proposed: list[Item]) -> str:
     return hashlib.sha256(json.dumps(sorted([item.key, fingerprint(item)] for item in proposed)).encode()).hexdigest()
 
 
+def _short(digest: str) -> str:
+    return digest[:12]
+
+
 def _question(item: Item) -> dict:
     trees_named = ", ".join(Path(tree).name for tree in item.trees)
     text = (f"{item.key[len('work:'):]} ({trees_named}): " + " | ".join(item.evidence)
             + (" - proposed: archive and remove." if item.proposed else ""))
-    return _q(item.key, "Leftovers", text, [OPTIONS[name] for name in item.offered], free_text=True)
+    return _q(f"{item.key}@{_short(fingerprint(item))}", "Leftovers", visible(text),
+              [OPTIONS[name] for name in item.offered], free_text=True)
 
 
 def all_questions(found: list[Item], data: dict) -> list[dict]:
@@ -132,7 +140,8 @@ def all_questions(found: list[Item], data: dict) -> list[dict]:
     proposed = [item for item in pending if item.proposed]
     out = []
     if len(proposed) >= 2 and _answer(data, ALL).get("seen") != _all_seen(proposed):
-        out.append(_q(ALL, "All", f"Accept all {len(proposed)} proposals as shown below (archive and remove)?", [
+        out.append(_q(f"{ALL}@{_short(_all_seen(proposed))}", "All",
+                      f"Accept all {len(proposed)} proposals as shown below (archive and remove)?", [
             ("yes", "Accept all as proposed", "Archive and remove every item below that proposes it."),
             ("no", "One by one", "Answer each item on its own.")]))
     return out + [_question(item) for item in pending]
@@ -147,27 +156,33 @@ def _now() -> str:
 
 
 def record(found: list[Item], data: dict, qid: str, values: list[str]) -> str:
-    question = next((asked for asked in all_questions(found, data) if asked["id"] == qid), None)
+    current = all_questions(found, data)
+    question = next((asked for asked in current if asked["id"] == qid), None)
     if question is None:
-        raise AnswerError(f"no question `{qid}` applies now; run `flotilla gc next`")
+        key = qid.rsplit("@", 1)[0]
+        if any(asked["id"].rsplit("@", 1)[0] == key for asked in current):
+            raise AnswerError(f"`{visible(key)}` changed since it was shown; nothing recorded - run `flotilla gc "
+                              "next` and ask again")
+        raise AnswerError(f"no question `{visible(qid)}` applies now; run `flotilla gc next`")
+    key = qid.rsplit("@", 1)[0]
     allowed = {option["value"] for option in question["options"]}
     if len(values) > 1 and question["free_text"] and not set(values) <= allowed:
         values = [" ".join(value.strip() for value in values if value and value.strip())]
     value = validate_answer(question, values)
-    if qid == ALL:
+    if key == ALL:
         proposed = [item for item in _pending(found, data) if item.proposed]
         data["answers"][ALL] = {"value": value, "seen": _all_seen(proposed), "at": _now()}
         if value == "yes":
             for item in proposed:
                 data["answers"][item.key] = {"value": item.proposed, "seen": fingerprint(item), "at": _now()}
-            return f"recorded {qid}: {len(proposed)} item(s) to archive and remove"
-        return f"recorded {qid}: {value}"
-    item = next(item for item in found if item.key == qid)
+            return f"recorded {ALL}: {len(proposed)} item(s) to archive and remove"
+        return f"recorded {ALL}: {value}"
+    item = next(item for item in found if item.key == key)
     if value not in allowed:
-        data["answers"][qid] = {"value": "words", "words": value, "seen": fingerprint(item), "at": _now()}
-        return f"recorded {qid}: in your own words - a session carries them out as ordinary work"
-    data["answers"][qid] = {"value": value, "seen": fingerprint(item), "at": _now()}
-    return f"recorded {qid}: {value}"
+        data["answers"][key] = {"value": "words", "words": value, "seen": fingerprint(item), "at": _now()}
+        return f"recorded {visible(key)}: in your own words - a session carries them out as ordinary work"
+    data["answers"][key] = {"value": value, "seen": fingerprint(item), "at": _now()}
+    return f"recorded {visible(key)}: {value}"
 
 
 def waiting(found: list[Item], data: dict) -> list[str]:

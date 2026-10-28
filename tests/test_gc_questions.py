@@ -28,6 +28,11 @@ def items(ledger, *found, small=()):
     return questions.items(verdicts(ledger, *found), rows=ledger.rows(), small=set(small))
 
 
+def shown(found, data, index=0):
+    """The id of a question as `next` shows it: the item's key and the fingerprint of what was shown."""
+    return questions.all_questions(found, data)[index]["id"]
+
+
 def untracked(tree, name="new.txt"):
     (tree / name).write_text("n\n", encoding="utf-8")
 
@@ -53,7 +58,7 @@ def test_two_trees_of_one_row_are_one_question(tmp_path):
     assert [item.key for item in found] == [f"work:{row.id}"]
     assert sorted(found[0].trees) == sorted([str(builder), str(reviewer)])
     asked = questions.all_questions(found, store.empty())
-    assert [question["id"] for question in asked] == [f"work:{row.id}"]
+    assert [question["id"].rsplit("@", 1)[0] for question in asked] == [f"work:{row.id}"]
 
 
 def test_accept_all_records_the_proposal_per_item(tmp_path):
@@ -67,8 +72,8 @@ def test_accept_all_records_the_proposal_per_item(tmp_path):
     assert [item.proposed for item in found] == ["archive", "archive"]
     data = store.empty()
     asked = questions.all_questions(found, data)
-    assert asked[0]["id"] == "gc:all" and len(asked) == 3
-    questions.record(found, data, "gc:all", ["yes"])
+    assert asked[0]["id"].startswith("gc:all@") and len(asked) == 3
+    questions.record(found, data, asked[0]["id"], ["yes"])
     recorded = [data["answers"][item.key] for item in found]
     assert [answer["value"] for answer in recorded] == ["archive", "archive"]
     assert recorded[0]["seen"] != recorded[1]["seen"]
@@ -81,10 +86,11 @@ def test_keep_is_not_asked_again_until_something_changes(tmp_path):
     untracked(tree)
     found = items(ledger, tree)
     data = store.empty()
-    assert questions.record(found, data, found[0].key, ["keep"]).startswith("recorded")
+    assert questions.record(found, data, shown(found, data), ["keep"]).startswith("recorded")
     assert questions.all_questions(items(ledger, tree), data) == []
     untracked(tree, "another.txt")
-    assert [question["id"] for question in questions.all_questions(items(ledger, tree), data)] == [found[0].key]
+    asked = questions.all_questions(items(ledger, tree), data)
+    assert [question["id"].rsplit("@", 1)[0] for question in asked] == [found[0].key]
 
 
 def test_archive_is_not_offered_for_a_nested_repository(tmp_path):
@@ -106,7 +112,7 @@ def test_typed_words_wait_on_the_session(tmp_path):
     untracked(tree)
     found = items(ledger, tree)
     data = store.empty()
-    questions.record(found, data, found[0].key, ["commit", "these", "first"])
+    questions.record(found, data, shown(found, data), ["commit", "these", "first"])
     assert data["answers"][found[0].key]["value"] == "words"
     waiting = questions.waiting(found, data)
     assert len(waiting) == 1 and found[0].key in waiting[0] and "commit these first" in waiting[0]
@@ -120,7 +126,8 @@ def test_a_tier_three_item_has_no_proposal(tmp_path):
     untracked(second)
     found = items(ledger, first, second)
     assert [item.proposed for item in found] == ["", ""]
-    assert "gc:all" not in [question["id"] for question in questions.all_questions(found, store.empty())]
+    assert not [question for question in questions.all_questions(found, store.empty())
+                if question["id"].startswith("gc:all")]
 
 
 def test_a_small_tree_is_not_asked(tmp_path):
@@ -138,3 +145,42 @@ def test_the_store_round_trips(tmp_path):
     store.save(tmp_path / "state", "key", data)
     assert store.load(tmp_path / "state", "key") == data
     assert store.load(tmp_path / "state", "other") == store.empty()
+
+
+# Security review of 089743b: consent is bound to what was shown, and what is shown cannot drive the terminal.
+
+def test_an_answer_to_what_changed_since_it_was_shown_is_refused(tmp_path):
+    import pytest
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path, "app-main-1", "-b", "fleet/main-1")
+    untracked(tree)
+    found = items(ledger, tree)
+    data = store.empty()
+    asked = shown(found, data)
+    untracked(tree, "appeared-after.txt")
+    with pytest.raises(questions.AnswerError, match="changed since it was shown"):
+        questions.record(items(ledger, tree), data, asked, ["junk"])
+    assert data["answers"] == {}
+
+
+def test_accept_all_covers_only_the_proposals_shown(tmp_path):
+    import pytest
+    root, ledger = world(tmp_path)
+    (root / ".gitignore").write_text("out/\n", encoding="utf-8")
+    git(root, "add", ".gitignore")
+    git(root, "-c", "user.email=t@example.invalid", "-c", "user.name=t", "commit", "-q", "-m", "ignore")
+    first, second = archive_only(root, tmp_path, 1), archive_only(root, tmp_path, 2)
+    data = store.empty()
+    asked = shown(items(ledger, first, second), data)
+    third = archive_only(root, tmp_path, 3)
+    with pytest.raises(questions.AnswerError, match="changed since it was shown"):
+        questions.record(items(ledger, first, second, third), data, asked, ["yes"])
+    assert data["answers"] == {}
+
+
+def test_the_question_shows_control_characters_visibly(tmp_path):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path, "app-\x1b[2J-1", "-b", "fleet/main-1")   # git quotes file names, not this
+    untracked(tree)
+    text = questions.all_questions(items(ledger, tree), store.empty())[0]["question"]
+    assert "\x1b" not in text and "app-\\x1b[2J-1" in text
