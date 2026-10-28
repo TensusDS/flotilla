@@ -107,14 +107,19 @@ def test_many_kept_trees_of_one_reason_are_one_line(tmp_path):
 def test_a_branch_a_staying_tree_is_rebasing_is_kept(tmp_path):
     """Final review of gc stage 1, I4: during a rebase `git worktree list` shows the tree detached, so its landed
     branch read as nobody's and was deleted under the rebase."""
+    import shlex
     import subprocess
+    import sys
+    # The todo list gets a leading `break`; BSD sed's -i takes a suffix, so the editor is this Python, not sed.
+    editor = shlex.join([sys.executable, "-c",
+                         "import sys; p = sys.argv[1]; s = open(p).read(); open(p, 'w').write('break\\n' + s)"])
     root, ledger = world(tmp_path)
     tree = tmp_path / "app-main-1"
     git(root, "worktree", "add", "-q", "-b", "fleet/main-1", str(tree))
     commit(tree, "landed work", "a.txt", "1\n")
     git(root, "merge", "-q", "--ff-only", "fleet/main-1")
     git(root, "push", "-q", "origin", "HEAD:main")
-    subprocess.run(["git", "-C", str(tree), *IDENTITY, "-c", "sequence.editor=sed -i 1ibreak", "rebase", "-i",
+    subprocess.run(["git", "-C", str(tree), *IDENTITY, "-c", f"sequence.editor={editor}", "rebase", "-i",
                     "HEAD~1"], capture_output=True, text=True, check=True)
     report = sweep.run_pass(ledger, sessions=[], act=True, proc_root=tmp_path / "no-proc")
     assert tree.exists()
