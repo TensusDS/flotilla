@@ -45,6 +45,9 @@ class Report:
     moved: int = 0                                         # bytes moved to the archive
     freed: int = 0                                         # bytes removing the trees freed
     last_copies: list[str] = field(default_factory=list)   # where the last copy of a file removed on a twin is
+    judged: dict = field(default_factory=dict, repr=False)  # the trees' verdicts, for the questions (not printed)
+    going: set = field(default_factory=set, repr=False)     # the trees small enough to archive and remove
+    finder: object = field(default=None, repr=False)       # the pass's Twins, for the apply step
 
 
 def size_text(count: int) -> str:
@@ -260,6 +263,7 @@ def run_pass(ledger, *, sessions, act: bool, proc_root=None) -> Report:
             _keep(report, "branch", line.split(": ", 1)[1], name)
     report.remote_landed = branches.landed_remote_branches(ledger, found_trunks)
     twins.save_cache(ledger.state_dir, ledger.repo_key, cache)
+    report.judged, report.going, report.finder = judged, going, finder
     return report
 
 

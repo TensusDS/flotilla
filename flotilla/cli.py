@@ -60,6 +60,22 @@ def build_parser() -> argparse.ArgumentParser:
     organize_apply.add_argument("keys", nargs="*")
     for parser_ in (organize_next, organize_show, organize_answer, organize_propose, organize_apply):
         parser_.add_argument("--root", default=".")
+    gc_ = sub.add_parser("gc", help="the collector's questions and its archive: next, show, answer, apply, restore, "
+                                    "archive")
+    gc_actions = gc_.add_subparsers(dest="action", required=True)
+    gc_next = gc_actions.add_parser("next", help="the next round of questions, as JSON")
+    gc_show = gc_actions.add_parser("show", help="one piece of work as data for the session to read")
+    gc_show.add_argument("key")
+    gc_answer = gc_actions.add_parser("answer", help="record the person's answer to one question")
+    gc_answer.add_argument("question")
+    gc_answer.add_argument("values", nargs="+")
+    gc_apply = gc_actions.add_parser("apply", help="carry out what the person answered")
+    gc_apply.add_argument("keys", nargs="*")
+    gc_restore = gc_actions.add_parser("restore", help="put an archive entry back: its id, or a tree's name")
+    gc_restore.add_argument("key")
+    gc_archive = gc_actions.add_parser("archive", help="list the archive's entries")
+    for parser_ in (gc_next, gc_show, gc_answer, gc_apply, gc_restore, gc_archive):
+        parser_.add_argument("--root", default=".")
     work = sub.add_parser("work", help="move a row of the work ledger")
     moves = work.add_subparsers(dest="move", required=True)
 
@@ -380,6 +396,9 @@ def main(argv: list[str]) -> int:
     if args.command == "organize":
         from flotilla.organize.commands import run_organize
         return run_organize(args)
+    if args.command == "gc":
+        from flotilla.gc.commands import run_gc
+        return run_gc(args)
     if args.command in ("work", "tree", "receipt", "events", "status", "brief", "metrics"):
         from flotilla.ledger.commands import run_ledger_command
         return run_ledger_command(args)
