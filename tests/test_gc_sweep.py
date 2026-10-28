@@ -310,3 +310,35 @@ def test_content_archived_by_an_earlier_pass_lets_a_later_tree_go(tmp_path):
     assert not later.exists(), sweep.lines(report)
     named = {item["from"] for entry in archive.entries(ledger) for item in entry.files}
     assert {str(later / "out" / "x.bin"), str(later / "out" / "y.bin")} <= named
+
+
+# Second review of the branch, m-1 and m-10: the pass goes on when the archive fails, and says what it already moved.
+
+def test_a_pass_whose_archive_cannot_be_made_keeps_the_tree_unlocked(tmp_path):
+    root, ledger = world(tmp_path)
+    ignoring(root)
+    tree = ignored_seat(root, tmp_path, 1)
+    (tmp_path / "app-gc-archive").write_text("a file where the archive goes", encoding="utf-8")
+    report = sweep.run_pass(ledger, sessions=[], act=True, proc_root=tmp_path / "no-proc")
+    assert tree.exists() and "locked" not in git(root, "worktree", "list", "--porcelain")
+    assert any("app-main-1" in line and line.startswith("kept") for line in sweep.lines(report)), sweep.lines(report)
+
+
+def test_files_moved_before_an_archive_failure_are_reported(tmp_path, monkeypatch):
+    from flotilla.gc import archive
+    root, ledger = world(tmp_path)
+    ignoring(root)
+    tree = ignored_seat(root, tmp_path, 1, data=b"first")
+    (tree / "out" / "y.bin").write_bytes(b"second")
+    real, calls = archive._store, []
+
+    def failing_second(root_, source):
+        calls.append(source)
+        if len(calls) == 2:
+            raise archive.ArchiveFailed(f"{source} could not be moved: injected")
+        return real(root_, source)
+    monkeypatch.setattr(archive, "_store", failing_second)
+    report = sweep.run_pass(ledger, sessions=[], act=True, proc_root=tmp_path / "no-proc")
+    assert tree.exists()
+    assert any(line.startswith("archived 1 file") and "flotilla gc restore" in line for line in sweep.lines(report)), \
+        sweep.lines(report)

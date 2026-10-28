@@ -94,6 +94,8 @@ def remove_tree(ledger, verdict: TreeVerdict, *, dropping: set[str], sessions, p
                                moved=sum(size for _, size, _ in again.archive))
                 except archive.ArchiveFailed as err:
                     why = str(err)
+                    if err.files:   # moved before it failed: the person is told after (second review, m-10)
+                        out.update(entry=err.entry, files=err.files, moved=err.moved)
                 if not why:
                     again = judge_again()
         if not why:

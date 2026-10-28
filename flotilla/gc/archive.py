@@ -44,7 +44,12 @@ PATCH = re.compile(r"edits-[A-Za-z0-9._-]+\.patch")
 
 
 class ArchiveFailed(RuntimeError):
-    """A file could not be moved and verified; it and every file after it stay where they were."""
+    """A file could not be moved and verified; it and every file after it stay where they were. `entry`, `files` and
+    `moved` say what went into the archive before it (second review of the branch, m-10)."""
+
+    def __init__(self, message: str, *, entry: str = "", files: int = 0, moved: int = 0):
+        super().__init__(message)
+        self.entry, self.files, self.moved = entry, files, moved
 
 
 @dataclass
@@ -161,19 +166,25 @@ def _save(root: Path, entry: Entry) -> None:
 def put(ledger, *, entry: str, tree, files: list[str], tier: str, approved_by: str, branch: str, head: str,
         patch: bytes = b"", last_copies=()) -> Entry:
     """Move `files` (relative to `tree`) into the archive under `entry`, with the tree's record. Raises
-    ArchiveFailed on the first file that cannot be moved; the files before it are recorded, the rest stay."""
-    root, tree = _private(root_of(ledger)), Path(tree)
-    found = _load(_entry_path(root, entry)) or Entry(entry, datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                                                     tier, approved_by)
-    record = next((item for item in found.trees if item["tree"] == str(tree)), None)
-    if record is None:
-        record = {"tree": str(tree), "branch": branch, "head": head, "patch": ""}
-        found.trees.append(record)
-    if patch:
-        name = f"edits-{_component(tree.name) or 'tree'}.patch"
-        (_private(root / "entries" / entry) / name).write_bytes(patch)
-        record["patch"] = name
-    found.last_copies += [dict(item) for item in last_copies]
+    ArchiveFailed on the first file that cannot be moved, and on an archive that cannot be made or written (second
+    review of the branch, m-1); the files before it are recorded, the rest stay."""
+    root, tree, moved = root_of(ledger), Path(tree), []
+    try:
+        _private(root)
+        found = _load(_entry_path(root, entry)) or Entry(entry, datetime.now(timezone.utc).isoformat(
+            timespec="seconds"), tier, approved_by)
+        record = next((item for item in found.trees if item["tree"] == str(tree)), None)
+        if record is None:
+            record = {"tree": str(tree), "branch": branch, "head": head, "patch": ""}
+            found.trees.append(record)
+        if patch:
+            name = f"edits-{_component(tree.name) or 'tree'}.patch"
+            (_private(root / "entries" / entry) / name).write_bytes(patch)
+            record["patch"] = name
+        found.last_copies += [dict(item) for item in last_copies]
+    except OSError as err:
+        raise ArchiveFailed(f"the archive {visible(str(root))} could not be made or written: {err}") from err
+    failed = None
     try:
         with open(root / "MANIFEST", "a", encoding="utf-8") as manifest:
             for relative in files:   # any other failure becomes ArchiveFailed below: callers keep the tree
@@ -183,11 +194,21 @@ def put(ledger, *, entry: str, tree, files: list[str], tier: str, approved_by: s
                                         "after it moved")
                 digest, size = _store(root, source)
                 found.files.append({"sha256": digest, "size": size, "from": str(source), "tree": str(tree)})
+                moved.append(size)
                 manifest.write(f"{digest}  objects/{digest[:2]}/{digest}  <-  {visible(str(source))}\n")
+    except ArchiveFailed as err:
+        failed = str(err)
     except OSError as err:   # final review of gc stage 2, I5
-        raise ArchiveFailed(f"the archive could not take the files of {visible(str(tree))}: {err}") from err
-    finally:
+        failed = f"the archive could not take the files of {visible(str(tree))}: {err}"
+    try:
         _save(root, found)
+    except OSError as err:
+        failed = f"{failed + '; ' if failed else ''}the archive's record of {visible(entry)} could not be written: {err}"
+    if failed:
+        if moved:
+            count = f"{len(moved)} file{'' if len(moved) == 1 else 's'} before it {'is' if len(moved) == 1 else 'are'}"
+            failed += f"; {count} in the archive: restore with flotilla gc restore {entry}"
+        raise ArchiveFailed(failed, entry=entry if moved else "", files=len(moved), moved=sum(moved))
     return found
 
 

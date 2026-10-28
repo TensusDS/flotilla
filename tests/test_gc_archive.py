@@ -374,3 +374,36 @@ def test_restore_into_an_existing_tree_names_the_edits_it_did_not_apply(tmp_path
     stash(ledger, tree, ["a.bin"], patch=b"diff --git a/x b/x\n")
     lines = archive.restore(ledger, tree.name)
     assert (tree / "a.bin").exists() and any("not applied" in line and ".patch" in line for line in lines), lines
+
+
+# Second review of the branch, m-10: files moved before one that failed are in the archive; the failure says so.
+
+def test_a_put_that_fails_part_way_names_what_it_already_moved(tmp_path):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    put_file(tree, "out/a.bin", b"first")
+    with pytest.raises(archive.ArchiveFailed) as failed:
+        stash(ledger, tree, ["out/a.bin", "../escape.bin"])
+    entry = archive.entry_id("work:fleet/main-1", DAY)
+    assert (failed.value.entry, failed.value.files, failed.value.moved) == (entry, 1, 5)
+    assert f"1 file before it is in the archive: restore with flotilla gc restore {entry}" in str(failed.value)
+
+
+def test_a_put_that_moved_nothing_names_no_entry(tmp_path):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    with pytest.raises(archive.ArchiveFailed) as failed:
+        stash(ledger, tree, ["../escape.bin"])
+    assert failed.value.files == 0 and "restore with" not in str(failed.value)
+
+
+# Second review of the branch, m-1: an archive that cannot be made is a failure to archive, not a crash.
+
+def test_an_archive_that_cannot_be_made_fails_as_an_archive_failure(tmp_path):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    put_file(tree, "out/a.bin", b"first")
+    (tmp_path / "app-gc-archive").write_text("a file where the archive goes", encoding="utf-8")
+    with pytest.raises(archive.ArchiveFailed):
+        stash(ledger, tree, ["out/a.bin"], patch=b"edits")
+    assert (tree / "out" / "a.bin").read_bytes() == b"first"
