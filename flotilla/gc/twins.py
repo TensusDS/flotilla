@@ -3,8 +3,11 @@ pass - in the main checkout, in a store the project declares (`[gc] stores`), in
 does not judge, or as a blob a surviving ref reaches (`rev-list --objects` over the pass's holders: an unreachable
 blob in the object store is pruned by git's own gc).
 
-Hashes are sha256 of the bytes, cached by (path, size, mtime) so a daily pass does not reread gigabytes. A symlink
-is never followed: it is hashed as its target's text, never walked into, and never a twin.
+Hashes are sha256 of the bytes, cached by (path, size, mtime, ctime, inode) so a daily pass does not reread
+gigabytes: a rewrite can keep size and mtime, never ctime (security review of dea3c4e). `verify` hashes both files
+afresh, for the check under the removal lock. A symlink is never followed: it is hashed as its target's text, never
+walked into, and never a twin. A source is never walked into another repository or worktree (a `.git` below its
+top): trees nested in the main checkout are judged, not twins (security review of dea3c4e).
 """
 
 from __future__ import annotations
@@ -26,14 +29,16 @@ class Twin:
     kind: str   # checkout, store, archive, blob, tree
 
 
-def sha256(path: Path, cache: dict) -> str:
-    """The sha256 of the file's bytes, or of `link:<target>` for a symlink; reused while size and mtime hold."""
+def sha256(path: Path, cache: dict, *, fresh: bool = False) -> str:
+    """The sha256 of the file's bytes, or of `link:<target>` for a symlink; reused while size, mtime, ctime and the
+    inode hold, unless `fresh`."""
     path = Path(path)
     stat = path.lstat()
     key = str(path)
+    stamp = [stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino]
     known = cache.get(key)
-    if known and known[0] == stat.st_size and known[1] == stat.st_mtime_ns:
-        return known[2]
+    if not fresh and isinstance(known, list) and len(known) == 5 and known[:4] == stamp:
+        return known[4]
     digest = hashlib.sha256()
     if path.is_symlink():
         digest.update(f"link:{os.readlink(path)}".encode())
@@ -41,8 +46,8 @@ def sha256(path: Path, cache: dict) -> str:
         with open(path, "rb") as handle:
             for chunk in iter(lambda: handle.read(CHUNK), b""):
                 digest.update(chunk)
-    cache[key] = [stat.st_size, stat.st_mtime_ns, digest.hexdigest()]
-    return cache[key][2]
+    cache[key] = [*stamp, digest.hexdigest()]
+    return cache[key][4]
 
 
 def _cache_path(state: Path, repo_key: str) -> Path:
@@ -81,9 +86,11 @@ def sources(ledger, *, untouched: list[Path], archive_root: Path) -> list[tuple[
 
 
 def _walk(top: Path):
-    """Every regular file under `top`, never following a link and never entering `.git`."""
+    """Every regular file under `top`, never following a link, never entering `.git` and never entering another
+    repository or worktree below `top` (a directory holding a `.git` file or directory)."""
     for here, dirs, files in os.walk(top, followlinks=False):
-        dirs[:] = [name for name in dirs if name != ".git" and not os.path.islink(os.path.join(here, name))]
+        dirs[:] = [name for name in dirs if name != ".git" and not os.path.islink(os.path.join(here, name))
+                   and not os.path.lexists(os.path.join(here, name, ".git"))]
         for name in files:
             path = Path(here) / name
             if not path.is_symlink():
@@ -93,8 +100,9 @@ def _walk(top: Path):
 class Twins:
     """Finds a surviving byte-identical copy of a file. Sources are walked once, lazily, indexed by size."""
 
-    def __init__(self, ledger, *, holders: list[str], sources: list[tuple[Path, str]], cache: dict):
-        self.ledger, self.holders, self.cache = ledger, list(holders), cache
+    def __init__(self, ledger, *, holders: list[str], sources: list[tuple[Path, str]], cache: dict,
+                 verify: bool = False):
+        self.ledger, self.holders, self.cache, self.verify = ledger, list(holders), cache, verify
         self.sources = [(Path(where), kind) for where, kind in sources]
         self._by_size: list[tuple[str, dict[int, list[Path]]]] | None = None
         self._reachable: set[str] | None = None
@@ -147,16 +155,17 @@ class Twins:
         path = Path(path)
         if path.is_symlink() or not path.is_file():
             return None
-        size, digest = path.lstat().st_size, sha256(path, self.cache)
+        size, digest = path.lstat().st_size, sha256(path, self.cache, fresh=self.verify)
         for where, kind in self.sources:
-            if kind == "archive" and (where / digest[:2] / digest).exists():
-                return Twin(str(where / digest[:2] / digest), "archive")
+            stored = where / digest[:2] / digest
+            if kind == "archive" and stored.exists() and (not self.verify or sha256(stored, {}, fresh=True) == digest):
+                return Twin(str(stored), "archive")
         for kind, sizes in self._index():
             for other in sizes.get(size, ()):
                 try:
                     if other.resolve() == path.resolve():
                         continue
-                    if sha256(other, self.cache) == digest:
+                    if sha256(other, self.cache, fresh=self.verify) == digest:
                         return Twin(str(other), kind)
                 except OSError:
                     continue

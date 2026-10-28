@@ -98,3 +98,42 @@ def test_a_symlink_is_never_followed(tmp_path):
     (root / "store-link").symlink_to(tmp_path / "outside", target_is_directory=True)
     mine = put(tmp_path / "app-main-1" / "s.bin", b"secret")
     assert finder(ledger).find(mine) is None   # the checkout's linked directory is not walked
+
+
+def test_a_tree_inside_the_checkout_is_never_a_source(tmp_path):
+    """Security review of dea3c4e: two judged trees nested in the main checkout read as twins of each other."""
+    root, ledger = world(tmp_path)
+    inner = root / ".worktrees" / "app-main-2"
+    put(inner / ".git", b"gitdir: /elsewhere\n")
+    put(inner / "out" / "a.bin", b"only in judged trees")
+    mine = put(tmp_path / "app-main-1" / "out" / "a.bin", b"only in judged trees")
+    assert finder(ledger).find(mine) is None
+
+
+def test_a_rewrite_keeping_size_and_mtime_is_hashed_again(tmp_path):
+    """Security review of dea3c4e: the cache trusted (size, mtime), which a rewrite can keep."""
+    mine = put(tmp_path / "a.bin", b"aaaa")
+    cache: dict = {}
+    first = twins.sha256(mine, cache)
+    stat = mine.stat()
+    mine.write_bytes(b"bbbb")
+    os.utime(mine, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    assert twins.sha256(mine, cache) != first
+
+
+def test_verify_hashes_the_twin_without_the_cache(tmp_path):
+    root, ledger = world(tmp_path)
+    theirs = put(root / "out" / "a.bin", b"payload")
+    mine = put(tmp_path / "app-main-1" / "out" / "a.bin", b"payload")
+    cache: dict = {}
+    assert finder(ledger, cache).find(mine) is not None
+    theirs.write_bytes(b"PAYLOAD")   # changed since the cache was written ...
+    stat = theirs.stat()
+    cache[str(theirs)] = [stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino,
+                          hashlib.sha256(b"payload").hexdigest()]   # ... and the cache entry lies about it
+    trusting = twins.Twins(ledger, holders=refs.holders(ledger), cache=cache,
+                           sources=twins.sources(ledger, untouched=[], archive_root=tmp_path / "none"))
+    assert trusting.find(mine) is not None
+    checking = twins.Twins(ledger, holders=refs.holders(ledger), cache=cache, verify=True,
+                           sources=twins.sources(ledger, untouched=[], archive_root=tmp_path / "none"))
+    assert checking.find(mine) is None
