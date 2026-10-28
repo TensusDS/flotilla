@@ -214,3 +214,15 @@ def test_freed_and_moved_are_reported_apart(tmp_path):
     shown = sweep.lines(sweep.run_pass(ledger, sessions=[], act=True, proc_root=tmp_path / "no-proc"))
     line = next(line for line in shown if line.startswith("freed "))
     assert "moved 5 B to the archive" in line and "frees nothing until the archive is emptied" in line
+
+
+def test_report_lines_show_control_characters_visibly(tmp_path):
+    """Security review of 52a9a2f: a file name reaches the person's terminal; its control characters must not."""
+    root, ledger = world(tmp_path, {**PROFILE, "gc": {"stores": ["feedback"]}})
+    ignoring(root)
+    (root.parent / "feedback").mkdir()
+    (root.parent / "feedback" / "x.bin").write_bytes(b"12345")
+    ignored_seat(root, tmp_path, 1, path="out/a\x1b[31m.bin")
+    shown = sweep.lines(sweep.run_pass(ledger, sessions=[], act=True, proc_root=tmp_path / "no-proc"))
+    assert any(line.startswith("the last copy of out/a") for line in shown), shown
+    assert not any("\x1b" in line for line in shown), shown

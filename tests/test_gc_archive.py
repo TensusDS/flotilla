@@ -225,3 +225,61 @@ def test_restore_refuses_a_tree_that_is_not_one_of_the_repositorys(tmp_path):
     path.write_text(json.dumps(data), encoding="utf-8")
     lines = archive.restore(ledger, entry.id)
     assert not (elsewhere / "a.bin").exists() and any("refused" in line for line in lines), lines
+
+
+# Security review of 554be5c: an entry's record is a file any session can edit - digest, head and tree are checked.
+
+def tampered(ledger, entry, change):
+    import json
+    path = archive.root_of(ledger) / "entries" / entry.id / "entry.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    change(data)
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def test_restore_refuses_a_digest_that_is_not_one(tmp_path):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    put_file(tree, "a.bin", b"payload")
+    entry = stash(ledger, tree, ["a.bin"])
+    (tmp_path / "secret").write_bytes(b"secret")
+    tampered(ledger, entry, lambda data: data["files"][0].update(sha256="../../../secret"))
+    lines = archive.restore(ledger, entry.id)
+    assert not (tree / "a.bin").exists() and any("refused" in line for line in lines), lines
+
+
+def test_restore_refuses_an_object_that_does_not_hash_to_its_name(tmp_path):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    put_file(tree, "a.bin", b"payload")
+    entry = stash(ledger, tree, ["a.bin"])
+    digest = entry.files[0]["sha256"]
+    stored = archive.root_of(ledger) / "objects" / digest[:2] / digest
+    stored.chmod(0o600)
+    stored.write_bytes(b"swapped")
+    lines = archive.restore(ledger, entry.id)
+    assert not (tree / "a.bin").exists() and any("refused" in line for line in lines), lines
+
+
+def test_restore_makes_a_tree_again_only_beside_the_main_checkout(tmp_path):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path, f"{root.name}-main-1")
+    put_file(tree, "a.bin", b"payload")
+    entry = stash(ledger, tree, ["a.bin"])
+    elsewhere = tmp_path / "deep" / "inside"
+    tampered(ledger, entry, lambda data: (data["trees"][0].update(tree=str(elsewhere)),
+                                          data["files"][0].update(tree=str(elsewhere),
+                                                                  **{"from": str(elsewhere / "a.bin")})))
+    lines = archive.restore(ledger, entry.id)
+    assert not elsewhere.exists() and any("refused" in line for line in lines), lines
+
+
+def test_restore_refuses_a_head_that_is_not_an_object_id(tmp_path):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path, f"{root.name}-main-1")
+    put_file(tree, "a.bin", b"payload")
+    entry = stash(ledger, tree, ["a.bin"])
+    git(root, "worktree", "remove", "--force", str(tree))
+    tampered(ledger, entry, lambda data: data["trees"][0].update(head="--orphan=x"))
+    lines = archive.restore(ledger, entry.id)
+    assert not tree.exists() and any("refused" in line for line in lines), lines

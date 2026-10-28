@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from flotilla.core.text import visible
 from flotilla.gc import archive, branches, refs, remove, trees, twins
 
 MB = 1 << 20
@@ -299,4 +300,5 @@ def lines(report: Report) -> list[str]:
     if report.remote_landed:
         out.append(f"{_count(len(report.remote_landed), 'branch')} on origin have landed and are never deleted "
                    f"here: {_list(report.remote_landed)}")
-    return out
+    # names of trees, branches and files reach the person's terminal (security review of 52a9a2f)
+    return [visible(line) for line in out]

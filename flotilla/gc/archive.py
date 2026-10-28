@@ -14,7 +14,10 @@ Restore copies the files back and keeps the objects (another entry may point to 
 bytes is not overwritten, and a tree that is gone is made again at its parked HEAD first. Nothing is taken from or
 written to outside the tree a file belongs to: a path with `..` or a linked directory on the way is refused on both
 sides, and restore writes only into a worktree of this repository, creating each file without following a link
-(security review of 75eff4b) - the archive's records are files any session could edit. Nothing here deletes from
+(security review of 75eff4b) - the archive's records are files any session could edit. For the same reason a
+record's digest, HEAD and patch name must have their own shapes, an object must hash to its name before it is copied
+back, and a gone tree is made again only where spawn cuts seat trees, beside the main checkout under its name
+(security review of 554be5c). Nothing here deletes from
 the archive: its lifetime is stage 3's, and only on the person's recorded yes.
 """
 
@@ -23,6 +26,7 @@ from __future__ import annotations
 import errno
 import json
 import os
+import re
 import shutil
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -31,6 +35,11 @@ from pathlib import Path
 from flotilla.core.text import visible
 from flotilla.gc.park import _component
 from flotilla.gc.twins import sha256
+
+
+DIGEST = re.compile(r"[0-9a-f]{64}")
+OBJECT_ID = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
+PATCH = re.compile(r"edits-[A-Za-z0-9._-]+\.patch")
 
 
 class ArchiveFailed(RuntimeError):
@@ -223,6 +232,14 @@ def restore(ledger, key: str) -> list[str]:
         if tree.exists() and str(tree.resolve()) not in _worktrees(ledger):
             lines.append(f"refused: {visible(str(tree))} is not a worktree of this repository")
             continue
+        main = Path(ledger.root)
+        if not tree.exists() and (tree.parent != main.parent or not tree.name.startswith(f"{main.name}-")):
+            lines.append(f"refused: {visible(str(tree))} is gone and is not where seat trees are cut "
+                         f"({visible(str(main.parent))}/{visible(main.name)}-...)")
+            continue
+        if not tree.exists() and not OBJECT_ID.fullmatch(str(record.get("head", ""))):
+            lines.append(f"refused: the record's HEAD for {visible(str(tree))} is not an object id")
+            continue
         if not tree.exists():
             made = _git(ledger, "worktree", "add", "--detach", str(tree), record["head"])
             if made.returncode != 0:
@@ -235,6 +252,9 @@ def restore(ledger, key: str) -> list[str]:
         for item in entry.files:
             if item["tree"] != record["tree"]:
                 continue
+            if not DIGEST.fullmatch(str(item.get("sha256", ""))):
+                lines.append(f"refused: the record of {visible(str(item.get('from', '')))} names no sha256")
+                continue
             target, stored = Path(item["from"]), _object(root, item["sha256"])
             if not _inside(tree, target):
                 lines.append(f"refused: {visible(str(target))} is not inside {visible(str(tree))}")
@@ -243,6 +263,9 @@ def restore(ledger, key: str) -> list[str]:
                 if not _same(target, item["sha256"]):
                     lines.append(f"not overwritten: {visible(str(target))} holds other bytes now")
                 continue
+            if not _same(stored, item["sha256"]):
+                lines.append(f"refused: the archive's copy of {visible(str(target))} does not hash to its name")
+                continue
             _private(target.parent)
             if not _inside(tree, target):   # a directory made just now could not be a link; one found could
                 lines.append(f"refused: {visible(str(target))} is not inside {visible(str(tree))}")
@@ -250,7 +273,10 @@ def restore(ledger, key: str) -> list[str]:
             _copy_back(stored, target)
             back += 1
         lines.append(f"restored {back} file(s) into {visible(str(tree))}")
-        if record.get("patch") and fresh:
+        if record.get("patch") and fresh and not PATCH.fullmatch(str(record["patch"])):
+            lines.append(f"refused: the saved edits' name `{visible(str(record['patch']))}` is not one the archive "
+                         "writes")
+        elif record.get("patch") and fresh:
             applied = ledger.run(["git", "-C", str(tree), "apply", "--binary",
                                   str(root / "entries" / entry.id / record["patch"])],
                                  capture_output=True, text=True, check=False)
