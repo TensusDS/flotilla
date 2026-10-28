@@ -160,3 +160,38 @@ def test_an_archive_that_fails_leaves_the_tree_unlocked_and_kept(tmp_path, monke
     assert not complete and tree.exists(), lines
     listed = git(root, "worktree", "list", "--porcelain")
     assert "locked" not in listed.split(f"worktree {tree}", 1)[1].split("worktree ", 1)[0]
+
+
+# Second review of the branch, I-4: "archive and remove" recorded neither the files that went on an archive twin nor
+# the last copies, so restore came back without them and the place of the last copy was not written down.
+
+def test_archive_and_remove_records_twins_and_last_copies(tmp_path):
+    root, ledger = world(tmp_path)
+    commit(root, "ignore", ".gitignore", "out/\n")
+    git(root, "push", "-q", "origin", "HEAD:main")
+    (root / "out").mkdir()
+    (root / "out" / "kept.bin").write_bytes(b"in the checkout")
+    first = tmp_path / "app-main-1"
+    git(root, "worktree", "add", "-q", "-b", "fleet/main-1", str(first))
+    (first / "out").mkdir()
+    (first / "out" / "x.bin").write_bytes(b"archived before")
+    archive.put(ledger, entry="earlier", tree=first, files=["out/x.bin"], tier="2", approved_by="t", branch="",
+                head="")
+    tree = tmp_path / "app-main-2"
+    git(root, "worktree", "add", "-q", "-b", "fleet/main-2", str(tree))
+    (tree / "out").mkdir()
+    (tree / "out" / "x.bin").write_bytes(b"archived before")
+    (tree / "out" / "kept.bin").write_bytes(b"in the checkout")
+    (tree / "notes.txt").write_text("mine\n", encoding="utf-8")
+    data = answered(ledger, tree, "archive")
+    finder = twins.Twins(ledger, holders=refs.holders(ledger), cache={},   # as `flotilla gc apply` passes it
+                         sources=twins.sources(ledger, untouched=[], archive_root=archive.root_of(ledger)))
+    lines, complete = apply.apply(ledger, data, items=found(ledger, tree), sessions=[],
+                                  proc_root=tree.parent / "no-proc", twins=finder)
+    assert complete and not tree.exists(), lines
+    mine = [entry for entry in archive.entries(ledger) if any(item["tree"] == str(tree) for item in entry.trees)]
+    assert {item["from"] for entry in mine for item in entry.files} == {str(tree / "notes.txt"),
+                                                                       str(tree / "out" / "x.bin")}
+    assert [copy["from"] for entry in mine for copy in entry.last_copies] == [str(tree / "out" / "kept.bin")]
+    archive.restore(ledger, tree.name)
+    assert (tree / "out" / "x.bin").read_bytes() == b"archived before"

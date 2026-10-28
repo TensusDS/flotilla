@@ -23,6 +23,7 @@ from pathlib import Path
 from flotilla.core.text import visible
 from flotilla.gc import archive, ignored, questions, refs
 from flotilla.gc.park import ParkFailed, park
+from flotilla.gc.remove import last_copies
 from flotilla.gc.trees import GC_LOCK, judge_tree
 
 
@@ -83,11 +84,13 @@ def _carry_out(ledger, key: str, answer: dict, verdicts: list, twins) -> list[st
             if patch is None:
                 return lines + [f"{visible(key)}: kept {visible(str(tree))}: git could not show its edits"]
             personal = [path for doubt in verdict.doubts if doubt.kind == "personal" for path in doubt.paths]
-            files = _untracked(ledger, tree) + personal + [path for path, _, _ in verdict.archive]
-            try:
+            stored = [path for path, twin in verdict.twins if twin.kind == "archive"]   # restorable by its name
+            files = _untracked(ledger, tree) + personal + [path for path, _, _ in verdict.archive] + stored
+            try:   # with the last copies (second review of the branch, I-4)
                 entry = archive.put(ledger, entry=archive.entry_id(key, day), tree=tree, files=files,
                                     tier="3" if verdict.doubts else "2", approved_by=f"answer {key} {answer['at']}",
-                                    branch=verdict.branch, head=verdict.head, patch=patch)
+                                    branch=verdict.branch, head=verdict.head, patch=patch,
+                                    last_copies=last_copies(str(tree), verdict))
             except archive.ArchiveFailed as err:
                 return lines + [f"{visible(key)}: kept {visible(str(tree))}: {err}"]
             record = next(item for item in entry.trees if item["tree"] == str(tree))
