@@ -40,23 +40,24 @@ Loop until `next` says `done`:
 
 To look closer before answering, `flotilla gc show <key>` lists one piece of work's trees and files as data.
 
-## 2. Own words
+## 2. Carry it out
 
-`next` lists, under its notes, the pieces answered in the person's own words ("commit these to the branch first").
-Carry them out as ordinary work in that tree, through the ledger like any other work; then run `next` again - the
-tree is judged afresh.
-
-## 3. Carry it out
-
-When `next` says `done`, run `flotilla gc apply` and report every line it prints. A line saying a piece changed since
-the person answered means it is asked again: go back to step 1.
+When `next` says `done` (no questions left), run `flotilla gc apply` and report every line it prints. A line saying
+a piece changed since the person answered means it is asked again: go back to step 1. An own-words answer does not
+hold the others back; it is step 3.
 
 - **archive** - the files go to `<project>-gc-archive/`, the edits are saved as a patch, the commits are parked, the
   tree goes. Each line names its restore command.
 - **junk** - the tree goes for good; its commits are still parked. Never asked about again.
 - **keep** - nothing moves; asked again only when something in the tree changes.
 
-Finish with what was archived, what was removed for good, and what was kept.
+## 3. Own words
+
+`next` counts in `words` the pieces answered in the person's own words ("commit these to the branch first") and
+lists them under its notes. Carry them out as ordinary work in that tree, through the ledger like any other work;
+then run `next` again - the tree is judged afresh.
+
+Finish with what was archived, what was removed for good, what was kept, and what waits on the person's words.
 
 ## 4. Restore
 

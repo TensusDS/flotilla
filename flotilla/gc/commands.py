@@ -88,8 +88,10 @@ def run_gc(args, *, ledger=None, census=None) -> int:
     if args.action == "next":
         waiting = questions.waiting(found, data)
         asked = questions.all_questions(found, data)
+        # done: nothing left to ask, so the recorded answers can be carried out; an own-words answer waits on its
+        # work without holding the rest back (second review of the branch, m-8)
         print(json.dumps({"questions": asked[:questions.MAX_PER_ROUND], "notes": waiting + report.warnings,
-                          "done": not asked and not waiting}, indent=2))
+                          "done": not asked, "words": len(waiting)}, indent=2))
         return 0
     if args.action == "show":
         return _show(found, args.key)

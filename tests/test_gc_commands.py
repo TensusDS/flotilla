@@ -111,3 +111,36 @@ def test_each_tree_in_an_entry_keeps_its_own_approval(tmp_path, capsys):
     shown = capsys.readouterr().out
     assert "app-main-1  tier 3  approved by answer work:x 2026-10-28T10:00:00+00:00" in shown, shown
     assert "app-main-2  tier 2  approved by told after: small" in shown, shown
+
+
+# Second review of the branch, m-8: `next` said done only when no own-words answer waited, and the skill applies only
+# after done, so one own-words answer held back every archive and junk answer while they went stale.
+
+def test_an_own_words_answer_does_not_hold_back_the_rest(tmp_path, capsys, monkeypatch):
+    root, ledger, tree = world(tmp_path)
+    other = tmp_path / "app-main-2"
+    git(root, "worktree", "add", "-q", "-b", "fleet/main-2", str(other))
+    (other / "notes.txt").write_text("theirs\n", encoding="utf-8")
+    monkeypatch.setattr(caller, "person_refusal", lambda what: "")
+    ids = {question["id"].rsplit("@", 1)[0]: question["id"] for question in next_round(ledger, capsys)["questions"]}
+    assert run(ledger, "answer", question=ids["work:fleet/main-1"], values=["commit these to the branch first"]) == 0
+    assert run(ledger, "answer", question=ids["work:fleet/main-2"], values=["junk"]) == 0
+    shown = next_round(ledger, capsys)
+    assert shown["done"] is True and shown["words"] == 1, shown
+    assert any("commit these to the branch first" in note for note in shown["notes"]), shown
+    run(ledger, "apply", keys=[])
+    assert not other.exists() and tree.exists()
+
+
+# Second review of the branch, m-9: a junk answer carried out stayed recorded, and the next apply said it "no longer
+# waits on you" and exited 2.
+
+def test_a_carried_out_junk_answer_is_not_reported_again(tmp_path, capsys, monkeypatch):
+    _, ledger, tree = world(tmp_path)
+    qid = next_round(ledger, capsys)["questions"][0]["id"]
+    monkeypatch.setattr(caller, "person_refusal", lambda what: "")
+    assert run(ledger, "answer", question=qid, values=["junk"]) == 0
+    assert run(ledger, "apply", keys=[]) == 0 and not tree.exists()
+    capsys.readouterr()
+    assert run(ledger, "apply", keys=[]) == 0
+    assert "no longer waits" not in capsys.readouterr().out

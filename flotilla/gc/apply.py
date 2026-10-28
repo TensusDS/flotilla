@@ -144,10 +144,8 @@ def apply(ledger, data: dict, *, items: list, keys=(), sessions, proc_root=None,
         lines_here, done = _locked(ledger, key, answer, item, sessions=sessions, proc_root=proc_root, twins=twins)
         lines += lines_here
         complete = complete and done
-        if done and value == "archive":
-            data["answers"].pop(key)
-        elif not done:
-            data["answers"].pop(key, None)
+        # spent either way: carried out (junk too - its tree is gone, second review of the branch, m-9), or asked again
+        data["answers"].pop(key, None)
     return lines, complete
 
 

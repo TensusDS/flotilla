@@ -72,7 +72,7 @@ def test_junk_removes_for_good_but_parks_the_commits(tmp_path):
     assert complete and not tree.exists(), lines
     assert archive.entries(ledger) == []
     assert head in git(root, "for-each-ref", "--format=%(objectname)", "refs/flotilla/parked/").split()
-    assert [answer["value"] for answer in data["answers"].values()] == ["junk"]
+    assert data["answers"] == {}   # carried out: nothing is left to ask (second review of the branch, m-9)
 
 
 def test_a_tree_that_changed_since_the_answer_is_asked_again(tmp_path):
