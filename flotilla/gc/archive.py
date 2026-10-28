@@ -255,6 +255,13 @@ def restore(ledger, key: str) -> list[str]:
         if not tree.exists() and not OBJECT_ID.fullmatch(str(record.get("head", ""))):
             lines.append(f"refused: the record's HEAD for {visible(str(tree))} is not an object id")
             continue
+        if tree.exists():   # a seat's name is reused: an old entry must not fill a new session's tree (I9)
+            now = ledger.run(["git", "-C", str(tree), "rev-parse", "--verify", "-q", "HEAD"], capture_output=True,
+                             text=True, check=False).stdout.strip()
+            if now != record.get("head"):
+                lines.append(f"refused: {visible(str(tree))} is at another commit ({now[:7]}) than the archived one "
+                             f"({str(record.get('head'))[:7]})")
+                continue
         if not tree.exists():
             made = _git(ledger, "worktree", "add", "--detach", str(tree), record["head"])
             if made.returncode != 0:
@@ -288,7 +295,10 @@ def restore(ledger, key: str) -> list[str]:
             _copy_back(stored, target)
             back += 1
         lines.append(f"restored {back} file(s) into {visible(str(tree))}")
-        if record.get("patch") and fresh and not PATCH.fullmatch(str(record["patch"])):
+        if record.get("patch") and not fresh:
+            lines.append(f"the saved edits were not applied: {visible(str(tree))} exists; apply "
+                         f"{visible(str(root / 'entries' / entry.id / str(record['patch'])))} by hand if you want them")
+        elif record.get("patch") and fresh and not PATCH.fullmatch(str(record["patch"])):
             lines.append(f"refused: the saved edits' name `{visible(str(record['patch']))}` is not one the archive "
                          "writes")
         elif record.get("patch") and fresh:

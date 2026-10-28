@@ -183,3 +183,34 @@ def test_the_question_shows_control_characters_visibly(tmp_path):
     untracked(tree)
     text = questions.all_questions(items(ledger, tree), store.empty())[0]["question"]
     assert "\x1b" not in text and "app-\\x1b[2J-1" in text
+
+
+# Final review of gc stage 2, I6: "accept all" covers what was shown in the round, and an item's own answer wins.
+
+def large_items(root, ledger, tmp_path, count):
+    (root / ".gitignore").write_text("out/\n", encoding="utf-8")
+    git(root, "add", ".gitignore")
+    git(root, "-c", "user.email=t@example.invalid", "-c", "user.name=t", "commit", "-q", "-m", "ignore")
+    return [archive_only(root, tmp_path, number) for number in range(1, count + 1)]
+
+
+def test_accept_all_covers_only_the_round_it_is_shown_in(tmp_path):
+    root, ledger = world(tmp_path)
+    found = items(ledger, *large_items(root, ledger, tmp_path, 5))
+    data = store.empty()
+    asked = questions.next_round(found, data)
+    assert asked[0]["id"].startswith("gc:all@") and len(asked) == questions.MAX_PER_ROUND
+    assert f"Accept all {len(asked) - 1} proposals" in asked[0]["question"]
+    questions.record(found, data, asked[0]["id"], ["yes"])
+    shown = {question["id"].rsplit("@", 1)[0] for question in asked[1:]}
+    assert {key for key, answer in data["answers"].items() if answer.get("value") == "archive"} == shown
+
+
+def test_an_items_own_answer_wins_over_accept_all(tmp_path):
+    root, ledger = world(tmp_path)
+    found = items(ledger, *large_items(root, ledger, tmp_path, 2))
+    data = store.empty()
+    asked = questions.next_round(found, data)
+    questions.record(found, data, asked[0]["id"], ["yes"])
+    questions.record(found, data, asked[1]["id"], ["keep"])
+    assert data["answers"][found[0].key]["value"] == "keep"

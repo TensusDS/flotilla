@@ -134,14 +134,27 @@ def _question(item: Item) -> dict:
               [OPTIONS[name] for name in item.offered], free_text=True)
 
 
+def _covered(pending: list[Item]) -> list[Item]:
+    """The proposals the round shows beside "accept all": it covers those and no other (final review of gc stage 2,
+    I6)."""
+    return [item for item in pending[:MAX_PER_ROUND - 1] if item.proposed]
+
+
+def _by_all(found: list[Item], data: dict) -> list[Item]:
+    """Items "accept all" answered, still as shown: their own question can still be answered, and that answer wins."""
+    return [item for item in found if _answer(data, item.key).get("via") == ALL
+            and _answer(data, item.key).get("seen") == fingerprint(item)]
+
+
 def all_questions(found: list[Item], data: dict) -> list[dict]:
-    """Every question that applies now: "accept all" first when two or more proposals wait, then one per item."""
+    """Every question that applies now: "accept all" first when two or more proposals of the round wait, then one
+    per item."""
     pending = _pending(found, data)
-    proposed = [item for item in pending if item.proposed]
+    covered = _covered(pending)
     out = []
-    if len(proposed) >= 2 and _answer(data, ALL).get("seen") != _all_seen(proposed):
-        out.append(_q(f"{ALL}@{_short(_all_seen(proposed))}", "All",
-                      f"Accept all {len(proposed)} proposals as shown below (archive and remove)?", [
+    if len(covered) >= 2 and _answer(data, ALL).get("seen") != _all_seen(covered):
+        out.append(_q(f"{ALL}@{_short(_all_seen(covered))}", "All",
+                      f"Accept all {len(covered)} proposals shown with this question (archive and remove)?", [
             ("yes", "Accept all as proposed", "Archive and remove every item below that proposes it."),
             ("no", "One by one", "Answer each item on its own.")]))
     return out + [_question(item) for item in pending]
@@ -156,7 +169,7 @@ def _now() -> str:
 
 
 def record(found: list[Item], data: dict, qid: str, values: list[str]) -> str:
-    current = all_questions(found, data)
+    current = all_questions(found, data) + [_question(item) for item in _by_all(found, data)]
     question = next((asked for asked in current if asked["id"] == qid), None)
     if question is None:
         key = qid.rsplit("@", 1)[0]
@@ -170,11 +183,12 @@ def record(found: list[Item], data: dict, qid: str, values: list[str]) -> str:
         values = [" ".join(value.strip() for value in values if value and value.strip())]
     value = validate_answer(question, values)
     if key == ALL:
-        proposed = [item for item in _pending(found, data) if item.proposed]
+        proposed = _covered(_pending(found, data))
         data["answers"][ALL] = {"value": value, "seen": _all_seen(proposed), "at": _now()}
         if value == "yes":
             for item in proposed:
-                data["answers"][item.key] = {"value": item.proposed, "seen": fingerprint(item), "at": _now()}
+                data["answers"][item.key] = {"value": item.proposed, "seen": fingerprint(item), "at": _now(),
+                                             "via": ALL}
             return f"recorded {ALL}: {len(proposed)} item(s) to archive and remove"
         return f"recorded {ALL}: {value}"
     item = next(item for item in found if item.key == key)

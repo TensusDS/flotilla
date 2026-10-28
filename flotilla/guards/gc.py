@@ -53,8 +53,8 @@ def door(segment) -> str:
     if found is None:
         return ""
     verb, args, _ = found
-    if verb == "worktree" and args[:1] == ["remove"] and (_long(args, "--force") or _short(args, "f")):
-        return "worktree-force"
+    if verb == "worktree" and args[:1] == ["remove"]:   # forced or not: git drops ignored files silently (I2)
+        return "worktree-remove"
     if verb == "worktree" and args[:1] == ["prune"]:
         return "prune"
     if verb == "branch":
@@ -62,7 +62,7 @@ def door(segment) -> str:
         forced = _long(args, "--force") or _short(args, "Df")
         if deleting and forced:
             return "branch"
-    if verb == "update-ref" and ("--stdin" in args or _long(args, "--delete") or _short(args, "d")
+    if verb == "update-ref" and (_long(args, "--stdin") or _long(args, "--delete") or _short(args, "d")
                                  or any(_zero(arg) for arg in args)):
         return "update-ref"
     return ""
@@ -84,6 +84,19 @@ def _touches(path: Path, guarded: list[Path]) -> bool:
     return any(path == place or place in path.parents or path in place.parents for place in guarded)
 
 
+def _reaches(path: Path, seats: set[Path], archive: Path) -> bool:
+    """What `rm -r` must not take: a seat tree itself or anything holding one, and the archive, anything in it or
+    holding it. Inside a seat tree is the session's own work (final review of gc stage 2, I3)."""
+    return (path in seats or any(path in seat.parents for seat in seats)
+            or path == archive or archive in path.parents or path in archive.parents)
+
+
+def _unsure(word: str) -> bool:
+    """An operand whose expansion may climb: a substitution or a variable, or a glob that can match `..`."""
+    return any(mark in word for mark in ("$", "`")) or any(
+        part.startswith(".") and any(mark in part for mark in UNREADABLE) for part in Path(word).parts)
+
+
 def _operands(words) -> list[str]:
     out, ended = [], False
     for word in words:
@@ -102,7 +115,6 @@ def check(segment, *, seat_trees: set[Path], fleet_branches: set[str], archive: 
     if kind == "prune":
         return refusal
     if kind == "rm":
-        guarded = [*seat_trees, archive]
         base = segment.cwd.resolve() if segment.cwd else None
         for word in _operands(segment.words[1:]):
             target = _resolve(base, word)
@@ -113,24 +125,23 @@ def check(segment, *, seat_trees: set[Path], fleet_branches: set[str], archive: 
                         break
                     literal.append(part)
                 prefix = _resolve(base, str(Path(*literal))) if literal else None
-                if prefix is None:   # nothing of it can be named: judged by where it runs
-                    if base is None or _touches(base, guarded):
-                        return refusal
-                elif _touches(prefix, guarded):
+                # judged by where it runs whenever the prefix cannot bound it (security review of b4a4213)
+                if (prefix is None or _unsure(word)) and (base is None or _reaches(base, seat_trees, archive)):
+                    return refusal
+                if prefix is not None and _reaches(prefix, seat_trees, archive):
                     return refusal
                 continue
-            if _touches(target, guarded):
+            if _reaches(target, seat_trees, archive):
                 return refusal
         return None
     verb, args, directory = segment.git()
     if kind == "update-ref":
-        if "--stdin" in args:
+        if _long(args, "--stdin"):
             return refusal
-        names = _operands(args)
-        ref = names[0] if names else ""
-        protected = ref.startswith(("refs/flotilla/", "refs/heads/fleet/")) or (
-            ref.startswith("refs/heads/") and ref[len("refs/heads/"):] in fleet_branches)
-        return refusal if protected or not ref else None
+        names = _operands(args)   # every operand: `-m <why>` puts the message first (security review of b4a4213)
+        protected = any(ref.startswith(("refs/flotilla/", "refs/heads/fleet/")) or (
+            ref.startswith("refs/heads/") and ref[len("refs/heads/"):] in fleet_branches) for ref in names)
+        return refusal if protected or not names else None
     if kind == "branch":
         names = _operands(args)
         return refusal if any(name.startswith("fleet/") or name in fleet_branches for name in names) else None

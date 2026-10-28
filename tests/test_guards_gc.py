@@ -36,9 +36,10 @@ def test_a_forced_removal_of_a_seat_tree_is_refused(tmp_path):
         assert refused(judge(command, tmp_path, seats=[seat], archive=store)), command
 
 
-def test_a_plain_removal_is_let_through(tmp_path):
+def test_a_plain_removal_of_a_seat_tree_is_refused_too(tmp_path):
+    """Final review of gc stage 2, I2: git deletes ignored files without a word, forced or not."""
     seat, store = layout(tmp_path)
-    assert judge(f"git worktree remove {seat}", tmp_path, seats=[seat], archive=store) is None
+    assert refused(judge(f"git worktree remove {seat}", tmp_path, seats=[seat], archive=store))
 
 
 def test_a_forced_removal_of_a_persons_tree_is_let_through(tmp_path):
@@ -71,8 +72,7 @@ def test_deleting_a_parked_ref_is_refused(tmp_path):
                          archive=store))
 
 
-@pytest.mark.parametrize("target", ["app-main-1", "app-main-1/src", "app-gc-archive", "app-gc-archive/objects/ab",
-                                    "."])
+@pytest.mark.parametrize("target", ["app-main-1", "app-gc-archive", "app-gc-archive/objects/ab", "."])
 def test_rm_rf_of_a_seat_tree_the_archive_or_a_parent_of_them_is_refused(tmp_path, target):
     seat, store = layout(tmp_path)
     assert refused(judge(f"rm -rf {target}", tmp_path, seats=[seat], archive=store)), target
@@ -134,3 +134,30 @@ def test_update_ref_deletions_of_fleet_refs_are_refused(tmp_path, command):
 def test_update_ref_of_a_persons_branch_is_let_through(tmp_path):
     seat, store = layout(tmp_path)
     assert judge("git update-ref -d refs/heads/experiment", tmp_path, seats=[seat], archive=store) is None
+
+
+
+def test_rm_inside_a_seat_tree_is_the_sessions_own_work(tmp_path):
+    """Final review of gc stage 2, I3: a builder's `rm -rf dist` in its own tree."""
+    seat, store = layout(tmp_path)
+    assert judge("rm -rf src", seat, seats=[seat], archive=store) is None
+    assert judge("rm -rf src/*", seat, seats=[seat], archive=store) is None
+    assert refused(judge("rm -rf *", seat, seats=[seat], archive=store))
+    assert refused(judge("rm -rf ./*", seat, seats=[seat], archive=store))
+
+
+# Security review of b4a4213.
+
+def test_an_expansion_after_a_literal_prefix_is_judged_by_where_it_runs_too(tmp_path):
+    seat, store = layout(tmp_path)
+    assert refused(judge("rm -rf /tmp/$(printf x)", tmp_path, seats=[seat], archive=store))
+
+
+def test_an_abbreviated_stdin_is_refused(tmp_path):
+    seat, store = layout(tmp_path)
+    assert refused(judge("git update-ref --std", tmp_path, seats=[seat], archive=store))
+
+
+def test_a_message_before_the_ref_does_not_hide_it(tmp_path):
+    seat, store = layout(tmp_path)
+    assert refused(judge("git update-ref -m why -d refs/heads/fleet/main-1", tmp_path, seats=[seat], archive=store))

@@ -353,3 +353,24 @@ def test_the_archive_follows_the_main_checkout_not_the_ledgers_tree(tmp_path):
     tree = seat(root, tmp_path)
     ledger = make_ledger(tree, tmp_path / "state2", profile=PROFILE, live=())
     assert archive.root_of(ledger) == root.parent / f"{root.name}-gc-archive"
+
+
+# Final review of gc stage 2, I9: restoring into a tree that exists names what it does not do.
+
+def test_restore_refuses_a_tree_that_moved_to_another_commit(tmp_path):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    put_file(tree, "a.bin", b"payload")
+    entry = stash(ledger, tree, ["a.bin"])
+    commit(tree, "a new session's work", "n.txt", "n\n")
+    lines = archive.restore(ledger, entry.id)
+    assert not (tree / "a.bin").exists() and any("refused" in line and "commit" in line for line in lines), lines
+
+
+def test_restore_into_an_existing_tree_names_the_edits_it_did_not_apply(tmp_path):
+    root, ledger = world(tmp_path)
+    tree = seat(root, tmp_path)
+    put_file(tree, "a.bin", b"payload")
+    stash(ledger, tree, ["a.bin"], patch=b"diff --git a/x b/x\n")
+    lines = archive.restore(ledger, tree.name)
+    assert (tree / "a.bin").exists() and any("not applied" in line and ".patch" in line for line in lines), lines
