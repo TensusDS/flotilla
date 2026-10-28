@@ -231,40 +231,58 @@ def gc_refusals(found):
     return [item for item in found if item.guard == gc.GUARD and item.refuse]
 
 
-def test_the_hook_judges_rm_by_the_tree_the_session_was_started_in(tmp_path, monkeypatch):
+def seated(root, seat, session_id, *, state="reserved"):
+    """A seat's post row, as `fleet up` leaves it: reserved with its tree, then its session id once it launched."""
+    from flotilla.ledger.commands import open_ledger
+    from flotilla.ledger.model import next_row_id
+    from ledgerkit import actor
+    ledger = open_ledger(root)
+    me = actor(ledger, "orchestrator 1")
+    with ledger.session() as s:
+        row = s.append(me, next_row_id(s.rows), "reserve", "reserved",
+                       fields={"branch": "fleet/main-1", "owner": "main session 1", "tree": str(seat)})
+        s.append(me, row.id, "launched", s.next_state(row, "launched"), fields={"session_id": session_id})
+        if state != "reserved":
+            s.append(me, row.id, "release", state)
+
+
+def test_the_hook_judges_rm_by_the_seat_the_session_holds(tmp_path, monkeypatch):
     root, seat, other = two_seats(tmp_path, monkeypatch)
-    assert gc_refusals(guard_run.evaluate("cd ../app-main-2 && rm -rf out", seat, root, stands=lambda: seat))
-    assert not gc_refusals(guard_run.evaluate("rm -rf src", seat, root, stands=lambda: seat))
+    seated(root, seat, "sid-1")
+    assert gc_refusals(guard_run.evaluate("cd ../app-main-2 && rm -rf out", seat, root, session_id="sid-1"))
+    # a seat works in its tree from the main checkout (decision 208): the shell stands in root, not in the seat
+    assert not gc_refusals(guard_run.evaluate(f"rm -rf {seat}/src", root, root, session_id="sid-1"))
+    assert not gc_refusals(guard_run.evaluate(f"cd {seat} && rm -rf src", root, root, session_id="sid-1"))
 
 
-# Security review of 9830acb: the hook's cwd follows a `cd` that persisted from an earlier call, so a session's own
-# tree is the directory it was started in, asked of the census by its id - which no command can move.
+# Security review of 9830acb: the hook's cwd follows a `cd` that persisted from an earlier call. Second review of the
+# branch, I-1: the census start directory of every seat is the main checkout. A session's own tree is the tree of the
+# seat row that carries its session id - which no command moves.
 
 def test_a_cd_persisted_from_an_earlier_call_does_not_make_a_tree_ones_own(tmp_path, monkeypatch):
     root, seat, other = two_seats(tmp_path, monkeypatch)
-    assert gc_refusals(guard_run.evaluate("rm -rf out", other, root, stands=lambda: seat))
+    seated(root, seat, "sid-1")
+    assert gc_refusals(guard_run.evaluate("rm -rf out", other, root, session_id="sid-1"))
 
 
-@pytest.mark.parametrize("stands", [None, lambda: None, lambda: 1 / 0])
-def test_a_session_whose_start_is_unknown_owns_no_tree(tmp_path, monkeypatch, stands):
+@pytest.mark.parametrize("session_id", ["", "sid-person", "sid-gone"])
+def test_a_session_holding_no_open_seat_owns_no_tree(tmp_path, monkeypatch, session_id):
     root, seat, other = two_seats(tmp_path, monkeypatch)
-    assert gc_refusals(guard_run.evaluate("rm -rf src", seat, root, stands=stands))
+    seated(root, seat, "sid-gone", state="released")
+    assert gc_refusals(guard_run.evaluate(f"rm -rf {seat}/src", root, root, session_id=session_id))
 
 
-def test_the_hook_asks_the_census_for_the_calling_sessions_start(tmp_path, monkeypatch):
+def test_the_hook_passes_the_calling_sessions_id(tmp_path, monkeypatch):
     import io
     import json
-    from flotilla.core import census
     root, seat, other = two_seats(tmp_path, monkeypatch)
-    me = census.Session(name="main session 1", session_id="sid-1", kind="background", pid=None, short_id=None,
-                        status=None, state=None, cwd=str(seat), started_at_ms=None)
-    monkeypatch.setattr(census, "read_census", lambda **_: [me])
+    seated(root, seat, "sid-1")
 
-    def decision(command, cwd, session_id):
+    def decision(command, session_id):
         out = io.StringIO()
-        guard_run.guard_hook(command, cwd, root, out, session_id=session_id)
+        guard_run.guard_hook(command, root, root, out, session_id=session_id)
         return (json.loads(out.getvalue() or "{}").get("hookSpecificOutput") or {}).get("permissionDecision")
 
-    assert decision("rm -rf out", other, "sid-1") == "deny"
-    assert decision("rm -rf src", seat, "sid-1") != "deny"
-    assert decision("rm -rf src", seat, "sid-unknown") == "deny"
+    assert decision(f"rm -rf {seat}/src", "sid-1") != "deny"
+    assert decision(f"rm -rf {other}/out", "sid-1") == "deny"
+    assert decision(f"rm -rf {seat}/src", "sid-other") == "deny"

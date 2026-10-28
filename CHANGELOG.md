@@ -18,8 +18,8 @@ each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2
   there instead of answering for you.
 - **A guard against removing the fleet's work by hand.** A session's `git worktree remove` of a seat tree,
   `git worktree prune`, forced `git branch` deletion of a fleet branch, deletion of a parked ref or `rm -r` of a seat
-  tree, of anything inside another session's tree or of the archive is refused. Inside the tree the session was
-  started in, `rm -rf dist` still works; a `cd` does not make another tree its own.
+  tree, of anything inside another session's tree or of the archive is refused. Inside its own seat's tree, named by
+  the ledger row that carries its session id, `rm -rf dist` still works; a `cd` does not make another tree its own.
 - Not yet: the dead-session and daily passes, the archive's lifetime, a low disk (stage 3).
 
 ## 0.22.0 - 2026-10-27

@@ -113,10 +113,18 @@ def _operands(words) -> list[str]:
     return out
 
 
+def seat_tree(rows, session_id: str) -> Path | None:
+    """The tree of the open seat whose post row carries this session id, as the broker knows a seat (decide.py)."""
+    found = [row.tree for row in rows if session_id and row.is_open and row.state == "reserved"
+             and row.session_id == session_id and row.tree]
+    return Path(found[0]) if found else None
+
+
 def check(segment, *, seat_trees: set[Path], fleet_branches: set[str], archive: Path,
           home: Path | None = None) -> Finding | None:
-    """`home` is where the session was started: the seat tree holding it is the session's own, and a `cd` - in the
-    command or persisted from an earlier call - does not change whose tree it is. Without it no tree is its own."""
+    """`home` is the tree of the seat the calling session holds (`seat_tree`): the seat tree holding it is the
+    session's own, and a `cd` - in the command or persisted from an earlier call - does not change whose tree it is.
+    Without it no tree is its own."""
     kind = door(segment)
     if not kind:
         return None

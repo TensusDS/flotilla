@@ -27,9 +27,9 @@ def _safely(name: str, check) -> list[Finding]:
 
 
 def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run, who=None,
-             stands=None) -> list[Finding]:
-    """`who` says which sessions the call answers to (`push.callers`); without it nobody's post is asked. `stands`
-    says where the calling session was started, which names its own tree; without it no tree is its own."""
+             session_id: str = "") -> list[Finding]:
+    """`who` says which sessions the call answers to (`push.callers`); without it nobody's post is asked.
+    `session_id` names the calling session, whose seat row names its own tree; without it no tree is its own."""
     from flotilla.guards import lane, line_edit, person, push, revert, shell
     from flotilla.guards.rules import rules_for
     segments = shell.segments(command, Path(cwd) if cwd else None)
@@ -56,7 +56,7 @@ def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run, who
     on = profile.get("guards") or {}
     findings: list[Finding] = list(persons)
     findings += _organized(segments, root)
-    findings += _collected(segments, root, stands)
+    findings += _collected(segments, root, session_id)
     for segment in segments:
         if on.get(revert.GUARD):
             findings += _safely(revert.GUARD, lambda: revert.check(segment, run=run))
@@ -71,10 +71,10 @@ def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run, who
     return findings
 
 
-def _collected(segments, root, stands=None) -> list[Finding]:
-    """The gc guard over every segment; the ledger is read only when a segment is one of its doors. `stands` is asked
-    where the session was started, not the shell's directory: a `cd` persists between calls (security review of
-    9830acb). Unknown, no tree is the session's own."""
+def _collected(segments, root, session_id: str = "") -> list[Finding]:
+    """The gc guard over every segment; the ledger is read only when a segment is one of its doors. A session's own
+    tree is its seat's, named by the row that carries its session id: not the shell's directory, which a `cd` moves
+    and which for a seat is the main checkout (security review of 9830acb; second review of the branch, I-1)."""
     from flotilla.guards import gc
     doors = [segment for segment in segments if gc.door(segment)]
     if not doors:
@@ -85,20 +85,13 @@ def _collected(segments, root, stands=None) -> list[Finding]:
         ledger = open_ledger(Path(root))
         seat_trees, fleet_branches = sweep.made_by_flotilla(ledger)
         kept = archive.root_of(ledger).resolve()
+        home = gc.seat_tree(ledger.rows().values(), session_id)
     except Exception as err:  # noqa: BLE001 - which trees are the fleet's is unknown: a door is refused
         return [Finding(gc.GUARD, True, f"flotilla cannot tell which trees and branches are the fleet's (the ledger "
                                         f"could not be read: {err}); only the collector removes them")]
     return [found for found in (gc.check(segment, seat_trees=seat_trees, fleet_branches=fleet_branches,
-                                         archive=kept, home=_started(stands))
+                                         archive=kept, home=home)
                             for segment in doors) if found]
-
-
-def _started(stands) -> Path | None:
-    try:
-        found = stands() if stands else None
-    except Exception:  # noqa: BLE001 - where the session started is unknown: no tree is its own
-        return None
-    return Path(found) if found else None
 
 
 def _organized(segments, root) -> list[Finding]:
@@ -384,18 +377,13 @@ def allowance(command: str, cwd, root, *, session_id: str = "", run=subprocess.r
     return "", ""
 
 
-def _started_in(session_id: str) -> Path | None:
-    from flotilla.core import census
-    return census.started_in(census.read_census(timeout=8), session_id) if session_id else None
-
-
 def guard_hook(command: str, cwd, root, out, *, env=os.environ, run=subprocess.run, mode: str = "",
                session_id: str = "", tool_input: dict | None = None) -> int:
     try:
         from flotilla.guards import push
         # asked even of a call that carries no id: its process still runs under the session that made it
         findings = evaluate(command, cwd, root, env=env, run=run, who=lambda: push.callers(session_id),
-                            stands=lambda: _started_in(session_id))
+                            session_id=session_id)
     except Exception as err:  # noqa: BLE001 - decided by reversibility: a command that may push is refused
         findings = [on_failure(command, err, env)]
     refusals = [finding.text for finding in findings if finding.refuse]
