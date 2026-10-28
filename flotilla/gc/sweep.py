@@ -7,15 +7,24 @@ until neither moves. With `act`, trees go first (under the lock, judged again), 
 gone or never was. The report counts what was done and groups what stays by reason - one line per reason, not one
 per tree - and names the warnings: commits only on this disk, an origin on this machine, trees whose directory is
 gone (named, not pruned).
+
+Ignored files are judged by content (stage 2): one `Twins` per pass, its hashes cached between passes. A tree whose
+only obstacle is unique ignored files under the thresholds (`[gc] archive_tree_mb`, 100; `[gc] archive_pass_mb`,
+500; content counted once per pass) has them archived under the removal lock and goes - the person is told after,
+with the restore command. Over either threshold, or with anything else only the person settles, it waits on them.
+The report keeps space freed apart from space moved: the archive sits on the same disk.
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
-from flotilla.gc import branches, refs, remove, trees
+from flotilla.gc import archive, branches, refs, remove, trees, twins
+
+MB = 1 << 20
 
 SHOWN = 5   # names per kept line before "and N more"
 WAITS = "waits on the person (flotilla gc next)"   # one line for every tree only the person can settle
@@ -31,6 +40,54 @@ class Report:
     missing: list[str] = field(default_factory=list)
     remote_landed: list[str] = field(default_factory=list)
     acted: bool = False
+    archived: list[str] = field(default_factory=list)      # one line per tree whose files went to the archive
+    moved: int = 0                                         # bytes moved to the archive
+    freed: int = 0                                         # bytes removing the trees freed
+    last_copies: list[str] = field(default_factory=list)   # where the last copy of a file removed on a twin is
+
+
+def size_text(count: int) -> str:
+    if count < 1024:
+        return f"{count} B"
+    for unit in ("KB", "MB", "GB"):
+        count /= 1024
+        if count < 1024 or unit == "GB":
+            return f"{count:.1f} {unit}"
+    return ""
+
+
+def piece(rows: dict, tree: Path, branch: str, head: str) -> str:
+    """The piece of work a tree belongs to: the newest row whose tree, branch or tip names it; else its branch;
+    else its name. A reviewer's seat standing on the work is asked about with the builder's tree."""
+    owning = [row for row in rows.values()
+              if (row.tree and Path(row.tree).resolve() == Path(tree).resolve()) or (branch and row.branch == branch)
+              or (head and row.tip == head)]
+    if owning:
+        return f"work:{owning[-1].id}"
+    return f"work:{branch}" if branch else f"work:{Path(tree).name}"
+
+
+def _limits(profile: dict) -> tuple[float, float]:
+    config = profile.get("gc") or {}
+    return (float(config.get("archive_tree_mb", 100)) * MB, float(config.get("archive_pass_mb", 500)) * MB)
+
+
+def small(verdicts: dict, profile: dict) -> set[Path]:
+    """The trees whose only obstacle is unique ignored files under both thresholds, in judging order; content is
+    counted once per sha256 across the pass (rule 3)."""
+    per_tree, per_pass = _limits(profile)
+    seen: set[str] = set()
+    total, found = 0, set()
+    for tree, verdict in verdicts.items():
+        if verdict is None or verdict.reasons or verdict.doubts or not verdict.archive:
+            continue
+        fresh = {digest or path: size for path, size, digest in verdict.archive if (digest or path) not in seen}
+        size = sum(fresh.values())
+        if size <= per_tree and total + size <= per_pass:
+            found.add(tree)
+            seen |= set(fresh)
+            total += size
+    return found
 
 
 def _git(ledger, *args):
@@ -112,6 +169,7 @@ def run_pass(ledger, *, sessions, act: bool, proc_root=None) -> Report:
     listed = worktrees(ledger)
     staying: set[str] = set()
     judged: dict[Path, trees.TreeVerdict] = {}
+    untouched: list[Path] = []
     holds = {tree: branch for tree, branch, _ in listed}   # a rebase's or bisect's branch too, not only HEAD's
     for tree, branch, gone in listed:
         if gone:
@@ -120,17 +178,26 @@ def run_pass(ledger, *, sessions, act: bool, proc_root=None) -> Report:
         elif tree.resolve() not in ours_trees:
             _keep(report, "tree", "flotilla did not make it", tree.name)
             staying.add(branch)
+            untouched.append(tree)
         else:
             judged[tree] = None
+    cache = twins.load_cache(ledger.state_dir, ledger.repo_key)
+    finder = twins.Twins(ledger, holders=[], cache=cache,
+                         sources=twins.sources(ledger, untouched=untouched, archive_root=archive.root_of(ledger)))
     verdicts: dict[str, branches.BranchVerdict] = {}
+    going: set[Path] = set()
     for _ in range(len(judged) + 2):   # trees that stay keep their branches; fewer branches go, fewer refs drop
         deleting = {name for name, item in verdicts.items() if item.delete}
         dropping = {f"refs/heads/{name}" for name in deleting}
         planned = _planned(verdicts)
         holders = refs.holders(ledger, dropping=dropping) + planned
+        finder.rehold(holders)
         for tree in judged:
-            judged[tree] = trees.judge_tree(ledger, tree, holders=holders, sessions=sessions, proc_root=proc_root)
-        now_staying = staying | {holds[tree] for tree, item in judged.items() if holds[tree] and not item.removable}
+            judged[tree] = trees.judge_tree(ledger, tree, holders=holders, sessions=sessions, proc_root=proc_root,
+                                            twins=finder)
+        going = small(judged, ledger.profile)
+        now_staying = staying | {holds[tree] for tree, item in judged.items()
+                                 if holds[tree] and not item.removable and tree not in going}
         verdicts = {item.name: item for item in branches.judge_branches(
             ledger, found_trunks, staying_checkouts=now_staying, ours=ours_branches)}
         if {name for name, item in verdicts.items() if item.delete} == deleting:
@@ -138,21 +205,37 @@ def run_pass(ledger, *, sessions, act: bool, proc_root=None) -> Report:
     dropping = {f"refs/heads/{name}" for name, item in verdicts.items() if item.delete}
     planned = _planned(verdicts)
     gone_trees: set[str] = set()
+    rows = ledger.rows()
+    day = datetime.now(timezone.utc).date().isoformat()
     for tree, verdict in judged.items():
         report.warnings += [note for note in verdict.notes if note not in report.warnings]
-        if not verdict.removable:
+        if not verdict.removable and tree not in going:
             _keep(report, "tree", verdict.reasons[0] if verdict.reasons else WAITS, tree.name)
             continue
+        files, size = len(verdict.archive), sum(item[1] for item in verdict.archive)
         if not act:
             report.removed.append(tree.name)
             report.parked += len(verdict.park)
             gone_trees.add(holds[tree])
+            if files:
+                report.archived.append(f"would archive {_count(files, 'file')} ({size_text(size)}) from "
+                                       f"{tree.name}")
             continue
+        done: dict = {}
         line = remove.remove_tree(ledger, verdict, dropping=dropping, sessions=sessions, proc_root=proc_root,
-                                  also_held=planned)[0]
+                                  also_held=planned, twins=finder, out=done,
+                                  archive_entry=archive.entry_id(piece(rows, tree, holds[tree], verdict.head),
+                                                                 day))[0]
+        if done.get("entry"):
+            report.moved += done["moved"]
+            report.archived.append(f"archived {_count(done['files'], 'file')} ({size_text(done['moved'])}) from "
+                                   f"{tree.name}: restore with flotilla gc restore {done['entry']}")
         if line.startswith("removed "):
             report.removed.append(tree.name)
             report.parked += len(verdict.park)
+            report.freed += done.get("freed", 0)
+            report.last_copies += [f"the last copy of {Path(item['from']).relative_to(tree)} is now in "
+                                   f"{item['where']}" for item in done.get("last_copies", [])]
             gone_trees.add(holds[tree])
         else:
             _keep(report, "tree", line.split(": ", 1)[1] if ": " in line else line, tree.name)
@@ -175,6 +258,7 @@ def run_pass(ledger, *, sessions, act: bool, proc_root=None) -> Report:
         else:
             _keep(report, "branch", line.split(": ", 1)[1], name)
     report.remote_landed = branches.landed_remote_branches(ledger, found_trunks)
+    twins.save_cache(ledger.state_dir, ledger.repo_key, cache)
     return report
 
 
@@ -194,8 +278,15 @@ def lines(report: Report) -> list[str]:
     verb = ("removed", "deleted", "parked") if report.acted else ("would remove", "would delete", "would park")
     out = [f"{verb[0]} {_count(len(report.removed), 'tree')}, {verb[1]} {_count(len(report.deleted), 'branch')}, "
            f"{verb[2]} {_count(report.parked, 'commit')}"]
+    if report.freed or report.moved:
+        out.append(f"freed {size_text(report.freed)}, moved {size_text(report.moved)} to the archive (moving frees "
+                   "nothing until the archive is emptied)")
     if report.removed:
         out.append(f"{verb[0]}: {_list(report.removed)}")
+    out += report.archived
+    out += report.last_copies[:SHOWN]
+    if len(report.last_copies) > SHOWN:
+        out.append(f"and the last copies of {len(report.last_copies) - SHOWN} more files moved the same way")
     if report.deleted:
         out.append(f"{verb[1]}: {_list(report.deleted)}")
     for key, names in report.kept.items():

@@ -137,3 +137,80 @@ def test_trees_waiting_on_the_person_share_one_report_line(tmp_path):
     report = sweep.run_pass(ledger, sessions=[], act=False, proc_root=tmp_path / "no-proc")
     kept = [line for line in sweep.lines(report) if line.startswith("kept 3 trees: ")]
     assert kept and kept[0].startswith("kept 3 trees: waits on the person (flotilla gc next) - ")
+
+
+# gc design 2 and 7 (stage 2): small unique files go to the archive in the pass, and the person is told after.
+
+def ignored_seat(root, tmp_path, number, data=b"12345", path="out/x.bin"):
+    tree = tmp_path / f"app-main-{number}"
+    git(root, "worktree", "add", "-q", "-b", f"fleet/main-{number}", str(tree))
+    target = tree / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+    return tree
+
+
+def ignoring(root):
+    commit(root, "ignore", ".gitignore", "out/\n")
+    git(root, "push", "-q", "origin", "HEAD:main")
+
+
+def test_a_small_unique_file_is_archived_and_the_tree_removed(tmp_path):
+    from flotilla.gc import archive
+    root, ledger = world(tmp_path)
+    ignoring(root)
+    tree = ignored_seat(root, tmp_path, 1)
+    report = sweep.run_pass(ledger, sessions=[], act=True, proc_root=tmp_path / "no-proc")
+    assert not tree.exists() and "app-main-1" in report.removed
+    assert [path.name for path in (archive.root_of(ledger) / "objects").rglob("*") if path.is_file()]
+    shown = sweep.lines(report)
+    assert any(line.startswith("archived 1 file (5 B) from app-main-1: restore with flotilla gc restore ")
+               for line in shown), shown
+
+
+def test_the_preview_says_what_it_would_archive(tmp_path):
+    root, ledger = world(tmp_path)
+    ignoring(root)
+    tree = ignored_seat(root, tmp_path, 1)
+    shown = sweep.lines(sweep.run_pass(ledger, sessions=[], act=False, proc_root=tmp_path / "no-proc"))
+    assert tree.exists() and any(line.startswith("would archive 1 file (5 B) from app-main-1") for line in shown)
+
+
+def test_over_the_tree_threshold_waits_on_the_person(tmp_path):
+    root, ledger = world(tmp_path, {**PROFILE, "gc": {"archive_tree_mb": 0}})
+    ignoring(root)
+    tree = ignored_seat(root, tmp_path, 1)
+    report = sweep.run_pass(ledger, sessions=[], act=True, proc_root=tmp_path / "no-proc")
+    assert tree.exists() and not report.archived
+    assert any(line.startswith("kept 1 tree: waits on the person") for line in sweep.lines(report))
+
+
+def test_the_pass_threshold_counts_identical_content_once(tmp_path):
+    from flotilla.gc import archive
+    root, ledger = world(tmp_path, {**PROFILE, "gc": {"archive_pass_mb": 1}})
+    ignoring(root)
+    data = b"r" * 600 * 1024
+    first, second = ignored_seat(root, tmp_path, 1, data), ignored_seat(root, tmp_path, 2, data)
+    sweep.run_pass(ledger, sessions=[], act=True, proc_root=tmp_path / "no-proc")
+    assert not first.exists() and not second.exists()
+    assert len([path for path in (archive.root_of(ledger) / "objects").rglob("*") if path.is_file()]) == 1
+
+
+def test_a_twin_in_a_store_names_the_last_copy(tmp_path):
+    root, ledger = world(tmp_path, {**PROFILE, "gc": {"stores": ["feedback"]}})
+    ignoring(root)
+    (root.parent / "feedback").mkdir()
+    (root.parent / "feedback" / "x.bin").write_bytes(b"12345")
+    tree = ignored_seat(root, tmp_path, 1)
+    shown = sweep.lines(sweep.run_pass(ledger, sessions=[], act=True, proc_root=tmp_path / "no-proc"))
+    assert not tree.exists()
+    assert any(line.startswith("the last copy of out/x.bin is now in ") and "feedback" in line for line in shown)
+
+
+def test_freed_and_moved_are_reported_apart(tmp_path):
+    root, ledger = world(tmp_path)
+    ignoring(root)
+    ignored_seat(root, tmp_path, 1)
+    shown = sweep.lines(sweep.run_pass(ledger, sessions=[], act=True, proc_root=tmp_path / "no-proc"))
+    line = next(line for line in shown if line.startswith("freed "))
+    assert "moved 5 B to the archive" in line and "frees nothing until the archive is emptied" in line

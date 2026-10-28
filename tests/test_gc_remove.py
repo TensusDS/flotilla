@@ -92,3 +92,23 @@ def test_a_branch_is_deleted_only_at_the_judged_commit_and_parked_first(tmp_path
     git(root, "branch", "fleet/main-3", tip)
     moved = branches.BranchVerdict("fleet/main-3", git(root, "rev-parse", "HEAD"), True, "", [])
     assert "moved since it was judged" in remove.delete_branch(ledger, moved)
+
+
+def test_a_file_that_changed_under_the_lock_aborts_the_archive(tmp_path):
+    """gc design 7 (stage 2): what is archived is what was judged; a file rewritten since aborts it."""
+    from flotilla.gc import archive, twins
+    root, ledger = world(tmp_path)
+    commit(root, "ignore", ".gitignore", "out/\n")
+    tree = seat(root, tmp_path)
+    (tree / "out").mkdir()
+    (tree / "out" / "x.bin").write_bytes(b"12345")
+    finder = twins.Twins(ledger, holders=refs.holders(ledger), cache={},
+                         sources=twins.sources(ledger, untouched=[], archive_root=archive.root_of(ledger)))
+    verdict = trees.judge_tree(ledger, tree, holders=refs.holders(ledger), sessions=[], twins=finder,
+                               proc_root=tree.parent / "no-proc")
+    assert verdict.archive and not verdict.removable
+    (tree / "out" / "x.bin").write_bytes(b"54321")
+    line = remove.remove_tree(ledger, verdict, dropping=set(), sessions=[], proc_root=tree.parent / "no-proc",
+                              twins=finder, archive_entry="2026-10-28-fleet-main-1")[0]
+    assert tree.exists() and "changed while it was judged" in line, line
+    assert not (archive.root_of(ledger) / "objects").exists()

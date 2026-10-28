@@ -108,6 +108,16 @@ class Twins:
         self._reachable: set[str] | None = None
         self._format: str | None = None
 
+    def rehold(self, holders: list[str]) -> None:
+        """Judge blobs against other holders (the pass's next iteration); the walked sources are kept."""
+        self.holders, self._reachable = list(holders), None
+
+    def checking(self) -> "Twins":
+        """The same sources and cache, hashing afresh: for the check under the removal lock."""
+        found = Twins(self.ledger, holders=self.holders, sources=self.sources, cache=self.cache, verify=True)
+        found._by_size, found._format = self._by_size, self._format
+        return found
+
     def _index(self) -> list[tuple[str, dict[int, list[Path]]]]:
         if self._by_size is None:
             self._by_size = []
