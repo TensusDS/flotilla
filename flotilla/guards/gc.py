@@ -113,7 +113,10 @@ def _operands(words) -> list[str]:
     return out
 
 
-def check(segment, *, seat_trees: set[Path], fleet_branches: set[str], archive: Path) -> Finding | None:
+def check(segment, *, seat_trees: set[Path], fleet_branches: set[str], archive: Path,
+          home: Path | None = None) -> Finding | None:
+    """`home` is where the session stands (the hook's cwd): the seat tree holding it is the session's own, and a `cd`
+    inside the command does not change whose tree it is. Without it no tree is the session's own."""
     kind = door(segment)
     if not kind:
         return None
@@ -122,7 +125,8 @@ def check(segment, *, seat_trees: set[Path], fleet_branches: set[str], archive: 
         return refusal
     if kind == "rm":
         base = segment.cwd.resolve() if segment.cwd else None
-        own = {seat for seat in seat_trees if base is not None and (base == seat or seat in base.parents)}
+        stands = home.resolve() if home else None
+        own = {seat for seat in seat_trees if stands is not None and (stands == seat or seat in stands.parents)}
         for word in _operands(segment.words[1:]):
             target = _resolve(base, word)
             if target is None:

@@ -11,10 +11,12 @@ from flotilla.guards import run as guard_run
 from guardkit import onboarded
 
 
-def judge(command, cwd, *, seats=(), branches=(), archive=None):
-    [segment] = shell.segments(command, Path(cwd))
-    return gc.check(segment, seat_trees={Path(seat).resolve() for seat in seats}, fleet_branches=set(branches),
-                    archive=Path(archive or Path(cwd) / "app-gc-archive").resolve())
+def judge(command, cwd, *, seats=(), branches=(), archive=None, home=None):
+    """`home` is where the session stands (the hook's cwd); by default the directory the command starts in."""
+    segment = [segment for segment in shell.segments(command, Path(cwd)) if gc.door(segment)]
+    return gc.check(segment[0] if segment else shell.segments(command, Path(cwd))[0],
+                    seat_trees={Path(seat).resolve() for seat in seats}, fleet_branches=set(branches),
+                    archive=Path(archive or Path(cwd) / "app-gc-archive").resolve(), home=Path(home or cwd))
 
 
 def layout(tmp_path):
@@ -190,3 +192,38 @@ def test_rm_inside_another_sessions_tree_is_refused(tmp_path):
 def test_braces_and_dots_after_a_glob_are_judged_by_where_they_run(tmp_path, operand):
     seat, store = layout(tmp_path)
     assert refused(judge(f"rm -rf {operand}", seat, seats=[seat], archive=store)), operand
+
+
+# The `cd` hole: a session's own tree is the one the session stands in (the hook's cwd), not the one a `cd` takes the
+# command to.
+
+def test_a_cd_into_another_sessions_tree_does_not_make_it_ones_own(tmp_path):
+    seat, store = layout(tmp_path)
+    other = tmp_path / "app-main-2"
+    (other / "out").mkdir(parents=True)
+    for command in ("cd ../app-main-2 && rm -rf out", f"cd {other} && rm -rf out", f"cd {other}/out && rm -rf ../out"):
+        assert refused(judge(command, seat, seats=[seat, other], archive=store)), command
+    assert judge("cd src && rm -rf build", seat, seats=[seat, other], archive=store) is None
+
+
+def test_a_session_outside_every_seat_tree_cannot_cd_into_one_to_rm(tmp_path):
+    seat, store = layout(tmp_path)
+    assert refused(judge("cd app-main-1 && rm -rf src", tmp_path, seats=[seat], archive=store))
+
+
+def test_without_the_sessions_directory_no_tree_is_its_own(tmp_path):
+    seat, store = layout(tmp_path)
+    [segment] = shell.segments("rm -rf src", seat)
+    assert refused(gc.check(segment, seat_trees={seat.resolve()}, fleet_branches=set(), archive=store.resolve()))
+
+
+def test_the_hook_judges_rm_by_the_tree_the_session_stands_in(tmp_path, monkeypatch):
+    from flotilla.gc import sweep
+    root = onboarded(tmp_path)
+    seat, other = tmp_path / "app-main-1", tmp_path / "app-main-2"
+    (seat / "src").mkdir(parents=True)
+    (other / "out").mkdir(parents=True)
+    monkeypatch.setattr(sweep, "made_by_flotilla", lambda ledger: ({seat.resolve(), other.resolve()}, set()))
+    found = guard_run.evaluate("cd ../app-main-2 && rm -rf out", seat, root)
+    assert any(item.guard == gc.GUARD and item.refuse for item in found), found
+    assert not [item for item in guard_run.evaluate("rm -rf src", seat, root) if item.guard == gc.GUARD]

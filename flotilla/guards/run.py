@@ -54,7 +54,7 @@ def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run, who
     on = profile.get("guards") or {}
     findings: list[Finding] = list(persons)
     findings += _organized(segments, root)
-    findings += _collected(segments, root)
+    findings += _collected(segments, root, cwd)
     for segment in segments:
         if on.get(revert.GUARD):
             findings += _safely(revert.GUARD, lambda: revert.check(segment, run=run))
@@ -69,8 +69,9 @@ def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run, who
     return findings
 
 
-def _collected(segments, root) -> list[Finding]:
-    """The gc guard over every segment; the ledger is read only when a segment is one of its doors."""
+def _collected(segments, root, cwd=None) -> list[Finding]:
+    """The gc guard over every segment; the ledger is read only when a segment is one of its doors. `cwd` is where
+    the session stands, which names its own tree."""
     from flotilla.guards import gc
     doors = [segment for segment in segments if gc.door(segment)]
     if not doors:
@@ -85,7 +86,8 @@ def _collected(segments, root) -> list[Finding]:
         return [Finding(gc.GUARD, True, f"flotilla cannot tell which trees and branches are the fleet's (the ledger "
                                         f"could not be read: {err}); only the collector removes them")]
     return [found for found in (gc.check(segment, seat_trees=seat_trees, fleet_branches=fleet_branches,
-                                         archive=kept) for segment in doors) if found]
+                                         archive=kept, home=Path(cwd) if cwd else None)
+                            for segment in doors) if found]
 
 
 def _organized(segments, root) -> list[Finding]:
