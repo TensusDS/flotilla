@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -67,42 +68,70 @@ def _same(recorded, path: Path) -> bool:
         return False
 
 
+def _version(text) -> tuple[int, ...]:
+    return tuple(int(part) for part in re.findall(r"\d+", str(text or ""))[:3])
+
+
 def copy_in_use(cwd: Path, *, running: Path | None = None, env=os.environ,
                 home: Path | None = None) -> tuple[str, str, str] | None:
-    """(status, detail, fix) for the copy of flotilla that runs against the one this project installed, or None when
-    Claude Code's record of installs (`<config>/plugins/installed_plugins.json`) cannot be read or names none. Which
-    copy loads when the user and a project both install flotilla is not documented; measured, the user's did
-    (void-lanes-online on 0.23.1 ran 0.21.0, 2026-10-29; the khrushchevka fleet on 0.13.0 ran 0.10.2, 2026-10-12).
-    The project's install is the nearest directory from `cwd` up that has one."""
+    """(status, detail, fix) for the copy of flotilla running here against the one the project installed, or None
+    when Claude Code's record of installs (`<config>/plugins/installed_plugins.json`) cannot be read or names none.
+    `cwd` is where the session started: a project's install applies there, not in a directory below it (measured
+    with `claude plugin list`, ai-os til plugin-scope-project-enabledplugins, 2026-07-08). Which copy loads when the
+    user and a project both install flotilla is not documented; measured, the user's did (void-lanes-online on 0.23.1
+    ran 0.21.0, 2026-10-29; the khrushchevka fleet on 0.13.0 ran 0.10.2, 2026-10-12). Only the copy that runs can say
+    so: an older one, from before 0.23.2, says nothing."""
     try:
         data = json.loads((config_dir(env, home) / "plugins" / "installed_plugins.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     plugins = data.get("plugins") if isinstance(data, dict) else None
-    records = [item for name, items in (plugins if isinstance(plugins, dict) else {}).items()
+    records = [(str(name), item) for name, items in (plugins if isinstance(plugins, dict) else {}).items()
                if str(name).startswith("flotilla@") and isinstance(items, list)
                for item in items if isinstance(item, dict)]
     if not records:
         return None
     running = Path(running or running_root()).resolve()
     here = Path(cwd).resolve()
-    mine = next((found for directory in (here, *here.parents)
-                 for found in sorted((item for item in records if item.get("scope") in ("local", "project")
-                                      and _same(item.get("projectPath"), directory)),
-                                     key=lambda item: item.get("scope") != "local")), None)
-    user = next((item for item in records if item.get("scope") == "user" and _same(item.get("installPath"), running)),
-                None)
-    if mine is not None and _same(mine.get("installPath"), running):
-        return "ok", f"{mine.get('version')} ({mine.get('scope')} scope, this project's own)", ""
+
+    def installed_in(directory: Path):
+        found = [(name, item) for name, item in records if item.get("scope") in ("local", "project")
+                 and _same(item.get("projectPath"), directory)]
+        return min(found, key=lambda pair: pair[1].get("scope") != "local") if found else None
+    mine = installed_in(here)
+    above = None if mine else next(((directory, found) for directory in here.parents
+                                    if (found := installed_in(directory))), None)
+    user = next(((name, item) for name, item in records if item.get("scope") == "user"
+                 and _same(item.get("installPath"), running)), None)
+    runs = f"{user[1].get('version')} from the user scope" if user else f"the copy in {running}"
+    if mine is None and above is not None:
+        directory, (name, item) = above
+        if _same(item.get("installPath"), running):
+            return "ok", f"{item.get('version')} ({item.get('scope')} scope of {directory})", ""
+        return ("warn", f"started in {here}, below {directory}, which installs {item.get('version')}: a project's "
+                        f"install applies where the session starts, so the copy running here is {runs}",
+                f"start the session in {directory}")
     if mine is None:
-        return ("ok", f"{user.get('version')} (user scope; this project installs none of its own)", "") if user \
+        return ("ok", f"{user[1].get('version')} (user scope; this project installs none of its own)", "") if user \
             else ("ok", f"running from {running}; this project installs none of its own", "")
-    where = f"{user.get('version')} (user scope)" if user else f"the copy in {running}"
-    return ("warn", f"this session runs {where}, not this project's own {mine.get('version')} "
-                    f"({mine.get('scope')} scope): Claude Code loaded the other copy",
-            "bring the user install up (`claude plugin update flotilla@flotilla --scope user`) or remove it "
-            "(`claude plugin uninstall flotilla@flotilla --scope user`) - either changes what every project relying "
-            "on the user install runs - then start the session again")
+    name, item = mine
+    if _same(item.get("installPath"), running):
+        return "ok", f"{item.get('version')} ({item.get('scope')} scope, this project's own)", ""
+    own = f"this project's own {item.get('version')} ({item.get('scope')} scope)"
+    if user is None:
+        return ("warn", f"the copy running here comes from {running}, outside Claude Code's install records (a "
+                        f"--plugin-dir or a checkout), not {own}",
+                "start the session without that copy to run the project's")
+    if _version(user[1].get("version")) > _version(item.get("version")):
+        return ("warn", f"the copy running here is {user[1].get('version')} from the user scope, newer than {own}: "
+                        "Claude Code loaded the user's",
+                f"bring the project's install up: `claude plugin update {name} --scope {item.get('scope')}`, run in "
+                f"{here}; the user install stays as it is")
+    return ("warn", f"the copy running here is {user[1].get('version')} from the user scope, older than {own}: "
+                    "Claude Code loaded the user's",
+            f"update the user install (`claude plugin update {user[0]} --scope user`, which takes the marketplace's "
+            f"newest, not necessarily {item.get('version')}) or remove it (`claude plugin uninstall {user[0]} --scope "
+            "user`) - either changes what every project relying on it runs - then start the session again")
 
 
 def trusted(path: Path, *, home: Path | None = None) -> bool | None:

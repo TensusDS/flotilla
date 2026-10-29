@@ -451,3 +451,31 @@ def test_session_start_names_a_shadowed_copy_before_onboarding(tmp_path, monkeyp
     assert hooks.run_hook("session-start", io.StringIO(json.dumps({"cwd": str(project)})), out=out) == 0
     said = out.getvalue()
     assert said.startswith("flotilla: warn  plugin copy:") and "0.21.0" in said and "0.23.1" in said, said
+
+
+
+def test_session_start_says_nothing_when_the_projects_copy_runs(tmp_path, monkeypatch):
+    from flotilla.core import claude_state
+    from test_doctor import installs
+    config, project = tmp_path / "claude", tmp_path / "game"
+    project.mkdir()
+    cache = installs(config, project)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config))
+    monkeypatch.setattr(claude_state, "running_root", lambda: cache / "0.23.1")
+    out = io.StringIO()
+    hooks.run_hook("session-start", io.StringIO(json.dumps({"cwd": str(project)})), out=out)
+    assert out.getvalue() == ""
+
+
+def test_an_onboarded_session_start_judges_the_copy_where_the_session_started(tmp_path, monkeypatch):
+    """Review of 67cebce..c4e2f47: the doctor ran on the project root found by climbing, while Claude Code picks a
+    project's install by the directory the session starts in."""
+    from flotilla import doctor
+    (tmp_path / ".flotilla").mkdir()
+    (tmp_path / ".flotilla" / "project.toml").write_text("schema = 1\n", encoding="utf-8")
+    (tmp_path / "src").mkdir()
+    seen = {}
+    monkeypatch.setattr(doctor, "collect", lambda **kw: seen.update(kw) or [])
+    hooks.run_hook("session-start", io.StringIO(json.dumps({"cwd": str(tmp_path / "src")})), out=io.StringIO(),
+                   gather=lambda root, sid: context(tmp_path, me=None))
+    assert seen["started_in"] == tmp_path / "src", seen

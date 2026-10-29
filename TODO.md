@@ -30,8 +30,10 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
   of two installs of one id loads; both cases fit both "user wins" and "the first matching record in
   installed_plugins.json wins", and telling them apart means reordering the records on a live machine. Since
   0.23.2 `doctor` and the session start name a mismatch and `rig` names the cost of its advice; the cause stays
-  Claude Code's. Idea: ask Claude Code (a `/feedback` report) which copy should load. *(checked 2026-10-29 on
-  0.23.2: B, detected not prevented - flotilla/core/claude_state.py copy_in_use)*
+  Claude Code's. Only the copy that runs can say so: a user install older than 0.23.2 is silent, so on this
+  machine nothing is said until the user install (0.21.0, which twosuns runs) is brought up. Idea: ask Claude Code
+  (a `/feedback` report) which copy should load. *(checked 2026-10-29 on 0.23.2: B, detected not prevented -
+  flotilla/core/claude_state.py:75)*
 - **`flotilla gc restore` trusts the archive's records.** The archive is a folder beside the project that any
   session can write, so a forged entry could have `restore` put a `.claude/settings.json` or an `.envrc` into a tree,
   or apply a forged patch (push security review of daef13a, findings 2 and 3). Left as is within decision 245: a

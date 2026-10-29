@@ -43,9 +43,11 @@ def _dotted(version) -> str:
 def collect(*, cwd: Path, env=os.environ, run=subprocess.run, which=shutil.which,
             read=None, os_name: str = sys.platform,
             python=tuple(sys.version_info[:3]), timeout: float = 30, setup: bool = True,
-            home: Path | None = None, read_rows=None, running: Path | None = None) -> list[Finding]:
+            home: Path | None = None, read_rows=None, running: Path | None = None,
+            started_in: Path | None = None) -> list[Finding]:
     """`timeout` bounds each external call; a hook passes a short one so its findings are printed
-    before Claude Code kills it."""
+    before Claude Code kills it. `started_in` is where the session started, which names the project's install of
+    flotilla (by default `cwd`)."""
     asked: dict = {}
 
     def text() -> str:   # one `claude agents --json` answers both the count and the shape
@@ -115,7 +117,7 @@ def collect(*, cwd: Path, env=os.environ, run=subprocess.run, which=shutil.which
         findings.append(Finding("fail", "state", f"{state} is not writable: {err}"))
 
     from flotilla.core import claude_state
-    copy = claude_state.copy_in_use(cwd, running=running, env=env, home=home)   # the user's can shadow the project's
+    copy = claude_state.copy_in_use(started_in or cwd, running=running, env=env, home=home)   # the user's can shadow
     if copy is not None:
         findings.append(Finding(copy[0], "plugin copy", copy[1], copy[2]))
 

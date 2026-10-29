@@ -451,7 +451,7 @@ def test_an_unforeseen_credit_failure_never_fails_the_pass(world, monkeypatch):
     assert code == 0 and health.last_outcome(world["state"])[0]
 
 
-def test_the_advice_to_install_for_the_user_names_what_it_costs(world):
+def test_the_advice_to_install_for_the_user_names_what_it_costs(world, monkeypatch):
     """void-lanes-online, 2026-10-29: the user install this advice made ran in place of the project's own newer
     copy, and nothing said so. The advice names that cost, and what keeps it harmless."""
     import json as _json
@@ -464,5 +464,6 @@ def test_the_advice_to_install_for_the_user_names_what_it_costs(world):
                             env={"CLAUDE_CONFIG_DIR": str(world["tmp"] / "claude")})
     [fix] = [fix for status, detail, fix in found if "per project" in detail]
     assert "in place of a project's own" in fix and "same version" in fix, fix
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(world["tmp"] / "claude"))   # not this machine's own record
     code, out = run_cli("rig", "enable", "--provider", "vast")
-    assert "in place of a project's own" in out or "installed per project" not in out, out
+    assert "installed per project" in out and "in place of a project's own" in out, out

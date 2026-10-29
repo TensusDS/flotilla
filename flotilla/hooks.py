@@ -188,7 +188,8 @@ def _session_start(ctx, payload, out, now) -> int:
     from flotilla import doctor
     from flotilla.watch import render
     try:
-        checks = doctor.render(doctor.collect(cwd=ctx.root, timeout=HOOK_CHECK_TIMEOUT, setup=False), quiet=True)
+        checks = doctor.render(doctor.collect(cwd=ctx.root, timeout=HOOK_CHECK_TIMEOUT, setup=False,
+                                              started_in=Path(payload.get("cwd") or ctx.root)), quiet=True)
     except Exception as err:  # noqa: BLE001 - say what could not be checked, go on
         checks = [f"could not check this project: {err}"]
     if checks:

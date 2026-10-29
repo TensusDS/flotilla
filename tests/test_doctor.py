@@ -303,7 +303,7 @@ def test_doctor_is_quiet_about_current_newer_and_custom_posts(tmp_path):
 # 2026-10-29; the khrushchevka fleet on 0.13.0 ran 0.10.2, 2026-10-12): Claude Code does not document which copy
 # wins, so flotilla compares the copy that runs with the project's.
 
-def installs(config, project, *, user="0.21.0", mine="0.23.1"):
+def installs(config, project, *, user="0.21.0", mine="0.23.1", local="", plugin="flotilla@flotilla"):
     import json as _json
     cache = config / "plugins" / "cache" / "flotilla" / "flotilla"
     records = []
@@ -312,10 +312,18 @@ def installs(config, project, *, user="0.21.0", mine="0.23.1"):
     if mine:
         records.append({"scope": "project", "projectPath": str(project), "installPath": str(cache / mine),
                         "version": mine})
+    if local:
+        records.append({"scope": "local", "projectPath": str(project), "installPath": str(cache / local),
+                        "version": local})
     (config / "plugins").mkdir(parents=True, exist_ok=True)
     (config / "plugins" / "installed_plugins.json").write_text(
-        _json.dumps({"version": 2, "plugins": {"flotilla@flotilla": records}}), encoding="utf-8")
+        _json.dumps({"version": 2, "plugins": {plugin: records}}), encoding="utf-8")
     return cache
+
+
+def copy_found(tmp_path, config, running, cwd=None):
+    return collect(cwd or tmp_path, env={"FLOTILLA_STATE_DIR": str(tmp_path / "state"),
+                                         "CLAUDE_CONFIG_DIR": str(config)}, running=running)["plugin copy"]
 
 
 def test_a_user_copy_running_in_place_of_the_projects_own_is_named(tmp_path):
@@ -349,3 +357,49 @@ def test_an_unreadable_record_of_installs_says_nothing(tmp_path):
     found = collect(tmp_path, env={"FLOTILLA_STATE_DIR": str(tmp_path / "state"),
                                    "CLAUDE_CONFIG_DIR": str(tmp_path / "nowhere")}, running=tmp_path / "x")
     assert "plugin copy" not in found
+
+
+# Review of 67cebce..c4e2f47: the advice follows which copy is newer, a copy outside the records is named as such, a
+# start below the project root is told apart, and the plugin's own id is used.
+
+def test_a_newer_user_copy_points_at_the_projects_install(tmp_path):
+    config = tmp_path / "claude"
+    cache = installs(config, tmp_path, user="0.21.0", mine="0.15.0")
+    copy = copy_found(tmp_path, config, cache / "0.21.0")
+    assert copy.status == "warn" and "newer" in copy.detail, copy
+    assert "--scope project" in copy.fix and "--scope user" not in copy.fix, copy
+
+
+def test_an_older_user_copy_says_what_updating_it_takes(tmp_path):
+    config = tmp_path / "claude"
+    cache = installs(config, tmp_path, user="0.21.0", mine="0.23.1")
+    copy = copy_found(tmp_path, config, cache / "0.21.0")
+    assert "older" in copy.detail and "--scope user" in copy.fix and "newest" in copy.fix, copy
+
+
+def test_a_copy_outside_the_records_is_named_as_such(tmp_path):
+    config = tmp_path / "claude"
+    installs(config, tmp_path)
+    copy = copy_found(tmp_path, config, tmp_path / "checkout")
+    assert copy.status == "warn" and "outside Claude Code's install records" in copy.detail, copy
+    assert "--scope user" not in copy.fix, copy
+
+
+def test_a_start_below_the_project_root_is_told_apart(tmp_path):
+    config = tmp_path / "claude"
+    cache = installs(config, tmp_path)
+    (tmp_path / "src").mkdir()
+    copy = copy_found(tmp_path, config, cache / "0.21.0", cwd=tmp_path / "src")
+    assert copy.status == "warn" and "below" in copy.detail and f"start the session in {tmp_path}" in copy.fix, copy
+
+
+def test_a_local_install_is_the_projects_before_its_shared_one(tmp_path):
+    config = tmp_path / "claude"
+    cache = installs(config, tmp_path, mine="0.23.1", local="0.22.0")
+    assert copy_found(tmp_path, config, cache / "0.22.0").status == "ok"
+
+
+def test_the_fix_names_the_plugins_own_id(tmp_path):
+    config = tmp_path / "claude"
+    cache = installs(config, tmp_path, plugin="flotilla@mirror")
+    assert "flotilla@mirror" in copy_found(tmp_path, config, cache / "0.21.0").fix

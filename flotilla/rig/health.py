@@ -96,9 +96,9 @@ def findings(state: Path, *, now: dt.datetime, run, env=os.environ) -> list[tupl
     if on and not user_scope(env):
         found.append(("warn", "flotilla is installed per project, so the guards on `rig enable` and the person's "
                       "files run only in those projects' sessions",
-                      "install it for the user: `claude plugin install flotilla@flotilla --scope user` - that copy then "
-                      "loads in place of a project's own install, so keep both at the same version (`flotilla "
-                      "doctor` names a mismatch)"))
+                      "install it for the user: `claude plugin install flotilla@flotilla --scope user` - that copy has "
+                      "been seen loading in place of a project's own install, so keep both at the same version "
+                      "(`flotilla doctor` names a mismatch)"))
     if live:
         quiet, last = silent(state, rig, now)
         if quiet:
