@@ -8,8 +8,9 @@ each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2
 - **Pin the release your project runs.** The install in the README followed flotilla's default branch, so every
   update brought whatever was there, into hooks that run in all your project's sessions. The README now shows how
   to pin a release tag and how to move the pin. `/flotilla:doctor` says which release the project's marketplace
-  follows, and warns when the machine follows another: a machine keeps one marketplace of a name, and the last
-  `marketplace add` on it decides for every project there.
+  follows, and warns when the machine follows another: a machine keeps one marketplace of a name, and after another
+  project's `marketplace add` without a pin, `claude plugin update` in a pinned project was measured taking the
+  default branch.
 
 ## 0.23.2 - 2026-10-29
 

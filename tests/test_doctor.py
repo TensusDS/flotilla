@@ -582,3 +582,70 @@ def test_a_malformed_marketplace_setting_is_no_crash(tmp_path):
     (tmp_path / ".claude" / "settings.json").write_text(_json.dumps({"extraKnownMarketplaces": ["flotilla"]}),
                                                         encoding="utf-8")
     assert pin_found(tmp_path, config) is None
+
+
+# Review of f65fe3e..e1a8967. Measured after it, 2026-10-29, isolated CLAUDE_CONFIG_DIR: project A pinned #v0.22.0 and
+# installed 0.22.0; project B on the same machine ran `marketplace add TensusDS/flotilla` with no ref; then
+# `claude plugin update` in A took 0.23.2 from the default branch. A pin holds only while the machine follows it.
+
+def test_an_unpinned_project_on_a_machine_that_follows_a_tag_is_warned(tmp_path):
+    config = tmp_path / "claude"
+    marketplaces(tmp_path, config, machine_ref="v0.22.0")
+    found = pin_found(tmp_path, config)
+    assert found.status == "warn" and "declares no pin" in found.detail and "v0.22.0" in found.detail, found
+
+
+def test_a_machine_without_the_marketplace_is_not_called_the_default_branch(tmp_path):
+    config = tmp_path / "claude"
+    marketplaces(tmp_path, config, project_ref="v0.23.1")
+    (config / "plugins" / "known_marketplaces.json").unlink()
+    found = pin_found(tmp_path, config)
+    assert "has no flotilla marketplace" in found.detail and "default branch" not in found.detail, found
+
+
+def test_a_machine_following_another_repository_is_no_match(tmp_path):
+    import json as _json
+    config = tmp_path / "claude"
+    marketplaces(tmp_path, config, project_ref="v0.23.1")
+    (config / "plugins" / "known_marketplaces.json").write_text(_json.dumps({"flotilla": {"source": {
+        "source": "github", "repo": "someone/fork", "ref": "v0.23.1"}}}), encoding="utf-8")
+    found = pin_found(tmp_path, config)
+    assert found.status == "warn" and "someone/fork" in found.detail, found
+
+
+def test_a_marketplace_from_a_directory_is_not_described_as_github(tmp_path):
+    import json as _json
+    config = tmp_path / "claude"
+    marketplaces(tmp_path, config, declared=False)
+    (tmp_path / ".claude").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".claude" / "settings.json").write_text(_json.dumps({"enabledPlugins": {"flotilla@flotilla": True},
+        "extraKnownMarketplaces": {"flotilla": {"source": {"source": "directory", "path": "/src/flotilla"}}}}),
+        encoding="utf-8")
+    assert pin_found(tmp_path, config) is None
+
+
+def test_a_branch_ref_is_named_as_moving(tmp_path):
+    config = tmp_path / "claude"
+    marketplaces(tmp_path, config, project_ref="main", machine_ref="main")
+    found = pin_found(tmp_path, config)
+    assert found.status == "info" and "moves with that branch" in found.detail, found
+
+
+def test_the_marketplace_name_comes_from_the_enabled_plugin(tmp_path):
+    import json as _json
+    config = tmp_path / "claude"
+    (tmp_path / ".claude").mkdir(parents=True)
+    (tmp_path / ".claude" / "settings.json").write_text(_json.dumps({"enabledPlugins": {"flotilla@mirror": True},
+        "extraKnownMarketplaces": {"mirror": {"source": {"source": "github", "repo": "TensusDS/flotilla"}}}}),
+        encoding="utf-8")
+    (config / "plugins").mkdir(parents=True)
+    (config / "plugins" / "known_marketplaces.json").write_text("{}", encoding="utf-8")
+    found = pin_found(tmp_path, config)
+    assert found is not None and "mirror" in found.detail, found
+
+
+def test_an_unreadable_machine_record_is_no_crash(tmp_path):
+    config = tmp_path / "claude"
+    marketplaces(tmp_path, config, project_ref="v0.23.1")
+    (config / "plugins" / "known_marketplaces.json").write_text("[1, 2", encoding="utf-8")
+    assert pin_found(tmp_path, config).status == "warn"

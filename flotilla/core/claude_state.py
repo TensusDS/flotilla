@@ -160,53 +160,88 @@ def copy_in_use(cwd: Path, *, running: Path | None = None, env=os.environ,
 
 
 REPO = "TensusDS/flotilla"
+RELEASE = re.compile(r"v\d+\.\d+\.\d+")
 
 
-def _declared(root: Path, market: str) -> dict | None:
-    """The source a project's settings give the marketplace (`settings.local.json` over `settings.json`), or None."""
-    found = None
+def _settings(root: Path) -> list[dict]:
+    """The project's settings files that parse, shared first: a later one's entry replaces an earlier one's."""
+    found = []
     for name in ("settings.json", "settings.local.json"):
         try:
             data = json.loads((Path(root) / ".claude" / name).read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        known = data.get("extraKnownMarketplaces") if isinstance(data, dict) else None
+        if isinstance(data, dict):
+            found.append(data)
+    return found
+
+
+def _market(settings: list[dict]) -> str:
+    """The marketplace the project enables flotilla from (`flotilla@<market>`), `flotilla` when none says."""
+    enabled = [str(key).split("@", 1)[1] for data in settings for key, on in (data.get("enabledPlugins") or {}).items()
+               if isinstance(data.get("enabledPlugins"), dict) and str(key).startswith("flotilla@") and on is True]
+    return enabled[-1] if enabled else "flotilla"
+
+
+def _declared(settings: list[dict], market: str) -> dict | None:
+    found = None
+    for data in settings:
+        known = data.get("extraKnownMarketplaces")
         entry = known.get(market) if isinstance(known, dict) else None
         if isinstance(entry, dict) and isinstance(entry.get("source"), dict):
             found = entry["source"]
     return found
 
 
-def marketplace_pin(root: Path, *, version: str, market: str = "flotilla", env=os.environ,
+def _following(source: dict) -> str:
+    return f"{source.get('repo') or '?'}" + (f"#{source['ref']}" if source.get("ref") else " (the default branch)")
+
+
+def marketplace_pin(root: Path, *, version: str, env=os.environ,
                     home: Path | None = None) -> tuple[str, str, str] | None:
-    """(status, detail, fix) for the ref the project pins flotilla's marketplace to against the one this machine
-    follows, or None when the project declares no such marketplace. Measured 2026-10-29 with an isolated
-    CLAUDE_CONFIG_DIR: `claude plugin marketplace add <repo>#<tag> --scope project` writes the ref into the project's
-    settings and installs that tag's version, and `claude plugin update` stays on it; but one marketplace per name
-    serves the whole machine (`<config>/plugins/known_marketplaces.json`), and the last `marketplace add` repoints it
-    for every project, while each project's settings keep their own ref."""
-    declared = _declared(root, market)
-    if declared is None:
+    """(status, detail, fix) for the release a project's flotilla marketplace follows, or None when the project
+    declares none from GitHub. Measured 2026-10-29, Claude Code 2.1.312, isolated CLAUDE_CONFIG_DIR:
+    `claude plugin marketplace add <repo>#<tag> --scope project` writes the ref into the project's settings and
+    installs that tag, and `claude plugin update` stays on it; but a machine keeps one marketplace of a name
+    (`<config>/plugins/known_marketplaces.json`), the last `marketplace add` repoints it, and then `claude plugin
+    update` in a project pinned to v0.22.0 took 0.23.2 from the default branch. What a session start does with a
+    project ref the machine does not follow was not measured."""
+    settings = _settings(root)
+    market = _market(settings)
+    declared = _declared(settings, market)
+    if declared is None or declared.get("source") != "github":
         return None
-    repo = str(declared.get("repo") or REPO)
-    wanted = str(declared.get("ref") or "")
-    if not wanted:
-        return ("info", f"the {market} marketplace follows the default branch of {repo}: every update takes what is "
-                        "there", f"pin it to a release: `claude plugin marketplace add {repo}#v{version} --scope "
-                                 f"project`, then `claude plugin update flotilla@{market} --scope project` - the "
-                                 "machine's one marketplace of that name then follows the pin for every project")
+    repo, wanted = str(declared.get("repo") or REPO), str(declared.get("ref") or "")
     try:
         known = json.loads((config_dir(env, home) / "plugins" / "known_marketplaces.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         known = {}
     entry = known.get(market) if isinstance(known, dict) else None
-    source = entry.get("source") if isinstance(entry, dict) and isinstance(entry.get("source"), dict) else {}
-    follows = str(source.get("ref") or "")
-    if follows == wanted:
-        return "ok", f"the {market} marketplace is pinned to {wanted}", ""
-    return ("warn", f"this project pins the {market} marketplace to {wanted}, but this machine's follows "
-                    f"{follows or 'the default branch'}: the last `claude plugin marketplace add` on a machine decides "
-                    "for every project, so an update here takes that",
+    machine = entry.get("source") if isinstance(entry, dict) and isinstance(entry.get("source"), dict) else None
+    same_repo = machine is not None and machine.get("source") == "github" and str(machine.get("repo") or "") == repo
+    follows = str(machine.get("ref") or "") if machine else ""
+    pin = (f"pin it to a release: `claude plugin marketplace add {repo}#v{version} --scope project`, then `claude "
+           f"plugin update flotilla@{market} --scope project`, and commit `.claude/settings.json` - this machine's one "
+           f"{market} marketplace then follows that pin for every project on it")
+    if machine is None:
+        return ("info" if not wanted else "warn",
+                f"this machine has no {market} marketplace yet; the project's settings "
+                + (f"pin {wanted}" if wanted else "declare no pin"),
+                f"add it from here: `claude plugin marketplace add {repo}" + (f"#{wanted}" if wanted else "")
+                + " --scope project`")
+    if not wanted:
+        if same_repo and not follows:
+            return ("info", f"the {market} marketplace follows the default branch of {repo}: every update takes what "
+                            "is there", pin)
+        return ("warn", f"this project declares no pin, but this machine's {market} marketplace follows "
+                        f"{_following(machine)} (another project's `marketplace add`): `claude plugin update` here "
+                        "takes that", pin)
+    if same_repo and follows == wanted:
+        moving = "" if RELEASE.fullmatch(wanted) else f"; {wanted} is not a release tag, so it moves with that branch"
+        return ("ok" if not moving else "info", f"the {market} marketplace is pinned to {wanted}{moving}", "")
+    return ("warn", f"this project pins the {market} marketplace to {repo}#{wanted}, but this machine's follows "
+                    f"{_following(machine)}: the last `claude plugin marketplace add` on a machine decides, and "
+                    "`claude plugin update` here takes what the machine follows",
             f"add it again from here: `claude plugin marketplace add {repo}#{wanted} --scope project` - which repoints "
             "it for every project on this machine")
 

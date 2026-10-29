@@ -51,6 +51,7 @@ def _check(root: Path | None) -> int:
     if files:
         shown = ", ".join(files[:10]) + (f" and {len(files) - 10} more" if len(files) > 10 else "")
         print(f"the plugin changed since {tag} ({shown}): bump the version in .claude-plugin/plugin.json, "
+              f"the README's pinned install, "
               f"pyproject.toml and flotilla/__init__.py, and tag the release", file=sys.stderr)
         return 1
     print(f"version {version}: the plugin is unchanged since {tag}")

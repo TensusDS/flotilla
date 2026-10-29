@@ -63,9 +63,11 @@ on the first line instead (the tags are listed in [CHANGELOG.md](CHANGELOG.md)):
     claude plugin install flotilla@flotilla --scope project
 
 That writes `"ref": "v0.23.3"` into the project's settings and installs that release; `claude plugin update` stays on
-it. One caveat, measured: a machine keeps one marketplace of a name for all its projects, and the last `marketplace
-add` on it decides what every project there updates from. Give the projects on one machine the same pin;
-`/flotilla:doctor` names a pin the machine does not follow.
+it. Two caveats. A machine keeps one marketplace of a name for all its projects, and the last `marketplace add` on
+it repoints it: measured, after another project on the same machine added it without a pin, `claude plugin update`
+in a project pinned to v0.22.0 took the default branch's release. Give the projects on one machine the same pin;
+`/flotilla:doctor` names a pin the machine does not follow. And a tag can be moved on GitHub, so a pin chooses when
+you move, not who can change what the tag names.
 
 If flotilla is also installed for your user (`--scope user`, which `flotilla rig` suggests), Claude Code has been
 seen loading that copy in place of the project's own. Keep both at the same version. From 0.23.2 on,

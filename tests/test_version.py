@@ -1,4 +1,5 @@
-"""The version is one string in three carriers, and a release that changed code without moving it is refused."""
+"""The version is one string in three carriers (and the README's pinned install), and a release that changed code
+without moving it is refused."""
 
 import json
 import re

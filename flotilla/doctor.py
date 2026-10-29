@@ -129,8 +129,7 @@ def collect(*, cwd: Path, env=os.environ, run=subprocess.run, which=shutil.which
             project = config.load_project(root)
             findings.append(Finding("ok", "project", f"{project.path} (schema {project.schema})"))
             from flotilla import __version__
-            from flotilla.core import claude_state as _state
-            pin = _state.marketplace_pin(root, version=__version__, env=env, home=home)   # which release it follows
+            pin = claude_state.marketplace_pin(root, version=__version__, env=env, home=home)   # the release it follows
             if pin is not None:
                 findings.append(Finding(pin[0], "marketplace", pin[1], pin[2]))
         except config.ConfigError as err:
