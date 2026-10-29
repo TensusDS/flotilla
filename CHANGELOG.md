@@ -7,10 +7,11 @@ each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2
 
 - **You are told when a session runs another copy of flotilla than the project installed.** With flotilla installed
   both for your user and for a project, Claude Code was seen loading the user's copy - void-lanes-online on 0.23.1
-  ran 0.21.0, and nothing said so. `/flotilla:doctor` and every session's start, before onboarding too, now name
+  ran 0.21.0, and nothing said so. `/flotilla:doctor` and a session's fresh start, before onboarding too, now name
   the copy that runs, the project's, and which install to bring up: the project's when the user's is newer, the
-  user's when it is older. A session started below the project's root is told so. Only the copy that runs can say
-  any of this: a user install older than 0.23.2 stays silent until it is brought to 0.23.2 or newer.
+  user's when it is older, and either one to remove when the two cannot be ordered. A session started below the
+  project's root is told so. Only the copy that runs can say any of this: a user install older than 0.23.2 stays
+  silent until it is brought to 0.23.2 or newer.
   `flotilla rig`'s advice to install for the user names that cost.
 
 ## 0.23.1 - 2026-10-29

@@ -470,3 +470,38 @@ def test_a_looping_recorded_path_does_not_crash_the_doctor(tmp_path, monkeypatch
         return real(self, *args, **kwargs)
     monkeypatch.setattr(Path, "resolve", looping)
     assert claude_state._same(str(tmp_path / "loop"), tmp_path) is False
+
+
+# Third review of 6e5b1b5..6c70530: a project with both a local and a shared install, an all-digit sha, a missing
+# version, and advice the reader can act on.
+
+def test_a_projects_other_install_running_is_named_as_the_projects(tmp_path):
+    config = tmp_path / "claude"
+    cache = installs(config, tmp_path, user="", mine="0.23.1", local="0.22.0")
+    copy = copy_found(tmp_path, config, cache / "0.23.1")
+    assert "neither" not in copy.detail and "this project's project install 0.23.1" in copy.detail, copy
+    assert "--scope local" in copy.fix, copy
+
+
+def test_an_all_digit_sha_is_not_ordered_as_a_version(tmp_path):
+    config = tmp_path / "claude"
+    running = two_marketplaces(config, tmp_path, "1234567", "0.23.1")
+    copy = copy_found(tmp_path, config, running)
+    assert "newer" not in copy.detail and "another install" in copy.detail, copy
+
+
+def test_a_missing_version_reads_as_unknown(tmp_path):
+    import json as _json
+    config = tmp_path / "claude"
+    cache = installs(config, tmp_path)
+    data = _json.loads((config / "plugins" / "installed_plugins.json").read_text(encoding="utf-8"))
+    del data["plugins"]["flotilla@flotilla"][0]["version"]
+    (config / "plugins" / "installed_plugins.json").write_text(_json.dumps(data), encoding="utf-8")
+    copy = copy_found(tmp_path, config, cache / "0.21.0")
+    assert "None" not in copy.detail and "unknown version" in copy.detail, copy
+
+
+def test_a_copy_from_elsewhere_says_how_to_settle_it(tmp_path):
+    config = tmp_path / "claude"
+    installs(config, tmp_path)
+    assert "--plugin-dir" in copy_found(tmp_path, config, tmp_path / "checkout").fix

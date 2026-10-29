@@ -504,3 +504,18 @@ def test_a_copy_note_that_fails_says_so_and_the_session_starts(tmp_path, monkeyp
     out = io.StringIO()
     assert hooks.run_hook("session-start", io.StringIO(json.dumps({"cwd": str(tmp_path)})), out=out) == 0
     assert "could not compare the plugin copy" in out.getvalue() and "records unreadable" in out.getvalue()
+
+
+
+def test_a_resumed_session_outside_a_project_gets_no_copy_note(tmp_path, monkeypatch):
+    """Third review of 6e5b1b5..6c70530: before onboarding only a fresh start is judged."""
+    from flotilla.core import claude_state
+    from test_doctor import installs
+    config, project = tmp_path / "claude", tmp_path / "game"
+    project.mkdir()
+    cache = installs(config, project)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config))
+    monkeypatch.setattr(claude_state, "running_root", lambda: cache / "0.21.0")
+    out = io.StringIO()
+    hooks.run_hook("session-start", io.StringIO(json.dumps({"cwd": str(project), "source": "resume"})), out=out)
+    assert out.getvalue() == ""
