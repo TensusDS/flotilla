@@ -24,6 +24,13 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
   trees, no new session or lane run with no room, a letter to a live session about outputs piling up in its tree)
   and 7's lifetime (one month, asked three days ahead, media only, never on silence). *(open, design:
   docs/specs/2026-10-21-gc-design.md)*
+- **`flotilla gc restore` trusts the archive's records.** The archive is a folder beside the project that any
+  session can write, so a forged entry could have `restore` put a `.claude/settings.json` or an `.envrc` into a tree,
+  or apply a forged patch (push security review of daef13a, findings 2 and 3). Left as is within decision 245: a
+  session able to forge an entry can write the same file into the same tree itself, so `restore` gives it nothing it
+  lacks; refusing `.claude/` would break restoring the person's own `settings.local.json`, which the archive takes as
+  personal. Revisit if restore ever runs with more rights than a session, or if entries gain a signature a session
+  cannot reach. *(checked 2026-10-29 on 0.23.1: still S, within decision 245 - flotilla/gc/archive.py restore)*
 - **Seat trees pile up: 89 beside the main checkout, and `fleet clean` would remove 7.** A plan run (`flotilla fleet
   clean`, no `--yes`) kept 82 trees. 69 of them for one reason: "<tip> is not on origin's trunk, and no shipped row
   carries it". Their tips sit on branches that live on origin unmerged: `research/thunder-model-v2` holds three

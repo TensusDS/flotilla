@@ -3,6 +3,13 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.23.1 - 2026-10-29
+
+- **Your own words are read back to you before anything is done.** The collector's answers are a file any session
+  can write, so an answer in your own words could have been planted by a background session and carried out by your
+  session with your rights. `/flotilla:gc` now reads each one back to you word for word and acts only on your yes;
+  `flotilla gc forget <key>` drops words that are not yours, and the piece is asked again.
+
 ## 0.23.0 - 2026-10-28
 
 - **Leftovers are settled, not just kept (garbage collection, stage 2).** A file with a byte-identical copy that
