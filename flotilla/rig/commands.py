@@ -219,7 +219,9 @@ def _enable(state: Path, name: str) -> int:
         print(f"but the provider key cannot be used yet: {err}")
     if not health.user_scope():
         print("note: flotilla is installed per project, so the guards on `rig enable` and the person's files run only "
-              "in those projects' sessions; `claude plugin install flotilla@flotilla --scope user` closes that")
+              "in those projects' sessions; `claude plugin install flotilla@flotilla --scope user` closes that, and "
+              "that copy then loads in place of a project's own install, so keep both at the same version "
+              "(`flotilla doctor` names a mismatch)")
     return 0
 
 
