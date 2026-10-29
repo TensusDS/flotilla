@@ -128,6 +128,11 @@ def collect(*, cwd: Path, env=os.environ, run=subprocess.run, which=shutil.which
         try:
             project = config.load_project(root)
             findings.append(Finding("ok", "project", f"{project.path} (schema {project.schema})"))
+            from flotilla import __version__
+            from flotilla.core import claude_state as _state
+            pin = _state.marketplace_pin(root, version=__version__, env=env, home=home)   # which release it follows
+            if pin is not None:
+                findings.append(Finding(pin[0], "marketplace", pin[1], pin[2]))
         except config.ConfigError as err:
             findings.append(Finding("fail", "project", str(err), "fix the file, then run `flotilla doctor`"))
         if setup:   # a hook skips them: its firing proves the plugin runs, and its budget is seconds

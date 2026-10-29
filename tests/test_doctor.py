@@ -505,3 +505,80 @@ def test_a_copy_from_elsewhere_says_how_to_settle_it(tmp_path):
     config = tmp_path / "claude"
     installs(config, tmp_path)
     assert "--plugin-dir" in copy_found(tmp_path, config, tmp_path / "checkout").fix
+
+
+# The marketplace's pin (void-lanes-online note, 2026-10-29): a project that names flotilla's marketplace without a
+# ref follows its default branch, and one marketplace per name serves the whole machine - measured 2026-10-29 with an
+# isolated CLAUDE_CONFIG_DIR: the last `claude plugin marketplace add` repoints it for every project, while each
+# project's settings keep their own ref.
+
+def marketplaces(root, config, *, project_ref=None, machine_ref=None, declared=True):
+    import json as _json
+    if declared:
+        source = {"source": "github", "repo": "TensusDS/flotilla", **({"ref": project_ref} if project_ref else {})}
+        (root / ".claude").mkdir(parents=True, exist_ok=True)
+        (root / ".claude" / "settings.json").write_text(_json.dumps({
+            "enabledPlugins": {"flotilla@flotilla": True}, "extraKnownMarketplaces": {"flotilla": {"source": source}}}),
+            encoding="utf-8")
+    machine = {"source": "github", "repo": "TensusDS/flotilla", **({"ref": machine_ref} if machine_ref else {})}
+    (config / "plugins").mkdir(parents=True, exist_ok=True)
+    (config / "plugins" / "known_marketplaces.json").write_text(_json.dumps({"flotilla": {"source": machine}}),
+                                                                encoding="utf-8")
+
+
+def pin_found(tmp_path, config):
+    onboard_here(tmp_path)
+    return collect(tmp_path, env={"FLOTILLA_STATE_DIR": str(tmp_path / "state"), "CLAUDE_CONFIG_DIR": str(config)},
+                   run=plugin_run(True), home=tmp_path, setup=False).get("marketplace")
+
+
+def test_an_unpinned_marketplace_is_named_with_the_command_that_pins_it(tmp_path):
+    from flotilla import __version__
+    config = tmp_path / "claude"
+    marketplaces(tmp_path, config)
+    found = pin_found(tmp_path, config)
+    assert found.status == "info" and "default branch" in found.detail, found
+    assert f"claude plugin marketplace add TensusDS/flotilla#v{__version__} --scope project" in found.fix, found
+    assert "claude plugin update flotilla@flotilla --scope project" in found.fix and "every project" in found.fix, found
+
+
+def test_a_pin_the_machine_follows_is_ok(tmp_path):
+    config = tmp_path / "claude"
+    marketplaces(tmp_path, config, project_ref="v0.23.1", machine_ref="v0.23.1")
+    found = pin_found(tmp_path, config)
+    assert found.status == "ok" and "v0.23.1" in found.detail, found
+
+
+@pytest.mark.parametrize("machine_ref, follows", [(None, "the default branch"), ("v0.22.0", "v0.22.0")])
+def test_a_pin_the_machine_does_not_follow_is_a_warning(tmp_path, machine_ref, follows):
+    config = tmp_path / "claude"
+    marketplaces(tmp_path, config, project_ref="v0.23.1", machine_ref=machine_ref)
+    found = pin_found(tmp_path, config)
+    assert found.status == "warn" and "v0.23.1" in found.detail and follows in found.detail, found
+    assert "claude plugin marketplace add TensusDS/flotilla#v0.23.1 --scope project" in found.fix, found
+    assert "every project" in found.fix, found
+
+
+def test_a_project_that_declares_no_marketplace_says_nothing_of_it(tmp_path):
+    config = tmp_path / "claude"
+    marketplaces(tmp_path, config, declared=False)
+    assert pin_found(tmp_path, config) is None
+
+
+def test_a_local_settings_pin_wins_over_the_shared_one(tmp_path):
+    import json as _json
+    config = tmp_path / "claude"
+    marketplaces(tmp_path, config, machine_ref="v0.23.1")
+    (tmp_path / ".claude" / "settings.local.json").write_text(_json.dumps({"extraKnownMarketplaces": {"flotilla": {
+        "source": {"source": "github", "repo": "TensusDS/flotilla", "ref": "v0.23.1"}}}}), encoding="utf-8")
+    assert pin_found(tmp_path, config).status == "ok"
+
+
+def test_a_malformed_marketplace_setting_is_no_crash(tmp_path):
+    import json as _json
+    config = tmp_path / "claude"
+    marketplaces(tmp_path, config, declared=False)
+    (tmp_path / ".claude").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".claude" / "settings.json").write_text(_json.dumps({"extraKnownMarketplaces": ["flotilla"]}),
+                                                        encoding="utf-8")
+    assert pin_found(tmp_path, config) is None

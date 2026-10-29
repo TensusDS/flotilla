@@ -159,6 +159,58 @@ def copy_in_use(cwd: Path, *, running: Path | None = None, env=os.environ,
             "user`) - either changes what every project relying on it runs - then start the session again")
 
 
+REPO = "TensusDS/flotilla"
+
+
+def _declared(root: Path, market: str) -> dict | None:
+    """The source a project's settings give the marketplace (`settings.local.json` over `settings.json`), or None."""
+    found = None
+    for name in ("settings.json", "settings.local.json"):
+        try:
+            data = json.loads((Path(root) / ".claude" / name).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        known = data.get("extraKnownMarketplaces") if isinstance(data, dict) else None
+        entry = known.get(market) if isinstance(known, dict) else None
+        if isinstance(entry, dict) and isinstance(entry.get("source"), dict):
+            found = entry["source"]
+    return found
+
+
+def marketplace_pin(root: Path, *, version: str, market: str = "flotilla", env=os.environ,
+                    home: Path | None = None) -> tuple[str, str, str] | None:
+    """(status, detail, fix) for the ref the project pins flotilla's marketplace to against the one this machine
+    follows, or None when the project declares no such marketplace. Measured 2026-10-29 with an isolated
+    CLAUDE_CONFIG_DIR: `claude plugin marketplace add <repo>#<tag> --scope project` writes the ref into the project's
+    settings and installs that tag's version, and `claude plugin update` stays on it; but one marketplace per name
+    serves the whole machine (`<config>/plugins/known_marketplaces.json`), and the last `marketplace add` repoints it
+    for every project, while each project's settings keep their own ref."""
+    declared = _declared(root, market)
+    if declared is None:
+        return None
+    repo = str(declared.get("repo") or REPO)
+    wanted = str(declared.get("ref") or "")
+    if not wanted:
+        return ("info", f"the {market} marketplace follows the default branch of {repo}: every update takes what is "
+                        "there", f"pin it to a release: `claude plugin marketplace add {repo}#v{version} --scope "
+                                 f"project`, then `claude plugin update flotilla@{market} --scope project` - the "
+                                 "machine's one marketplace of that name then follows the pin for every project")
+    try:
+        known = json.loads((config_dir(env, home) / "plugins" / "known_marketplaces.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        known = {}
+    entry = known.get(market) if isinstance(known, dict) else None
+    source = entry.get("source") if isinstance(entry, dict) and isinstance(entry.get("source"), dict) else {}
+    follows = str(source.get("ref") or "")
+    if follows == wanted:
+        return "ok", f"the {market} marketplace is pinned to {wanted}", ""
+    return ("warn", f"this project pins the {market} marketplace to {wanted}, but this machine's follows "
+                    f"{follows or 'the default branch'}: the last `claude plugin marketplace add` on a machine decides "
+                    "for every project, so an update here takes that",
+            f"add it again from here: `claude plugin marketplace add {repo}#{wanted} --scope project` - which repoints "
+            "it for every project on this machine")
+
+
 def trusted(path: Path, *, home: Path | None = None) -> bool | None:
     try:
         data = json.loads(((home or Path.home()) / ".claude.json").read_text(encoding="utf-8"))
