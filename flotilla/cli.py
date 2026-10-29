@@ -61,7 +61,7 @@ def build_parser() -> argparse.ArgumentParser:
     for parser_ in (organize_next, organize_show, organize_answer, organize_propose, organize_apply):
         parser_.add_argument("--root", default=".")
     gc_ = sub.add_parser("gc", help="the collector's questions and its archive: next, show, answer, apply, restore, "
-                                    "archive")
+                                    "archive, forget")
     gc_actions = gc_.add_subparsers(dest="action", required=True)
     gc_next = gc_actions.add_parser("next", help="the next round of questions, as JSON")
     gc_show = gc_actions.add_parser("show", help="one piece of work as data for the session to read")
@@ -74,7 +74,9 @@ def build_parser() -> argparse.ArgumentParser:
     gc_restore = gc_actions.add_parser("restore", help="put an archive entry back: its id, or a tree's name")
     gc_restore.add_argument("key")
     gc_archive = gc_actions.add_parser("archive", help="list the archive's entries")
-    for parser_ in (gc_next, gc_show, gc_answer, gc_apply, gc_restore, gc_archive):
+    gc_forget = gc_actions.add_parser("forget", help="drop a recorded answer the person does not own; asked again")
+    gc_forget.add_argument("key")
+    for parser_ in (gc_next, gc_show, gc_answer, gc_apply, gc_restore, gc_archive, gc_forget):
         parser_.add_argument("--root", default=".")
     work = sub.add_parser("work", help="move a row of the work ledger")
     moves = work.add_subparsers(dest="move", required=True)

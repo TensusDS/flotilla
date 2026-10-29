@@ -86,6 +86,7 @@ Worktrees and receipts:
     flotilla gc apply [<key> ...]                    carry out what you answered
     flotilla gc restore <entry|tree>                 put archived files back
     flotilla gc archive                              the archive's entries
+    flotilla gc forget <key>                         drop a recorded answer that is not yours; asked again
 
 Once the profile is on origin's trunk, its guards judge **every** Claude Code session that has flotilla on and works
 in the repository - your own interactive session too, even one that holds no post. With `push_receipt` on, a push to

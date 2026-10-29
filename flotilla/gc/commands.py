@@ -15,7 +15,7 @@ from flotilla.core.text import visible
 from flotilla.gc import apply, archive, questions, store, sweep
 from flotilla.onboard.questions import AnswerError
 
-PERSONS = ("answer", "apply", "restore")
+PERSONS = ("answer", "apply", "restore", "forget")
 
 
 def _census():
@@ -50,8 +50,8 @@ def _show(found: list, key: str) -> int:
 def run_gc(args, *, ledger=None, census=None) -> int:
     if args.action in PERSONS:
         from flotilla.core import caller
-        refused = caller.person_refusal("answers or carries out the collector's questions, or restores from its "
-                                        "archive")
+        refused = caller.person_refusal("answers, drops or carries out the collector's answers, or restores from "
+                                        "its archive")
         if refused:
             print(f"refused: {refused}")
             return 2
@@ -99,6 +99,14 @@ def run_gc(args, *, ledger=None, census=None) -> int:
         if args.action == "answer":
             print(questions.record(found, data, args.question, args.values))
             store.save(ledger.state_dir, ledger.repo_key, data)
+            return 0
+        if args.action == "forget":   # a recorded answer the person does not own (push security review of daef13a)
+            key = args.key.rsplit("@", 1)[0]
+            if data["answers"].pop(key, None) is None:
+                print(f"no answer is recorded for `{visible(key)}`")
+                return 2
+            store.save(ledger.state_dir, ledger.repo_key, data)
+            print(f"{visible(key)}: the recorded answer is dropped; it is asked again")
             return 0
         lines, complete = apply.apply(ledger, data, items=found, keys=tuple(args.keys or ()), sessions=sessions,
                                       twins=report.finder)

@@ -292,3 +292,12 @@ def test_the_sender_and_the_orchestrator_know_taken_in_work():
     assert "retargets a taken-in pull request" in sender and "template_version: 10" in sender
     assert "(taken in)" in orchestrator and "/flotilla:organize" in orchestrator   # gc design 9: template 20
     assert "template_version: 20" in orchestrator
+
+
+def test_the_gc_skill_never_carries_out_own_words_without_the_persons_yes():
+    """Push security review of daef13a: the answer store is a file any session can write, so an own-words answer is
+    read back to the person, word for word, and carried out only on their yes - in their session, with their rights."""
+    text = (ROOT / "skills" / "gc" / "SKILL.md").read_text(encoding="utf-8")
+    words = text[text.index("## 3. Own words"):text.index("## 4. Restore")]
+    assert "word for word" in words and "only on their yes" in words, words
+    assert "any session can write" in words, words

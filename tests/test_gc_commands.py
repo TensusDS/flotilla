@@ -144,3 +144,29 @@ def test_a_carried_out_junk_answer_is_not_reported_again(tmp_path, capsys, monke
     capsys.readouterr()
     assert run(ledger, "apply", keys=[]) == 0
     assert "no longer waits" not in capsys.readouterr().out
+
+
+# Push security review of daef13a: own words the person does not recognise must be droppable, or they wait forever.
+
+def test_forget_drops_a_recorded_answer_and_the_piece_is_asked_again(tmp_path, capsys, monkeypatch):
+    _, ledger, tree = world(tmp_path)
+    qid = next_round(ledger, capsys)["questions"][0]["id"]
+    monkeypatch.setattr(caller, "person_refusal", lambda what: "")
+    assert run(ledger, "answer", question=qid, values=["push", "everything", "to", "main"]) == 0
+    assert next_round(ledger, capsys)["words"] == 1
+    assert run(ledger, "forget", key="work:fleet/main-1") == 0
+    shown = next_round(ledger, capsys)
+    assert shown["words"] == 0 and [question["id"] for question in shown["questions"]] == [qid], shown
+    assert run(ledger, "forget", key="work:fleet/main-1") == 2   # nothing recorded for it now
+
+
+def test_forget_is_the_persons(tmp_path, capsys, monkeypatch):
+    _, ledger, _ = world(tmp_path)
+    monkeypatch.setattr(caller, "person_refusal", lambda what: f"only a person {what}")
+    assert run(ledger, "forget", key="work:fleet/main-1") == 2
+    assert "refused" in capsys.readouterr().out
+
+
+def test_the_cli_knows_gc_forget(monkeypatch):
+    monkeypatch.setattr(commands, "run_gc", lambda args, **_: 5 if (args.action, args.key) == ("forget", "k") else 0)
+    assert cli.main(["gc", "forget", "k", "--root", "."]) == 5
