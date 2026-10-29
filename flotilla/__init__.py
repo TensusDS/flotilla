@@ -1,3 +1,3 @@
 """flotilla: coordinate independent peer Claude Code sessions."""
 
-__version__ = "0.23.1"
+__version__ = "0.23.2"

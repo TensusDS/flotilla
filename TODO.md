@@ -24,6 +24,14 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
   trees, no new session or lane run with no room, a letter to a live session about outputs piling up in its tree)
   and 7's lifetime (one month, asked three days ahead, media only, never on silence). *(open, design:
   docs/specs/2026-10-21-gc-design.md)*
+- **A user install of flotilla loads in place of a project's own.** void-lanes-online installed 0.23.1 for the
+  project and its session ran the user's 0.21.0 (2026-10-29); the khrushchevka fleet installed 0.13.0 and ran the
+  user's 0.10.2 (2026-10-12), unnoticed. Claude Code documents precedence for `enabledPlugins` only, not for which
+  of two installs of one id loads; both cases fit both "user wins" and "the first matching record in
+  installed_plugins.json wins", and telling them apart means reordering the records on a live machine. Since
+  0.23.2 `doctor` and the session start name a mismatch and `rig` names the cost of its advice; the cause stays
+  Claude Code's. Idea: ask Claude Code (a `/feedback` report) which copy should load. *(checked 2026-10-29 on
+  0.23.2: B, detected not prevented - flotilla/core/claude_state.py copy_in_use)*
 - **`flotilla gc restore` trusts the archive's records.** The archive is a folder beside the project that any
   session can write, so a forged entry could have `restore` put a `.claude/settings.json` or an `.envrc` into a tree,
   or apply a forged patch (push security review of daef13a, findings 2 and 3). Left as is within decision 245: a

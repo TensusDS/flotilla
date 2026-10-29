@@ -3,6 +3,14 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.23.2 - 2026-10-29
+
+- **You are told when a session runs another copy of flotilla than the project installed.** With flotilla installed
+  both for your user and for a project, Claude Code was seen loading the user's copy - void-lanes-online on 0.23.1
+  ran 0.21.0, and nothing said so. `/flotilla:doctor` and every session's start, before onboarding too, now name
+  the copy that runs, the project's, and the command that settles it. `flotilla rig`'s advice to install for the
+  user names that cost.
+
 ## 0.23.1 - 2026-10-29
 
 - **Your own words are read back to you before anything is done.** The collector's answers are a file any session

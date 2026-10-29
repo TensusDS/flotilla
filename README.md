@@ -55,6 +55,10 @@ marketplace entry that points at this repository, so everyone who opens the proj
 from here. Without `--scope project` on the first line the marketplace goes into your own settings only, and the
 project's file names a plugin nobody else can find.
 
+If flotilla is also installed for your user (`--scope user`, which `flotilla rig` suggests), Claude Code has been
+seen loading that copy in place of the project's own, whatever their versions. Keep both at the same version;
+`/flotilla:doctor` and every session's start name a mismatch, with the copy that runs and the project's.
+
 Then check the machine:
 
     /flotilla:doctor
