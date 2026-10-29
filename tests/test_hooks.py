@@ -519,3 +519,21 @@ def test_a_resumed_session_outside_a_project_gets_no_copy_note(tmp_path, monkeyp
     out = io.StringIO()
     hooks.run_hook("session-start", io.StringIO(json.dumps({"cwd": str(project), "source": "resume"})), out=out)
     assert out.getvalue() == ""
+
+
+
+def test_session_start_stays_quiet_for_an_unpinned_marketplace(tmp_path, monkeypatch):
+    """Second review of f65fe3e..1895748: the common case, unpinned on an unpinned machine, prints nothing at start."""
+    from flotilla import doctor
+    from flotilla.core import claude_state
+    from test_doctor import marketplaces
+    (tmp_path / ".flotilla").mkdir()
+    (tmp_path / ".flotilla" / "project.toml").write_text("schema = 1\n", encoding="utf-8")
+    config = tmp_path / "claude"
+    marketplaces(tmp_path, config)
+    found = doctor.collect(cwd=tmp_path, env={"FLOTILLA_STATE_DIR": str(tmp_path / "state"),
+                                              "CLAUDE_CONFIG_DIR": str(config)},
+                           run=lambda *a, **k: __import__("subprocess").CompletedProcess(a, 0, "2.1.300\n", ""),
+                           which=lambda name: "/usr/bin/" + name, read=lambda: [], os_name="linux",
+                           python=(3, 12, 1), setup=False, home=tmp_path)
+    assert not [line for line in doctor.render(found, quiet=True) if "marketplace" in line]

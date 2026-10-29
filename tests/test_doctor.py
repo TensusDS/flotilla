@@ -628,7 +628,7 @@ def test_a_branch_ref_is_named_as_moving(tmp_path):
     config = tmp_path / "claude"
     marketplaces(tmp_path, config, project_ref="main", machine_ref="main")
     found = pin_found(tmp_path, config)
-    assert found.status == "info" and "moves with that branch" in found.detail, found
+    assert found.status == "info" and "if it names a branch, it moves with it" in found.detail, found
 
 
 def test_the_marketplace_name_comes_from_the_enabled_plugin(tmp_path):
@@ -649,3 +649,82 @@ def test_an_unreadable_machine_record_is_no_crash(tmp_path):
     marketplaces(tmp_path, config, project_ref="v0.23.1")
     (config / "plugins" / "known_marketplaces.json").write_text("[1, 2", encoding="utf-8")
     assert pin_found(tmp_path, config).status == "warn"
+
+
+# Second review of f65fe3e..1895748.
+
+def settle(tmp_path, config, *, shared=None, local=None, machine=None):
+    import json as _json
+    (tmp_path / ".claude").mkdir(parents=True, exist_ok=True)
+    if shared is not None:
+        (tmp_path / ".claude" / "settings.json").write_text(_json.dumps(shared), encoding="utf-8")
+    if local is not None:
+        (tmp_path / ".claude" / "settings.local.json").write_text(_json.dumps(local), encoding="utf-8")
+    (config / "plugins").mkdir(parents=True, exist_ok=True)
+    (config / "plugins" / "known_marketplaces.json").write_text(_json.dumps(machine or {}), encoding="utf-8")
+
+
+def flotilla_source(ref=None, repo="TensusDS/flotilla"):
+    return {"source": {"source": "github", "repo": repo, **({"ref": ref} if ref else {})}}
+
+
+@pytest.mark.parametrize("enabled", [["flotilla@flotilla"], "flotilla@flotilla"])
+def test_a_malformed_enabled_plugins_is_no_crash(tmp_path, enabled):
+    config = tmp_path / "claude"
+    settle(tmp_path, config, shared={"enabledPlugins": enabled, "extraKnownMarketplaces": {"flotilla": flotilla_source()}},
+           machine={"flotilla": flotilla_source()})
+    assert pin_found(tmp_path, config).status == "info"
+
+
+def test_a_local_disable_is_honoured(tmp_path):
+    config = tmp_path / "claude"
+    settle(tmp_path, config, shared={"enabledPlugins": {"flotilla@mirror": True},
+                                     "extraKnownMarketplaces": {"mirror": flotilla_source("v0.23.1")}},
+           local={"enabledPlugins": {"flotilla@mirror": False, "flotilla@flotilla": True},
+                  "extraKnownMarketplaces": {"flotilla": flotilla_source()}},
+           machine={"flotilla": flotilla_source(), "mirror": flotilla_source("v0.22.0")})
+    found = pin_found(tmp_path, config)
+    assert found.status == "info" and "mirror" not in found.detail, found
+
+
+def test_an_unreadable_machine_record_is_named_as_such(tmp_path):
+    config = tmp_path / "claude"
+    settle(tmp_path, config, shared={"enabledPlugins": {"flotilla@flotilla": True},
+                                     "extraKnownMarketplaces": {"flotilla": flotilla_source("v0.23.1")}})
+    (config / "plugins" / "known_marketplaces.json").write_text("[1, 2", encoding="utf-8")
+    found = pin_found(tmp_path, config)
+    assert "could not be read" in found.detail and "known_marketplaces.json" in found.detail, found
+
+
+def test_a_machine_entry_from_a_directory_is_named_by_its_kind(tmp_path):
+    config = tmp_path / "claude"
+    settle(tmp_path, config, shared={"enabledPlugins": {"flotilla@flotilla": True},
+                                     "extraKnownMarketplaces": {"flotilla": flotilla_source("v0.23.1")}},
+           machine={"flotilla": {"source": {"source": "directory", "path": "/src/flotilla"}}})
+    found = pin_found(tmp_path, config)
+    assert "?" not in found.detail and "/src/flotilla" in found.detail, found
+
+
+def test_the_repository_is_compared_without_case(tmp_path):
+    config = tmp_path / "claude"
+    settle(tmp_path, config, shared={"enabledPlugins": {"flotilla@flotilla": True},
+                                     "extraKnownMarketplaces": {"flotilla": flotilla_source("v0.23.1")}},
+           machine={"flotilla": flotilla_source("v0.23.1", repo="tensusds/flotilla")})
+    assert pin_found(tmp_path, config).status == "ok"
+
+
+@pytest.mark.parametrize("ref, said", [("a" * 40, "a commit"), ("v0.24.0-rc1", "not a vX.Y.Z release tag")])
+def test_a_sha_or_a_prerelease_is_not_called_a_moving_branch(tmp_path, ref, said):
+    config = tmp_path / "claude"
+    settle(tmp_path, config, shared={"enabledPlugins": {"flotilla@flotilla": True},
+                                     "extraKnownMarketplaces": {"flotilla": flotilla_source(ref)}},
+           machine={"flotilla": flotilla_source(ref)})
+    found = pin_found(tmp_path, config)
+    assert said in found.detail and "moves with that branch" not in found.detail, found
+
+
+def test_the_cause_of_a_machine_tag_is_not_guessed(tmp_path):
+    config = tmp_path / "claude"
+    marketplaces(tmp_path, config, machine_ref="v0.22.0")
+    found = pin_found(tmp_path, config)
+    assert "another project's" not in found.detail and "user scope" in found.detail, found

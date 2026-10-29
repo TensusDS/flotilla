@@ -161,6 +161,7 @@ def copy_in_use(cwd: Path, *, running: Path | None = None, env=os.environ,
 
 REPO = "TensusDS/flotilla"
 RELEASE = re.compile(r"v\d+\.\d+\.\d+")
+COMMIT = re.compile(r"[0-9a-f]{40}")
 
 
 def _settings(root: Path) -> list[dict]:
@@ -177,10 +178,16 @@ def _settings(root: Path) -> list[dict]:
 
 
 def _market(settings: list[dict]) -> str:
-    """The marketplace the project enables flotilla from (`flotilla@<market>`), `flotilla` when none says."""
-    enabled = [str(key).split("@", 1)[1] for data in settings for key, on in (data.get("enabledPlugins") or {}).items()
-               if isinstance(data.get("enabledPlugins"), dict) and str(key).startswith("flotilla@") and on is True]
-    return enabled[-1] if enabled else "flotilla"
+    """The marketplace the project enables flotilla from (`flotilla@<market>`), with `enabledPlugins` merged key by
+    key, local over shared; `flotilla` when it is among them or none says."""
+    merged: dict = {}
+    for data in settings:
+        enabled = data.get("enabledPlugins")
+        if isinstance(enabled, dict):
+            merged.update(enabled)
+    markets = sorted(str(key).split("@", 1)[1] for key, on in merged.items()
+                     if str(key).startswith("flotilla@") and on is True)
+    return "flotilla" if not markets or "flotilla" in markets else markets[0]
 
 
 def _declared(settings: list[dict], market: str) -> dict | None:
@@ -194,7 +201,12 @@ def _declared(settings: list[dict], market: str) -> dict | None:
 
 
 def _following(source: dict) -> str:
-    return f"{source.get('repo') or '?'}" + (f"#{source['ref']}" if source.get("ref") else " (the default branch)")
+    kind = source.get("source")
+    if kind == "github":
+        return f"{source.get('repo') or 'an unnamed repository'}" + (
+            f"#{source['ref']}" if source.get("ref") else " (the default branch)")
+    where = source.get("url") or source.get("path") or source.get("repo") or ""
+    return f"a {kind or 'source'} {where}".rstrip()
 
 
 def marketplace_pin(root: Path, *, version: str, env=os.environ,
@@ -212,17 +224,24 @@ def marketplace_pin(root: Path, *, version: str, env=os.environ,
     if declared is None or declared.get("source") != "github":
         return None
     repo, wanted = str(declared.get("repo") or REPO), str(declared.get("ref") or "")
+    record = config_dir(env, home) / "plugins" / "known_marketplaces.json"
+    pin = (f"pin it to a release: `claude plugin marketplace add {repo}#v{version} --scope project` (the release of "
+           f"the copy running here; the newest is in CHANGELOG.md), then `claude plugin update flotilla@{market} "
+           f"--scope project`, and commit `.claude/settings.json` - this machine's one {market} marketplace then "
+           "follows that pin for every project on it")
     try:
-        known = json.loads((config_dir(env, home) / "plugins" / "known_marketplaces.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+        known = json.loads(record.read_text(encoding="utf-8"))
+    except FileNotFoundError:
         known = {}
+    except (OSError, ValueError) as err:
+        return ("warn" if wanted else "info", f"this machine's record of marketplaces ({record}) could not be read "
+                f"({err}), so which release it follows is unknown; the project's settings "
+                + (f"pin {wanted}" if wanted else "declare no pin"), "")
     entry = known.get(market) if isinstance(known, dict) else None
     machine = entry.get("source") if isinstance(entry, dict) and isinstance(entry.get("source"), dict) else None
-    same_repo = machine is not None and machine.get("source") == "github" and str(machine.get("repo") or "") == repo
+    same_repo = machine is not None and machine.get("source") == "github" and \
+        str(machine.get("repo") or "").lower() == repo.lower()
     follows = str(machine.get("ref") or "") if machine else ""
-    pin = (f"pin it to a release: `claude plugin marketplace add {repo}#v{version} --scope project`, then `claude "
-           f"plugin update flotilla@{market} --scope project`, and commit `.claude/settings.json` - this machine's one "
-           f"{market} marketplace then follows that pin for every project on it")
     if machine is None:
         return ("info" if not wanted else "warn",
                 f"this machine has no {market} marketplace yet; the project's settings "
@@ -234,11 +253,15 @@ def marketplace_pin(root: Path, *, version: str, env=os.environ,
             return ("info", f"the {market} marketplace follows the default branch of {repo}: every update takes what "
                             "is there", pin)
         return ("warn", f"this project declares no pin, but this machine's {market} marketplace follows "
-                        f"{_following(machine)} (another project's `marketplace add`): `claude plugin update` here "
-                        "takes that", pin)
+                        f"{_following(machine)} (set by a `marketplace add` elsewhere: another project, or the user "
+                        "scope): `claude plugin update` here takes what the machine follows", pin)
     if same_repo and follows == wanted:
-        moving = "" if RELEASE.fullmatch(wanted) else f"; {wanted} is not a release tag, so it moves with that branch"
-        return ("ok" if not moving else "info", f"the {market} marketplace is pinned to {wanted}{moving}", "")
+        if RELEASE.fullmatch(wanted):
+            return "ok", f"the {market} marketplace is pinned to {wanted}", ""
+        if COMMIT.fullmatch(wanted):
+            return "ok", f"the {market} marketplace is pinned to a commit, {wanted[:12]}: it does not move", ""
+        return ("info", f"the {market} marketplace is pinned to {wanted}: not a vX.Y.Z release tag; if it names a "
+                        "branch, it moves with it", "")
     return ("warn", f"this project pins the {market} marketplace to {repo}#{wanted}, but this machine's follows "
                     f"{_following(machine)}: the last `claude plugin marketplace add` on a machine decides, and "
                     "`claude plugin update` here takes what the machine follows",
