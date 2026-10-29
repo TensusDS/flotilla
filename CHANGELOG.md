@@ -3,6 +3,14 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.23.3 - 2026-10-29
+
+- **Pin the release your project runs.** The install in the README followed flotilla's default branch, so every
+  update brought whatever was there, into hooks that run in all your project's sessions. The README now shows how
+  to pin a release tag and how to move the pin. `/flotilla:doctor` says which release the project's marketplace
+  follows, and warns when the machine follows another: a machine keeps one marketplace of a name, and the last
+  `marketplace add` on it decides for every project there.
+
 ## 0.23.2 - 2026-10-29
 
 - **You are told when a session runs another copy of flotilla than the project installed.** With flotilla installed

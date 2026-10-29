@@ -42,6 +42,13 @@ def test_the_three_carriers_hold_one_version():
     assert manifest == pyproject.group(1) == package.group(1)
 
 
+def test_the_readme_pins_the_current_release():
+    """The README's pinned install names the release it ships with, so a reader copying it gets a tag that exists."""
+    manifest = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))["version"]
+    pinned = re.findall(r"TensusDS/flotilla#v(\d+\.\d+\.\d+)", (ROOT / "README.md").read_text(encoding="utf-8"))
+    assert pinned and set(pinned) == {manifest}, pinned
+
+
 def test_a_missing_tag_is_refused_with_the_tag_to_make(tmp_path, capsys):
     root = plugin_repo(tmp_path)
     assert check_version.main(root) == 1

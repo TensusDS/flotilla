@@ -55,6 +55,18 @@ marketplace entry that points at this repository, so everyone who opens the proj
 from here. Without `--scope project` on the first line the marketplace goes into your own settings only, and the
 project's file names a plugin nobody else can find.
 
+**Pin a release.** As written, the marketplace follows this repository's default branch: every update brings what is
+there, and flotilla's hooks and CLI run in every session of your project. To choose when you move, pin a release tag
+on the first line instead (the tags are listed in [CHANGELOG.md](CHANGELOG.md)):
+
+    claude plugin marketplace add TensusDS/flotilla#v0.23.3 --scope project
+    claude plugin install flotilla@flotilla --scope project
+
+That writes `"ref": "v0.23.3"` into the project's settings and installs that release; `claude plugin update` stays on
+it. One caveat, measured: a machine keeps one marketplace of a name for all its projects, and the last `marketplace
+add` on it decides what every project there updates from. Give the projects on one machine the same pin;
+`/flotilla:doctor` names a pin the machine does not follow.
+
 If flotilla is also installed for your user (`--scope user`, which `flotilla rig` suggests), Claude Code has been
 seen loading that copy in place of the project's own. Keep both at the same version. From 0.23.2 on,
 `/flotilla:doctor` and a session's fresh start name a mismatch, with the copy that runs, the project's, and which
@@ -732,6 +744,12 @@ The 2026-10-01 security review, its 25 findings and how each was fixed are recor
 **Update.** Finish or stand down the running fleet first, then:
 
     claude plugin marketplace update flotilla
+    claude plugin update flotilla@flotilla --scope project
+
+With a pinned release, name the new tag instead of updating the marketplace (it would stay on the old tag), and commit
+the changed `.claude/settings.json`:
+
+    claude plugin marketplace add TensusDS/flotilla#v<new> --scope project
     claude plugin update flotilla@flotilla --scope project
 
 Restart the sessions so they load the new version, and bring `.flotilla/posts/` up to the new templates (see
