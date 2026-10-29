@@ -225,7 +225,8 @@ def waiting(found: list[Item], data: dict) -> list[str]:
     for item in found:
         answer = _answer(data, item.key)
         if answer.get("value") == "words" and answer.get("seen") == fingerprint(item):
+            # one JSON string after fixed text: a quote in the words cannot close it (review of a20163b)
+            words = json.dumps(visible(str(answer.get("words", ""))), ensure_ascii=False)
             out.append(f"{visible(item.key)}: recorded as the person's words - read these words back to the person "
-                       f"and carry them out only on their yes, then the tree is judged again: "
-                       f"\"{visible(answer.get('words', ''))}\"")
+                       f"and carry them out only on their yes, then the tree is judged again: {words}")
     return out
