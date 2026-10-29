@@ -64,12 +64,14 @@ def running_root() -> Path:
 def _same(recorded, path: Path) -> bool:
     try:
         return bool(recorded) and Path(str(recorded)).resolve() == path
-    except (OSError, ValueError):
+    except (OSError, ValueError, RuntimeError):   # RuntimeError: a symlink loop, on Python 3.11 and 3.12
         return False
 
 
-def _version(text) -> tuple[int, ...]:
-    return tuple(int(part) for part in re.findall(r"\d+", str(text or ""))[:3])
+def _version(text) -> tuple[int, int, int] | None:
+    """A dotted version to order by, padded to three parts; None for anything else (a commit sha, a word)."""
+    match = re.fullmatch(r"(\d+)(?:\.(\d+))?(?:\.(\d+))?", str(text or "").strip())
+    return tuple(int(part or 0) for part in match.groups()) if match else None
 
 
 def copy_in_use(cwd: Path, *, running: Path | None = None, env=os.environ,
@@ -103,6 +105,7 @@ def copy_in_use(cwd: Path, *, running: Path | None = None, env=os.environ,
                                     if (found := installed_in(directory))), None)
     user = next(((name, item) for name, item in records if item.get("scope") == "user"
                  and _same(item.get("installPath"), running)), None)
+    recorded = any(_same(item.get("installPath"), running) for _, item in records)
     runs = f"{user[1].get('version')} from the user scope" if user else f"the copy in {running}"
     if mine is None and above is not None:
         directory, (name, item) = above
@@ -119,14 +122,22 @@ def copy_in_use(cwd: Path, *, running: Path | None = None, env=os.environ,
         return "ok", f"{item.get('version')} ({item.get('scope')} scope, this project's own)", ""
     own = f"this project's own {item.get('version')} ({item.get('scope')} scope)"
     if user is None:
-        return ("warn", f"the copy running here comes from {running}, outside Claude Code's install records (a "
-                        f"--plugin-dir or a checkout), not {own}",
+        where = ("neither the user's install nor this project's" if recorded
+                 else "outside Claude Code's install records (a --plugin-dir or a checkout)")
+        return ("warn", f"the copy running here comes from {running}, {where}, not {own}",
                 "start the session without that copy to run the project's")
-    if _version(user[1].get("version")) > _version(item.get("version")):
+    theirs, ours = _version(user[1].get("version")), _version(item.get("version"))
+    if theirs is None or ours is None or theirs == ours:   # nothing to bring up: two installs (second review, I1)
+        return ("warn", f"the copy running here is {user[0]} {user[1].get('version')} from the user scope, not "
+                        f"{own} as {name}: another install, which Claude Code loaded",
+                f"keep one of the two: remove the user install (`claude plugin uninstall {user[0]} --scope user`, "
+                f"which changes what every project relying on it runs) or this project's (`claude plugin uninstall "
+                f"{name} --scope {item.get('scope')}`, run in {here}); then start the session again")
+    if theirs > ours:
         return ("warn", f"the copy running here is {user[1].get('version')} from the user scope, newer than {own}: "
                         "Claude Code loaded the user's",
                 f"bring the project's install up: `claude plugin update {name} --scope {item.get('scope')}`, run in "
-                f"{here}; the user install stays as it is")
+                f"{here} (it takes the marketplace's newest); the user install stays as it is")
     return ("warn", f"the copy running here is {user[1].get('version')} from the user scope, older than {own}: "
                     "Claude Code loaded the user's",
             f"update the user install (`claude plugin update {user[0]} --scope user`, which takes the marketplace's "

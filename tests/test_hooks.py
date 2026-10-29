@@ -453,7 +453,6 @@ def test_session_start_names_a_shadowed_copy_before_onboarding(tmp_path, monkeyp
     assert said.startswith("flotilla: warn  plugin copy:") and "0.21.0" in said and "0.23.1" in said, said
 
 
-
 def test_session_start_says_nothing_when_the_projects_copy_runs(tmp_path, monkeypatch):
     from flotilla.core import claude_state
     from test_doctor import installs
@@ -479,3 +478,29 @@ def test_an_onboarded_session_start_judges_the_copy_where_the_session_started(tm
     hooks.run_hook("session-start", io.StringIO(json.dumps({"cwd": str(tmp_path / "src")})), out=io.StringIO(),
                    gather=lambda root, sid: context(tmp_path, me=None))
     assert seen["started_in"] == tmp_path / "src", seen
+
+
+@pytest.mark.parametrize("source", ["resume", "compact", "clear"])
+def test_only_a_fresh_start_is_judged_by_the_shells_directory(tmp_path, monkeypatch, source):
+    """Second review of 67cebce..6e5b1b5: the session-start hook fires on resume, clear and compact too, when the
+    session may stand in a subdirectory it moved to; only a fresh start says where the session started."""
+    from flotilla import doctor
+    (tmp_path / ".flotilla").mkdir()
+    (tmp_path / ".flotilla" / "project.toml").write_text("schema = 1\n", encoding="utf-8")
+    (tmp_path / "src").mkdir()
+    seen = {}
+    monkeypatch.setattr(doctor, "collect", lambda **kw: seen.update(kw) or [])
+    hooks.run_hook("session-start", io.StringIO(json.dumps({"cwd": str(tmp_path / "src"), "source": source})),
+                   out=io.StringIO(), gather=lambda root, sid: context(tmp_path, me=None))
+    assert seen["started_in"] == tmp_path, seen
+
+
+def test_a_copy_note_that_fails_says_so_and_the_session_starts(tmp_path, monkeypatch):
+    from flotilla.core import claude_state
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("records unreadable")
+    monkeypatch.setattr(claude_state, "copy_in_use", boom)
+    out = io.StringIO()
+    assert hooks.run_hook("session-start", io.StringIO(json.dumps({"cwd": str(tmp_path)})), out=out) == 0
+    assert "could not compare the plugin copy" in out.getvalue() and "records unreadable" in out.getvalue()

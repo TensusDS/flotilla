@@ -1,5 +1,8 @@
 import io
 import subprocess
+from pathlib import Path
+
+import pytest
 
 from flotilla import doctor
 from flotilla.core.census import CensusUnavailable
@@ -403,3 +406,67 @@ def test_the_fix_names_the_plugins_own_id(tmp_path):
     config = tmp_path / "claude"
     cache = installs(config, tmp_path, plugin="flotilla@mirror")
     assert "flotilla@mirror" in copy_found(tmp_path, config, cache / "0.21.0").fix
+
+
+# Second review of 67cebce..6e5b1b5: equal or unorderable versions, a copy that is another project's install, a symlink
+# loop, the marketplace's newest in the "newer" advice.
+
+def two_marketplaces(config, project, user, mine):
+    import json as _json
+    cache = config / "plugins" / "cache"
+    records = {"flotilla@flotilla": [{"scope": "user", "installPath": str(cache / "a" / user), "version": user}],
+               "flotilla@mirror": [{"scope": "project", "projectPath": str(project),
+                                    "installPath": str(cache / "b" / mine), "version": mine}]}
+    (config / "plugins").mkdir(parents=True, exist_ok=True)
+    (config / "plugins" / "installed_plugins.json").write_text(_json.dumps({"version": 2, "plugins": records}),
+                                                               encoding="utf-8")
+    return cache / "a" / user
+
+
+@pytest.mark.parametrize("user, mine", [("0.23.1", "0.23.1"), ("9f1c2ab", "1a2b3c4"), ("0.23", "0.23.0")])
+def test_equal_or_unorderable_versions_get_no_older_or_newer_claim(tmp_path, user, mine):
+    config = tmp_path / "claude"
+    running = two_marketplaces(config, tmp_path, user, mine)
+    copy = copy_found(tmp_path, config, running)
+    assert copy.status == "warn" and "older" not in copy.detail and "newer" not in copy.detail, copy
+    assert "another install" in copy.detail and "--scope user" in copy.fix and "--scope project" in copy.fix, copy
+
+
+def test_another_projects_install_running_is_not_called_a_checkout(tmp_path):
+    import json as _json
+    config = tmp_path / "claude"
+    cache = installs(config, tmp_path)
+    data = _json.loads((config / "plugins" / "installed_plugins.json").read_text(encoding="utf-8"))
+    data["plugins"]["flotilla@flotilla"].append({"scope": "project", "projectPath": str(tmp_path / "other"),
+                                                 "installPath": str(cache / "0.19.0"), "version": "0.19.0"})
+    (config / "plugins" / "installed_plugins.json").write_text(_json.dumps(data), encoding="utf-8")
+    copy = copy_found(tmp_path, config, cache / "0.19.0")
+    assert "neither the user's install nor this project's" in copy.detail, copy
+    assert "outside Claude Code's install records" not in copy.detail, copy
+
+
+def test_the_newer_advice_says_update_takes_the_marketplaces_newest(tmp_path):
+    config = tmp_path / "claude"
+    cache = installs(config, tmp_path, user="0.21.0", mine="0.15.0")
+    assert "newest" in copy_found(tmp_path, config, cache / "0.21.0").fix
+
+
+def test_a_symlinked_start_directory_is_the_project(tmp_path):
+    config = tmp_path / "claude"
+    cache = installs(config, tmp_path / "real")
+    (tmp_path / "real").mkdir()
+    (tmp_path / "link").symlink_to(tmp_path / "real", target_is_directory=True)
+    copy = copy_found(tmp_path, config, cache / "0.23.1", cwd=tmp_path / "link")
+    assert copy.status == "ok" and "this project's own" in copy.detail, copy
+
+
+def test_a_looping_recorded_path_does_not_crash_the_doctor(tmp_path, monkeypatch):
+    from flotilla.core import claude_state
+    real = Path.resolve
+
+    def looping(self, *args, **kwargs):
+        if self.name == "loop":
+            raise RuntimeError("Symlink loop from 'loop'")
+        return real(self, *args, **kwargs)
+    monkeypatch.setattr(Path, "resolve", looping)
+    assert claude_state._same(str(tmp_path / "loop"), tmp_path) is False

@@ -67,7 +67,7 @@ def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime
     from flotilla.core.config import find_project
     root = find_project(cwd)
     if root is None:
-        if event == "session-start":   # before onboarding too: the copy that runs may not be the project's
+        if event == "session-start" and _fresh(payload):   # before onboarding too: the copy may not be the project's
             _copy_note(cwd, out)
         return 0
     _trace(event, payload, root, now)
@@ -87,6 +87,12 @@ def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime
         else:
             print(f"flotilla: the {event} hook failed: {err}", file=out)
         return 0
+
+
+def _fresh(payload: dict) -> bool:
+    """A start, not a resume, clear or compact: only then is the hook's cwd where the session started (second review
+    of 67cebce..6e5b1b5); a payload without `source` is taken as a start."""
+    return payload.get("source", "startup") == "startup"
 
 
 def _copy_note(cwd: Path, out) -> None:
@@ -189,7 +195,8 @@ def _session_start(ctx, payload, out, now) -> int:
     from flotilla.watch import render
     try:
         checks = doctor.render(doctor.collect(cwd=ctx.root, timeout=HOOK_CHECK_TIMEOUT, setup=False,
-                                              started_in=Path(payload.get("cwd") or ctx.root)), quiet=True)
+                                              started_in=Path(payload.get("cwd") or ctx.root) if _fresh(payload)
+                                              else ctx.root), quiet=True)
     except Exception as err:  # noqa: BLE001 - say what could not be checked, go on
         checks = [f"could not check this project: {err}"]
     if checks:

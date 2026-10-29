@@ -59,8 +59,8 @@ If flotilla is also installed for your user (`--scope user`, which `flotilla rig
 seen loading that copy in place of the project's own. Keep both at the same version. From 0.23.2 on,
 `/flotilla:doctor` and every session's start name a mismatch, with the copy that runs, the project's, and which
 install to bring up - but only the copy that runs can say so: a user install older than 0.23.2 says nothing, so
-bring it to 0.23.2 or newer first. Start sessions in the project's root: its install does not apply in a directory
-below it.
+bring it to 0.23.2 or newer first. Start sessions in the project's root: its install has been measured not to apply
+in a directory below it.
 
 Then check the machine:
 
