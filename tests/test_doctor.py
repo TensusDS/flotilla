@@ -297,3 +297,55 @@ def test_doctor_is_quiet_about_current_newer_and_custom_posts(tmp_path):
     commit(root, "posts of our own")
     git(root, "push", "-q", "origin", "main")
     assert posts_finding(root, tmp_path).status == "ok"
+
+
+# A copy installed for the user loaded in place of the project's own (void-lanes-online on 0.23.1 ran 0.21.0,
+# 2026-10-29; the khrushchevka fleet on 0.13.0 ran 0.10.2, 2026-10-12): Claude Code does not document which copy
+# wins, so flotilla compares the copy that runs with the project's.
+
+def installs(config, project, *, user="0.21.0", mine="0.23.1"):
+    import json as _json
+    cache = config / "plugins" / "cache" / "flotilla" / "flotilla"
+    records = []
+    if user:
+        records.append({"scope": "user", "installPath": str(cache / user), "version": user})
+    if mine:
+        records.append({"scope": "project", "projectPath": str(project), "installPath": str(cache / mine),
+                        "version": mine})
+    (config / "plugins").mkdir(parents=True, exist_ok=True)
+    (config / "plugins" / "installed_plugins.json").write_text(
+        _json.dumps({"version": 2, "plugins": {"flotilla@flotilla": records}}), encoding="utf-8")
+    return cache
+
+
+def test_a_user_copy_running_in_place_of_the_projects_own_is_named(tmp_path):
+    config = tmp_path / "claude"
+    cache = installs(config, tmp_path)
+    found = collect(tmp_path, env={"FLOTILLA_STATE_DIR": str(tmp_path / "state"), "CLAUDE_CONFIG_DIR": str(config)},
+                    running=cache / "0.21.0")
+    copy = found["plugin copy"]
+    assert copy.status == "warn", copy
+    assert "0.21.0" in copy.detail and "user scope" in copy.detail and "0.23.1" in copy.detail, copy
+    assert "--scope user" in copy.fix and "every project" in copy.fix, copy
+
+
+def test_the_projects_own_copy_running_is_ok(tmp_path):
+    config = tmp_path / "claude"
+    cache = installs(config, tmp_path)
+    found = collect(tmp_path, env={"FLOTILLA_STATE_DIR": str(tmp_path / "state"), "CLAUDE_CONFIG_DIR": str(config)},
+                    running=cache / "0.23.1")
+    assert found["plugin copy"].status == "ok" and "project scope" in found["plugin copy"].detail
+
+
+def test_a_project_without_its_own_install_runs_the_users_quietly(tmp_path):
+    config = tmp_path / "claude"
+    cache = installs(config, tmp_path, mine="")
+    found = collect(tmp_path, env={"FLOTILLA_STATE_DIR": str(tmp_path / "state"), "CLAUDE_CONFIG_DIR": str(config)},
+                    running=cache / "0.21.0")
+    assert found["plugin copy"].status == "ok" and "user scope" in found["plugin copy"].detail
+
+
+def test_an_unreadable_record_of_installs_says_nothing(tmp_path):
+    found = collect(tmp_path, env={"FLOTILLA_STATE_DIR": str(tmp_path / "state"),
+                                   "CLAUDE_CONFIG_DIR": str(tmp_path / "nowhere")}, running=tmp_path / "x")
+    assert "plugin copy" not in found

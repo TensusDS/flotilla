@@ -55,6 +55,56 @@ def install_hint(cwd: Path, *, run=subprocess.run, timeout: float = 30) -> str:
     return f"{MARKETPLACE}, then {INSTALL}"
 
 
+def running_root() -> Path:
+    """The plugin copy this process runs: the directory that holds `bin/` and `flotilla/`."""
+    return Path(__file__).resolve().parents[2]
+
+
+def _same(recorded, path: Path) -> bool:
+    try:
+        return bool(recorded) and Path(str(recorded)).resolve() == path
+    except (OSError, ValueError):
+        return False
+
+
+def copy_in_use(cwd: Path, *, running: Path | None = None, env=os.environ,
+                home: Path | None = None) -> tuple[str, str, str] | None:
+    """(status, detail, fix) for the copy of flotilla that runs against the one this project installed, or None when
+    Claude Code's record of installs (`<config>/plugins/installed_plugins.json`) cannot be read or names none. Which
+    copy loads when the user and a project both install flotilla is not documented; measured, the user's did
+    (void-lanes-online on 0.23.1 ran 0.21.0, 2026-10-29; the khrushchevka fleet on 0.13.0 ran 0.10.2, 2026-10-12).
+    The project's install is the nearest directory from `cwd` up that has one."""
+    try:
+        data = json.loads((config_dir(env, home) / "plugins" / "installed_plugins.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    plugins = data.get("plugins") if isinstance(data, dict) else None
+    records = [item for name, items in (plugins if isinstance(plugins, dict) else {}).items()
+               if str(name).startswith("flotilla@") and isinstance(items, list)
+               for item in items if isinstance(item, dict)]
+    if not records:
+        return None
+    running = Path(running or running_root()).resolve()
+    here = Path(cwd).resolve()
+    mine = next((found for directory in (here, *here.parents)
+                 for found in sorted((item for item in records if item.get("scope") in ("local", "project")
+                                      and _same(item.get("projectPath"), directory)),
+                                     key=lambda item: item.get("scope") != "local")), None)
+    user = next((item for item in records if item.get("scope") == "user" and _same(item.get("installPath"), running)),
+                None)
+    if mine is not None and _same(mine.get("installPath"), running):
+        return "ok", f"{mine.get('version')} ({mine.get('scope')} scope, this project's own)", ""
+    if mine is None:
+        return ("ok", f"{user.get('version')} (user scope; this project installs none of its own)", "") if user \
+            else ("ok", f"running from {running}; this project installs none of its own", "")
+    where = f"{user.get('version')} (user scope)" if user else f"the copy in {running}"
+    return ("warn", f"this session runs {where}, not this project's own {mine.get('version')} "
+                    f"({mine.get('scope')} scope): Claude Code loaded the other copy",
+            "bring the user install up (`claude plugin update flotilla@flotilla --scope user`) or remove it "
+            "(`claude plugin uninstall flotilla@flotilla --scope user`) - either changes what every project relying "
+            "on the user install runs - then start the session again")
+
+
 def trusted(path: Path, *, home: Path | None = None) -> bool | None:
     try:
         data = json.loads(((home or Path.home()) / ".claude.json").read_text(encoding="utf-8"))

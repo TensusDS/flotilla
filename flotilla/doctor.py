@@ -43,7 +43,7 @@ def _dotted(version) -> str:
 def collect(*, cwd: Path, env=os.environ, run=subprocess.run, which=shutil.which,
             read=None, os_name: str = sys.platform,
             python=tuple(sys.version_info[:3]), timeout: float = 30, setup: bool = True,
-            home: Path | None = None, read_rows=None) -> list[Finding]:
+            home: Path | None = None, read_rows=None, running: Path | None = None) -> list[Finding]:
     """`timeout` bounds each external call; a hook passes a short one so its findings are printed
     before Claude Code kills it."""
     asked: dict = {}
@@ -113,6 +113,11 @@ def collect(*, cwd: Path, env=os.environ, run=subprocess.run, which=shutil.which
         findings.append(Finding("ok", "state", f"{state} (delete it to erase the fleet's history)"))
     except OSError as err:
         findings.append(Finding("fail", "state", f"{state} is not writable: {err}"))
+
+    from flotilla.core import claude_state
+    copy = claude_state.copy_in_use(cwd, running=running, env=env, home=home)   # the user's can shadow the project's
+    if copy is not None:
+        findings.append(Finding(copy[0], "plugin copy", copy[1], copy[2]))
 
     root = config.find_project(cwd)
     if root is None:

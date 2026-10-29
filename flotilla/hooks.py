@@ -67,6 +67,8 @@ def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime
     from flotilla.core.config import find_project
     root = find_project(cwd)
     if root is None:
+        if event == "session-start":   # before onboarding too: the copy that runs may not be the project's
+            _copy_note(cwd, out)
         return 0
     _trace(event, payload, root, now)
 
@@ -85,6 +87,19 @@ def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime
         else:
             print(f"flotilla: the {event} hook failed: {err}", file=out)
         return 0
+
+
+def _copy_note(cwd: Path, out) -> None:
+    """The doctor's plugin-copy line, without the doctor: outside a project the hook imports nothing heavy."""
+    try:
+        from flotilla.core import claude_state
+        found = claude_state.copy_in_use(cwd)
+    except Exception as err:  # noqa: BLE001 - a note that cannot be made is no reason to fail a session's start
+        print(f"flotilla: could not compare the plugin copy with this project's: {err}", file=out)
+        return
+    if found is not None and found[0] != "ok":
+        status, detail, fix = found
+        print(f"flotilla: {status:<5} plugin copy: {detail}" + (f" (fix: {fix})" if fix else ""), file=out)
 
 
 def _guard(command: str, cwd: Path, payload: dict, out, now) -> int:

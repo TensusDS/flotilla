@@ -434,3 +434,20 @@ def test_an_item_whose_wording_moves_is_not_news(tmp_path):
     throttle.fresh(tmp_path, "s1", [_fleet_key(i) for i in first])
     new, standing = throttle.fresh(tmp_path, "s1", [_fleet_key(i) for i in later])
     assert (new, standing) == (set(), 1)
+
+
+def test_session_start_names_a_shadowed_copy_before_onboarding(tmp_path, monkeypatch):
+    """void-lanes-online, 2026-10-29: not onboarded yet, its project install 0.23.1, the session ran the user's
+    0.21.0, and nothing said so - the session-start hook says nothing outside an onboarded project."""
+    from flotilla.core import claude_state
+    from test_doctor import installs
+    config = tmp_path / "claude"
+    project = tmp_path / "game"
+    project.mkdir()
+    cache = installs(config, project)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config))
+    monkeypatch.setattr(claude_state, "running_root", lambda: cache / "0.21.0")
+    out = io.StringIO()
+    assert hooks.run_hook("session-start", io.StringIO(json.dumps({"cwd": str(project)})), out=out) == 0
+    said = out.getvalue()
+    assert said.startswith("flotilla: warn  plugin copy:") and "0.21.0" in said and "0.23.1" in said, said
