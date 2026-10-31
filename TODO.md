@@ -8,6 +8,20 @@ something through, B a bug a user meets, P polish, tests or docs), or `open, des
 run). A later triage re-checks only items whose named files changed since that version. An item that is done -
 fixed by a release, or found fixed - leaves its section for **Done** at the bottom, one line with the version.
 
+## From the marketplace pin's third review (2026-10-31, 0.23.3)
+
+- **The pin check reads its inputs as given, and four odd ones go unflagged.**
+  - Several `flotilla@X` entries enabled at once: the check takes the first alphabetically and says nothing. With a
+    pinned `flotilla@zz` and an unpinned `flotilla@aa`, only `aa`'s default branch is reported.
+  - A repository declared without an owner (`"repo": "flotilla"`) yields a fix command that is not a valid GitHub
+    source.
+  - A non-string or space-padded `ref` goes into the text as-is (`#['v1']`, "not a vX.Y.Z release tag").
+  - The pin fix names the running copy's version, so a checkout ahead of its tag suggests a tag that does not exist;
+    the pointer to CHANGELOG.md partly covers this.
+
+  Nothing crashes. `claude plugin marketplace add` writes none of these shapes, so each needs a hand-edited setting
+  or a dev checkout. *(checked 2026-10-31 on 0.23.3: still P - flotilla/core/claude_state.py:181, :229)*
+
 ## From watching the twosuns fleet on 0.20.0 (2026-10-20)
 
 - **Garbage collection, stage 2: the archive and the person's word.** Design sections 6 (rules 2 to 5: a twin
