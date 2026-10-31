@@ -165,12 +165,13 @@ COMMIT = re.compile(r"[0-9a-f]{40}")
 
 
 def _settings(root: Path) -> list[dict]:
-    """The project's settings files that parse, shared first: a later one's entry replaces an earlier one's."""
+    """The project's settings files that parse, shared first. Doctor reads a later file's entry over an earlier
+    one's; how Claude Code itself merges these keys was not measured."""
     found = []
     for name in ("settings.json", "settings.local.json"):
         try:
             data = json.loads((Path(root) / ".claude" / name).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        except (OSError, ValueError, RecursionError):
             continue
         if isinstance(data, dict):
             found.append(data)
@@ -229,16 +230,22 @@ def marketplace_pin(root: Path, *, version: str, env=os.environ,
            f"the copy running here; the newest is in CHANGELOG.md), then `claude plugin update flotilla@{market} "
            f"--scope project`, and commit `.claude/settings.json` - this machine's one {market} marketplace then "
            "follows that pin for every project on it")
+    def unreadable(why: str) -> tuple[str, str, str]:
+        return ("warn" if wanted else "info", f"this machine's record of marketplaces ({record}) could not be read "
+                f"({why}), so which release it follows is unknown; the project's settings "
+                + (f"pin {wanted}" if wanted else "declare no pin"), "")
     try:
         known = json.loads(record.read_text(encoding="utf-8"))
     except FileNotFoundError:
         known = {}
-    except (OSError, ValueError) as err:
-        return ("warn" if wanted else "info", f"this machine's record of marketplaces ({record}) could not be read "
-                f"({err}), so which release it follows is unknown; the project's settings "
-                + (f"pin {wanted}" if wanted else "declare no pin"), "")
-    entry = known.get(market) if isinstance(known, dict) else None
+    except (OSError, ValueError, RecursionError) as err:
+        return unreadable(str(err) or type(err).__name__)
+    if not isinstance(known, dict):
+        return unreadable("not a JSON object")
+    entry = known.get(market)
     machine = entry.get("source") if isinstance(entry, dict) and isinstance(entry.get("source"), dict) else None
+    if entry is not None and machine is None:
+        return unreadable(f"its {market} entry names no source")
     same_repo = machine is not None and machine.get("source") == "github" and \
         str(machine.get("repo") or "").lower() == repo.lower()
     follows = str(machine.get("ref") or "") if machine else ""
@@ -254,7 +261,8 @@ def marketplace_pin(root: Path, *, version: str, env=os.environ,
                             "is there", pin)
         return ("warn", f"this project declares no pin, but this machine's {market} marketplace follows "
                         f"{_following(machine)} (set by a `marketplace add` elsewhere: another project, or the user "
-                        "scope): `claude plugin update` here takes what the machine follows", pin)
+                        "scope); a machine keeps one marketplace of a name, so this project's updates read that one too",
+                        pin)
     if same_repo and follows == wanted:
         if RELEASE.fullmatch(wanted):
             return "ok", f"the {market} marketplace is pinned to {wanted}", ""

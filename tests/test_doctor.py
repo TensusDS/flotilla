@@ -679,9 +679,9 @@ def test_a_malformed_enabled_plugins_is_no_crash(tmp_path, enabled):
 def test_a_local_disable_is_honoured(tmp_path):
     config = tmp_path / "claude"
     settle(tmp_path, config, shared={"enabledPlugins": {"flotilla@mirror": True},
-                                     "extraKnownMarketplaces": {"mirror": flotilla_source("v0.23.1")}},
-           local={"enabledPlugins": {"flotilla@mirror": False, "flotilla@flotilla": True},
-                  "extraKnownMarketplaces": {"flotilla": flotilla_source()}},
+                                     "extraKnownMarketplaces": {"flotilla": flotilla_source(),
+                                                                "mirror": flotilla_source("v0.23.1")}},
+           local={"enabledPlugins": {"flotilla@mirror": False}},
            machine={"flotilla": flotilla_source(), "mirror": flotilla_source("v0.22.0")})
     found = pin_found(tmp_path, config)
     assert found.status == "info" and "mirror" not in found.detail, found
@@ -702,7 +702,7 @@ def test_a_machine_entry_from_a_directory_is_named_by_its_kind(tmp_path):
                                      "extraKnownMarketplaces": {"flotilla": flotilla_source("v0.23.1")}},
            machine={"flotilla": {"source": {"source": "directory", "path": "/src/flotilla"}}})
     found = pin_found(tmp_path, config)
-    assert "?" not in found.detail and "/src/flotilla" in found.detail, found
+    assert "a directory /src/flotilla" in found.detail, found
 
 
 def test_the_repository_is_compared_without_case(tmp_path):
@@ -713,14 +713,15 @@ def test_the_repository_is_compared_without_case(tmp_path):
     assert pin_found(tmp_path, config).status == "ok"
 
 
-@pytest.mark.parametrize("ref, said", [("a" * 40, "a commit"), ("v0.24.0-rc1", "not a vX.Y.Z release tag")])
-def test_a_sha_or_a_prerelease_is_not_called_a_moving_branch(tmp_path, ref, said):
+@pytest.mark.parametrize("ref, said, unsaid", [("a" * 40, "a commit", "names a branch"),
+                                               ("v0.24.0-rc1", "not a vX.Y.Z release tag", "a commit")])
+def test_a_sha_or_a_prerelease_is_not_called_a_moving_branch(tmp_path, ref, said, unsaid):
     config = tmp_path / "claude"
     settle(tmp_path, config, shared={"enabledPlugins": {"flotilla@flotilla": True},
                                      "extraKnownMarketplaces": {"flotilla": flotilla_source(ref)}},
            machine={"flotilla": flotilla_source(ref)})
     found = pin_found(tmp_path, config)
-    assert said in found.detail and "moves with that branch" not in found.detail, found
+    assert said in found.detail and unsaid not in found.detail, found
 
 
 def test_the_cause_of_a_machine_tag_is_not_guessed(tmp_path):
@@ -728,3 +729,27 @@ def test_the_cause_of_a_machine_tag_is_not_guessed(tmp_path):
     marketplaces(tmp_path, config, machine_ref="v0.22.0")
     found = pin_found(tmp_path, config)
     assert "another project's" not in found.detail and "user scope" in found.detail, found
+
+
+# Third review of f65fe3e..db232a6.
+
+@pytest.mark.parametrize("record", ["[]", "null", '{"flotilla": {"source": "TensusDS/flotilla"}}'])
+def test_a_machine_record_of_the_wrong_shape_is_not_called_absent(tmp_path, record):
+    config = tmp_path / "claude"
+    settle(tmp_path, config, shared={"enabledPlugins": {"flotilla@flotilla": True},
+                                     "extraKnownMarketplaces": {"flotilla": flotilla_source("v0.23.1")}})
+    (config / "plugins" / "known_marketplaces.json").write_text(record, encoding="utf-8")
+    found = pin_found(tmp_path, config)
+    assert found.status == "warn" and "has no flotilla marketplace" not in found.detail, found
+    assert "could not be read" in found.detail and "known_marketplaces.json" in found.detail, found
+
+
+@pytest.mark.parametrize("where", ["settings", "machine"])
+def test_deeply_nested_json_is_no_crash(tmp_path, where):
+    config = tmp_path / "claude"
+    marketplaces(tmp_path, config, project_ref="v0.23.1")
+    deep = "[" * 200000 + "]" * 200000
+    target = tmp_path / ".claude" / "settings.local.json" if where == "settings" else \
+        config / "plugins" / "known_marketplaces.json"
+    target.write_text(deep, encoding="utf-8")
+    assert pin_found(tmp_path, config) is not None
