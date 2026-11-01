@@ -32,12 +32,16 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
   the orchestrator). Until then stage 1 keeps such trees, named. *(checked 2026-10-28 on 0.23.0: built - twins,
   the archive with restore, questions and apply, the guard; letters to the orchestrator wait for stage 3's
   occasions, since every pass in 0.23.0 runs in a command the orchestrator itself runs)*
-- **Garbage collection, stage 3: occasions and the disk.** Design sections 4 e to k (a dead session's tree judged
-  by whoever notices, a pass after `shipped` and `helper done`, released work as a question, the daily pass the
-  orchestrator keeps, stopping the fleet's own orphans in a tree), 8 (low disk: shrink regenerable entries of idle
-  trees, no new session or lane run with no room, a letter to a live session about outputs piling up in its tree)
-  and 7's lifetime (one month, asked three days ahead, media only, never on silence). *(open, design:
-  docs/specs/2026-10-21-gc-design.md)*
+- **No room counts only the 2 GB floor, not a rig download in flight.** The design's "or under what a rig download
+  in flight still needs" has nothing to read: no record of a download's remaining size exists, so a large
+  `rig --get` can still fill the disk past the floor. *(open, design: flotilla/gc/disk.py)*
+- **A held dead seat on a machine without /proc is asked, not judged.** On macOS `leftovers.working_in` returns
+  None, so every dead seat there becomes a retire-or-keep question; reading each process's cwd with `lsof -d cwd`
+  would let it be retired or assessed as on Linux. *(open: flotilla/fleet/leftovers.py, flotilla/gc/dead.py)*
+- **An expiry yes forged consistently in the store is carried out by the daily pass.** The answer's id,
+  fingerprint and files are checked against each other and only media expires, but the store is a file any session
+  can write; closing it means carrying expiry out only in the person's `gc apply`, or signing answers with a key
+  sessions do not hold. *(open, design: flotilla/gc/expiry.py)*
 - **A user install of flotilla loads in place of a project's own.** void-lanes-online installed 0.23.1 for the
   project and its session ran the user's 0.21.0 (2026-10-29); the khrushchevka fleet installed 0.13.0 and ran the
   user's 0.10.2 (2026-10-12), unnoticed. Claude Code documents precedence for `enabledPlugins` only, not for which
@@ -467,6 +471,9 @@ Each is a limitation README states today, judged fixable in principle; none is p
 
 ## Done
 
+- 0.24.0: garbage collection stage 3 - the daily pass and its occasions, dead seats (stop or keep for a held one),
+  a low disk's shrinking and no-room gate, the outputs letter, released branches parked on the person's word, the
+  archive's month.
 - 0.10.3: rig measurements fixed for packing (CPU of helpers, the machine's GPU peak, shared marked); a run's leftovers end with it; gone runs swept once; sampler bound to its run; atomic --get placement; rename and directory-put gate fixes.
 - 0.10.0: rig stage 2b - `rig run`: runs share a machine, are measured there, and bring artifacts back (decision 235).
 - 0.9.0: the person guard refuses a glob or a variable in a command word (`flotilla r?g open`, `$F rig open`).

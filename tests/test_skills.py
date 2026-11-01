@@ -291,7 +291,7 @@ def test_the_sender_and_the_orchestrator_know_taken_in_work():
     orchestrator = " ".join((ROOT / "templates" / "posts" / "orchestrator.md").read_text(encoding="utf-8").split())
     assert "retargets a taken-in pull request" in sender and "template_version: 10" in sender
     assert "(taken in)" in orchestrator and "/flotilla:organize" in orchestrator   # gc design 9: template 20
-    assert "template_version: 20" in orchestrator
+    assert int(re.search(r"template_version: (\d+)", orchestrator).group(1)) >= 20   # bumped since, by gc stage 3
 
 
 def test_the_gc_skill_never_carries_out_own_words_without_the_persons_yes():
