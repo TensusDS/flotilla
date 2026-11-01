@@ -150,9 +150,11 @@ def _entry_path(root: Path, key: str) -> Path:
 def _load(path: Path) -> Entry | None:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        return Entry(**data)
+        found = Entry(**data)
     except (OSError, ValueError, TypeError):
         return None
+    # an entry is its folder: an id naming another place would be written back there (security review of 96debba)
+    return found if found.id == path.parent.name else None
 
 
 def _save(root: Path, entry: Entry) -> None:

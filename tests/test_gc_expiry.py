@@ -151,3 +151,41 @@ def test_restore_names_an_expired_file(tmp_path):
     lines = archive.restore(ledger, entry_id)
     assert (tree / "notes.txt").read_bytes() == b"n" and not (tree / "render.png").exists()
     assert any("render.png" in line and "removed at expiry" in line for line in lines), lines
+
+
+# Security review of 96debba: the answer store is a file, so what it says is checked against the archive itself.
+
+def test_a_yes_whose_record_does_not_hold_together_removes_nothing(tmp_path):
+    root, ledger = world(tmp_path)
+    archived(ledger, tmp_path, "a", {"render.png": b"p"}, days_old=31)
+    data = {}
+    say(ledger, data, "yes")
+    data["expiry"]["answer"]["seen"] = "0" * 64   # the id and the files shown no longer agree with it
+    assert expiry.carry_out(ledger, data, now=NOW) == []
+    assert all("expired" not in record for entry in archive.entries(ledger) for record in entry.files)
+    assert "answer" not in data["expiry"]
+
+
+def test_a_yes_never_removes_what_is_not_media(tmp_path):
+    root, ledger = world(tmp_path)
+    archived(ledger, tmp_path, "a", {"render.png": b"p", "notes.json": b"{}"}, days_old=31)
+    data = {}
+    say(ledger, data, "yes")
+    entry = archive.entries(ledger)[0]
+    answer = data["expiry"]["answer"]
+    answer["shown"] = sorted(list(item) for item in (expiry._triple(entry, record) for record in entry.files))
+    answer["seen"] = expiry.fingerprint([(entry, record) for record in entry.files])
+    answer["id"] = "expiry@" + answer["seen"][:12]
+    expiry.carry_out(ledger, data, now=NOW)
+    kept = next(record for record in archive.entries(ledger)[0].files if record["from"].endswith("notes.json"))
+    assert "expired" not in kept
+
+
+def test_an_entry_whose_id_is_not_its_folder_is_not_read(tmp_path):
+    root, ledger = world(tmp_path)
+    tree, entry_id = archived(ledger, tmp_path, "a", {"render.png": b"p"}, days_old=31)
+    path = archive.root_of(ledger) / "entries" / entry_id / "entry.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["id"] = "../../outside"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    assert archive.entries(ledger) == []

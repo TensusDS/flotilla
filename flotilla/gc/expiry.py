@@ -153,7 +153,12 @@ def carry_out(ledger, data: dict, *, now: datetime, low: bool = False) -> list[s
         return ["the archive's media stays another month, as you said"]
     if answer.get("value") != "yes":
         return []
-    shown = {tuple(item) for item in answer.get("shown", [])}
+    listed = [list(item) for item in answer.get("shown", []) if isinstance(item, list)]
+    seen = hashlib.sha256(json.dumps(sorted(listed)).encode()).hexdigest()
+    if seen != answer.get("seen") or answer.get("id") != f"{KEY}@{seen[:12]}":
+        state.pop("answer", None)   # a record that does not hold together is no answer (security review of 96debba)
+        return []
+    shown = {tuple(item) for item in listed}
     root = archive.root_of(ledger)
     known = archive.entries(ledger)
     approved = f"{answer.get('id', KEY)} at {answer.get('at', '')}"
@@ -162,8 +167,8 @@ def carry_out(ledger, data: dict, *, now: datetime, low: bool = False) -> list[s
         end = _end(entry, data)
         changed = False
         for item in entry.files:
-            if tuple(_triple(entry, item)) not in shown or "expired" in item:
-                continue
+            if tuple(_triple(entry, item)) not in shown or "expired" in item or not is_media(str(item.get("from"))):
+                continue   # only media ever expires, whatever a record of the answer says
             if not low and (end is None or end > now):
                 left += 1
                 continue
