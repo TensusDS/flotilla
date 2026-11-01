@@ -9,10 +9,11 @@ files from records any session could edit, so it is the person's too (security r
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 from flotilla.core.text import visible
-from flotilla.gc import apply, archive, questions, store, sweep
+from flotilla.gc import apply, archive, disk, expiry, questions, store, sweep
 from flotilla.onboard.questions import AnswerError
 
 PERSONS = ("answer", "apply", "restore", "forget")
@@ -77,9 +78,14 @@ def run_gc(args, *, ledger=None, census=None) -> int:
         found = archive.entries(ledger)
         if not found:
             print("the archive is empty")
+        data = store.load(ledger.state_dir, ledger.repo_key)
         for entry in found:
-            size = sum(item["size"] for item in entry.files)
-            print(f"{visible(entry.id)}  {len(entry.files)} file(s)  {sweep.size_text(size)}")
+            size = sum(item["size"] for item in entry.files if "expired" not in item)
+            gone = sum(1 for item in entry.files if "expired" in item)
+            end = expiry._end(entry, data)
+            print(f"{visible(entry.id)}  {len(entry.files) - gone} file(s)  {sweep.size_text(size)}"
+                  + (f"  media expires {end.date().isoformat()}" if end else "")
+                  + (f"  ({gone} removed at expiry)" if gone else ""))
             for record in entry.trees:   # an entry made before trees kept their own approval shows the entry's
                 print(f"  {visible(Path(record['tree']).name)}  tier {visible(record.get('tier', entry.tier))}  "
                       f"approved by {visible(record.get('approved_by', entry.approved_by))}")
@@ -92,9 +98,15 @@ def run_gc(args, *, ledger=None, census=None) -> int:
         return 2
     data = store.load(ledger.state_dir, ledger.repo_key)
     found, report = _items(ledger, sessions, data)
+    now = datetime.now(timezone.utc)
+    low = disk.state(ledger.root, ledger.profile).low
+    due = expiry.due(archive.entries(ledger), now=now, low=low, data=data)
     if args.action == "next":
         waiting = questions.waiting(found, data)
         asked = questions.all_questions(found, data)
+        if expiry.raised(data, due, now=now, low=low):   # the archive's question, once a day (gc design 7)
+            asked.append(expiry.question(due, entries=archive.entries(ledger), now=now, low=low, data=data))
+        store.save(ledger.state_dir, ledger.repo_key, data)
         # done: nothing left to ask, so the recorded answers can be carried out; an own-words answer waits on its
         # work without holding the rest back (second review of the branch, m-8)
         print(json.dumps({"questions": asked[:questions.MAX_PER_ROUND], "notes": waiting + report.warnings,
@@ -103,6 +115,10 @@ def run_gc(args, *, ledger=None, census=None) -> int:
     if args.action == "show":
         return _show(found, args.key)
     try:
+        if args.action == "answer" and args.question.startswith(f"{expiry.KEY}@"):
+            print(expiry.record(data, due, args.question, args.values, now=now, low=low))
+            store.save(ledger.state_dir, ledger.repo_key, data)
+            return 0
         if args.action == "answer":
             print(questions.record(found, data, args.question, args.values))
             store.save(ledger.state_dir, ledger.repo_key, data)
@@ -117,6 +133,8 @@ def run_gc(args, *, ledger=None, census=None) -> int:
             return 0
         lines, complete = apply.apply(ledger, data, items=found, keys=tuple(args.keys or ()), sessions=sessions,
                                       twins=report.finder, census=census or _census)
+        if not args.keys:
+            lines += expiry.carry_out(ledger, data, now=now, low=low)
     except AnswerError as err:
         print(err)
         return 2

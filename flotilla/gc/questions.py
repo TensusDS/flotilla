@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import mimetypes
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -26,6 +25,7 @@ from pathlib import Path
 
 from flotilla.core.text import visible
 from flotilla.gc import trees
+from flotilla.gc.media import is_media
 from flotilla.gc.sweep import piece, size_text
 from flotilla.onboard.questions import MAX_PER_ROUND, AnswerError, _q, validate_answer
 
@@ -45,7 +45,6 @@ OPTIONS = {
 WORK = ("archive", "junk", "keep")
 HEADERS = {"seat": "Seats", "released": "Released"}   # what a piece of work's question offers; a seat's offers its own
 NOT_FILES = ("hidden", "submodule", "nested")
-MEDIA = (".exr", ".hdr", ".blend", ".psd")
 
 
 @dataclass
@@ -59,11 +58,6 @@ class Item:
     shown: list = field(default_factory=list)   # what the person was shown, where it is not trees (a seat's processes)
 
 
-def _media(path: str) -> bool:
-    kind = mimetypes.guess_type(path)[0] or ""
-    return kind.split("/")[0] in ("video", "audio", "image") or path.lower().endswith(MEDIA)
-
-
 def _mtime(path: Path) -> int:
     try:
         return path.lstat().st_mtime_ns
@@ -74,7 +68,7 @@ def _mtime(path: Path) -> int:
 def _archive_text(verdict) -> str:
     tree = Path(verdict.tree)
     newest = sorted(verdict.archive, key=lambda item: _mtime(tree / item[0]), reverse=True)
-    media = sum(1 for path, _, _ in verdict.archive if _media(path))
+    media = sum(1 for path, _, _ in verdict.archive if is_media(path))
     size = sum(size for _, size, _ in verdict.archive)
     kinds = f", {media} of them media" if media else ""
     return (f"{len(verdict.archive)} ignored file(s) with no copy elsewhere, {size_text(size)}{kinds}, newest "

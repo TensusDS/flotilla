@@ -296,6 +296,10 @@ def restore(ledger, key: str) -> list[str]:
         for item in entry.files:
             if item["tree"] != record["tree"]:
                 continue
+            if isinstance(item.get("expired"), dict):   # the person's yes let it go (gc design 7)
+                lines.append(f"{visible(str(item.get('from', '')))}: removed at expiry on "
+                             f"{visible(str(item['expired'].get('at', ''))[:10])}, not restored")
+                continue
             if not DIGEST.fullmatch(str(item.get("sha256", ""))):
                 lines.append(f"refused: the record of {visible(str(item.get('from', '')))} names no sha256")
                 continue

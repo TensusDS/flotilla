@@ -11,7 +11,7 @@ from pathlib import Path
 
 from flotilla.core import paths
 
-FIELDS = {"answers": dict, "letters": dict, "holders": dict}
+FIELDS = {"answers": dict, "letters": dict, "holders": dict, "expiry": dict}
 
 
 def empty() -> dict:
