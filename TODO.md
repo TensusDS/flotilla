@@ -47,6 +47,11 @@ median 6.8 s run). Checked against main at a50daae (0.24.0 code) where a file is
   prints no requires line and nothing amends requires after the claim. Append (or refuse a repeat), show requires,
   add a recorded amend, and warn at hand when the tip carries commits of an open unaccepted row not required.
   *(checked 2026-11-01 on a50daae: still B - flotilla/cli.py:97, :181)*
+- **Nothing lifts a stale `--requires` from an accepted row** (twosuns item 11): r955 required a row from an early
+  plan whose commits its tip never carried; `work queue` refused after the person's yes, `work walkable` did not
+  lift it, and the only way out was a re-cut - a new review and new lane time. One recorded move,
+  `work requires <branch> --add/--drop <dep> --why`, refused when dropping a row whose commits off trunk the tip
+  carries (flotilla can check that itself), closes this and the lost requires above. *(open, design)*
 - **`work wait --on "orchestrator 4"` reads as a dead session** when the live name is `twosuns-orchestrator 4`.
   Resolve a short name to one live session, or refuse an unknown name when written, listing the live ones.
   *(open: flotilla/ledger/handover.py:126)*
@@ -63,6 +68,16 @@ median 6.8 s run). Checked against main at a50daae (0.24.0 code) where a file is
   *(open: flotilla/rig/run.py:211)*
 - **Runs of different seats share a machine at once**, skewing frame timing and audio capture. An opt-in exclusive
   run, or a rig queue like the lane. *(open, design)*
+- **A seat waiting for the rig does not know who goes before it, and nobody tells the next one its turn** (twosuns
+  item 12; the person, 2026-11-01: a seat that cannot see the queue sits idle waiting for its turn on a paid
+  machine). The order lived in the orchestrator's letters; the machine idled ~40 min on s76 and 15 min on s74
+  because the next "go" was never sent, ~1 h across s73-s76. Asked: a rig queue per session - `rig book` with an
+  estimate and exclusive/shared, `rig queue` showing the order, who is ahead of the caller and the time left in the
+  session; the machine handed to the next seat by flotilla itself when a run ends (a letter, the orchestrator
+  copied); a run out of turn refused; readiness (`rig ready`, `rig pass`) so a seat still running its checks keeps
+  its place; a run that does not fit the session's end told before it starts; the unserved queue carried to the
+  next session; `watch` naming "rig idle with N waiting"; actual minutes recorded against estimates. Absorbs the
+  two items above. *(open, design)*
 
 ## From the marketplace pin's third review (2026-10-31, 0.23.3)
 
