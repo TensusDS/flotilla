@@ -207,7 +207,7 @@ def _seat(ledger, key, value, item, *, census, proc_root, kill, wait, sleep) -> 
             return [f"{visible(key)}: process {', '.join(map(str, still))} did not stop within {wait:g} s; the seat "
                     "is kept and asked again"], False
     try:
-        lines = retire.retire(ledger, owner, caller="gc apply by the person", census=census)
+        lines = retire.retire(ledger, owner, caller="gc apply by the person", census=census, stop_running=False)
     except retire.RetireRefused as err:
         return [f"{visible(key)}: kept: {err}"], False
     return [f"{visible(key)}: {lines[0]}", *lines[1:]], not any(Path(tree).exists() for tree in item.trees)

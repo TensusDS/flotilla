@@ -26,6 +26,7 @@ from flotilla.lane.procs import CLK_TCK
 
 BUSY_SHARE = 0.01   # on the first look: a process that used over 1 % of a CPU over its life may still be working
 BUSY_SECONDS = 1.0  # since the last look: more than a second of CPU
+CONFIRM_SECONDS = 600   # a seat is dead when two looks this far apart both found it so (final review, C1)
 
 
 @dataclass(frozen=True)
@@ -51,6 +52,7 @@ class Seat:
     row: object
     holders: list[Holder] | None
     zombie_children: tuple[int, ...] = ()
+    confirmed: bool = False   # seen dead on an earlier look too, at least CONFIRM_SECONDS before this one
 
 
 def _rss_mb(entry: Path) -> int | None:
@@ -119,22 +121,38 @@ def _zombie_children(proc_root, parents: set[int]) -> tuple[int, ...]:
 
 
 def dead_seats(ledger, sessions, *, proc_root=None, data: dict | None = None, now: float | None = None) -> list[Seat]:
-    """Seats whose session the census does not list and whose tree is a directory no live session holds, by owner."""
+    """Seats whose session the census does not list and whose tree is a directory no live session holds, by owner.
+    A census misses a live session for a moment (a restart), and a seat session works from the main checkout, not in
+    its tree (decision 208): so a seat is `confirmed` dead only when an earlier look, at least CONFIRM_SECONDS
+    before, found it dead too (`data["dead_since"]`), and a seat spawn may still be launching is not dead at all."""
+    now = time.time() if now is None else now
+    since = {} if data is None else data.setdefault("dead_since", {})
     live = {item.name for item in sessions if item.name}
+    locks = trees.locks(ledger)
     rows = retire.post_rows(ledger)
     helpers_seen = sorted({row.owner for row in ledger.rows().values() if row.helper_of and row.owner})
     rows += [seat for seat in (retire.finished_helper_seat(ledger, name) for name in helpers_seen) if seat]
     found = []
     for row in sorted(rows, key=lambda item: item.owner):
         if row.owner in live or not row.tree or not Path(row.tree).is_dir():
+            since.pop(row.id, None)
             continue
         here = Path(row.tree).resolve()
-        if trees._alive(ledger, here, sessions, {row.id}, None):   # adopted work, or a live session in it
+        gitdir = _gitdir(ledger, here)
+        if trees._alive(ledger, here, sessions, {row.id}, locks.get(here), gitdir):   # adopted, live, launching
+            since.pop(row.id, None)
             continue
+        first = since.setdefault(row.id, now)
         held = holders(here, proc_root=proc_root, data=data, now=now)
         zombies = _zombie_children(proc_root, {item.pid for item in held}) if held else ()
-        found.append(Seat(row, held, zombies))
+        found.append(Seat(row, held, zombies, isinstance(first, (int, float)) and now - first >= CONFIRM_SECONDS))
     return found
+
+
+def _gitdir(ledger, tree: Path) -> str:
+    done = ledger.run(["git", "-C", str(tree), "rev-parse", "--absolute-git-dir"], capture_output=True, text=True,
+                      check=False)
+    return done.stdout.strip() if done.returncode == 0 else ""
 
 
 def assess(found: list[Holder]) -> str:
@@ -176,13 +194,15 @@ def seat_items(seats: list[Seat]) -> list[Item]:
     """One question per seat something holds or whose processes cannot be read."""
     found = []
     for seat in seats:
+        if not seat.confirmed:   # one look is no death: nobody is asked to stop a blip's processes
+            continue
         owner, tree = seat.row.owner, str(seat.row.tree)
         if seat.holders is None:
             found.append(Item(f"seat:{owner}", trees=[tree], proposed="", offered=["retire", "keep"],
                               evidence=[f"{visible(owner)}'s session is gone; this machine does not show processes, "
                                         f"so whether something still works in {visible(tree)} cannot be told - "
                                         "check with `ps`"],
-                              shown=[owner, "processes unreadable"]))
+                              shown=[owner, seat.row.id, tree, "processes unreadable"]))
             continue
         if not seat.holders:
             continue
@@ -195,18 +215,24 @@ def seat_items(seats: list[Seat]) -> list[Item]:
                             "when their parent above is stopped")
         found.append(Item(f"seat:{owner}", trees=[tree], proposed="stop" if line.startswith("likely") else "keep",
                           offered=["stop", "keep"] if mine else ["keep"], evidence=evidence,
-                          shown=[owner, sorted([item.pid, item.start] for item in seat.holders)]))
+                          shown=[owner, sorted([item.pid, item.start] for item in seat.holders), seat.row.id,
+                                 tree]))
     return found
 
 
 def retire_dead(ledger, seats: list[Seat], *, census, caller: str) -> list[str]:
-    """Retire every seat nothing holds; the others wait on the person's answer (`seat_items`)."""
-    free = [seat for seat in seats if seat.holders == []]
+    """Retire every seat nothing holds and two looks found dead; the others wait on a later look or on the person's
+    answer (`seat_items`). A session listed again is refused, never stopped; one seat that fails is said and the
+    rest go on (final review, M5)."""
+    free = [seat for seat in seats if seat.holders == [] and seat.confirmed]
     lines, done = [], 0
+    waiting = [seat.row.owner for seat in seats if not seat.confirmed]
+    if waiting:
+        lines.append(f"seen gone once, looked at again next pass: {', '.join(waiting)}")
     for seat in free:
         try:
-            lines += retire.retire(ledger, seat.row.owner, caller=caller, census=census)
+            lines += retire.retire(ledger, seat.row.owner, caller=caller, census=census, stop_running=False)
             done += 1
-        except retire.RetireRefused as err:
+        except Exception as err:  # noqa: BLE001 - one seat never stops the pass over the others
             lines.append(f"kept {seat.row.owner}: {err}")
     return ([f"dead seats: {done} retired"] if done else []) + lines

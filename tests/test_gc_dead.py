@@ -41,8 +41,15 @@ def holder(proc, pid, cwd, *, command="node vite", state="S", ppid=1, tty=0, uid
         status.write("VmRSS:\t317440 kB\n")
 
 
-def seats(ledger, proc, sessions=(), data=None):
-    return dead.dead_seats(ledger, list(sessions), proc_root=proc, data=data if data is not None else {})
+def seats(ledger, proc, sessions=(), data=None, *, looks=2):
+    """Dead seats as a pass sees them: by default looked at twice an hour apart, so the death is confirmed."""
+    import time
+    data = data if data is not None else {}
+    now = time.time()
+    found = []
+    for step in range(looks):
+        found = dead.dead_seats(ledger, list(sessions), proc_root=proc, data=data, now=now - (looks - 1 - step) * 3600)
+    return found
 
 
 def test_a_seat_whose_session_is_gone_is_dead(tmp_path):
@@ -102,10 +109,12 @@ def test_unreadable_processes_ask_retire_or_keep(tmp_path):
 def test_assessment(tmp_path, kind, said, offered, proposed):
     root, ledger, tree, proc = world(tmp_path)
     more = {"other user": {"uid": os.getuid() + 1}, "service": {"cgroup": "0::/system.slice/vite.service\n"},
-            "terminal": {"tty": 34816}, "busy": {"utime": 30 * 100 * 1000}, "uninterruptible": {"state": "D"},
+            "terminal": {"tty": 34816}, "busy": {"utime": 30 * 100}, "uninterruptible": {"state": "D"},
             "idle": {}}[kind]
     holder(proc, 4242, tree, **more)
-    item = dead.seat_items(seats(ledger, proc))[0]
+    import time
+    data = {"holders": {"4242:1000": {"cpu": 0.0, "at": time.time() - 7200}}}   # the last look, two hours ago
+    item = dead.seat_items(seats(ledger, proc, data=data))[0]
     assert said in item.evidence[0] and item.offered == offered and item.proposed == proposed
 
 
@@ -113,13 +122,13 @@ def test_cpu_since_the_last_look_is_measured(tmp_path):
     root, ledger, tree, proc = world(tmp_path)
     holder(proc, 4242, tree, utime=100)
     data = {}
-    first = seats(ledger, proc, data=data)[0].holders[0]
+    first = seats(ledger, proc, data=data, looks=1)[0].holders[0]
     assert first.cpu_since_s is None and data["holders"]
     data["holders"]["4242:1000"]["at"] -= 2 * 86400   # the baseline is two days old
     holder_again = proc / "4242" / "stat"
     holder_again.write_text(holder_again.read_text(encoding="utf-8").replace(" 100 0 0 0 20", " 3100 0 0 0 20"),
                             encoding="utf-8")
-    later = seats(ledger, proc, data=data)[0].holders[0]
+    later = seats(ledger, proc, data=data, looks=1)[0].holders[0]
     assert later.cpu_since_s == pytest.approx(30.0)
     assert "may still be working" in dead.assess([later])
 
@@ -177,8 +186,17 @@ def test_a_finished_helpers_tree_goes_once_its_session_is_gone(tmp_path):
     helpers.done(ledger, actor(ledger, "helper 1"), summary="done")
     proc = tmp_path / "proc"
     proc.mkdir()
-    found = dead.dead_seats(ledger, [session(OWNER, root)], proc_root=proc, data={})
-    assert [seat.row.owner for seat in found] == ["helper 1"]
+    import time
+    from flotilla.fleet import spawn
+    assert dead.dead_seats(ledger, [session(OWNER, root)], proc_root=proc, data={}) == []   # may still be launching
+    spawn.LAUNCH_WINDOW, window = 0, spawn.LAUNCH_WINDOW   # the launch window has passed
+    try:
+        data = {}
+        dead.dead_seats(ledger, [session(OWNER, root)], proc_root=proc, data=data, now=time.time() - 3600)
+        found = dead.dead_seats(ledger, [session(OWNER, root)], proc_root=proc, data=data)
+    finally:
+        spawn.LAUNCH_WINDOW = window
+    assert [seat.row.owner for seat in found] == ["helper 1"] and found[0].confirmed
     assert raised.seat.tree.exists()
 
 
@@ -287,3 +305,75 @@ def test_an_answer_the_question_did_not_offer_does_nothing(tmp_path, value, more
                                   kill=kill)
     assert sent == [] and tree.exists() and not complete
     assert any("not an answer" in line for line in lines) and items[0].key not in data["answers"]
+
+
+# Final review of the branch, C1: a seat is dead only when it is surely dead - not while it is being launched, not on
+# one look, and never by stopping a session that came back.
+
+def test_a_seat_being_launched_is_not_dead(tmp_path):
+    from flotilla.gc import trees
+    root, ledger, tree, proc = world(tmp_path)
+    git(root, "worktree", "lock", "--reason", trees.LOCK_PREFIX + OWNER, str(tree))   # as spawn locks it
+    found = seats(ledger, proc)
+    assert found == []
+    assert dead.retire_dead(ledger, found, census=lambda: [], caller="daily pass") == [] and tree.exists()
+
+
+def test_a_seat_seen_dead_once_waits_for_a_second_look(tmp_path):
+    root, ledger, tree, proc = world(tmp_path)
+    found = seats(ledger, proc, looks=1)
+    assert found and not found[0].confirmed
+    lines = dead.retire_dead(ledger, found, census=lambda: [], caller="daily pass")
+    assert tree.exists() and not any(line.startswith("dead seats:") for line in lines), lines
+    holder(proc, 4242, tree)
+    assert dead.seat_items(seats(ledger, proc, looks=1)) == []   # nobody is asked to stop a blip's processes
+
+
+def test_a_seat_seen_alive_in_between_starts_over(tmp_path):
+    import time
+    root, ledger, tree, proc = world(tmp_path)
+    data, now = {}, time.time()
+    dead.dead_seats(ledger, [], proc_root=proc, data=data, now=now - 7200)
+    dead.dead_seats(ledger, [session(OWNER, tmp_path / "elsewhere")], proc_root=proc, data=data, now=now - 3600)
+    found = dead.dead_seats(ledger, [], proc_root=proc, data=data, now=now)
+    assert found and not found[0].confirmed
+
+
+def claude_recorder(ledger):
+    import subprocess
+    calls, real = [], ledger.run
+
+    def run(argv, **kw):
+        if argv[0] == "claude":
+            calls.append(argv)
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        return real(argv, **kw)
+    ledger.run = run
+    return calls
+
+
+def back_again():
+    from flotilla.core.census import Session
+    return [Session(name=OWNER, session_id="x", kind="background", pid=None, short_id="abc123", status="idle",
+                    state=None, cwd="", started_at_ms=None)]
+
+
+def test_a_session_back_at_retire_time_is_not_stopped(tmp_path):
+    root, ledger, tree, proc = world(tmp_path)
+    calls = claude_recorder(ledger)
+    found = seats(ledger, proc)
+    lines = dead.retire_dead(ledger, found, census=back_again, caller="daily pass")
+    assert calls == [] and tree.exists() and any("running again" in line for line in lines), lines
+
+
+def test_a_stop_answer_does_not_stop_a_session_that_came_back(tmp_path):
+    from flotilla.gc import apply
+    root, ledger, tree, proc = world(tmp_path)
+    holder(proc, 4242, tree)
+    data = {"answers": {}}
+    answer(dead.seat_items(seats(ledger, proc)), data, "retire" if False else "stop")
+    calls = claude_recorder(ledger)
+    kill, sent = killer(proc)
+    lines, complete = apply.apply(ledger, data, items=dead.seat_items(seats(ledger, proc)), sessions=[],
+                                  proc_root=proc, census=back_again, kill=kill)
+    assert calls == [] and tree.exists() and not complete and any("running again" in line for line in lines), lines

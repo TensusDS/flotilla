@@ -129,6 +129,13 @@ def test_the_daily_pass_retires_dead_seats_and_removes_their_trees(tmp_path):
         s.append(actor(ledger, "main session 1"), "r1", "reserve", "reserved",
                  fields={"branch": "fleet/main-1", "owner": "main session 1", "tree": str(tree)})
     due.mark(ledger.state_dir, ledger.repo_key, "shipped feat/x")
+    first = daily(ledger, proc)
+    assert tree.exists() and any("seen gone once" in line for line in first), first   # one look is no death
+    from flotilla.gc import store
+    data = store.load(ledger.state_dir, ledger.repo_key)
+    data["dead_since"] = {key: when - 3600 for key, when in data["dead_since"].items()}   # an hour later
+    store.save(ledger.state_dir, ledger.repo_key, data)
+    due.mark(ledger.state_dir, ledger.repo_key, "shipped feat/y")
     lines = daily(ledger, proc)
     assert not tree.exists() and "dead seats: 1 retired" in lines, lines
     assert due.due(ledger.state_dir, ledger.repo_key, now=time.time()) == []

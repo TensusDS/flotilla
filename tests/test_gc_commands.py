@@ -185,6 +185,11 @@ def test_a_held_dead_seat_is_asked_and_shown(tmp_path, capsys, monkeypatch):
     (proc / "uptime").write_text("100000.00 0.00\n", encoding="utf-8")
     holder(proc, 4242, tree)
     monkeypatch.setattr(leftovers, "PROC_ROOT", proc)
+    first = [question["id"].rsplit("@", 1)[0] for question in next_round(ledger, capsys)["questions"]]
+    assert "seat:main session 1" not in first   # one look is no death
+    data = store.load(ledger.state_dir, ledger.repo_key)
+    data["dead_since"] = {key: when - 3600 for key, when in data["dead_since"].items()}   # an hour later
+    store.save(ledger.state_dir, ledger.repo_key, data)
     ids = [question["id"].rsplit("@", 1)[0] for question in next_round(ledger, capsys)["questions"]]
     assert "seat:main session 1" in ids
     assert run(ledger, "show", key="seat:main session 1") == 0
