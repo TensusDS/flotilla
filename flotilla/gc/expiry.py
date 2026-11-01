@@ -1,8 +1,9 @@
 """The archive's lifetime, gc design section 7. An entry lives a month; three days before it ends the person is asked
 once a day whether its media may go. Only media expires - scripts, logs, json, notes, patches and parked commits stay.
 Three ignored days keep everything another month, unless the disk runs low, which asks at once. Nothing leaves without
-the person's recorded yes, and a yes covers exactly the files shown with it; it is carried out on the day the question
-named (`carry_out`, in the daily pass or `flotilla gc apply`).
+the person's recorded yes, and a yes covers exactly the files shown with it. It is carried out only by `flotilla gc
+apply` in the person's own session, once the day the question named has come (the person's call, 2026-11-01): the
+answer store is a file any session can write, so the background daily pass only says a yes is ready.
 
 What the collector keeps for this, in the gc store's `expiry`: `until` (the month moved by keep or by silence),
 `asked` (the days the shown set was asked, and its fingerprint) and `answer` (value, the files shown, when, which
@@ -101,7 +102,7 @@ def question(found, *, entries, now: datetime, low: bool = False, data: dict | N
             f"{parked} parked commit(s) stay unless you say")
     return _q(f"{KEY}@{fingerprint(found)[:12]}", "Archive", visible(text), [
         ("yes", "Remove them", "The media files shown leave the archive on the day named; nothing else does."),
-        ("keep", "Keep another month", "Everything stays a month more; asked again then.")], free_text=True)
+        ("keep", "Keep another month", "Everything stays a month more; asked again then.")], free_text=False)
 
 
 def raised(data: dict, found, *, now: datetime, low: bool) -> bool:
@@ -136,9 +137,25 @@ def record(data: dict, found, qid: str, values: list[str], *, now: datetime, low
     value = validate_answer(asked, values)
     if value not in ("yes", "keep"):
         raise AnswerError("the archive question takes yes or keep")
-    _state(data)["answer"] = {"value": value, "seen": fingerprint(found), "id": qid, "at": _iso(now),
+    _state(data)["answer"] = {"value": value, "seen": fingerprint(found), "id": qid, "at": _iso(now), "low": low,
                               "shown": sorted(_triple(entry, record) for entry, record in found)}
     return f"recorded {KEY}: {value}"
+
+
+def ready(ledger, data: dict, *, now: datetime, low: bool = False) -> int:
+    """How many files a recorded yes would remove now: the daily pass says so; only the person's apply removes."""
+    answer = _state(data).get("answer") or {}
+    if answer.get("value") != "yes":
+        return 0
+    shown = {tuple(item) for item in answer.get("shown", []) if isinstance(item, list)}
+    count = 0
+    for entry in archive.entries(ledger):
+        end = _end(entry, data)
+        for item in entry.files:
+            if tuple(_triple(entry, item)) in shown and "expired" not in item and is_media(str(item.get("from"))) \
+                    and ((low and answer.get("low") is True) or (end is not None and end <= now)):
+                count += 1
+    return count
 
 
 def carry_out(ledger, data: dict, *, now: datetime, low: bool = False) -> list[str]:
@@ -169,7 +186,8 @@ def carry_out(ledger, data: dict, *, now: datetime, low: bool = False) -> list[s
         for item in entry.files:
             if tuple(_triple(entry, item)) not in shown or "expired" in item or not is_media(str(item.get("from"))):
                 continue   # only media ever expires, whatever a record of the answer says
-            if not low and (end is None or end > now):
+            # early only for a yes given to the low-disk question, which said "once you say yes" (final review, I2)
+            if not (low and answer.get("low") is True) and (end is None or end > now):
                 left += 1
                 continue
             item["expired"] = {"at": _iso(now), "approved_by": approved}

@@ -119,8 +119,9 @@ def _daily(ledger, *, sessions, census, caller: str, usage, proc_root) -> list[s
     from flotilla.gc import archive, dead, disk, due, expiry, questions, shrink, store
     from flotilla.ledger.letters import render
     now = time.time()
-    reasons = due.due(ledger.state_dir, ledger.repo_key, now=now)
-    if not reasons:
+    found = disk.state(ledger.root, ledger.profile, usage=usage or shutil.disk_usage)
+    reasons = due.due(ledger.state_dir, ledger.repo_key, now=now) + (["the disk is low"] if found.low else [])
+    if not reasons:   # a low disk is an occasion of its own (gc design 4 j; final review, I1)
         return [f"the collector's next pass is due in {due.hours_left(ledger.state_dir, ledger.repo_key, now=now)} h; "
                 "nothing to do"]
     lines = [f"the collector's daily pass ({'; '.join(reasons)})"]
@@ -129,15 +130,19 @@ def _daily(ledger, *, sessions, census, caller: str, usage, proc_root) -> list[s
     lines += dead.retire_dead(ledger, seats, census=census or (lambda: sessions), caller=caller or "daily pass")
     report = gc_sweep.run_pass(ledger, sessions=sessions, act=True, proc_root=proc_root)
     lines += gc_sweep.lines(report)
-    found = disk.state(ledger.root, ledger.profile, usage=usage or shutil.disk_usage)
     lines += [f"note: {note}" for note in found.notes]
+    if found.free_mb is None:
+        lines.append(f"note: {found.text}; nothing is refused or shrunk for it")
     if found.low:
         lines.append(f"the disk is low: {found.text}" + (f"; {disk.refusal(found)}" if found.no_room else ""))
         lines += shrink.lines(shrink.shrink(ledger, sessions=sessions, act=True, proc_root=proc_root))
     today = datetime.now(timezone.utc)
     for letter in shrink.piling(ledger, sessions=sessions, data=data, today=today.date().isoformat()):
         lines += render(letter)
-    lines += expiry.carry_out(ledger, data, now=today, low=found.low)
+    ripe = expiry.ready(ledger, data, now=today, low=found.low)   # never carried out here: the person's apply does
+    if ripe:
+        lines.append(f"the archive: the person's yes is ready for {ripe} media file(s); they carry it out with "
+                     "/flotilla:gc in their own session")
     waiting = expiry.due(archive.entries(ledger), now=today, low=found.low, data=data)
     if expiry.raised(data, waiting, now=today, low=found.low):
         lines.append("the archive asks the person: " + expiry.question(waiting, entries=archive.entries(ledger),

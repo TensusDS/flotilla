@@ -39,7 +39,7 @@ def due(ledger, data, *, now=NOW, low=False):
 def say(ledger, data, value, *, now=NOW, low=False):
     found = due(ledger, data, now=now, low=low)
     asked = expiry.question(found, entries=archive.entries(ledger), now=now, low=low)
-    return expiry.record(data, found, asked["id"], [value], now=now)
+    return expiry.record(data, found, asked["id"], [value], now=now, low=low)
 
 
 def test_media_is_due_three_days_before_the_month_ends(tmp_path):
@@ -189,3 +189,29 @@ def test_an_entry_whose_id_is_not_its_folder_is_not_read(tmp_path):
     data["id"] = "../../outside"
     path.write_text(json.dumps(data), encoding="utf-8")
     assert archive.entries(ledger) == []
+
+
+# Final review of the branch, I2 and I3.
+
+def test_a_yes_given_for_a_day_is_not_hurried_by_a_low_disk(tmp_path):
+    root, ledger = world(tmp_path)
+    archived(ledger, tmp_path, "a", {"render.png": b"p"}, days_old=28)
+    data = {}
+    say(ledger, data, "yes")   # asked "in 2 days I remove", the disk then had room
+    assert expiry.carry_out(ledger, data, now=NOW, low=True) == []
+    assert any("removed" in line for line in expiry.carry_out(ledger, data, now=NOW + timedelta(days=2)))
+
+
+def test_a_yes_to_the_low_disk_question_is_carried_out_at_once(tmp_path):
+    root, ledger = world(tmp_path)
+    archived(ledger, tmp_path, "a", {"render.png": b"p"}, days_old=2)
+    data = {}
+    say(ledger, data, "yes", low=True)
+    assert any("removed" in line for line in expiry.carry_out(ledger, data, now=NOW, low=True))
+
+
+def test_the_archive_question_takes_no_own_words(tmp_path):
+    root, ledger = world(tmp_path)
+    archived(ledger, tmp_path, "a", {"render.png": b"p"}, days_old=28)
+    found = due(ledger, {})
+    assert expiry.question(found, entries=archive.entries(ledger), now=NOW)["free_text"] is False

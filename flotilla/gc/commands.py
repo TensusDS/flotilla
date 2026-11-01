@@ -125,6 +125,13 @@ def run_gc(args, *, ledger=None, census=None) -> int:
             return 0
         if args.action == "forget":   # a recorded answer the person does not own (push security review of daef13a)
             key = args.key.rsplit("@", 1)[0]
+            if key == expiry.KEY:   # the archive's answer lives apart (final review, I3)
+                if (data.get(expiry.KEY) or {}).pop("answer", None) is None:
+                    print("no answer is recorded for the archive")
+                    return 2
+                store.save(ledger.state_dir, ledger.repo_key, data)
+                print("the archive: the recorded answer is dropped; it is asked again")
+                return 0
             if data["answers"].pop(key, None) is None:
                 print(f"no answer is recorded for `{visible(key)}`")
                 return 2

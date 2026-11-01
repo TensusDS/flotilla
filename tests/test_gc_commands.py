@@ -220,3 +220,15 @@ def test_gc_next_asks_the_expiry_question_and_answer_records_it(tmp_path, capsys
     assert "of media from the archive" in capsys.readouterr().out
     run(ledger, "archive")
     assert "1 removed at expiry" in capsys.readouterr().out
+
+
+
+def test_forget_drops_the_archive_answer(tmp_path, capsys, monkeypatch):
+    from flotilla.gc import store as gc_store
+    root, ledger, tree = world(tmp_path)
+    data = gc_store.load(ledger.state_dir, ledger.repo_key)
+    data["expiry"] = {"answer": {"value": "yes", "seen": "0" * 64, "id": "expiry@000000000000", "shown": []}}
+    gc_store.save(ledger.state_dir, ledger.repo_key, data)
+    monkeypatch.setattr(caller, "person_refusal", lambda what: "")
+    assert run(ledger, "forget", key="expiry@000000000000") == 0
+    assert "answer" not in gc_store.load(ledger.state_dir, ledger.repo_key)["expiry"]

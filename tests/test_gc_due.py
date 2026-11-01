@@ -180,3 +180,46 @@ def test_the_orchestrators_watch_carries_the_collector_items(tmp_path):
     assert "collector" in kinds and "disk" in kinds
     quiet = context(tmp_path / "other", me=orchestrator, sessions=[orchestrator])
     assert not {"collector", "disk"} & {item.kind for item in quiet.fleet()}
+
+
+
+# Final review of the branch: Max's choice (a) - the background pass never removes media - and I1, M1.
+
+def test_the_daily_pass_never_removes_media_and_says_the_yes_waits_for_the_person(tmp_path):
+    import json
+    from datetime import datetime, timedelta, timezone
+    from flotilla.gc import archive, expiry, store
+    root, ledger, proc = world(tmp_path)
+    tree = tmp_path / "app-main-1"
+    git(root, "worktree", "add", "-q", "-b", "fleet/main-1", str(tree))
+    (tree / "render.png").write_bytes(b"p" * 64)
+    entry = archive.put(ledger, entry="work-old", tree=tree, files=["render.png"], tier="2", approved_by="test",
+                        branch="fleet/main-1", head=git(tree, "rev-parse", "HEAD"))
+    path = archive.root_of(ledger) / "entries" / entry.id / "entry.json"
+    record = json.loads(path.read_text(encoding="utf-8"))
+    record["when"] = (datetime.now(timezone.utc) - timedelta(days=31)).isoformat(timespec="seconds")
+    path.write_text(json.dumps(record), encoding="utf-8")
+    data = store.load(ledger.state_dir, ledger.repo_key)
+    found = expiry.due(archive.entries(ledger), now=datetime.now(timezone.utc), low=False, data=data)
+    asked = expiry.question(found, entries=archive.entries(ledger), now=datetime.now(timezone.utc))
+    expiry.record(data, found, asked["id"], ["yes"], now=datetime.now(timezone.utc))
+    store.save(ledger.state_dir, ledger.repo_key, data)
+    lines = daily(ledger, proc)
+    assert all("expired" not in item for item in archive.entries(ledger)[0].files)
+    assert any("/flotilla:gc" in line and "archive" in line for line in lines), lines
+
+
+def test_a_low_disk_alone_runs_the_pass(tmp_path):
+    root, ledger, proc = world(tmp_path)
+    due.passed(ledger.state_dir, ledger.repo_key, now=time.time())
+    lines = daily(ledger, proc, usage=low)
+    assert "nothing to do" not in lines[0] and "the disk is low" in lines[0], lines
+
+
+def test_an_unknown_disk_is_said(tmp_path):
+    root, ledger, proc = world(tmp_path)
+
+    def broken(path):
+        raise OSError(5, "Input/output error")
+    lines = daily(ledger, proc, usage=broken)
+    assert any("could not be asked" in line for line in lines), lines
