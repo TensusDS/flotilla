@@ -271,3 +271,19 @@ def test_retire_answer_for_an_unreadable_machine(tmp_path):
     lines, complete = apply.apply(ledger, data, items=dead.seat_items(seats(ledger, absent)), sessions=[],
                                   proc_root=absent, census=lambda: [])
     assert not tree.exists() and complete, lines
+
+
+@pytest.mark.parametrize("value, more", [("stop", {"uid": os.getuid() + 1}), ("junk", {}), ("park", {})])
+def test_an_answer_the_question_did_not_offer_does_nothing(tmp_path, value, more):
+    """Security review of b7aad03: the answer file is any session's to write, so a recorded value is carried out
+    only when the question offered it."""
+    from flotilla.gc import apply
+    root, ledger, tree, proc = world(tmp_path)
+    holder(proc, 4242, tree, **more)
+    items = dead.seat_items(seats(ledger, proc))
+    data = {"answers": {items[0].key: {"value": value, "seen": questions.fingerprint(items[0])}}}
+    kill, sent = killer(proc)
+    lines, complete = apply.apply(ledger, data, items=items, sessions=[], proc_root=proc, census=lambda: [],
+                                  kill=kill)
+    assert sent == [] and tree.exists() and not complete
+    assert any("not an answer" in line for line in lines) and items[0].key not in data["answers"]

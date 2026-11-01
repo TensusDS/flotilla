@@ -154,6 +154,11 @@ def apply(ledger, data: dict, *, items: list, keys=(), sessions, proc_root=None,
             lines += questions.waiting([item], data)
             complete = False
             continue
+        if value not in item.offered:   # the answer file is any session's to write (security review of b7aad03)
+            data["answers"].pop(key)
+            lines.append(f"{visible(key)}: {visible(str(value))!s} is not an answer this question offers; asked again")
+            complete = False
+            continue
         if key.startswith("released:"):
             lines_here, done = _park_branch(ledger, key, item)
         elif key.startswith("seat:"):
