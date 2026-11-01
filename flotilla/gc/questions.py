@@ -37,10 +37,13 @@ OPTIONS = {
     "keep": ("keep", "Keep", "The tree stays; asked again only when something in it changes."),
     "stop": ("stop", "Stop them and retire the seat", "SIGTERM to exactly the processes shown, then the seat is "
                                                      "retired as `flotilla fleet retire` would."),
+    "park": ("park", "Park and delete the branch", "Its commits are pinned under a parked ref and the branch goes; "
+                                                    "`git branch <name> <parked ref>` brings it back."),
     "retire": ("retire", "Retire the seat", "The seat is retired as `flotilla fleet retire` would; check with `ps` "
                                             "first that nothing works in its tree."),
 }
-WORK = ("archive", "junk", "keep")   # what a piece of work's question offers; a seat's offers its own
+WORK = ("archive", "junk", "keep")
+HEADERS = {"seat": "Seats", "released": "Released"}   # what a piece of work's question offers; a seat's offers its own
 NOT_FILES = ("hidden", "submodule", "nested")
 MEDIA = (".exr", ".hdr", ".blend", ".psd")
 
@@ -97,6 +100,25 @@ def items(verdicts: dict, *, rows: dict, small: set) -> list[Item]:
         item.proposed = "archive" if not kinds else ""
         item.offered = [name for name in WORK if name != "archive" or not kinds & set(NOT_FILES)]
     return list(found.values())
+
+
+def released_items(ledger, verdicts: list, *, rows: dict) -> list[Item]:
+    """Released work's branches whose commits are on no trunk: park (pinned, the branch deleted) or keep."""
+    found = []
+    for verdict in verdicts:
+        on = [row for row in rows.values() if row.branch == verdict.name]
+        row = on[-1] if on else None
+        run = lambda *args: ledger.run(["git", "-C", str(ledger.root), *args], capture_output=True,  # noqa: E731
+                                       text=True, check=False).stdout.strip()
+        logged = run("reflog", "show", "--format=%H", f"refs/heads/{verdict.name}").split()
+        count = run("rev-list", "--count", verdict.tip, "--not", ledger.trunk) or "?"
+        said = (row.history[-1].get("evidence") or {}).get("why") if row is not None and row.history else ""
+        why = (said or row.why or "no reason given") if row is not None else "no row"
+        found.append(Item(f"released:{verdict.name}", proposed="", offered=["park", "keep"],
+                          evidence=[f"work released ({row.id if row else '?'}): {why}",
+                                    f"tip {verdict.tip[:7]}, {count} commit(s) on no trunk"],
+                          shown=[verdict.name, verdict.tip, logged]))
+    return found
 
 
 def _stat(tree: Path, path: str) -> list:
@@ -159,7 +181,7 @@ def _question(item: Item) -> dict:
         kind, _, name = item.key.partition(":")
         text = f"{name} ({trees_named}): " + " | ".join(item.evidence) + \
             (f" - proposed: {OPTIONS[item.proposed][1].lower()}." if item.proposed in OPTIONS else "")
-        return _q(f"{item.key}@{_short(fingerprint(item))}", kind.capitalize() + "s", visible(text),
+        return _q(f"{item.key}@{_short(fingerprint(item))}", HEADERS.get(kind, kind.capitalize()), visible(text),
                   [OPTIONS[name] for name in item.offered], free_text=True)
     text = (f"{item.key[len('work:'):]} ({trees_named}): " + " | ".join(item.evidence)
             + (" - proposed: archive and remove." if item.proposed else ""))

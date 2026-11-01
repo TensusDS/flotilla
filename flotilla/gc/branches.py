@@ -27,6 +27,9 @@ class BranchVerdict:
     park: list[str] = field(default_factory=list)
 
 
+UNLANDED = "its commits are not on any trunk, and no shipped row carries it"
+
+
 def _git(ledger, *args) -> subprocess.CompletedProcess:
     return ledger.run(["git", "-C", str(ledger.root), *args], capture_output=True, text=True, check=False)
 
@@ -80,7 +83,7 @@ def judge_branches(ledger, trunks: list[refs.Trunk], *, staying_checkouts: set[s
             continue
         landed = refs.landing(ledger, tip, trunks, shipped)
         if landed is None:
-            verdict.reason = "its commits are not on any trunk, and no shipped row carries it"
+            verdict.reason = UNLANDED
             continue
         holders = refs.holders(ledger, dropping={f"refs/heads/{name}"})
         logged = _git(ledger, "reflog", "show", "--format=%H", f"refs/heads/{name}").stdout.split()

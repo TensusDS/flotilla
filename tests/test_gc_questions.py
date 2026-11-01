@@ -247,3 +247,68 @@ def test_own_words_cannot_close_the_quotation_they_stand_in(tmp_path):
     fixed, _, words = note.partition("then the tree is judged again: ")
     assert json.loads(words) == planted, note
     assert "already said yes" not in fixed
+
+
+# Released work's branch (gc design 4 h): its commits are on no trunk, so it is the person's to park or keep.
+
+def released_world(tmp_path):
+    from ledgerkit import branch
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile=PROFILE, live=())
+    tip = branch(root, "fleet/x", "an idea that was dropped")
+    with ledger.session() as s:
+        s.append(actor(ledger, "main session 1"), "r1", "claim", "claimed",
+                 fields={"branch": "fleet/x", "owner": "main session 1"})
+        s.append(actor(ledger, "main session 1"), "r1", "release", "released", evidence={"why": "not needed"})
+    return root, ledger, tip
+
+
+def released(ledger):
+    from flotilla.gc import sweep
+    report = sweep.run_pass(ledger, sessions=[], act=False)
+    return questions.released_items(ledger, report.released, rows=ledger.rows())
+
+
+def test_a_released_unlanded_branch_is_asked_about(tmp_path):
+    root, ledger, tip = released_world(tmp_path)
+    found = released(ledger)
+    assert [item.key for item in found] == ["released:fleet/x"] and found[0].offered == ["park", "keep"]
+    assert "not needed" in found[0].evidence[0] and tip[:7] in " ".join(found[0].evidence)
+    asked = questions.all_questions(found, {"answers": {}})
+    assert asked[0]["header"] == "Released"
+
+
+def test_a_released_landed_branch_is_not_asked(tmp_path):
+    root, ledger, tip = released_world(tmp_path)
+    git(root, "merge", "-q", "--ff-only", "fleet/x")
+    git(root, "push", "-q", "origin", "HEAD:main")
+    assert released(ledger) == []
+
+
+def test_park_pins_the_commits_and_deletes_the_branch(tmp_path):
+    from flotilla.gc import apply, park
+    root, ledger, tip = released_world(tmp_path)
+    data = {"answers": {}}
+    found = released(ledger)
+    questions.record(found, data, questions.all_questions(found, data)[0]["id"], ["park"])
+    lines, complete = apply.apply(ledger, data, items=released(ledger), sessions=[])
+    assert complete and git(root, "rev-parse", park.ref_name("fleet/x", tip)) == tip
+    assert git(root, "branch", "--list", "fleet/x") == ""
+    assert any(f"git branch fleet/x {park.ref_name('fleet/x', tip)}" in line for line in lines), lines
+
+
+def test_a_moved_branch_is_asked_again(tmp_path):
+    from flotilla.gc import apply
+    from ledgerkit import commit
+    root, ledger, tip = released_world(tmp_path)
+    data = {"answers": {}}
+    found = released(ledger)
+    first = questions.all_questions(found, data)[0]["id"]
+    questions.record(found, data, first, ["park"])
+    git(root, "checkout", "-q", "fleet/x")
+    commit(root, "one more thought", "more.txt")
+    git(root, "checkout", "-q", "main")
+    lines, complete = apply.apply(ledger, data, items=released(ledger), sessions=[])
+    assert not complete and any("changed since you answered" in line for line in lines)
+    assert git(root, "branch", "--list", "fleet/x").strip()
+    assert questions.all_questions(released(ledger), data)[0]["id"] != first

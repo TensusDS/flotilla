@@ -17,6 +17,8 @@ file, HEAD, a session that started in it), the answer is set aside and the quest
   process it was (pid and start time); once they are gone the seat is retired as `flotilla fleet retire` would. One
   that does not stop keeps the seat, and it is asked again.
 - **retire** (a dead seat on a machine that does not show processes): the seat is retired.
+- **park** (released work's unlanded branch): its tip and reflog-only commits are pinned under parked refs and the
+  branch is deleted only if it still points where it did; the line names the command that brings it back.
 """
 
 from __future__ import annotations
@@ -133,7 +135,7 @@ def apply(ledger, data: dict, *, items: list, keys=(), sessions, proc_root=None,
         value = answer.get("value")
         item = by_key.get(key)
         if item is None:
-            if value in ("archive", "junk", "words", "stop", "retire"):
+            if value in ("archive", "junk", "words", "stop", "retire", "park"):
                 data["answers"].pop(key)
                 lines.append(f"{visible(key)}: no longer waits on you (something holds it now, or it is gone); "
                              "the answer is set aside")
@@ -152,7 +154,9 @@ def apply(ledger, data: dict, *, items: list, keys=(), sessions, proc_root=None,
             lines += questions.waiting([item], data)
             complete = False
             continue
-        if key.startswith("seat:"):
+        if key.startswith("released:"):
+            lines_here, done = _park_branch(ledger, key, item)
+        elif key.startswith("seat:"):
             lines_here, done = _seat(ledger, key, value, item, census=census or (lambda: sessions),
                                      proc_root=proc_root, kill=kill, wait=wait, sleep=sleep)
         else:
@@ -163,6 +167,21 @@ def apply(ledger, data: dict, *, items: list, keys=(), sessions, proc_root=None,
         # spent either way: carried out (junk too - its tree is gone, second review of the branch, m-9), or asked again
         data["answers"].pop(key, None)
     return lines, complete
+
+
+def _park_branch(ledger, key, item) -> tuple[list[str], bool]:
+    """Pin what the branch alone holds, then delete it only where it still points (`update-ref -d <name> <tip>`)."""
+    from flotilla.gc.branches import BranchVerdict
+    from flotilla.gc.park import ref_name
+    from flotilla.gc.remove import delete_branch
+    name, tip, logged = item.shown
+    holders = refs.holders(ledger, dropping={f"refs/heads/{name}"})
+    pinned = refs.unheld(ledger, [tip, *logged], holders)
+    line = delete_branch(ledger, BranchVerdict(name, tip, True, park=list(dict.fromkeys([tip, *pinned]))))
+    if not line.startswith("deleted "):
+        return [f"{visible(key)}: {line}"], False
+    return [f"parked {visible(name)} ({len(pinned) or 1} commit chain(s)) as {visible(ref_name(name, tip))}: "
+            f"git branch {visible(name)} {visible(ref_name(name, tip))} brings it back"], True
 
 
 def _seat(ledger, key, value, item, *, census, proc_root, kill, wait, sleep) -> tuple[list[str], bool]:

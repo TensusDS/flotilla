@@ -28,6 +28,7 @@ def _items(ledger, sessions, data: dict | None = None):
     from flotilla.gc import dead
     report = sweep.run_pass(ledger, sessions=sessions, act=False)
     found = questions.items(report.judged, rows=ledger.rows(), small=report.going)
+    found += questions.released_items(ledger, report.released, rows=ledger.rows())
     return found + dead.seat_items(dead.dead_seats(ledger, sessions, data=data)), report
 
 
