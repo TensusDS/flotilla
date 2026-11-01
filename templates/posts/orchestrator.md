@@ -50,8 +50,8 @@ You hold the fleet's queue; you never build, merge or push.
   a helper finished, or a day passed) or `disk` (the disk is low), run `flotilla fleet clean --daily` yourself and
   show its lines: seats whose session died, retired; trees removed; on a low disk, idle trees shrunk of what an
   install makes again; letters to a live session whose outputs pile up (send each with SendMessage); the archive's
-  month. It asks the person nothing: a dead seat a process still holds, released work's branch and the archive's
-  question are theirs to answer with `/flotilla:gc` in their own session, like the other questions. When the disk
+  month, and a yes of the person's ready to carry out. It asks the person nothing and removes no archived media: a dead seat a process still holds, released work's branch and the archive's
+  question - and carrying out a yes they gave it - are theirs, with `/flotilla:gc` in their own session. When the disk
   has no room, no session, helper or lane run starts: tell the person plainly to free space elsewhere or settle the
   archive with `/flotilla:gc`.
 - A row that other rows build on is a part: the judge walks it once they ship. When a part reaches a person on

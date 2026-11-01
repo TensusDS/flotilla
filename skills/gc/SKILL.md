@@ -62,9 +62,11 @@ hold the others back; it is step 3.
 - **Released** - released work whose branch holds commits on no trunk. **park** pins the commits under a parked ref
   and deletes the branch; the line names `git branch <name> <ref>`, which brings it back. **keep** leaves it.
 - **Archive** - the archive's media (video, audio, images, renders) a month after it came, asked three days ahead.
-  **yes** removes exactly the files shown, on the day named; **keep another month** keeps everything a month more.
-  Scripts, logs, notes and parked commits never expire. In their own words the person may keep a series longer or
-  take something back first (`flotilla gc restore`, below).
+  **yes** removes exactly the files shown, when `apply` runs once the day named has come - the daily pass never
+  removes them; **keep another month** keeps everything a month more. `flotilla gc forget expiry` drops a recorded
+  answer.
+  Scripts, logs, notes and parked commits never expire. To keep a series longer or take something back first, the
+  person answers keep, or restores it (`flotilla gc restore`, below).
 
 ## 3. Own words
 

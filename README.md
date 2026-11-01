@@ -279,8 +279,9 @@ plan first, `--yes` to act.
 
 The collector also runs without being asked. Shipping, releasing work and a helper's `done` mark its next pass due,
 and so does a day without one; the orchestrator's watch names the due pass, and the orchestrator runs
-`flotilla fleet clean --daily`. That pass retires seats whose session died when nothing works in their tree, and
-asks you - stop or keep, with each process's age, CPU and memory - when something does. A seat whose processes
+`flotilla fleet clean --daily`. That pass retires seats whose session died - seen gone on two looks at least ten
+minutes apart, never while one is still launching - when nothing works in their tree, and asks you - stop or keep,
+with each process's age, CPU and memory - when something does. A seat whose processes
 cannot be read (no `/proc`, as on macOS) is asked as retire or keep. Released work whose branch holds commits on no
 trunk is asked as park or keep. A disk under the smaller of 10 % and 20 GB free is low (`[gc] disk_low_percent`,
 `[gc] disk_low_mb`): idle trees - no live session, no process, no git activity for a day - give up what an install
@@ -288,7 +289,9 @@ makes again, such as `node_modules` and `.venv`. Under 2 GB (`[gc] disk_no_room_
 run starts, and `--anyway` does not change that. A live session whose tree holds more than 1 GB of ignored outputs
 (`[gc] outputs_mb`) gets one letter a day naming the largest. The archive keeps everything a month; three days
 before, you are asked whether its media (video, audio, images, renders) may go. Nothing leaves without your yes,
-three unanswered days keep it another month, and scripts, logs, notes and parked commits never expire.
+and you carry the yes out yourself with `/flotilla:gc` once the day named has come - the daily pass only says it is
+ready. Three unanswered days keep everything another month, and scripts, logs, notes and parked commits never
+expire.
 
 ## Examples
 

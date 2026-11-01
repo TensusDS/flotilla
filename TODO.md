@@ -38,10 +38,6 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 - **A held dead seat on a machine without /proc is asked, not judged.** On macOS `leftovers.working_in` returns
   None, so every dead seat there becomes a retire-or-keep question; reading each process's cwd with `lsof -d cwd`
   would let it be retired or assessed as on Linux. *(open: flotilla/fleet/leftovers.py, flotilla/gc/dead.py)*
-- **An expiry yes forged consistently in the store is carried out by the daily pass.** The answer's id,
-  fingerprint and files are checked against each other and only media expires, but the store is a file any session
-  can write; closing it means carrying expiry out only in the person's `gc apply`, or signing answers with a key
-  sessions do not hold. *(open, design: flotilla/gc/expiry.py)*
 - **A user install of flotilla loads in place of a project's own.** void-lanes-online installed 0.23.1 for the
   project and its session ran the user's 0.21.0 (2026-10-29); the khrushchevka fleet installed 0.13.0 and ran the
   user's 0.10.2 (2026-10-12), unnoticed. Claude Code documents precedence for `enabledPlugins` only, not for which
@@ -473,7 +469,7 @@ Each is a limitation README states today, judged fixable in principle; none is p
 
 - 0.24.0: garbage collection stage 3 - the daily pass and its occasions, dead seats (stop or keep for a held one),
   a low disk's shrinking and no-room gate, the outputs letter, released branches parked on the person's word, the
-  archive's month.
+  archive's month (carried out only by the person's `gc apply`).
 - 0.10.3: rig measurements fixed for packing (CPU of helpers, the machine's GPU peak, shared marked); a run's leftovers end with it; gone runs swept once; sampler bound to its run; atomic --get placement; rename and directory-put gate fixes.
 - 0.10.0: rig stage 2b - `rig run`: runs share a machine, are measured there, and bring artifacts back (decision 235).
 - 0.9.0: the person guard refuses a glob or a variable in a command word (`flotilla r?g open`, `$F rig open`).
