@@ -513,3 +513,22 @@ def test_a_permission_mode_the_launch_would_refuse_raises_no_seat_at_all(tmp_pat
     with pytest.raises(spawn.SpawnRefused, match="nothing was raised") as refused:
         run(ledger, store, fake, {"main": 1, "review": 1})
     assert "wider than" in str(refused.value) and fake.launched == []
+
+
+def test_spawn_with_no_room_raises_nothing_even_anyway(tmp_path, monkeypatch):
+    from collections import namedtuple
+    fake = FakeClaude()
+    root, ledger, store = world(tmp_path, fake)
+    monkeypatch.setattr(spawn, "disk_usage", lambda path: namedtuple("U", "total used free")(2**40, 0, 2**30))
+    with pytest.raises(spawn.SpawnRefused, match=r"disk_no_room_mb.*nothing was raised"):
+        spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False, anyway=True)
+    assert fake.launched == []
+
+
+def test_a_dry_run_with_no_room_warns(tmp_path, monkeypatch):
+    from collections import namedtuple
+    fake = FakeClaude()
+    root, ledger, store = world(tmp_path, fake)
+    monkeypatch.setattr(spawn, "disk_usage", lambda path: namedtuple("U", "total used free")(2**40, 0, 2**30))
+    seats, warnings = spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False, strict=False)
+    assert any("disk_no_room_mb" in line for line in warnings), warnings

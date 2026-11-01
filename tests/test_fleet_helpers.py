@@ -169,3 +169,11 @@ def test_a_helper_with_an_effort_the_profile_cannot_mean_reserves_no_name(tmp_pa
     with pytest.raises(MoveRefused, match="fleet.effort.helper"):
         raise_one(ledger, fake)
     assert fake.launched == [] and not any(r.owner == "helper 1" for r in ledger.rows().values())
+
+
+def test_a_helper_is_not_raised_with_no_room(tmp_path, monkeypatch):
+    from collections import namedtuple
+    root, ledger, fake, row, tip = world(tmp_path)
+    monkeypatch.setattr(spawn, "disk_usage", lambda path: namedtuple("U", "total used free")(2**40, 0, 2**30))
+    with pytest.raises(MoveRefused, match=r"under the 2048 MB floor"):
+        raise_one(ledger, fake, anyway=True)

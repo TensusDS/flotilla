@@ -20,6 +20,7 @@ from flotilla.watch.whose import POST_OF_MOVER, Item, holds_move, since_of
 DEVIATION, DROPPED, NOBODY, BREAK, QUESTION, PERSON = ("deviation", "dropped", "nobody", "break", "question",
                                                      "person")
 IDLE, DONE, HELPER, STRANGER, PILE = "idle", "done", "helper", "stranger", "pile"
+COLLECTOR, DISK = "collector", "disk"
 IDLE_SEAT_MINUTES = 60
 PILE_MOVES = 3   # this many moves of one seat nobody waits on, while a peer of its post holds none
 SEATS = "seats"
@@ -229,6 +230,25 @@ def open_breaks(state_dir, repo_key: str, rows: dict, profile: dict, post_of) ->
             continue
         items.append(Item(BREAK, branch, f"{name} stopped twice while holding this move ({row.state}), and "
                                          "nothing has moved since", at, who=f"{name} {at}"))
+    return items
+
+
+def collector_items(state_dir, repo_key: str, root, profile: dict, *, now: float, usage=None) -> list[Item]:
+    """The collector's pass when it is due, and a low disk (gc design 4 and 8): the orchestrator's watch is the
+    schedule, so a pass needs no cron."""
+    import shutil
+
+    from flotilla.gc import disk, due
+    items = []
+    reasons = due.due(state_dir, repo_key, now=now)
+    if reasons:
+        items.append(Item(COLLECTOR, "", f"the collector's pass is due ({'; '.join(reasons)}): run `flotilla fleet "
+                                         "clean --daily`", "", who="collector"))
+    found = disk.state(root, profile, usage=usage or shutil.disk_usage)
+    if found.low:
+        items.append(Item(DISK, "", f"the disk is low: {found.text}" + (f"; {disk.refusal(found)}" if found.no_room
+                                                                         else "; the daily pass shrinks idle trees"),
+                          "", who="disk"))
     return items
 
 

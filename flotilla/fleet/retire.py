@@ -95,7 +95,7 @@ def _dirty(tree: str) -> int | None:
 
 
 def retire(ledger, name: str, *, caller: str, census, wait: float = 60.0, poll: float = 1.0,
-           sleep=time.sleep) -> list[str]:
+           sleep=time.sleep, stop_running: bool = True) -> list[str]:
     row = next((item for item in post_rows(ledger) if item.owner == name), None) or \
         finished_helper_seat(ledger, name)
     if row is None:
@@ -109,6 +109,8 @@ def retire(ledger, name: str, *, caller: str, census, wait: float = 60.0, poll: 
         raise RetireRefused(f"the census lists {len(listed)} sessions named `{name}` ({ids}); stop the right one by "
                             f"hand with `claude stop <id>`, then retire again")
     found = listed[0] if listed else None
+    if found is not None and not stop_running:   # the collector retires the dead, never a session that came back
+        raise RetireRefused(f"`{name}` is running again; nothing was stopped or released")
     cut_off = leftovers.now_ticks()   # before the stop: what starts after it is the stop's own work (session-end hooks)
     if found is not None:
         if not found.short_id:

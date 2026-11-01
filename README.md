@@ -59,10 +59,10 @@ project's file names a plugin nobody else can find.
 there, and flotilla's hooks and CLI run in every session of your project. To choose when you move, pin a release tag
 on the first line instead (the tags are listed in [CHANGELOG.md](CHANGELOG.md)):
 
-    claude plugin marketplace add TensusDS/flotilla#v0.23.3 --scope project
+    claude plugin marketplace add TensusDS/flotilla#v0.24.0 --scope project
     claude plugin install flotilla@flotilla --scope project
 
-That writes `"ref": "v0.23.3"` into the project's settings and installs that release; `claude plugin update` stays on
+That writes `"ref": "v0.24.0"` into the project's settings and installs that release; `claude plugin update` stays on
 it. Two caveats. A machine keeps one marketplace of a name for all its projects, and the last `marketplace add` on
 it repoints it: measured, after another project on the same machine added it without a pin, `claude plugin update`
 in a project pinned to v0.22.0 took the default branch's release. Give the projects on one machine the same pin;
@@ -276,6 +276,22 @@ command that restores them. What only you can settle - uncommitted work, your ow
 `/flotilla:gc`: one question per piece of work, and only your recorded answer is carried out. `flotilla fleet clean` sweeps the same
 way for what a forced stop or an older fleet left - only what the fleet made, never a tree or branch of your own: a
 plan first, `--yes` to act.
+
+The collector also runs without being asked. Shipping, releasing work and a helper's `done` mark its next pass due,
+and so does a day without one; the orchestrator's watch names the due pass, and the orchestrator runs
+`flotilla fleet clean --daily`. That pass retires seats whose session died - seen gone on two looks at least ten
+minutes apart, never while one is still launching - when nothing works in their tree, and asks you - stop or keep,
+with each process's age, CPU and memory - when something does. A seat whose processes
+cannot be read (no `/proc`, as on macOS) is asked as retire or keep. Released work whose branch holds commits on no
+trunk is asked as park or keep. A disk under the smaller of 10 % and 20 GB free is low (`[gc] disk_low_percent`,
+`[gc] disk_low_mb`): idle trees - no live session, no process, no git activity for a day - give up what an install
+makes again, such as `node_modules` and `.venv`. Under 2 GB (`[gc] disk_no_room_mb`) no new session, helper or lane
+run starts, and `--anyway` does not change that. A live session whose tree holds more than 1 GB of ignored outputs
+(`[gc] outputs_mb`) gets one letter a day naming the largest. The archive keeps everything a month; three days
+before, you are asked whether its media (video, audio, images, renders) may go. Nothing leaves without your yes,
+and you carry the yes out yourself with `/flotilla:gc` once the day named has come - the daily pass only says it is
+ready. Three unanswered days keep everything another month, and scripts, logs, notes and parked commits never
+expire.
 
 ## Examples
 

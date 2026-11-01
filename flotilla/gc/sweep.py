@@ -45,6 +45,7 @@ class Report:
     moved: int = 0                                         # bytes moved to the archive
     freed: int = 0                                         # bytes removing the trees freed
     last_copies: list[str] = field(default_factory=list)   # where the last copy of a file removed on a twin is
+    released: list = field(default_factory=list, repr=False)   # released work's unlanded branches (questions)
     judged: dict = field(default_factory=dict, repr=False)  # the trees' verdicts, for the questions (not printed)
     going: set = field(default_factory=set, repr=False)     # the trees small enough to archive and remove
     finder: object = field(default=None, repr=False)       # the pass's Twins, for the apply step
@@ -152,6 +153,12 @@ def made_by_flotilla(ledger) -> tuple[set[Path], set[str]]:
     return found_trees, found_branches
 
 
+def _released(rows: dict, branch: str) -> bool:
+    """The latest row on `branch` released its work: no one will land it, so its commits are the person's to settle."""
+    on = [row for row in rows.values() if row.branch == branch]
+    return bool(on) and on[-1].state == "released"
+
+
 def _planned(verdicts) -> list[str]:
     """The commits the branches deleted in this pass park: they hold what they reach."""
     return sorted({sha for item in verdicts.values() if item.delete for sha in item.park})
@@ -251,6 +258,8 @@ def run_pass(ledger, *, sessions, act: bool, proc_root=None) -> Report:
             reason = verdict.reason if not verdict.delete else "checked out in a tree that stays"
             if reason != "flotilla did not make it":
                 _keep(report, "branch", reason, name)
+            if reason == branches.UNLANDED and name not in checked_out and _released(rows, name):
+                report.released.append(verdict)
             continue
         if not act:
             report.deleted.append(name)

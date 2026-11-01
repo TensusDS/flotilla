@@ -62,6 +62,9 @@ def raise_helper(ledger, actor: Actor, branch: str, *, task: str, census, store,
         launch.permission_mode(ledger.profile, post)
     except launch.LaunchError as err:
         raise MoveRefused(str(err)) from err
+    full = spawn.disk_short(ledger)
+    if full:
+        raise MoveRefused(full)
     short = "" if anyway else spawn.memory_short(ledger)
     if short:
         raise MoveRefused(short)

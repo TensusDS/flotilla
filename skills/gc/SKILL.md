@@ -52,6 +52,22 @@ hold the others back; it is step 3.
 - **junk** - the tree goes for good; its commits are still parked. Never asked about again.
 - **keep** - nothing moves; asked again only when something in the tree changes.
 
+`next` asks three other kinds of question too, in the same round:
+
+- **Seats** - a seat whose session is gone while a process still works in its tree. The question shows each
+  process (age, CPU since the last look, memory, terminal or not) and whether it looks still needed. **stop** sends
+  exactly the processes shown a stop and retires the seat; a process that started since makes the answer stale.
+  **keep** leaves them until the processes change. On a machine that does not show processes it asks **retire** or
+  **keep**: check with `ps` first.
+- **Released** - released work whose branch holds commits on no trunk. **park** pins the commits under a parked ref
+  and deletes the branch; the line names `git branch <name> <ref>`, which brings it back. **keep** leaves it.
+- **Archive** - the archive's media (video, audio, images, renders) a month after it came, asked three days ahead.
+  **yes** removes exactly the files shown, when `apply` runs once the day named has come - the daily pass never
+  removes them; **keep another month** keeps everything a month more. `flotilla gc forget expiry` drops a recorded
+  answer.
+  Scripts, logs, notes and parked commits never expire. To keep a series longer or take something back first, the
+  person answers keep, or restores it (`flotilla gc restore`, below).
+
 ## 3. Own words
 
 `next` counts in `words` the pieces answered in the person's own words ("commit these to the branch first")

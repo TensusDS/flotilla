@@ -170,3 +170,65 @@ def test_forget_is_the_persons(tmp_path, capsys, monkeypatch):
 def test_the_cli_knows_gc_forget(monkeypatch):
     monkeypatch.setattr(commands, "run_gc", lambda args, **_: 5 if (args.action, args.key) == ("forget", "k") else 0)
     assert cli.main(["gc", "forget", "k", "--root", "."]) == 5
+
+
+def test_a_held_dead_seat_is_asked_and_shown(tmp_path, capsys, monkeypatch):
+    from flotilla.fleet import leftovers
+    from ledgerkit import actor
+    from test_gc_dead import holder
+    root, ledger, tree = world(tmp_path)
+    with ledger.session() as s:
+        s.append(actor(ledger, "main session 1"), "r1", "reserve", "reserved",
+                 fields={"branch": "fleet/main-1", "owner": "main session 1", "tree": str(tree)})
+    proc = tmp_path / "proc"
+    proc.mkdir()
+    (proc / "uptime").write_text("100000.00 0.00\n", encoding="utf-8")
+    holder(proc, 4242, tree)
+    monkeypatch.setattr(leftovers, "PROC_ROOT", proc)
+    first = [question["id"].rsplit("@", 1)[0] for question in next_round(ledger, capsys)["questions"]]
+    assert "seat:main session 1" not in first   # one look is no death
+    data = store.load(ledger.state_dir, ledger.repo_key)
+    data["dead_since"] = {key: when - 3600 for key, when in data["dead_since"].items()}   # an hour later
+    store.save(ledger.state_dir, ledger.repo_key, data)
+    ids = [question["id"].rsplit("@", 1)[0] for question in next_round(ledger, capsys)["questions"]]
+    assert "seat:main session 1" in ids
+    assert run(ledger, "show", key="seat:main session 1") == 0
+    assert "4242 node vite" in capsys.readouterr().out
+
+
+def test_gc_next_asks_the_expiry_question_and_answer_records_it(tmp_path, capsys, monkeypatch):
+    import json as _json
+    from datetime import datetime, timedelta, timezone
+    from flotilla.gc import archive
+    root, ledger, tree = world(tmp_path)
+    (tree / "render.png").write_bytes(b"p" * 64)
+    entry = archive.put(ledger, entry="work-old", tree=tree, files=["render.png"], tier="2", approved_by="test",
+                        branch="fleet/main-1", head=git(tree, "rev-parse", "HEAD"))
+    path = archive.root_of(ledger) / "entries" / entry.id / "entry.json"
+    data = _json.loads(path.read_text(encoding="utf-8"))
+    data["when"] = (datetime.now(timezone.utc) - timedelta(days=31)).isoformat(timespec="seconds")
+    path.write_text(_json.dumps(data), encoding="utf-8")
+    asked = [question for question in next_round(ledger, capsys)["questions"] if question["id"].startswith("expiry@")]
+    assert len(asked) == 1 and "of media from the archive" in asked[0]["question"]
+    monkeypatch.setattr(caller, "person_refusal", lambda what: f"only a person {what}")
+    assert run(ledger, "answer", question=asked[0]["id"], values=["yes"]) == 2
+    monkeypatch.setattr(caller, "person_refusal", lambda what: "")
+    assert run(ledger, "answer", question=asked[0]["id"], values=["yes"]) == 0
+    assert store.load(ledger.state_dir, ledger.repo_key)["expiry"]["answer"]["value"] == "yes"
+    capsys.readouterr()
+    run(ledger, "apply", keys=[])
+    assert "of media from the archive" in capsys.readouterr().out
+    run(ledger, "archive")
+    assert "1 removed at expiry" in capsys.readouterr().out
+
+
+
+def test_forget_drops_the_archive_answer(tmp_path, capsys, monkeypatch):
+    from flotilla.gc import store as gc_store
+    root, ledger, tree = world(tmp_path)
+    data = gc_store.load(ledger.state_dir, ledger.repo_key)
+    data["expiry"] = {"answer": {"value": "yes", "seen": "0" * 64, "id": "expiry@000000000000", "shown": []}}
+    gc_store.save(ledger.state_dir, ledger.repo_key, data)
+    monkeypatch.setattr(caller, "person_refusal", lambda what: "")
+    assert run(ledger, "forget", key="expiry@000000000000") == 0
+    assert "answer" not in gc_store.load(ledger.state_dir, ledger.repo_key)["expiry"]

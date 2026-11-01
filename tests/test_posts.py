@@ -269,7 +269,7 @@ def test_the_orchestrator_cleans_as_its_last_step():
     from flotilla.posts import TEMPLATE_DIR, load_post
     post = load_post(TEMPLATE_DIR / "orchestrator.md")
     body = " ".join((TEMPLATE_DIR / "orchestrator.md").read_text(encoding="utf-8").split())
-    assert post.template_version == 20   # gc design 9: the person answers the collector through /flotilla:gc
+    assert post.template_version >= 20   # gc design 9: the person answers the collector through /flotilla:gc
     assert "run `flotilla fleet down` yourself" in body
     assert "run `flotilla fleet down` once more as your last step" in body
     assert "run `flotilla fleet clean`" not in body
@@ -289,3 +289,12 @@ def test_the_orchestrator_sends_the_person_to_the_gc_skill():
     from flotilla.posts import TEMPLATE_DIR
     body = " ".join((TEMPLATE_DIR / "orchestrator.md").read_text(encoding="utf-8").split())
     assert "/flotilla:gc" in body and "Never answer for them" in body and "approves nothing" in body
+
+
+def test_the_orchestrator_runs_the_daily_pass():
+    """gc design 4 and 8 (stage 3): the orchestrator's watch is the collector's schedule - a due pass and a low disk
+    are watch items it answers with the daily pass; no room is said to the person plainly."""
+    from flotilla.posts import TEMPLATE_DIR
+    body = " ".join((TEMPLATE_DIR / "orchestrator.md").read_text(encoding="utf-8").split())
+    assert "flotilla fleet clean --daily" in body and "`collector`" in body and "`disk`" in body
+    assert "free space" in body and "template_version: 21" in body

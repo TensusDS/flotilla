@@ -25,6 +25,7 @@ Nothing here deletes from the archive: its lifetime is stage 3's, and only on th
 from __future__ import annotations
 
 import errno
+from contextlib import contextmanager
 import json
 import os
 import re
@@ -150,9 +151,11 @@ def _entry_path(root: Path, key: str) -> Path:
 def _load(path: Path) -> Entry | None:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        return Entry(**data)
+        found = Entry(**data)
     except (OSError, ValueError, TypeError):
         return None
+    # an entry is its folder: an id naming another place would be written back there (security review of 96debba)
+    return found if found.id == path.parent.name else None
 
 
 def _save(root: Path, entry: Entry) -> None:
@@ -163,8 +166,34 @@ def _save(root: Path, entry: Entry) -> None:
     temporary.replace(path)
 
 
-def put(ledger, *, entry: str, tree, files: list[str], tier: str, approved_by: str, branch: str, head: str,
-        patch: bytes = b"", last_copies=()) -> Entry:
+@contextmanager
+def locked(ledger):
+    """One hand in the archive at a time: a file stored and a record naming it are one step, so expiry never removes
+    an object a record is about to point at (final review of the branch, I5)."""
+    import fcntl
+    root = _private(root_of(ledger))
+    with open(root / ".lock", "a", encoding="utf-8") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield root
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+def put(ledger, **kwargs) -> Entry:
+    try:
+        lock = locked(ledger)
+        lock.__enter__()
+    except OSError as err:
+        raise ArchiveFailed(f"the archive {visible(str(root_of(ledger)))} could not be made or written: {err}") from err
+    try:
+        return _put(ledger, **kwargs)
+    finally:
+        lock.__exit__(None, None, None)
+
+
+def _put(ledger, *, entry: str, tree, files: list[str], tier: str, approved_by: str, branch: str, head: str,
+         patch: bytes = b"", last_copies=()) -> Entry:
     """Move `files` (relative to `tree`) into the archive under `entry`, with the tree's record. Raises
     ArchiveFailed on the first file that cannot be moved, and on an archive that cannot be made or written (second
     review of the branch, m-1); the files before it are recorded, the rest stay."""
@@ -247,6 +276,11 @@ def _copy_back(stored: Path, target: Path) -> None:
 
 def restore(ledger, key: str) -> list[str]:
     """Put an entry's files back (`key`: an entry id, or a tree's name or path - its newest entry)."""
+    with locked(ledger):
+        return _restore(ledger, key)
+
+
+def _restore(ledger, key: str) -> list[str]:
     known = entries(ledger)
     entry = next((item for item in known if item.id == key), None)
     wanted = None
@@ -295,6 +329,10 @@ def restore(ledger, key: str) -> list[str]:
         back = 0
         for item in entry.files:
             if item["tree"] != record["tree"]:
+                continue
+            if isinstance(item.get("expired"), dict):   # the person's yes let it go (gc design 7)
+                lines.append(f"{visible(str(item.get('from', '')))}: removed at expiry on "
+                             f"{visible(str(item['expired'].get('at', ''))[:10])}, not restored")
                 continue
             if not DIGEST.fullmatch(str(item.get("sha256", ""))):
                 lines.append(f"refused: the record of {visible(str(item.get('from', '')))} names no sha256")

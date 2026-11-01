@@ -257,6 +257,9 @@ def build_parser() -> argparse.ArgumentParser:
     fleet_.add_argument("--tasks-file", default=None, metavar="PATH", help="with size: those tasks, one per line")
     fleet_.add_argument("--json", action="store_true", help="with size: the recommendation as JSON")
     fleet_.add_argument("--yes", action="store_true", help="with clean: remove what the plan names")
+    fleet_.add_argument("--daily", action="store_true",
+                        help="with clean: the orchestrator's daily pass when it is due - dead seats, the sweep, a low "
+                             "disk's shrinking, the archive's lifetime (acts; asks the person nothing itself)")
     fleet_.add_argument("--root", default=".")
     helper_ = sub.add_parser("helper", help="raise a helper session for a piece of your work, or finish as one")
     helper_sub = helper_.add_subparsers(dest="helper_action", required=True)

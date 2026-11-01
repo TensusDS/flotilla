@@ -13,14 +13,23 @@ file, HEAD, a session that started in it), the answer is set aside and the quest
   piece is never asked about again.
 - **keep**: nothing; the answer stays until something in the trees changes.
 - **words**: nothing here; a session carries the person's words out as ordinary work.
+- **stop** (a dead seat something works in): SIGTERM to exactly the processes the person was shown, each still the
+  process it was (pid and start time); once they are gone the seat is retired as `flotilla fleet retire` would. One
+  that does not stop keeps the seat, and it is asked again.
+- **retire** (a dead seat on a machine that does not show processes): the seat is retired.
+- **park** (released work's unlanded branch): its tip and reflog-only commits are pinned under parked refs and the
+  branch is deleted only if it still points where it did; the line names the command that brings it back.
 """
 
 from __future__ import annotations
+
+import time
 
 from datetime import datetime, timezone
 from pathlib import Path
 
 from flotilla.core.text import visible
+from flotilla.fleet import leftovers, retire
 from flotilla.gc import archive, ignored, questions, refs
 from flotilla.gc.park import ParkFailed, park
 from flotilla.gc.remove import last_copies
@@ -111,7 +120,11 @@ def _carry_out(ledger, key: str, answer: dict, verdicts: list, twins) -> list[st
     return lines
 
 
-def apply(ledger, data: dict, *, items: list, keys=(), sessions, proc_root=None, twins=None) -> tuple[list[str], bool]:
+STOP_WAIT = 10.0   # seconds a stopped process has to exit before the seat is kept
+
+
+def apply(ledger, data: dict, *, items: list, keys=(), sessions, proc_root=None, twins=None, census=None, kill=None,
+          wait: float = STOP_WAIT, sleep=time.sleep) -> tuple[list[str], bool]:
     """Carry out the recorded answers (`keys` narrows them to some pieces of work); the lines said and whether every
     answer was carried out."""
     by_key = {item.key: item for item in items}
@@ -122,7 +135,7 @@ def apply(ledger, data: dict, *, items: list, keys=(), sessions, proc_root=None,
         value = answer.get("value")
         item = by_key.get(key)
         if item is None:
-            if value in ("archive", "junk", "words"):
+            if value in ("archive", "junk", "words", "stop", "retire", "park"):
                 data["answers"].pop(key)
                 lines.append(f"{visible(key)}: no longer waits on you (something holds it now, or it is gone); "
                              "the answer is set aside")
@@ -141,12 +154,63 @@ def apply(ledger, data: dict, *, items: list, keys=(), sessions, proc_root=None,
             lines += questions.waiting([item], data)
             complete = False
             continue
-        lines_here, done = _locked(ledger, key, answer, item, sessions=sessions, proc_root=proc_root, twins=twins)
+        if value not in item.offered:   # the answer file is any session's to write (security review of b7aad03)
+            data["answers"].pop(key)
+            lines.append(f"{visible(key)}: {visible(str(value))!s} is not an answer this question offers; asked again")
+            complete = False
+            continue
+        if key.startswith("released:"):
+            lines_here, done = _park_branch(ledger, key, item)
+        elif key.startswith("seat:"):
+            lines_here, done = _seat(ledger, key, value, item, census=census or (lambda: sessions),
+                                     proc_root=proc_root, kill=kill, wait=wait, sleep=sleep)
+        else:
+            lines_here, done = _locked(ledger, key, answer, item, sessions=sessions, proc_root=proc_root,
+                                       twins=twins)
         lines += lines_here
         complete = complete and done
         # spent either way: carried out (junk too - its tree is gone, second review of the branch, m-9), or asked again
         data["answers"].pop(key, None)
     return lines, complete
+
+
+def _park_branch(ledger, key, item) -> tuple[list[str], bool]:
+    """Pin what the branch alone holds, then delete it only where it still points (`update-ref -d <name> <tip>`)."""
+    from flotilla.gc.branches import BranchVerdict
+    from flotilla.gc.park import ref_name
+    from flotilla.gc.remove import delete_branch
+    name, tip, logged = item.shown
+    holders = refs.holders(ledger, dropping={f"refs/heads/{name}"})
+    pinned = refs.unheld(ledger, [tip, *logged], holders)
+    line = delete_branch(ledger, BranchVerdict(name, tip, True, park=list(dict.fromkeys([tip, *pinned]))))
+    if not line.startswith("deleted "):
+        return [f"{visible(key)}: {line}"], False
+    return [f"parked {visible(name)} ({len(pinned) or 1} commit chain(s)) as {visible(ref_name(name, tip))}: "
+            f"git branch {visible(name)} {visible(ref_name(name, tip))} brings it back"], True
+
+
+def _seat(ledger, key, value, item, *, census, proc_root, kill, wait, sleep) -> tuple[list[str], bool]:
+    """Stop exactly the processes shown, then retire the seat; or retire it where processes cannot be read."""
+    owner = key.partition(":")[2]
+    if value == "stop":
+        root = leftovers.PROC_ROOT if proc_root is None else Path(proc_root)
+        shown = [leftovers.Leftover(int(pid), "", str(start)) for pid, start in item.shown[1]]
+        leftovers.stop(shown, kill=kill, proc_root=root)
+        waited = 0.0
+        while True:
+            still = [one.pid for one in shown if leftovers._start(root, one.pid) == one.start]
+            if not still or waited >= wait:
+                break
+            sleep(0.5)
+            waited += 0.5
+        if still:
+            return [f"{visible(key)}: process {', '.join(map(str, still))} did not stop within {wait:g} s; the seat "
+                    "is kept and asked again"], False
+    try:
+        lines = retire.retire(ledger, owner, caller="gc apply by the person", census=census, stop_running=False)
+    except retire.RetireRefused as err:
+        return [f"{visible(key)}: kept: {err}"], False
+    return [f"{visible(key)}: {lines[0]}", *lines[1:]], not any(Path(tree).exists() for tree in item.trees)
 
 
 def _locked(ledger, key, answer, item, *, sessions, proc_root, twins) -> tuple[list[str], bool]:

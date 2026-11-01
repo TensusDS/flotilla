@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
 import time
 from dataclasses import dataclass
@@ -119,6 +120,18 @@ def memory_floor(profile: dict, total_kb: int | None = None) -> tuple[int, str]:
 
 def memory_floor_mb(profile: dict, total_kb: int | None = None) -> int:
     return memory_floor(profile, total_kb)[0]
+
+
+def disk(profile: dict, root, *, usage=shutil.disk_usage) -> Answer:
+    """No room on the disk holds the lane; a disk that cannot be asked does not (gc design 8: unknown refuses
+    nothing), as memory not asked does not."""
+    from flotilla.gc import disk as gc_disk
+    found = gc_disk.state(root, profile, usage=usage)
+    if found.free_mb is None:
+        return Answer("disk", False, f"{found.text}: the lane is not held for it")
+    if found.no_room:
+        return Answer("disk", True, gc_disk.refusal(found))
+    return Answer("disk", False, f"{found.free_mb} MB free (floor {found.floor_mb} MB)")
 
 
 def memory(profile: dict, meminfo, memtotal=None) -> Answer:
@@ -295,7 +308,7 @@ def _descendants(listed, roots: set[int]) -> set[int]:
 
 
 def read(lanes, table, profile: dict, *, own_pid: int, root, sleep=time.sleep, run=subprocess.run,
-         problem: str = "", meminfo=None, memtotal=None) -> Reading:
+         problem: str = "", meminfo=None, memtotal=None, usage=shutil.disk_usage) -> Reading:
     exclude = set(table.ancestors(own_pid))
     booked = {item.pid for item in [*lanes.holders(), *lanes.waiters()] if item.pid and lanes.live(item)}
     listed = table.list() or []
@@ -318,6 +331,7 @@ def read(lanes, table, profile: dict, *, own_pid: int, root, sleep=time.sleep, r
         else:
             answers.append(Answer("foreign run", False, "no unbooked run"))
     answers.append(memory(profile, meminfo or _meminfo, memtotal or _memtotal))
+    answers.append(disk(profile, root, usage=usage))
     if problem:
         answers.append(Answer("ci", None, f"the project profile could not be read, so CI on this machine could not be "
                                           f"asked: {problem}", lasting=True))

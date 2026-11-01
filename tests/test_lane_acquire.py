@@ -185,3 +185,10 @@ def test_a_nested_grant_is_released_and_measured_by_its_owner_only(lanes, monkey
         grant.measured.update({"seconds": 9.0})
     item = lanes.bookings()[outer.id]
     assert item.state == book.HELD and item.seconds is None
+
+
+def test_no_room_holds_the_lane_whatever_the_capacity(lanes):
+    full = Reading([Answer("foreign run", False, "none"), Answer("ci", False, "no CI here"),
+                    Answer("memory", False, "plenty"), Answer("disk", True, "900 MB free on this disk")], [], [])
+    grant = take(lanes, full, capacity=4)
+    assert grant.booking is None and "disk: 900 MB free" in grant.why

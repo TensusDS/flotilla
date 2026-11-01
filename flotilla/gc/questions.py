@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import mimetypes
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -26,6 +25,7 @@ from pathlib import Path
 
 from flotilla.core.text import visible
 from flotilla.gc import trees
+from flotilla.gc.media import is_media
 from flotilla.gc.sweep import piece, size_text
 from flotilla.onboard.questions import MAX_PER_ROUND, AnswerError, _q, validate_answer
 
@@ -35,9 +35,16 @@ OPTIONS = {
                                                  "brings them back while the archive keeps them."),
     "junk": ("junk", "Junk", "Removed for good now, the commits parked; never asked about again."),
     "keep": ("keep", "Keep", "The tree stays; asked again only when something in it changes."),
+    "stop": ("stop", "Stop them and retire the seat", "SIGTERM to exactly the processes shown, then the seat is "
+                                                     "retired as `flotilla fleet retire` would."),
+    "park": ("park", "Park and delete the branch", "Its commits are pinned under a parked ref and the branch goes; "
+                                                    "`git branch <name> <parked ref>` brings it back."),
+    "retire": ("retire", "Retire the seat", "The seat is retired as `flotilla fleet retire` would; check with `ps` "
+                                            "first that nothing works in its tree."),
 }
+WORK = ("archive", "junk", "keep")
+HEADERS = {"seat": "Seats", "released": "Released"}   # what a piece of work's question offers; a seat's offers its own
 NOT_FILES = ("hidden", "submodule", "nested")
-MEDIA = (".exr", ".hdr", ".blend", ".psd")
 
 
 @dataclass
@@ -48,11 +55,7 @@ class Item:
     proposed: str = ""
     offered: list[str] = field(default_factory=list)
     evidence: list[str] = field(default_factory=list)
-
-
-def _media(path: str) -> bool:
-    kind = mimetypes.guess_type(path)[0] or ""
-    return kind.split("/")[0] in ("video", "audio", "image") or path.lower().endswith(MEDIA)
+    shown: list = field(default_factory=list)   # what the person was shown, where it is not trees (a seat's processes)
 
 
 def _mtime(path: Path) -> int:
@@ -65,7 +68,7 @@ def _mtime(path: Path) -> int:
 def _archive_text(verdict) -> str:
     tree = Path(verdict.tree)
     newest = sorted(verdict.archive, key=lambda item: _mtime(tree / item[0]), reverse=True)
-    media = sum(1 for path, _, _ in verdict.archive if _media(path))
+    media = sum(1 for path, _, _ in verdict.archive if is_media(path))
     size = sum(size for _, size, _ in verdict.archive)
     kinds = f", {media} of them media" if media else ""
     return (f"{len(verdict.archive)} ignored file(s) with no copy elsewhere, {size_text(size)}{kinds}, newest "
@@ -89,8 +92,27 @@ def items(verdicts: dict, *, rows: dict, small: set) -> list[Item]:
     for item in found.values():
         kinds = {doubt.kind for verdict in item.verdicts for doubt in verdict.doubts}
         item.proposed = "archive" if not kinds else ""
-        item.offered = [name for name in OPTIONS if name != "archive" or not kinds & set(NOT_FILES)]
+        item.offered = [name for name in WORK if name != "archive" or not kinds & set(NOT_FILES)]
     return list(found.values())
+
+
+def released_items(ledger, verdicts: list, *, rows: dict) -> list[Item]:
+    """Released work's branches whose commits are on no trunk: park (pinned, the branch deleted) or keep."""
+    found = []
+    for verdict in verdicts:
+        on = [row for row in rows.values() if row.branch == verdict.name]
+        row = on[-1] if on else None
+        run = lambda *args: ledger.run(["git", "-C", str(ledger.root), *args], capture_output=True,  # noqa: E731
+                                       text=True, check=False).stdout.strip()
+        logged = run("reflog", "show", "--format=%H", f"refs/heads/{verdict.name}").split()
+        count = run("rev-list", "--count", verdict.tip, "--not", ledger.trunk) or "?"
+        said = (row.history[-1].get("evidence") or {}).get("why") if row is not None and row.history else ""
+        why = (said or row.why or "no reason given") if row is not None else "no row"
+        found.append(Item(f"released:{verdict.name}", proposed="", offered=["park", "keep"],
+                          evidence=[f"work released ({row.id if row else '?'}): {why}",
+                                    f"tip {verdict.tip[:7]}, {count} commit(s) on no trunk"],
+                          shown=[verdict.name, verdict.tip, logged]))
+    return found
 
 
 def _stat(tree: Path, path: str) -> list:
@@ -117,7 +139,10 @@ def _shown(tree: Path, path: str) -> list[list]:
 
 
 def fingerprint(item: Item) -> str:
-    """What the person was shown: each tree's HEAD and every path in question with its size and mtime."""
+    """What the person was shown: each tree's HEAD and every path in question with its size and mtime; for an item
+    about something else (a dead seat's processes), what it says it showed."""
+    if item.shown:
+        return hashlib.sha256(json.dumps([item.key, item.shown]).encode()).hexdigest()
     shown = []
     for verdict in item.verdicts:
         tree = Path(verdict.tree)
@@ -146,6 +171,12 @@ def _short(digest: str) -> str:
 
 def _question(item: Item) -> dict:
     trees_named = ", ".join(Path(tree).name for tree in item.trees)
+    if not item.key.startswith("work:"):
+        kind, _, name = item.key.partition(":")
+        text = f"{name} ({trees_named}): " + " | ".join(item.evidence) + \
+            (f" - proposed: {OPTIONS[item.proposed][1].lower()}." if item.proposed in OPTIONS else "")
+        return _q(f"{item.key}@{_short(fingerprint(item))}", HEADERS.get(kind, kind.capitalize()), visible(text),
+                  [OPTIONS[name] for name in item.offered], free_text=True)
     text = (f"{item.key[len('work:'):]} ({trees_named}): " + " | ".join(item.evidence)
             + (" - proposed: archive and remove." if item.proposed else ""))
     return _q(f"{item.key}@{_short(fingerprint(item))}", "Leftovers", visible(text),
@@ -155,7 +186,7 @@ def _question(item: Item) -> dict:
 def _covered(pending: list[Item]) -> list[Item]:
     """The proposals the round shows beside "accept all": it covers those and no other (final review of gc stage 2,
     I6)."""
-    return [item for item in pending[:MAX_PER_ROUND - 1] if item.proposed]
+    return [item for item in pending[:MAX_PER_ROUND - 1] if item.proposed and item.key.startswith("work:")]
 
 
 def _by_all(found: list[Item], data: dict) -> list[Item]:

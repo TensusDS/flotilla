@@ -547,6 +547,10 @@ def run_ledger_command(args) -> int:
         if args.command == "work" and args.move == "reconcile":
             lines = delivery.reconcile(ledger, caller)
             print("\n".join(lines) if lines else "nothing is queued or landed")
+            shipped = [line.split()[1] for line in lines if line.startswith("shipped ")]
+            if shipped:
+                from flotilla.gc import due
+                print([due.noted(ledger, f"shipped {name}") for name in shipped][-1])
             _letters(ledger, caller, before)
             return reconcile_exit(lines)
         if args.command == "tree" and args.action == "switch":
@@ -580,6 +584,9 @@ def run_ledger_command(args) -> int:
     print(summary(row))
     for other in (row.history[-1].get("evidence") or {}).get("stacked_on") or []:
         print(f"note: stacked on `{other}`, which is not accepted yet")
+    if args.command == "work" and args.move in ("ship", "release") and row.state in ("shipped", "released"):
+        from flotilla.gc import due   # trees are left behind: the collector's next pass is due (gc design 4)
+        print(due.noted(ledger, f"{row.state} {row.branch}"))
     _letters(ledger, caller, before)
     _notices(ledger)
     return 0

@@ -53,6 +53,11 @@ def _extra(profile: dict) -> set[str]:
     return {str(item) for item in found if isinstance(item, str)}
 
 
+def regenerable_name(name: str, profile: dict) -> bool:
+    """An entry an install or a build makes again, by its own name: what shrinking may remove (gc design 8)."""
+    return name in REGENERABLE or name in _extra(profile) or name.endswith(REGENERABLE_SUFFIXES)
+
+
 def _runtime(path: str) -> bool:
     return any(path == item.rstrip("/") or (item.endswith("/") and path.startswith(item)) for item in CLAUDE_RUNTIME)
 
@@ -105,8 +110,10 @@ def _unvouched(tree: Path, main: Path, entry: str, profile: dict) -> list[str] |
 
 
 def _entries(tree: Path, run) -> list[str] | None:
-    shown = run(["git", "-C", str(tree), "-c", "status.showUntrackedFiles=all", "status", "--porcelain", "-z",
-                 "--untracked-files=all", "--ignored=matching"], capture_output=True, text=True, check=False)
+    # --no-optional-locks: a look leaves the index alone, so the index's time still says when someone last worked
+    shown = run(["git", "--no-optional-locks", "-C", str(tree), "-c", "status.showUntrackedFiles=all", "status",
+                 "--porcelain", "-z", "--untracked-files=all", "--ignored=matching"], capture_output=True, text=True,
+                check=False)
     if shown.returncode != 0:
         return None
     return [item[3:] for item in shown.stdout.split("\0") if item.startswith("!! ")]

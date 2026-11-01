@@ -3,6 +3,32 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.24.0 - 2026-11-01
+
+- **The collector runs without being asked.** `ship`, `release`, `reconcile` and a helper's `done` say the
+  collector's next pass is due; the orchestrator's watch names it (`collector`), and the orchestrator runs
+  `flotilla fleet clean --daily`, at least once a day. A pass that is not due does nothing.
+- **A seat whose session died stops holding its tree.** Seen gone on two looks at least ten minutes apart, and not
+  while it is still launching, with nothing working in the tree it is retired as `flotilla fleet retire` would; a
+  session listed again is left alone, never stopped. When a process still works there - a dev server left running -
+  you are asked stop or keep, with each process's age, CPU since the last look, memory and an assessment of whether it
+  is still needed; stop reaches only the processes you were shown. A zombie holds nothing and does not count. A
+  machine that does not show processes (macOS) asks retire or keep. `/flotilla:doctor` names dead seats.
+- **A low disk is handled before it is full.** Under the smaller of 10 % and 20 GB free, the daily pass removes
+  what an install makes again (`node_modules`, `.venv`, `dist`...) from idle trees - never from a tree a live
+  session, a process or a day's git activity holds, never a folder holding a repository or one only your own
+  excludes ignore. Under 2 GB no new session, helper or lane run starts, `--anyway` included; the watch says so
+  (`disk`). A live session whose tree piles up more than 1 GB of ignored outputs gets one letter a day.
+- **Released work's branch is put to you.** Commits on no trunk are parked and the branch deleted on your `park`,
+  with the command that brings it back; `keep` leaves it.
+- **The archive keeps a month.** Three days before an entry's month ends you are asked whether its media may go; a yes
+  removes exactly the files shown, and only when you carry it out with `/flotilla:gc` in your own session once the day
+  named has come: the daily pass runs in the background and only says a yes is ready. Three unanswered days keep
+  everything another month, unless the disk is low. Scripts, logs, notes and parked commits never expire;
+  `flotilla gc restore` names an expired file instead of failing.
+- The collector's own `git status` no longer rewrites a tree's index, and a recorded answer is carried out only
+  when its question offered it.
+
 ## 0.23.3 - 2026-10-29
 
 - **Pin the release your project runs.** The install in the README followed flotilla's default branch, so every

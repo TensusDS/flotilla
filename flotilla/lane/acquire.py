@@ -15,8 +15,8 @@ import time
 from dataclasses import dataclass, field
 
 POLL = 15.0
-#: Answers that hold the lane whatever the capacity: CI on this machine, and memory under the floor.
-OUTRIGHT = ("ci", "memory")
+#: Answers that hold the lane whatever the capacity: CI on this machine, memory under the floor, no room on the disk.
+OUTRIGHT = ("ci", "memory", "disk")
 ENV = "FLOTILLA_LANE_BOOKING"   # set for a booked command, so a booking inside it reuses the one it runs under
 
 
