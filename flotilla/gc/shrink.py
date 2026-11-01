@@ -44,6 +44,12 @@ def busy(ledger, tree: Path, *, sessions, now: float, proc_root=None, git_activi
     alive = trees._alive(ledger, tree, sessions, (), None, gitdir)
     if alive:
         return alive
+    for marker in trees.MARKERS if gitdir else ():
+        if (Path(gitdir) / marker).exists():
+            return f"an operation is in progress in it ({marker})"
+    nested = trees._nested(ledger, tree)
+    if nested:
+        return nested
     working = leftovers.working_in(tree, proc_root=proc_root)
     if working is None:
         return "its processes could not be read (no /proc on this machine)"
@@ -89,10 +95,33 @@ def _remove(path: Path) -> None:
         shutil.rmtree(path)
 
 
-def _candidates(ledger, tree: Path) -> list[str]:
-    entries = ignored._entries(tree, ledger.run) or []
-    return [entry.rstrip("/") for entry in entries
-            if ignored.regenerable_name(entry.rstrip("/").rsplit("/", 1)[-1], ledger.profile)]
+def _repository_in(path: Path) -> bool:
+    """A `.git` at or below `path`, links not followed: a nested repository is the person's, whatever its folder is
+    called (gc design 6, rule 5). A link itself holds nothing: removing it leaves its target."""
+    if path.is_symlink():
+        return False
+    if (path / ".git").exists():
+        return True
+    for _, dirs, files in os.walk(path, followlinks=False):
+        if ".git" in dirs or ".git" in files:
+            return True
+    return False
+
+
+def _candidates(ledger, tree: Path) -> tuple[list[str], list[str]]:
+    """The regenerable entries the project's own ignore rules cover, and why any other regenerable entry stays."""
+    entries = [entry.rstrip("/") for entry in ignored._entries(tree, ledger.run) or []
+               if ignored.regenerable_name(entry.rstrip("/").rsplit("/", 1)[-1], ledger.profile)]
+    personal = ignored._persons(tree, entries, ledger.run)
+    found, kept = [], []
+    for entry in entries:
+        if entry in personal:
+            kept.append(f"{visible(entry)} is ignored only by a rule outside the project")
+        elif _repository_in(tree / entry):
+            kept.append(f"{visible(entry)} holds a repository")
+        else:
+            found.append(entry)
+    return found, kept
 
 
 def shrink(ledger, *, sessions, act: bool, now: float | None = None, proc_root=None) -> Shrunk:
@@ -105,22 +134,25 @@ def shrink(ledger, *, sessions, act: bool, now: float | None = None, proc_root=N
         if missing or here not in made:
             continue
         lock = held.get(here)
-        if lock is not None and lock != trees.GC_LOCK:
+        if lock == trees.GC_LOCK:
+            found.kept.append(f"{tree.name}: another collector pass holds its lock")
+            continue
+        if lock is not None:
             found.kept.append(f"{tree.name}: locked ({visible(lock or 'no reason given')})")
             continue
         why = busy(ledger, here, sessions=sessions, now=now, proc_root=proc_root)
         if why:
             found.kept.append(f"{tree.name}: {why}")
             continue
-        entries = _candidates(ledger, here)
+        entries, staying = _candidates(ledger, here)
+        found.kept += [f"{tree.name}: {line}" for line in staying]
         if not entries:
             continue
         if not act:
             found.removed += [(tree.name, entry, _size(here / entry)) for entry in entries]
             continue
-        if lock is None and ledger.run(["git", "-C", str(ledger.root), "worktree", "lock", "--reason",
-                                        trees.GC_LOCK, str(here)], capture_output=True, text=True,
-                                       check=False).returncode != 0:
+        if ledger.run(["git", "-C", str(ledger.root), "worktree", "lock", "--reason", trees.GC_LOCK, str(here)],
+                      capture_output=True, text=True, check=False).returncode != 0:   # someone locked it since
             found.kept.append(f"{tree.name}: git would not lock it")
             continue
         try:

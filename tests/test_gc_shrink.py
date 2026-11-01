@@ -181,3 +181,60 @@ def test_an_idle_tree_gets_no_letter(tmp_path):
 def test_the_store_keeps_letters():
     from flotilla.gc import store
     assert store.empty()["letters"] == {}
+
+
+# Security review of 3d86d2e: the gates the tree's own verdict has, and a lock only the one who took it lifts.
+
+def test_a_regenerable_entry_holding_a_repository_is_kept(tmp_path):
+    root, ledger, tree = world(tmp_path)
+    (tmp_path / "proc-empty").mkdir()
+    (tree / "node_modules" / "linked-pkg" / ".git").mkdir(parents=True)
+    age_git(tree, 25)
+    done = run(ledger, tmp_path)
+    assert (tree / "node_modules" / "linked-pkg" / ".git").exists() and not done.removed
+    assert any("repository" in line for line in done.kept)
+
+
+def test_an_entry_only_a_personal_exclude_ignores_is_kept(tmp_path):
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile=PROFILE, live=())
+    tree = tmp_path / "app-main-1"
+    git(root, "worktree", "add", "-q", "-b", "fleet/main-1", str(tree))
+    common = Path(git(root, "rev-parse", "--path-format=absolute", "--git-common-dir"))
+    (common / "info").mkdir(exist_ok=True)
+    (common / "info" / "exclude").write_text("node_modules\n", encoding="utf-8")
+    (tree / "node_modules").mkdir()
+    (tree / "node_modules" / "x.js").write_text("x", encoding="utf-8")
+    (tmp_path / "proc-empty").mkdir()
+    age_git(tree, 25)
+    done = run(ledger, tmp_path)
+    assert (tree / "node_modules" / "x.js").exists() and not done.removed
+
+
+def test_an_operation_in_progress_keeps_the_tree(tmp_path):
+    root, ledger, tree = world(tmp_path)
+    (tmp_path / "proc-empty").mkdir()
+    age_git(tree, 25)
+    gitdir = Path(git(tree, "rev-parse", "--absolute-git-dir"))
+    (gitdir / "MERGE_HEAD").write_text("0" * 40 + "\n", encoding="utf-8")
+    done = run(ledger, tmp_path)
+    assert (tree / "node_modules").exists() and any("MERGE_HEAD" in line for line in done.kept)
+
+
+def test_another_worktree_inside_keeps_the_tree(tmp_path):
+    root, ledger, tree = world(tmp_path)
+    (tmp_path / "proc-empty").mkdir()
+    git(root, "worktree", "add", "-q", "-b", "fleet/inner", str(tree / "node_modules" / "inner"))
+    age_git(tree, 25)
+    done = run(ledger, tmp_path)
+    assert (tree / "node_modules" / "inner").exists() and any("another worktree" in line for line in done.kept)
+
+
+def test_a_tree_another_collector_pass_holds_is_left_locked(tmp_path):
+    root, ledger, tree = world(tmp_path)
+    (tmp_path / "proc-empty").mkdir()
+    age_git(tree, 25)
+    git(root, "worktree", "lock", "--reason", "flotilla: gc", str(tree))
+    done = run(ledger, tmp_path)
+    assert (tree / "node_modules").exists() and any("collector" in line for line in done.kept)
+    assert "flotilla: gc" in git(root, "worktree", "list", "--porcelain")
