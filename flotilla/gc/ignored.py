@@ -53,6 +53,11 @@ def _extra(profile: dict) -> set[str]:
     return {str(item) for item in found if isinstance(item, str)}
 
 
+def regenerable_name(name: str, profile: dict) -> bool:
+    """An entry an install or a build makes again, by its own name: what shrinking may remove (gc design 8)."""
+    return name in REGENERABLE or name in _extra(profile) or name.endswith(REGENERABLE_SUFFIXES)
+
+
 def _runtime(path: str) -> bool:
     return any(path == item.rstrip("/") or (item.endswith("/") and path.startswith(item)) for item in CLAUDE_RUNTIME)
 
