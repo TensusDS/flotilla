@@ -215,3 +215,22 @@ def test_the_archive_question_takes_no_own_words(tmp_path):
     archived(ledger, tmp_path, "a", {"render.png": b"p"}, days_old=28)
     found = due(ledger, {})
     assert expiry.question(found, entries=archive.entries(ledger), now=NOW)["free_text"] is False
+
+
+
+def test_expiry_waits_for_an_archive_another_session_is_writing(tmp_path):
+    """Final review of the branch, I5: put, carry_out and restore share one archive lock, so an object a new record
+    is about to point at is never removed under it."""
+    import threading
+    root, ledger = world(tmp_path)
+    archived(ledger, tmp_path, "a", {"render.png": b"p"}, days_old=31)
+    data = {}
+    say(ledger, data, "yes")
+    done = []
+    with archive.locked(ledger):
+        worker = threading.Thread(target=lambda: done.append(expiry.carry_out(ledger, data, now=NOW)))
+        worker.start()
+        worker.join(0.5)
+        assert not done   # it waits for the lock
+    worker.join(10)
+    assert done and any("removed" in line for line in done[0])

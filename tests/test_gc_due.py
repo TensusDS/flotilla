@@ -223,3 +223,20 @@ def test_an_unknown_disk_is_said(tmp_path):
         raise OSError(5, "Input/output error")
     lines = daily(ledger, proc, usage=broken)
     assert any("could not be asked" in line for line in lines), lines
+
+
+
+def test_an_answer_recorded_during_the_pass_survives_it(tmp_path, monkeypatch):
+    """Final review of the branch, I4: the pass loads the store, runs for minutes, and saved it whole."""
+    from flotilla.gc import store
+    root, ledger, proc = world(tmp_path)
+    real = sweep.run_pass
+
+    def slow_pass(*args, **kwargs):
+        data = store.load(ledger.state_dir, ledger.repo_key)
+        data["answers"]["work:fleet/x"] = {"value": "keep", "seen": "f" * 64}   # the person answers meanwhile
+        store.save(ledger.state_dir, ledger.repo_key, data)
+        return real(*args, **kwargs)
+    monkeypatch.setattr(sweep, "run_pass", slow_pass)
+    daily(ledger, proc)
+    assert store.load(ledger.state_dir, ledger.repo_key)["answers"]["work:fleet/x"]["value"] == "keep"

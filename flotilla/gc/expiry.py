@@ -159,6 +159,11 @@ def ready(ledger, data: dict, *, now: datetime, low: bool = False) -> int:
 
 
 def carry_out(ledger, data: dict, *, now: datetime, low: bool = False) -> list[str]:
+    with archive.locked(ledger):   # what is still needed is read under the archive's lock (final review, I5)
+        return _carry_out(ledger, data, now=now, low=low)
+
+
+def _carry_out(ledger, data: dict, *, now: datetime, low: bool = False) -> list[str]:
     """Carry out a recorded answer: keep moves the month; yes removes each shown media file once its month ended (at
     once with a low disk), and deletes its stored object when no record still needing it points at it."""
     state = _state(data)

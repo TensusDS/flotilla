@@ -156,6 +156,6 @@ def _daily(ledger, *, sessions, census, caller: str, usage, proc_root) -> list[s
     if pending:
         lines.append(f"{len(pending)} piece(s) of work wait on the person: they answer with /flotilla:gc in their own "
                      "session")
-    store.save(ledger.state_dir, ledger.repo_key, data)
+    store.save_pass(ledger.state_dir, ledger.repo_key, data)
     due.passed(ledger.state_dir, ledger.repo_key, now=now)
     return lines
