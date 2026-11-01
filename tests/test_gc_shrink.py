@@ -130,3 +130,54 @@ def test_a_tree_locked_by_someone_else_is_kept(tmp_path):
     git(root, "worktree", "lock", "--reason", "on a usb disk", str(tree))
     done = run(ledger, tmp_path)
     assert (tree / "node_modules").exists() and any("on a usb disk" in line for line in done.kept)
+
+
+def live_world(tmp_path, profile=None):
+    root, ledger, tree = world(tmp_path, profile or {**PROFILE, "gc": {"outputs_mb": 0}})
+    commit(root, "ignore renders", ".gitignore", "node_modules\nrenders/\n")
+    git(tree, "merge", "-q", "main")
+    (tree / "renders").mkdir()
+    (tree / "renders" / "a.png").write_bytes(b"p" * 5120)
+    with ledger.session() as s:
+        s.append(actor(ledger, "main session 1"), "r1", "reserve", "reserved",
+                 fields={"branch": "fleet/main-1", "owner": "main session 1", "tree": str(tree)})
+    return root, ledger, tree, [session("main session 1", tmp_path / "elsewhere")]
+
+
+def test_a_live_tree_over_the_threshold_gets_one_letter(tmp_path):
+    root, ledger, tree, live = live_world(tmp_path)
+    data = {"letters": {}}
+    letters = shrink.piling(ledger, sessions=live, data=data, today="2026-11-01")
+    assert len(letters) == 1 and letters[0].to == ("main session 1",)
+    assert "renders/a.png" in letters[0].text and "They are yours" in letters[0].text
+    assert "node_modules" not in letters[0].text
+    assert data["letters"][str(tree.resolve())] == "2026-11-01"
+
+
+def test_the_letter_comes_once_a_day(tmp_path):
+    root, ledger, tree, live = live_world(tmp_path)
+    data = {"letters": {}}
+    assert shrink.piling(ledger, sessions=live, data=data, today="2026-11-01")
+    assert shrink.piling(ledger, sessions=live, data=data, today="2026-11-01") == []
+    assert len(shrink.piling(ledger, sessions=live, data=data, today="2026-11-02")) == 1
+
+
+def test_regenerable_files_do_not_count(tmp_path):
+    root, ledger, tree, live = live_world(tmp_path)
+    (tree / "renders" / "a.png").unlink()
+    assert shrink.piling(ledger, sessions=live, data={"letters": {}}, today="2026-11-01") == []
+
+
+def test_under_the_threshold_no_letter(tmp_path):
+    root, ledger, tree, live = live_world(tmp_path, {**PROFILE, "gc": {"outputs_mb": 1000}})
+    assert shrink.piling(ledger, sessions=live, data={"letters": {}}, today="2026-11-01") == []
+
+
+def test_an_idle_tree_gets_no_letter(tmp_path):
+    root, ledger, tree, live = live_world(tmp_path)
+    assert shrink.piling(ledger, sessions=[], data={"letters": {}}, today="2026-11-01") == []
+
+
+def test_the_store_keeps_letters():
+    from flotilla.gc import store
+    assert store.empty()["letters"] == {}
