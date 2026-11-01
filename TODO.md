@@ -10,6 +10,9 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 
 ## From two field fleets, twosuns and void-lanes-online (2026-10-31..11-01, reported on 0.21.0 and 0.23.2)
 
+Order, the person's call (2026-11-01): the lane's fixes first (0.24.1), then the lane's modes (0.25.0), then the
+rig queue (0.26.0).
+
 Sources: the twosuns orchestrator's feedback (`twosuns-keep/flotilla-feedback-2026-11-01.md`, ten items) and the
 void-lanes-online orchestrator's lane report (lane journal figures: runs under 60 s waited a median 30.6 min for a
 median 6.8 s run). Checked against main at a50daae (0.24.0 code) where a file is named.
@@ -36,8 +39,9 @@ median 6.8 s run). Checked against main at a50daae (0.24.0 code) where a file is
   opt-in per machine, the mode and each admission's path printed. Asked by the person 2026-11-01 as a separate mode
   from mode 1. *(open, design: needs a section in the lane spec)*
 - **Seats run tests and simulations outside the lane despite the guard's warning** (load 18-23 on 8 cores, smoke
-  timeouts in five receipts on 10-31). Whether the guard blocks known-heavy programs outside `lane run` in fleet
-  seats, or counts them as the seat's own booking, is the person's call. *(open, design)*
+  timeouts in five receipts on 10-31). The person's call (2026-11-01): the guard keeps warning, and such a run is
+  counted as the seat's own booking - it takes a place in the lane, attributed to the seat, instead of being an
+  anonymous foreign run. *(open, design: flotilla/lane, the Bash guard)*
 - **An unknown estimate (`? s`) for another project's rows**, and a full receipt rerun after every trunk merge (an
   affected-tests tier for hand and review, the full tier only for the push receipt). *(open, design)*
 
