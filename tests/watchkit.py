@@ -47,13 +47,24 @@ from types import SimpleNamespace
 from flotilla.watch.context import Context
 
 
-def context(tmp_path, *, me, sessions=None, rows_=None, profile=PR, census_error="", ledger_error="", events=None):
+def roomy(path):
+    return SimpleNamespace(total=2**40, used=0, free=2**39)
+
+
+def context(tmp_path, *, me, sessions=None, rows_=None, profile=PR, census_error="", ledger_error="", events=None,
+            collector_due=False, disk_usage=roomy):
+    """A watch context. The collector's pass is done unless `collector_due`, and the disk has room unless
+    `disk_usage` says otherwise: the tests that are not about them see neither item (gc stage 3)."""
     listed = sessions if sessions is not None else ([me] if me is not None else [])
     ledger = None
+    if not collector_due:
+        import time
+        from flotilla.gc import due
+        due.passed(Path(tmp_path) / "state", "repo", now=time.time())
     if not ledger_error:
         ledger = SimpleNamespace(profile=profile, posts=posts(tmp_path), rows=lambda: rows_ or {},
                                  state_dir=Path(tmp_path) / "state", repo_key="repo", events=events or {},
                                  root=Path(tmp_path))
     return Context(root=Path(tmp_path), session_id=me.session_id if me is not None else "",
                    sessions=None if census_error else listed, census_error=census_error, me=me, ledger=ledger,
-                   ledger_error=ledger_error, rows=rows_ or {})
+                   ledger_error=ledger_error, rows=rows_ or {}, disk_usage=disk_usage)

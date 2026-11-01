@@ -110,8 +110,10 @@ def _unvouched(tree: Path, main: Path, entry: str, profile: dict) -> list[str] |
 
 
 def _entries(tree: Path, run) -> list[str] | None:
-    shown = run(["git", "-C", str(tree), "-c", "status.showUntrackedFiles=all", "status", "--porcelain", "-z",
-                 "--untracked-files=all", "--ignored=matching"], capture_output=True, text=True, check=False)
+    # --no-optional-locks: a look leaves the index alone, so the index's time still says when someone last worked
+    shown = run(["git", "--no-optional-locks", "-C", str(tree), "-c", "status.showUntrackedFiles=all", "status",
+                 "--porcelain", "-z", "--untracked-files=all", "--ignored=matching"], capture_output=True, text=True,
+                check=False)
     if shown.returncode != 0:
         return None
     return [item[3:] for item in shown.stdout.split("\0") if item.startswith("!! ")]

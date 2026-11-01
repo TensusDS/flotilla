@@ -101,6 +101,56 @@ def sweep_branch(ledger, name: str) -> list[str]:
     return [gc_remove.delete_branch(ledger, mine) if mine.delete else f"kept branch `{name}`: {mine.reason}"]
 
 
-def sweep(ledger, *, sessions, act: bool) -> list[str]:
-    """One pass over every tree and local branch the fleet made: what goes, what is parked, what stays and why."""
-    return gc_sweep.lines(gc_sweep.run_pass(ledger, sessions=sessions, act=act))
+def sweep(ledger, *, sessions, act: bool, daily: bool = False, census=None, caller: str = "", usage=None,
+          proc_root=None) -> list[str]:
+    """One pass over every tree and local branch the fleet made: what goes, what is parked, what stays and why. With
+    `daily`, the orchestrator's pass (gc design 4 and 8), run only when due: dead seats, the sweep, a low disk's
+    shrinking, the outputs letters, the archive's lifetime, and what waits on the person - who is never asked here."""
+    if not daily:
+        return gc_sweep.lines(gc_sweep.run_pass(ledger, sessions=sessions, act=act))
+    return _daily(ledger, sessions=sessions, census=census, caller=caller, usage=usage, proc_root=proc_root)
+
+
+def _daily(ledger, *, sessions, census, caller: str, usage, proc_root) -> list[str]:
+    import shutil
+    import time
+    from datetime import datetime, timezone
+
+    from flotilla.gc import archive, dead, disk, due, expiry, questions, shrink, store
+    from flotilla.ledger.letters import render
+    now = time.time()
+    reasons = due.due(ledger.state_dir, ledger.repo_key, now=now)
+    if not reasons:
+        return [f"the collector's next pass is due in {due.hours_left(ledger.state_dir, ledger.repo_key, now=now)} h; "
+                "nothing to do"]
+    lines = [f"the collector's daily pass ({'; '.join(reasons)})"]
+    data = store.load(ledger.state_dir, ledger.repo_key)
+    seats = dead.dead_seats(ledger, sessions, proc_root=proc_root, data=data)
+    lines += dead.retire_dead(ledger, seats, census=census or (lambda: sessions), caller=caller or "daily pass")
+    report = gc_sweep.run_pass(ledger, sessions=sessions, act=True, proc_root=proc_root)
+    lines += gc_sweep.lines(report)
+    found = disk.state(ledger.root, ledger.profile, usage=usage or shutil.disk_usage)
+    lines += [f"note: {note}" for note in found.notes]
+    if found.low:
+        lines.append(f"the disk is low: {found.text}" + (f"; {disk.refusal(found)}" if found.no_room else ""))
+        lines += shrink.lines(shrink.shrink(ledger, sessions=sessions, act=True, proc_root=proc_root))
+    today = datetime.now(timezone.utc)
+    for letter in shrink.piling(ledger, sessions=sessions, data=data, today=today.date().isoformat()):
+        lines += render(letter)
+    lines += expiry.carry_out(ledger, data, now=today, low=found.low)
+    waiting = expiry.due(archive.entries(ledger), now=today, low=found.low, data=data)
+    if expiry.raised(data, waiting, now=today, low=found.low):
+        lines.append("the archive asks the person: " + expiry.question(waiting, entries=archive.entries(ledger),
+                                                                       now=today, low=found.low,
+                                                                       data=data)["question"])
+    items = questions.items(report.judged, rows=ledger.rows(), small=report.going)
+    items += questions.released_items(ledger, report.released, rows=ledger.rows())
+    items += dead.seat_items(dead.dead_seats(ledger, sessions, proc_root=proc_root, data=data))
+    pending = [item for item in items
+               if (data["answers"].get(item.key) or {}).get("seen") != questions.fingerprint(item)]
+    if pending:
+        lines.append(f"{len(pending)} piece(s) of work wait on the person: they answer with /flotilla:gc in their own "
+                     "session")
+    store.save(ledger.state_dir, ledger.repo_key, data)
+    due.passed(ledger.state_dir, ledger.repo_key, now=now)
+    return lines

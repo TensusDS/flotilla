@@ -25,6 +25,7 @@ class Context:
     ledger_error: str = ""
     rows: dict = field(default_factory=dict)
     project: list | None = None   # the sessions of this project; None: not narrowed, every session counts
+    disk_usage: object = None     # how the disk is asked (shutil.disk_usage when None)
 
     @property
     def live(self) -> set[str] | None:
@@ -87,8 +88,15 @@ class Context:
         import datetime as _dt
         from flotilla.core import paths as _paths
         from flotilla.rig import surface
+        import time as _time
+        try:
+            collector = fleet.collector_items(self.ledger.state_dir, self.ledger.repo_key, self.ledger.root,
+                                              self.profile, now=now if now is not None else _time.time(),
+                                              usage=self.disk_usage)
+        except OSError:
+            collector = []
         return surface.items(_paths.state_dir(), _dt.datetime.now(_dt.timezone.utc),
-                             project=self.ledger.repo_key) + found
+                             project=self.ledger.repo_key) + found + collector
 
 
 def this_session(sessions, session_id: str, *, parent_of=None, start_pid: int | None = None):

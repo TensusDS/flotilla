@@ -158,8 +158,10 @@ def _unclean(ledger, tree: Path, branch: str, spare_rows) -> tuple[list[str], li
     # options spelled out: a person's status.showUntrackedFiles=no hid untracked work (review of the cleanup, C1)
     # -z: without it porcelain quotes a name with a space or a non-ASCII letter, and a quoted name is no path
     # (final review of gc stage 2, C1); a rename names both its paths
-    status = _git(tree, "-c", "status.showUntrackedFiles=all", "-c", "diff.ignoreSubmodules=none", "status",
-                  "--porcelain", "-z", "--untracked-files=all", "--ignore-submodules=none", run=run)
+    # --no-optional-locks: a look leaves the index alone, so the index's time still says when someone last worked
+    status = _git(tree, "--no-optional-locks", "-c", "status.showUntrackedFiles=all", "-c",
+                  "diff.ignoreSubmodules=none", "status", "--porcelain", "-z", "--untracked-files=all",
+                  "--ignore-submodules=none", run=run)
     if status.returncode != 0:
         return None
     reasons: list[str] = []

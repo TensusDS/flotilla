@@ -269,7 +269,7 @@ def _fleet(ledger, args) -> int:
     if getattr(args, "action", None) == "down":
         return _down(ledger)
     if getattr(args, "action", None) == "clean":
-        return _clean(ledger, act=args.yes)
+        return _clean(ledger, act=args.yes, daily=getattr(args, "daily", False))
     if getattr(args, "action", None) == "size":
         return _size(ledger, args)
     try:
@@ -321,7 +321,7 @@ def _size(ledger, args) -> int:
     return 0
 
 
-def _clean(ledger, *, act: bool) -> int:
+def _clean(ledger, *, act: bool, daily: bool = False) -> int:
     """Trees and branches whose work is surely on trunk go; everything else stays, with why (decision 206)."""
     from flotilla.fleet import cleanup
     try:
@@ -329,9 +329,10 @@ def _clean(ledger, *, act: bool) -> int:
     except CensusUnavailable as err:
         raise MoveRefused(f"cleaning needs the census to see which trees a live session works in ({err}); "
                           "nothing was removed") from err
-    for line in cleanup.sweep(ledger, sessions=sessions, act=act):
+    for line in cleanup.sweep(ledger, sessions=sessions, act=act or daily, daily=daily, census=census,
+                              caller="fleet clean --daily"):
         print(line)
-    if not act:
+    if not act and not daily:
         print("plan only: nothing was changed; `flotilla fleet clean --yes` removes what it marks `would`")
     return 0
 
@@ -374,6 +375,8 @@ def _helper(ledger, args) -> int:
         released, letter = helpers.done(ledger, me, summary=args.summary)
         print(f"released {released.branch}: {me.name} is done")
         print(letter)
+        from flotilla.gc import due   # its tree goes once it is retired; the collector's pass is due (gc design 4 g)
+        print(due.noted(ledger, f"helper {me.name} done"))
         return 0
     raised = helpers.raise_helper(ledger, me, args.branch, task=args.task, census=census,
                                   store=LocalLogStore(paths.state_dir() / "fleet"),
