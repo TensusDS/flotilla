@@ -415,3 +415,26 @@ def test_a_queue_command_printing_bytes_no_codec_reads_still_answers(tmp_path):
                       "queue_command": f"{sys.executable} -c \"{script}\""}}
     answer = machine.ci_here(profile, run=subprocess.run, root=tmp_path)
     assert answer.blocks is True
+
+
+def disk(tmp_path, usage):
+    table = Table([Proc(1, 0, "init")])
+    lanes = book.Book(LocalLogStore(tmp_path), table)
+    reading = machine.read(lanes, table, {}, own_pid=999, root=tmp_path, sleep=lambda s: None,
+                           meminfo=lambda: None, usage=usage)
+    return next(a for a in reading.answers if a.question == "disk")
+
+
+def test_the_lane_holds_with_no_room(tmp_path):
+    from collections import namedtuple
+    full = disk(tmp_path, lambda path: namedtuple("U", "total used free")(2**40, 0, 2**30))
+    assert full.blocks is True and "2048 MB floor" in full.text
+    roomy = disk(tmp_path, lambda path: namedtuple("U", "total used free")(2**40, 0, 2**38))
+    assert roomy.blocks is False and "floor 2048 MB" in roomy.text
+
+
+def test_an_unknown_disk_does_not_hold_the_lane(tmp_path):
+    def broken(path):
+        raise OSError(5, "Input/output error")
+    answer = disk(tmp_path, broken)
+    assert answer.blocks is False and "could not be asked" in answer.text

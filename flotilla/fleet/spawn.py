@@ -11,6 +11,7 @@ census, because names are checked against it.
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import tempfile
 import time
@@ -74,6 +75,15 @@ def memory_settings(ledger) -> tuple[int, int, list[str]]:
                                      "fleet.memory_floor_mb")
     cost, cost_note = whole_number(fleet.get("seat_cost_mb", SEAT_COST_MB), SEAT_COST_MB, "fleet.seat_cost_mb")
     return floor, cost, [note for note in (floor_note, cost_note) if note]
+
+
+disk_usage = shutil.disk_usage   # the seam tests replace, as `available_mb` for memory
+
+
+def disk_short(ledger) -> str:
+    """Why no new seat starts with the disk this full, or "" (gc design 8: no room stops new work, `--anyway` too)."""
+    from flotilla.gc import disk
+    return disk.refusal(disk.state(ledger.root, ledger.profile, usage=disk_usage))
 
 
 def memory_short(ledger, seats: int = 1) -> str:
@@ -195,6 +205,9 @@ def plan(ledger, counts: dict, *, census, store, reserve: bool,
             launch.permission_mode(ledger.profile, ledger.posts[post_name])
     except launch.LaunchError as err:
         raise SpawnRefused(f"{err}; nothing was raised") from err
+    full = disk_short(ledger)
+    if full and strict:
+        raise SpawnRefused(full + "; nothing was raised")
     short = "" if anyway else memory_short(ledger, sum(wanted.values()))
     if short and strict:
         raise SpawnRefused("; ".join(memory_settings(ledger)[2] + [short]) + "; nothing was raised")
@@ -234,7 +247,7 @@ def plan(ledger, counts: dict, *, census, store, reserve: bool,
     if (ledger.profile.get("judge") or {}).get("required") and not wanted.get("judge") and not held.get("judge"):
         unwalked.append("the profile requires a judge and the fleet will hold none: shipped rows wait for a walk "
                         "nobody makes; add one (`--post judge=1`)")
-    return seats, memory_settings(ledger)[2] + ([short] if short else []) + skipped + \
+    return seats, memory_settings(ledger)[2] + [line for line in (full, short) if line] + skipped + \
         compose.warnings(wanted, ledger.posts, held) + unwalked + refusals + setup_warnings
 
 
