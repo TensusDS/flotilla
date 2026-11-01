@@ -8,6 +8,62 @@ something through, B a bug a user meets, P polish, tests or docs), or `open, des
 run). A later triage re-checks only items whose named files changed since that version. An item that is done -
 fixed by a release, or found fixed - leaves its section for **Done** at the bottom, one line with the version.
 
+## From two field fleets, twosuns and void-lanes-online (2026-10-31..11-01, reported on 0.21.0 and 0.23.2)
+
+Sources: the twosuns orchestrator's feedback (`twosuns-keep/flotilla-feedback-2026-11-01.md`, ten items) and the
+void-lanes-online orchestrator's lane report (lane journal figures: runs under 60 s waited a median 30.6 min for a
+median 6.8 s run). Checked against main at a50daae (0.24.0 code) where a file is named.
+
+**The lane**
+- **A waiter keeps the capacity it read when it queued.** `lane_capacity` raised from 1 to 2 at 01:00 reached no
+  waiter already queued for an hour: `held(... capacity=capacity() ...)` reads machine.toml once and `acquire`
+  freezes it, and strict FIFO holds the rest behind the head. Re-read capacity on each poll. *(checked 2026-11-01 on
+  a50daae: still B - flotilla/lane/commands.py:129, :195)*
+- **`flotilla lane` says "held: nobody" while foreign runs fill every slot**, lists only some foreign runs, and a
+  waiter's line does not say why it waits. Name foreign runs where `held:` is printed, all of them with their cwd,
+  and the reason on the waiter's line. *(checked 2026-11-01 on a50daae: still B - flotilla/lane/commands.py:169)*
+- **A booking whose process died stays at the head until someone runs `lane sweep`** (six swept by hand on 10-31).
+  Sweep dead waiters on each status and on each poll. *(checked 2026-11-01 on a50daae: still B -
+  flotilla/lane/commands.py:171)*
+- **An expired `--wait` re-queues at the tail.** Six void-lanes-online bookings expired at 1800 s and lost their
+  place (lane spec section 3, seniority). *(open, design: docs/specs/2026-10-05-lane-resource-admission-design.md)*
+- **Mode 1, short runs overtake** - stages 2-3 of the lane spec (budget admission by cores and memory, the head's
+  shadow, a starvation guard, printed reasons), opt-in per machine, FIFO the default, gated by `RULE` for mixed
+  versions. The spec's precondition (a week of field measurements) is met: 24 000 journal lines from two projects.
+  *(open, design: lane spec stages 2-3)*
+- **Mode 2, a share per project** - `fair` (round-robin across projects at the head, FIFO within one) or `slots`
+  (each project with live seats guaranteed part of the capacity, an idle slot lent only within the memory floor),
+  opt-in per machine, the mode and each admission's path printed. Asked by the person 2026-11-01 as a separate mode
+  from mode 1. *(open, design: needs a section in the lane spec)*
+- **Seats run tests and simulations outside the lane despite the guard's warning** (load 18-23 on 8 cores, smoke
+  timeouts in five receipts on 10-31). Whether the guard blocks known-heavy programs outside `lane run` in fleet
+  seats, or counts them as the seat's own booking, is the person's call. *(open, design)*
+- **An unknown estimate (`? s`) for another project's rows**, and a full receipt rerun after every trunk merge (an
+  affected-tests tier for hand and review, the full tier only for the push receipt). *(open, design)*
+
+**The ledger**
+- **A second `--requires` replaces the first**: `nargs="*"` without `action="append"`, so `--requires a --requires
+  b` keeps only `b`. Row r956 lost its dependency on an unaccepted row whose 75 commits its tip carried; `work show`
+  prints no requires line and nothing amends requires after the claim. Append (or refuse a repeat), show requires,
+  add a recorded amend, and warn at hand when the tip carries commits of an open unaccepted row not required.
+  *(checked 2026-11-01 on a50daae: still B - flotilla/cli.py:97, :181)*
+- **`work wait --on "orchestrator 4"` reads as a dead session** when the live name is `twosuns-orchestrator 4`.
+  Resolve a short name to one live session, or refuse an unknown name when written, listing the live ones.
+  *(open: flotilla/ledger/handover.py:126)*
+- **`work adopt` cannot free a branch a dead seat's tree holds with untracked files** ("not freed: 3 uncommitted").
+  With only untracked dirt, detach the dead tree's HEAD (the files stay), or print the one-line command.
+  *(open: flotilla/ledger/steering.py:47)*
+
+**The rig**
+- **A stopped run brings nothing back**: `--get` runs only when a run ends on its own, so a run stopped with two of
+  three clips done lost 28 min. Fetch the `--get` paths on stop (best effort, time-capped), or warn on stop.
+  *(open: flotilla/rig/run.py:317)*
+- **A machine draining from the previous rig session blocks the next session's first run** (ceiling 1; 15-18 min
+  idle after paying). Hand a draining machine to the new session, or count the ceiling against live sessions only.
+  *(open: flotilla/rig/run.py:211)*
+- **Runs of different seats share a machine at once**, skewing frame timing and audio capture. An opt-in exclusive
+  run, or a rig queue like the lane. *(open, design)*
+
 ## From the marketplace pin's third review (2026-10-31, 0.23.3)
 
 - **The pin check reads its inputs as given, and four odd ones go unflagged.**
