@@ -170,3 +170,22 @@ def test_forget_is_the_persons(tmp_path, capsys, monkeypatch):
 def test_the_cli_knows_gc_forget(monkeypatch):
     monkeypatch.setattr(commands, "run_gc", lambda args, **_: 5 if (args.action, args.key) == ("forget", "k") else 0)
     assert cli.main(["gc", "forget", "k", "--root", "."]) == 5
+
+
+def test_a_held_dead_seat_is_asked_and_shown(tmp_path, capsys, monkeypatch):
+    from flotilla.fleet import leftovers
+    from ledgerkit import actor
+    from test_gc_dead import holder
+    root, ledger, tree = world(tmp_path)
+    with ledger.session() as s:
+        s.append(actor(ledger, "main session 1"), "r1", "reserve", "reserved",
+                 fields={"branch": "fleet/main-1", "owner": "main session 1", "tree": str(tree)})
+    proc = tmp_path / "proc"
+    proc.mkdir()
+    (proc / "uptime").write_text("100000.00 0.00\n", encoding="utf-8")
+    holder(proc, 4242, tree)
+    monkeypatch.setattr(leftovers, "PROC_ROOT", proc)
+    ids = [question["id"].rsplit("@", 1)[0] for question in next_round(ledger, capsys)["questions"]]
+    assert "seat:main session 1" in ids
+    assert run(ledger, "show", key="seat:main session 1") == 0
+    assert "4242 node vite" in capsys.readouterr().out

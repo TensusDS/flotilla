@@ -753,3 +753,19 @@ def test_deeply_nested_json_is_no_crash(tmp_path, where):
         config / "plugins" / "known_marketplaces.json"
     target.write_text(deep, encoding="utf-8")
     assert pin_found(tmp_path, config) is not None
+
+
+def test_doctor_names_dead_seats(tmp_path):
+    from ledgerkit import actor, git, make_ledger, repo_with_origin, PROFILE
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile=PROFILE, live=())
+    tree = tmp_path / "app-main-1"
+    git(root, "worktree", "add", "-q", "-b", "fleet/main-1", str(tree))
+    proc = tmp_path / "proc"
+    proc.mkdir()
+    assert doctor._seats(ledger, [], proc_root=proc).status == "ok"
+    with ledger.session() as s:
+        s.append(actor(ledger, "main session 1"), "r1", "reserve", "reserved",
+                 fields={"branch": "fleet/main-1", "owner": "main session 1", "tree": str(tree)})
+    found = doctor._seats(ledger, [], proc_root=proc)
+    assert found.status == "warn" and "main session 1" in found.detail and "fleet clean --daily" in found.fix

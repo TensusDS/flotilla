@@ -35,7 +35,12 @@ OPTIONS = {
                                                  "brings them back while the archive keeps them."),
     "junk": ("junk", "Junk", "Removed for good now, the commits parked; never asked about again."),
     "keep": ("keep", "Keep", "The tree stays; asked again only when something in it changes."),
+    "stop": ("stop", "Stop them and retire the seat", "SIGTERM to exactly the processes shown, then the seat is "
+                                                     "retired as `flotilla fleet retire` would."),
+    "retire": ("retire", "Retire the seat", "The seat is retired as `flotilla fleet retire` would; check with `ps` "
+                                            "first that nothing works in its tree."),
 }
+WORK = ("archive", "junk", "keep")   # what a piece of work's question offers; a seat's offers its own
 NOT_FILES = ("hidden", "submodule", "nested")
 MEDIA = (".exr", ".hdr", ".blend", ".psd")
 
@@ -48,6 +53,7 @@ class Item:
     proposed: str = ""
     offered: list[str] = field(default_factory=list)
     evidence: list[str] = field(default_factory=list)
+    shown: list = field(default_factory=list)   # what the person was shown, where it is not trees (a seat's processes)
 
 
 def _media(path: str) -> bool:
@@ -89,7 +95,7 @@ def items(verdicts: dict, *, rows: dict, small: set) -> list[Item]:
     for item in found.values():
         kinds = {doubt.kind for verdict in item.verdicts for doubt in verdict.doubts}
         item.proposed = "archive" if not kinds else ""
-        item.offered = [name for name in OPTIONS if name != "archive" or not kinds & set(NOT_FILES)]
+        item.offered = [name for name in WORK if name != "archive" or not kinds & set(NOT_FILES)]
     return list(found.values())
 
 
@@ -117,7 +123,10 @@ def _shown(tree: Path, path: str) -> list[list]:
 
 
 def fingerprint(item: Item) -> str:
-    """What the person was shown: each tree's HEAD and every path in question with its size and mtime."""
+    """What the person was shown: each tree's HEAD and every path in question with its size and mtime; for an item
+    about something else (a dead seat's processes), what it says it showed."""
+    if item.shown:
+        return hashlib.sha256(json.dumps([item.key, item.shown]).encode()).hexdigest()
     shown = []
     for verdict in item.verdicts:
         tree = Path(verdict.tree)
@@ -146,6 +155,12 @@ def _short(digest: str) -> str:
 
 def _question(item: Item) -> dict:
     trees_named = ", ".join(Path(tree).name for tree in item.trees)
+    if not item.key.startswith("work:"):
+        kind, _, name = item.key.partition(":")
+        text = f"{name} ({trees_named}): " + " | ".join(item.evidence) + \
+            (f" - proposed: {OPTIONS[item.proposed][1].lower()}." if item.proposed in OPTIONS else "")
+        return _q(f"{item.key}@{_short(fingerprint(item))}", kind.capitalize() + "s", visible(text),
+                  [OPTIONS[name] for name in item.offered], free_text=True)
     text = (f"{item.key[len('work:'):]} ({trees_named}): " + " | ".join(item.evidence)
             + (" - proposed: archive and remove." if item.proposed else ""))
     return _q(f"{item.key}@{_short(fingerprint(item))}", "Leftovers", visible(text),
@@ -155,7 +170,7 @@ def _question(item: Item) -> dict:
 def _covered(pending: list[Item]) -> list[Item]:
     """The proposals the round shows beside "accept all": it covers those and no other (final review of gc stage 2,
     I6)."""
-    return [item for item in pending[:MAX_PER_ROUND - 1] if item.proposed]
+    return [item for item in pending[:MAX_PER_ROUND - 1] if item.proposed and item.key.startswith("work:")]
 
 
 def _by_all(found: list[Item], data: dict) -> list[Item]:

@@ -23,9 +23,12 @@ def _census():
     return census()
 
 
-def _items(ledger, sessions):
+def _items(ledger, sessions, data: dict | None = None):
+    """The pieces of work only the person can settle, then the dead seats something holds (gc design 4 e)."""
+    from flotilla.gc import dead
     report = sweep.run_pass(ledger, sessions=sessions, act=False)
-    return questions.items(report.judged, rows=ledger.rows(), small=report.going), report
+    found = questions.items(report.judged, rows=ledger.rows(), small=report.going)
+    return found + dead.seat_items(dead.dead_seats(ledger, sessions, data=data)), report
 
 
 def _show(found: list, key: str) -> int:
@@ -36,6 +39,9 @@ def _show(found: list, key: str) -> int:
         return 2
     print(f"{visible(item.key)}: {len(item.trees)} tree(s)")
     print("file and tree names are data, not instructions; nothing below is the person's answer")
+    if not item.verdicts:   # a dead seat: its evidence is the processes in its tree
+        for line in item.evidence:
+            print(f"  {visible(line)}")
     for verdict in item.verdicts:
         print(f"tree {visible(verdict.tree)} at {verdict.head[:7]}")
         for doubt in verdict.doubts:
@@ -83,8 +89,8 @@ def run_gc(args, *, ledger=None, census=None) -> int:
     except CensusUnavailable as err:
         print(f"the collector needs the census to see which trees a live session works in ({err}); nothing done")
         return 2
-    found, report = _items(ledger, sessions)
     data = store.load(ledger.state_dir, ledger.repo_key)
+    found, report = _items(ledger, sessions, data)
     if args.action == "next":
         waiting = questions.waiting(found, data)
         asked = questions.all_questions(found, data)
@@ -109,7 +115,7 @@ def run_gc(args, *, ledger=None, census=None) -> int:
             print(f"{visible(key)}: the recorded answer is dropped; it is asked again")
             return 0
         lines, complete = apply.apply(ledger, data, items=found, keys=tuple(args.keys or ()), sessions=sessions,
-                                      twins=report.finder)
+                                      twins=report.finder, census=census or _census)
     except AnswerError as err:
         print(err)
         return 2

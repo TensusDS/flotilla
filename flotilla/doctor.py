@@ -98,6 +98,7 @@ def collect(*, cwd: Path, env=os.environ, run=subprocess.run, which=shutil.which
     except subprocess.TimeoutExpired:
         findings.append(Finding("warn", "claude", f"`claude --version` did not answer within {timeout:g}s"))
 
+    sessions = None
     try:
         sessions = read()
         findings.append(Finding("ok", "census", f"{len(sessions)} live session(s)"))
@@ -136,6 +137,12 @@ def collect(*, cwd: Path, env=os.environ, run=subprocess.run, which=shutil.which
             findings.append(Finding("fail", "project", str(err), "fix the file, then run `flotilla doctor`"))
         if setup:   # a hook skips them: its firing proves the plugin runs, and its budget is seconds
             findings += _setup(root, run=run, timeout=timeout, home=home)
+            if sessions is not None:
+                try:
+                    from flotilla.ledger.commands import open_ledger
+                    findings.append(_seats(open_ledger(root), sessions))
+                except Exception as err:  # noqa: BLE001 - a check that could not ask says so
+                    findings.append(Finding("warn", "seats", f"could not be checked: {err}"))
 
     try:
         import datetime as _dt
@@ -145,6 +152,20 @@ def collect(*, cwd: Path, env=os.environ, run=subprocess.run, which=shutil.which
     except Exception as err:  # noqa: BLE001 - a check that could not ask says so
         findings.append(Finding("warn", "rig", f"could not be checked: {err}"))
     return findings
+
+
+def _seats(ledger, sessions, *, proc_root=None) -> Finding:
+    """Seats whose session is gone and whose tree still stands (gc design 4 e): the free ones go in the orchestrator's
+    daily pass, the ones a process holds wait on the person's stop or keep."""
+    from flotilla.gc import dead
+    found = dead.dead_seats(ledger, sessions, proc_root=proc_root)
+    if not found:
+        return Finding("ok", "seats", "no dead seats")
+    names = ", ".join(seat.row.owner + ("" if not seat.holders else f" (held by {len(seat.holders)} process(es))")
+                      for seat in found)
+    return Finding("warn", "seats", f"{len(found)} seat(s) whose session is gone still hold a tree: {names}",
+                   "the orchestrator's `flotilla fleet clean --daily` retires the free ones and asks about the held "
+                   "ones (`flotilla gc next`)")
 
 
 def _records(*, env, home: Path | None, read_rows) -> list[Finding]:
