@@ -656,3 +656,14 @@ def test_work_requires_drops_a_link_from_the_cli(tmp_path, monkeypatch):
                         str(root), "--as", "orchestrator 1")
     assert code == 0, out
     assert _rows_by_branch(root)["feat/b"].requires == []
+
+
+def test_an_unchecked_drop_says_so_to_the_caller():
+    """Final review of 0.24.1, M6: a drop whose commits could not be named was recorded as unchecked and the caller
+    was told nothing."""
+    from flotilla.ledger.commands import _amended
+    from flotilla.ledger.model import Row
+    row = Row(id="r2", branch="feat/b", history=[{"move": "requires", "evidence": {
+        "unchecked": {"feat/a": "its commits could not be named (no branch and no recorded tip)"}}}])
+    _, text = _amended(row)
+    assert "dropped `feat/a` unchecked: its commits could not be named" in text

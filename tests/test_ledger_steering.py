@@ -277,3 +277,38 @@ def test_only_the_owner_or_a_post_that_may(world):
         steering.requires(ledger, actor(ledger, "review session 1"), "feat/b", drop=["feat/a"], why="not mine")
     row = steering.requires(ledger, actor(ledger, "main session 1"), "feat/b", drop=["feat/a"], why="my own row")
     assert row.requires == []
+
+
+def test_a_row_cannot_require_itself_or_a_row_that_requires_it(world):
+    """Final review of 0.24.1, I1: an add of the row itself, or of a row that already requires it, made a link no
+    drop could lift (the tip carries its own commits) and a row no queue would ever take."""
+    root, ledger = world
+    _requires_world(root, ledger, built_on=False)
+    with pytest.raises(MoveRefused, match="cannot require itself"):
+        steering.requires(ledger, actor(ledger, ORCH), "feat/b", add=["feat/b"], why="a slip")
+    with pytest.raises(MoveRefused, match="`feat/b` already requires `feat/a`"):
+        steering.requires(ledger, actor(ledger, ORCH), "feat/a", add=["feat/b"], why="a loop")
+
+
+def test_a_drop_after_the_dependency_was_rebased_is_refused(world):
+    """Final review of 0.24.1, I2: the dependency's branch was rewritten after the row was cut from it, so the row's
+    tip carries the old commits under other ids; the check compares patches, not only ids."""
+    from ledgerkit import IDENTITY, git
+    root, ledger = world
+    _requires_world(root, ledger, built_on=True)
+    git(root, "checkout", "-q", "feat/a")
+    git(root, *IDENTITY, "commit", "-q", "--amend", "--no-edit", "--date=2001-01-01T00:00:00")
+    git(root, "checkout", "-q", "main")
+    with pytest.raises(MoveRefused, match=r"carries 1 commit\(s\) of `feat/a`"):
+        steering.requires(ledger, actor(ledger, ORCH), "feat/b", drop=["feat/a"], why="looks stale")
+
+
+def test_an_added_name_is_recorded_once_under_its_own_id(world):
+    """Final review of 0.24.1, M5: a name given twice paired the next name's id with the wrong name."""
+    root, ledger = world
+    first = drive(root, ledger, "feat/a", to="claimed")
+    other = drive(root, ledger, "feat/x2", to="claimed")
+    drive(root, ledger, "feat/c", to="claimed")
+    row = steering.requires(ledger, actor(ledger, ORCH), "feat/c", add=["feat/a", "feat/a", "feat/x2"], why="both")
+    assert row.requires == [first.id, other.id]
+    assert row.history[-1]["evidence"]["added"] == ["feat/a", "feat/x2"]

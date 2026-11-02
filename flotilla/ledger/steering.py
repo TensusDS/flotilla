@@ -140,14 +140,39 @@ def walkable(ledger: Ledger, actor: Actor, branch: str, *, why: str = "", clear:
         return s.append(actor, row.id, "walkable", state, fields={"walkable": "" if clear else why.strip()})
 
 
-def _off_trunk(ledger: Ledger, tip: str, trunk_head: str) -> set[str] | None:
-    done = ledger.run(["git", "-C", str(ledger.root), "rev-list", tip, f"^{trunk_head}"], capture_output=True,
-                      text=True, check=False)
-    return set(done.stdout.split()) if done.returncode == 0 else None
+def _commits(ledger: Ledger, tips, trunk_head: str) -> dict[str, str] | None:
+    """The commits off trunk that any of `tips` reaches, each with its patch id ("" for a merge or an empty one), so
+    a commit rewritten by a rebase is still recognised by what it changes."""
+    tips = [tip for tip in dict.fromkeys(tips) if tip]
+    if not tips:
+        return {}
+    listed = ledger.run(["git", "-C", str(ledger.root), "log", "-p", "--format=commit %H", *tips, f"^{trunk_head}"],
+                        capture_output=True, text=True, check=False)
+    if listed.returncode != 0:
+        return None
+    found = {line.split()[1]: "" for line in listed.stdout.splitlines() if line.startswith("commit ")}
+    ids = ledger.run(["git", "-C", str(ledger.root), "patch-id", "--stable"], input=listed.stdout,
+                     capture_output=True, text=True, check=False)
+    if ids.returncode != 0:
+        return None
+    for line in ids.stdout.splitlines():
+        patch, commit = (line.split() + ["", ""])[:2]
+        if commit in found:
+            found[commit] = patch
+    return found
+
+
+def _recorded_tips(dep: Row) -> list[str]:
+    """Every tip the dependency's row recorded - the tips a `moved` left behind, the tip, the accepted revision: a
+    rebase after handover leaves the old commits under them."""
+    tips = [str((entry.get("evidence") or {}).get("from") or "") for entry in dep.history
+            if entry.get("move") == "moved"]
+    return [tip for tip in [*tips, dep.tip or "", dep.verdict or ""] if tip]
 
 
 def _carried(ledger: Ledger, row: Row, dep: Row | None) -> tuple[int, str]:
-    """How many commits of `dep` that are not on trunk the tip of `row` carries, and what could not be asked."""
+    """How many commits of `dep` that are not on trunk the tip of `row` carries, by commit or by patch (final review
+    of 0.24.1, I2: a rebased dependency's commits come back under other ids), and what could not be asked."""
     trunk_head = gitq.resolve(ledger.root, gitq.trunk_ref(ledger.root, ledger.trunk, run=ledger.run), run=ledger.run)
     if trunk_head is None:
         raise MoveRefused(f"git could not resolve trunk `{ledger.trunk}`, so whether the tip still carries the row "
@@ -156,14 +181,33 @@ def _carried(ledger: Ledger, row: Row, dep: Row | None) -> tuple[int, str]:
                                                                                   run=ledger.run)
     if tip is None:
         return 0, ""   # no branch and no recorded tip: it carries nothing yet
-    dep_tip = None if dep is None else (gitq.branch_tip(ledger.root, dep.branch, run=ledger.run) if dep.branch
-                                        else None) or gitq.resolve(ledger.root, dep.tip, run=ledger.run)
-    if dep_tip is None:
+    # the branch tip speaks for the dependency only while its row is open: a closed row's branch name may be reused
+    live = gitq.branch_tip(ledger.root, dep.branch, run=ledger.run) if dep is not None and dep.is_open and \
+        dep.branch else None
+    known = [] if dep is None else [found for found in (gitq.resolve(ledger.root, sha, run=ledger.run)
+                                                       for sha in _recorded_tips(dep)) if found]
+    if live is None and not known:
         return 0, "its commits could not be named (no branch and no recorded tip)"
-    mine, theirs = _off_trunk(ledger, tip, trunk_head), _off_trunk(ledger, dep_tip, trunk_head)
+    mine, theirs = _commits(ledger, [tip], trunk_head), _commits(ledger, [live, *known], trunk_head)
     if mine is None or theirs is None:
         raise MoveRefused("git could not list the commits off trunk; nothing is dropped unchecked")
-    return len(mine & theirs), ""
+    patches = {patch for patch in theirs.values() if patch}
+    return len([commit for commit, patch in mine.items() if commit in theirs or (patch and patch in patches)]), ""
+
+
+def _reaches(rows: dict, start: str, goal: str) -> list[str]:
+    """The chain of `requires` from `start` to `goal`, or [] when there is none."""
+    stack, seen = [[start]], set()
+    while stack:
+        path = stack.pop()
+        if path[-1] == goal:
+            return path
+        if path[-1] in seen:
+            continue
+        seen.add(path[-1])
+        item = rows.get(path[-1])
+        stack.extend([*path, nxt] for nxt in (item.requires or []) if item is not None)
+    return []
 
 
 def requires(ledger: Ledger, actor: Actor, branch: str, *, add=(), drop=(), why: str) -> Row:
@@ -189,7 +233,7 @@ def requires(ledger: Ledger, actor: Actor, branch: str, *, add=(), drop=(), why:
             if target is None:
                 links = ", ".join(f"`{s.rows[rid].branch if rid in s.rows else rid}`" for rid in current) or "nothing"
                 raise MoveRefused(f"`{branch}` does not require `{name}`; it requires {links}")
-            carried, note = _carried(ledger, row, s.rows.get(target))
+            carried, note = (0, "") if target == row.id else _carried(ledger, row, s.rows.get(target))
             if carried:
                 raise MoveRefused(f"`{branch}`'s tip carries {carried} commit(s) of `{name}` that are not on trunk, "
                                   f"so it still builds on it; the link stays until `{name}` reaches trunk or "
@@ -199,7 +243,15 @@ def requires(ledger: Ledger, actor: Actor, branch: str, *, add=(), drop=(), why:
             current.remove(target)
             dropped.append(name)
         added = []
-        for target, name in zip(core.link_ids(s.rows, list(add), "--add"), add):
+        for name in dict.fromkeys(add):
+            target = core.link_ids(s.rows, [name], "--add")[0]
+            if target == row.id:
+                raise MoveRefused(f"`{branch}` cannot require itself")
+            chain = _reaches(s.rows, target, row.id)
+            if chain:
+                through = " -> ".join(f"`{s.rows[rid].branch if rid in s.rows else rid}`" for rid in chain)
+                raise MoveRefused(f"`{name}` already requires `{branch}` ({through}), so neither could ever be "
+                                  "queued; drop one of the links instead")
             if target not in current:
                 current.append(target)
                 added.append(name)
