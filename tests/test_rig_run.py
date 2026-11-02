@@ -724,3 +724,26 @@ def test_a_run_from_a_project_the_session_does_not_serve_is_refused_with_the_lin
     [asked] = [r for r in journal(world).requests().values() if r.kind == "share"]
     assert asked.project and asked.project in out
 
+
+
+def test_a_signal_before_the_renewer_starts_still_records_the_stop(world, box, tree, monkeypatch):
+    """The full suite of 2026-11-02 caught what CI lost twice (2026-10-09, 2026-10-15): a SIGTERM between creating
+    the lease renewer and starting it made the finally join a thread that never started, and the RuntimeError cut
+    the finally short, so the run was never recorded as stopped."""
+    opened(world)
+    raised(world, tree)
+
+    class Interrupted(threading.Thread):
+        def start(self):
+            raise SystemExit(143)   # the signal handler's exit, landing exactly here
+
+    class OnlyHere:   # run.py's own threading, not the process's: nothing else here starts a thread this way
+        Thread = Interrupted
+
+        def __getattr__(self, name):
+            return getattr(threading, name)
+    monkeypatch.setattr(run_module, "threading", OnlyHere())
+    with pytest.raises(SystemExit):
+        rig_run(world, tree, "--", "sleep", "3")
+    run = journal(world).runs()["j1"]
+    assert run.verdict == "stopped", run
