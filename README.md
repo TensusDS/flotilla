@@ -59,10 +59,10 @@ project's file names a plugin nobody else can find.
 there, and flotilla's hooks and CLI run in every session of your project. To choose when you move, pin a release tag
 on the first line instead (the tags are listed in [CHANGELOG.md](CHANGELOG.md)):
 
-    claude plugin marketplace add TensusDS/flotilla#v0.24.2 --scope project
+    claude plugin marketplace add TensusDS/flotilla#v0.25.0 --scope project
     claude plugin install flotilla@flotilla --scope project
 
-That writes `"ref": "v0.24.2"` into the project's settings and installs that release; `claude plugin update` stays on
+That writes `"ref": "v0.25.0"` into the project's settings and installs that release; `claude plugin update` stays on
 it. Two caveats. A machine keeps one marketplace of a name for all its projects, and the last `marketplace add` on
 it repoints it: measured, after another project on the same machine added it without a pin, `claude plugin update`
 in a project pinned to v0.22.0 took the default branch's release. Give the projects on one machine the same pin;
@@ -492,6 +492,14 @@ How many long runs may share the machine is `lane_capacity` in the machine profi
 directory, 1 by default); a change reaches the runs already waiting, and lowering it never stops a run that holds a
 slot. The lane is a booking, not a lock: a run started outside it is not stopped - the command guard warns about it.
 
+**Projects sharing a machine.** By default the lane is first come, first served across every project on the machine,
+so one project's backlog holds every other project's work behind it. `lane_share = "fair"` in `machine.toml` changes
+who gets a freed slot: the oldest waiter of the project holding the fewest slots and served least recently in the
+last day, so a 7-second check of one project no longer waits behind another project's ten receipts; within a project
+the order is unchanged. Only seats on flotilla 0.25 or later take part - an older seat keeps its place in line and is
+never left waiting for a seat that yielded to it - so the protection reaches a project once its fleet is updated.
+`flotilla lane` shows the mode, each project's waiters and last turn, and who goes first.
+
 The lane is also where a fleet loses its time. Measured on a fleet that ran three days: the way from "handed over"
 to "on trunk" grew about tenfold after the first hours, almost all of it waiting for the lane, while the model's own
 turns slowed about twofold as sessions' contexts grew. So flotilla spends the lane carefully:
@@ -534,6 +542,12 @@ rented machine with `flotilla rig run` and gets its output, its exit code and it
   so you still name the money each time you paste it, and you change the numbers before pasting when one task
   needs more. `flotilla rig close` ends the session and the reaper drains its
   machines. Requests belong to the project that made them and expire after a day.
+- **A session serves the projects you share it with.** It starts with the project whose request opened it (or the
+  repository you opened it in; outside one, every project). Another project's seat is refused before anything is
+  rented - `rig run`, `rig up` and `rig down` alike - and its orchestrator relays the line
+  `! flotilla rig share <project>`; `flotilla rig unshare <project>` takes one off. `flotilla rig` shows whom the
+  session serves, what each project's runs cost of it and the machines' idle time; runs that share a machine split
+  its minutes.
 - **Images are yours to allow.** `rig enable` writes `rig_images` into `machine.toml` with one default
   (`mcr.microsoft.com/playwright:v1.64.0-noble`, Node 24); a project's `[rig] image` is only a wish. A seat asking for another
   image is refused and its request relayed as `! flotilla rig allow-image <image> --for rN`.
@@ -711,8 +725,9 @@ What flotilla does not do yet, or does only partly. Each one was met in a field 
 
 - **No Windows.** Linux and macOS only; see [Requirements](#requirements) for what macOS skips.
 - **One lane per machine, shared by every project's fleet.** At the default `lane_capacity` of 1, two fleets on one
-  machine wait for each other's long runs. The lane spends its time carefully (see [Long runs and the lane](#long-runs-and-the-lane)), but it does not
-  split the machine between projects.
+  machine wait for each other's long runs unless the person sets `lane_share = "fair"`, and then only seats on 0.25
+  or later take part (see [Long runs and the lane](#long-runs-and-the-lane)); short runs do not yet overtake long
+  ones.
 - **Long-lived seats get slower.** A model turn over 600k tokens of context took about twice as long as one under
   100k. flotilla does not replace a seat by itself yet; after many tasks, retire a seat that holds no open work
   with `/flotilla:retire` and raise a fresh one with `flotilla spawn --fill`. Your own leading session is not

@@ -31,10 +31,9 @@ journal figures: runs under 60 s waited a median 30.6 min for a median 6.8 s run
   shadow, a starvation guard, printed reasons), opt-in per machine, FIFO the default, gated by `RULE` for mixed
   versions. The spec's precondition (a week of field measurements) is met: 24 000 journal lines from two projects.
   *(open, design: lane spec stages 2-3)*
-- **Mode 2, a share per project** - `fair` (round-robin across projects at the head, FIFO within one) or `slots`
-  (each project with live seats guaranteed part of the capacity, an idle slot lent only within the memory floor),
-  opt-in per machine, the mode and each admission's path printed. Asked by the person 2026-11-01 as a separate mode
-  from mode 1. *(open, design: needs a section in the lane spec)*
+- **Mode 2's `slots` variant** - each project with live seats guaranteed part of the capacity, an idle slot lent only
+  within the memory floor. 0.25.0 built `fair`; the person's call (2026-11-02): `slots` later, if needed. *(open,
+  design: docs/specs/2026-11-02-project-share-design.md)*
 - **Seats run tests and simulations outside the lane despite the guard's warning** (load 18-23 on 8 cores, smoke
   timeouts in five receipts on 10-31). The person's call (2026-11-01): the guard keeps warning, and such a run is
   counted as the seat's own booking - it takes a place in the lane, attributed to the seat, instead of being an
@@ -100,10 +99,8 @@ journal figures: runs under 60 s waited a median 30.6 min for a median 6.8 s run
   wait more than N minutes by the lane's estimates and a rig session is open, say so with the rig command for the same
   job, and with none open raise an `offload` watch item for the orchestrator; run classes on the rig (`--cpu`, shared,
   may run beside another `--cpu` run; `--exclusive` for frames, audio, benches), the rig queue above with a capacity
-  per class; a rig session that records the projects allowed on it (`rig open --share <project>`), each run carrying
-  its project, spend per project in `rig status`, the owner's exclusive runs first, another project's run refused
-  with the reason. Today `rig run` takes any open session on the machine whatever its project, under one ceiling and
-  one budget. *(open, design: flotilla/rig/run.py, the rig queue)*
+  per class; the owner's exclusive runs first. 0.25.0 built the session's projects, the refusal and spend per
+  project. *(open, design: flotilla/rig/run.py, the rig queue)*
 - **A rig run does not use the toolchain the receipts use** (twosuns item 15.4). The default image
   (`mcr.microsoft.com/playwright:v1.64.0-noble`) carries node 24; the project's receipts run on node 22.22.1, node 24
   changed one of its pins, so a CPU result on the rig can differ from the local receipt over the same revision.
@@ -580,6 +577,9 @@ Each is a limitation README states today, judged fixable in principle; none is p
 
 ## Done
 
+- 0.25.0: the lane's fair share across projects (`lane_share = "fair"`, rule 2, older seats never left waiting for a
+  newer one); a rig session serves the projects the person shares it with, refuses the others before anything is
+  spent, and shows each project's spend; a stopped rig run's verdict no longer lost to a signal as its renewer starts.
 - 0.24.2: a waiting lane run folds only the journal lines appended since its last poll, and `visible` passes printable
   ASCII as it is (twosuns item 14); a receipt runs and requires the tiers its revision's own profile adds; a tree
   profile that does not parse leaves the guards on trunk's rules (void-lanes-online).

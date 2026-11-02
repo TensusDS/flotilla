@@ -3,6 +3,23 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.25.0 - 2026-11-02
+
+Two projects on one machine need not wait on each other any more, by the person's choice.
+
+- **A fair lane, the person's choice per machine.** `lane_share = "fair"` in `machine.toml` gives a freed slot to the
+  oldest waiter of the project holding the fewest slots and served least recently in the last day; within a project
+  the order is unchanged, and with one project waiting it is first come, first served. Seats on older flotillas keep
+  their place in line, and a newer seat never yields to one of them, so no slot stands empty while someone waits.
+  `flotilla lane` shows the mode, each project's turn and who goes first, and each admission records its path.
+- **A rig session serves the projects the person shares it with.** It starts with the project that asked for it;
+  `flotilla rig share` and `rig unshare` are the person's moves. Another project's run, `rig up` or `rig down` is
+  refused before anything is spent, with the line its orchestrator relays. `flotilla rig` shows each project's share
+  of the spend and the machines' idle time.
+- **A stopped rig run is recorded as stopped even when the signal lands as the lease renewer starts** - the cause of a
+  verdict CI lost twice in October.
+- The orchestrator template is version 23.
+
 ## 0.24.2 - 2026-11-02
 
 Two checks that narrowed silently, and the lane's cost to the machine it guards.

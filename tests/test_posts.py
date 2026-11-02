@@ -309,3 +309,13 @@ def test_the_orchestrator_may_amend_requires():
     body = " ".join((TEMPLATE_DIR / "orchestrator.md").read_text(encoding="utf-8").split())
     assert "requires" in post.may and post.template_version >= 22
     assert "flotilla work requires <branch> --drop" in body
+
+
+
+def test_the_orchestrator_relays_a_rig_share_line():
+    """Project share design, section 4: a seat refused by a session that does not serve its project gets the person
+    the line that shares it, through its orchestrator."""
+    from flotilla.posts import TEMPLATE_DIR, load_post
+    post = load_post(TEMPLATE_DIR / "orchestrator.md")
+    body = " ".join((TEMPLATE_DIR / "orchestrator.md").read_text(encoding="utf-8").split())
+    assert post.template_version >= 23 and "`! flotilla rig share <project>`" in body
