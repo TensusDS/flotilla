@@ -159,6 +159,11 @@ def build_parser() -> argparse.ArgumentParser:
     hold.add_argument("--until", required=True)
     hold.add_argument("--why", required=True)
     move_parser("unhold", "lift a hold")
+    amend = move_parser("requires", "add or drop what a row builds on, on the record (owner or orchestrator)")
+    amend.add_argument("--add", action="extend", nargs="+", default=None, help="rows or branches it builds on")
+    amend.add_argument("--drop", action="extend", nargs="+", default=None,
+                       help="rows it no longer builds on; refused while its tip carries their commits off trunk")
+    amend.add_argument("--why", required=True)
     walkable = move_parser("walkable", "mark a part walkable on its own, or take the mark back (orchestrator)")
     walkable.add_argument("--why", default="")
     walkable.add_argument("--clear", action="store_true")

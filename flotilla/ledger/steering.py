@@ -5,12 +5,13 @@ the previous owner goes into the trail, and a live owner's work is never taken. 
 the reading queue on purpose, with a condition that can be asked (an open branch, or a session name the ledger or
 the census knows) and a reason: a hold without them reads as forgotten work, and a misspelt name would read as
 lifted. `urgent` is a person's request to ship a row out of turn; it changes only the order of the sender's brief.
+`requires` amends what a row builds on, on the record: a link dropped must be one the tip no longer carries.
 """
 
 from __future__ import annotations
 
 from flotilla.ledger.actor import Actor, require_may
-from flotilla.ledger import core
+from flotilla.ledger import core, gitq
 from flotilla.ledger.core import Ledger
 from flotilla.ledger.errors import MoveRefused
 from flotilla.ledger.model import Row
@@ -137,3 +138,72 @@ def walkable(ledger: Ledger, actor: Actor, branch: str, *, why: str = "", clear:
             raise MoveRefused(f"`{branch}` is not marked walkable; there is nothing to take back")
         state = s.next_state(row, "walkable")
         return s.append(actor, row.id, "walkable", state, fields={"walkable": "" if clear else why.strip()})
+
+
+def _off_trunk(ledger: Ledger, tip: str, trunk_head: str) -> set[str] | None:
+    done = ledger.run(["git", "-C", str(ledger.root), "rev-list", tip, f"^{trunk_head}"], capture_output=True,
+                      text=True, check=False)
+    return set(done.stdout.split()) if done.returncode == 0 else None
+
+
+def _carried(ledger: Ledger, row: Row, dep: Row | None) -> tuple[int, str]:
+    """How many commits of `dep` that are not on trunk the tip of `row` carries, and what could not be asked."""
+    trunk_head = gitq.resolve(ledger.root, gitq.trunk_ref(ledger.root, ledger.trunk, run=ledger.run), run=ledger.run)
+    if trunk_head is None:
+        raise MoveRefused(f"git could not resolve trunk `{ledger.trunk}`, so whether the tip still carries the row "
+                          "cannot be asked; fetch and try again")
+    tip = gitq.branch_tip(ledger.root, row.branch, run=ledger.run) or gitq.resolve(ledger.root, row.tip,
+                                                                                  run=ledger.run)
+    if tip is None:
+        return 0, ""   # no branch and no recorded tip: it carries nothing yet
+    dep_tip = None if dep is None else (gitq.branch_tip(ledger.root, dep.branch, run=ledger.run) if dep.branch
+                                        else None) or gitq.resolve(ledger.root, dep.tip, run=ledger.run)
+    if dep_tip is None:
+        return 0, "its commits could not be named (no branch and no recorded tip)"
+    mine, theirs = _off_trunk(ledger, tip, trunk_head), _off_trunk(ledger, dep_tip, trunk_head)
+    if mine is None or theirs is None:
+        raise MoveRefused("git could not list the commits off trunk; nothing is dropped unchecked")
+    return len(mine & theirs), ""
+
+
+def requires(ledger: Ledger, actor: Actor, branch: str, *, add=(), drop=(), why: str) -> Row:
+    """Add or drop what a row builds on, on the record (twosuns item 11): the owner, or a post that may. A drop is
+    refused while the row's tip carries commits of the dropped row that trunk does not, so a link is only lifted
+    when the work no longer needs it."""
+    if not why.strip():
+        raise MoveRefused("say why the links change (--why): the next reader of the row sees it in its history")
+    if not add and not drop:
+        raise MoveRefused("name what changes with --add or --drop (a row id or a branch), or both")
+    with ledger.session() as s:
+        row = s.need_open_row(branch)
+        if row.owner != actor.name:
+            require_may(actor, "requires", ledger.posts)
+        state = s.next_state(row, "requires")
+        current = list(row.requires or [])
+        dropped, unchecked = [], {}
+        for name in dict.fromkeys(drop):
+            named = [item for item in s.rows.values() if name in (item.id, item.branch)]
+            if not named and name not in current:
+                raise MoveRefused(f"--drop `{name}`: no such row or branch in the ledger")
+            target = next((rid for rid in current if rid == name or any(item.id == rid for item in named)), None)
+            if target is None:
+                links = ", ".join(f"`{s.rows[rid].branch if rid in s.rows else rid}`" for rid in current) or "nothing"
+                raise MoveRefused(f"`{branch}` does not require `{name}`; it requires {links}")
+            carried, note = _carried(ledger, row, s.rows.get(target))
+            if carried:
+                raise MoveRefused(f"`{branch}`'s tip carries {carried} commit(s) of `{name}` that are not on trunk, "
+                                  f"so it still builds on it; the link stays until `{name}` reaches trunk or "
+                                  f"`{branch}` is rebuilt without it")
+            if note:
+                unchecked[name] = note
+            current.remove(target)
+            dropped.append(name)
+        added = []
+        for target, name in zip(core.link_ids(s.rows, list(add), "--add"), add):
+            if target not in current:
+                current.append(target)
+                added.append(name)
+        evidence = {"why": why.strip(), "added": added, "dropped": dropped}
+        if unchecked:
+            evidence["unchecked"] = unchecked
+        return s.append(actor, row.id, "requires", state, fields={"requires": current}, evidence=evidence)

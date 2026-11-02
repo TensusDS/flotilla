@@ -17,7 +17,7 @@ from pathlib import Path
 
 MOVES = ("reserve", "claim", "hand", "moved", "fix", "assign", "recuse", "take", "accept", "queue", "land",
          "inbatch", "ship", "walked", "broke", "unbroke", "close", "release", "offledger", "wait", "hold",
-         "unhold", "adopt", "urgent", "walkable", "vouch", "return")
+         "unhold", "adopt", "urgent", "walkable", "vouch", "return", "requires")
 PERMISSION_MODES = ("acceptEdits", "auto", "bypassPermissions", "default", "manual", "dontAsk", "plan")
 #: The levels `claude --effort` takes (Claude Code 2.1.302); a post or the profile names one, or none for its default.
 EFFORTS = ("low", "medium", "high", "xhigh", "max")

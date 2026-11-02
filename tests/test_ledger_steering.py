@@ -196,3 +196,84 @@ def test_adopt_leaves_a_tree_that_no_longer_holds_the_branch(world, tmp_path):
     row = steering.adopt(ledger, actor(ledger, ORCH), "feat/held", to="main session 2")
     assert git(tree, "rev-parse", "--abbrev-ref", "HEAD") == "feat/other"
     assert "not freed" in row.history[-1]["evidence"]["tree"]
+
+
+def _requires_world(root, ledger, *, built_on: bool):
+    """feat/a claimed; feat/b claimed requiring it, cut from feat/a's tip when `built_on`, else from trunk."""
+    from ledgerkit import git
+    drive(root, ledger, "feat/a", to="claimed")
+    if built_on:
+        git(root, "checkout", "-q", "feat/a")
+    row = drive(root, ledger, "feat/b", to="claimed", requires=["feat/a"])
+    git(root, "checkout", "-q", "main")
+    return row
+
+
+def test_a_stale_requirement_is_dropped_on_the_record(world):
+    """Twosuns, 2026-11-01, item 11: r955 required a row its tip never carried, nothing could lift it, and the way out
+    was a re-cut - a new review and new lane time. The drop is a recorded move instead."""
+    root, ledger = world
+    before = _requires_world(root, ledger, built_on=False)
+    row = steering.requires(ledger, actor(ledger, ORCH), "feat/b", drop=["feat/a"], why="an early plan's link")
+    assert row.requires == [] and row.state == before.state == "claimed"
+    entry = row.history[-1]
+    assert entry["move"] == "requires" and entry["evidence"]["why"] == "an early plan's link"
+    assert entry["evidence"]["dropped"] == ["feat/a"] and entry["evidence"]["added"] == []
+
+
+def test_a_drop_the_tip_still_needs_is_refused(world):
+    root, ledger = world
+    _requires_world(root, ledger, built_on=True)
+    with pytest.raises(MoveRefused, match=r"carries 1 commit\(s\) of `feat/a` that are not on trunk"):
+        steering.requires(ledger, actor(ledger, ORCH), "feat/b", drop=["feat/a"], why="looks stale")
+
+
+def test_a_drop_of_a_row_whose_work_is_on_trunk_is_allowed(world):
+    from ledgerkit import git, merge
+    root, ledger = world
+    _requires_world(root, ledger, built_on=True)
+    merge(root, "feat/a")
+    git(root, "push", "-q", "origin", "main")
+    row = steering.requires(ledger, actor(ledger, ORCH), "feat/b", drop=["feat/a"], why="feat/a is on trunk")
+    assert row.requires == []
+
+
+def test_an_unknown_row_is_refused_by_name(world):
+    root, ledger = world
+    _requires_world(root, ledger, built_on=False)
+    with pytest.raises(MoveRefused, match="`feat/nope`"):
+        steering.requires(ledger, actor(ledger, ORCH), "feat/b", drop=["feat/nope"], why="typo")
+    with pytest.raises(MoveRefused, match="`feat/nope`"):
+        steering.requires(ledger, actor(ledger, ORCH), "feat/b", add=["feat/nope"], why="typo")
+
+
+def test_a_drop_not_required_is_refused(world):
+    root, ledger = world
+    _requires_world(root, ledger, built_on=False)
+    drive(root, ledger, "feat/c", to="claimed")
+    with pytest.raises(MoveRefused, match="`feat/b` does not require `feat/c`"):
+        steering.requires(ledger, actor(ledger, ORCH), "feat/b", drop=["feat/c"], why="never was")
+    with pytest.raises(MoveRefused, match="--why"):
+        steering.requires(ledger, actor(ledger, ORCH), "feat/b", drop=["feat/a"], why=" ")
+    with pytest.raises(MoveRefused, match="--add or --drop"):
+        steering.requires(ledger, actor(ledger, ORCH), "feat/b", why="nothing named")
+
+
+def test_add_restores_a_lost_requirement(world):
+    from flotilla.ledger import delivery
+    root, ledger = world
+    first = drive(root, ledger, "feat/a", to="claimed")
+    drive(root, ledger, "feat/c", to="accepted")
+    row = steering.requires(ledger, actor(ledger, ORCH), "feat/c", add=["feat/a", "feat/a"], why="lost at claim")
+    assert row.requires == [first.id] and row.state == "accepted"
+    with pytest.raises(MoveRefused, match="requires `feat/a`"):
+        delivery.queue(ledger, actor(ledger, "sender 1"), "feat/c", pr=7)
+
+
+def test_only_the_owner_or_a_post_that_may(world):
+    root, ledger = world
+    _requires_world(root, ledger, built_on=False)
+    with pytest.raises(MoveRefused, match="may not `requires`"):
+        steering.requires(ledger, actor(ledger, "review session 1"), "feat/b", drop=["feat/a"], why="not mine")
+    row = steering.requires(ledger, actor(ledger, "main session 1"), "feat/b", drop=["feat/a"], why="my own row")
+    assert row.requires == []

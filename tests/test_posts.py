@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from flotilla import posts as P
@@ -297,4 +299,13 @@ def test_the_orchestrator_runs_the_daily_pass():
     from flotilla.posts import TEMPLATE_DIR
     body = " ".join((TEMPLATE_DIR / "orchestrator.md").read_text(encoding="utf-8").split())
     assert "flotilla fleet clean --daily" in body and "`collector`" in body and "`disk`" in body
-    assert "free space" in body and "template_version: 21" in body
+    assert "free space" in body and int(re.search(r"template_version: (\d+)", body).group(1)) >= 21
+
+
+def test_the_orchestrator_may_amend_requires():
+    """Twosuns, 2026-11-01, item 11: a stale requirement on an accepted row had no move that lifted it."""
+    from flotilla.posts import TEMPLATE_DIR, load_post
+    post = load_post(TEMPLATE_DIR / "orchestrator.md")
+    body = " ".join((TEMPLATE_DIR / "orchestrator.md").read_text(encoding="utf-8").split())
+    assert "requires" in post.may and post.template_version >= 22
+    assert "flotilla work requires <branch> --drop" in body

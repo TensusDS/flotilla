@@ -643,3 +643,16 @@ def test_work_show_names_requires_and_after(tmp_path, monkeypatch):
                    "--as", "main session 2")[0] == 0
     code, out = run_cli("work", "show", "feat/d", "--root", str(root))
     assert code == 0 and "  requires: feat/a (claimed)" in out and "  goes after: feat/b (claimed)" in out, out
+
+
+def test_work_requires_drops_a_link_from_the_cli(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    for branch in ("feat/a", "feat/b"):
+        git(root, "branch", branch)
+    assert run_cli("work", "claim", "feat/a", "--root", str(root), "--as", "main session 1")[0] == 0
+    assert run_cli("work", "claim", "feat/b", "--requires", "feat/a", "--root", str(root),
+                   "--as", "main session 1")[0] == 0
+    code, out = run_cli("work", "requires", "feat/b", "--drop", "feat/a", "--why", "an early plan's link", "--root",
+                        str(root), "--as", "orchestrator 1")
+    assert code == 0, out
+    assert _rows_by_branch(root)["feat/b"].requires == []

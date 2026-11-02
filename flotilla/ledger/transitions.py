@@ -38,7 +38,8 @@ INSTEAD_TEXT = {
     "hand": "new commits after a verdict are recorded with `flotilla work moved <branch> --tip <sha>`, and the "
             "reader reads again",
 }
-ANNOTATIONS = ("wait", "hold", "unhold", "adopt", "urgent", "run", "walkable", "vouch", "approve", "launched")
+ANNOTATIONS = ("wait", "hold", "unhold", "adopt", "urgent", "run", "walkable", "vouch", "approve", "launched",
+               "requires")
 
 
 def moves_from(state: str, profile: dict, owner_post: str = "") -> dict[str, str]:
