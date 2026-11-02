@@ -3,6 +3,20 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.24.2 - 2026-11-02
+
+Two checks that narrowed silently, and the lane's cost to the machine it guards.
+
+- **A waiting lane run no longer burns CPU on the journal.** Each poll read and folded the whole lane journal about
+  five times, and the journal only grows: 28 waiters held about 3 of 8 cores on one field machine. A waiter now
+  reads only the lines appended since its last poll - under a millisecond on a 25 000-line journal, where a read cost
+  0.9 s of CPU - and plain text is no longer walked character by character. What anyone is shown is unchanged.
+- **A branch that adds a test tier is receipted with it.** A receipt runs trunk's tiers plus every tier the
+  revision's own profile adds, and every check over a revision asks for the same, naming a tier that did not run. A
+  tier trunk names keeps trunk's command; a revision whose profile does not parse gets no green receipt.
+- **A tree profile that does not parse no longer turns the guards off.** They follow trunk's rules, trunk named by
+  origin's default branch (or `main`, said so), and a command that passes is told the file is broken.
+
 ## 0.24.1 - 2026-11-02
 
 Fixes two field fleets asked for, each of which cost them hours.

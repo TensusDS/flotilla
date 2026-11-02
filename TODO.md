@@ -19,16 +19,12 @@ journal figures: runs under 60 s waited a median 30.6 min for a median 6.8 s run
 (0.24.0 code) where a file is named.
 
 **The lane**
-- **A waiting run burns a fifth of a core while it polls** (twosuns item 14: 28 waiters summing 280 % CPU on 8 cores
-  at load 19-21, on 0.21.0 and 0.23.2 alike - the waiters make the load they wait out). Measured 2026-11-02 on this
-  machine's lane journal (8.1 MB, 8482 bookings): one fold of the journal costs 0.9 s of CPU, about 70 % of it in
-  `core.text.visible` walking every character of every text field of every record, and one poll folds it about five
-  times (`grant`, `holders` and `waiters` in `machine.read`, again in `in_the_way`), so 4-5 s of CPU per 15 s poll;
-  the journal is never compacted, so the cost grows with it. Fix: `visible` returns printable ASCII as it is (no
-  hidden character can be in it), a poll folds once and passes the bookings down, and ended bookings beyond what the
-  estimates use are compacted. A blocking wait on the lock file is the larger change. *(checked 2026-11-02 on
-  0.24.1: still B - flotilla/lane/book.py:110, :142, flotilla/core/text.py:34, flotilla/lane/acquire.py,
-  flotilla/lane/machine.py:313)*
+- **The lane journal is never compacted, and a waiter still polls.** 0.24.2 made a poll cheap (a waiter folds only
+  the lines appended since its last poll, and plain text is not walked), but the journal grows without end (25 057
+  lines, 8.1 MB on 2026-11-02), so a new waiter's first read and every `flotilla lane` still pay for all of it, and
+  each waiter still wakes every 15 s. Compact ended bookings beyond what the estimates use (by rename, which a cached
+  reader detects), and wait on the lock file instead of polling. *(open, design: flotilla/lane/book.py,
+  flotilla/core/storage.py)*
 - **An expired `--wait` re-queues at the tail.** Six void-lanes-online bookings expired at 1800 s and lost their
   place (lane spec section 3, seniority). *(open, design: docs/specs/2026-10-05-lane-resource-admission-design.md)*
 - **Mode 1, short runs overtake** - stages 2-3 of the lane spec (budget admission by cores and memory, the head's
@@ -70,21 +66,6 @@ journal figures: runs under 60 s waited a median 30.6 min for a median 6.8 s run
   *(open: flotilla/ledger/steering.py:47)*
 
 **Receipts, guards and the profile** (void-lanes-online, the lane report's later sections, 2026-11-01..02)
-- **A branch that adds a test tier is receipted without it, and the receipt is green.** `server/solution` added a
-  `server` tier to `.flotilla/project.toml`; the author's handover receipt and the sender's push receipt over the
-  merge (d0abad1) both ran only trunk's `process` and `sim`, said nothing, and were green - the server tests ran
-  only because the reviewer and the sender ran them by hand; `clients/core-foundation` (a `clients` tier) is next.
-  A receipt reads its tiers from the rules the guards obey, which are trunk's (`guards/rules.rules_for`). Asked: the
-  union of trunk's tiers and the tree's own, a tier only the branch adds run with the branch's command (it runs the
-  branch's code either way); at least, the receipt names "tier X is in this tree's profile, not trunk's: not run"
-  and is not green. Trunk's tiers keep trunk's commands, so a branch cannot weaken or drop one. *(checked
-  2026-11-02 on 0.24.1: still B - flotilla/ledger/commands.py:310, flotilla/ledger/receipts.py:26)*
-- **A tree profile that does not parse turns the revert and line-number guards off.** `rules_for` parses the tree's
-  own `.flotilla/project.toml` only to learn trunk's name, before reading trunk's; a TOML syntax error there raises,
-  and the Bash guard says "the revert and line-number guards did not run" and lets the session go on (the push guard
-  still judges by origin's rules). Found by injection on `fleet/rig-profile`, reverted at once. Asked: fail closed -
-  read trunk's rules without the tree's profile (origin's default branch names trunk), or block the next commit until
-  the profile parses. *(checked 2026-11-02 on 0.24.1: still S - flotilla/guards/rules.py:27, flotilla/guards/run.py:46)*
 - **`flotilla onboard check` does not print `[rig]` problems.** `disk_gb = "thirty"`, `max_run_seconds = -5` and an
   unknown key gave no output and exit 0; `rig/profile.read` keeps `problems` for such values and nothing shows them
   there. *(checked 2026-11-02 on 0.24.1: still P - flotilla/onboard/check.py:10, flotilla/rig/profile.py)*
@@ -599,6 +580,9 @@ Each is a limitation README states today, judged fixable in principle; none is p
 
 ## Done
 
+- 0.24.2: a waiting lane run folds only the journal lines appended since its last poll, and `visible` passes printable
+  ASCII as it is (twosuns item 14); a receipt runs and requires the tiers its revision's own profile adds; a tree
+  profile that does not parse leaves the guards on trunk's rules (void-lanes-online).
 - 0.24.1: field fixes from twosuns and void-lanes-online - a lane capacity change reaches queued waiters; `flotilla
   lane` names the foreign runs holding slots, each waiter's reason, and sweeps dead bookings when shown; every
   `--requires` kept and shown; `work requires --add/--drop` on the record; a wait on a short name finds the live

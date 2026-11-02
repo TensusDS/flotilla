@@ -59,10 +59,10 @@ project's file names a plugin nobody else can find.
 there, and flotilla's hooks and CLI run in every session of your project. To choose when you move, pin a release tag
 on the first line instead (the tags are listed in [CHANGELOG.md](CHANGELOG.md)):
 
-    claude plugin marketplace add TensusDS/flotilla#v0.24.1 --scope project
+    claude plugin marketplace add TensusDS/flotilla#v0.24.2 --scope project
     claude plugin install flotilla@flotilla --scope project
 
-That writes `"ref": "v0.24.1"` into the project's settings and installs that release; `claude plugin update` stays on
+That writes `"ref": "v0.24.2"` into the project's settings and installs that release; `claude plugin update` stays on
 it. Two caveats. A machine keeps one marketplace of a name for all its projects, and the last `marketplace add` on
 it repoints it: measured, after another project on the same machine added it without a pin, `claude plugin update`
 in a project pinned to v0.22.0 took the default branch's release. Give the projects on one machine the same pin;
@@ -418,7 +418,9 @@ reached trunk outside the ledger, or was born while merging a batch.
 Each move asks for the evidence that makes it true:
 
 - **hand** needs a green **receipt**: `flotilla receipt run --purpose handover`, which runs the project's test tiers
-  over exactly that revision. A receipt over another revision does not count.
+  over exactly that revision. A receipt over another revision does not count. The tiers are trunk's, plus any tier
+  the revision's own profile adds - a branch that brings a `server` tier is receipted with it - and a tier trunk
+  names keeps trunk's command, so a branch can add a tier but never weaken or drop one.
 - **accept** names the revision the reviewer read; if the branch moves afterwards, the verdict no longer stands.
 - **queue** needs the accepted revision, and - where a person authorizes merges - your approval of it.
 - **land** names the trunk commit that carries the work, and is refused when the batch carries commits nobody read.
@@ -634,6 +636,9 @@ Before a Bash command runs, flotilla refuses a few commands that do silent damag
   project's posts - your own, another project's seat - is judged by the receipt and the approval alone, and where
   nobody can say which session calls, a push that lands is closed.
 - **lane** - a warning, not a refusal, when a long run starts outside the lane.
+
+A tree whose own `.flotilla/project.toml` does not parse leaves the guards on: they follow trunk's rules, trunk named
+by origin's default branch, and a command that passes is told the file is broken.
 
 The guards judge every Claude Code session that has flotilla on and works in the repository, not only the fleet's:
 a project with its own merge routine keeps it through the sender, or by your own hand after `!`, which the command
