@@ -22,9 +22,14 @@ KEY = "lane"
 HELD, RELEASED, WAITING, EXPIRED, LEFT = "held", "released", "waiting", "expired", "left"
 #: The admission rule a booking waits under. Stage 2 admits by budget only while every live booking carries this rule
 #: or a later one: a seat on an older plugin counts slots and knows nothing of reservations (lane admission, section 3).
-RULE = 1
+#: Rule 2 (0.25) knows the fair share across projects: a waiter under it may be passed by, or pass, for its project.
+RULE = 2
+#: The share modes `machine.toml` `lane_share` may name; anything else is first come, first served.
+SHARES = ("fifo", "fair")
+#: How far back a project's last turn counts for the fair share (project share design, section 3).
+SERVED_WINDOW = dt.timedelta(hours=24)
 FIELDS = ("who", "note", "pid", "mark", "run_for", "why", "command", "ladder", "will_run", "project", "rule",
-          "seconds", "peak_mb", "cores", "busy", "verdict", "ran", "cut", "inside")
+          "seconds", "peak_mb", "cores", "busy", "verdict", "ran", "cut", "inside", "path")
 MEASURED = ("seconds", "peak_mb", "cores", "busy", "verdict", "ran")
 LISTS = ("ladder", "will_run")
 MAX_TEXT = 2048   # a command and each of its signatures: every session folds the whole journal, so text is bounded
@@ -78,7 +83,7 @@ def _aware(text) -> bool:
         return False
 #: What a caller wrote: another session's text, made visible where the log is read, so no place that prints a
 #: booking can forge a line or move the cursor (scan of 0.7.0, F2).
-TEXT = ("who", "note", "run_for", "why", "command", "project")
+TEXT = ("who", "note", "run_for", "why", "command", "project", "path")
 
 
 @dataclass
@@ -106,6 +111,7 @@ class Booking:
     ran: list = field(default_factory=list)          # a receipt's tiers as they ran
     cut: bool = False                                # swept: its process died, nothing was measured
     inside: str = ""                                 # a run inside this booking, recorded beside it, never booked
+    path: str = ""                                   # how it was admitted: fifo, or fair and for which project
 
 
 def fold(records, into: dict[str, Booking] | None = None) -> dict[str, Booking]:
@@ -131,6 +137,48 @@ def fold(records, into: dict[str, Booking] | None = None) -> dict[str, Booking]:
 
 def _order(item: Booking) -> int:
     return int(item.id[1:]) if item.id[1:].isdigit() else 0
+
+
+def _when(text: str) -> dt.datetime | None:
+    try:
+        moment = dt.datetime.fromisoformat(text)
+    except (TypeError, ValueError):
+        return None
+    return moment if moment.tzinfo is not None else None
+
+
+def last_served(found: dict, now: dt.datetime) -> dict[str, str]:
+    """Each project's last turn in the window: when one of its bookings was granted (a held booking, or one released
+    after it held; a nested run recorded already released never waited for a turn)."""
+    served: dict[str, str] = {}
+    for item in found.values():
+        if item.state not in (HELD, RELEASED) or item.inside:
+            continue
+        when = _when(item.since)
+        if when is None or not now - SERVED_WINDOW <= when <= now + dt.timedelta(minutes=5):
+            continue
+        if item.since > served.get(item.project, ""):
+            served[item.project] = item.since
+    return served
+
+
+def fair_choice(found: dict, live, now: dt.datetime) -> Booking | None:
+    """The live waiter that gets the next slot under the fair share: among the projects with live waiters, the one
+    holding the fewest live slots now, then the one whose last turn is the earliest (none first), then the one whose
+    oldest waiter came first; within that project, its oldest waiter (project share design, section 3)."""
+    waiting = sorted((item for item in found.values() if item.state == WAITING and live(item)), key=_order)
+    if not waiting:
+        return None
+    holding: dict[str, int] = {}
+    for item in found.values():
+        if item.state == HELD and live(item):
+            holding[item.project] = holding.get(item.project, 0) + 1
+    served = last_served(found, now)
+    oldest: dict[str, Booking] = {}
+    for item in waiting:
+        oldest.setdefault(item.project, item)
+    project = min(oldest, key=lambda name: (holding.get(name, 0), served.get(name, ""), _order(oldest[name])))
+    return oldest[project]
 
 
 class Book:
@@ -191,7 +239,7 @@ class Book:
                                ladder=[step[:MAX_TEXT] for step in ladder], will_run=list(will_run),
                                project=project, rule=RULE, inside=inside, **fields)
 
-    def grant(self, booking_id: str, *, slots: int, by_hand: bool = False) -> Booking | None:
+    def grant(self, booking_id: str, *, slots: int, by_hand: bool = False, share: str = "fifo") -> Booking | None:
         with self.store.transaction(KEY) as tx:
             found = self._found(tx)
             mine = found.get(booking_id)
@@ -199,12 +247,28 @@ class Book:
                 return None
             if len([item for item in self.holders(found) if self.live(item)]) >= slots:
                 return None
-            ahead = [item for item in self.waiters(found) if _order(item) < _order(mine) and self.live(item)]
-            if ahead:
+            path = self._path(found, mine, share)
+            if path is None:
                 return None
-            if by_hand:   # it waited as its process; it holds as nobody's, until released by hand
-                return self._write(tx, booking_id, HELD, pid=None, mark="")
-            return self._write(tx, booking_id, HELD)
+            fields = {"pid": None, "mark": ""} if by_hand else {}   # by hand: it holds as nobody's, until released
+            return self._write(tx, booking_id, HELD, path=path, **fields)
+
+    def _path(self, found: dict, mine: Booking, share: str) -> str | None:
+        """How `mine` is admitted now, or None while it waits its turn. First come, first served unless the share is
+        fair and `mine` waits under rule 2; then it goes when it is the fair choice, and also first come, first served
+        when the fair choice waits under an older rule - that one knows nothing of being chosen, and waits for whoever
+        is ahead of it, so yielding to it would leave the slot empty (project share design, section 3)."""
+        ahead = any(_order(item) < _order(mine) and self.live(item) for item in self.waiters(found))
+        if share != "fair" or (mine.rule or 0) < 2:
+            return None if ahead else "fifo"
+        moment = self.clock() if self.clock else dt.datetime.now(dt.timezone.utc)
+        choice = fair_choice(found, self.live, moment)
+        if choice is not None and choice.id == mine.id:
+            when = last_served(found, moment).get(mine.project, "")
+            return f"fair: {mine.project or 'no project'} served {when or 'not in 24 h'}"
+        if choice is not None and (choice.rule or 0) < 2 and not ahead:
+            return f"fifo: the fair choice {choice.id} waits under an older rule"
+        return None
 
     def _end(self, booking_id: str, state: str, why: str = "", **fields) -> Booking:
         with self.store.transaction(KEY) as tx:

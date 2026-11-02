@@ -223,3 +223,17 @@ def test_an_unreadable_capacity_waits_at_one(monkeypatch):
         raise ValueError("machine.toml: expected '=' at line 2")
     monkeypatch.setattr(commands, "read_machine", torn)
     assert commands.capacity() == 1
+
+
+
+def test_the_share_is_read_on_each_poll(lanes):
+    take(lanes, who="review session 1")
+    clock = Clock()
+    asked = []
+
+    def share():
+        asked.append(clock.now)
+        return "fair"
+    acquire.acquire(lanes, lambda: QUIET, who="main session 2", note="suite", capacity=1, share=share, wait=30,
+                    clock=clock, sleep=clock.sleep)
+    assert len(asked) >= 2

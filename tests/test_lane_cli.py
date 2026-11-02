@@ -238,12 +238,13 @@ def _journal(tmp_path):
 
 
 def test_a_lane_run_records_its_command_and_measurement(tmp_path, monkeypatch):
+    from flotilla.lane import book
     root = onboarded(tmp_path, monkeypatch)
     code, out = run_cli("lane", "run", "--tree", str(root), "--", sys.executable, "-c", "print('1 passed')")
     assert code == 0, out
     [item] = [b for b in _journal(tmp_path).values() if b.command]
     assert sys.executable in item.command and item.ladder[-1].startswith("project:")
-    assert item.verdict == "green" and item.seconds is not None and item.rule == 1
+    assert item.verdict == "green" and item.seconds is not None and item.rule == book.RULE
 
 
 def test_a_receipt_records_the_tiers_it_ran(tmp_path, monkeypatch):

@@ -245,3 +245,117 @@ def test_an_in_place_edit_of_an_earlier_line_is_read_again(tmp_path):
     with open(path, "r+b") as handle:   # in place: the inode stays
         handle.write(edited)
     assert lanes.bookings()["b1"].state == book.EXPIRED and lanes.bookings() == _whole(tmp_path)
+
+
+class Tick:
+    """A clock that moves a minute each time it is read, so every event has its own time."""
+
+    def __init__(self):
+        import datetime as dt
+        self.now = dt.datetime(2026, 11, 2, 12, 0, tzinfo=dt.timezone.utc)
+
+    def __call__(self):
+        import datetime as dt
+        self.now += dt.timedelta(minutes=1)
+        return self.now
+
+
+def _fair(tmp_path, procs=None):
+    return book.Book(LocalLogStore(tmp_path), procs or Procs(), clock=Tick())
+
+
+def _wait(lanes, who, project, rule=None):
+    item = lanes.enqueue(who, "suite", pid=None, project=project)
+    if rule is not None:   # a booking an older flotilla wrote
+        with lanes.store.transaction(book.KEY) as tx:
+            tx.append({"at": lanes._now(), "booking": item.id, "state": book.WAITING, "rule": rule})
+    return item
+
+
+def _held_path(tmp_path, booking_id):
+    events = LocalLogStore(tmp_path).read(book.KEY).records
+    return [e.get("path") for e in events if e.get("booking") == booking_id and e.get("state") == book.HELD][-1]
+
+
+def test_fair_admits_the_other_projects_single_waiter_at_the_next_release(tmp_path):
+    """Void-lanes-online, 2026-10-31: 7-second runs waited a median 42.8 min behind another project's receipts."""
+    lanes = _fair(tmp_path)
+    first = _wait(lanes, "twosuns main 1", "twosuns")
+    assert lanes.grant(first.id, slots=1, share="fair") is not None
+    backlog = [_wait(lanes, f"twosuns main {n}", "twosuns") for n in range(2, 12)]
+    single = _wait(lanes, "void main 7", "void")
+    lanes.release(first.id)
+    assert lanes.grant(backlog[0].id, slots=1, share="fair") is None
+    assert lanes.grant(single.id, slots=1, share="fair") is not None
+    assert _held_path(tmp_path, single.id).startswith("fair: void")
+
+
+def test_fair_keeps_order_within_a_project(tmp_path):
+    lanes = _fair(tmp_path)
+    a, b, c = (_wait(lanes, f"main {n}", "twosuns") for n in range(3))
+    assert lanes.grant(b.id, slots=1, share="fair") is None
+    assert lanes.grant(a.id, slots=1, share="fair") is not None
+
+
+def test_fair_with_one_project_is_fifo(tmp_path):
+    lanes = _fair(tmp_path)
+    order = [_wait(lanes, f"main {n}", "twosuns") for n in range(3)]
+    for item in order:
+        assert lanes.grant(item.id, slots=1, share="fair") is not None
+        lanes.release(item.id)
+
+
+def test_fair_counts_a_project_holding_a_slot_as_served_now(tmp_path):
+    lanes = _fair(tmp_path)
+    long_run = _wait(lanes, "twosuns main 1", "twosuns")
+    assert lanes.grant(long_run.id, slots=2, share="fair") is not None
+    short = _wait(lanes, "void main 1", "void")
+    assert lanes.grant(short.id, slots=2, share="fair") is not None
+    twosuns_next = _wait(lanes, "twosuns main 2", "twosuns")
+    void_next = _wait(lanes, "void main 2", "void")
+    lanes.release(short.id)   # void was served after twosuns, but twosuns still holds a slot
+    assert lanes.grant(twosuns_next.id, slots=2, share="fair") is None
+    assert lanes.grant(void_next.id, slots=2, share="fair") is not None
+
+
+def test_a_rule_two_waiter_never_yields_to_an_older_one(tmp_path):
+    lanes = _fair(tmp_path)
+    served = _wait(lanes, "twosuns main 1", "twosuns")
+    lanes.grant(served.id, slots=1, share="fair")
+    lanes.release(served.id)
+    mine = _wait(lanes, "twosuns main 2", "twosuns")
+    older = _wait(lanes, "void main 1", "void", rule=1)   # never served, so the fair choice, but it cannot know
+    assert lanes.grant(mine.id, slots=1, share="fair") is not None
+    assert _held_path(tmp_path, mine.id).startswith("fifo")
+    assert older.id in {item.id for item in lanes.waiters()}
+
+
+def test_an_older_waiter_first_in_line_takes_the_slot_as_today(tmp_path):
+    lanes = _fair(tmp_path)
+    older = _wait(lanes, "void main 1", "void", rule=1)
+    newer = _wait(lanes, "twosuns main 1", "twosuns")
+    assert lanes.grant(newer.id, slots=1, share="fair") is None   # an older rule's waiter first in line goes first
+    assert lanes.grant(older.id, slots=1) is not None             # it asks the old way
+
+
+def test_a_dead_waiter_is_never_the_fair_choice(tmp_path):
+    procs = Procs()
+    lanes = _fair(tmp_path, procs)
+    served = _wait(lanes, "twosuns main 1", "twosuns")
+    lanes.grant(served.id, slots=1, share="fair")
+    lanes.release(served.id)
+    mine = _wait(lanes, "twosuns main 2", "twosuns")
+    gone = lanes.enqueue("void main 1", "suite", pid=4242, mark="m", project="void")
+    procs.dead.add(4242)
+    assert lanes.grant(mine.id, slots=1, share="fair") is not None
+    assert gone.id not in {item.id for item in lanes.holders()}
+
+
+def test_fair_never_grants_past_the_slots(tmp_path):
+    seats = [_fair(tmp_path) for _ in range(4)]   # four processes on one journal
+    waiting = [_wait(seats[n], f"{project} main {n}", project)
+               for n, project in enumerate(["twosuns", "void", "twosuns", "void"])]
+    for _ in range(3):
+        for seat, item in zip(seats, waiting):
+            seat.grant(item.id, slots=2, share="fair")
+    assert len(seats[0].holders()) == 2

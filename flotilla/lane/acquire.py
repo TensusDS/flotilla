@@ -53,6 +53,7 @@ def in_the_way(lanes, reading, capacity: int, mine: str = "", found: dict | None
 
 
 def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callable[[], int], wait: float,
+            share: str | Callable[[], str] = "fifo",
             pid: int | None = None, mark: str = "", run_for: str = "", by_hand: bool = False, poll: float = POLL,
             clock=time.monotonic, sleep=time.sleep, say=None, command: str = "", ladder=(), will_run=(),
             project: str = "") -> Grant:
@@ -64,11 +65,13 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
         while True:
             reading = read_machine()
             slots = capacity() if callable(capacity) else capacity   # read each poll: a raise reaches the queue
+            mode = share() if callable(share) else share
             outright = [answer for answer in reading.answers
                         if answer.question in OUTRIGHT and answer.blocks is not False]
             unknown = [answer for answer in reading.answers if answer.blocks is None]
             if not outright and not unknown:
-                granted = lanes.grant(mine.id, slots=slots - len(reading.computing), by_hand=by_hand)
+                granted = lanes.grant(mine.id, slots=slots - len(reading.computing), by_hand=by_hand,
+                                     share=mode)
                 if granted is not None:
                     return Grant(granted, reading, "")
             why = in_the_way(lanes, reading, slots, mine.id)
@@ -88,6 +91,7 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
 
 @contextlib.contextmanager
 def held(lanes, read_machine, *, who: str, note: str, capacity: int | Callable[[], int], wait: float, table,
+         share: str | Callable[[], str] = "fifo",
          run_for: str = "", poll: float = POLL, clock=time.monotonic, sleep=time.sleep, say=None, command: str = "",
          ladder=(), will_run=(), project: str = ""):
     outer = lanes.bookings().get(os.environ.get(ENV, ""))
@@ -104,7 +108,7 @@ def held(lanes, read_machine, *, who: str, note: str, capacity: int | Callable[[
                              project=project, measured=grant.measured)
         return
     pid = os.getpid()
-    grant = acquire(lanes, read_machine, who=who, note=note, capacity=capacity, wait=wait, pid=pid,
+    grant = acquire(lanes, read_machine, who=who, note=note, capacity=capacity, wait=wait, share=share, pid=pid,
                     mark=table.start_mark(pid) or "", run_for=run_for, poll=poll, clock=clock, sleep=sleep, say=say,
                     command=command, ladder=ladder, will_run=will_run, project=project)
     if grant.booking is None:
