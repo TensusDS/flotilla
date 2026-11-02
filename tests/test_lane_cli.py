@@ -466,3 +466,52 @@ def test_a_lane_that_cannot_be_swept_is_still_shown(tmp_path, monkeypatch):
     monkeypatch.setattr(book.Book, "sweep", unwritable)
     code, out = run_cli("lane", "--root", str(root))
     assert code == 0 and "could not sweep" in out and "capacity:" in out
+
+
+
+def _machine(tmp_path, **keys):
+    from flotilla.onboard.machine import MACHINE_FILE
+    (tmp_path / "state").mkdir(exist_ok=True)
+    (tmp_path / "state" / MACHINE_FILE).write_text(render_toml(keys), encoding="utf-8")
+
+
+def _queue(tmp_path, *people):
+    from flotilla.core.storage import LocalLogStore
+    from flotilla.lane import book
+    from flotilla.lane.procs import ProcessTable
+    lanes = book.Book(LocalLogStore(tmp_path / "state" / "lane"), ProcessTable.for_machine())
+    return [lanes.enqueue(who, "suite", pid=None, project=project) for who, project in people]
+
+
+def test_the_lane_shows_its_mode_and_each_projects_waiting(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    _machine(tmp_path, lane_share="fair")
+    _queue(tmp_path, ("twosuns main 1", "twosuns"), ("twosuns main 2", "twosuns"), ("void main 1", "void"))
+    code, out = run_cli("lane", "--root", str(root))
+    assert code == 0 and "share: fair (machine.toml lane_share)" in out, out
+    assert "project twosuns: 2 waiting, holds 0, last turn not in 24 h" in out
+    assert "project void: 1 waiting, holds 0, last turn not in 24 h" in out
+
+
+def test_a_waiter_says_which_project_goes_first(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    _machine(tmp_path, lane_share="fair")
+    _queue(tmp_path, ("twosuns main 1", "twosuns"), ("void main 1", "void"), ("twosuns main 2", "twosuns"))
+    _, out = run_cli("lane", "--root", str(root))
+    [line] = [line for line in out.splitlines() if "twosuns main 2" in line]
+    assert "`twosuns` goes first" in line or "`void` goes first" in line, line
+
+
+def test_a_share_not_understood_reads_as_fifo_and_says_so(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    _machine(tmp_path, lane_share="round-robin")
+    _, out = run_cli("lane", "--root", str(root))
+    assert "share: fifo" in out and "'round-robin' is not understood" in out, out
+
+
+def test_a_project_name_is_shown_as_data(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    _machine(tmp_path, lane_share="fair")
+    _queue(tmp_path, ("main 1", "evil\x1b[2J\nproject twosuns: 0 waiting"))
+    _, out = run_cli("lane", "--root", str(root))
+    assert "\x1b" not in out and "\\x1b[2J\\nproject twosuns" in out, out

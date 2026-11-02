@@ -26,13 +26,31 @@ from flotilla.onboard.machine import read_machine
 from flotilla.posts import PostError
 
 
+def _machine() -> dict:
+    try:
+        return read_machine(paths.state_dir()) or {}
+    except (OSError, ValueError):
+        return {}
+
+
 def capacity() -> int:
     """machine.toml `lane_capacity`, 1 when unset, malformed or unreadable: a torn file never stops a run."""
-    try:
-        value = (read_machine(paths.state_dir()) or {}).get("lane_capacity", 1)
-    except (OSError, ValueError):
-        return 1
+    value = _machine().get("lane_capacity", 1)
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 1 else 1
+
+
+def share() -> str:
+    """machine.toml `lane_share`: `fair`, or first come, first served for anything else, unset, or unreadable."""
+    value = _machine().get("lane_share", "fifo")
+    return value if value in book.SHARES else "fifo"
+
+
+def _share_line() -> str:
+    value = _machine().get("lane_share", "fifo")
+    if value in book.SHARES:
+        return f"share: {value} (machine.toml lane_share)"
+    return (f"share: fifo - machine.toml lane_share = {visible(repr(value))} is not understood (fifo or fair), so "
+            "first come, first served")
 
 
 def _lanes(table) -> book.Book:
@@ -126,7 +144,7 @@ def booked(root, *, note: str, wait: float, run_for: str = "", as_name=None, com
         text = shlex.join(command)
         ladder = signature.ladder(list(command), tree=str(Path(root).resolve()), project=project)
     with acq.held(lanes, _reader(lanes, table, profile, top, problem), who=_who(as_name), note=note,
-                  capacity=capacity, wait=wait, table=table, run_for=run_for, say=print, command=text,
+                  capacity=capacity, share=share, wait=wait, table=table, run_for=run_for, say=print, command=text,
                   ladder=ladder, will_run=list(will_run or []), project=project) as grant:
         yield grant
 
@@ -177,8 +195,9 @@ def _status(args) -> int:
         print(f"could not sweep bookings whose process is gone: {err}")
     if swept:
         print(f"swept {len(swept)} booking(s) whose process is gone: " + ", ".join(visible(item.id) for item in swept))
-    slots = capacity()
+    slots, mode = capacity(), share()
     print(f"capacity: {slots} long run(s) at a time (machine.toml lane_capacity)")
+    print(_share_line())
     found = lanes.bookings()   # read once: each waiter's reason would read the whole journal again
     held, waiting = lanes.holders(found), lanes.waiters(found)
     reading = _reader(lanes, table, profile, top, problem)()
@@ -192,10 +211,18 @@ def _status(args) -> int:
               f"{target}; {by}; {state}; {describe_estimate(item, hist)}")
     for proc in reading.computing:
         print("  " + _foreign(table, proc, " (takes a slot, no booking)"))
+    if mode == "fair":
+        now = dt.datetime.now(dt.timezone.utc)
+        served = book.last_served(found, now)
+        for project in sorted({item.project for item in waiting if lanes.live(item)}):
+            count = sum(1 for item in waiting if item.project == project and lanes.live(item))
+            holds = sum(1 for item in held if item.project == project and lanes.live(item))
+            print(f"project {visible(project) or '(none)'}: {count} waiting, holds {holds}, "
+                  f"last turn {served.get(project) or 'not in 24 h'}")
     print("waiting:" if waiting else "waiting: nobody")
     for item in waiting:
         gone = "" if lanes.live(item) else "; its process is gone - `flotilla lane sweep`"
-        why = acq.in_the_way(lanes, reading, slots, item.id, found)
+        why = acq.in_the_way(lanes, reading, slots, item.id, found, share=mode)
         print(f"  {item.id} {item.who} ({item.note or 'no note'}) since {item.since}{gone}; "
               f"{describe_estimate(item, hist)}; waits because: {why}")
     print("machine:")
@@ -216,7 +243,7 @@ def _take(args) -> int:
     _on_signals()
     pid = os.getpid()
     grant = acq.acquire(lanes, _reader(lanes, table, profile, top, problem), who=_who(args.as_name), note=args.note,
-                        capacity=capacity, wait=args.wait, pid=pid, mark=table.start_mark(pid) or "",
+                        capacity=capacity, share=share, wait=args.wait, pid=pid, mark=table.start_mark(pid) or "",
                         by_hand=True, say=print)
     if grant.booking is None:
         print(f"refused: {grant.why}")

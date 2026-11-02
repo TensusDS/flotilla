@@ -15,6 +15,8 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from flotilla.lane import book
+
 POLL = 15.0
 #: Answers that hold the lane whatever the capacity: CI on this machine, memory under the floor, no room on the disk.
 OUTRIGHT = ("ci", "memory", "disk")
@@ -37,8 +39,18 @@ def _order(item) -> int:
     return int(item.id[1:]) if item.id[1:].isdigit() else 0
 
 
-def in_the_way(lanes, reading, capacity: int, mine: str = "", found: dict | None = None) -> str:
+def in_the_way(lanes, reading, capacity: int, mine: str = "", found: dict | None = None, share: str = "fifo") -> str:
     parts = []
+    found = lanes.bookings() if found is None else found
+    me = found.get(mine)
+    if share == "fair" and me is not None and (me.rule or 0) >= 2:
+        import datetime as dt
+        now = dt.datetime.now(dt.timezone.utc)
+        choice = book.fair_choice(found, lanes.live, now)
+        if choice is not None and choice.id != mine:
+            served = book.last_served(found, now).get(choice.project, "")
+            parts.append(f"`{choice.project or 'no project'}` goes first: {choice.id} {choice.who}, its project served "
+                         f"{served or 'not in 24 h'}")
     held = [item for item in lanes.holders(found) if lanes.live(item)]
     if held:
         parts.append("held by " + "; ".join(f"{item.who} ({item.note or 'no note'}) since {item.since}"
@@ -74,7 +86,7 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
                                      share=mode)
                 if granted is not None:
                     return Grant(granted, reading, "")
-            why = in_the_way(lanes, reading, slots, mine.id)
+            why = in_the_way(lanes, reading, slots, mine.id, share=mode)
             lasting = [answer for answer in unknown if answer.lasting]
             remaining = deadline - clock()
             if lasting or remaining <= 0:
