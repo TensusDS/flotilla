@@ -159,29 +159,45 @@ def describe_estimate(item, hist) -> str:
     return f"estimate: {seconds}, {cores}, {_size(found.peak_mb)} ({found.source})"
 
 
+def _foreign(table, proc, tail: str) -> str:
+    where = visible(table.cwd(proc.pid) or "an unknown directory")
+    return f"foreign run pid {proc.pid} `{visible(proc.command[:80])}` in {where}{tail}"
+
+
 def _status(args) -> int:
     table = ProcessTable.for_machine()
     lanes = _lanes(table)
     profile, top, problem = _profile(args.root)
-    print(f"capacity: {capacity()} long run(s) at a time (machine.toml lane_capacity)")
+    swept = lanes.sweep()   # a dead booking blocks nobody since grant skips it, but it misleads whoever reads this
+    if swept:
+        print(f"swept {len(swept)} booking(s) whose process is gone: " + ", ".join(item.id for item in swept))
+    slots = capacity()
+    print(f"capacity: {slots} long run(s) at a time (machine.toml lane_capacity)")
     held, waiting = lanes.holders(), lanes.waiters()
+    reading = _reader(lanes, table, profile, top, problem)()
     hist = estimate.history(lanes.bookings(), now=dt.datetime.now(dt.timezone.utc))
-    print("held:" if held else "held: nobody")
+    print("held:" if held or reading.computing else "held: nobody")
     for item in held:
         state = "alive" if lanes.live(item) else "its process is gone - `flotilla lane sweep`"
         by = f"pid {item.pid}" if item.pid else "taken by hand - `flotilla lane release`"
         target = f", for {item.run_for}" if item.run_for else ""
         print(f"  {item.id} {item.who} ({item.note or 'no note'}) since {item.since}{_for_how_long(item.since)}"
               f"{target}; {by}; {state}; {describe_estimate(item, hist)}")
+    for proc in reading.computing:
+        print("  " + _foreign(table, proc, " (takes a slot, no booking)"))
     print("waiting:" if waiting else "waiting: nobody")
     for item in waiting:
         gone = "" if lanes.live(item) else "; its process is gone - `flotilla lane sweep`"
         print(f"  {item.id} {item.who} ({item.note or 'no note'}) since {item.since}{gone}; "
-              f"{describe_estimate(item, hist)}")
+              f"{describe_estimate(item, hist)}; waits because: {acq.in_the_way(lanes, reading, slots, item.id)}")
     print("machine:")
-    for answer in _reader(lanes, table, profile, top, problem)().answers:
+    for answer in reading.answers:
         flag = {True: "busy", False: "ok", None: "unknown"}[answer.blocks]
         print(f"  {answer.question}: {flag} - {answer.text}")
+    for proc in reading.computing:
+        print("  " + _foreign(table, proc, ", computing"))
+    for proc in reading.idle:
+        print("  " + _foreign(table, proc, ", idle"))
     return 0
 
 

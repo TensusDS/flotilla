@@ -363,3 +363,58 @@ def test_a_receipt_refused_mid_way_says_refused_not_killed(tmp_path, monkeypatch
     run_cli("receipt", "run", "--purpose", "handover", "--tree", str(root))
     [item] = list(_journal(tmp_path).values())
     assert item.verdict == "refused"
+
+
+def _lane_with(monkeypatch, reading, cwds):
+    from flotilla.lane import commands
+    from flotilla.lane.procs import ProcessTable
+    monkeypatch.setattr(commands, "_reader", lambda *args, **kwargs: (lambda: reading))
+    monkeypatch.setattr(ProcessTable, "cwd", lambda self, pid: cwds.get(pid))
+
+
+def test_foreign_runs_are_named_where_the_slots_are(tmp_path, monkeypatch):
+    """Void-lanes-online, 2026-11-01: two unbooked suites held both slots, and `flotilla lane` said `held: nobody`
+    while a waiter waited - the reader saw nothing in the way. A foreign run is shown where the slots are."""
+    from flotilla.lane.machine import Answer, Reading
+    from flotilla.lane.procs import Proc
+    root = onboarded(tmp_path, monkeypatch)
+    busy = [Proc(901, 1, "python -m pytest tests/"), Proc(902, 1, "cargo test\x1b[2J")]
+    reading = Reading([Answer("foreign run", True, "2 unbooked run(s) computing"), Answer("ci", False, "none")],
+                      busy, [Proc(903, 1, "pytest --collect-only")])
+    _lane_with(monkeypatch, reading, {901: "/work/game", 903: "/work/site"})
+    code, out = run_cli("lane", "--root", str(root))
+    assert code == 0 and "held: nobody" not in out
+    head = out.split("waiting:")[0]
+    assert "foreign run pid 901 `python -m pytest tests/` in /work/game (takes a slot, no booking)" in head
+    assert "foreign run pid 902 " in head and "in an unknown directory" in head and "\x1b" not in out
+    assert "pid 903" not in head   # idle: it takes no slot
+    machine = out.split("machine:")[1]
+    assert all(f"pid {pid}" in machine for pid in (901, 902, 903)) and "/work/site" in machine
+
+
+def test_a_waiter_says_why_it_waits(tmp_path, monkeypatch):
+    from flotilla.core.storage import LocalLogStore
+    from flotilla.lane import book
+    from flotilla.lane.procs import ProcessTable
+    root = onboarded(tmp_path, monkeypatch)
+    assert run_cli("lane", "take", "--note", "hands off", "--root", str(root), "--as", "main session 1")[0] == 0
+    book.Book(LocalLogStore(tmp_path / "state" / "lane"), ProcessTable.for_machine()).enqueue(
+        "review session 1", "suite", pid=None)
+    _, out = run_cli("lane", "--root", str(root))
+    waiter = [line for line in out.splitlines() if "review session 1" in line]
+    assert len(waiter) == 1 and "waits because: held by main session 1 (hands off)" in waiter[0], out
+
+
+def test_showing_the_lane_sweeps_dead_bookings(tmp_path, monkeypatch):
+    import subprocess
+    from flotilla.core.storage import LocalLogStore
+    from flotilla.lane import book
+    from flotilla.lane.procs import ProcessTable
+    root = onboarded(tmp_path, monkeypatch)
+    ended = subprocess.Popen([sys.executable, "-c", "pass"])
+    ended.wait()
+    dead = book.Book(LocalLogStore(tmp_path / "state" / "lane"), ProcessTable.for_machine()).enqueue(
+        "main session 2", "waiting", pid=ended.pid, mark="gone")
+    _, out = run_cli("lane", "--root", str(root))
+    assert out.splitlines()[0] == f"swept 1 booking(s) whose process is gone: {dead.id}", out
+    assert "waiting: nobody" in out

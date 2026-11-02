@@ -128,6 +128,16 @@ class ProcessTable:
             return None
         return True
 
+    def cwd(self, pid: int) -> str | None:
+        """The process's working directory, so a run can be told by its tree; None when it cannot be read (another
+        user's process, a pid gone, or a machine where only `ps` answers - `ps` does not report it)."""
+        if self.source != "procfs":
+            return None
+        try:
+            return os.readlink(self.proc_root / str(pid) / "cwd")
+        except (OSError, ValueError):
+            return None
+
     def alive(self, pid: int | None, mark: str) -> bool:
         """Whether this is still the same process. No pid or no mark means unknown, which reads as alive."""
         if pid is None or not mark:

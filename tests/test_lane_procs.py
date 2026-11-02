@@ -134,3 +134,11 @@ def test_a_test_never_sees_this_machines_runs_as_foreign():
     finally:
         neighbour.kill()
         neighbour.wait()
+
+
+def test_a_process_names_its_working_directory_or_none(tmp_path):
+    table = fake_procfs(tmp_path)
+    (tmp_path / "work").mkdir()
+    (tmp_path / "proc" / "30" / "cwd").symlink_to(tmp_path / "work")
+    assert table.cwd(30) == str(tmp_path / "work")
+    assert table.cwd(31) is None   # no such process: unknown, not an empty directory
