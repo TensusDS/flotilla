@@ -273,7 +273,7 @@ def _failures(pairs, *, directory, profile, state_dir, repo_key, run) -> list[st
     found = []
     for label, sha in pairs:
         ok, why = receipts.check_receipt(state=Path(state_dir), repo_key=repo_key, sha=sha, purpose="push",
-                                         profile=profile)
+                                         profile=profile, root=Path(directory))
         if not ok:
             found.append(f"{label}: {why}")
         drift = workflow_drift(directory, sha, run=run)

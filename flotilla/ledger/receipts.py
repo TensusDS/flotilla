@@ -28,6 +28,42 @@ def tiers_for(profile: dict, purpose: str) -> list[dict]:
     return [tier for tier in tiers if purpose in (tier.get("required_for") or [])]
 
 
+PROFILE = ".flotilla/project.toml"
+
+
+def with_branch_tiers(root, rev: str, profile: dict, run=subprocess.run) -> tuple[dict, str, list[str]]:
+    """Trunk's profile with the tiers the revision's own profile adds (void-lanes-online, 2026-11-01): a branch that
+    brings a test tier is receipted with it. Trunk's tiers keep trunk's commands, so a branch can add a tier but never
+    weaken or drop one. Returns the profile, why the revision's profile could not be read ("" when it could, or it has
+    none) and notes for the reader."""
+    import tomllib
+    shown = run(["git", "-C", str(root), "show", f"{rev}:{PROFILE}"], capture_output=True, text=True, check=False)
+    if shown.returncode != 0:
+        return profile, "", []   # a revision with no profile of its own adds nothing
+    try:
+        own = (tomllib.loads(shown.stdout).get("tests") or {}).get("tier") or []
+    except tomllib.TOMLDecodeError as err:
+        return profile, (f"{PROFILE} at {str(rev)[:7]} does not parse ({err}), so the tiers it names cannot be run: "
+                         "fix it and commit"), []
+    trunk = (profile.get("tests") or {}).get("tier") or []
+    named = {tier.get("name"): tier for tier in trunk}
+    added, notes = [], []
+    for tier in own if isinstance(own, list) else []:
+        if not isinstance(tier, dict) or not isinstance(tier.get("name"), str) or \
+                not isinstance(tier.get("command"), str):
+            continue
+        if tier["name"] in named:
+            if tier.get("command") != named[tier["name"]].get("command"):
+                notes.append(f"tier `{tier['name']}` has another command in this revision's profile; trunk's command "
+                             "runs, since a branch never changes a tier trunk names")
+            continue
+        added.append(dict(tier))
+        notes.append(f"tier `{tier['name']}` comes from this revision's profile, not trunk's")
+    if not added:
+        return profile, "", notes
+    return {**profile, "tests": {**(profile.get("tests") or {}), "tier": [*trunk, *added]}}, "", notes
+
+
 def tiers_fingerprint(tiers: list[dict]) -> str:
     payload = json.dumps([[tier.get("name"), tier.get("command")] for tier in tiers])
     return "sha256:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -219,7 +255,13 @@ def measured_of(result: dict) -> dict:
             "ran": [own(tier) for tier in ran]}
 
 
-def check_receipt(*, state: Path, repo_key: str, sha: str, purpose: str, profile: dict) -> tuple[bool, str]:
+def check_receipt(*, state: Path, repo_key: str, sha: str, purpose: str, profile: dict,
+                  root: Path | None = None) -> tuple[bool, str]:
+    """Whether a green receipt covers `sha`. With `root`, the tiers `sha`'s own profile adds are required too."""
+    if root is not None:
+        profile, problem, _ = with_branch_tiers(root, sha, profile)
+        if problem:
+            return False, problem
     tiers = tiers_for(profile, purpose)
     if not tiers:
         return True, f"no {purpose} tiers configured"
@@ -234,6 +276,11 @@ def check_receipt(*, state: Path, repo_key: str, sha: str, purpose: str, profile
         return False, (f"the {purpose} receipt file over {sha[:7]} was written for another revision or purpose; "
                        "run it again")
     if receipt.get("tiers_fingerprint") != tiers_fingerprint(tiers):
+        ran = {tier.get("name") for tier in receipt.get("tiers") or [] if isinstance(tier, dict)}
+        missing = [tier["name"] for tier in tiers if tier.get("name") not in ran]
+        if missing:
+            return False, (f"the {purpose} receipt over {sha[:7]} did not run {', '.join(missing)}, which this "
+                           "revision's profile names; run it again")
         return False, f"the {purpose} tiers changed since the receipt over {sha[:7]}; run it again"
     ran = receipt.get("tiers")
     if not isinstance(ran, list) or len(ran) != len(tiers):

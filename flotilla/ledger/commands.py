@@ -310,6 +310,12 @@ def _receipt(args) -> int:
     profile, note = rules_for(tree)   # the rules the guards obey, so a receipt answers the guard that asks
     if note:
         print(f"rules: {note}")
+    profile, problem, notes = receipts.with_branch_tiers(tree, "HEAD", profile)
+    for line in notes:
+        print(f"tiers: {line}")
+    if problem:
+        print(f"refused: {problem}")
+        return 2
     ident = repo.identify(tree)
     state = paths.state_dir()
     if args.action == "run":
@@ -363,7 +369,7 @@ def _receipt(args) -> int:
     tiered = held = 0
     for purpose in asked:
         ok, why = receipts.check_receipt(state=state, repo_key=ident.key, sha=sha, purpose=purpose,
-                                         profile=profile)
+                                         profile=profile, root=ident.root)
         print(f"{'ok' if ok else 'no':<3} {why}")
         if receipts.tiers_for(profile, purpose):   # "no tiers configured" is valid, and is no receipt
             tiered += 1
@@ -473,7 +479,7 @@ def _finished(ledger: core.Ledger, row: Row) -> bool:
     if handover.has_own_commits(ledger, tip, beside=_stacked_under(ledger, row, tip)) is not True:
         return False
     ok, _ = receipts.check_receipt(state=ledger.state_dir, repo_key=ledger.repo_key, sha=tip, purpose="handover",
-                                   profile=ledger.profile)
+                                   profile=ledger.profile, root=ledger.root)
     return ok
 
 

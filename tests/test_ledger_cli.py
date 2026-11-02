@@ -667,3 +667,20 @@ def test_an_unchecked_drop_says_so_to_the_caller():
         "unchecked": {"feat/a": "its commits could not be named (no branch and no recorded tip)"}}}])
     _, text = _amended(row)
     assert "dropped `feat/a` unchecked: its commits could not be named" in text
+
+
+def test_receipt_run_takes_the_tiers_the_branch_adds(tmp_path, monkeypatch):
+    """Void-lanes-online, 2026-11-01: a branch adding a tier was receipted green without it."""
+    tier = {"name": "unit", "command": GREEN, "required_for": ["handover"]}
+    root = onboarded(tmp_path, monkeypatch, {**PLAIN, "tests": {"tier": [tier]}})
+    git(root, "checkout", "-q", "-b", "server/solution")
+    server = {"name": "server", "command": f"{sys.executable} -c \"print('3 passed')\"",
+              "required_for": ["handover"]}
+    (root / ".flotilla" / "project.toml").write_text(
+        render_toml({**PLAIN, "tests": {"tier": [tier, server]}}), encoding="utf-8")
+    git(root, "add", ".flotilla")
+    sha = commit(root, "add the server tier")
+    code, out = run_cli("receipt", "run", "--purpose", "handover", "--tree", str(root), "--no-lane")
+    assert code == 0 and "tier `server` comes from this revision's profile" in out, out
+    code, out = run_cli("receipt", "show", "--rev", sha, "--purpose", "handover", "--tree", str(root))
+    assert code == 0 and "ok" in out, out

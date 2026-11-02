@@ -114,7 +114,7 @@ def _local(ledger, candidates: list[str]) -> Gate:
         return Gate(NONE, "none: no CI and no push tiers — nothing verified this commit")
     for sha in candidates:
         ok, _ = receipts.check_receipt(state=ledger.state_dir, repo_key=ledger.repo_key, sha=sha, purpose="push",
-                                       profile=ledger.profile)
+                                       profile=ledger.profile, root=ledger.root)
         if ok:
             return Gate(GREEN, f"local receipt over {sha[:7]}")
     return Gate(PENDING, f"no green push receipt over {candidates[0][:7]}; run `flotilla receipt run --purpose "

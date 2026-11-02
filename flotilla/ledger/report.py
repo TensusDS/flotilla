@@ -79,7 +79,7 @@ def brief(ledger, rows: dict[str, Row] | None = None) -> list[str]:
             extras.append(f"landed {row.merge[:7]}")
         if push_tiers and read:
             ok, _ = receipts.check_receipt(state=ledger.state_dir, repo_key=ledger.repo_key, sha=read,
-                                           purpose="push", profile=ledger.profile)
+                                           purpose="push", profile=ledger.profile, root=ledger.root)
             extras.append(f"push receipt {'green' if ok else 'missing'} over {read[:7]}")
         lines.append(f"  {number}. `{row.branch}` ({row.state}) by {row.owner}; {who}"
                      + (f"; {'; '.join(extras)}" if extras else ""))

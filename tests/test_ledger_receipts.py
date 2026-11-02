@@ -375,3 +375,61 @@ def test_a_receipt_reports_its_setup_run(tmp_path):
                                   timeout=60)
     assert result["setup"]["name"] == "setup" and result["setup"]["status"] == "green"
     assert [t["name"] for t in receipts.measured_of(result)["ran"]] == ["setup", "unit"]
+
+
+def _branch_profile(root, data, text=None):
+    from flotilla.onboard.tomlw import render_toml
+    (root / ".flotilla").mkdir(exist_ok=True)
+    (root / ".flotilla" / "project.toml").write_text(text if text is not None else render_toml(data), encoding="utf-8")
+    git(root, "add", ".flotilla")
+    commit(root, "the branch's profile")
+    return git(root, "rev-parse", "HEAD")
+
+
+def _with_server(command=GREEN, unit=GREEN):
+    data = profile(unit)
+    data["tests"]["tier"].append({"name": "server", "command": command, "required_for": ["handover"]})
+    return data
+
+
+def test_a_tier_only_the_branch_adds_runs_in_its_receipt(tmp_path):
+    """Void-lanes-online, 2026-11-01: `server/solution` added a `server` tier; both receipts ran only trunk's tiers,
+    said nothing, and were green - the server tests ran because two sessions ran them by hand."""
+    root = repo_with_origin(tmp_path)
+    _branch_profile(root, _with_server())
+    effective, problem, _ = receipts.with_branch_tiers(root, "HEAD", profile(GREEN))
+    assert problem == ""
+    receipt = receipts.run_receipt(root, state=tmp_path / "s", repo_key=KEY, purpose="handover", profile=effective,
+                                   timeout=60)
+    assert [tier["name"] for tier in receipt["tiers"]] == ["unit", "server"]
+
+
+def test_a_receipt_without_the_branch_tier_does_not_pass_the_check(tmp_path):
+    root = repo_with_origin(tmp_path)
+    sha = _branch_profile(root, _with_server())
+    receipts.run_receipt(root, state=tmp_path / "s", repo_key=KEY, purpose="handover", profile=profile(GREEN),
+                         timeout=60)   # trunk's tiers only, as before 0.24.2
+    ok, why = receipts.check_receipt(state=tmp_path / "s", repo_key=KEY, sha=sha, purpose="handover",
+                                     profile=profile(GREEN), root=root)
+    assert not ok and "server" in why
+
+
+def test_a_branch_cannot_change_a_trunk_tier(tmp_path):
+    root = repo_with_origin(tmp_path)
+    weak = f"{sys.executable} -c \"print('0 passed')\""
+    _branch_profile(root, profile(weak))
+    effective, problem, notes = receipts.with_branch_tiers(root, "HEAD", profile(GREEN))
+    assert problem == "" and receipts.tiers_for(effective, "handover")[0]["command"] == GREEN
+    assert any("`unit`" in note and "trunk's command" in note for note in notes)
+
+
+def test_a_branch_profile_that_does_not_parse_is_not_green(tmp_path):
+    root = repo_with_origin(tmp_path)
+    sha = _branch_profile(root, None, text="[tests\nbroken = ")
+    _, problem, _ = receipts.with_branch_tiers(root, sha, profile(GREEN))
+    assert ".flotilla/project.toml" in problem
+    receipts.run_receipt(root, state=tmp_path / "s", repo_key=KEY, purpose="handover", profile=profile(GREEN),
+                         timeout=60)
+    ok, why = receipts.check_receipt(state=tmp_path / "s", repo_key=KEY, sha=sha, purpose="handover",
+                                     profile=profile(GREEN), root=root)
+    assert not ok and ".flotilla/project.toml" in why

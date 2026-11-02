@@ -54,7 +54,7 @@ def has_own_commits(ledger: Ledger, tip: str, *, beside=()) -> bool | None:
 
 def _receipt(ledger: Ledger, tip: str) -> str:
     ok, why = receipts.check_receipt(state=ledger.state_dir, repo_key=ledger.repo_key, sha=tip, purpose="handover",
-                                     profile=ledger.profile)
+                                     profile=ledger.profile, root=ledger.root)
     if not ok:
         raise MoveRefused(why)
     return why
