@@ -30,8 +30,8 @@ from flotilla.guards import Finding
 GUARD = "person"
 #: Every move `flotilla work` takes; a test holds it equal to the CLI's own list.
 MOVES = ("accept", "adopt", "approve", "assign", "broke", "claim", "close", "fix", "hand", "hold", "inbatch", "land",
-         "moved", "offledger", "queue", "reconcile", "recuse", "release", "reserve", "return", "ship", "show", "take", "unbroke",
-         "unhold", "urgent", "vouch", "wait", "walkable", "walked")
+         "moved", "offledger", "queue", "reconcile", "recuse", "release", "requires", "reserve", "return", "ship",
+         "show", "take", "unbroke", "unhold", "urgent", "vouch", "wait", "walkable", "walked")
 
 #: Closes every refusal of a command flotilla cannot read: it is the guard working, and the way past it is plain
 #: (twosuns field report C4; the person, 2026-10-27: a refusal by design must not read as a defect).
