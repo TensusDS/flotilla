@@ -176,3 +176,56 @@ def test_a_setup_entry_keeps_its_kind_through_the_journal(lane):
         {"name": "setup", "status": "green", "seconds": 3.0, "kind": "setup"},
         {"name": "setup", "status": "green", "seconds": 1.0, "kind": "anything else"}]})
     assert [t.get("kind") for t in done.ran] == ["setup", None]
+
+
+def _whole(tmp_path):
+    return book.fold(LocalLogStore(tmp_path).read(book.KEY).records)
+
+
+def test_a_cached_book_folds_only_new_lines(tmp_path, monkeypatch):
+    """Twosuns item 14: each poll folded the whole journal again, so a waiter's cost grew with the file."""
+    import json
+    lanes = book.Book(LocalLogStore(tmp_path), Procs())
+    for n in range(3):
+        lanes.enqueue(f"main session {n}", "suite", pid=None)
+    lanes.bookings()
+    book.Book(LocalLogStore(tmp_path), Procs()).release("b2")   # another process writes
+    parsed = []
+    real = json.loads
+    monkeypatch.setattr(json, "loads", lambda raw, *a, **k: parsed.append(1) or real(raw, *a, **k))
+    found = lanes.bookings()
+    assert len(parsed) == 1 and found == _whole(tmp_path)
+    parsed.clear()
+    assert lanes.bookings() == found and parsed == []   # nothing new: nothing parsed
+
+
+def test_a_replaced_journal_is_read_again_whole(tmp_path):
+    lanes = book.Book(LocalLogStore(tmp_path), Procs())
+    for n in range(3):
+        lanes.enqueue(f"main session {n}", "suite", pid=None)
+    lanes.bookings()
+    other = book.Book(LocalLogStore(tmp_path / "other"), Procs())
+    other.enqueue("review session 9", "elsewhere", pid=None)
+    (tmp_path / "other" / "lane.jsonl").replace(tmp_path / "lane.jsonl")
+    assert lanes.bookings() == _whole(tmp_path) and [i.who for i in lanes.bookings().values()] == ["review session 9"]
+
+
+def test_a_torn_line_is_never_folded_from_the_cache(tmp_path):
+    lanes = book.Book(LocalLogStore(tmp_path), Procs())
+    lanes.enqueue("main session 1", "suite", pid=None)
+    lanes.bookings()
+    with open(tmp_path / "lane.jsonl", "ab") as handle:
+        handle.write(b'{"at": "2026-11-02T10:00:00+00:00", "booking": "b1", "state": "rele')
+    assert lanes.bookings()["b1"].state == book.WAITING
+    lanes.release("b1")   # the append sets the fragment aside, then writes a whole line
+    assert lanes.bookings()["b1"].state == book.RELEASED and lanes.bookings() == _whole(tmp_path)
+
+
+def test_a_booking_handed_out_does_not_change_when_the_cache_advances(tmp_path):
+    lanes = book.Book(LocalLogStore(tmp_path), Procs())
+    lanes.enqueue("main session 1", "suite", pid=None)
+    before = lanes.bookings()
+    held = before["b1"]
+    lanes.release("b1")
+    assert held.state == book.WAITING and before["b1"] is held
+    assert lanes.bookings()["b1"].state == book.RELEASED

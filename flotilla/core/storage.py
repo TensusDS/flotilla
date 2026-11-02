@@ -51,6 +51,42 @@ def _read(path: Path) -> ReadResult:
     return ReadResult(records, tail != b"")
 
 
+#: How much of what precedes an offset is kept to tell that the file still holds what was read up to it.
+_SAMPLE = 64
+
+
+def _read_after(path: Path, offset: int, identity: tuple | None) -> tuple[list[dict], int, tuple, bool]:
+    """The committed lines after `offset`, the offset after them, what identifies the file as read, and whether it was
+    read from the start. A log is only ever appended to (a torn tail past the committed lines is the one thing cut), so
+    a reader that remembers where it stopped reads on from there; a file that is another one - replaced, shortened, or
+    no longer holding the bytes it held just before `offset` - is read from the start."""
+    try:
+        with open(path, "rb") as handle:
+            stat = os.fstat(handle.fileno())
+            start = 0
+            if identity is not None and tuple(identity[:2]) == (stat.st_dev, stat.st_ino) and \
+                    0 < offset <= stat.st_size:
+                handle.seek(max(0, offset - _SAMPLE))
+                if handle.read(offset - max(0, offset - _SAMPLE)) == identity[2]:
+                    start = offset
+            handle.seek(start)
+            data = handle.read()
+            end = start + data.rfind(b"\n") + 1   # what follows the last newline was never committed
+            handle.seek(max(0, end - _SAMPLE))
+            sample = handle.read(end - max(0, end - _SAMPLE))
+    except FileNotFoundError:
+        return [], 0, (None, None, b""), True
+    records = []
+    for number, raw in enumerate(data[:end - start].split(b"\n")[:-1], start=1):
+        try:
+            records.append(json.loads(raw.decode("utf-8")))
+        except UnicodeDecodeError as err:
+            raise StorageCorrupt(f"{path}: line {number} after byte {start}: not UTF-8 ({err.reason})") from err
+        except json.JSONDecodeError as err:
+            raise StorageCorrupt(f"{path}: line {number} after byte {start}: {err.msg}") from err
+    return records, end, (stat.st_dev, stat.st_ino, sample), start == 0
+
+
 class LogTransaction:
     """Reads and appends while the caller holds the key's lock."""
 
@@ -59,6 +95,9 @@ class LogTransaction:
 
     def read(self) -> ReadResult:
         return _read(self._path)
+
+    def read_after(self, offset: int, identity: tuple | None = None) -> tuple[list[dict], int, tuple, bool]:
+        return _read_after(self._path, offset, identity)
 
     def append(self, record: dict) -> None:
         line = json.dumps(record, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
@@ -112,6 +151,10 @@ class LocalLogStore:
     def read(self, key: str) -> ReadResult:
         """Lock-free: a reader may see a record being written as a torn tail."""
         return _read(self._path(key))
+
+    def read_after(self, key: str, offset: int, identity: tuple | None = None) -> tuple[list[dict], int, tuple, bool]:
+        """Lock-free, like `read`: the committed lines after `offset` of the file `identity` names."""
+        return _read_after(self._path(key), offset, identity)
 
     def append(self, key: str, record: dict) -> None:
         with self.transaction(key) as tx:

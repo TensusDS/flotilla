@@ -429,7 +429,7 @@ def test_the_lane_reads_its_journal_the_same_number_of_times_however_many_wait(t
     lanes = book.Book(LocalLogStore(tmp_path / "state" / "lane"), ProcessTable.for_machine())
     folds = []
     real = book.fold
-    monkeypatch.setattr(book, "fold", lambda records: folds.append(1) or real(records))
+    monkeypatch.setattr(book, "fold", lambda *a, **k: folds.append(1) or real(*a, **k))
     lanes.enqueue("main session 2", "one", pid=None)
     run_cli("lane", "--root", str(root))   # the first look also does one-off work; count from the second
     folds.clear()

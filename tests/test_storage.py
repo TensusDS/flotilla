@@ -98,3 +98,32 @@ def test_invalid_utf8_middle_line_is_corruption_with_its_line(tmp_path):
     (tmp_path / "k.jsonl").write_bytes(b'{"n":1}\n{"t":"\xff"}\n{"n":3}\n')
     with pytest.raises(StorageCorrupt, match=r"k\.jsonl:2"):
         LocalLogStore(tmp_path).read("k")
+
+
+def test_read_after_returns_only_committed_lines_past_the_offset(tmp_path):
+    store = LocalLogStore(tmp_path)
+    store.append("k", {"n": 1})
+    store.append("k", {"n": 2})
+    records, offset, identity, whole = store.read_after("k", 0)
+    assert whole and [r["n"] for r in records] == [1, 2]
+    store.append("k", {"n": 3})
+    with open(tmp_path / "k.jsonl", "ab") as handle:
+        handle.write(b'{"n": 4')   # a writer died mid-line
+    records, after, same, whole = store.read_after("k", offset, identity)
+    assert not whole and [r["n"] for r in records] == [3] and same[:2] == identity[:2] and after > offset
+    assert store.read_after("k", after, same)[0] == []
+
+
+def test_read_after_starts_again_when_the_file_is_not_the_one_it_read(tmp_path):
+    store = LocalLogStore(tmp_path)
+    for n in range(3):
+        store.append("k", {"n": n})
+    _, offset, identity, _ = store.read_after("k", 0)
+    replacement = tmp_path / "other.jsonl"
+    replacement.write_text('{"n": 7}\n{"n": 8}\n{"n": 9}\n{"n": 10}\n', encoding="utf-8")
+    replacement.replace(tmp_path / "k.jsonl")   # a restore, or a compaction by rename
+    records, _, _, whole = store.read_after("k", offset, identity)
+    assert whole and [r["n"] for r in records] == [7, 8, 9, 10]
+    _, offset, identity, _ = store.read_after("k", 0)
+    (tmp_path / "k.jsonl").write_text('{"n": 1}\n', encoding="utf-8")   # shortened in place
+    assert [r["n"] for r in store.read_after("k", offset, identity)[0]] == [1]

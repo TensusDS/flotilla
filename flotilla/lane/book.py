@@ -12,6 +12,7 @@ came, and a waiter whose process died is skipped and swept.
 
 from __future__ import annotations
 
+import copy
 import datetime as dt
 from dataclasses import dataclass, field
 
@@ -107,12 +108,15 @@ class Booking:
     inside: str = ""                                 # a run inside this booking, recorded beside it, never booked
 
 
-def fold(records) -> dict[str, Booking]:
-    found: dict[str, Booking] = {}
+def fold(records, into: dict[str, Booking] | None = None) -> dict[str, Booking]:
+    """The bookings the events make, applied on top of `into` (a fold of the lines before them) without changing a
+    booking in it: one already handed out stays as it was read."""
+    found: dict[str, Booking] = dict(into or {})
     for event in records:
         if not isinstance(event, dict) or not isinstance(event.get("booking"), str) or not _aware(event.get("at")):
             continue   # a line nobody could have written through flotilla: skipped, never fatal
-        item = found.get(event["booking"]) or Booking(id=event["booking"])
+        seen = found.get(event["booking"])
+        item = copy.copy(seen) if seen is not None else Booking(id=event["booking"])
         for key in FIELDS:
             if key in event:
                 setattr(item, key, _clean(key, event[key]))
@@ -134,13 +138,23 @@ class Book:
         self.store = store
         self.procs = procs
         self.clock = clock
+        self._read = (0, None, {})   # offset, identity, bookings: a waiter polls for minutes, so it reads on (item 14)
 
     def _now(self) -> str:
         moment = self.clock() if self.clock else dt.datetime.now(dt.timezone.utc)
         return moment.isoformat(timespec="seconds")
 
+    def _found(self, tx=None) -> dict[str, Booking]:
+        """The bookings, folding only the journal lines appended since this book last read it."""
+        offset, identity, found = self._read
+        records, after, now, whole = (tx.read_after(offset, identity) if tx is not None else
+                                      self.store.read_after(KEY, offset, identity))
+        found = fold(records, None if whole else found)
+        self._read = (after, now, found)
+        return dict(found)
+
     def bookings(self) -> dict[str, Booking]:
-        return fold(self.store.read(KEY).records)
+        return self._found()
 
     def holders(self, found: dict | None = None) -> list[Booking]:
         found = self.bookings() if found is None else found
@@ -155,12 +169,12 @@ class Book:
 
     def _write(self, tx, booking_id: str, state: str, **fields) -> Booking:
         tx.append({"at": self._now(), "booking": booking_id, "state": state, **fields})
-        return fold(tx.read().records)[booking_id]
+        return self._found(tx)[booking_id]
 
     def enqueue(self, who: str, note: str, *, pid: int | None = None, mark: str = "", run_for: str = "",
                 command: str = "", ladder=(), will_run=(), project: str = "") -> Booking:
         with self.store.transaction(KEY) as tx:
-            found = fold(tx.read().records)
+            found = self._found(tx)
             return self._write(tx, f"b{len(found) + 1}", WAITING, who=who, note=note, pid=pid, mark=mark,
                                run_for=run_for, command=command[:MAX_TEXT],
                                ladder=[step[:MAX_TEXT] for step in ladder], will_run=list(will_run),
@@ -172,14 +186,14 @@ class Book:
         holds nothing. Never a new state - a flotilla before stage 1 folding this journal sees a released booking."""
         fields = {k: v for k, v in (measured or {}).items() if k in MEASURED and v is not None}
         with self.store.transaction(KEY) as tx:
-            found = fold(tx.read().records)
+            found = self._found(tx)
             return self._write(tx, f"b{len(found) + 1}", RELEASED, who=who, note=note, command=command[:MAX_TEXT],
                                ladder=[step[:MAX_TEXT] for step in ladder], will_run=list(will_run),
                                project=project, rule=RULE, inside=inside, **fields)
 
     def grant(self, booking_id: str, *, slots: int, by_hand: bool = False) -> Booking | None:
         with self.store.transaction(KEY) as tx:
-            found = fold(tx.read().records)
+            found = self._found(tx)
             mine = found.get(booking_id)
             if mine is None or mine.state != WAITING:
                 return None
@@ -211,7 +225,7 @@ class Book:
         """End bookings whose process is not alive; with `gone`, only those it also says are gone."""
         swept = []
         with self.store.transaction(KEY) as tx:
-            found = fold(tx.read().records)
+            found = self._found(tx)
             for item in [*self.holders(found), *self.waiters(found)]:
                 if item.pid is None or self.live(item) or (gone is not None and not gone(item)):
                     continue
