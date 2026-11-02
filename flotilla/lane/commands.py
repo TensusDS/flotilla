@@ -126,7 +126,7 @@ def booked(root, *, note: str, wait: float, run_for: str = "", as_name=None, com
         text = shlex.join(command)
         ladder = signature.ladder(list(command), tree=str(Path(root).resolve()), project=project)
     with acq.held(lanes, _reader(lanes, table, profile, top, problem), who=_who(as_name), note=note,
-                  capacity=capacity(), wait=wait, table=table, run_for=run_for, say=print, command=text,
+                  capacity=capacity, wait=wait, table=table, run_for=run_for, say=print, command=text,
                   ladder=ladder, will_run=list(will_run or []), project=project) as grant:
         yield grant
 
@@ -192,7 +192,7 @@ def _take(args) -> int:
     _on_signals()
     pid = os.getpid()
     grant = acq.acquire(lanes, _reader(lanes, table, profile, top, problem), who=_who(args.as_name), note=args.note,
-                        capacity=capacity(), wait=args.wait, pid=pid, mark=table.start_mark(pid) or "",
+                        capacity=capacity, wait=args.wait, pid=pid, mark=table.start_mark(pid) or "",
                         by_hand=True, say=print)
     if grant.booking is None:
         print(f"refused: {grant.why}")

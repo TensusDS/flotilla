@@ -192,3 +192,34 @@ def test_no_room_holds_the_lane_whatever_the_capacity(lanes):
                     Answer("memory", False, "plenty"), Answer("disk", True, "900 MB free on this disk")], [], [])
     grant = take(lanes, full, capacity=4)
     assert grant.booking is None and "disk: 900 MB free" in grant.why
+
+
+def test_a_capacity_raised_while_waiting_admits_the_waiter(lanes):
+    take(lanes, who="review session 1")
+    clock = Clock()
+    polls = []
+
+    def capacity():
+        polls.append(clock.now)
+        return 1 if len(polls) == 1 else 2
+    grant = take(lanes, capacity=capacity, wait=60, clock=clock)
+    assert grant.booking is not None and grant.booking.state == book.HELD
+    assert len(polls) == 2 and clock.now == acquire.POLL
+
+
+def test_a_capacity_cut_stops_new_grants_only(lanes):
+    first = take(lanes, who="review session 1", capacity=2)
+    second = take(lanes, who="review session 2", capacity=2)
+    third = take(lanes, who="main session 3", capacity=lambda: 1)
+    assert third.booking is None and "held by review session 1" in third.why
+    held = {item.id for item in lanes.holders()}
+    assert held == {first.booking.id, second.booking.id}
+
+
+def test_an_unreadable_capacity_waits_at_one(monkeypatch):
+    from flotilla.lane import commands
+
+    def torn(_):
+        raise ValueError("machine.toml: expected '=' at line 2")
+    monkeypatch.setattr(commands, "read_machine", torn)
+    assert commands.capacity() == 1
