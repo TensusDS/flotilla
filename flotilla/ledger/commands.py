@@ -251,6 +251,16 @@ def _adopt(ledger, actor, args):
     return moved[-1], "\n".join(lines)
 
 
+def _waited(row: Row, on: str):
+    """A wait whose name was resolved says so, so the caller sees whom the ledger now waits on."""
+    evidence = row.history[-1].get("evidence") or {}
+    if evidence.get("resolved_from"):
+        return row, f"waits on {visible(row.waiting_on)} (resolved from \"{visible(evidence['resolved_from'])}\")"
+    if evidence.get("unchecked"):
+        return row, f"waits on {visible(row.waiting_on)}; {evidence['unchecked']}"
+    return row
+
+
 MOVES = {
     "claim": lambda l, a, x: core.claim(l, a, x.branch, tree=x.tree, ref=x.ref, requires=x.requires or [],
                                         after=x.after or [], also=x.also),
@@ -258,7 +268,7 @@ MOVES = {
     "release": lambda l, a, x: core.release(l, a, x.branch, why=x.why, settled_by=x.settled_by),
     "hand": lambda l, a, x: handover.hand(l, a, x.branch, tip=x.tip),
     "moved": lambda l, a, x: handover.moved(l, a, x.branch, tip=x.tip, agreed_by=x.agreed_by),
-    "wait": lambda l, a, x: handover.wait(l, a, x.branch, on=x.on, why=x.why, clear=x.clear),
+    "wait": lambda l, a, x: _waited(handover.wait(l, a, x.branch, on=x.on, why=x.why, clear=x.clear), x.on),
     "take": lambda l, a, x: reading.take(l, a, x.branch),
     "recuse": lambda l, a, x: reading.recuse(l, a, x.branch),
     "fix": lambda l, a, x: reading.fix(l, a, x.branch, why=x.why),

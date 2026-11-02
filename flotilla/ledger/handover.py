@@ -123,6 +123,38 @@ def _gone(ledger: Ledger, name: str) -> bool:
         return False
 
 
+def _known_names(rows: dict) -> set[str]:
+    """Every session name the ledger has seen: owners, readers, and whoever made a move."""
+    found = set()
+    for row in rows.values():
+        found |= {row.owner, row.reader} | {entry.get("by", "") for entry in row.history}
+    return found - {""}
+
+
+def _whom(ledger: Ledger, rows: dict, on: str) -> tuple[str, dict]:
+    """The session a wait names, and what the move records about the name (twosuns item 5). A name the census lists
+    stands; a short name that exactly one live session ends with (`-<name>` or ` <name>`) becomes that session's;
+    a name the ledger knows with no live match is refused, since a wait on it would never be seen to end. Anything
+    else - `the lane`, `CI`, `the person` - is free words, recorded as written."""
+    try:
+        live = ledger.live_names()
+    except MoveRefused as err:
+        return on, {"unchecked": f"the name was not checked against the census ({err})"}
+    if on in live:
+        return on, {}
+    matches = sorted(name for name in live if name.endswith(f"-{on}") or name.endswith(f" {on}"))
+    if len(matches) == 1:
+        return matches[0], {"resolved_from": on}
+    if matches:
+        raise MoveRefused(f"--on \"{on}\" is ambiguous: live sessions {', '.join(matches)} all end with it; name one "
+                          "in full")
+    if on in _known_names(rows):
+        raise MoveRefused(f"`{on}` is not alive and no live session's name ends with it, so the wait would never be "
+                          f"seen to end; live sessions: {', '.join(sorted(live)) or 'none'}. Name a live one, or "
+                          "describe what you wait on in words")
+    return on, {}
+
+
 def wait(ledger: Ledger, actor: Actor, branch: str, *, on: str = "", why: str = "", clear: bool = False) -> Row:
     require_may(actor, "wait", ledger.posts)
     with ledger.session() as s:
@@ -136,5 +168,7 @@ def wait(ledger: Ledger, actor: Actor, branch: str, *, on: str = "", why: str = 
         else:
             if not on.strip() or not why.strip():
                 raise MoveRefused("a wait names whom it waits on (--on) and why (--why)")
-            fields = {"waiting_on": on.strip(), "note": why.strip()}
+            whom, evidence = _whom(ledger, s.rows, on.strip())
+            return s.append(actor, row.id, "wait", state, fields={"waiting_on": whom, "note": why.strip()},
+                            evidence=evidence)
         return s.append(actor, row.id, "wait", state, fields=fields)

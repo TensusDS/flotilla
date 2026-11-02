@@ -177,3 +177,61 @@ def test_a_census_that_cannot_be_asked_keeps_the_refusal(tmp_path):
     ledger, new = accepted_then_moved_on(tmp_path, census=no_census)
     with pytest.raises(MoveRefused, match="agreement"):
         handover.moved(ledger, actor(ledger, "main session 1"), "feat/x", tip=new)
+
+
+def _census(*names):
+    from flotilla.core.census import Session
+    return lambda: [Session(name=name, session_id=name, kind="background", pid=None, short_id=None, status="idle",
+                            state=None, cwd="", started_at_ms=None) for name in names]
+
+
+def test_a_short_name_resolves_to_the_one_live_session(tmp_path):
+    """Twosuns, 2026-11-01, item 5: a wait on "orchestrator 4" was recorded word for word while the live session was
+    "twosuns-orchestrator 4", so the watch could never tell it was over."""
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", census=_census("main session 1", "twosuns-orchestrator 4"))
+    claimed(root, ledger)
+    row = handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", on="orchestrator 4", why="its call")
+    assert row.waiting_on == "twosuns-orchestrator 4"
+    assert row.history[-1]["evidence"]["resolved_from"] == "orchestrator 4"
+    from flotilla.ledger.commands import _waited
+    assert _waited(row, "orchestrator 4")[1] == 'waits on twosuns-orchestrator 4 (resolved from "orchestrator 4")'
+
+
+def test_a_gone_session_with_no_live_match_is_refused(tmp_path):
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", census=_census("main session 1", "orchestrator 5"))
+    core.reserve(ledger, actor(ledger, "orchestrator 4"), "orchestrator-home")   # the ledger knows the name
+    claimed(root, ledger)
+    with pytest.raises(MoveRefused, match=r"`orchestrator 4` is not alive.*main session 1, orchestrator 5"):
+        handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", on="orchestrator 4", why="its call")
+
+
+def test_two_live_matches_are_refused_as_ambiguous(tmp_path):
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state",
+                         census=_census("main session 1", "game-orchestrator 4", "site-orchestrator 4"))
+    claimed(root, ledger)
+    with pytest.raises(MoveRefused, match="ambiguous.*game-orchestrator 4, site-orchestrator 4"):
+        handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", on="orchestrator 4", why="its call")
+
+
+def test_free_words_stay_free(tmp_path):
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", census=_census("main session 1"))
+    claimed(root, ledger)
+    row = handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", on="the lane", why="a suite runs")
+    assert row.waiting_on == "the lane" and "resolved_from" not in (row.history[-1].get("evidence") or {})
+
+
+def test_an_unaskable_census_records_the_name_as_written(tmp_path):
+    from flotilla.core.census import CensusUnavailable
+
+    def unaskable():
+        raise CensusUnavailable("no sessions directory")
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", census=unaskable)
+    claimed(root, ledger)
+    row = handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", on="orchestrator 4", why="its call")
+    assert row.waiting_on == "orchestrator 4"
+    assert "not checked" in row.history[-1]["evidence"]["unchecked"]
