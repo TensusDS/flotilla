@@ -43,7 +43,7 @@ def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run, who
                                               for segment in segments if push.door(segment) is not None)
                           if found is not None]
     try:
-        profile, _ = rules_for(Path(root), run=run)
+        profile, note = rules_for(Path(root), run=run)
     except Exception as err:  # noqa: BLE001 - which guards are on is unknown
         # a push is judged by origin's rules, which the push guard reads itself: an unreadable tree profile is no
         # reason to judge it otherwise, nor one an override covers (review of the scan of 0.7.0, C2)
@@ -55,6 +55,8 @@ def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run, who
                                                  "the revert and line-number guards did not run")]
     on = profile.get("guards") or {}
     findings: list[Finding] = list(persons)
+    if "does not parse" in note:   # the guards stand on trunk's rules; the session is told its own file is broken
+        findings.append(Finding("rules", False, f"flotilla guards: {note}"))
     findings += _organized(segments, root)
     findings += _collected(segments, root, session_id)
     for segment in segments:

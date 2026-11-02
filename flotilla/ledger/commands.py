@@ -80,12 +80,19 @@ def _trunk_named_on(root: Path, ref: str) -> str:
         return ""
 
 
-def trunk_rules(root: Path, *, at: str = "") -> Rules:
+def trunk_rules(root: Path, *, at: str = "", trunk: str | None = None) -> Rules:
     """The profile and posts as trunk carries them, and the label `<ref>@<sha>` they were read at. `at` is a revision
     origin named as its trunk: rules that grant are read there, never at the local ref, which any session can repoint
-    (scan of 0.6.10, F1)."""
-    local = _project(root)
-    trunk = (local.data.get("trunk") or {}).get("branch", "main")
+    (scan of 0.6.10, F1). `trunk` names trunk without reading the tree's own profile, for a tree whose profile does
+    not parse: its rules are still trunk's (void-lanes-online, 2026-11-02)."""
+    if trunk is None:
+        local = _project(root)
+        trunk = (local.data.get("trunk") or {}).get("branch", "main")
+    else:
+        top = config.find_project(Path(root))
+        if top is None:
+            raise config.ConfigError(f"not onboarded: no .flotilla/project.toml at or above {Path(root).resolve()}")
+        local = config.Project(root=top, path=top / ".flotilla" / "project.toml", schema=0, data={})
     # the tree's own profile names trunk, and a seat edits its tree: origin's default branch has the last word, so a
     # session cannot point the rules - its posts, their modes and prompts - at a branch of its own (F6)
     default = subprocess.run(["git", "-C", str(local.root), "symbolic-ref", "-q", "--short",

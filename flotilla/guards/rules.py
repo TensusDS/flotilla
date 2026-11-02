@@ -17,6 +17,17 @@ import subprocess
 from pathlib import Path
 
 
+def _trunk_without_the_tree(found: Path, err: Exception, run) -> tuple[dict, str]:
+    from flotilla.ledger.commands import trunk_rules
+    default = run(["git", "-C", str(found), "symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD"],
+                  capture_output=True, text=True, check=False).stdout.strip()
+    trunk = default[len("origin/"):] if default.startswith("origin/") else ""
+    named = f"origin's default branch `{trunk}`" if trunk else "`main`, assumed since origin names no default branch"
+    rules = trunk_rules(found, trunk=trunk or "main")
+    return rules.profile, (f"this tree's .flotilla/project.toml does not parse ({err}); the guards follow the rules "
+                           f"of trunk, {named}, until it is fixed")
+
+
 def rules_for(root, run=subprocess.run) -> tuple[dict, str]:
     from flotilla.core import config
     from flotilla.ledger import gitq
@@ -24,7 +35,12 @@ def rules_for(root, run=subprocess.run) -> tuple[dict, str]:
     found = config.find_project(Path(root))
     if found is None:
         raise config.ConfigError(f"not onboarded: no .flotilla/project.toml at or above {Path(root).resolve()}")
-    local = config.load_project(found)
+    try:
+        local = config.load_project(found)
+    except config.ConfigError as err:
+        # a profile a session broke in its own tree must not switch off the guards that judge that tree: trunk's
+        # rules still stand, read without it (void-lanes-online, 2026-11-02)
+        return _trunk_without_the_tree(found, err, run)
     trunk = (local.data.get("trunk") or {}).get("branch", "main")
     ref = gitq.trunk_ref(found, trunk, run=run)
     carried = run(["git", "-C", str(found), "cat-file", "-e", f"{ref}:.flotilla/project.toml"],

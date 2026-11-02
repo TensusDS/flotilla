@@ -911,3 +911,48 @@ def test_a_broken_tree_profile_and_an_override_do_not_open_a_push(tmp_path, monk
     (root / ".flotilla" / "project.toml").write_text("[[[", encoding="utf-8")
     answer = ask(root, 'FLOTILLA_GATE_OVERRIDE="x" git push origin main', monkeypatch, tmp_path)
     assert answer and answer["permissionDecision"] == "deny" and "not approved" in answer["permissionDecisionReason"]
+
+
+BROKEN = "schema = 1\n[guards\nrevert = "
+
+
+def test_a_tree_profile_that_does_not_parse_leaves_the_guards_on(tmp_path, monkeypatch):
+    """Void-lanes-online, 2026-11-02: with a TOML error in the tree's profile the guards said the revert and
+    line-number guards did not run, and the session went on with them off. Trunk's rules still stand."""
+    root = onboarded(tmp_path)
+    (root / "f.txt").write_text("work\n", encoding="utf-8")
+    (root / ".flotilla" / "project.toml").write_text(BROKEN, encoding="utf-8")
+    answer = ask(root, "sed -i '1d' f.txt", monkeypatch, tmp_path)
+    assert answer["permissionDecision"] == "deny", answer
+    told = ask(root, "git checkout -b feat/fix-profile", monkeypatch, tmp_path)   # a passing command is told
+    assert "permissionDecision" not in told and "does not parse" in told["additionalContext"]
+
+
+def _rules(root):
+    from flotilla.guards.rules import rules_for
+    return rules_for(root)
+
+
+def test_trunk_is_named_by_origin_when_the_tree_profile_is_broken(tmp_path):
+    from ledgerkit import IDENTITY, git
+    root = onboarded(tmp_path)
+    git(root, "checkout", "-q", "-b", "trunk-x")
+    text = (root / ".flotilla" / "project.toml").read_text(encoding="utf-8")
+    (root / ".flotilla" / "project.toml").write_text(text.replace('branch = "main"', 'branch = "trunk-x"') +
+                                                     "\n# trunk-x's own\n", encoding="utf-8")
+    git(root, "add", ".flotilla")
+    git(root, *IDENTITY, "commit", "-q", "-m", "trunk-x")
+    git(root, "push", "-q", "origin", "trunk-x")
+    git(root, "remote", "set-head", "origin", "trunk-x")
+    (root / ".flotilla" / "project.toml").write_text(BROKEN, encoding="utf-8")
+    profile, note = _rules(root)
+    assert profile["trunk"]["branch"] == "trunk-x" and "does not parse" in note and "`trunk-x`" in note
+
+
+def test_no_origin_head_assumes_main_and_says_so(tmp_path):
+    from ledgerkit import git
+    root = onboarded(tmp_path)
+    git(root, "remote", "set-head", "origin", "-d")
+    (root / ".flotilla" / "project.toml").write_text(BROKEN, encoding="utf-8")
+    profile, note = _rules(root)
+    assert profile["guards"]["revert"] is True and "`main`" in note and "assumed" in note
