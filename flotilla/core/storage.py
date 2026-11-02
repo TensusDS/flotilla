@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextlib
 import fcntl
+import hashlib
 import json
 import os
 import re
@@ -51,40 +52,36 @@ def _read(path: Path) -> ReadResult:
     return ReadResult(records, tail != b"")
 
 
-#: How much of what precedes an offset is kept to tell that the file still holds what was read up to it.
-_SAMPLE = 64
+def _digest(data: bytes) -> bytes:
+    return hashlib.blake2b(data, digest_size=16).digest()
 
 
 def _read_after(path: Path, offset: int, identity: tuple | None) -> tuple[list[dict], int, tuple, bool]:
     """The committed lines after `offset`, the offset after them, what identifies the file as read, and whether it was
     read from the start. A log is only ever appended to (a torn tail past the committed lines is the one thing cut), so
     a reader that remembers where it stopped reads on from there; a file that is another one - replaced, shortened, or
-    no longer holding the bytes it held just before `offset` - is read from the start."""
+    no longer holding the bytes it held up to `offset`, an edit in place included - is read from the start. The check
+    hashes what was read before: a read of the file, not the parse that is most of a fold."""
     try:
         with open(path, "rb") as handle:
             stat = os.fstat(handle.fileno())
-            start = 0
-            if identity is not None and tuple(identity[:2]) == (stat.st_dev, stat.st_ino) and \
-                    0 < offset <= stat.st_size:
-                handle.seek(max(0, offset - _SAMPLE))
-                if handle.read(offset - max(0, offset - _SAMPLE)) == identity[2]:
-                    start = offset
-            handle.seek(start)
-            data = handle.read()
-            end = start + data.rfind(b"\n") + 1   # what follows the last newline was never committed
-            handle.seek(max(0, end - _SAMPLE))
-            sample = handle.read(end - max(0, end - _SAMPLE))
+            whole = handle.read()
     except FileNotFoundError:
         return [], 0, (None, None, b""), True
+    end = whole.rfind(b"\n") + 1   # what follows the last newline was never committed
+    start = 0
+    if identity is not None and tuple(identity[:2]) == (stat.st_dev, stat.st_ino) and 0 < offset <= end \
+            and _digest(whole[:offset]) == identity[2]:
+        start = offset
     records = []
-    for number, raw in enumerate(data[:end - start].split(b"\n")[:-1], start=1):
+    for number, raw in enumerate(whole[start:end].split(b"\n")[:-1], start=1):
         try:
             records.append(json.loads(raw.decode("utf-8")))
         except UnicodeDecodeError as err:
             raise StorageCorrupt(f"{path}: line {number} after byte {start}: not UTF-8 ({err.reason})") from err
         except json.JSONDecodeError as err:
             raise StorageCorrupt(f"{path}: line {number} after byte {start}: {err.msg}") from err
-    return records, end, (stat.st_dev, stat.st_ino, sample), start == 0
+    return records, end, (stat.st_dev, stat.st_ino, _digest(whole[:end])), start == 0
 
 
 class LogTransaction:

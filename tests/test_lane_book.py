@@ -229,3 +229,19 @@ def test_a_booking_handed_out_does_not_change_when_the_cache_advances(tmp_path):
     lanes.release("b1")
     assert held.state == book.WAITING and before["b1"] is held
     assert lanes.bookings()["b1"].state == book.RELEASED
+
+
+def test_an_in_place_edit_of_an_earlier_line_is_read_again(tmp_path):
+    """Final review of 0.24.2, I2: an edit in place (same inode, same length, far from the tail) left a running
+    waiter folding a stale prefix for good."""
+    lanes = book.Book(LocalLogStore(tmp_path), Procs())
+    for n in range(4):
+        lanes.enqueue(f"main session {n}", "suite", pid=None)
+    assert lanes.bookings()["b1"].state == book.WAITING
+    path = tmp_path / "lane.jsonl"
+    data = path.read_bytes()
+    edited = data.replace(b'"state":"waiting"', b'"state":"expired"', 1)
+    assert len(edited) == len(data) and edited != data
+    with open(path, "r+b") as handle:   # in place: the inode stays
+        handle.write(edited)
+    assert lanes.bookings()["b1"].state == book.EXPIRED and lanes.bookings() == _whole(tmp_path)

@@ -9,11 +9,15 @@ Two checks that narrowed silently, and the lane's cost to the machine it guards.
 
 - **A waiting lane run no longer burns CPU on the journal.** Each poll read and folded the whole lane journal about
   five times, and the journal only grows: 28 waiters held about 3 of 8 cores on one field machine. A waiter now
-  reads only the lines appended since its last poll - under a millisecond on a 25 000-line journal, where a read cost
-  0.9 s of CPU - and plain text is no longer walked character by character. What anyone is shown is unchanged.
+  parses only the lines appended since its last read - about 0.03 s on a 25 000-line journal, where a read cost
+  0.9 s of CPU, the rest being a hash that notices a journal edited in place - and plain text is no longer walked
+  character by character. What anyone is shown is unchanged.
 - **A branch that adds a test tier is receipted with it.** A receipt runs trunk's tiers plus every tier the
-  revision's own profile adds, and every check over a revision asks for the same, naming a tier that did not run. A
-  tier trunk names keeps trunk's command; a revision whose profile does not parse gets no green receipt.
+  revision's own profile adds since it was cut from trunk; the hand, the push guard, the gate and the sender's brief
+  ask for the same, naming a tier that did not run. A tier trunk names keeps trunk's command; a revision whose
+  profile does not parse, or holds `tests` of the wrong shape, gets no green receipt. While seats on 0.24.1 and 0.24.2
+  share a repository, a branch that adds a tier has each version re-run the other's receipt: both refuse, neither
+  passes a receipt that lacks the tier.
 - **A tree profile that does not parse no longer turns the guards off.** They follow trunk's rules, trunk named by
   origin's default branch (or `main`, said so), and a command that passes is told the file is broken.
 
