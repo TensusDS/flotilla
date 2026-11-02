@@ -280,3 +280,11 @@ def test_a_share_request_never_puts_a_shell_word_into_the_line(tmp_path):
     rig(state).ask("main session 3", "frames", kind="share", project="/work/x; rm -rf ~")
     shown = texts(state, T0, project="/work/x; rm -rf ~")
     assert all("rm -rf" not in text or "! flotilla" not in text for text in shown)
+
+
+
+def test_a_share_request_is_not_relayed_once_the_session_serves_the_project(tmp_path):
+    state = state_on(tmp_path)
+    rig(state).open_session("the person", "frames", hours=3, budget=2.0, projects=["/work/twosuns"])
+    rig(state).ask("main session 3", "frames", kind="share", project="/work/twosuns")
+    assert texts(state, T0) == []

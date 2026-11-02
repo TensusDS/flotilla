@@ -357,3 +357,26 @@ def test_rig_status_shows_each_projects_share(world, monkeypatch):
     code, out = run_cli("rig")
     assert code == 0 and "twosuns-key: 0.42 $" in out and "idle: 0.07 $" in out, out
     assert "\x1b" not in out
+
+
+
+def test_share_says_when_a_project_not_on_the_list_used_the_session(world):
+    """Final review of 0.25.0, I3 (design section 4): an older seat does not read the list, so the person is told."""
+    journal(world).ask("main session 3", "frames", project="void-key")
+    run_cli("rig", "open", "--hours", "1", "--budget", "1", "--for", "r1")
+    journal(world).queue_run("s1", who="main 9", project="twosuns-key", revision="a" * 40, program="node",
+                             ladder=("node x",), pid=1, mark="m")
+    code, out = run_cli("rig", "share", "other-key")
+    assert code == 0 and "twosuns-key" in out and "not on the list" in out, out
+
+
+def test_the_first_share_of_an_older_session_keeps_the_project_that_opened_it(world):
+    """Final review of 0.25.0, I4: a session opened before 0.25 for a request answered that request, which names its
+    project; the first share keeps it on the list rather than locking its own fleet out."""
+    rig = journal(world)
+    rig.ask("main session 3", "frames", project="twosuns-key")
+    made = rig.open_session("the person", "frames", hours=1, budget=1.0)   # before 0.25: no list
+    rig.answer_requests(f"session {made.id} opened", kind="machine")
+    code, out = run_cli("rig", "share", "void-key")
+    assert code == 0 and journal(world).sessions()["s1"].projects == ["twosuns-key", "void-key"], out
+    assert "not known" not in out

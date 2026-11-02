@@ -461,8 +461,9 @@ def _main(state: Path, settings: rs.RigSettings, args) -> int:
     finally:
         _cleaning = True
         task.renewing.set()
-        if renewer is not None and renewer.ident is not None:   # a signal can land between creating it and start()
-            renewer.join(35)
+        if renewer is not None:
+            with contextlib.suppress(RuntimeError):   # a signal can land before start() marks the thread started
+                renewer.join(35)
         if task.box is not None and task.paths is not None and not task.lost:
             with contextlib.suppress(Lost):
                 if not task.sent_stop:

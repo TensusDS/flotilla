@@ -381,6 +381,14 @@ def _key_of(named: str) -> str:
     return named.strip()
 
 
+def _opened_for(rig: j.Rig, session_id: str) -> list:
+    """The project of the machine request a session was opened for, which `rig open --for` answered by naming it."""
+    found = [r.project for r in rig.requests().values()
+             if r.kind == "machine" and r.state == j.ANSWERED and r.reason == f"session {session_id} opened"
+             and r.project]
+    return found[:1]
+
+
 def _serving(rig: j.Rig):
     return next((s for s in rig.sessions().values() if s.state == j.OPEN), None)
 
@@ -419,7 +427,8 @@ def _share(state: Path, args, *, add: bool) -> int:
         if before is not None and key in before:
             print(f"session {session.id} already serves {shown}; nothing changed")
             return 0
-        after = [*(before or []), key]
+        opener = [] if before is not None else _opened_for(rig, session.id)
+        after = list(dict.fromkeys([*(before or opener), key]))
     else:
         if before is None:
             print(f"refused: session {session.id} serves every project (it was opened outside a repository or before "
@@ -435,9 +444,14 @@ def _share(state: Path, args, *, add: bool) -> int:
         after = [name for name in before if name != key]
     made = rig.share_session(session.id, after)
     print(f"session {made.id} serves {', '.join(visible(name) for name in made.projects)}")
-    if add and before is None:
+    if add and before is None and not opener:
         print("it served every project until now; the project that opened it is not known, so it is not on the list - "
               "add it with `flotilla rig share` if it should be")
+    others = sorted({run.project for run in rig.runs().values()
+                     if run.session == made.id and run.project and run.project not in made.projects})
+    if others:
+        print(f"used this session though not on the list (a seat on an older flotilla does not read it): "
+              f"{', '.join(visible(name) for name in others)}")
     if add:
         rig.answer_requests(f"session {made.id} shared with {shown}", kind="share",
                             ids=[r.id for r in rig.requests().values()

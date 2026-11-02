@@ -747,3 +747,32 @@ def test_a_signal_before_the_renewer_starts_still_records_the_stop(world, box, t
         rig_run(world, tree, "--", "sleep", "3")
     run = journal(world).runs()["j1"]
     assert run.verdict == "stopped", run
+
+
+
+def test_a_signal_as_the_renewer_begins_still_records_the_stop(world, box, tree, monkeypatch):
+    """Final review of 0.25.0, M7: a thread that has an ident but has not yet marked itself started makes join raise
+    too; whatever join raises, the finally goes on to end the run."""
+    opened(world)
+    raised(world, tree)
+
+    class Half(threading.Thread):
+        def start(self):
+            raise SystemExit(143)
+
+        def join(self, timeout=None):
+            raise RuntimeError("cannot join thread before it is started")
+
+        @property
+        def ident(self):
+            return 12345
+
+    class OnlyHere:
+        Thread = Half
+
+        def __getattr__(self, name):
+            return getattr(threading, name)
+    monkeypatch.setattr(run_module, "threading", OnlyHere())
+    with pytest.raises(SystemExit):
+        rig_run(world, tree, "--", "sleep", "3")
+    assert journal(world).runs()["j1"].verdict == "stopped"
