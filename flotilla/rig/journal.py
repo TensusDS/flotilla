@@ -621,6 +621,51 @@ class Rig:
             total += item.hourly * minutes / 60
         return total
 
+    def shares(self, session_id: str, now: dt.datetime | None = None) -> tuple[dict[str, float], float]:
+        """What each project's runs cost of the session, and the machines' idle time (project share design, section
+        4). A run records its machine's full price for its seconds, and runs share a machine, so each machine's bill
+        - as `spent` counts it - is split here: every stretch of its billed span goes evenly to the runs on it then,
+        from the moment a run started on the machine to its verdict, and a stretch with none is idle. The shares and
+        the idle time add up to `spent`."""
+        moment = now or self.now()
+        records = self.store.read(KEY).records
+        began: dict[str, dt.datetime] = {}
+        for event in records:
+            if isinstance(event, dict) and event.get("kind") == "run" and event.get("state") == RUNNING \
+                    and isinstance(event.get("id"), str) and event["id"] not in began and _aware(event.get("at")):
+                began[event["id"]] = _parse(event["at"])
+        runs = _fold_runs(records)
+        shares: dict[str, float] = {}
+        idle = 0.0
+        for item in _fold(records)[1].values():
+            if item.session != session_id or item.hourly is None or not item.created:
+                continue
+            created = _parse(item.created)
+            end = _parse(item.ended) if item.state == GONE and item.ended else moment
+            minutes = math.ceil(max(0.0, (end - created).total_seconds()) / 60)
+            if item.state == GONE:
+                minutes += int(SETTLE.total_seconds() // 60)
+            bill = item.hourly * minutes / 60
+            span = minutes * 60.0
+            spans = []
+            for run in runs.values():
+                if run.machine != item.id or run.id not in began:
+                    continue
+                stop = _parse(run.ended) if run.ended else moment
+                lo = max(0.0, (began[run.id] - created).total_seconds())
+                hi = min(span, (stop - created).total_seconds())
+                if hi > lo:
+                    spans.append((lo, hi, run.project))
+            cuts = sorted({0.0, span, *(edge for lo, hi, _ in spans for edge in (lo, hi))})
+            for lo, hi in zip(cuts, cuts[1:]):
+                on = [project for start, stop, project in spans if start <= lo and hi <= stop]
+                cost = bill * (hi - lo) / span if span else 0.0
+                if not on:
+                    idle += cost
+                for project in on:
+                    shares[project] = shares.get(project, 0.0) + cost / len(on)
+        return shares, idle
+
     def rate(self, session_id: str) -> float:
         return sum(item.hourly for item in self.machines().values()
                    if item.session == session_id and item.state in LIVE and item.created and item.hourly is not None)

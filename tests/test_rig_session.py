@@ -346,3 +346,14 @@ def test_share_takes_a_repository_path_and_records_its_key(world, tmp_path):
     run_cli("rig", "open", "--hours", "1", "--budget", "1", "--for", "r1")
     code, out = run_cli("rig", "share", str(root))
     assert code == 0 and journal(world).sessions()["s1"].projects == ["twosuns-key", key] and key in out
+
+
+
+def test_rig_status_shows_each_projects_share(world, monkeypatch):
+    rig = journal(world)
+    rig.open_session("the person", "frames", hours=3, budget=2.0, projects=["twosuns-key"])
+    monkeypatch.setattr(j.Rig, "shares", lambda self, session_id, now=None: (
+        {"twosuns-key": 0.42, "evil\x1b[2J": 0.01}, 0.07))
+    code, out = run_cli("rig")
+    assert code == 0 and "twosuns-key: 0.42 $" in out and "idle: 0.07 $" in out, out
+    assert "\x1b" not in out

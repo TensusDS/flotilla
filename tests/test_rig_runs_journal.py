@@ -295,3 +295,54 @@ def test_readings_still_refuse_past_the_floor(tmp_path):
     third = queue_ladder(r, s, ("exact:tiny",), pid=3)
     assert r.start_run(third.id, m.id, alive=ALIVE, roomy=False) is None
     assert r.start_run(third.id, m.id, alive=ALIVE, roomy=True) is not None
+
+
+
+def _spend(tmp_path, spans, machines=1, now=30, hourly=0.6):
+    """Runs (project, start minute, end minute, machine index) on machines created at T0; the shares at `now`."""
+    clock = {"at": T0}
+    r = rig(tmp_path, clock)
+    s = r.open_session("p", "x", hours=3, budget=5.0)
+    made = []
+    for n in range(machines):
+        m = r.add_machine(s.id, "vast", lambda mid: f"flotilla:k:{mid}")
+        r.move(m.id, j.PROVISIONING, instance=str(900 + n), hourly=hourly, created=T0.isoformat())
+        r.move(m.id, j.READY, address=f"ssh4.vast.ai:3000{n}")
+        made.append(m)
+    events = []
+    for n, (project, start, end, index) in enumerate(spans):
+        events.append((start, "start", n, project, index))
+        events.append((end, "end", n, project, index))
+    started = {}
+    for minute, what, n, project, index in sorted(events, key=lambda e: (e[0], e[1] == "start")):
+        clock["at"] = T0 + dt.timedelta(minutes=minute)
+        if what == "start":
+            run = r.queue_run(s.id, who=f"minor {n}", project=project, revision="a" * 40, program="node",
+                              ladder=("node x",), pid=100 + n, mark="m")
+            assert r.start_run(run.id, made[index].id, alive=ALIVE, roomy=True)
+            started[n] = run
+        else:
+            r.finish_run(started[n].id, "green", exit=0)
+    clock["at"] = T0 + dt.timedelta(minutes=now)
+    shares, idle = r.shares(s.id)
+    return r, s, shares, idle
+
+
+def test_one_run_alone_is_charged_its_minutes_and_the_rest_is_idle(tmp_path):
+    r, s, shares, idle = _spend(tmp_path, [("P", 10, 20, 0)])
+    assert shares == {"P": pytest.approx(0.10)} and idle == pytest.approx(0.20)
+    assert sum(shares.values()) + idle == pytest.approx(r.spent(s.id))
+
+
+def test_two_overlapping_runs_of_two_projects_split_the_minutes(tmp_path):
+    """Project share design, section 4: each run records the machine's full price for its seconds, so two runs on one
+    machine at once must split it, or the projects' sums pass what the session spent."""
+    r, s, shares, idle = _spend(tmp_path, [("twosuns", 0, 20, 0), ("void", 10, 30, 0)])
+    assert shares == {"twosuns": pytest.approx(0.15), "void": pytest.approx(0.15)} and idle == pytest.approx(0.0)
+    assert sum(shares.values()) + idle == pytest.approx(r.spent(s.id))
+
+
+def test_runs_on_two_machines_split_only_their_own_machine(tmp_path):
+    r, s, shares, idle = _spend(tmp_path, [("twosuns", 0, 30, 0), ("void", 0, 15, 1)], machines=2)
+    assert shares == {"twosuns": pytest.approx(0.30), "void": pytest.approx(0.15)} and idle == pytest.approx(0.15)
+    assert sum(shares.values()) + idle == pytest.approx(r.spent(s.id))

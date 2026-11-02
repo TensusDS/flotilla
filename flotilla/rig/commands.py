@@ -108,6 +108,13 @@ def _status(state: Path, settings: rs.RigSettings) -> int:
         budget = f"{session.budget:.2f}" if session.budget is not None else "?"
         print(f"session {session.id} {session.state} ({session.who}: {session.why}) until {_hhmm(session.until)}, "
               f"spent at least {rig.spent(session.id):.2f} of {budget} $")
+        serves = "every project" if session.projects is None else ", ".join(visible(p) for p in session.projects)
+        print(f"  serves {serves}")
+        shares, idle = rig.shares(session.id)
+        for project, cost in sorted(shares.items(), key=lambda pair: -pair[1]):
+            print(f"  {visible(project) or 'no project'}: {cost:.2f} $")
+        if shares or idle:
+            print(f"  idle: {idle:.2f} $ (the machines' time with no run on them)")
     if not shown:
         print("session: none open")
     for item in live:
