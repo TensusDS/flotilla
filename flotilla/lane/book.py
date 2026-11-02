@@ -207,12 +207,13 @@ class Book:
         return self._end(booking_id, RELEASED, why,
                          **{k: v for k, v in (measured or {}).items() if k in MEASURED and v is not None})
 
-    def sweep(self) -> list[Booking]:
+    def sweep(self, gone=None) -> list[Booking]:
+        """End bookings whose process is not alive; with `gone`, only those it also says are gone."""
         swept = []
         with self.store.transaction(KEY) as tx:
             found = fold(tx.read().records)
             for item in [*self.holders(found), *self.waiters(found)]:
-                if item.pid is None or self.live(item):
+                if item.pid is None or self.live(item) or (gone is not None and not gone(item)):
                     continue
                 state = RELEASED if item.state == HELD else LEFT
                 cut = {"cut": True} if state == RELEASED else {}   # a run cut short measures nothing; never dropped

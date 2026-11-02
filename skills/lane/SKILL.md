@@ -8,4 +8,5 @@ compatibility: Claude Code only (CLI, IDE or desktop Code tab) - needs the Bash 
 
 Run `${CLAUDE_PLUGIN_ROOT}/bin/flotilla lane` from the repository root and show every line it prints: capacity,
 who holds the lane and since when, who waits in which order, and the machine's answers. A line marked `unknown`
-means a question could not be asked; never report it as free. Do not take, release or sweep anything yourself.
+means a question could not be asked; never report it as free. Showing the lane ends bookings whose process no
+longer exists, and says so on its first line; do not take, release or run `lane sweep` yourself.

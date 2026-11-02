@@ -168,14 +168,21 @@ def _status(args) -> int:
     table = ProcessTable.for_machine()
     lanes = _lanes(table)
     profile, top, problem = _profile(args.root)
-    swept = lanes.sweep()   # a dead booking blocks nobody since grant skips it, but it misleads whoever reads this
+    # a dead booking blocks nobody since grant skips it, but it misleads whoever reads this; only a process that does
+    # not exist is swept here - one failed look (a `ps` that did not answer) must not release a live holder for good
+    try:
+        swept = lanes.sweep(gone=lambda item: table.exists(item.pid) is False)
+    except OSError as err:
+        swept = []
+        print(f"could not sweep bookings whose process is gone: {err}")
     if swept:
-        print(f"swept {len(swept)} booking(s) whose process is gone: " + ", ".join(item.id for item in swept))
+        print(f"swept {len(swept)} booking(s) whose process is gone: " + ", ".join(visible(item.id) for item in swept))
     slots = capacity()
     print(f"capacity: {slots} long run(s) at a time (machine.toml lane_capacity)")
-    held, waiting = lanes.holders(), lanes.waiters()
+    found = lanes.bookings()   # read once: each waiter's reason would read the whole journal again
+    held, waiting = lanes.holders(found), lanes.waiters(found)
     reading = _reader(lanes, table, profile, top, problem)()
-    hist = estimate.history(lanes.bookings(), now=dt.datetime.now(dt.timezone.utc))
+    hist = estimate.history(found, now=dt.datetime.now(dt.timezone.utc))
     print("held:" if held or reading.computing else "held: nobody")
     for item in held:
         state = "alive" if lanes.live(item) else "its process is gone - `flotilla lane sweep`"
@@ -188,8 +195,9 @@ def _status(args) -> int:
     print("waiting:" if waiting else "waiting: nobody")
     for item in waiting:
         gone = "" if lanes.live(item) else "; its process is gone - `flotilla lane sweep`"
+        why = acq.in_the_way(lanes, reading, slots, item.id, found)
         print(f"  {item.id} {item.who} ({item.note or 'no note'}) since {item.since}{gone}; "
-              f"{describe_estimate(item, hist)}; waits because: {acq.in_the_way(lanes, reading, slots, item.id)}")
+              f"{describe_estimate(item, hist)}; waits because: {why}")
     print("machine:")
     for answer in reading.answers:
         flag = {True: "busy", False: "ok", None: "unknown"}[answer.blocks]

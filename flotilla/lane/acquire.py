@@ -37,13 +37,13 @@ def _order(item) -> int:
     return int(item.id[1:]) if item.id[1:].isdigit() else 0
 
 
-def in_the_way(lanes, reading, capacity: int, mine: str = "") -> str:
+def in_the_way(lanes, reading, capacity: int, mine: str = "", found: dict | None = None) -> str:
     parts = []
-    held = [item for item in lanes.holders() if lanes.live(item)]
+    held = [item for item in lanes.holders(found) if lanes.live(item)]
     if held:
         parts.append("held by " + "; ".join(f"{item.who} ({item.note or 'no note'}) since {item.since}"
                                             for item in held))
-    ahead = [item for item in lanes.waiters() if mine and item.id != mine and lanes.live(item)
+    ahead = [item for item in lanes.waiters(found) if mine and item.id != mine and lanes.live(item)
              and _order(item) < int(mine[1:] or 0)]
     if ahead:
         parts.append("waiting ahead: " + "; ".join(f"{item.id} {item.who} ({item.note or 'no note'})"

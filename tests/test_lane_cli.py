@@ -418,3 +418,50 @@ def test_showing_the_lane_sweeps_dead_bookings(tmp_path, monkeypatch):
     _, out = run_cli("lane", "--root", str(root))
     assert out.splitlines()[0] == f"swept 1 booking(s) whose process is gone: {dead.id}", out
     assert "waiting: nobody" in out
+
+
+def test_the_lane_reads_its_journal_the_same_number_of_times_however_many_wait(tmp_path, monkeypatch):
+    """Final review of 0.24.1, I3: each waiter's reason re-read the whole journal twice."""
+    from flotilla.core.storage import LocalLogStore
+    from flotilla.lane import book
+    from flotilla.lane.procs import ProcessTable
+    root = onboarded(tmp_path, monkeypatch)
+    lanes = book.Book(LocalLogStore(tmp_path / "state" / "lane"), ProcessTable.for_machine())
+    folds = []
+    real = book.fold
+    monkeypatch.setattr(book, "fold", lambda records: folds.append(1) or real(records))
+    lanes.enqueue("main session 2", "one", pid=None)
+    run_cli("lane", "--root", str(root))   # the first look also does one-off work; count from the second
+    folds.clear()
+    run_cli("lane", "--root", str(root))
+    one = len(folds)
+    for n in range(3):
+        lanes.enqueue(f"main session {n + 3}", "more", pid=None)
+    folds.clear()
+    run_cli("lane", "--root", str(root))
+    assert len(folds) == one
+
+
+def test_showing_the_lane_keeps_a_booking_whose_process_still_exists(tmp_path, monkeypatch):
+    """Final review of 0.24.1, M4: a look that cannot confirm a process (a failed `ps`, a start mark that differs)
+    must not release a live holder for good; only a process that does not exist is swept when the lane is shown."""
+    import os
+    from flotilla.core.storage import LocalLogStore
+    from flotilla.lane import book
+    from flotilla.lane.procs import ProcessTable
+    root = onboarded(tmp_path, monkeypatch)
+    doubtful = book.Book(LocalLogStore(tmp_path / "state" / "lane"), ProcessTable.for_machine()).enqueue(
+        "main session 2", "waiting", pid=os.getpid(), mark="not-its-mark")
+    _, out = run_cli("lane", "--root", str(root))
+    assert "swept" not in out.splitlines()[0] and f"{doubtful.id} main session 2" in out
+
+
+def test_a_lane_that_cannot_be_swept_is_still_shown(tmp_path, monkeypatch):
+    from flotilla.lane import book
+    root = onboarded(tmp_path, monkeypatch)
+
+    def unwritable(self, **kwargs):
+        raise OSError("read-only file system")
+    monkeypatch.setattr(book.Book, "sweep", unwritable)
+    code, out = run_cli("lane", "--root", str(root))
+    assert code == 0 and "could not sweep" in out and "capacity:" in out

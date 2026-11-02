@@ -79,7 +79,9 @@ def _decision(got: dict, asked: queue.Question, wait: float) -> dict:
 
 #: flotilla's own subcommands a seat runs without asking the person: reading the fleet, and ledger moves flotilla
 #: checks itself - post, evidence, revision (worldcore field test W16). Each maps to the words that refuse it anyway:
-#: standing the fleet down, the person's approval. `lane` passes only bare (who holds the machine), never a booking.
+#: standing the fleet down, the person's approval. `lane` passes only bare (who holds the machine), never a booking;
+#: bare `lane` ends bookings whose process no longer exists, which blocks nobody's run (0.24.1), while `lane sweep`,
+#: which also ends a booking whose process only fails a look, stays the person's.
 #: Not here, on purpose (review of 0.6.1): `receipt` runs the tree's own test code, `helper` raises a session,
 #: `tree` writes a checkout wherever it is told - each of those is the person's to allow.
 OWN_SUBCOMMANDS = {"status": (), "fleet": ("down",), "watch": (), "brief": (), "metrics": (), "doctor": (),
