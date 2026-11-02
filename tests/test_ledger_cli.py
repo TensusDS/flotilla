@@ -615,3 +615,31 @@ def test_adopt_from_hands_a_gone_sessions_work_in_one_command():
     from flotilla import cli
     parsed = cli.build_parser().parse_args(["work", "adopt", "--from", "main session 8", "--to", "main session 2"])
     assert (parsed.branch, parsed.from_, parsed.to) == (None, "main session 8", "main session 2")
+
+
+def _rows_by_branch(root):
+    from flotilla.ledger.commands import open_ledger
+    return {row.branch: row for row in open_ledger(root).rows().values()}
+
+
+def test_repeated_requires_keep_every_row(tmp_path, monkeypatch):
+    """Twosuns, 2026-11-01, item 10: `--requires a b --requires c` kept only c, the last flag replacing the rest, so a
+    row built on three dependencies was walked with one of them."""
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    for branch in ("feat/a", "feat/b", "feat/c"):
+        assert run_cli("work", "claim", branch, "--root", str(root), "--as", "main session 1")[0] == 0
+    code, out = run_cli("work", "claim", "feat/d", "--requires", "feat/a", "feat/b", "--requires", "feat/c",
+                        "--requires", "feat/a", "--root", str(root), "--as", "main session 2")
+    assert code == 0, out
+    rows = _rows_by_branch(root)
+    assert rows["feat/d"].requires == [rows["feat/a"].id, rows["feat/b"].id, rows["feat/c"].id]
+
+
+def test_work_show_names_requires_and_after(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    for branch in ("feat/a", "feat/b"):
+        assert run_cli("work", "claim", branch, "--root", str(root), "--as", "main session 1")[0] == 0
+    assert run_cli("work", "claim", "feat/d", "--requires", "feat/a", "--after", "feat/b", "--root", str(root),
+                   "--as", "main session 2")[0] == 0
+    code, out = run_cli("work", "show", "feat/d", "--root", str(root))
+    assert code == 0 and "  requires: feat/a (claimed)" in out and "  goes after: feat/b (claimed)" in out, out

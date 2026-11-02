@@ -192,6 +192,11 @@ def _show(ledger: core.Ledger, branch: str) -> int:
     row = matches[-1]
     print(summary(row))
     print(f"  {_base(ledger, row)} | tip {row.tip or '-'} | verdict {row.verdict or '-'} | ref {row.ref or '-'}")
+    rows = ledger.rows()
+    for label, ids in (("requires", row.requires), ("goes after", row.after)):
+        if ids:
+            print(f"  {label}: " + ", ".join(f"{rows[i].branch} ({rows[i].state})" if i in rows
+                                           else f"{i} (no such row)" for i in ids))
     if row.waiting_on:
         print(f"  waiting on {row.waiting_on}: {row.note}")
     if row.why:
@@ -247,8 +252,8 @@ def _adopt(ledger, actor, args):
 
 
 MOVES = {
-    "claim": lambda l, a, x: core.claim(l, a, x.branch, tree=x.tree, ref=x.ref, requires=x.requires, after=x.after,
-                                        also=x.also),
+    "claim": lambda l, a, x: core.claim(l, a, x.branch, tree=x.tree, ref=x.ref, requires=x.requires or [],
+                                        after=x.after or [], also=x.also),
     "reserve": lambda l, a, x: core.reserve(l, a, x.branch, tree=x.tree),
     "release": lambda l, a, x: core.release(l, a, x.branch, why=x.why, settled_by=x.settled_by),
     "hand": lambda l, a, x: handover.hand(l, a, x.branch, tip=x.tip),
@@ -554,11 +559,12 @@ def run_ledger_command(args) -> int:
             _letters(ledger, caller, before)
             return reconcile_exit(lines)
         if args.command == "tree" and args.action == "switch":
-            row = tree_mod.switch(ledger, caller, args.branch, ref=args.ref, requires=args.requires,
-                                  after=args.after, also=args.also)
+            row = tree_mod.switch(ledger, caller, args.branch, ref=args.ref, requires=args.requires or [],
+                                  after=args.after or [], also=args.also)
         elif args.command == "tree":
             row = tree_mod.cut(ledger, caller, args.branch, Path(args.tree), expect=args.expect, ref=args.ref,
-                               requires=args.requires, after=args.after, also=args.also)
+                               requires=args.requires or [], after=args.after or [],
+                               also=args.also)
         else:
             result = MOVES[args.move](ledger, caller, args)
             if isinstance(result, tuple):

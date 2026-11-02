@@ -215,7 +215,8 @@ def link_ids(rows: dict[str, Row], wanted_rows, flag: str) -> list[str]:
                                            if row.branch == wanted and row.is_open), None)
         if target is None:
             raise MoveRefused(f"{flag} `{wanted}`: no such row or open branch")
-        ids.append(target.id)
+        if target.id not in ids:   # named twice, kept once, in the order first named
+            ids.append(target.id)
     return ids
 
 

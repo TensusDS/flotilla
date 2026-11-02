@@ -94,8 +94,10 @@ def build_parser() -> argparse.ArgumentParser:
     claim = move_parser("claim", "claim work on a branch")
     claim.add_argument("--tree", default="")
     claim.add_argument("--ref", default="")
-    claim.add_argument("--requires", nargs="*", default=[], help="rows this one builds on (walked with them)")
-    claim.add_argument("--after", nargs="*", default=[], help="rows this one only goes after (never a part of them)")
+    claim.add_argument("--requires", action="extend", nargs="+", default=None,
+                       help="rows this one builds on (walked with them); repeat or list several, all are kept")
+    claim.add_argument("--after", action="extend", nargs="+", default=None,
+                       help="rows this one only goes after (never a part of them); repeat or list several")
     claim.add_argument("--also", default="")
     move_parser("reserve", "hold a post's home branch").add_argument("--tree", default="")
     move_parser("hand", "hand work over at its tip").add_argument("--tip", default=None)
@@ -178,16 +180,20 @@ def build_parser() -> argparse.ArgumentParser:
     cut.add_argument("--tree", required=True)
     cut.add_argument("--expect", default=None)
     cut.add_argument("--ref", default="")
-    cut.add_argument("--requires", nargs="*", default=[], help="rows this one builds on (walked with them)")
-    cut.add_argument("--after", nargs="*", default=[], help="rows this one only goes after (never a part of them)")
+    cut.add_argument("--requires", action="extend", nargs="+", default=None,
+                       help="rows this one builds on (walked with them); repeat or list several, all are kept")
+    cut.add_argument("--after", action="extend", nargs="+", default=None,
+                       help="rows this one only goes after (never a part of them); repeat or list several")
     cut.add_argument("--also", default="")
     cut.add_argument("--root", default=".")
     cut.add_argument("--as", dest="as_name", default=None)
     switch = tree_actions.add_parser("switch", help="move your home tree to a new branch from trunk and claim it")
     switch.add_argument("branch")
     switch.add_argument("--ref", default="")
-    switch.add_argument("--requires", nargs="*", default=[], help="rows this one builds on (walked with them)")
-    switch.add_argument("--after", nargs="*", default=[], help="rows this one only goes after (never a part of them)")
+    switch.add_argument("--requires", action="extend", nargs="+", default=None,
+                       help="rows this one builds on (walked with them); repeat or list several, all are kept")
+    switch.add_argument("--after", action="extend", nargs="+", default=None,
+                       help="rows this one only goes after (never a part of them); repeat or list several")
     switch.add_argument("--also", default="")
     switch.add_argument("--root", default=".")
     switch.add_argument("--as", dest="as_name", default=None)
