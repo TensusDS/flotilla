@@ -496,8 +496,10 @@ slot. The lane is a booking, not a lock: a run started outside it is not stopped
 so one project's backlog holds every other project's work behind it. `lane_share = "fair"` in `machine.toml` changes
 who gets a freed slot: the oldest waiter of the project holding the fewest slots and served least recently in the
 last day, so a 7-second check of one project no longer waits behind another project's ten receipts; within a project
-the order is unchanged. Only seats on flotilla 0.25 or later take part - an older seat keeps its place in line and is
-never left waiting for a seat that yielded to it - so the protection reaches a project once its fleet is updated.
+the order is unchanged. A chosen waiter its own project's checks hold back (CI on this machine, a memory floor) is
+passed over after two polls, about 30 s. Only seats on flotilla 0.25 or later take part - an older seat keeps its
+place in line and is never left waiting for a seat that yielded to it - so the protection reaches a project once its
+fleet is updated.
 `flotilla lane` shows the mode, each project's waiters and last turn, and who goes first.
 
 The lane is also where a fleet loses its time. Measured on a fleet that ran three days: the way from "handed over"

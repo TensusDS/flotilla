@@ -10,7 +10,8 @@ Two projects on one machine need not wait on each other any more, by the person'
 - **A fair lane, the person's choice per machine.** `lane_share = "fair"` in `machine.toml` gives a freed slot to the
   oldest waiter of the project holding the fewest slots and served least recently in the last day; within a project
   the order is unchanged, and with one project waiting it is first come, first served. Seats on older flotillas keep
-  their place in line, and a newer seat never yields to one of them, so no slot stands empty while someone waits.
+  their place in line and a newer seat never yields to one of them; a chosen waiter its own project's checks hold
+  back is passed over after about 30 s.
   `flotilla lane` shows the mode, each project's turn and who goes first, and each admission records its path.
 - **A rig session serves the projects the person shares it with.** It starts with the project that asked for it;
   `flotilla rig share` and `rig unshare` are the person's moves. Another project's run, `rig up` or `rig down` is
