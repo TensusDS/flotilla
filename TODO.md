@@ -64,6 +64,22 @@ median 6.8 s run). Checked against main at a50daae (0.24.0 code) where a file is
   its place; a run that does not fit the session's end told before it starts; the unserved queue carried to the
   next session; `watch` naming "rig idle with N waiting"; actual minutes recorded against estimates. Absorbs the
   two items above. *(open, design)*
+- **A rig run does not use the toolchain the receipts use** (twosuns, 2026-11-02, item 4). The default image
+  (`mcr.microsoft.com/playwright:v1.64.0-noble`) carries node 24; the project's receipts run on node 22.22.1, node 24
+  changed one of its pins, so a CPU result on the rig can differ from the local receipt over the same revision.
+  Asked: the profile pins the runtime a rig run uses (`[rig] node = "22.22.1"`). Today the only ways are a custom
+  image the person allows (`flotilla rig allow-image`) or installing node in `[rig] setup_command` by hand, and
+  neither is checked: nothing says the run's runtime differs from the receipt's. A pin, installed before setup and
+  printed with the run's verdict, and a run that says so when the version it met is not the one pinned.
+  *(checked 2026-11-02 on 0.24.1: [rig] has image, gpu, disk_gb, setup_command, max_run_seconds, get_types and no
+  runtime - flotilla/rig/profile.py, flotilla/rig/settings.py:35)*
+- **A tier proven green on the rig does not count for a handover receipt** (twosuns, 2026-11-02, item 5). Asked, as
+  an option: a tier green on the rig over the same files and the same pinned runtime counts for the handover
+  receipt; the push receipt stays local and full. Receipts already reuse a green over the same files
+  (`receipts._green_over`, keyed by `gitq.files_of`), but only greens run on this machine. Needs the runtime pin
+  above first (otherwise "the same toolchain" cannot be asked), and a design for trusting a result that came back
+  from a rented machine: which tiers may, what the receipt records as its source, and that a seat cannot hand a
+  rig run's green over files other than the ones it ran over. *(open, design: flotilla/ledger/receipts.py:124, :145)*
 
 ## From the marketplace pin's third review (2026-10-31, 0.23.3)
 
