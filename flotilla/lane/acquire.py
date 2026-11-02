@@ -18,6 +18,10 @@ from dataclasses import dataclass, field
 from flotilla.lane import book
 
 POLL = 15.0
+#: How long a waiter lets the fair choice keep a free slot before passing it over: two of its polls. A choice its own
+#: project's checks hold back (CI, a memory floor, the foreign runs its patterns count) never asks for the slot, and
+#: waiting on it for ever would leave the slot empty while others wait (final review of 0.25.0, I1).
+FAIR_GRACE = 2 * POLL
 #: Answers that hold the lane whatever the capacity: CI on this machine, memory under the floor, no room on the disk.
 OUTRIGHT = ("ci", "memory", "disk")
 ENV = "FLOTILLA_LANE_BOOKING"   # set for a booked command, so a booking inside it reuses the one it runs under
@@ -73,6 +77,8 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
                          will_run=will_run, project=project)
     deadline = clock() + max(wait, 0)
     said = ""
+    seen: dict[str, float] = {}   # each fair choice this waiter was refused for, and since when
+    skip: set[str] = set()
     try:
         while True:
             reading = read_machine()
@@ -83,9 +89,16 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
             unknown = [answer for answer in reading.answers if answer.blocks is None]
             if not outright and not unknown:
                 granted = lanes.grant(mine.id, slots=slots - len(reading.computing), by_hand=by_hand,
-                                     share=mode)
+                                     share=mode, skip=frozenset(skip))
                 if granted is not None:
                     return Grant(granted, reading, "")
+                choice = getattr(lanes, "passed_for", "")
+                if choice and choice not in skip and clock() - seen.setdefault(choice, clock()) >= FAIR_GRACE:
+                    skip.add(choice)   # it has had the free slot for two polls and not taken it: ask once more now
+                    granted = lanes.grant(mine.id, slots=slots - len(reading.computing), by_hand=by_hand,
+                                          share=mode, skip=frozenset(skip))
+                    if granted is not None:
+                        return Grant(granted, reading, "")
             why = in_the_way(lanes, reading, slots, mine.id, share=mode)
             lasting = [answer for answer in unknown if answer.lasting]
             remaining = deadline - clock()

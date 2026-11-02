@@ -244,7 +244,7 @@ def _take(args) -> int:
     pid = os.getpid()
     grant = acq.acquire(lanes, _reader(lanes, table, profile, top, problem), who=_who(args.as_name), note=args.note,
                         capacity=capacity, share=share, wait=args.wait, pid=pid, mark=table.start_mark(pid) or "",
-                        by_hand=True, say=print)
+                        by_hand=True, say=print, project=_project(args.root))
     if grant.booking is None:
         print(f"refused: {grant.why}")
         return 2

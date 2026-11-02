@@ -162,11 +162,12 @@ def last_served(found: dict, now: dt.datetime) -> dict[str, str]:
     return served
 
 
-def fair_choice(found: dict, live, now: dt.datetime) -> Booking | None:
+def fair_choice(found: dict, live, now: dt.datetime, skip=()) -> Booking | None:
     """The live waiter that gets the next slot under the fair share: among the projects with live waiters, the one
     holding the fewest live slots now, then the one whose last turn is the earliest (none first), then the one whose
     oldest waiter came first; within that project, its oldest waiter (project share design, section 3)."""
-    waiting = sorted((item for item in found.values() if item.state == WAITING and live(item)), key=_order)
+    waiting = sorted((item for item in found.values() if item.state == WAITING and live(item) and item.id not in skip),
+                     key=_order)
     if not waiting:
         return None
     holding: dict[str, int] = {}
@@ -187,6 +188,7 @@ class Book:
         self.procs = procs
         self.clock = clock
         self._read = (0, None, {})   # offset, identity, bookings: a waiter polls for minutes, so it reads on (item 14)
+        self.passed_for = ""         # the fair choice the last grant refused for, so the caller can see who it waits on
 
     def _now(self) -> str:
         moment = self.clock() if self.clock else dt.datetime.now(dt.timezone.utc)
@@ -239,7 +241,11 @@ class Book:
                                ladder=[step[:MAX_TEXT] for step in ladder], will_run=list(will_run),
                                project=project, rule=RULE, inside=inside, **fields)
 
-    def grant(self, booking_id: str, *, slots: int, by_hand: bool = False, share: str = "fifo") -> Booking | None:
+    def grant(self, booking_id: str, *, slots: int, by_hand: bool = False, share: str = "fifo",
+              skip=()) -> Booking | None:
+        """Admit `booking_id` if its turn has come. `skip`: fair choices the caller saw not take a free slot for a
+        while - held back by their own checks - and so passes over (final review of 0.25.0, I1)."""
+        self.passed_for = ""
         with self.store.transaction(KEY) as tx:
             found = self._found(tx)
             mine = found.get(booking_id)
@@ -247,13 +253,13 @@ class Book:
                 return None
             if len([item for item in self.holders(found) if self.live(item)]) >= slots:
                 return None
-            path = self._path(found, mine, share)
+            path = self._path(found, mine, share, skip)
             if path is None:
                 return None
             fields = {"pid": None, "mark": ""} if by_hand else {}   # by hand: it holds as nobody's, until released
             return self._write(tx, booking_id, HELD, path=path, **fields)
 
-    def _path(self, found: dict, mine: Booking, share: str) -> str | None:
+    def _path(self, found: dict, mine: Booking, share: str, skip=()) -> str | None:
         """How `mine` is admitted now, or None while it waits its turn. First come, first served unless the share is
         fair and `mine` waits under rule 2; then it goes when it is the fair choice, and also first come, first served
         when the fair choice waits under an older rule - that one knows nothing of being chosen, and waits for whoever
@@ -262,12 +268,13 @@ class Book:
         if share != "fair" or (mine.rule or 0) < 2:
             return None if ahead else "fifo"
         moment = self.clock() if self.clock else dt.datetime.now(dt.timezone.utc)
-        choice = fair_choice(found, self.live, moment)
+        choice = fair_choice(found, self.live, moment, skip)
         if choice is not None and choice.id == mine.id:
             when = last_served(found, moment).get(mine.project, "")
             return f"fair: {mine.project or 'no project'} served {when or 'not in 24 h'}"
         if choice is not None and (choice.rule or 0) < 2 and not ahead:
             return f"fifo: the fair choice {choice.id} waits under an older rule"
+        self.passed_for = choice.id if choice is not None else ""
         return None
 
     def _end(self, booking_id: str, state: str, why: str = "", **fields) -> Booking:

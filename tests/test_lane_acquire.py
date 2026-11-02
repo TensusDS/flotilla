@@ -237,3 +237,18 @@ def test_the_share_is_read_on_each_poll(lanes):
     acquire.acquire(lanes, lambda: QUIET, who="main session 2", note="suite", capacity=1, share=share, wait=30,
                     clock=clock, sleep=clock.sleep)
     assert len(asked) >= 2
+
+
+
+def test_a_fair_choice_that_does_not_take_the_slot_is_passed_over(lanes):
+    """Final review of 0.25.0, I1: a waiter its own project's checks hold back (CI on this machine for its profile, a
+    memory floor of its own) never asks for the slot, and under fair it stayed the choice, so every other project
+    waited with the slot free. After a grace it is passed over."""
+    served = lanes.enqueue("a 1", "suite", pid=None, project="A")
+    assert lanes.grant(served.id, slots=1, share="fair") is not None
+    lanes.release(served.id)
+    lanes.enqueue("b 1", "suite", pid=None, project="B")   # the fair choice, held back by its own checks: never asks
+    clock = Clock()
+    grant = acquire.acquire(lanes, lambda: QUIET, who="a 2", note="suite", capacity=1, share="fair", wait=600,
+                            clock=clock, sleep=clock.sleep, project="A")
+    assert grant.booking is not None and acquire.FAIR_GRACE <= clock.now < acquire.FAIR_GRACE + 2 * acquire.POLL

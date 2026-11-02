@@ -515,3 +515,14 @@ def test_a_project_name_is_shown_as_data(tmp_path, monkeypatch):
     _queue(tmp_path, ("main 1", "evil\x1b[2J\nproject twosuns: 0 waiting"))
     _, out = run_cli("lane", "--root", str(root))
     assert "\x1b" not in out and "\\x1b[2J\\nproject twosuns" in out, out
+
+
+
+def test_a_hand_take_books_under_its_project(tmp_path, monkeypatch):
+    """Final review of 0.25.0, I2: `lane take` booked with no project, so under fair every hand take of every project
+    shared one turn, and it went first."""
+    from flotilla.core import repo
+    root = onboarded(tmp_path, monkeypatch)
+    assert run_cli("lane", "take", "--note", "a race", "--root", str(root), "--as", "main session 1")[0] == 0
+    [item] = _journal(tmp_path).values()
+    assert item.project == repo.identify(root).key
