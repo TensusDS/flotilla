@@ -83,6 +83,8 @@ class Session:
     credit_open: float | None = None   # the account's credit at the first reading in this session (0.13.0)
     credit_now: float | None = None
     credited: str = ""                 # when credit_now was read
+    projects: list | None = None       # the projects it serves; None: every project (opened before 0.25, or outside
+                                       # a repository, and not shared since) - project share design, section 4
 
 
 @dataclass
@@ -157,6 +159,8 @@ class Run:
     reason: str = ""
 
 
+#: A session serves a handful of projects; a longer list is text a shell wrote, cut, not trusted.
+MAX_PROJECTS = 32
 TEXT = ("who", "why", "waits",
         "session", "provider", "instance", "label", "gpu", "reason", "run_mark", "address", "project",
         "image", "suspect", "revision", "verdict", "machine", "mark")
@@ -208,6 +212,10 @@ def _clean(key, value):
     if key == "ladder":
         items = value if isinstance(value, list) else []
         return tuple(visible(item[:200]) for item in items[:6] if isinstance(item, str))
+    if key == "projects":
+        if not isinstance(value, list):
+            return None
+        return list(dict.fromkeys(visible(item[:200]) for item in value[:MAX_PROJECTS] if isinstance(item, str)))
     return None
 
 
@@ -310,13 +318,24 @@ class Rig:
     def _append(self, tx, kind: str, item_id: str, state: str, **fields) -> None:
         tx.append({"at": _iso(self.now()), "kind": kind, "id": item_id, "state": state, **fields})
 
-    def open_session(self, who: str, why: str, *, hours: float, budget: float) -> Session:
+    def open_session(self, who: str, why: str, *, hours: float, budget: float,
+                     projects: list | None = None) -> Session:
         with self.store.transaction(KEY) as tx:
             sessions = _fold(tx.read().records)[0]
             session_id = _next_id("s", sessions)
             now = self.now()
             self._append(tx, "session", session_id, OPEN, who=who, why=why, budget=budget, opened=_iso(now),
-                         until=_iso(now + dt.timedelta(hours=hours)))
+                         until=_iso(now + dt.timedelta(hours=hours)),
+                         **({"projects": list(projects)} if projects is not None else {}))
+            return _fold(tx.read().records)[0][session_id]
+
+    def share_session(self, session_id: str, projects: list) -> Session:
+        """The person's word on which projects the session serves, recorded as the list it now holds."""
+        with self.store.transaction(KEY) as tx:
+            found = _fold(tx.read().records)[0].get(session_id)
+            if found is None or found.state != OPEN:
+                raise RigError(f"session {session_id} is not open")
+            self._append(tx, "session", session_id, found.state, projects=list(projects))
             return _fold(tx.read().records)[0][session_id]
 
     def set_session(self, session_id: str, state: str, reason: str = "", **fields) -> Session:

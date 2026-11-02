@@ -270,3 +270,79 @@ def test_an_unforeseen_credit_failure_at_open_never_hides_the_session(world, mon
     monkeypatch.setattr(pv.Rented, "credit", broken)
     code, out = run_cli("rig", "open", "--hours", "1", "--budget", "1", "--why", "x")
     assert code == 0 and "session s1 open" in out and "account credit not read now" in out
+
+
+
+def _repo(tmp_path):
+    from ledgerkit import repo_with_origin
+    from flotilla.core import repo
+    (tmp_path / "proj").mkdir()
+    root = repo_with_origin(tmp_path / "proj")
+    return root, repo.identify(root).key
+
+
+def test_a_session_opened_for_a_request_serves_its_project(world):
+    journal(world).ask("main session 3", "frames", project="twosuns-key")
+    assert run_cli("rig", "open", "--hours", "1", "--budget", "1", "--for", "r1")[0] == 0
+    assert journal(world).sessions()["s1"].projects == ["twosuns-key"]
+
+
+def test_a_session_opened_in_a_repository_serves_it(world, tmp_path, monkeypatch):
+    root, key = _repo(tmp_path)
+    monkeypatch.chdir(root)
+    assert run_cli("rig", "open", "--hours", "1", "--budget", "1", "--why", "frames")[0] == 0
+    assert journal(world).sessions()["s1"].projects == [key]
+
+
+def test_a_session_opened_outside_a_repository_serves_every_project(world, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    assert run_cli("rig", "open", "--hours", "1", "--budget", "1", "--why", "frames")[0] == 0
+    assert journal(world).sessions()["s1"].projects is None
+
+
+def test_share_adds_a_project_and_unshare_takes_it_off(world):
+    journal(world).ask("main session 3", "frames", project="twosuns-key")
+    run_cli("rig", "open", "--hours", "1", "--budget", "1", "--for", "r1")
+    code, out = run_cli("rig", "share", "void-key")
+    assert code == 0 and journal(world).sessions()["s1"].projects == ["twosuns-key", "void-key"]
+    assert "serves twosuns-key, void-key" in out
+    code, out = run_cli("rig", "unshare", "void-key")
+    assert code == 0 and journal(world).sessions()["s1"].projects == ["twosuns-key"]
+
+
+def test_share_and_unshare_are_the_persons_moves(world, monkeypatch):
+    from flotilla.core import caller
+    from flotilla.core.census import Session
+    journal(world).ask("main session 3", "frames", project="twosuns-key")
+    run_cli("rig", "open", "--hours", "1", "--budget", "1", "--for", "r1")
+    monkeypatch.setattr(caller, "calling_sessions", lambda: [Session(
+        name="main 3", session_id="bg", kind="background", pid=None, short_id=None, status=None, state=None, cwd="",
+        started_at_ms=None)])
+    assert run_cli("rig", "share", "void-key")[0] == 2
+    assert run_cli("rig", "unshare", "twosuns-key")[0] == 2
+    assert journal(world).sessions()["s1"].projects == ["twosuns-key"]
+
+
+def test_sharing_a_project_twice_or_unsharing_the_last_one(world):
+    journal(world).ask("main session 3", "frames", project="twosuns-key")
+    run_cli("rig", "open", "--hours", "1", "--budget", "1", "--for", "r1")
+    code, out = run_cli("rig", "share", "twosuns-key")
+    assert code == 0 and "already" in out and journal(world).sessions()["s1"].projects == ["twosuns-key"]
+    code, out = run_cli("rig", "unshare", "twosuns-key")
+    assert code == 2 and "rig close" in out and journal(world).sessions()["s1"].projects == ["twosuns-key"]
+
+
+def test_the_first_share_of_a_session_serving_everyone_says_who_is_left_out(world, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    run_cli("rig", "open", "--hours", "1", "--budget", "1", "--why", "frames")
+    code, out = run_cli("rig", "share", "void-key")
+    assert code == 0 and journal(world).sessions()["s1"].projects == ["void-key"]
+    assert "not known" in out
+
+
+def test_share_takes_a_repository_path_and_records_its_key(world, tmp_path):
+    root, key = _repo(tmp_path)
+    journal(world).ask("main session 3", "frames", project="twosuns-key")
+    run_cli("rig", "open", "--hours", "1", "--budget", "1", "--for", "r1")
+    code, out = run_cli("rig", "share", str(root))
+    assert code == 0 and journal(world).sessions()["s1"].projects == ["twosuns-key", key] and key in out

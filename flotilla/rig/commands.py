@@ -19,6 +19,7 @@ from pathlib import Path
 from flotilla import __version__
 from flotilla.core import caller, paths
 from flotilla.core.storage import LocalLogStore, StorageCorrupt
+from flotilla.core.text import visible
 from flotilla.onboard.machine import read_machine, set_person_keys
 from flotilla.ledger.errors import MoveRefused
 from flotilla.rig import cron, health, provider, providers, reaper, remote, sshkey
@@ -327,15 +328,15 @@ def _open(state: Path, settings: rs.RigSettings, args) -> int:
             open_.remove(ended)
         if open_:
             return None, f"session {open_[0].id} is open until {_hhmm(open_[0].until)}; `flotilla rig close` first"
-        why = args.why
+        why, serves = args.why, _opener()
         if args.for_:
             asked = _asked(rig, args.for_, "machine")
             if asked is None:
                 return None, f"no open machine request {args.for_}"
-            why = asked.why
+            why, serves = asked.why, ([asked.project] if asked.project else serves)
         if not why:
             return None, "say why (--why) or name the request (--for rN)"
-        made = rig.open_session(_caller_name(), why, hours=hours, budget=budget)
+        made = rig.open_session(_caller_name(), why, hours=hours, budget=budget, projects=serves)
         rig.answer_requests(f"session {made.id} opened", kind="machine")
         return made, _keep_reaper(rig, state)
     try:
@@ -354,6 +355,73 @@ def _open(state: Path, settings: rs.RigSettings, args) -> int:
     if problem:
         print(f"but the reaper's crontab line could not be kept: {problem} - nothing may be rented until it is")
         return 1
+    return 0
+
+
+def _opener() -> list | None:
+    """The project a session opened without a request serves: the repository it is opened in; outside one, every
+    project until the person shares it (project share design, section 4)."""
+    key, _ = _project(Path.cwd())
+    return None if key.startswith("dir:") else [key]
+
+
+def _key_of(named: str) -> str:
+    """A project named by its key, or by a path into its repository, as the key the journal carries."""
+    if Path(named).is_dir():
+        key, _ = _project(Path(named))
+        if not key.startswith("dir:"):
+            return key
+    return named.strip()
+
+
+def _serving(rig: j.Rig):
+    return next((s for s in rig.sessions().values() if s.state == j.OPEN), None)
+
+
+def _share(state: Path, args, *, add: bool) -> int:
+    move = "rig share" if add else "rig unshare"
+    refused = caller.person_refusal(f"decides which projects a rig session serves ({move})")
+    if refused:
+        print(f"refused: {refused}")
+        return 2
+    rig = _rig(state)
+    session = _serving(rig)
+    if session is None:
+        print("refused: no rig session is open; the person opens one with `flotilla rig open`")
+        return 2
+    key = _key_of(args.project)
+    if not key:
+        print("refused: name the project (its key from `flotilla rig`, or a path into its repository)")
+        return 2
+    shown = visible(key)
+    before = session.projects
+    if add:
+        if before is not None and key in before:
+            print(f"session {session.id} already serves {shown}; nothing changed")
+            return 0
+        after = [*(before or []), key]
+    else:
+        if before is None:
+            print(f"refused: session {session.id} serves every project (it was opened outside a repository or before "
+                  "0.25); name the ones it serves with `flotilla rig share <project>` first")
+            return 2
+        if key not in before:
+            print(f"session {session.id} does not serve {shown}; nothing changed")
+            return 0
+        if before == [key]:
+            print(f"refused: {shown} is the only project session {session.id} serves; a session serving nobody is a "
+                  "closed one - `flotilla rig close`")
+            return 2
+        after = [name for name in before if name != key]
+    made = rig.share_session(session.id, after)
+    print(f"session {made.id} serves {', '.join(visible(name) for name in made.projects)}")
+    if add and before is None:
+        print("it served every project until now; the project that opened it is not known, so it is not on the list - "
+              "add it with `flotilla rig share` if it should be")
+    if add:
+        rig.answer_requests(f"session {made.id} shared with {shown}", kind="share",
+                            ids=[r.id for r in rig.requests().values()
+                                 if r.kind == "share" and r.state == j.ASKED and r.project == key])
     return 0
 
 
@@ -767,6 +835,8 @@ def run_rig_command(args) -> int:
             return rig_run.main(state, settings, args)
         if args.action == "allow-image":
             return _allow_image(state, settings, args)
+        if args.action in ("share", "unshare"):
+            return _share(state, args, add=args.action == "share")
         return _status(state, settings)
     except StorageCorrupt as err:
         print(f"the rig journal is damaged: {err}; `flotilla rig reap` destroys this machine's labelled instances")

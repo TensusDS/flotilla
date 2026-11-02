@@ -363,6 +363,10 @@ def build_parser() -> argparse.ArgumentParser:
     rig_allow = rig_actions.add_parser("allow-image", help="the person allows one more image for rented machines")
     rig_allow.add_argument("image", nargs="?", default="", help="the image, named in full")
     rig_allow.add_argument("--for", dest="for_", default="", help="the request it answers (checked, never trusted)")
+    rig_share = rig_actions.add_parser("share", help="the person lets another project use the open session")
+    rig_share.add_argument("project", help="its key (`flotilla rig` lists them) or a path into its repository")
+    rig_unshare = rig_actions.add_parser("unshare", help="the person takes a project off the open session")
+    rig_unshare.add_argument("project", help="its key, or a path into its repository")
     rig_up = rig_actions.add_parser("up", help="raise one machine inside the person's open session (call again to "
                                                "resume one still coming up)")
     rig_up.add_argument("--why", default="a heavy run")
