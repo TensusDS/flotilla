@@ -18,16 +18,6 @@ void-lanes-online orchestrator's lane report (lane journal figures: runs under 6
 median 6.8 s run). Checked against main at a50daae (0.24.0 code) where a file is named.
 
 **The lane**
-- **A waiter keeps the capacity it read when it queued.** `lane_capacity` raised from 1 to 2 at 01:00 reached no
-  waiter already queued for an hour: `held(... capacity=capacity() ...)` reads machine.toml once and `acquire`
-  freezes it, and strict FIFO holds the rest behind the head. Re-read capacity on each poll. *(checked 2026-11-01 on
-  a50daae: still B - flotilla/lane/commands.py:129, :195)*
-- **`flotilla lane` says "held: nobody" while foreign runs fill every slot**, lists only some foreign runs, and a
-  waiter's line does not say why it waits. Name foreign runs where `held:` is printed, all of them with their cwd,
-  and the reason on the waiter's line. *(checked 2026-11-01 on a50daae: still B - flotilla/lane/commands.py:169)*
-- **A booking whose process died stays at the head until someone runs `lane sweep`** (six swept by hand on 10-31).
-  Sweep dead waiters on each status and on each poll. *(checked 2026-11-01 on a50daae: still B -
-  flotilla/lane/commands.py:171)*
 - **An expired `--wait` re-queues at the tail.** Six void-lanes-online bookings expired at 1800 s and lost their
   place (lane spec section 3, seniority). *(open, design: docs/specs/2026-10-05-lane-resource-admission-design.md)*
 - **Mode 1, short runs overtake** - stages 2-3 of the lane spec (budget admission by cores and memory, the head's
@@ -46,19 +36,11 @@ median 6.8 s run). Checked against main at a50daae (0.24.0 code) where a file is
   affected-tests tier for hand and review, the full tier only for the push receipt). *(open, design)*
 
 **The ledger**
-- **A second `--requires` replaces the first**: `nargs="*"` without `action="append"`, so `--requires a --requires
-  b` keeps only `b`. Row r956 lost its dependency on an unaccepted row whose 75 commits its tip carried; `work show`
-  prints no requires line and nothing amends requires after the claim. Append (or refuse a repeat), show requires,
-  add a recorded amend, and warn at hand when the tip carries commits of an open unaccepted row not required.
-  *(checked 2026-11-01 on a50daae: still B - flotilla/cli.py:97, :181)*
-- **Nothing lifts a stale `--requires` from an accepted row** (twosuns item 11): r955 required a row from an early
-  plan whose commits its tip never carried; `work queue` refused after the person's yes, `work walkable` did not
-  lift it, and the only way out was a re-cut - a new review and new lane time. One recorded move,
-  `work requires <branch> --add/--drop <dep> --why`, refused when dropping a row whose commits off trunk the tip
-  carries (flotilla can check that itself), closes this and the lost requires above. *(open, design)*
-- **`work wait --on "orchestrator 4"` reads as a dead session** when the live name is `twosuns-orchestrator 4`.
-  Resolve a short name to one live session, or refuse an unknown name when written, listing the live ones.
-  *(open: flotilla/ledger/handover.py:126)*
+- **Hand does not warn when the tip carries commits of an open unaccepted row it does not require** (twosuns item 10,
+  r956: 75 such commits, its dependency lost to a replaced `--requires`). 0.24.1 keeps every `--requires`, shows them
+  and adds `work requires --add`; the warning at hand is still to do - `_stacked_on` already names such rows, so the
+  hand's line could say "builds on `<branch>`, not required: `work requires <branch> --add <it>`".
+  *(checked 2026-11-02 on 0.24.1: still P - flotilla/ledger/handover.py, hand)*
 - **`work adopt` cannot free a branch a dead seat's tree holds with untracked files** ("not freed: 3 uncommitted").
   With only untracked dirt, detach the dead tree's HEAD (the files stay), or print the one-line command.
   *(open: flotilla/ledger/steering.py:47)*
@@ -542,6 +524,10 @@ Each is a limitation README states today, judged fixable in principle; none is p
 
 ## Done
 
+- 0.24.1: field fixes from twosuns and void-lanes-online - a lane capacity change reaches queued waiters; `flotilla
+  lane` names the foreign runs holding slots, each waiter's reason, and sweeps dead bookings when shown; every
+  `--requires` kept and shown; `work requires --add/--drop` on the record; a wait on a short name finds the live
+  session.
 - 0.24.0: garbage collection stage 3 - the daily pass and its occasions, dead seats (stop or keep for a held one),
   a low disk's shrinking and no-room gate, the outputs letter, released branches parked on the person's word, the
   archive's month (carried out only by the person's `gc apply`).

@@ -3,6 +3,24 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.24.1 - 2026-11-02
+
+Fixes two field fleets asked for, each of which cost them hours.
+
+- **A lane capacity change reaches the runs already waiting.** Raising `lane_capacity` used to reach only runs that
+  queued afterwards; every waiter now reads it on each poll. Lowering it never stops a run that holds a slot.
+- **`flotilla lane` says who really holds the slots.** An unbooked run computing takes a slot, so it is listed under
+  `held:` with its pid, command and directory instead of `held: nobody`; each waiter's line ends with why it waits;
+  every unbooked run is listed under `machine:`; a booking whose process is gone is swept when the lane is shown.
+- **Every `--requires` is kept.** `--requires a b --requires c` used to keep only `c`; `work claim`, `tree cut` and
+  `tree switch` now keep all of them (and `--after` the same), and `work show` prints them.
+- **`flotilla work requires <branch> --add/--drop <row> --why`** changes what a row builds on, on the record and
+  without a re-cut - the owner's move, or the orchestrator's. A drop is refused while the tip still carries commits of
+  that row that are not on trunk. The orchestrator template is version 22.
+- **A wait on a short name finds the live session.** `--on "orchestrator 4"` is recorded as the one live session whose
+  name ends with it; several matches, or a name the ledger knows that is no longer alive, are refused with the live
+  names. Free words stay as written; a census that cannot be asked records the name unchecked.
+
 ## 0.24.0 - 2026-11-01
 
 - **The collector runs without being asked.** `ship`, `release`, `reconcile` and a helper's `done` say the

@@ -59,10 +59,10 @@ project's file names a plugin nobody else can find.
 there, and flotilla's hooks and CLI run in every session of your project. To choose when you move, pin a release tag
 on the first line instead (the tags are listed in [CHANGELOG.md](CHANGELOG.md)):
 
-    claude plugin marketplace add TensusDS/flotilla#v0.24.0 --scope project
+    claude plugin marketplace add TensusDS/flotilla#v0.24.1 --scope project
     claude plugin install flotilla@flotilla --scope project
 
-That writes `"ref": "v0.24.0"` into the project's settings and installs that release; `claude plugin update` stays on
+That writes `"ref": "v0.24.1"` into the project's settings and installs that release; `claude plugin update` stays on
 it. Two caveats. A machine keeps one marketplace of a name for all its projects, and the last `marketplace add` on
 it repoints it: measured, after another project on the same machine added it without a pin, `claude plugin update`
 in a project pinned to v0.22.0 took the default branch's release. Give the projects on one machine the same pin;
@@ -375,7 +375,7 @@ instructions its session starts with. The templates:
 
 | post | name | what it does | moves it may make |
 |---|---|---|---|
-| orchestrator | `orchestrator N` | splits work into tasks, assigns readers, relays the person's answers, raises and retires seats | assign, hold, unhold, adopt, release, urgent, walkable, wait |
+| orchestrator | `orchestrator N` | splits work into tasks, assigns readers, relays the person's answers, raises and retires seats | assign, hold, unhold, adopt, release, urgent, walkable, requires, wait |
 | main | `main session N` | builds large work in its own tree, hands it over green | claim, hand, moved, close, release, wait |
 | minor | `minor session N` | small fixes, the same moves as main | claim, hand, moved, close, release, wait |
 | reviewer | `review session N` | reads handed work and accepts a revision or returns it | take, accept, fix, recuse, vouch, wait |
@@ -425,8 +425,19 @@ Each move asks for the evidence that makes it true:
 - **ship** asks origin or the pull request; nobody types "shipped".
 - **close** belongs to the owner, once the work is delivered.
 
-`flotilla work show <branch>` prints a row and its history. `flotilla status --stalled 2` adds the rows that have not
-moved for two hours. The ledger lives in the state directory, not in git, and every session reads the same one.
+`flotilla work show <branch>` prints a row, what it requires and goes after, and its history. `flotilla status
+--stalled 2` adds the rows that have not moved for two hours. The ledger lives in the state directory, not in git, and
+every session reads the same one.
+
+A row names the rows it builds on at its claim, `--requires a b --requires c` keeping all three. When a link turns out
+wrong - a row from an early plan whose commits the tip never carried - its owner or the orchestrator changes it on the
+record, without a re-cut: `flotilla work requires <branch> --drop <row> --why "<why>"`, or `--add <row>`. A drop is
+refused while the tip still carries commits of that row that are not on trunk.
+
+A wait names whom it waits on. A short name - `--on "orchestrator 4"` where the live session is `myapp-orchestrator
+4` - is recorded as the one live session it means, and the move says so; a name the ledger knows that is no longer
+alive is refused with the live names, since a wait on it would never be seen to end. Words that name no session (`the
+lane`, `CI`) are recorded as written.
 
 **When a builder is stuck.** A main or minor session stuck on a technical problem - one goal has not given way to
 three different approaches, or 45 minutes brought no new result from a probe - marks its row `wait --on "consult"`
@@ -473,9 +484,11 @@ that started it. The **lane** books the machine for long runs:
     flotilla lane run --for <branch> -- <command>
 
 It waits its turn, runs the command, releases the booking and records the run on the row. `/flotilla:lane` shows who
-holds it, who waits, unbooked runs computing, low memory, and CI using this machine. How many long runs may share the
-machine is `lane_capacity` in the machine profile (`machine.toml` in the state directory, 1 by default). The lane is a
-booking, not a lock: a run started outside it is not stopped - the command guard warns about it.
+holds it - an unbooked run computing takes a slot, so it is listed there too, with its directory - who waits and why
+each one waits, low memory, and CI using this machine; a booking whose process is gone is swept when the lane is shown.
+How many long runs may share the machine is `lane_capacity` in the machine profile (`machine.toml` in the state
+directory, 1 by default); a change reaches the runs already waiting, and lowering it never stops a run that holds a
+slot. The lane is a booking, not a lock: a run started outside it is not stopped - the command guard warns about it.
 
 The lane is also where a fleet loses its time. Measured on a fleet that ran three days: the way from "handed over"
 to "on trunk" grew about tenfold after the first hours, almost all of it waiting for the lane, while the model's own
