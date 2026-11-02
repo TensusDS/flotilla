@@ -30,3 +30,17 @@ def test_visible_also_shows_line_separators_fillers_and_tag_characters():
     assert visible(f"x{chr(0x3164)}y{chr(0x2800)}z{chr(0xa0)}w") == "x\\u3164y\\u2800z\\xa0w"
     assert visible("ok\U000e0041") == "ok\\U000e0041"
     assert visible(f"soft{chr(0xad)}hy{chr(0x61c)}phen") == "soft\\xadhy\\u061cphen"
+
+
+def test_printable_ascii_is_returned_as_it_is_without_walking_it(monkeypatch):
+    """Twosuns item 14: the lane folds every text field of every booking through visible on each poll, and walking
+    each character of plain ASCII cost a waiter a fifth of a core. Printable ASCII cannot hide anything."""
+    from flotilla.core import text
+
+    def walked(_):
+        raise AssertionError("printable ASCII was walked character by character")
+    monkeypatch.setattr(text.unicodedata, "category", walked)
+    plain = "uv run pytest -q tests/ --maxfail=1 # notes, (parens) and ~symbols! " * 150
+    assert text.visible(plain) == plain
+    monkeypatch.undo()
+    assert text.visible("tab\there \x1b[2J and del \x7f") == "tab\\there \\x1b[2J and del \\x7f"

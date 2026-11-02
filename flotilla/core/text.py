@@ -34,6 +34,8 @@ def has_hidden(value: str) -> bool:
 def visible(value: str) -> str:
     """Text another session wrote, made safe to show a person: one line, and nothing in it can move the cursor,
     erase what was printed, hide, or reorder what is read (security review F5, F10, and its review)."""
+    if value.isascii() and value.isprintable():   # space to tilde: nothing in it hides, and the lane folds a lot of it
+        return value
     out = []
     for ch in value:
         if not _hidden(ch):
