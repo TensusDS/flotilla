@@ -13,11 +13,22 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 Order, the person's call (2026-11-01): the lane's fixes first (0.24.1), then the lane's modes (0.25.0), then the
 rig queue (0.26.0).
 
-Sources: the twosuns orchestrator's feedback (`twosuns-keep/flotilla-feedback-2026-11-01.md`, ten items) and the
-void-lanes-online orchestrator's lane report (lane journal figures: runs under 60 s waited a median 30.6 min for a
-median 6.8 s run). Checked against main at a50daae (0.24.0 code) where a file is named.
+Sources: the twosuns orchestrator's feedback (`twosuns-keep/flotilla-feedback-2026-11-01.md`, sixteen items; 13-16
+added 2026-11-02 and checked that day on 0.24.1) and the void-lanes-online orchestrator's lane report (lane
+journal figures: runs under 60 s waited a median 30.6 min for a median 6.8 s run). Checked against main at a50daae
+(0.24.0 code) where a file is named.
 
 **The lane**
+- **A waiting run burns a fifth of a core while it polls** (twosuns item 14: 28 waiters summing 280 % CPU on 8 cores
+  at load 19-21, on 0.21.0 and 0.23.2 alike - the waiters make the load they wait out). Measured 2026-11-02 on this
+  machine's lane journal (8.1 MB, 8482 bookings): one fold of the journal costs 0.9 s of CPU, about 70 % of it in
+  `core.text.visible` walking every character of every text field of every record, and one poll folds it about five
+  times (`grant`, `holders` and `waiters` in `machine.read`, again in `in_the_way`), so 4-5 s of CPU per 15 s poll;
+  the journal is never compacted, so the cost grows with it. Fix: `visible` returns printable ASCII as it is (no
+  hidden character can be in it), a poll folds once and passes the bookings down, and ended bookings beyond what the
+  estimates use are compacted. A blocking wait on the lock file is the larger change. *(checked 2026-11-02 on
+  0.24.1: still B - flotilla/lane/book.py:110, :142, flotilla/core/text.py:34, flotilla/lane/acquire.py,
+  flotilla/lane/machine.py:313)*
 - **An expired `--wait` re-queues at the tail.** Six void-lanes-online bookings expired at 1800 s and lost their
   place (lane spec section 3, seniority). *(open, design: docs/specs/2026-10-05-lane-resource-admission-design.md)*
 - **Mode 1, short runs overtake** - stages 2-3 of the lane spec (budget admission by cores and memory, the head's
@@ -32,6 +43,19 @@ median 6.8 s run). Checked against main at a50daae (0.24.0 code) where a file is
   timeouts in five receipts on 10-31). The person's call (2026-11-01): the guard keeps warning, and such a run is
   counted as the seat's own booking - it takes a place in the lane, attributed to the seat, instead of being an
   anonymous foreign run. *(open, design: flotilla/lane, the Bash guard)*
+- **Heavy tiers starve each other at a capacity above 1** (twosuns item 13: two receipts' software-rendered smoke
+  tiers at once, load 17-26 on 8 cores; five handovers blocked on 11-01 by smoke reds from load, not code, and the
+  only remedy was capacity 1, which slows every light run). Asked: a tier's cost - declared (`cores`, `exclusive`) or
+  measured (CPU-seconds per wall-second, which the lane records already) - and admission by the sum of costs against
+  the machine's cores, unbooked runs counted by their measured load; a tier that times out under a load far above
+  the core count recorded as starved, not red. The admission is mode 1 below (the lane spec's budget by cores and
+  memory); the per-tier declaration and the starved verdict are not in the spec yet. *(open, design: lane spec
+  stages 2-3, flotilla/lane/run.py)*
+- **The orchestrator cannot reorder the lane, and a waiter cannot see when it will start** (twosuns item 16, 11-02
+  02:52: 21 waiters at capacity 1, five void-lanes-online runs of 21-38 s behind about 2.5 h of 11-min receipts;
+  letting them pass meant re-booking eight waiters at the back). Asked besides mode 1 and seniority above: `lane bump
+  <booking> --why`, recorded, limited to the orchestrators of the projects sharing the lane; each waiter's expected
+  start from the estimates ahead of it, in `flotilla lane` and before booking. *(open, design)*
 - **An unknown estimate (`? s`) for another project's rows**, and a full receipt rerun after every trunk merge (an
   affected-tests tier for hand and review, the full tier only for the push receipt). *(open, design)*
 
@@ -64,7 +88,17 @@ median 6.8 s run). Checked against main at a50daae (0.24.0 code) where a file is
   its place; a run that does not fit the session's end told before it starts; the unserved queue carried to the
   next session; `watch` naming "rig idle with N waiting"; actual minutes recorded against estimates. Absorbs the
   two items above. *(open, design)*
-- **A rig run does not use the toolchain the receipts use** (twosuns, 2026-11-02, item 4). The default image
+- **A deep local lane does not point at an open rig session, and a rig session is not shared by design** (twosuns
+  item 15.1-3, 11-01 23:19-23:30: ~20 local waiters, about 2 h, while rig session s79 was paid for and mostly idle;
+  once allowed, CPU probes finished there in seconds - 40 s against 1 h+ in the queue). Asked: when a lane run would
+  wait more than N minutes by the lane's estimates and a rig session is open, say so with the rig command for the same
+  job, and with none open raise an `offload` watch item for the orchestrator; run classes on the rig (`--cpu`, shared,
+  may run beside another `--cpu` run; `--exclusive` for frames, audio, benches), the rig queue above with a capacity
+  per class; a rig session that records the projects allowed on it (`rig open --share <project>`), each run carrying
+  its project, spend per project in `rig status`, the owner's exclusive runs first, another project's run refused
+  with the reason. Today `rig run` takes any open session on the machine whatever its project, under one ceiling and
+  one budget. *(open, design: flotilla/rig/run.py, the rig queue)*
+- **A rig run does not use the toolchain the receipts use** (twosuns item 15.4). The default image
   (`mcr.microsoft.com/playwright:v1.64.0-noble`) carries node 24; the project's receipts run on node 22.22.1, node 24
   changed one of its pins, so a CPU result on the rig can differ from the local receipt over the same revision.
   Asked: the profile pins the runtime a rig run uses (`[rig] node = "22.22.1"`). Today the only ways are a custom
@@ -73,7 +107,7 @@ median 6.8 s run). Checked against main at a50daae (0.24.0 code) where a file is
   printed with the run's verdict, and a run that says so when the version it met is not the one pinned.
   *(checked 2026-11-02 on 0.24.1: [rig] has image, gpu, disk_gb, setup_command, max_run_seconds, get_types and no
   runtime - flotilla/rig/profile.py, flotilla/rig/settings.py:35)*
-- **A tier proven green on the rig does not count for a handover receipt** (twosuns, 2026-11-02, item 5). Asked, as
+- **A tier proven green on the rig does not count for a handover receipt** (twosuns item 15.5). Asked, as
   an option: a tier green on the rig over the same files and the same pinned runtime counts for the handover
   receipt; the push receipt stays local and full. Receipts already reuse a green over the same files
   (`receipts._green_over`, keyed by `gitq.files_of`), but only greens run on this machine. Needs the runtime pin
