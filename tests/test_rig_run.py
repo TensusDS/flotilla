@@ -712,3 +712,15 @@ def test_no_session_suggests_the_persons_hours_and_budget(world, box, tree):
                                                               "rig_default_hours": 4, "rig_default_budget": 3}))
     code, out = rig_run(world, tree, "--", "true")
     assert code == 2 and "! flotilla rig open --hours 4 --budget 3 --for r1" in out
+
+
+
+def test_a_run_from_a_project_the_session_does_not_serve_is_refused_with_the_line(world, box, tree):
+    """Twosuns item 15.3: one session, one ceiling, one budget, and any project's run took it."""
+    journal(world).open_session("the person", "frames", hours=3, budget=2.0, projects=["twosuns-key"])
+    code, out = rig_run(world, tree, "--", "sh", "shoot.sh")
+    assert code == 2 and "serves twosuns-key" in out and "! flotilla rig share " in out, out
+    assert journal(world).runs() == {} and world["fake"].created == 0
+    [asked] = [r for r in journal(world).requests().values() if r.kind == "share"]
+    assert asked.project and asked.project in out
+

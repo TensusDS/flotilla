@@ -417,6 +417,10 @@ def _main(state: Path, settings: rs.RigSettings, args) -> int:
         _say(f"rig run: refused (exit 2) - no rig session is open; request {asked.id} is recorded for the "
              f"orchestrator, who asks the person to paste: {rs.open_line(settings, asked.id)}")
         return 2
+    refused = commands.not_served(rig, session, key, who=who, why=args.why)
+    if refused:
+        _say(f"rig run: refused (exit 2) - {refused}")
+        return 2
     one_pass = reaper.PASS.total_seconds() / 3600
     ahead = rig.spent(session.id) + (rig.rate(session.id) + settings.max_hourly) * one_pass
     if session.budget is not None and ahead >= reaper.DRAIN_AT * session.budget - reaper.CENT:

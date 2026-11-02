@@ -112,6 +112,16 @@ def _plain(value: float) -> str:
     return short if float(short) == value else repr(value)
 
 
+#: A project key the person may be handed in a line to paste: the shapes a repository key or a directory key take,
+#: never a shell word (project share design, section 4).
+PROJECT_KEY = re.compile(r"[A-Za-z0-9._:/][A-Za-z0-9._:/-]{0,199}")
+
+
+def share_line(project: str) -> str:
+    """The line the person pastes to let `project` use the open session, or "" when the key is not one to paste."""
+    return f"! flotilla rig share {project}" if PROJECT_KEY.fullmatch(project or "") else ""
+
+
 def open_line(settings: RigSettings, request: str) -> str:
     """The line the person pastes to open a session for a request: their suggested hours, never above the hours
     ceiling, and their suggested budget (machine.toml rig_default_hours, rig_default_budget)."""

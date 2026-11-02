@@ -263,3 +263,20 @@ def test_the_line_for_a_request_carries_the_persons_suggested_hours_and_budget(t
     rig(state).ask("main session 3", "night frames", project="/work/twosuns")
     [text] = texts(state, T0)
     assert text.endswith("! flotilla rig open --hours 4 --budget 3 --for r1")
+
+
+
+def test_the_orchestrator_sees_a_share_request_while_a_session_is_open(tmp_path):
+    state = state_on(tmp_path)
+    rig(state).open_session("the person", "frames", hours=3, budget=2.0, projects=["other-key"])
+    rig(state).ask("main session 3", "frames", kind="share", project="/work/twosuns")
+    [text] = texts(state, T0)
+    assert "main session 3" in text and text.endswith("! flotilla rig share /work/twosuns")
+
+
+def test_a_share_request_never_puts_a_shell_word_into_the_line(tmp_path):
+    state = state_on(tmp_path)
+    rig(state).open_session("the person", "frames", hours=3, budget=2.0, projects=["other-key"])
+    rig(state).ask("main session 3", "frames", kind="share", project="/work/x; rm -rf ~")
+    shown = texts(state, T0, project="/work/x; rm -rf ~")
+    assert all("rm -rf" not in text or "! flotilla" not in text for text in shown)

@@ -244,7 +244,7 @@ def _fold(records):
         item.state = state
         if isinstance(item, Request):
             if "ask" in event:   # the record's own `kind` key says "request"; the request's kind travels as `ask`
-                item.kind = event["ask"] if event["ask"] in ("machine", "image") else ""
+                item.kind = event["ask"] if event["ask"] in ("machine", "image", "share") else ""
             if state == ASKED:
                 item.since = event["at"]
         found[item.id] = item

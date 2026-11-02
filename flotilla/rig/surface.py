@@ -104,6 +104,13 @@ def items(state: Path, now: dt.datetime, project: str = "") -> list[Item]:
             line = f"! flotilla rig allow-image {request.image} --for {request.id}"
             text = (f"{_who(request.who)} needs image {request.image}, which the person has not allowed - ask the "
                     f"person to paste: {line}")
+        elif request.kind == "share":
+            if not open_:
+                continue
+            line = rs.share_line(request.project)
+            text = (f"{_who(request.who)} needs the open rig session, which does not serve this project - "
+                    + (f"ask the person to paste: {line}" if line else
+                       "ask the person to share it with `flotilla rig share` and this repository's path"))
         elif open_:
             continue
         else:

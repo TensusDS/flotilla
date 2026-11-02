@@ -378,6 +378,19 @@ def _serving(rig: j.Rig):
     return next((s for s in rig.sessions().values() if s.state == j.OPEN), None)
 
 
+def not_served(rig: j.Rig, session, project: str, *, who: str, why: str) -> str:
+    """Why `project` may not use `session`, or "" when it may: a session with no list serves every project. A refusal
+    records a request, so the project's orchestrator brings the person the line that shares the session."""
+    if session.projects is None or project in session.projects:
+        return ""
+    asked = rig.ask(who, why, kind="share", project=project)
+    serves = ", ".join(visible(name) for name in session.projects)
+    line = rs.share_line(project)
+    how = f"the person adds it with `{line}`" if line else "the person adds it with `flotilla rig share` named by path"
+    return (f"session {session.id} serves {serves}, not {visible(project)}; request {asked.id} is recorded for the "
+            f"orchestrator, and {how}")
+
+
 def _share(state: Path, args, *, add: bool) -> int:
     move = "rig share" if add else "rig unshare"
     refused = caller.person_refusal(f"decides which projects a rig session serves ({move})")
@@ -550,6 +563,12 @@ def _down(state: Path, settings: rs.RigSettings, args) -> int:
         print(f"refused: {err}")
         return 2
     open_ = {s.id for s in rig.sessions().values() if s.state == j.OPEN}
+    serving = _serving(rig)
+    refused = "" if serving is None else not_served(rig, serving, _project(Path.cwd())[0], who=who,
+                                                     why="give the machine back")
+    if refused:
+        print(f"refused: {refused}")
+        return 2
     machines = [m for m in rig.machines().values() if m.session in open_]
     live = [m for m in machines if m.state in (j.READY, j.BUSY)]
     coming = [m.id for m in machines if m.state in (j.REQUESTED, j.PROVISIONING)]
@@ -717,6 +736,10 @@ def raise_machine(state: Path, settings: rs.RigSettings, *, who: str, why: str, 
               f"person to paste: {rs.open_line(settings, asked.id)}")
         return 2
     session = open_[0]
+    refused = not_served(rig, session, project, who=who, why=why)
+    if refused:
+        print(f"refused: {refused}")
+        return 2
     found = PROVIDERS(settings.provider)
     mine = [m for m in rig.machines().values()
             if m.session == session.id and m.state in (j.REQUESTED, j.PROVISIONING, j.READY)]
