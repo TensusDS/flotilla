@@ -69,6 +69,31 @@ journal figures: runs under 60 s waited a median 30.6 min for a median 6.8 s run
   With only untracked dirt, detach the dead tree's HEAD (the files stay), or print the one-line command.
   *(open: flotilla/ledger/steering.py:47)*
 
+**Receipts, guards and the profile** (void-lanes-online, the lane report's later sections, 2026-11-01..02)
+- **A branch that adds a test tier is receipted without it, and the receipt is green.** `server/solution` added a
+  `server` tier to `.flotilla/project.toml`; the author's handover receipt and the sender's push receipt over the
+  merge (d0abad1) both ran only trunk's `process` and `sim`, said nothing, and were green - the server tests ran
+  only because the reviewer and the sender ran them by hand; `clients/core-foundation` (a `clients` tier) is next.
+  A receipt reads its tiers from the rules the guards obey, which are trunk's (`guards/rules.rules_for`). Asked: the
+  union of trunk's tiers and the tree's own, a tier only the branch adds run with the branch's command (it runs the
+  branch's code either way); at least, the receipt names "tier X is in this tree's profile, not trunk's: not run"
+  and is not green. Trunk's tiers keep trunk's commands, so a branch cannot weaken or drop one. *(checked
+  2026-11-02 on 0.24.1: still B - flotilla/ledger/commands.py:310, flotilla/ledger/receipts.py:26)*
+- **A tree profile that does not parse turns the revert and line-number guards off.** `rules_for` parses the tree's
+  own `.flotilla/project.toml` only to learn trunk's name, before reading trunk's; a TOML syntax error there raises,
+  and the Bash guard says "the revert and line-number guards did not run" and lets the session go on (the push guard
+  still judges by origin's rules). Found by injection on `fleet/rig-profile`, reverted at once. Asked: fail closed -
+  read trunk's rules without the tree's profile (origin's default branch names trunk), or block the next commit until
+  the profile parses. *(checked 2026-11-02 on 0.24.1: still S - flotilla/guards/rules.py:27, flotilla/guards/run.py:46)*
+- **`flotilla onboard check` does not print `[rig]` problems.** `disk_gb = "thirty"`, `max_run_seconds = -5` and an
+  unknown key gave no output and exit 0; `rig/profile.read` keeps `problems` for such values and nothing shows them
+  there. *(checked 2026-11-02 on 0.24.1: still P - flotilla/onboard/check.py:10, flotilla/rig/profile.py)*
+- **`work inbatch` cannot be used in direct mode.** It requires the commit on the local trunk, which is the main
+  checkout's HEAD that no seat may move, so a sender that resolved a conflict on its batch branch (1591cf7 on
+  `send/sim-math-rng`) was refused and used `work vouch --commit` by the reviewer instead. Asked: accept a commit on
+  the sender's batch branch, or name `vouch` in the refusal and in the sender's post. *(checked 2026-11-02 on 0.24.1:
+  still B - flotilla/ledger/outside.py:55)*
+
 **The rig**
 - **A stopped run brings nothing back**: `--get` runs only when a run ends on its own, so a run stopped with two of
   three clips done lost 28 min. Fetch the `--get` paths on stop (best effort, time-capped), or warn on stop.
