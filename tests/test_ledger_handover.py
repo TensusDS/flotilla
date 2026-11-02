@@ -235,3 +235,24 @@ def test_an_unaskable_census_records_the_name_as_written(tmp_path):
     row = handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", on="orchestrator 4", why="its call")
     assert row.waiting_on == "orchestrator 4"
     assert "not checked" in row.history[-1]["evidence"]["unchecked"]
+
+
+def test_a_known_gone_name_is_never_redirected_to_a_live_suffix_match(tmp_path):
+    """Security review of the short-name wait: `orchestrator 4` is a session the ledger knows and it is gone; a live
+    `other-orchestrator 4` is another session, so the wait is refused and the candidate named, not redirected."""
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", census=_census("main session 1", "other-orchestrator 4"))
+    core.reserve(ledger, actor(ledger, "orchestrator 4"), "orchestrator-home")
+    claimed(root, ledger)
+    with pytest.raises(MoveRefused, match="if you mean other-orchestrator 4, name it in full"):
+        handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", on="orchestrator 4", why="its call")
+
+
+def test_a_refused_wait_shows_session_names_as_data(tmp_path):
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state",
+                         census=_census("main session 1", "a-orchestrator 4\x1b[2J", "b-orchestrator 4\x1b[2J"))
+    claimed(root, ledger)
+    with pytest.raises(MoveRefused) as refused:
+        handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", on="orchestrator 4\x1b[2J", why="x")
+    assert "\x1b" not in str(refused.value)

@@ -7,6 +7,7 @@ reader's agreement, because otherwise they finish reading a revision that is gon
 
 from __future__ import annotations
 
+from flotilla.core.text import visible
 from flotilla.ledger import gitq, receipts, views
 from flotilla.ledger.actor import Actor, require_may
 from flotilla.ledger.core import Ledger
@@ -134,8 +135,10 @@ def _known_names(rows: dict) -> set[str]:
 def _whom(ledger: Ledger, rows: dict, on: str) -> tuple[str, dict]:
     """The session a wait names, and what the move records about the name (twosuns item 5). A name the census lists
     stands; a short name that exactly one live session ends with (`-<name>` or ` <name>`) becomes that session's;
-    a name the ledger knows with no live match is refused, since a wait on it would never be seen to end. Anything
-    else - `the lane`, `CI`, `the person` - is free words, recorded as written."""
+    a name the ledger knows that is not alive is refused - with the live session it may mean, never silently
+    redirected to it, since that one is another session - because a wait on it would never be seen to end. Anything
+    else - `the lane`, `CI`, `the person` - is free words, recorded as written. Names are shown through `visible`:
+    a session's name is text whoever started it chose."""
     try:
         live = ledger.live_names()
     except MoveRefused as err:
@@ -143,15 +146,17 @@ def _whom(ledger: Ledger, rows: dict, on: str) -> tuple[str, dict]:
     if on in live:
         return on, {}
     matches = sorted(name for name in live if name.endswith(f"-{on}") or name.endswith(f" {on}"))
+    shown = ", ".join(visible(name) for name in matches)
+    if on in _known_names(rows):
+        meant = f"; if you mean {shown}, name it in full" if matches else ""
+        raise MoveRefused(f"`{visible(on)}` is not alive, so a wait on it would never be seen to end{meant}; live "
+                          f"sessions: {', '.join(visible(name) for name in sorted(live)) or 'none'}. Name a live "
+                          "one, or describe what you wait on in words")
     if len(matches) == 1:
         return matches[0], {"resolved_from": on}
     if matches:
-        raise MoveRefused(f"--on \"{on}\" is ambiguous: live sessions {', '.join(matches)} all end with it; name one "
-                          "in full")
-    if on in _known_names(rows):
-        raise MoveRefused(f"`{on}` is not alive and no live session's name ends with it, so the wait would never be "
-                          f"seen to end; live sessions: {', '.join(sorted(live)) or 'none'}. Name a live one, or "
-                          "describe what you wait on in words")
+        raise MoveRefused(f"--on \"{visible(on)}\" is ambiguous: live sessions {shown} all end with it; name one in "
+                          "full")
     return on, {}
 
 
