@@ -31,32 +31,55 @@ def tiers_for(profile: dict, purpose: str) -> list[dict]:
 PROFILE = ".flotilla/project.toml"
 
 
+def _tiers_at(root, rev: str, run) -> tuple[list[dict] | None, str]:
+    """The tiers `.flotilla/project.toml` names at `rev`: None when the revision carries no profile, and why it could
+    not be read when it does not parse or holds `tests` or `tier` of the wrong shape (final review of 0.24.2, I1)."""
+    import tomllib
+    shown = run(["git", "-C", str(root), "show", f"{rev}:{PROFILE}"], capture_output=True, check=False)
+    if shown.returncode != 0:
+        return None, ""
+    where = f"{PROFILE} at {str(rev)[:7]}"
+    try:
+        data = tomllib.loads(shown.stdout.decode("utf-8"))
+    except UnicodeDecodeError:
+        return None, f"{where} is not UTF-8 text, so the tiers it names cannot be run: fix it and commit"
+    except tomllib.TOMLDecodeError as err:
+        return None, f"{where} does not parse ({err}), so the tiers it names cannot be run: fix it and commit"
+    tests = data.get("tests", {})
+    tiers = tests.get("tier", []) if isinstance(tests, dict) else None
+    if not isinstance(tiers, list) or not all(isinstance(tier, dict) for tier in tiers):
+        return None, (f"{where} is malformed: `tests` must be a table and `tests.tier` a list of tables, so the tiers "
+                      "it names cannot be run: fix it and commit")
+    return tiers, ""
+
+
 def with_branch_tiers(root, rev: str, profile: dict, run=subprocess.run) -> tuple[dict, str, list[str]]:
     """Trunk's profile with the tiers the revision's own profile adds (void-lanes-online, 2026-11-01): a branch that
     brings a test tier is receipted with it. Trunk's tiers keep trunk's commands, so a branch can add a tier but never
-    weaken or drop one. Returns the profile, why the revision's profile could not be read ("" when it could, or it has
-    none) and notes for the reader."""
-    import tomllib
-    shown = run(["git", "-C", str(root), "show", f"{rev}:{PROFILE}"], capture_output=True, text=True, check=False)
-    if shown.returncode != 0:
-        return profile, "", []   # a revision with no profile of its own adds nothing
-    try:
-        own = (tomllib.loads(shown.stdout).get("tests") or {}).get("tier") or []
-    except tomllib.TOMLDecodeError as err:
-        return profile, (f"{PROFILE} at {str(rev)[:7]} does not parse ({err}), so the tiers it names cannot be run: "
-                         "fix it and commit"), []
+    weaken or drop one. "Adds" is counted against the profile the branch was cut from, so a tier trunk renamed or
+    dropped since is trunk's change, not the branch's. Returns the profile, why the revision's profile could not be
+    read ("" when it could, or it has none) and notes for the reader."""
+    own, problem = _tiers_at(root, rev, run)
+    if problem or own is None:
+        return profile, problem, []
+    trunk_ref = gitq.trunk_ref(Path(root), (profile.get("trunk") or {}).get("branch", "main"), run=run)
+    base = run(["git", "-C", str(root), "merge-base", rev, trunk_ref], capture_output=True, text=True, check=False)
+    before, _ = _tiers_at(root, base.stdout.strip(), run) if base.returncode == 0 and base.stdout.strip() else \
+        (None, "")
+    known = {tier.get("name") for tier in before or []}
     trunk = (profile.get("tests") or {}).get("tier") or []
     named = {tier.get("name"): tier for tier in trunk}
     added, notes = [], []
-    for tier in own if isinstance(own, list) else []:
-        if not isinstance(tier, dict) or not isinstance(tier.get("name"), str) or \
-                not isinstance(tier.get("command"), str):
+    for tier in own:
+        if not isinstance(tier.get("name"), str) or not isinstance(tier.get("command"), str):
             continue
         if tier["name"] in named:
             if tier.get("command") != named[tier["name"]].get("command"):
                 notes.append(f"tier `{tier['name']}` has another command in this revision's profile; trunk's command "
                              "runs, since a branch never changes a tier trunk names")
             continue
+        if tier["name"] in known:
+            continue   # it was there when the branch was cut: trunk renamed or dropped it since
         added.append(dict(tier))
         notes.append(f"tier `{tier['name']}` comes from this revision's profile, not trunk's")
     if not added:

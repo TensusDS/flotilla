@@ -317,15 +317,16 @@ def _receipt(args) -> int:
     profile, note = rules_for(tree)   # the rules the guards obey, so a receipt answers the guard that asks
     if note:
         print(f"rules: {note}")
-    profile, problem, notes = receipts.with_branch_tiers(tree, "HEAD", profile)
-    for line in notes:
-        print(f"tiers: {line}")
-    if problem:
-        print(f"refused: {problem}")
-        return 2
     ident = repo.identify(tree)
     state = paths.state_dir()
     if args.action == "run":
+        # the tiers HEAD's own profile adds run here; `show` asks of each revision with that revision's own (M3)
+        profile, problem, notes = receipts.with_branch_tiers(tree, "HEAD", profile)
+        for line in notes:
+            print(f"tiers: {line}")
+        if problem:
+            print(f"refused: {problem}")
+            return 2
         from flotilla.lane.commands import _on_signals
         _on_signals()   # a stop reaches the tier as an exception, so its processes are stopped too (review of 0.6.2)
         if not args.timeout:   # a tier that will not end is stopped at the lane's ceiling (worldcore W21)

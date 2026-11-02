@@ -433,3 +433,43 @@ def test_a_branch_profile_that_does_not_parse_is_not_green(tmp_path):
     ok, why = receipts.check_receipt(state=tmp_path / "s", repo_key=KEY, sha=sha, purpose="handover",
                                      profile=profile(GREEN), root=root)
     assert not ok and ".flotilla/project.toml" in why
+
+
+@pytest.mark.parametrize("text", ['schema = 1\ntests = "pytest"\n', "schema = 1\n[[tests]]\nname = 1\n",
+                                  'schema = 1\n[tests]\ntier = "unit"\n'])
+def test_a_branch_profile_of_the_wrong_shape_is_not_green_and_never_a_traceback(tmp_path, text):
+    """Final review of 0.24.2, I1: a profile that parses but holds `tests` or `tier` of the wrong type raised out of
+    check_receipt, and with it `work status` for every session, the sender's brief and the pre-push hook."""
+    root = repo_with_origin(tmp_path)
+    sha = _branch_profile(root, None, text=text)
+    ok, why = receipts.check_receipt(state=tmp_path / "s", repo_key=KEY, sha=sha, purpose="handover",
+                                     profile=profile(GREEN), root=root)
+    assert not ok and ".flotilla/project.toml" in why
+
+
+def test_a_branch_profile_that_is_not_utf8_is_not_green(tmp_path):
+    root = repo_with_origin(tmp_path)
+    (root / ".flotilla").mkdir()
+    (root / ".flotilla" / "project.toml").write_bytes(b"schema = 1\n# \xff\xfe\n")
+    git(root, "add", ".flotilla")
+    sha = commit(root, "a profile that is not text")
+    ok, why = receipts.check_receipt(state=tmp_path / "s", repo_key=KEY, sha=sha, purpose="handover",
+                                     profile=profile(GREEN), root=root)
+    assert not ok and ".flotilla/project.toml" in why
+
+
+def test_a_tier_trunk_renamed_after_the_branch_was_cut_is_not_added(tmp_path):
+    """Final review of 0.24.2, M4: tiers the branch adds are counted against the profile it was cut from; a tier
+    trunk renamed later is trunk's change, not the branch's, and must not make every older branch red."""
+    root = repo_with_origin(tmp_path)
+    old = {"schema": 1, "tests": {"tier": [{"name": "process", "command": GREEN, "required_for": ["handover"]}]}}
+    _branch_profile(root, old)
+    git(root, "push", "-q", "origin", "main")
+    git(root, "checkout", "-q", "-b", "feat/x")
+    tip = commit(root, "branch work")
+    git(root, "checkout", "-q", "main")
+    renamed = {"schema": 1, "tests": {"tier": [{"name": "unit", "command": GREEN, "required_for": ["handover"]}]}}
+    _branch_profile(root, renamed)
+    git(root, "push", "-q", "origin", "main")
+    effective, problem, _ = receipts.with_branch_tiers(root, tip, renamed)
+    assert problem == "" and [t["name"] for t in receipts.tiers_for(effective, "handover")] == ["unit"]

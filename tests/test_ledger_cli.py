@@ -684,3 +684,17 @@ def test_receipt_run_takes_the_tiers_the_branch_adds(tmp_path, monkeypatch):
     assert code == 0 and "tier `server` comes from this revision's profile" in out, out
     code, out = run_cli("receipt", "show", "--rev", sha, "--purpose", "handover", "--tree", str(root))
     assert code == 0 and "ok" in out, out
+
+
+def test_receipt_show_judges_a_revision_by_its_own_profile(tmp_path, monkeypatch):
+    """Final review of 0.24.2, M3: `receipt show --rev X` added HEAD's branch tiers to X, so a broken profile at HEAD
+    refused a question about another revision."""
+    tier = {"name": "unit", "command": GREEN, "required_for": ["handover"]}
+    root = onboarded(tmp_path, monkeypatch, {**PLAIN, "tests": {"tier": [tier]}})
+    trunk = git(root, "rev-parse", "HEAD")
+    git(root, "checkout", "-q", "-b", "feat/broken")
+    (root / ".flotilla" / "project.toml").write_text("schema = 1\n[tests\n", encoding="utf-8")
+    git(root, "add", ".flotilla")
+    commit(root, "a broken profile")
+    code, out = run_cli("receipt", "show", "--rev", trunk, "--purpose", "handover", "--tree", str(root))
+    assert code != 2 and "refused:" not in out and "no handover receipt over" in out, out
