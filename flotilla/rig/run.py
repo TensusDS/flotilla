@@ -12,6 +12,7 @@ stopped there, and a machine that cannot be asked for `ASK_FOR` seconds is drain
 from __future__ import annotations
 
 import contextlib
+import datetime as dt
 import hashlib
 import os
 import re
@@ -42,6 +43,7 @@ KEEP_REVISIONS = 5
 READ = None        # None: the READINGS script over ssh
 CEILING = None     # None: the profile's max_run_seconds
 KEY_PATH = None    # None: the rig's own key
+DEFAULT_WAIT = 900.0   # a session with no recorded end: the wait before the rig queue
 BACKSTOP = 30      # the machine's own limit runs this much longer than ours: only a backstop for a dead field side
 _NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _SECRET = ("KEY", "TOKEN", "SECRET", "PASSWORD")
@@ -430,11 +432,13 @@ def _main(state: Path, settings: rs.RigSettings, args) -> int:
     mark = ProcessTable.for_machine().start_mark(os.getpid()) or ""
     program = os.path.basename(command[0])
     ladder = signature.ladder(command, tree=str(root), project=key)
+    ceiling = float(CEILING or min(profile.max_run_seconds, args.max or profile.max_run_seconds))
+    exclusive = args.exclusive or (profile.exclusive and not args.shared)
     task.run = rig.queue_run(session.id, who=who, project=key, revision=revision, program=program, ladder=ladder,
-                             pid=os.getpid(), mark=mark)
+                             pid=os.getpid(), mark=mark, exclusive=exclusive, ceiling=int(ceiling))
     renewer = None
     try:
-        if not task.take_room(session, time.monotonic() + float(args.wait)):
+        if not task.take_room(session, time.monotonic() + _wait(args.wait, session, rig.now())):
             return task.code
         task.started = time.monotonic()
         slug = transfer.project_slug(root, key)
@@ -443,7 +447,6 @@ def _main(state: Path, settings: rs.RigSettings, args) -> int:
         rig.place_run(task.run.id, slug)
         renewer = threading.Thread(target=task.renew, daemon=True)
         renewer.start()
-        ceiling = float(CEILING or min(profile.max_run_seconds, args.max or profile.max_run_seconds))
         _phases(task, root, revision, puts, gets, pairs, command, profile, ceiling)
         return task.code
     except _Ended:
@@ -477,6 +480,16 @@ def _main(state: Path, settings: rs.RigSettings, args) -> int:
         on = f" on {task.machine.id}" if task.machine is not None else ""
         _say(f"rig run {task.run.id}: {task.verdict} (exit {task.code}) in {seconds or 0:g} s{on}, "
              f"{cost or 0:.4f} $" + (f" - {task.reason}" if task.reason else ""))
+
+
+def _wait(asked, session, now) -> float:
+    """How long a run stands in line: what the caller asked, else until its session ends (rig queue design, A2)."""
+    if asked is not None:
+        return float(asked)
+    try:
+        return max(1.0, (dt.datetime.fromisoformat(session.until) - now).total_seconds())
+    except (TypeError, ValueError):
+        return DEFAULT_WAIT
 
 
 def _phases(task: Run, root, revision, puts, gets, pairs, command, profile, ceiling):

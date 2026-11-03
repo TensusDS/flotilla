@@ -776,3 +776,49 @@ def test_a_signal_as_the_renewer_begins_still_records_the_stop(world, box, tree,
     with pytest.raises(SystemExit):
         rig_run(world, tree, "--", "sleep", "3")
     assert journal(world).runs()["j1"].verdict == "stopped"
+
+
+# -- the line: exclusive by profile or flag, the ceiling recorded, a wait as long as the session (rig queue, A1-A2) --
+
+def queued_only(world, tree, monkeypatch, *argv):
+    """Queue a run and stop before it takes room: what the journal recorded, and the deadline it would wait to."""
+    seen = {}
+
+    def take_room(self, session, deadline):
+        seen["wait"] = deadline - time.monotonic()
+        return False
+    monkeypatch.setattr(run_module.Run, "take_room", take_room)
+    code, out = rig_run(world, tree, *argv, "--", "true")
+    return journal(world).runs()["j1"], seen["wait"], out
+
+
+@pytest.mark.parametrize("profile_says, flags, exclusive", [
+    ("", [], False), ("", ["--exclusive"], True), ("exclusive = true\n", [], True),
+    ("exclusive = true\n", ["--shared"], False)])
+def test_the_profile_makes_runs_exclusive_and_shared_overrides_it(world, box, tmp_path, monkeypatch, profile_says,
+                                                                 flags, exclusive):
+    tree = git_tree(tmp_path / "tree2", {"package.json": "{}", "shoot.sh": "echo",
+                                         ".flotilla/project.toml": PROFILE + "[rig]\n" + profile_says})
+    opened(world)
+    run, _, _ = queued_only(world, tree, monkeypatch, *flags)
+    assert run.exclusive is exclusive
+
+
+def test_exclusive_and_shared_together_are_refused(world, box, tree):
+    opened(world)
+    with pytest.raises(SystemExit):
+        rig_run(world, tree, "--exclusive", "--shared", "--", "true")
+
+
+@pytest.mark.parametrize("flags, ceiling", [(["--max", "300"], 300), ([], 1800)])
+def test_a_run_records_its_ceiling(world, box, tree, monkeypatch, flags, ceiling):
+    opened(world)
+    run, _, _ = queued_only(world, tree, monkeypatch, *flags)
+    assert run.ceiling == ceiling
+
+
+@pytest.mark.parametrize("flags, expected", [([], 3600.0), (["--wait", "60"], 60.0)])
+def test_the_wait_defaults_to_the_sessions_end(world, box, tree, monkeypatch, flags, expected):
+    opened(world, hours=1)
+    _, wait, _ = queued_only(world, tree, monkeypatch, *flags)
+    assert abs(wait - expected) < 5
