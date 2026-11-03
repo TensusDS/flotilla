@@ -579,8 +579,10 @@ rented machine with `flotilla rig run` and gets its output, its exit code and it
     that by estimates ends after its session is told so before it starts, not refused;
   - **an exclusive run is alone on its machine** (`--exclusive`, or `[rig] exclusive = true` for every run of a
     project; `--shared` overrides the profile): it starts only on a machine with nothing on it, nothing starts beside
-    it, and while it waits every run that came after it waits too, so shared runs cannot starve it. For runs that
-    measure time, frames or sound;
+    it, and while it waits every run that came after it waits too, so shared runs cannot starve it. Only for runs whose
+    result is a measurement in real time (fps, frame timing, audio captured as it plays, a benchmark): a neighbour
+    skews the measurement, not the work. Tests, builds and frames rendered one by one share the machine as usual, and
+    `[rig] exclusive` is for a project whose rig runs are almost all such measurements;
   - the revision travels once per machine (`git archive`, checked by sha256 there); each run works in its own copy
     and runs the profile's setup (`[rig] setup_command`, else `[tests] setup_command`) itself, with download caches
     shared on the machine;
