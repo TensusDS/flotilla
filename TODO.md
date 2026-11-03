@@ -8,6 +8,22 @@ something through, B a bug a user meets, P polish, tests or docs), or `open, des
 run). A later triage re-checks only items whose named files changed since that version. An item that is done -
 fixed by a release, or found fixed - leaves its section for **Done** at the bottom, one line with the version.
 
+## From the person-inbox build and its reviews (2026-11-03, 0.26.0)
+
+- **A wrapped `approve` passes the person guard in the person's interactive session.** `bash -c '... work approve
+  ...'`, `env X=1 flotilla work approve ...` and `echo b | xargs flotilla work approve` are not refused by
+  `guards/person.py`, and `caller.person_refusal` counts an interactive caller as the person, so a model in the
+  person's own session can approve past both (security review of 5f65ad5, outside the branch; `rig enable` and
+  `attention digest` fail the same way). *(checked 2026-11-03 on 0.26.0: still S - flotilla/guards/person.py:303)*
+- **The person guard refuses `python3 -c "..."` that names a flotilla path** as "a variable or a substitution" (seen
+  by the twosuns orchestrator and while building 0.26.0 on heredocs naming the CLI). *(checked 2026-11-03 on 0.26.0:
+  still P - flotilla/guards/person.py:303)*
+- Deferred from the 0.26.0 reviews (P): an inbox row's age resets on unrelated moves (`inbox.py`, `since` is the
+  row's last move); putting a row off loses its first-shown time (the key changes); a wait on a reserved row is listed
+  but cannot be put off (`steering.hold`); the hook writes the shown file twice per prompt without a lock; a census
+  session waiting at its prompt flickers between samples; the shown file is not under `guards/files.py`; `/loop` and
+  wakeup prompt shapes beyond CronCreate are not measured. *(checked 2026-11-03 on 0.26.0: still P)*
+
 ## From two field fleets, twosuns and void-lanes-online (2026-10-31..11-01, reported on 0.21.0 and 0.23.2)
 
 Order, the person's call (2026-11-01): the lane's fixes first (0.24.1), then the lane's modes (0.25.0), then the
