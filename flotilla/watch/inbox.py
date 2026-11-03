@@ -46,8 +46,12 @@ class Entry:
     blocker: bool
 
 
+def _last(row, move: str) -> dict:
+    return next((step for step in reversed(row.history or []) if step.get("move") == move), {})
+
+
 def _last_wait(row) -> dict:
-    return next((step for step in reversed(row.history or []) if step.get("move") == "wait"), {})
+    return _last(row, "wait")
 
 
 def _waits_on_person(row) -> bool:
@@ -78,10 +82,13 @@ def _row_entry(ctx, row, rows: dict, must_approve) -> Entry | None:
     urgent = bool(row.urgent_at)
     since = row.updated_at
     if row.held_until.strip().lower() == THE_PERSON:
-        return Entry(f"row:{row.id}", "put off", row.branch, visible(row.held_why or row.note), since, row.held_by,
+        # a key per question, never per row: a later question on the row is a new entry, never "shown" by the
+        # first one's showing (final review, I3)
+        return Entry(f"row:{row.id}@hold:{_last(row, 'hold').get('at', '')}", "put off", row.branch, visible(row.held_why or row.note), since, row.held_by,
                      urgent, urgent)
     if _approval_asked(ctx, row, must_approve):
-        return Entry(f"approve:{row.id}", "approve", row.branch, "the batch waits for your yes to ship", since, "",
+        from flotilla.ledger.batch import revision_of
+        return Entry(f"approve:{row.id}@{revision_of(row)}", "approve", row.branch, "the batch waits for your yes to ship", since, "",
                      urgent, True)
     if views.who_moves(row, profile, rows) == "the person who merges the PR":
         return Entry(f"merge:{row.id}", "merge", row.branch, f"merge the pull request{f' {row.pr}' if row.pr else ''}",
@@ -91,7 +98,7 @@ def _row_entry(ctx, row, rows: dict, must_approve) -> Entry | None:
     step = _last_wait(row)
     by, post = step.get("by", ""), step.get("post", "")
     blocker = urgent or not (by and _busy(by, post, rows, profile, row.id))
-    return Entry(f"row:{row.id}", BY_POST.get(post, "other"), row.branch, visible(row.note or "no question recorded"),
+    return Entry(f"row:{row.id}@{step.get('at', '')}", BY_POST.get(post, "other"), row.branch, visible(row.note or "no question recorded"),
                  since, by, urgent, blocker)
 
 
@@ -125,7 +132,8 @@ def collect(ctx, *, fleet_items=None, must_approve=None) -> list[Entry]:
 
         def must_approve(row):
             return batch.person_must_approve(ctx.ledger, row)
-    found = [entry for row in rows.values() if row.is_open and row.state != "reserved"
+    # a post row is the post held, not a move - unless a wait on the person was recorded on it (final review, I2)
+    found = [entry for row in rows.values() if row.is_open and (row.state != "reserved" or _waits_on_person(row))
              for entry in [_row_entry(ctx, row, rows, must_approve)] if entry is not None]
     items = ctx.fleet() if fleet_items is None else fleet_items
     found += [entry for item in items for entry in [_item_entry(item)] if entry is not None]

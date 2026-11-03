@@ -372,9 +372,30 @@ def test_a_put_off_row_stays_out_of_the_batch(world):
     drive(root, ledger, to="claimed")
     asked_of_the_person(ledger)
     steering.hold(ledger, actor(ledger, ORCH), "feat/x", until="the person", why="after the teaser")
-    handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", clear=True)
     row = handover.hand(ledger, actor(ledger, "main session 1"), "feat/x")
     reading.take(ledger, actor(ledger, "review session 1"), "feat/x")
     reading.accept(ledger, actor(ledger, "review session 1"), "feat/x", reviewed=row.tip)
     with pytest.raises(MoveRefused, match="held by"):
         delivery.queue(ledger, actor(ledger, "sender 1"), "feat/x", pr=1)
+
+
+def test_the_answer_lifts_a_put_off_on_a_claimed_row(world):
+    """Final review, I4: the put-off outlived the question it put off - the builder's own claimed row read as held,
+    dropped out of its prompts, and the watch never flagged it. Clearing the wait lifts it in the same move."""
+    from flotilla.ledger import handover
+    root, ledger = world
+    drive(root, ledger, to="claimed")
+    asked_of_the_person(ledger)
+    steering.hold(ledger, actor(ledger, ORCH), "feat/x", until="the person", why="after the teaser")
+    row = handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", clear=True)
+    assert (row.waiting_on, row.held_until, row.held_by) == ("", "", "")
+
+
+def test_the_answer_keeps_a_hold_the_old_rule_allowed(world):
+    from flotilla.ledger import handover
+    root, ledger = world
+    drive(root, ledger, to="handed")
+    handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", on="the person", why="which colour?")
+    steering.hold(ledger, actor(ledger, ORCH), "feat/x", until="the person", why="release on Friday")
+    row = handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", clear=True)
+    assert row.held_until == "the person"

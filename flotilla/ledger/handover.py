@@ -170,6 +170,11 @@ def wait(ledger: Ledger, actor: Actor, branch: str, *, on: str = "", why: str = 
         state = s.next_state(row, "wait")
         if clear:
             fields = {"waiting_on": "", "note": ""}
+            from flotilla.ledger.steering import HOLDABLE, THE_PERSON
+            if row.held_until == THE_PERSON and row.state not in HOLDABLE:
+                # a put-off outside the reading queue and the batch held only the question; the answer ends it, or
+                # the builder's own row would read as held (final review of 0.26.0, I4)
+                fields.update({"held_by": "", "held_until": "", "held_why": ""})
         else:
             if not on.strip() or not why.strip():
                 raise MoveRefused("a wait names whom it waits on (--on) and why (--why)")

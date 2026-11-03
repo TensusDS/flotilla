@@ -36,7 +36,7 @@ def test_a_damaged_shown_file_reads_as_never_shown(tmp_path):
 def test_listing_numbers_rows_and_says_never(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     entries = inbox.collect(context(tmp_path, me=ORCH, rows_=rows(asking("r1"), asking("r2"))), fleet_items=[])
-    lines = inbox_command.listing(entries, {"row:r1": "2026-09-27T11:00:00+00:00"}, NOW)
+    lines = inbox_command.listing(entries, {entries[0].key: "2026-09-27T11:00:00+00:00"}, NOW)
     text = "\n".join(lines)
     assert "  1. feat/r1" in text and "  2. feat/r2" in text
     assert "first shown 1 h ago" in text and text.count("never shown") == 1
@@ -75,7 +75,8 @@ def recorded(world):
 def test_the_persons_listing_in_a_terminal_records_shown(world, capsys):
     code, out = run(world, capsys)
     assert code == 1 and "feat/r1" in out and "feat/r2" in out
-    assert set(recorded(world)) == {"row:r1", "row:r2"}
+    assert set(recorded(world)) == {entry.key for entry in inbox.collect(world.ctx, fleet_items=[])}
+    assert len(recorded(world)) == 2
 
 
 def session(kind):

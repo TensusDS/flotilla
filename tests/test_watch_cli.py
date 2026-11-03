@@ -114,7 +114,7 @@ def test_a_question_waiting_on_the_person_needs_attention(tmp_path, capsys):
     asking = rows(row(state="handed", reader="review session 1", waiting_on="the person",
                       note="which colour should the snake be?"))
     code, out = run(tmp_path, context(tmp_path, me=None, sessions=[sess("review session 1")], rows_=asking), capsys)
-    assert code == 1 and "waits on the person: which colour should the snake be?" in out
+    assert code == 1 and "feat/x: which colour should the snake be?" in out
 
 
 def test_once_does_not_report_a_ball_the_second_sample_clears(tmp_path, capsys):
@@ -191,3 +191,14 @@ def test_once_with_a_person_wait_names_its_section(tmp_path, capsys):
     code, out = run(tmp_path, context(tmp_path, me=None, sessions=[sess("main session 1", state="working")],
                                       rows_=asked), capsys)
     assert code == 1 and "waits on the person (1):" in out
+
+
+def test_once_counts_the_persons_queue_as_the_inbox_does(tmp_path, capsys):
+    """Final review, I5: the section counted only `person` items; a held row, an approval or a permission question
+    fell under 'other' or nowhere, so the watch said 4 where the line said 9."""
+    held = row(id="r2", branch="feat/held", state="accepted", held_until="the person", held_by="orchestrator 1",
+               held_why="after Friday")
+    asked = row(state="fixing", waiting_on="the person", note="which colour should the snake be?")
+    code, out = run(tmp_path, context(tmp_path, me=None, sessions=[sess("main session 1", state="working")],
+                                      rows_=rows(asked, held)), capsys)
+    assert code == 1 and "waits on the person (2):" in out and "feat/held" in out

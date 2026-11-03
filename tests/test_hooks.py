@@ -645,4 +645,33 @@ def test_only_an_interactive_session_records_shown(tmp_path):
 def test_the_line_is_one_per_project(tmp_path):
     found = person_rows()
     assert orchestrator_prompt(tmp_path, found, 5)[1] != ""
-    assert orchestrator_prompt(tmp_path, found, 6, me=FLEET[1])[1] == ""
+    assert orchestrator_prompt(tmp_path, found, 6)[1] == ""
+
+
+def test_a_background_seats_prompt_does_not_use_up_the_persons_line(tmp_path):
+    """Final review, I1: one throttle per project, written by any prompt, let six seats' launch prompts 'show' the
+    line where nobody watches, and the person's next prompt saw nothing."""
+    found = person_rows()
+    assert orchestrator_prompt(tmp_path, found, 5, me=FLEET[1], prompt="You are main session 1. Start.")[1] != ""
+    person = sess("orchestrator 1", kind="interactive")
+    assert orchestrator_prompt(tmp_path, found, 6, me=person)[1].startswith("flotilla: 22 wait on you")
+
+
+def test_two_interactive_windows_share_one_line(tmp_path):
+    found = person_rows()
+    one, two = sess("orchestrator 1", kind="interactive"), sess("main session 1", kind="interactive")
+    assert orchestrator_prompt(tmp_path, found, 5, me=one)[1] != ""
+    assert orchestrator_prompt(tmp_path, found, 6, me=two)[1] == ""
+
+
+def test_a_seat_asks_nothing_of_the_queue_on_a_machine_prompt(tmp_path, monkeypatch):
+    """Final review, M9 raised: the queue (git per row awaiting approval) ran on every prompt in every seat, and a
+    hook over its 10 s budget loses all its output. A seat's machine prompt shows no line, so it computes none."""
+    from flotilla.watch import inbox
+
+    def costly(*args, **kwargs):
+        raise AssertionError("the queue was computed")
+    monkeypatch.setattr(inbox, "collect", costly)
+    raw = call("prompt", tmp_path, context(tmp_path, me=FLEET[1], sessions=FLEET, rows_=rows(*person_rows())),
+               payload={"prompt": '<cross-session-message from="x">go</cross-session-message>'})
+    assert "failed" not in raw

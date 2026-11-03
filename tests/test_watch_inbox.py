@@ -85,7 +85,7 @@ def test_the_person_merging_a_pr_is_an_entry():
 def test_approval_waits_for_the_persons_yes():
     accepted = row(id="r1", state="accepted", tip="abc1234")
     [entry] = collect(accepted, profile=HUMAN, must_approve=lambda r: True)
-    assert (entry.group, entry.key) == ("approve", "approve:r1")
+    assert (entry.group, entry.key) == ("approve", "approve:r1@abc1234")
     assert collect(accepted, profile=HUMAN, must_approve=lambda r: False) == []
 
 
@@ -126,3 +126,25 @@ def test_counts_match_the_entries():
 def test_text_another_session_wrote_is_one_line():
     [entry] = collect(waited("r1", "main", note="line one\nline two\x1b[2J"))
     assert "\n" not in entry.why and "\x1b" not in entry.why
+
+
+def test_a_new_wait_on_the_same_row_is_a_new_entry():
+    """Final review, I3: the key was `row:<id>`, so a second question on a row inherited the first one's "first
+    shown" - the unsafe direction for the record the design calls the only proof."""
+    first = collect(waited("r1", "main"))[0]
+    again = waited("r1", "main")
+    again.history.append({"at": "2026-09-28T09:00:00+00:00", "move": "wait", "by": "main session 1", "post": "main"})
+    assert collect(again)[0].key != first.key
+
+
+def test_approval_again_at_a_new_tip_is_a_new_entry():
+    one = collect(row(id="r1", state="accepted", tip="abc1234"), profile=HUMAN, must_approve=lambda r: True)[0]
+    two = collect(row(id="r1", state="accepted", tip="def5678"), profile=HUMAN, must_approve=lambda r: True)[0]
+    assert one.key != two.key
+
+
+def test_a_wait_on_a_post_row_is_counted():
+    """Final review, I2: `wait` is legal on a reserved row; the orchestrator's fold dropped it as the person's, and
+    the queue skipped reserved rows, so it was counted nowhere."""
+    seat = waited("r1", "main", state="reserved")
+    assert [entry.group for entry in collect(seat)] == ["question"]

@@ -236,8 +236,12 @@ def _prompt(ctx, payload, out, now) -> int:
         blocks.append(f"flotilla: the ledger could not be read: {ctx.ledger_error}")
     elif ctx.me is not None:
         mine = [item for item in ctx.mine() if item.kind != WAITING]
-        everything = ctx.fleet()
-        entries = inbox.collect(ctx, fleet_items=everything)
+        from flotilla.watch.shown import persons_prompt
+        # the queue asks git per row awaiting approval: only where a line or the orchestrator's count can follow
+        # (final review of 0.26.0, M9 - a hook past its 10 s budget loses all its output)
+        wanted = ctx.is_orchestrator or persons_prompt(payload.get("prompt"))
+        everything = ctx.fleet() if wanted else []
+        entries = inbox.collect(ctx, fleet_items=everything) if wanted else []
         # what waits on the person is counted in its own line on every prompt, never folded as standing (0.26.0)
         fleet_items = [item for item in everything if not inbox.covers(item)] if ctx.is_orchestrator else []
         if mine:
@@ -294,10 +298,15 @@ def _persons_line(ctx, payload, entries, now) -> str:
         return ""
     state, repo = ctx.ledger.state_dir, ctx.ledger.repo_key
     mode, every = attention.mode(paths.state_dir())
-    due = shown.line_due(shown.load(state, repo), entries, mode=mode, every=every, now=now)
     interactive = getattr(ctx.me, "kind", "") == "interactive"
-    shown.remember(state, repo, now=now, line_entries=entries if due else None, clear_line=not entries,
-                   shown_keys=[entry.key for entry in entries] if due and interactive else (), prompt=True)
+    # the person's windows share one line per project; a background session keeps its own, so a seat's launch
+    # prompt or a firing nobody reads never uses up the person's line (final review of 0.26.0, I1)
+    throttle = repo if interactive else f"{repo}\x00{ctx.session_id}"
+    due = shown.line_due(shown.load(state, throttle), entries, mode=mode, every=every, now=now)
+    shown.remember(state, throttle, now=now, line_entries=entries if due else None, clear_line=not entries,
+                   prompt=True)
+    if due and interactive:
+        shown.mark(state, repo, [entry.key for entry in entries], now.isoformat(timespec="seconds"))
     return inbox.person_line(entries) if due else ""
 
 
