@@ -148,6 +148,14 @@ class LedgerSession:
         if before is not None and before.state != state and (before.waiting_on or before.note):
             fields.setdefault("waiting_on", "")   # a wait belongs to the state it was recorded in
             fields.setdefault("note", "")
+            from flotilla.ledger.steering import HOLDABLE, THE_PERSON
+            if before.held_until == THE_PERSON and before.state not in HOLDABLE and \
+                    before.waiting_on.strip().lower() == THE_PERSON:
+                # outside the reading queue and the batch a put-off holds only that wait on the person; the wait ends
+                # with the state, and so does the put-off, on the record (review of 5f65ad5, I-2)
+                for key in ("held_by", "held_until", "held_why"):
+                    fields.setdefault(key, "")
+                evidence.setdefault("lifted", f"put off by {before.held_by}: {before.held_why}")
         changes = before is None or before.state != state
         data = None
         if changes:

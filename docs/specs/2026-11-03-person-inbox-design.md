@@ -166,6 +166,16 @@ So the plan's first task measures it on Claude Code 2.1.317:
 
 The result goes in the module's docstring with the version, as `guards/person.py` does for `!`.
 
+*Measured while building, 2026-11-03, and what changed with it.* The line shows on screen in both kinds of session,
+the model does not see it, and it goes with `additionalContext`. The hook cannot tell the person's prompt from other
+turns: a peer's message, a task's end and a subagent's hand-back carry a tag, but a CronCreate or `/loop` firing
+arrives as plain text, and the prompt's transcript record, which says `promptSource` typed or system, is written only
+after the hook. So the hook shows the line when it is due and leaves the turn pending, and the Stop hook counts it
+only when the transcript records the prompt as typed by a human: the line as shown, the person as having prompted. A
+background session keeps a throttle of its own, and its first counted prompt, its launch, is never the line shown;
+the person's windows share one throttle per project. (Two reviews of the build found a scheduled firing and a seat's
+launch spending the person's line where nobody read it.)
+
 **If it does not show, the build stops and the channel comes back to the person as a decision.** The candidates
 then are a `terminalSequence` notification or the window title (interactive only), and a SessionStart stderr line
 (shown to the user, but only at start).

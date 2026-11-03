@@ -17,7 +17,8 @@ import datetime as dt
 from pathlib import Path
 
 from flotilla.watch import inbox, shown
-from flotilla.watch.render import age
+from flotilla.core.text import visible
+from flotilla.watch.render import _cut, age
 
 
 def _now() -> dt.datetime:
@@ -31,21 +32,25 @@ def listing(entries, shown_first: dict, now: dt.datetime) -> list[str]:
               f"{counted['blocker']} holding work up" if counted["blocker"] else ""]
     extras = [part for part in extras if part]
     out = [head + (f" ({', '.join(extras)})" if extras else "") + " - answer by number"]
+    # urgent rows first, whatever they ask (the design's "Decided"), then each group, oldest first
+    sections = [("urgent", [entry for entry in entries if entry.urgent])]
+    sections += [(inbox.LABELS[group][0], [entry for entry in entries if entry.group == group and not entry.urgent])
+                 for group in inbox.GROUPS]
     number = 0
-    for group in inbox.GROUPS:
-        mine = [entry for entry in entries if entry.group == group]
+    for heading, mine in sections:
         if not mine:
             continue
-        out.append(f"{inbox.LABELS[group][0]} ({len(mine)}):")
-        for entry in sorted(mine, key=lambda entry: (not entry.urgent, entry.since or "~")):
+        out.append(f"{heading} ({len(mine)}):")
+        for entry in sorted(mine, key=lambda entry: entry.since or "~"):
             number += 1
             first = shown_first.get(entry.key)
             seen = f"first shown {age(first, now)} ago" if first else "never shown"
             asked = f"by {entry.by}, " if entry.by else ""
             when = f"{age(entry.since, now)} ago" if entry.since else "age unknown"
-            flag = " [urgent]" if entry.urgent else ""
+            kind = f" [{inbox.LABELS[entry.group][0]}]" if entry.urgent else ""
             where = f"{entry.branch}: " if entry.branch else ""
-            out.append(f"  {number}. {where}{entry.why} ({asked}{when}; {seen}){flag}")
+            # every word here may be another session's - a name `--as` took, a why: one safe line (security review)
+            out.append(_cut(visible(f"  {number}. {where}{entry.why} ({asked}{when}; {seen}){kind}")))
     return out
 
 

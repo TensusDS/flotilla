@@ -290,29 +290,44 @@ def _prompt(ctx, payload, out, now) -> int:
 
 
 def _persons_line(ctx, payload, entries, now) -> str:
-    """The person's line when it is due on this prompt, and the record of it (`watch/shown.py`): shown only on a
-    prompt that can be the person's, recorded as shown only in an interactive session."""
+    """The person's line when it is due on this prompt (`watch/shown.py`). Nothing is counted here: the turn is left
+    pending and the Stop hook counts it only if the transcript records the prompt as typed by a human. A record that
+    cannot be written never costs the person the line."""
     from flotilla.core import paths
     from flotilla.watch import attention, inbox, shown
     if not shown.persons_prompt(payload.get("prompt")):
         return ""
     state, repo = ctx.ledger.state_dir, ctx.ledger.repo_key
-    mode, every = attention.mode(paths.state_dir())
     interactive = getattr(ctx.me, "kind", "") == "interactive"
     # the person's windows share one line per project; a background session keeps its own, so a seat's launch
     # prompt or a firing nobody reads never uses up the person's line (final review of 0.26.0, I1)
     throttle = repo if interactive else f"{repo}\x00{ctx.session_id}"
-    due = shown.line_due(shown.load(state, throttle), entries, mode=mode, every=every, now=now)
-    shown.remember(state, throttle, now=now, line_entries=entries if due else None, clear_line=not entries,
-                   prompt=True)
-    if due and interactive:
-        shown.mark(state, repo, [entry.key for entry in entries], now.isoformat(timespec="seconds"))
+    try:
+        mode, every = attention.mode(paths.state_dir())
+        due = shown.line_due(shown.load(state, throttle), entries, mode=mode, every=every, now=now)
+    except Exception:  # noqa: BLE001 - a schedule that cannot be read shows the line rather than hiding it
+        due = bool(entries)
+    try:
+        if not entries:
+            shown.clear_line(state, throttle)
+        shown.hold_turn(state, ctx.session_id, {
+            "repo": repo, "throttle": throttle, "interactive": interactive, "at": now.isoformat(timespec="seconds"),
+            "prompt_id": str(payload.get("prompt_id") or ""),
+            "line": shown.line_record(entries) if due else None})
+    except Exception:  # noqa: BLE001 - security review of 5f65ad5, I1: a record that fails never drops the line
+        pass
     return inbox.person_line(entries) if due else ""
 
 
 def _stop(ctx, payload, out, now) -> int:
     from flotilla.ledger.model import now_iso
     from flotilla.watch import fleet, guard
+    if ctx.ledger is not None:
+        try:   # the turn's prompt is in the transcript now: counted only if a human typed it (watch/shown.py)
+            from flotilla.watch import shown
+            shown.settle(ctx.ledger.state_dir, ctx.session_id, payload.get("transcript_path"))
+        except Exception:  # noqa: BLE001 - a record that cannot be settled counts nothing, and stops nothing
+            pass
     verdict = guard.stop_verdict(ctx, payload, cli=str(CLI))
     if verdict.block:
         print(json.dumps({"decision": "block", "reason": verdict.reason}), file=out)

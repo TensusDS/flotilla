@@ -35,8 +35,9 @@ RIG_REQUEST = "rig:request:"
 
 @dataclass(frozen=True)
 class Entry:
-    key: str      # the same entry across prompts: "row:<id>", "approve:<id>", "merge:<id>", "question:<session>:<at>",
-                  # "rig:<request id>", "window:<session name>"
+    key: str      # one question across prompts: "row:<id>@<wait's time>", "row:<id>@hold:<hold's time>",
+                  # "approve:<id>@<revision>", "merge:<id>", "question:<session>:<at>", "rig:<request id>",
+                  # "window:<session name>"
     group: str    # one of GROUPS
     branch: str
     why: str      # one line, safe to show (core.text.visible)
@@ -84,21 +85,24 @@ def _row_entry(ctx, row, rows: dict, must_approve) -> Entry | None:
     if row.held_until.strip().lower() == THE_PERSON:
         # a key per question, never per row: a later question on the row is a new entry, never "shown" by the
         # first one's showing (final review, I3)
-        return Entry(f"row:{row.id}@hold:{_last(row, 'hold').get('at', '')}", "put off", row.branch, visible(row.held_why or row.note), since, row.held_by,
+        return Entry(f"row:{row.id}@hold:{_last(row, 'hold').get('at', '')}", "put off", row.branch,
+                     visible(row.held_why or row.note), since, row.held_by,
                      urgent, urgent)
     if _approval_asked(ctx, row, must_approve):
         from flotilla.ledger.batch import revision_of
-        return Entry(f"approve:{row.id}@{revision_of(row)}", "approve", row.branch, "the batch waits for your yes to ship", since, "",
-                     urgent, True)
+        # a blocker is what the design says: urgent, or a session with nothing else to do (review of 5f65ad5, M-2)
+        return Entry(f"approve:{row.id}@{revision_of(row)}", "approve", row.branch,
+                     "the batch waits for your yes to ship", since, "", urgent, urgent)
     if views.who_moves(row, profile, rows) == "the person who merges the PR":
         return Entry(f"merge:{row.id}", "merge", row.branch, f"merge the pull request{f' {row.pr}' if row.pr else ''}",
-                     since, "", urgent, True)
+                     since, "", urgent, urgent)
     if not _waits_on_person(row):
         return None
     step = _last_wait(row)
     by, post = step.get("by", ""), step.get("post", "")
     blocker = urgent or not (by and _busy(by, post, rows, profile, row.id))
-    return Entry(f"row:{row.id}@{step.get('at', '')}", BY_POST.get(post, "other"), row.branch, visible(row.note or "no question recorded"),
+    return Entry(f"row:{row.id}@{step.get('at', '')}", BY_POST.get(post, "other"), row.branch,
+                 visible(row.note or "no question recorded"),
                  since, by, urgent, blocker)
 
 

@@ -94,3 +94,13 @@ def test_a_tool_call_setting_attention_is_refused(tmp_path, monkeypatch, line):
 def test_reading_the_mode_is_not_refused(tmp_path, monkeypatch):
     answer = ask(onboarded(tmp_path), f"{CLI} attention", monkeypatch, tmp_path)
     assert not answer or answer.get("permissionDecision") != "deny"
+
+
+def test_a_huge_period_is_capped_at_a_week(tmp_path):
+    """Security review of 5f65ad5, I2: a period past what a timedelta holds failed every prompt after the first."""
+    set_person_keys(tmp_path, attention="digest", attention_every=10**13)
+    assert attention.mode(tmp_path) == ("digest", 7 * 24 * 60)
+
+
+def test_setting_a_period_past_a_week_is_refused(tmp_path, monkeypatch):
+    assert run(tmp_path, monkeypatch, action="digest", every=7 * 24 * 60 + 1) == 2

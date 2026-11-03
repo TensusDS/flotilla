@@ -17,7 +17,8 @@ typed, and 104 were never named to them again.
 - **A line on your own screen, past the model.** When you type in a session of the project, flotilla shows
   `flotilla: N wait on you (...)` as the hook's system message, which the model neither sees nor can withhold
   (measured on Claude Code 2.1.317); once per project, when what waits changes, and again when you come back after
-  an hour away. The orchestrator gets the same count on every prompt, never folded, and is told to answer your
+  an hour away. It counts as shown only when the transcript says a person typed that prompt: a scheduled firing, a
+  subagent's report or a background seat's launch shows it without spending it. The orchestrator gets the same count on every prompt, never folded, and is told to answer your
   status questions from `flotilla inbox`.
 - **How you are asked is yours alone.** `flotilla attention digest [--every MIN]` collects the line into one per
   period (30 minutes by default) and still shows at once what holds the fleet up; `all` is the default. A tool
@@ -29,7 +30,7 @@ typed, and 104 were never named to them again.
 - What counts as shown is flotilla's own display: the line in the person's interactive session, and the listing run
   from a terminal outside every session. Inside a session a model's Bash call and the person's `!` cannot be told
   apart (measured), so neither records it.
-- The orchestrator template is version 24.
+- The orchestrator template is version 25.
 
 ## 0.25.0 - 2026-11-02
 

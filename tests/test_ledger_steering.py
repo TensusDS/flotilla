@@ -364,17 +364,27 @@ def test_putting_off_needs_a_why(world):
         steering.hold(ledger, actor(ledger, ORCH), "feat/x", until="the person", why=" ")
 
 
-def test_a_put_off_row_stays_out_of_the_batch(world):
-    """The hold's meaning for batching does not change: a row put off while claimed is still out of the batch once
-    it is accepted, until the person's word lifts it."""
-    from flotilla.ledger import delivery, handover, reading
+def test_a_put_off_ends_with_its_question_when_the_state_moves(world):
+    """Correctness review of 5f65ad5, I-2: a move to another state ends the wait recorded in the old one, and the
+    put-off of that wait stayed - an answered question read as put off, and the handed row as held from its reader.
+    The put-off ends with it, on the record."""
+    from flotilla.ledger import handover
     root, ledger = world
     drive(root, ledger, to="claimed")
     asked_of_the_person(ledger)
     steering.hold(ledger, actor(ledger, ORCH), "feat/x", until="the person", why="after the teaser")
     row = handover.hand(ledger, actor(ledger, "main session 1"), "feat/x")
-    reading.take(ledger, actor(ledger, "review session 1"), "feat/x")
-    reading.accept(ledger, actor(ledger, "review session 1"), "feat/x", reviewed=row.tip)
+    assert (row.state, row.held_until, row.waiting_on) == ("handed", "", "")
+    assert "after the teaser" in row.history[-1]["evidence"].get("lifted", "")
+
+
+def test_a_held_release_stays_held_through_its_moves(world):
+    """A hold the old rule allowed - an accepted row's release put off until the person - is no put-off of a
+    question, and keeps the row out of the batch whatever moves around it."""
+    from flotilla.ledger import delivery
+    root, ledger = world
+    drive(root, ledger, to="accepted")
+    steering.hold(ledger, actor(ledger, ORCH), "feat/x", until="the person", why="release on Friday")
     with pytest.raises(MoveRefused, match="held by"):
         delivery.queue(ledger, actor(ledger, "sender 1"), "feat/x", pr=1)
 

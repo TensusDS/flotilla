@@ -565,9 +565,27 @@ def person_rows():
 FLEET = [sess("orchestrator 1", state="working"), sess("main session 1", state="working")]
 
 
-def orchestrator_prompt(tmp_path, found, minutes, me=None, prompt="anything that needs me?"):
-    ctx = context(tmp_path, me=me or FLEET[0], sessions=FLEET, rows_=rows(*found))
-    return said(call("prompt", tmp_path, ctx, payload={"prompt": prompt}, now=NOW + dt.timedelta(minutes=minutes)))
+PERSON_ORCH = sess("orchestrator 1", kind="interactive")
+TYPED, SCHEDULED = ("typed", "human"), ("system", "scheduled")
+
+
+def orchestrator_prompt(tmp_path, found, minutes, me=None, prompt="anything that needs me?", origin=TYPED,
+                        record=True):
+    """One turn: the prompt hook, then Claude Code writes the prompt's record to the transcript (measured on 2.1.317:
+    not before the hook), then the stop hook. `origin` is what the record says: who the prompt came from."""
+    me = me or PERSON_ORCH
+    ctx = context(tmp_path, me=me, sessions=[me, *FLEET[1:]], rows_=rows(*found))
+    transcript = tmp_path / "transcript.jsonl"
+    prompt_id = f"p-{minutes}-{me.name}-{len(transcript.read_text().splitlines()) if transcript.exists() else 0}"
+    payload = {"prompt": prompt, "prompt_id": prompt_id, "transcript_path": str(transcript)}
+    at = NOW + dt.timedelta(minutes=minutes)
+    answer = said(call("prompt", tmp_path, ctx, payload=payload, now=at))
+    if record:
+        with transcript.open("a", encoding="utf-8") as f:
+            f.write(json.dumps({"type": "user", "promptId": prompt_id, "promptSource": origin[0],
+                                "turnOrigin": origin[1]}) + "\n")
+    call("stop", tmp_path, ctx, payload=payload, now=at)
+    return answer
 
 
 def test_person_waits_are_counted_on_every_prompt_and_never_folded(tmp_path):
@@ -634,11 +652,10 @@ def test_a_prompt_that_is_not_the_persons_shows_and_records_nothing(tmp_path):
 def test_only_an_interactive_session_records_shown(tmp_path):
     from flotilla.watch import shown
     found = person_rows()
-    orchestrator_prompt(tmp_path, found, 5)   # FLEET's orchestrator is a background session: shown, not recorded
+    orchestrator_prompt(tmp_path, found, 5, me=FLEET[0])   # a background session: shown, not recorded
     assert shown.load(tmp_path / "state", "repo")["first"] == {}
-    person = sess("orchestrator 1", kind="interactive")
     orchestrator_prompt(tmp_path, [*found, row(id="r99", state="fixing", branch="feat/new", waiting_on="the person",
-                                               note="new")], 6, me=person)
+                                               note="new")], 6)
     assert len(shown.load(tmp_path / "state", "repo")["first"]) == 23
 
 
@@ -675,3 +692,47 @@ def test_a_seat_asks_nothing_of_the_queue_on_a_machine_prompt(tmp_path, monkeypa
     raw = call("prompt", tmp_path, context(tmp_path, me=FLEET[1], sessions=FLEET, rows_=rows(*person_rows())),
                payload={"prompt": '<cross-session-message from="x">go</cross-session-message>'})
     assert "failed" not in raw
+
+
+def test_a_scheduled_prompt_shows_the_line_but_records_nothing(tmp_path):
+    """Security review of 5f65ad5, C1: a CronCreate or /loop firing in the person's own session reaches the hook as
+    plain text (measured: its transcript record says promptSource system, turnOrigin scheduled - but only after the
+    hook). Four ticks recorded 22 entries as shown and used up the line while nobody read it."""
+    from flotilla.watch import shown
+    found = person_rows()
+    for minutes in (5, 50, 95, 140):
+        assert orchestrator_prompt(tmp_path, found, minutes, prompt="check the fleet", origin=SCHEDULED)[1] != ""
+    assert shown.load(tmp_path / "state", "repo")["first"] == {}
+    assert orchestrator_prompt(tmp_path, found, 141)[1].startswith("flotilla: 22 wait on you")
+    assert len(shown.load(tmp_path / "state", "repo")["first"]) == 22
+
+
+def test_a_turn_with_no_record_of_its_prompt_records_nothing(tmp_path):
+    from flotilla.watch import shown
+    found = person_rows()
+    assert orchestrator_prompt(tmp_path, found, 5, record=False)[1] != ""
+    assert shown.load(tmp_path / "state", "repo")["first"] == {}
+    assert orchestrator_prompt(tmp_path, found, 6)[1] != ""
+
+
+def test_a_subagent_hand_back_is_not_the_persons_prompt(tmp_path):
+    line = orchestrator_prompt(tmp_path, person_rows(), 5, prompt='<agent-message from="a1">done</agent-message>',
+                               origin=("system", "peer"))[1]
+    assert line == ""
+
+
+def test_a_background_orchestrators_launch_does_not_use_up_its_line(tmp_path):
+    """Correctness review of 5f65ad5, I-1: a background session's launch prompt is recorded as typed (measured), so
+    it showed the line nobody saw, and the person attaching twenty minutes later got none."""
+    found = person_rows()
+    orchestrator_prompt(tmp_path, found, 0, me=FLEET[0], prompt="You are orchestrator 1. Start.")
+    assert orchestrator_prompt(tmp_path, found, 20, me=FLEET[0])[1].startswith("flotilla: 22 wait on you")
+    assert orchestrator_prompt(tmp_path, found, 25, me=FLEET[0])[1] == ""
+
+
+def test_a_shown_file_that_cannot_be_written_still_shows_the_line(tmp_path):
+    """Security review of 5f65ad5, I1: a write that raised dropped the whole hook, the person's line with it."""
+    (tmp_path / "state" / "watch").mkdir(parents=True)
+    (tmp_path / "state" / "watch" / "shown").write_text("not a folder", encoding="utf-8")
+    context_, line = orchestrator_prompt(tmp_path, person_rows(), 5)
+    assert line.startswith("flotilla: 22 wait on you") and "22 wait on the person" in context_

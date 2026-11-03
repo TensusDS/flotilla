@@ -52,7 +52,7 @@ def run_watch_command(args, *, gather=None, now: dt.datetime | None = None, slee
         return 0
     moment = now or dt.datetime.now(dt.timezone.utc)
     print("attention:")
-    if entries:   # the person's queue as `flotilla inbox` counts it, never a count of one kind of item (final review, I5)
+    if entries:   # the person's queue as `flotilla inbox` counts it, never one kind of item (final review, I5)
         first = shown.load(ctx.ledger.state_dir, ctx.ledger.repo_key)["first"]
         print(f"waits on the person ({len(entries)}):")
         print("\n".join(line for line in inbox_command.listing(entries, first, moment)[1:]))

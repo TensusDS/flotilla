@@ -148,3 +148,10 @@ def test_a_wait_on_a_post_row_is_counted():
     the queue skipped reserved rows, so it was counted nowhere."""
     seat = waited("r1", "main", state="reserved")
     assert [entry.group for entry in collect(seat)] == ["question"]
+
+
+def test_approvals_and_merges_are_not_blockers_unless_urgent():
+    """Correctness review of 5f65ad5, M-2: every new accepted row broke the digest's period."""
+    approve = collect(row(id="r1", state="accepted", tip="abc1234"), profile=HUMAN, must_approve=lambda r: True)[0]
+    merge = collect(row(id="r2", state="queued"), profile={**PR, "pr": {"merged_by": "human"}})[0]
+    assert not approve.blocker and not merge.blocker

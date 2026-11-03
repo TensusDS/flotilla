@@ -319,3 +319,13 @@ def test_the_orchestrator_relays_a_rig_share_line():
     post = load_post(TEMPLATE_DIR / "orchestrator.md")
     body = " ".join((TEMPLATE_DIR / "orchestrator.md").read_text(encoding="utf-8").split())
     assert post.template_version >= 23 and "`! flotilla rig share <project>`" in body
+
+
+def test_the_orchestrator_relays_the_persons_lines_from_the_inbox(tmp_path):
+    """Correctness review of 5f65ad5, M-7: rig requests and permission questions became counts in the prompt hook;
+    the template still said to relay the line on the screen."""
+    from flotilla.posts import install_templates, load_posts
+    install_templates(tmp_path)
+    post = load_posts(tmp_path)["orchestrator"]
+    body = (tmp_path / ".flotilla" / "posts" / "orchestrator.md").read_text(encoding="utf-8")
+    assert post.template_version >= 24 and "`flotilla inbox` names" in body

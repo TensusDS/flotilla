@@ -14,6 +14,7 @@ from pathlib import Path
 ALL, DIGEST = "all", "digest"
 MODES = (ALL, DIGEST)
 DEFAULT_EVERY = 30   # minutes
+MAX_EVERY = 7 * 24 * 60   # a week: past what a timedelta holds, every prompt failed (security review of 5f65ad5)
 
 
 def mode(state: Path) -> tuple[str, int]:
@@ -26,6 +27,7 @@ def mode(state: Path) -> tuple[str, int]:
     every = data.get("attention_every", DEFAULT_EVERY)
     if isinstance(every, bool) or not isinstance(every, int) or every < 1:
         every = DEFAULT_EVERY
+    every = min(every, MAX_EVERY)
     return (chosen if chosen in MODES else ALL), every
 
 
@@ -44,8 +46,8 @@ def run_attention_command(args) -> int:
     if args.every is not None and args.action != DIGEST:
         print("refused: --every is the digest's period; `all` shows the line when the queue changes")
         return 2
-    if args.every is not None and args.every < 1:
-        print("refused: --every is a whole number of minutes, 1 or more")
+    if args.every is not None and not 1 <= args.every <= MAX_EVERY:
+        print(f"refused: --every is a whole number of minutes, from 1 to {MAX_EVERY} (a week)")
         return 2
     refused = caller.person_refusal("decides how they are asked")
     if refused:

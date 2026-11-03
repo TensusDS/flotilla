@@ -12,6 +12,16 @@ keys: a peer's message arrives as a prompt starting `<cross-session-message`, a 
 starting `<task-notification>`, while a typed prompt and a background session's launch prompt are plain text and
 cannot be told apart. So the line is shown only on a prompt that is not one of those, and recorded as shown only in an
 interactive session.
+
+Measured again on 2.1.317 (2026-11-03, after the security review of 5f65ad5): a CronCreate or `/loop` firing and a
+subagent's hand-back (`<agent-message`) reach the hook as well, the firing as plain text. At hook time the prompt's
+record is not yet in the transcript (the first prompt finds no file at all); after the turn it is there, keyed by the
+hook's `prompt_id`, saying `promptSource` typed or system and `turnOrigin` human, scheduled, peer or
+task_notification. So the hook shows the line when it is due and leaves the turn pending; the Stop hook reads the
+transcript and only a prompt recorded as typed by a human is counted - the line as shown, the person as having
+prompted. Nothing confirmed, nothing counted: the line comes again rather than being spent on a tick nobody read. A
+background session's launch prompt is recorded as typed, so a background session's first confirmed prompt counts
+only as a prompt, never as the line shown.
 """
 
 from __future__ import annotations
@@ -22,7 +32,7 @@ import json
 import os
 from pathlib import Path
 
-MACHINE_PROMPTS = ("<cross-session-message", "<task-notification")
+MACHINE_PROMPTS = ("<cross-session-message", "<task-notification", "<agent-message")
 AWAY = dt.timedelta(hours=1)
 
 
@@ -91,18 +101,78 @@ def line_due(state: dict, entries, *, mode: str, every: int, now: dt.datetime) -
     return now - prompted > AWAY
 
 
-def remember(state_dir, repo_key: str, *, now: dt.datetime, line_entries=None, clear_line: bool = False,
-             shown_keys=(), prompt: bool = False) -> None:
-    """One write for one prompt: the line shown (or cleared), the keys counted as shown, the person's prompt time."""
-    data = load(state_dir, repo_key)
+def _pending_path(state_dir, session_id: str) -> Path:
+    name = hashlib.sha256(session_id.encode("utf-8")).hexdigest()[:32]
+    return Path(state_dir) / "watch" / "shown" / "turn" / f"{name}.json"
+
+
+def hold_turn(state_dir, session_id: str, turn: dict) -> None:
+    """This session's prompt, waiting for the transcript to say who typed it (settled at Stop)."""
+    path = _pending_path(state_dir, session_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(f".{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(turn, sort_keys=True), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def typed_by_a_human(transcript_path, prompt_id: str) -> bool:
+    """Whether the transcript records this prompt as typed by a human; anything else, or nothing found, is no."""
+    if not prompt_id or not transcript_path:
+        return False
+    try:
+        with open(transcript_path, encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                if prompt_id not in line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except ValueError:
+                    continue
+                if record.get("type") == "user" and record.get("promptId") == prompt_id:
+                    return record.get("promptSource") == "typed" and record.get("turnOrigin") == "human"
+    except OSError:
+        return False
+    return False
+
+
+def settle(state_dir, session_id: str, transcript_path, prompt_id: str = "") -> None:
+    """At Stop: a pending turn whose prompt the transcript records as typed by a human is counted; any other is
+    dropped. Counted: the person prompted; the line, if it showed, was shown, and its rows were shown to the person
+    when the session is interactive. A background session's first counted prompt is its launch: a prompt only."""
+    path = _pending_path(state_dir, session_id)
+    try:
+        turn = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    path.unlink(missing_ok=True)
+    if not isinstance(turn, dict) or (prompt_id and turn.get("prompt_id") != prompt_id):
+        return
+    if not typed_by_a_human(transcript_path, str(turn.get("prompt_id") or "")):
+        return
+    repo, throttle = str(turn.get("repo") or ""), str(turn.get("throttle") or "")
+    try:
+        now = dt.datetime.fromisoformat(turn["at"])
+    except (KeyError, TypeError, ValueError):
+        return
+    launch = not turn.get("interactive") and not load(state_dir, throttle)["prompt_at"]
+    data = load(state_dir, throttle)
     at = now.isoformat(timespec="seconds")
-    if clear_line:
+    line = turn.get("line")
+    if isinstance(line, dict) and not launch:
+        data["line"] = {"at": at, "signature": line.get("signature") or [], "blockers": line.get("blockers") or []}
+    data["prompt_at"] = at
+    _save(state_dir, throttle, data)
+    if isinstance(line, dict) and not launch and turn.get("interactive"):
+        mark(state_dir, repo, line.get("keys") or [], at)
+
+
+def clear_line(state_dir, throttle: str) -> None:
+    data = load(state_dir, throttle)
+    if data["line"]:
         data["line"] = {}
-    if line_entries is not None:
-        data["line"] = {"at": at, "signature": _signature(line_entries),
-                        "blockers": sorted(entry.key for entry in line_entries if entry.blocker)}
-    for key in shown_keys:
-        data["first"].setdefault(key, at)
-    if prompt:
-        data["prompt_at"] = at
-    _save(state_dir, repo_key, data)
+        _save(state_dir, throttle, data)
+
+
+def line_record(entries) -> dict:
+    return {"signature": _signature(entries), "blockers": sorted(entry.key for entry in entries if entry.blocker),
+            "keys": [entry.key for entry in entries]}

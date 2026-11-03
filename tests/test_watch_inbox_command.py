@@ -115,3 +115,32 @@ def test_an_empty_queue_exits_0(world, capsys, monkeypatch):
     monkeypatch.setattr("flotilla.watch.context.gather", lambda r, sid: empty)
     code, out = run(world, capsys)
     assert code == 0 and "nothing waits on you" in out
+
+
+def test_urgent_rows_come_first_in_the_listing(tmp_path, monkeypatch):
+    """Correctness review of 5f65ad5, M-4: the design says urgent rows come first; the listing sorted them first only
+    within their group."""
+    monkeypatch.chdir(tmp_path)
+    shipping = row(id="r1", branch="feat/ship", state="accepted", waiting_on="the person", note="ship it?",
+                   history=[{"at": AT, "move": "wait", "by": "sender 1", "post": "sender"}])
+    hurry = row(id="r2", branch="feat/hurry", waiting_on="the person", note="the demo", urgent_at=AT,
+                history=[{"at": AT, "move": "wait", "by": "x 1", "post": "reviewer"}])
+    entries = inbox.collect(context(tmp_path, me=ORCH, rows_=rows(shipping, hurry)), fleet_items=[])
+    lines = inbox_command.listing(entries, {}, NOW)
+    assert next(line for line in lines if line.startswith("  1.")).startswith("  1. feat/hurry")
+
+
+def test_a_session_name_reaches_the_screen_as_one_safe_line(tmp_path, monkeypatch):
+    """Security review of 5f65ad5, M2: the listing made the why safe but printed who recorded it raw, and `--as`
+    takes any text outside the census."""
+    monkeypatch.chdir(tmp_path)
+    sneaky = row(id="r1", waiting_on="the person", note="q",
+                 history=[{"at": AT, "move": "wait", "by": "main\x1b[2J\nsession", "post": "main"}])
+    entries = inbox.collect(context(tmp_path, me=ORCH, rows_=rows(sneaky)), fleet_items=[])
+    text = "\n".join(inbox_command.listing(entries, {}, NOW))
+    assert "\x1b" not in text and "main\nsession" not in text
+
+
+def test_a_subagent_hand_back_is_a_machine_prompt():
+    assert not shown.persons_prompt('<agent-message from="a1">done</agent-message>')
+    assert shown.persons_prompt("what needs me?")
