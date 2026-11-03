@@ -184,3 +184,11 @@ REFUSED_FOURTH_EXACT = [
 def test_a_body_past_a_rig_run_and_the_package_imported_are_judged(tmp_path, monkeypatch, command):
     answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
     assert answer and answer["permissionDecision"] in ("deny", "ask"), answer
+
+
+def test_a_pipe_into_an_interpreter_with_an_argument_is_read(tmp_path, monkeypatch):
+    """Fifth security review: the stdin check was told of a pipe by the segments joined by newlines, which have no
+    pipe left, so `... | python3 /dev/stdin` went unjudged."""
+    command = "printf \"import subprocess; subprocess.run(['flotilla', 'work', 'approve', 'x'])\" | python3 /dev/stdin"
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny", answer

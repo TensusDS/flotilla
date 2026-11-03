@@ -425,8 +425,8 @@ def whole_text(segments) -> str:
     return "\n".join(_local(segment.text) for segment in segments)
 
 
-def wrapped_check(segment, command: str) -> Finding | None:
-    """`command` is `whole_text` of the line's segments.
+def wrapped_check(segment, command: str, raw: str = "") -> Finding | None:
+    """`command` is `whole_text` of the line's segments; `raw` the line as typed, which alone still shows its pipes.
 
     Code an interpreter is handed: every word after it on its command line, whatever its options are called
     (`-o pipefail -c`, `-Ic`, `-X dev -c`, `--eval`, `-p`, `-E`); and, when it reads its code from standard input -
@@ -441,5 +441,5 @@ def wrapped_check(segment, command: str) -> Finding | None:
     on_line = None if all(word.startswith("-") for word in after) else _judge(" ".join(after), ask_on_flotilla=True)
     # whatever its arguments (`bash -s arg`, `python3 /dev/stdin`), an interpreter may read a heredoc, a here-string
     # or a pipe: then the whole command, bodies included, is its code too (third security review)
-    fed = all(word.startswith("-") for word in after) or any(sign in command for sign in ("<<", "|"))
+    fed = all(word.startswith("-") for word in after) or any(sign in (raw or command) for sign in ("<<", "|"))
     return _stricter(on_line, _judge(command, ask_on_flotilla=False) if fed else None)
