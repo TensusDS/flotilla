@@ -59,10 +59,10 @@ project's file names a plugin nobody else can find.
 there, and flotilla's hooks and CLI run in every session of your project. To choose when you move, pin a release tag
 on the first line instead (the tags are listed in [CHANGELOG.md](CHANGELOG.md)):
 
-    claude plugin marketplace add TensusDS/flotilla#v0.26.1 --scope project
+    claude plugin marketplace add TensusDS/flotilla#v0.26.2 --scope project
     claude plugin install flotilla@flotilla --scope project
 
-That writes `"ref": "v0.26.1"` into the project's settings and installs that release; `claude plugin update` stays on
+That writes `"ref": "v0.26.2"` into the project's settings and installs that release; `claude plugin update` stays on
 it. Two caveats. A machine keeps one marketplace of a name for all its projects, and the last `marketplace add` on
 it repoints it: measured, after another project on the same machine added it without a pin, `claude plugin update`
 in a project pinned to v0.22.0 took the default branch's release. Give the projects on one machine the same pin;

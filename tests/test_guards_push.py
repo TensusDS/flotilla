@@ -582,3 +582,32 @@ def test_a_merge_into_a_base_that_is_not_trunk_is_refused(tmp_path):
                   run=fake_gh((0, head + "\n"), base="docs/relations-model"))
     assert found.refuse and "`docs/relations-model`, not trunk" in found.text
     assert judge(f"gh pr merge 43 --match-head-commit {head}", root, tmp_path, run=fake_gh((0, head + "\n"))) is None
+
+
+def test_a_repointed_local_trunk_ref_does_not_waive_the_approval(tmp_path):
+    """Final review of 0.21.0, kept open until 0.26.1: the approval check opened the ledger with the profile at the
+    local `origin/main`, which a seat can repoint at a commit whose profile narrows `approve_paths` past its own
+    work. The push guard reads origin's profile; the approval check now reads the same."""
+    root = human_project(tmp_path)
+    work = git(root, "rev-parse", "HEAD")
+    git(root, "checkout", "-q", "-b", "narrowed", "origin/main")
+    profile = root / ".flotilla" / "project.toml"
+    profile.write_text(profile.read_text().replace('merge_authorized_by = "human"\n',
+                                                   'merge_authorized_by = "human"\napprove_paths = ["nothing/**"]\n'),
+                       encoding="utf-8")
+    git(root, *IDENTITY, "commit", "-q", "-am", "approve only nothing/**")
+    git(root, "update-ref", "refs/remotes/origin/main", "HEAD")
+    git(root, "checkout", "-q", "main")
+    assert git(root, "rev-parse", "HEAD") == work
+    origin_trunk = git(root, "ls-remote", "origin", "refs/heads/main").split()[0]
+    from flotilla.ledger import batch
+    seen = []
+
+    def unaccounted(ledger, rows, sha, since=""):
+        seen.append(ledger.profile)
+        return []
+    import pytest as _pytest
+    with _pytest.MonkeyPatch.context() as patch:
+        patch.setattr(batch, "unaccounted", unaccounted)
+        push._unapproved(root, {"flow": {"merge_authorized_by": "human"}}, [("main", work)], since=origin_trunk)
+    assert seen and "approve_paths" not in (seen[0].get("flow") or {})

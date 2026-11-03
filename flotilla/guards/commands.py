@@ -84,7 +84,8 @@ def run_guard_command(args) -> int:
         if not findings:
             print("allowed: no guard has anything to say")
         for finding in findings:
-            print(f"{'refused' if finding.refuse else 'warning'}  {finding.guard}: {finding.text}")
+            verdict = "refused" if finding.refuse else ("asks the person" if finding.ask else "warning")
+            print(f"{verdict}  {finding.guard}: {finding.text}")
         return 1 if any(finding.refuse for finding in findings) else 0
     root = config.find_project(Path(args.root))
     if root is None:
