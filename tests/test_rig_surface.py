@@ -288,3 +288,32 @@ def test_a_share_request_is_not_relayed_once_the_session_serves_the_project(tmp_
     rig(state).open_session("the person", "frames", hours=3, budget=2.0, projects=["/work/twosuns"])
     rig(state).ask("main session 3", "frames", kind="share", project="/work/twosuns")
     assert texts(state, T0) == []
+
+
+# -- the handover broke: a machine idles while runs wait for it (rig queue design, A4) ----------------------------
+
+def idle_with(tmp_path, monkeypatch, idle_minutes, pids):
+    from flotilla.rig import commands
+    monkeypatch.setattr(commands, "ALIVE", lambda pid, mark: pid != 404)
+    state = state_on(tmp_path)
+    r = rig(state)
+    r.open_session("p", "frames", hours=3, budget=2.0)
+    r.add_machine("s1", "vast", label_of)
+    r.move("m1", j.PROVISIONING, instance="7", hourly=0.2, created=T0.isoformat())
+    r.move("m1", j.READY, address="ssh4.vast.ai:1")
+    for pid in pids:
+        r.queue_run("s1", who="main 3", project="P", revision="a" * 40, program="node", ladder=(), pid=pid, mark="m")
+    now = T0 + dt.timedelta(minutes=idle_minutes)
+    health.stamp(state, now)
+    return [item for item in surface.items(state, now) if "idle" in item.text]
+
+
+def test_an_idle_machine_with_waiting_runs_is_a_dropped_ball(tmp_path, monkeypatch):
+    (item,) = idle_with(tmp_path, monkeypatch, 3, [1, 2])
+    assert item.text == "rig: machine m1 idle 3 min while j1, j2 wait - read flotilla rig for why"
+    assert item.who == "rig:idle:m1"
+
+
+@pytest.mark.parametrize("minutes, pids", [(1, [1]), (5, []), (5, [404])])
+def test_no_idle_item_when_nothing_waits_or_the_idle_is_short(tmp_path, monkeypatch, minutes, pids):
+    assert idle_with(tmp_path, monkeypatch, minutes, pids) == []

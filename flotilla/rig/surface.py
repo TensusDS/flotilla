@@ -24,6 +24,9 @@ ENDING = dt.timedelta(minutes=15)
 WARN_AT = 0.8
 REQUEST_LIFE = dt.timedelta(hours=24)
 LOUD_EVERY = dt.timedelta(minutes=30)
+#: flotilla starts a waiting run within seconds of its machine freeing: a machine idle this long while runs wait
+#: means the handover itself broke (rig queue design, A4).
+IDLE_ALARM = dt.timedelta(minutes=2)
 #: A requester's name as the census names sessions; anything else - `--as` takes any text outside the census - is
 #: shown as "a session", so no text a session chose reaches the orchestrator's model as if it were the screen's.
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9 _.-]{0,59}")
@@ -82,6 +85,7 @@ def items(state: Path, now: dt.datetime, project: str = "") -> list[Item]:
         elif not ok:
             found.append(_item(f"the last reaper pass failed: {note}", "", f"rig:failed:{_loud(now)}"))
     open_ = [s for s in sessions.values() if s.state == j.OPEN]
+    found.extend(_idle_while_waiting(rig, open_, live, now))
     for session in open_:
         spent = rig.spent(session.id, now)
         if session.budget and spent >= WARN_AT * session.budget:
@@ -120,6 +124,25 @@ def items(state: Path, now: dt.datetime, project: str = "") -> list[Item]:
             text = (f"{_who(request.who)} asks for a machine; no session is open - {first}ask the person to paste: "
                     f"{line}")
         found.append(_item(text, request.since, f"rig:request:{request.id}"))
+    return found
+
+
+def _idle_while_waiting(rig: j.Rig, open_, live, now: dt.datetime) -> list[Item]:
+    from flotilla.rig import commands
+    if not open_:
+        return []
+    alive, runs, found = commands._alive(), rig.runs(), []
+    for session in open_:
+        waiting = sorted((r for r in runs.values() if r.state == j.WAITING and r.session == session.id
+                          and alive(r.pid, r.mark)), key=lambda r: int(r.id[1:]))
+        for machine in live:
+            idle = _when(machine.idle_since)
+            if machine.session != session.id or machine.state != j.READY or not waiting or idle is None \
+                    or now - idle < IDLE_ALARM:
+                continue
+            ids = ", ".join(r.id for r in waiting)
+            found.append(_item(f"machine {machine.id} idle {int((now - idle).total_seconds() // 60)} min while {ids} "
+                               "wait - read flotilla rig for why", machine.idle_since, f"rig:idle:{machine.id}"))
     return found
 
 
