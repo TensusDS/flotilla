@@ -58,6 +58,18 @@ one line per answer. Go to step 4.
 
 Answers are stored between sessions; `flotilla onboard reset` forgets them.
 
+**Custom, then how the person is asked.** Ask with AskUserQuestion, header "Attention", question "How should what
+waits on you reach you?":
+
+- **"All (Recommended)"** - "Everything any session asks you reaches you: a line on your screen whenever what waits
+  on you changes, and when you come back after an hour away."
+- **"Digest"** - "The same questions, collected: the line comes once per period (30 minutes unless you say
+  otherwise), and a question that holds the fleet up comes at once."
+
+Only the person sets this; a tool call that tries is refused. For "Digest", give the person the line to type
+themselves: `! flotilla attention digest` (with `--every <minutes>` for another period). "All" is the default and
+needs nothing. `flotilla attention` prints the mode in force.
+
 ## 4. Write the profile
 
 Run `flotilla onboard write`. First it prints the whole profile it will write, then every shell command in it (each

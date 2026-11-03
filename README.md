@@ -350,7 +350,9 @@ A typical day, in a project onboarded to flotilla:
 5. The sender **queues** accepted work, merges it, pushes it, and the ledger asks origin whether it **shipped**.
 6. The judge **walks** the shipped work on the deployed build, the way a person would, and records what broke.
 7. When a session needs you - a permission it cannot get, a decision only you can make, a batch you must approve -
-   the orchestrator puts it to you, one question at a time.
+   the orchestrator puts it to you, one question at a time. flotilla also puts one line on your own screen, past
+   the model, with how many things wait on you; `flotilla inbox` lists them by number, and `flotilla attention
+   digest` collects them into one line per half hour, with what holds the fleet up shown at once.
 
 Nobody keeps state in their head or in chat. "Where does this stand" is answered by `flotilla status`, read from the
 ledger, and every move is refused unless its evidence holds: you cannot hand work over without a green test receipt

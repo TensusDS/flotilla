@@ -44,6 +44,8 @@ The CLI is `${CLAUDE_PLUGIN_ROOT}/bin/flotilla`. Every command takes `--help`.
 
     flotilla status [--stalled HOURS]
     flotilla watch [--once]        exit 0: nothing needs attention, 1: something does, 2: could not ask
+    flotilla inbox                 everything that waits on you, grouped and numbered (exit 0 none, 1 some)
+    flotilla attention [all|digest [--every MIN]]   how you are asked; only you set it (`!` or a terminal)
     flotilla brief
     flotilla work show <branch>
     flotilla metrics

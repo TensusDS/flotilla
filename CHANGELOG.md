@@ -3,6 +3,34 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.26.0 - 2026-11-03
+
+What waits on the person reaches the person. On one field fleet 144 questions and approvals waited on the person
+over twelve days; the prompt hook folded them into "standing item(s), said before" at the very moment the person
+typed, and 104 were never named to them again.
+
+- **One queue for the person, read from the ledger every time.** `flotilla inbox` lists everything that waits on
+  you - a yes to ship, a check only you can make, a question, an approval, a pull request only you merge, a
+  permission question, a rig request, a session waiting in its own window, and what was put off - grouped, numbered
+  to answer by, aged, with when flotilla first showed each to you or "never shown". Nothing but a ledger move takes
+  an entry out.
+- **A line on your own screen, past the model.** When you type in a session of the project, flotilla shows
+  `flotilla: N wait on you (...)` as the hook's system message, which the model neither sees nor can withhold
+  (measured on Claude Code 2.1.317); once per project, when what waits changes, and again when you come back after
+  an hour away. The orchestrator gets the same count on every prompt, never folded, and is told to answer your
+  status questions from `flotilla inbox`.
+- **How you are asked is yours alone.** `flotilla attention digest [--every MIN]` collects the line into one per
+  period (30 minutes by default) and still shows at once what holds the fleet up; `all` is the default. A tool
+  call and a background session are refused.
+- **Putting off is a move, and stays visible.** `flotilla work hold <branch> --until "the person"` now takes any open
+  row that waits on you - a judge's check on a shipped row, a question on a claimed one - and the inbox lists it as
+  put off with its why. A hold's meaning for the batch and the reading queue is unchanged.
+- **`flotilla watch --once` counts apart** what waits on the person, moves nobody can make, and gone sessions.
+- What counts as shown is flotilla's own display: the line in the person's interactive session, and the listing run
+  from a terminal outside every session. Inside a session a model's Bash call and the person's `!` cannot be told
+  apart (measured), so neither records it.
+- The orchestrator template is version 24.
+
 ## 0.25.0 - 2026-11-02
 
 Two projects on one machine need not wait on each other any more, by the person's choice.
