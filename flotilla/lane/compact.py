@@ -13,6 +13,9 @@ with every estimate usable that day unchanged; 4484 of its 5747 steps were one-o
 from __future__ import annotations
 
 import datetime as dt
+import gzip
+import json
+from pathlib import Path
 
 from flotilla.lane import book, estimate
 from flotilla.lane.signature import tier_signature
@@ -21,6 +24,7 @@ THRESHOLD = 2_000_000   # bytes: past this a write compacts (the person, 2026-11
 GROWTH = 1.5            # ... and only once the journal has grown this much past what the last compaction left
 STALE = dt.timedelta(days=7)   # a step no estimate can read yet, whose newest sample is older, is not kept
 WINDOW = dt.timedelta(days=30)   # what estimate.history reads
+RECORD = "lane.compacted"   # beside the journal: when the last compaction ran and what it left
 #: What estimate.history reads from an ended booking, besides its state and time.
 ESTIMATE_FIELDS = ("project", "ladder", "ran", "seconds", "peak_mb", "cores", "busy", "verdict", "cut")
 
@@ -99,3 +103,38 @@ def plan(records: list[dict], now: dt.datetime) -> tuple[list[dict], list[dict]]
         if name in rewritten and last[name] == at:   # the rewritten record stands where the booking ended
             kept.append(rewritten[name])
     return kept, archived
+
+
+def _left(root: Path) -> int:
+    """What the last compaction left, in bytes; 0 when the journal was never compacted."""
+    try:
+        found = json.loads((Path(root) / RECORD).read_text(encoding="utf-8")).get("bytes")
+    except (OSError, ValueError, AttributeError):
+        return 0
+    return found if isinstance(found, int) and found > 0 else 0
+
+
+def due(path: Path, root: Path) -> bool:
+    try:
+        size = Path(path).stat().st_size
+    except OSError:
+        return False
+    return size > THRESHOLD and size > GROWTH * _left(root)
+
+
+def compact(tx, root: Path, path: Path, now: dt.datetime) -> bool:
+    """Under the lane's lock: archive what the journal no longer holds, then replace the journal by what it keeps.
+    The archive comes first, so a failure between the two doubles history and loses none."""
+    records = tx.read().records
+    kept, archived = plan(records, now)
+    if not archived:
+        return False
+    folder = Path(root) / "archive"
+    folder.mkdir(parents=True, exist_ok=True)
+    with gzip.open(folder / f"{now:%Y-%m}.jsonl.gz", "at", encoding="utf-8") as out:
+        for record in archived:
+            out.write(json.dumps(record, sort_keys=True, ensure_ascii=False, separators=(",", ":")) + "\n")
+    tx.replace(kept)
+    (Path(root) / RECORD).write_text(json.dumps({"at": now.isoformat(timespec="seconds"),
+                                                 "bytes": Path(path).stat().st_size}), encoding="utf-8")
+    return True

@@ -113,3 +113,103 @@ def test_a_tier_sample_keeps_its_booking():
         records += run(f"r{n}", at(days=10 - n), ladder=[f"receipt:{P}:{n}"], ran=tiers)
     kept, _ = compact.plan(records, NOW)
     assert usable(kept) == usable(records) and any(step.startswith("tier") or "unit" in step for step in usable(kept))
+
+
+# --- compacting on write (Task 3) ---
+
+import gzip  # noqa: E402
+import json  # noqa: E402
+import os  # noqa: E402
+
+import pytest  # noqa: E402
+
+from flotilla.core.storage import LocalLogStore  # noqa: E402
+
+
+class Procs:
+    def alive(self, pid, mark):
+        return True
+
+
+def big_journal(root, bookings=4000):
+    """A journal over the threshold: many old one-off runs, nothing an estimate reads, nothing live."""
+    root.mkdir(parents=True, exist_ok=True)
+    with open(root / "lane.jsonl", "w", encoding="utf-8") as out:
+        for n in range(bookings):
+            for record in run(f"b{n + 1}", at(days=20, minutes=n), ladder=[f"exact:{P}:job {n}", f"project:{P}"]):
+                out.write(json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n")
+    return root / "lane.jsonl"
+
+
+def lanes(root):
+    return book.Book(LocalLogStore(root), Procs(), clock=lambda: NOW)
+
+
+def test_a_journal_over_the_threshold_is_compacted_on_write(tmp_path):
+    path = big_journal(tmp_path)
+    assert path.stat().st_size > compact.THRESHOLD
+    item = lanes(tmp_path).enqueue("main session 1", "make check", pid=1, mark="m")
+    assert path.stat().st_size < compact.THRESHOLD
+    assert book.fold(LocalLogStore(tmp_path).read(book.KEY).records)[item.id].state == book.WAITING
+
+
+def test_a_new_booking_takes_a_number_past_the_highest(tmp_path):
+    """The person, 2026-11-03: no tombstones; a compacted journal holds fewer bookings than its highest number, so a
+    number counted from the bookings would be one already taken."""
+    big_journal(tmp_path)
+    first = lanes(tmp_path).enqueue("main session 1", "one", pid=1, mark="m")
+    second = lanes(tmp_path).enqueue("main session 2", "two", pid=2, mark="m")
+    assert first.id == "b4001" and second.id == "b4002"
+
+
+def test_a_journal_under_the_threshold_is_left(tmp_path):
+    path = big_journal(tmp_path, bookings=10)
+    before = path.read_bytes()
+    lanes(tmp_path).enqueue("main session 1", "make check", pid=1, mark="m")
+    assert path.read_bytes().startswith(before) and not (tmp_path / "archive").exists()
+
+
+def test_a_journal_that_stays_large_is_not_compacted_on_every_write(tmp_path, monkeypatch):
+    path = big_journal(tmp_path)
+    monkeypatch.setattr(compact, "THRESHOLD", 1000)   # the kept core alone is over this threshold
+    lanes(tmp_path).enqueue("main session 1", "a", pid=1, mark="m")
+    left = json.loads((tmp_path / "lane.compacted").read_text())["bytes"]
+    inode = path.stat().st_ino
+    lanes(tmp_path).enqueue("main session 2", "b", pid=2, mark="m")
+    assert path.stat().st_ino == inode and path.stat().st_size < left * compact.GROWTH
+
+
+def test_the_archive_is_written_before_the_rename(tmp_path, monkeypatch):
+    path = big_journal(tmp_path)
+    before = path.read_bytes()
+
+    def refuse(*args):
+        raise OSError("disk full")
+    monkeypatch.setattr(os, "replace", refuse)
+    item = lanes(tmp_path).enqueue("main session 1", "make check", pid=1, mark="m")
+    assert path.read_bytes().startswith(before)   # the journal as it was, the append after it
+    assert item.id in book.fold(LocalLogStore(tmp_path).read(book.KEY).records)
+    archive = next((tmp_path / "archive").glob("*.jsonl.gz"))
+    with gzip.open(archive, "rt", encoding="utf-8") as handle:
+        assert sum(1 for _ in handle) >= 4000 * 3
+
+
+def test_a_cached_reader_reads_the_new_journal(tmp_path):
+    big_journal(tmp_path)
+    watcher = lanes(tmp_path)
+    watcher.bookings()   # a waiter's cache: an offset into the old file
+    item = lanes(tmp_path).enqueue("main session 1", "make check", pid=1, mark="m")
+    assert watcher.bookings() == book.fold(LocalLogStore(tmp_path).read(book.KEY).records)
+    assert item.id in watcher.bookings()
+
+
+def test_a_compaction_that_fails_leaves_the_journal_and_says_so(tmp_path, monkeypatch, capsys):
+    path = big_journal(tmp_path)
+    before = path.read_bytes()
+
+    def broken(records, now):
+        raise ValueError("a bad record")
+    monkeypatch.setattr(compact, "plan", broken)
+    lanes(tmp_path).enqueue("main session 1", "make check", pid=1, mark="m")
+    assert path.read_bytes().startswith(before)
+    assert "compact" in capsys.readouterr().err
