@@ -399,3 +399,26 @@ def test_the_answer_keeps_a_hold_the_old_rule_allowed(world):
     steering.hold(ledger, actor(ledger, ORCH), "feat/x", until="the person", why="release on Friday")
     row = handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", clear=True)
     assert row.held_until == "the person"
+
+
+def test_clearing_another_wait_keeps_the_put_off(world):
+    """Security review of da422de: clearing a wait must lift only the put-off of that wait on the person - a wait
+    since recorded on someone else, when cleared, leaves the orchestrator's hold for `unhold`."""
+    from flotilla.ledger import handover
+    root, ledger = world
+    drive(root, ledger, to="claimed")
+    asked_of_the_person(ledger)
+    steering.hold(ledger, actor(ledger, ORCH), "feat/x", until="the person", why="after the teaser")
+    handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", on="review session 1", why="a second look")
+    row = handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", clear=True)
+    assert row.held_until == "the person"
+
+
+def test_the_lifted_put_off_is_on_the_record(world):
+    from flotilla.ledger import handover
+    root, ledger = world
+    drive(root, ledger, to="claimed")
+    asked_of_the_person(ledger)
+    steering.hold(ledger, actor(ledger, ORCH), "feat/x", until="the person", why="after the teaser")
+    row = handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", clear=True)
+    assert "after the teaser" in row.history[-1]["evidence"].get("lifted", "")
