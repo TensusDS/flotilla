@@ -43,6 +43,7 @@ KEEP_REVISIONS = 5
 READ = None        # None: the READINGS script over ssh
 CEILING = None     # None: the profile's max_run_seconds
 KEY_PATH = None    # None: the rig's own key
+GET_ON_STOP = 120.0    # what a stopped run spends bringing back its --get paths (twosuns item 3)
 DEFAULT_WAIT = 900.0   # a session with no recorded end: the wait before the rig queue
 BACKSTOP = 30      # the machine's own limit runs this much longer than ours: only a backstop for a dead field side
 _NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -166,6 +167,8 @@ class Run:
         self.lost = False
         self.renewing = threading.Event()
         self.passed_over: set = set()   # offers found gone during this run's wait: not tried again
+        self.commanded = False          # its command started: from here a stop has something to bring back
+        self.got = False                # its --get paths were asked for
 
     # -- the line and the room ------------------------------------------------------------------------------
     def take_room(self, session, deadline) -> bool:
@@ -357,24 +360,39 @@ class Run:
             self.verdict = "green" if result.exit == 0 else "red"
         return True
 
-    def gets(self, gets, root, types):
+    def gets(self, gets, root, types, *, cap_seconds=None):
+        """Bring back the --get paths. With `cap_seconds` (a stop), the transfer is cut at that many seconds and
+        nothing partial is placed."""
+        self.got = True
         if not gets or self.lost:
             return
         argv = self.box.argv(remote.PACK, self.paths.run, *gets)
         cap = transfer.CAP + 2 ** 20
+        cut = threading.Event()
         with tempfile.NamedTemporaryFile(prefix="flotilla-get-", suffix=".tar", delete=False) as handle:
             spool = Path(handle.name)
             process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                        stderr=subprocess.DEVNULL)
+            timer = threading.Timer(cap_seconds, lambda: (cut.set(), process.kill())) if cap_seconds else None
+            if timer is not None:
+                timer.start()
             size = 0
-            for chunk in iter(lambda: process.stdout.read(65536), b""):
-                size += len(chunk)
-                if size > cap:
-                    process.kill()
-                    break
-                handle.write(chunk)
-            process.wait(remote.LONG)
+            try:
+                for chunk in iter(lambda: process.stdout.read(65536), b""):
+                    size += len(chunk)
+                    if size > cap:
+                        process.kill()
+                        break
+                    handle.write(chunk)
+                process.wait(remote.LONG)
+            finally:
+                if timer is not None:
+                    timer.cancel()
         try:
+            if cut.is_set():
+                print(f"flotilla: bringing back --get was cut at {cap_seconds:g} s after the stop; nothing was placed",
+                      flush=True)
+                return
             if size > cap:
                 print("flotilla: what came back is over the cap; nothing was placed", flush=True)
                 return
@@ -483,6 +501,8 @@ def _main(state: Path, settings: rs.RigSettings, args) -> int:
             with contextlib.suppress(Lost):
                 if not task.sent_stop:
                     task.stop()
+                if task.verdict == "stopped" and task.commanded and not task.got:   # what it made so far
+                    task.gets(gets, root, profile.get_types, cap_seconds=GET_ON_STOP)
                 task.box.call(remote.DROP, task.paths.run, task.paths.setup_status, task.paths.run_status)
         seconds = round(time.monotonic() - task.started, 1) if task.started else None
         hourly = task.machine.hourly if task.machine is not None else None
@@ -549,5 +569,6 @@ def _phases(task: Run, root, revision, puts, gets, pairs, command, profile, ceil
             raise _Ended()
     remaining = max(1.0, ceiling - (time.monotonic() - began))
     task.rig.command_started(task.run.id)
+    task.commanded = True
     task.execute(remote.RUN, paths.run_status, [str(len(pairs)), *pairs, *command], remaining)
     task.gets(gets, root, profile.get_types)

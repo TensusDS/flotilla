@@ -837,3 +837,31 @@ def test_a_run_that_fits_is_not_warned(world, box, tree, monkeypatch):
     _, _, out = queued_only(world, tree, monkeypatch)
     assert "after session" not in out
 
+
+# -- a stopped run brings back what it made (twosuns item 3) ------------------------------------------------------
+
+def test_a_stopped_run_brings_back_what_it_made(world, box, tree, tmp_path):
+    opened(world)
+    raised(world, tree)
+    child = background_rig_run(world, tree, box, tmp_path, "--get", "shots", "--", "sh", "-c",
+                               "mkdir shots && echo f > shots/a.txt && sleep 60")
+    wait_for(lambda: running(world) == 1 and journal(world).runs()["j1"].command_at)
+    time.sleep(1.0)
+    code, _ = rig_stop(world, "j1", "minor 9")
+    child.wait(60)
+    said = (tmp_path / "child.log").read_text(errors="replace")
+    assert code == 0 and journal(world).runs()["j1"].verdict == "stopped", said[-2000:]
+    assert (tree / "shots" / "a.txt").read_text() == "f\n" and "brought back shots" in said, said[-2000:]
+
+
+def test_a_run_stopped_before_its_command_fetches_nothing(world, box, tree, tmp_path):
+    opened(world)
+    raised(world, tree)
+    child = background_rig_run(world, tree, box, tmp_path, "--get", "shots", "--", "sh", "-c",
+                               "sleep 2 && mkdir shots && echo f > shots/a.txt")
+    wait_for(lambda: running(world) == 1)
+    child.send_signal(signal.SIGTERM)
+    began = time.time()
+    child.wait(60)
+    said = (tmp_path / "child.log").read_text(errors="replace")
+    assert time.time() - began < 30 and "brought back" not in said and not (tree / "shots").exists(), said[-2000:]
