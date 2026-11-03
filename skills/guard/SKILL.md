@@ -17,5 +17,6 @@ and report every line: refused, warning, or allowed. Otherwise:
 3. If a hook is "another tool's hook" or `core.hooksPath` is set, show the line the install printed and leave that
    file to the person: never edit another tool's hook yourself.
 
-Say plainly what the guards cannot see (`flotilla guard --help` prints it): a command inside `eval`, `sh -c` or a
-script is not read by the command guards; the `pre-push` hook is what catches a push hidden that way.
+Say plainly what the guards cannot see (`flotilla guard --help` prints it): a command inside `eval` or a script is
+not read by the command guards, and code handed to an interpreter (`sh -c`, `python3 -c`, a pipe, a heredoc) is read
+only for the person's own moves; the `pre-push` hook is what catches a push hidden that way.

@@ -8,10 +8,12 @@ each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2
 Two holes in what only the person may do.
 
 - **A move only the person makes, wrapped in code, is refused.** `bash -c '... work approve ...'`, `sh -c`,
-  `python3 -c` or a heredoc to an interpreter ran approve, rig enable/disable/open/close/allow-image or attention
-  from a Claude tool call in the person's own session. They are refused now, like the plain line: the orchestrator
-  hands the person the line and never runs it. Code handed to an interpreter that names flotilla but whose move the
-  guard cannot read asks the person in Claude Code's confirmation, in auto mode too. What the guards still do not
+  `python3 -c`, a pipe into a shell, a heredoc or a here-string ran approve, rig enable/disable/open/close/allow-image
+  or attention from a Claude tool call in the person's own session. They are refused now, like the plain line, under
+  any option spelling: the orchestrator hands the person the line and never runs it. A command line's code that runs
+  flotilla but whose move the guard cannot read, or a person's move through a program it cannot name, asks the
+  person in Claude Code's confirmation, in auto mode too. Paths and names that merely contain "flotilla", and the
+  word "approve" alone, are left alone. What the guards still do not
   read - a script the session writes and runs - is named in `flotilla guard --help`.
 - **The approval check reads origin's profile.** A push to trunk where the person authorizes merges asked the ledger
   with the profile at the local `origin/<trunk>`, which a seat can repoint at a profile whose `approve_paths` miss

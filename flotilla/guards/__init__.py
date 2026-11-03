@@ -13,8 +13,9 @@ directory named through a variable (cd $D) is unknown: the revert guard then onl
 The line-number guard does not open sed -f scripts and does not know perl -i, awk -i inplace or ed. What the text
 hides from the push guard, the git pre-push hook catches: it asks git what is pushed. A program named through a
 variable (`$F rig open`) is not seen at all when nothing else in the line names flotilla. Code handed to an
-interpreter as text (`bash -c`, `python3 -c`, a heredoc) is read only for the person's own moves: one named there is
-refused, and flotilla named there asks the person; a script the session writes and then runs is not read."""
+interpreter (`bash -c`, `python3 -c`, a pipe into one, a heredoc or a here-string) is read only for the person's own
+moves: one spelled there is refused, flotilla run from a command line's code asks the person; a script the session
+writes and then runs is not read, and neither is `eval`."""
 
 
 @dataclass(frozen=True)
