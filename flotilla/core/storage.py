@@ -96,6 +96,21 @@ class LogTransaction:
     def read_after(self, offset: int, identity: tuple | None = None) -> tuple[list[dict], int, tuple, bool]:
         return _read_after(self._path, offset, identity)
 
+    def replace(self, records: list[dict]) -> None:
+        """Rewrite the log whole: written beside it, synced, renamed over it, so a reader holds either the old file or
+        the new one and a reader that remembered an offset sees another file and reads it from the start. A failure
+        leaves the log as it was."""
+        tmp = self._path.with_name(f".{self._path.name}.{os.getpid()}.tmp")
+        try:
+            with open(tmp, "w", encoding="utf-8") as handle:
+                for record in records:
+                    handle.write(json.dumps(record, sort_keys=True, ensure_ascii=False, separators=(",", ":")) + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp, self._path)
+        finally:
+            tmp.unlink(missing_ok=True)
+
     def append(self, record: dict) -> None:
         line = json.dumps(record, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
         self._set_torn_tail_aside()

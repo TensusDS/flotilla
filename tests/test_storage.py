@@ -127,3 +127,38 @@ def test_read_after_starts_again_when_the_file_is_not_the_one_it_read(tmp_path):
     _, offset, identity, _ = store.read_after("k", 0)
     (tmp_path / "k.jsonl").write_text('{"n": 1}\n', encoding="utf-8")   # shortened in place
     assert [r["n"] for r in store.read_after("k", offset, identity)[0]] == [1]
+
+
+# --- a log rewritten whole under its lock (lane journal compaction, 0.26.1) ---
+
+def test_replace_rewrites_the_log_whole(tmp_path):
+    store = LocalLogStore(tmp_path)
+    for n in range(3):
+        store.append("lane", {"n": n})
+    with store.transaction("lane") as tx:
+        tx.replace([{"n": 9}, {"n": 10}])
+    assert store.read("lane").records == [{"n": 9}, {"n": 10}]
+
+
+def test_replace_gives_the_log_a_new_identity(tmp_path):
+    store = LocalLogStore(tmp_path)
+    store.append("lane", {"n": 1})
+    _, offset, identity, _ = store.read_after("lane", 0, None)
+    with store.transaction("lane") as tx:
+        tx.replace([{"n": 2}])
+    records, _, _, whole = store.read_after("lane", offset, identity)
+    assert whole and records == [{"n": 2}]
+
+
+def test_a_failed_replace_leaves_the_log(tmp_path, monkeypatch):
+    import os
+    store = LocalLogStore(tmp_path)
+    store.append("lane", {"n": 1})
+
+    def refuse(*args):
+        raise OSError("disk full")
+    monkeypatch.setattr(os, "replace", refuse)
+    with pytest.raises(OSError), store.transaction("lane") as tx:
+        tx.replace([{"n": 2}])
+    assert store.read("lane").records == [{"n": 1}]
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["lane.jsonl", "lane.lock"]
