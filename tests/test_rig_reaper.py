@@ -514,3 +514,35 @@ def test_the_credit_line_never_reads_as_trouble(world):
     fake.user_status = 500
     out = passes(rig, providers, account="vast")
     assert out.notes and not out.lines and not out.failed
+
+
+# -- a destroy the service took is recorded; only that frees the ceiling for the next session (twosuns item 4) ------
+
+def test_a_destroy_the_service_took_is_recorded_once(world):
+    rig, clock, fake, providers = world
+    session(rig, hours=1)
+    mid = running(rig, fake)
+    clock.forward(minutes=61)
+    passes(rig, providers)
+    first = rig.machines()[mid].destroyed
+    assert rig.machines()[mid].state == j.DRAINING and first
+    fake.instances["101"] = {"label": rig.machines()[mid].label, "dph_total": 0.3}   # still listed
+    clock.forward(minutes=5)
+    passes(rig, providers)
+    assert rig.machines()[mid].destroyed == first
+
+
+def test_a_destroy_never_sent_or_refused_is_not_recorded(world, monkeypatch):
+    rig, clock, fake, providers = world
+    session(rig, hours=1)
+    mid = running(rig, fake)
+    clock.forward(minutes=61)
+    passes(rig, providers, machine_key=None)
+    assert rig.machines()[mid].attempts >= 1 and not rig.machines()[mid].destroyed
+    from flotilla.rig.provider import ProviderError
+
+    def refuse(instance):
+        raise ProviderError("the service said no")
+    monkeypatch.setattr(providers("vast"), "destroy", refuse)
+    passes(rig, providers)
+    assert rig.machines()[mid].attempts >= 2 and not rig.machines()[mid].destroyed

@@ -776,3 +776,165 @@ def test_a_signal_as_the_renewer_begins_still_records_the_stop(world, box, tree,
     with pytest.raises(SystemExit):
         rig_run(world, tree, "--", "sleep", "3")
     assert journal(world).runs()["j1"].verdict == "stopped"
+
+
+# -- the line: exclusive by profile or flag, the ceiling recorded, a wait as long as the session (rig queue, A1-A2) --
+
+def queued_only(world, tree, monkeypatch, *argv):
+    """Queue a run and stop before it takes room: what the journal recorded, and the deadline it would wait to."""
+    seen = {}
+
+    def take_room(self, session, deadline):
+        seen["wait"] = deadline - time.monotonic()
+        return False
+    monkeypatch.setattr(run_module.Run, "take_room", take_room)
+    code, out = rig_run(world, tree, *argv, "--", "true")
+    return journal(world).runs()["j1"], seen["wait"], out
+
+
+@pytest.mark.parametrize("profile_says, flags, exclusive", [
+    ("", [], False), ("", ["--exclusive"], True), ("exclusive = true\n", [], True),
+    ("exclusive = true\n", ["--shared"], False)])
+def test_the_profile_makes_runs_exclusive_and_shared_overrides_it(world, box, tmp_path, monkeypatch, profile_says,
+                                                                 flags, exclusive):
+    tree = git_tree(tmp_path / "tree2", {"package.json": "{}", "shoot.sh": "echo",
+                                         ".flotilla/project.toml": PROFILE + "[rig]\n" + profile_says})
+    opened(world)
+    run, _, _ = queued_only(world, tree, monkeypatch, *flags)
+    assert run.exclusive is exclusive
+
+
+def test_exclusive_and_shared_together_are_refused(world, box, tree):
+    opened(world)
+    with pytest.raises(SystemExit):
+        rig_run(world, tree, "--exclusive", "--shared", "--", "true")
+
+
+@pytest.mark.parametrize("flags, ceiling", [(["--max", "300"], 300), ([], 1800)])
+def test_a_run_records_its_ceiling(world, box, tree, monkeypatch, flags, ceiling):
+    opened(world)
+    run, _, _ = queued_only(world, tree, monkeypatch, *flags)
+    assert run.ceiling == ceiling
+
+
+@pytest.mark.parametrize("flags, expected", [([], 3600.0), (["--wait", "60"], 60.0)])
+def test_the_wait_defaults_to_the_sessions_end(world, box, tree, monkeypatch, flags, expected):
+    opened(world, hours=1)
+    _, wait, _ = queued_only(world, tree, monkeypatch, *flags)
+    assert abs(wait - expected) < 5
+
+
+def test_a_run_that_does_not_fit_its_session_is_warned_before_it_starts(world, box, tree, monkeypatch):
+    opened(world, hours=0.25)
+    raised(world, tree)
+    _, _, out = queued_only(world, tree, monkeypatch)
+    assert out.count("after session s1 ends at") == 1 and "--max" in out
+
+
+def test_a_run_that_fits_is_not_warned(world, box, tree, monkeypatch):
+    opened(world, hours=3)
+    raised(world, tree)
+    _, _, out = queued_only(world, tree, monkeypatch)
+    assert "after session" not in out
+
+
+# -- a stopped run brings back what it made (twosuns item 3) ------------------------------------------------------
+
+def test_a_stopped_run_brings_back_what_it_made(world, box, tree, tmp_path):
+    opened(world)
+    raised(world, tree)
+    child = background_rig_run(world, tree, box, tmp_path, "--get", "shots", "--", "sh", "-c",
+                               "mkdir shots && echo f > shots/a.txt && sleep 60")
+    wait_for(lambda: running(world) == 1 and journal(world).runs()["j1"].command_at)
+    time.sleep(1.0)
+    code, _ = rig_stop(world, "j1", "minor 9")
+    child.wait(60)
+    said = (tmp_path / "child.log").read_text(errors="replace")
+    assert code == 0 and journal(world).runs()["j1"].verdict == "stopped", said[-2000:]
+    assert (tree / "shots" / "a.txt").read_text() == "f\n" and "brought back shots" in said, said[-2000:]
+
+
+def test_a_run_stopped_before_its_command_fetches_nothing(world, box, tree, tmp_path):
+    opened(world)
+    raised(world, tree)
+    child = background_rig_run(world, tree, box, tmp_path, "--get", "shots", "--", "sh", "-c",
+                               "sleep 2 && mkdir shots && echo f > shots/a.txt")
+    wait_for(lambda: running(world) == 1)
+    child.send_signal(signal.SIGTERM)
+    began = time.time()
+    child.wait(60)
+    said = (tmp_path / "child.log").read_text(errors="replace")
+    assert time.time() - began < 30 and "brought back" not in said and not (tree / "shots").exists(), said[-2000:]
+
+
+# -- the final review of 0.27.0 ------------------------------------------------------------------------------------
+
+def test_a_waiting_run_leaves_the_line_when_its_session_closes(world, box, tree, monkeypatch):
+    opened(world)
+    rig = journal(world)
+    session = next(s for s in rig.sessions().values() if s.state == j.OPEN)
+    monkeypatch.setattr(run_module, "SLEEP", lambda s: None)
+    task = waiting_task(world, tree, rig, session, ("exact:a",), pid=81)
+    rig.set_session(session.id, j.CLOSING, reason="the person closed it")
+    began = time.monotonic()
+    assert not task.take_room(rig.sessions()[session.id], time.monotonic() + 20)
+    assert time.monotonic() - began < 5 and task.code == 3 and "session" in task.reason, task.reason
+
+
+def test_a_waiting_run_finished_by_the_reaper_stops_waiting(world, box, tree, monkeypatch):
+    opened(world)
+    rig = journal(world)
+    session = next(s for s in rig.sessions().values() if s.state == j.OPEN)
+    monkeypatch.setattr(run_module, "SLEEP", lambda s: None)
+    task = waiting_task(world, tree, rig, session, ("exact:a",), pid=82)
+    rig.finish_run(task.run.id, "session ended", reason="its session is not open")
+    began = time.monotonic()
+    assert not task.take_room(rig.sessions()[session.id], time.monotonic() + 20)
+    assert time.monotonic() - began < 5 and task.verdict == "session ended"
+
+
+def test_an_explicit_wait_never_runs_past_the_sessions_end(world, box, tree, monkeypatch):
+    opened(world, hours=1)
+    _, wait, _ = queued_only(world, tree, monkeypatch, "--wait", "99999")
+    assert abs(wait - 3600.0) < 5
+
+
+def test_rig_stop_waits_longer_than_a_stopped_run_brings_things_back():
+    assert commands.STOP_WAIT >= run_module.GET_ON_STOP + 60
+
+
+def test_a_stop_during_the_fetch_leaves_it_to_be_done_again_and_no_spool(world, box, tree, tmp_path, monkeypatch):
+    import argparse
+    import tempfile as tempfile_module
+    spool_dir = tmp_path / "spool"
+    spool_dir.mkdir()
+    monkeypatch.setattr(tempfile_module, "tempdir", str(spool_dir))
+
+    class Cut:
+        def __init__(self, *a, **k):
+            self.stdout = self
+
+        def read(self, n):
+            raise SystemExit(143)
+
+        def kill(self):
+            pass
+
+        def wait(self, *a):
+            return 0
+    monkeypatch.setattr(run_module.subprocess, "Popen", Cut)
+    task = run_module.Run(world["state"], rs.settings(world["state"]), argparse.Namespace(why="t", root=str(tree)))
+
+    class Box:
+        def argv(self, *a, **k):
+            return ["true"]
+    task.box, task.paths = Box(), type("P", (), {"run": "/x"})()
+    with pytest.raises(SystemExit):
+        task.gets(["shots"], tree, ("txt",))
+    assert task.got is False and list(spool_dir.iterdir()) == []
+
+
+def test_a_queued_run_says_its_place_even_with_no_machine_up(world, box, tree, monkeypatch):
+    opened(world)
+    _, _, out = queued_only(world, tree, monkeypatch)
+    assert "j1 is 1st in line; a machine is raised first" in out

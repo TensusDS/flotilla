@@ -112,6 +112,7 @@ class Machine:
     ram_mb: int | None = None
     gpu_total_mb: int | None = None
     keyed: str = ""      # when the rig's ssh key was put on the instance; not ready without it
+    destroyed: str = ""  # when the service first took a destroy of its instance (not when one was only tried)
 
 
 @dataclass
@@ -157,6 +158,8 @@ class Run:
     ended: str = ""                   # its first `done` event, from the fold: a later `swept` never moves it
     waits: str = ""                   # why start_run refused it inside the lock, once per change; never displayed
     reason: str = ""
+    exclusive: bool = False           # alone on its machine: nothing starts beside it (rig queue design, A1)
+    ceiling: int | None = None        # the ceiling it was queued with, in seconds: what an unmeasured run counts as
 
 
 #: A session serves a handful of projects; a longer list is text a shell wrote, cut, not trusted.
@@ -165,7 +168,7 @@ TEXT = ("who", "why", "waits",
         "session", "provider", "instance", "label", "gpu", "reason", "run_mark", "address", "project",
         "image", "suspect", "revision", "verdict", "machine", "mark")
 TIMES = ("until", "opened", "ended", "created", "lease_until", "idle_since", "requested", "keyed", "command_at",
-         "swept", "credited")
+         "swept", "credited", "destroyed")
 CREDIT = ("credit_open", "credit_now")   # an account's credit may be below zero
 MONEY = {"budget": 1e4, "hourly": 1e3, "cost": 1e4}
 WHOLE = {"peak_mb": 10 ** 7, "gpu_mb": 10 ** 7, "gpu_shared_mb": 10 ** 7,
@@ -203,6 +206,10 @@ def _clean(key, value):
     if key in ("seconds", "cores"):
         ok = isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value <= 1e6
         return float(value) if ok else None
+    if key == "exclusive":
+        return value is True
+    if key == "ceiling":
+        return value if isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= 86400 else None
     if key == "exit":
         return value if isinstance(value, int) and not isinstance(value, bool) and -255 <= value <= 255 else None
     if key == "program":
@@ -301,6 +308,18 @@ def _holds(item, expect) -> bool:
     return all(getattr(item, key) == value for key, value in (expect or {}).items())
 
 
+def _counts(machine, sessions) -> bool:
+    """Whether a machine counts against the machine ceiling: every live one, except a machine draining from a session
+    that is no longer open whose destroy the service took - it is going, and it must not keep the next session's
+    first run waiting a reaper pass (twosuns item 4). For that pass two machines may be billed, one of them already
+    told to die. An attempt the service refused, or one never sent for want of the machine key, frees nothing (the
+    review of 0.27.0: `attempts` counts tries, not destroys); STUCK always counts."""
+    if machine.state not in LIVE:
+        return False
+    session = sessions.get(machine.session)
+    return not (machine.state == DRAINING and machine.destroyed and (session is None or session.state != OPEN))
+
+
 class Rig:
     def __init__(self, store, *, clock=None):
         self.store = store
@@ -376,7 +395,7 @@ class Rig:
                 raise RigError(f"session {session_id} is not open")
             if session.until and self.now() >= _parse(session.until):
                 raise RigError(f"session {session_id} has ended")
-            if limit is not None and sum(1 for m in machines.values() if m.state in LIVE) >= limit:
+            if limit is not None and sum(1 for m in machines.values() if _counts(m, sessions)) >= limit:
                 raise RigError(f"the machine ceiling ({limit}) is reached: another machine lives in this rig")
             machine_id = _next_id("m", machines)
             now = self.now()
@@ -421,12 +440,12 @@ class Rig:
         return _fold_runs(self.store.read(KEY).records)
 
     def queue_run(self, session_id: str, *, who: str, project: str, revision: str, program: str, ladder,
-                  pid: int, mark: str) -> Run:
+                  pid: int, mark: str, exclusive: bool = False, ceiling: int | None = None) -> Run:
         with self.store.transaction(KEY) as tx:
             run_id = _next_id("j", _fold_runs(tx.read().records))
             self._append(tx, "run", run_id, WAITING, session=session_id, tag=f"{run_id}-{secrets.token_hex(4)}",
                          who=who, project=project, revision=revision, program=program, ladder=list(ladder), pid=pid,
-                         mark=mark)
+                         mark=mark, exclusive=bool(exclusive), ceiling=ceiling)
             return _fold_runs(tx.read().records)[run_id]
 
     @staticmethod
@@ -443,16 +462,35 @@ class Rig:
 
     def _verdict(self, runs, machine, run, alive) -> str:
         """"" when `run` is the one to start on `machine` now (before the second barrier), else why it waits: the
-        packing's choice when the machine's size is known, else the session's line by arrival."""
+        exclusive rules first (rig queue design, A1), then the packing's choice when the machine's size is known,
+        else the session's line by arrival. Runs that came after a waiting exclusive run are held, so packing never
+        sees them."""
         from flotilla.rig import packing
         live = [item for item in runs.values() if item.state == WAITING and item.session == run.session
                 and alive(item.pid, item.mark)]
         if machine.session != run.session or run.id not in {item.id for item in live}:
             return "not waiting in this machine's session"
+        there = [item for item in runs.values() if item.state == RUNNING and item.machine == machine.id]
+        alone = next((item for item in sorted(there, key=lambda item: _number(item.id)) if item.exclusive), None)
+        if alone is not None:
+            return f"{alone.id} runs alone on {machine.id} (exclusive)"
+        first = min((item for item in live if item.exclusive), key=lambda item: _number(item.id), default=None)
+        if first is not None and _number(run.id) > _number(first.id):
+            return f"held for exclusive {first.id}, which has not started yet"
+        if run.exclusive:
+            earlier = min((item for item in live if _number(item.id) < _number(run.id)),
+                          key=lambda item: _number(item.id), default=None)
+            if earlier is not None:
+                return f"{earlier.id} came first"
+            if there:
+                on = ", ".join(item.id for item in sorted(there, key=lambda item: _number(item.id)))
+                return f"exclusive: waits for {machine.id} to empty ({on} run on it)"
+            return ""
+        if first is not None:
+            live = [item for item in live if _number(item.id) < _number(first.id)]
         if not packing.shape_known(machine):
             head = min(live, key=lambda item: _number(item.id))
             return "" if head.id == run.id else f"{head.id} came first"
-        there = [item for item in runs.values() if item.state == RUNNING and item.machine == machine.id]
         hist = packing.history(runs, now=self.now())
         needs = {item.id: packing.estimate(item.ladder, hist) for item in live + there}
         picked = packing.choose(live, there, machine, needs, self.now())

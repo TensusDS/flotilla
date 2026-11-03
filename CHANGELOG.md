@@ -3,6 +3,28 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.27.0 - 2026-11-03
+
+The rig queue, part A: runs that keep apart, a line that moves itself (twosuns items 3, 4, 6 and 12; design
+`docs/specs/2026-11-03-rig-queue-design.md`).
+
+- **Exclusive runs.** `rig run --exclusive` runs alone on its machine: it starts only on an empty one, nothing starts
+  beside it, and while it waits every later run waits too. `[rig] exclusive = true` makes every run of a project
+  exclusive; `--shared` overrides it. Runs that measure frames, fps or sound no longer skew each other.
+- **A rig run stands in line for the whole session.** `--wait` defaults to the session's end instead of 900 s, so a
+  seat calls `rig run` once in the background and it starts by itself when its turn comes. While it waits it says
+  its place, the run ahead of it and, by estimates, when it starts and ends; a run that would end after the session
+  is told so before it starts.
+- **`flotilla rig` shows the line:** waiting runs in order with their place, exclusive or shared, expected start, and
+  a mark on a run that does not fit the session; running runs with their estimate.
+- **A watch item when the handover breaks:** a machine idle two minutes while runs of its session wait.
+- **A stopped run brings back its `--get` paths** (at most 120 s), instead of losing what it made.
+- **A machine draining from a closed session stops counting against the machine ceiling once the service took its
+  destroy,** so the next session's first run is not refused for 15 minutes. For one reaper pass two machines may be
+  billed, one of them already told to die.
+- Posts: seats queue through `rig run` and never ask the orchestrator for a turn; the orchestrator sends no "go" for
+  the rig (main 11, minor 9, orchestrator 27).
+
 ## 0.26.2 - 2026-11-03
 
 Two holes in what only the person may do.

@@ -388,7 +388,12 @@ def build_parser() -> argparse.ArgumentParser:
     rig_run.add_argument("--put", action="append", default=[], metavar="PATH", help="a file git does not track")
     rig_run.add_argument("--get", action="append", default=[], metavar="PATH", help="a path to bring back")
     rig_run.add_argument("--env", action="append", default=[], metavar="NAME=VALUE", help="a variable to set")
-    rig_run.add_argument("--wait", type=float, default=900.0, help="seconds to wait for room (default 900)")
+    rig_run.add_argument("--wait", type=float, default=None,
+                         help="seconds to wait for room (default: until the session ends)")
+    alone = rig_run.add_mutually_exclusive_group()
+    alone.add_argument("--exclusive", action="store_true",
+                       help="run alone on the machine: for runs that measure time, frames or sound")
+    alone.add_argument("--shared", action="store_true", help="may share the machine, whatever the profile says")
     rig_run.add_argument("--max", type=int, default=None, metavar="S",
                          help="this run's ceiling in seconds, at most the profile's [rig] max_run_seconds")
     rig_run.add_argument("--why", default="a heavy run")

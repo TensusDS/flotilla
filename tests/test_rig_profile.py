@@ -39,3 +39,17 @@ def test_get_types_extend_the_artifact_types():
     assert "onnx" in got.get_types and "ply" in got.get_types and "png" in got.get_types
     assert "bad/one" not in got.get_types and any("get_types" in p for p in got.problems)
     assert profile.read({}).get_types == transfer.ARTIFACT_TYPES
+
+
+import pytest  # noqa: E402
+
+
+@pytest.mark.parametrize("value, exclusive, problem", [(True, True, False), (False, False, False),
+                                                        ("yes", False, True), (1, False, True)])
+def test_rig_exclusive_reads_a_bool_only(value, exclusive, problem):
+    got = profile.read({"rig": {"exclusive": value}})
+    assert got.exclusive is exclusive and any("[rig] exclusive" in p for p in got.problems) is problem
+
+
+def test_rig_exclusive_defaults_to_shared():
+    assert profile.read({}).exclusive is False

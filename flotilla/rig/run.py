@@ -12,6 +12,7 @@ stopped there, and a machine that cannot be asked for `ASK_FOR` seconds is drain
 from __future__ import annotations
 
 import contextlib
+import datetime as dt
 import hashlib
 import os
 import re
@@ -26,7 +27,7 @@ from pathlib import Path, PurePosixPath
 from flotilla.lane import run as lane_run
 from flotilla.lane import signature
 from flotilla.rig import commands, journal as j, reaper, remote, sshkey, transfer
-from flotilla.rig import packing
+from flotilla.rig import line, packing
 from flotilla.rig.packing import GPU_MARGIN_MB, MARGIN_MB
 from flotilla.rig import settings as rs
 
@@ -42,6 +43,8 @@ KEEP_REVISIONS = 5
 READ = None        # None: the READINGS script over ssh
 CEILING = None     # None: the profile's max_run_seconds
 KEY_PATH = None    # None: the rig's own key
+GET_ON_STOP = 120.0    # what a stopped run spends bringing back its --get paths (twosuns item 3)
+DEFAULT_WAIT = 900.0   # a session with no recorded end: the wait before the rig queue
 BACKSTOP = 30      # the machine's own limit runs this much longer than ours: only a backstop for a dead field side
 _NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _SECRET = ("KEY", "TOKEN", "SECRET", "PASSWORD")
@@ -164,13 +167,22 @@ class Run:
         self.lost = False
         self.renewing = threading.Event()
         self.passed_over: set = set()   # offers found gone during this run's wait: not tried again
+        self.commanded = False          # its command started: from here a stop has something to bring back
+        self.got = False                # its --get paths were asked for
 
     # -- the line and the room ------------------------------------------------------------------------------
     def take_room(self, session, deadline) -> bool:
         """Every waiting run tries every ready machine of its session: the journal's packing decides which one goes,
         and only that one reads the machine. Only the session's oldest waiting run raises a machine."""
         said, market_again, no_offer, began = "", 0.0, False, time.monotonic()
+        told = None   # what this run last said of its place: said again only when the place or the reason moves
         while True:
+            mine, now_session = self.rig.runs().get(self.run.id), self.rig.sessions().get(session.id)
+            if mine is None or mine.state != j.WAITING or now_session is None or now_session.state != j.OPEN:
+                # the session closed under it, or the reaper ended it: the journal's verdict stands (final review)
+                self.verdict = mine.verdict if mine is not None and mine.state == j.DONE else "session ended"
+                self.code, self.reason = 3, f"session {session.id} closed while it waited"
+                return False
             machines = [m for m in self.rig.machines().values() if m.session == session.id]
             reasons = {}
             for machine in machines:
@@ -189,9 +201,11 @@ class Run:
                     return True
                 reasons[machine.id] = "next to start; the machine's live readings or settle minute say not yet"
             text = "; ".join(f"{mid}: {why}" if len(reasons) > 1 else why for mid, why in sorted(reasons.items()))
-            if text and text != said:
-                _say(f"rig run {self.run.id} waits: {text}")
-                said = text
+            place = self.place(session)
+            where = (place.number, place.ahead) if place is not None else None
+            if text and (text, where) != (said, told):
+                _say(f"rig run {self.run.id} waits: {text}" + (f"; {line.says(place, session)}" if place else ""))
+                said, told = text, where
             head = self.rig.head(session.id, self.alive)
             if (head is not None and head.id == self.run.id and time.monotonic() >= market_again
                     and not any(m.state in (j.READY, j.BUSY) for m in machines)):
@@ -226,6 +240,11 @@ class Run:
                 self.verdict, self.code, self.reason = "waited", 3, f"no room within --wait {waited}"
                 return False
             SLEEP(POLL)
+
+    def place(self, session):
+        """This run's place in its session's line, or None once it is no longer in it."""
+        return next((p for p in line.places(self.rig, session.id, self.rig.now(), self.alive)
+                     if p.run.id == self.run.id), None)
 
     def shape(self, machine):
         """The machine's size, read once: packing needs it before the first try, not only past the floor."""
@@ -347,24 +366,48 @@ class Run:
             self.verdict = "green" if result.exit == 0 else "red"
         return True
 
-    def gets(self, gets, root, types):
+    def gets(self, gets, root, types, *, cap_seconds=None):
+        """Bring back the --get paths. With `cap_seconds` (a stop), the transfer is cut at that many seconds and
+        nothing partial is placed. Marked done only once the transfer ended, so a stop that cuts the ordinary fetch
+        leaves it to the stop's own (final review); the spool is removed however it ends."""
         if not gets or self.lost:
+            self.got = True
             return
         argv = self.box.argv(remote.PACK, self.paths.run, *gets)
         cap = transfer.CAP + 2 ** 20
         with tempfile.NamedTemporaryFile(prefix="flotilla-get-", suffix=".tar", delete=False) as handle:
             spool = Path(handle.name)
+        try:
+            self._fetch(argv, spool, cap, cap_seconds, gets, root, types)
+        finally:
+            spool.unlink(missing_ok=True)
+
+    def _fetch(self, argv, spool, cap, cap_seconds, gets, root, types):
+        cut = threading.Event()
+        with open(spool, "wb") as handle:
             process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                        stderr=subprocess.DEVNULL)
+            timer = threading.Timer(cap_seconds, lambda: (cut.set(), process.kill())) if cap_seconds else None
+            if timer is not None:
+                timer.start()
             size = 0
-            for chunk in iter(lambda: process.stdout.read(65536), b""):
-                size += len(chunk)
-                if size > cap:
-                    process.kill()
-                    break
-                handle.write(chunk)
-            process.wait(remote.LONG)
+            try:
+                for chunk in iter(lambda: process.stdout.read(65536), b""):
+                    size += len(chunk)
+                    if size > cap:
+                        process.kill()
+                        break
+                    handle.write(chunk)
+                process.wait(remote.LONG)
+            finally:
+                if timer is not None:
+                    timer.cancel()
+        self.got = True
         try:
+            if cut.is_set():
+                print(f"flotilla: bringing back --get was cut at {cap_seconds:g} s after the stop; nothing was placed",
+                      flush=True)
+                return
             if size > cap:
                 print("flotilla: what came back is over the cap; nothing was placed", flush=True)
                 return
@@ -377,8 +420,6 @@ class Run:
                       + " - add a type with [rig] get_types if it is one", flush=True)
         except transfer.Refused as err:
             print(f"flotilla: nothing was placed: {err}", flush=True)
-        finally:
-            spool.unlink(missing_ok=True)
 
 
 class _Ended(Exception):
@@ -430,11 +471,19 @@ def _main(state: Path, settings: rs.RigSettings, args) -> int:
     mark = ProcessTable.for_machine().start_mark(os.getpid()) or ""
     program = os.path.basename(command[0])
     ladder = signature.ladder(command, tree=str(root), project=key)
+    ceiling = float(CEILING or min(profile.max_run_seconds, args.max or profile.max_run_seconds))
+    exclusive = args.exclusive or (profile.exclusive and not args.shared)
     task.run = rig.queue_run(session.id, who=who, project=key, revision=revision, program=program, ladder=ladder,
-                             pid=os.getpid(), mark=mark)
+                             pid=os.getpid(), mark=mark, exclusive=exclusive, ceiling=int(ceiling))
+    place = task.place(session)
+    if place is not None:
+        _say(f"rig run {task.run.id} queued: {line.says(place, session)}")
+    late = line.warning(place, session) if place is not None else ""
+    if late:
+        _say(f"rig run {task.run.id}: {late}")
     renewer = None
     try:
-        if not task.take_room(session, time.monotonic() + float(args.wait)):
+        if not task.take_room(session, time.monotonic() + _wait(args.wait, session, rig.now())):
             return task.code
         task.started = time.monotonic()
         slug = transfer.project_slug(root, key)
@@ -443,7 +492,6 @@ def _main(state: Path, settings: rs.RigSettings, args) -> int:
         rig.place_run(task.run.id, slug)
         renewer = threading.Thread(target=task.renew, daemon=True)
         renewer.start()
-        ceiling = float(CEILING or min(profile.max_run_seconds, args.max or profile.max_run_seconds))
         _phases(task, root, revision, puts, gets, pairs, command, profile, ceiling)
         return task.code
     except _Ended:
@@ -468,6 +516,8 @@ def _main(state: Path, settings: rs.RigSettings, args) -> int:
             with contextlib.suppress(Lost):
                 if not task.sent_stop:
                     task.stop()
+                if task.verdict == "stopped" and task.commanded and not task.got:   # what it made so far
+                    task.gets(gets, root, profile.get_types, cap_seconds=GET_ON_STOP)
                 task.box.call(remote.DROP, task.paths.run, task.paths.setup_status, task.paths.run_status)
         seconds = round(time.monotonic() - task.started, 1) if task.started else None
         hourly = task.machine.hourly if task.machine is not None else None
@@ -477,6 +527,17 @@ def _main(state: Path, settings: rs.RigSettings, args) -> int:
         on = f" on {task.machine.id}" if task.machine is not None else ""
         _say(f"rig run {task.run.id}: {task.verdict} (exit {task.code}) in {seconds or 0:g} s{on}, "
              f"{cost or 0:.4f} $" + (f" - {task.reason}" if task.reason else ""))
+
+
+def _wait(asked, session, now) -> float:
+    """How long a run stands in line: what the caller asked, else until its session ends (rig queue design, A2)."""
+    try:
+        left = max(1.0, (dt.datetime.fromisoformat(session.until) - now).total_seconds())
+    except (TypeError, ValueError):
+        left = None
+    if asked is not None:
+        return float(asked) if left is None else min(float(asked), left)
+    return DEFAULT_WAIT if left is None else left
 
 
 def _phases(task: Run, root, revision, puts, gets, pairs, command, profile, ceiling):
@@ -524,5 +585,6 @@ def _phases(task: Run, root, revision, puts, gets, pairs, command, profile, ceil
             raise _Ended()
     remaining = max(1.0, ceiling - (time.monotonic() - began))
     task.rig.command_started(task.run.id)
+    task.commanded = True
     task.execute(remote.RUN, paths.run_status, [str(len(pairs)), *pairs, *command], remaining)
     task.gets(gets, root, profile.get_types)

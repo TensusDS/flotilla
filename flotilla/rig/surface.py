@@ -24,6 +24,9 @@ ENDING = dt.timedelta(minutes=15)
 WARN_AT = 0.8
 REQUEST_LIFE = dt.timedelta(hours=24)
 LOUD_EVERY = dt.timedelta(minutes=30)
+#: flotilla starts a waiting run within seconds of its machine freeing: a machine idle this long while runs wait
+#: means the handover itself broke (rig queue design, A4).
+IDLE_ALARM = dt.timedelta(minutes=2)
 #: A requester's name as the census names sessions; anything else - `--as` takes any text outside the census - is
 #: shown as "a session", so no text a session chose reaches the orchestrator's model as if it were the screen's.
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9 _.-]{0,59}")
@@ -82,6 +85,7 @@ def items(state: Path, now: dt.datetime, project: str = "") -> list[Item]:
         elif not ok:
             found.append(_item(f"the last reaper pass failed: {note}", "", f"rig:failed:{_loud(now)}"))
     open_ = [s for s in sessions.values() if s.state == j.OPEN]
+    found.extend(_idle_while_waiting(rig, open_, live, now))
     for session in open_:
         spent = rig.spent(session.id, now)
         if session.budget and spent >= WARN_AT * session.budget:
@@ -120,6 +124,25 @@ def items(state: Path, now: dt.datetime, project: str = "") -> list[Item]:
             text = (f"{_who(request.who)} asks for a machine; no session is open - {first}ask the person to paste: "
                     f"{line}")
         found.append(_item(text, request.since, f"rig:request:{request.id}"))
+    return found
+
+
+def _idle_while_waiting(rig: j.Rig, open_, live, now: dt.datetime) -> list[Item]:
+    from flotilla.rig import commands
+    if not open_:
+        return []
+    alive, runs, found = commands._alive(), rig.runs(), []
+    for session in open_:
+        waiting = sorted((r for r in runs.values() if r.state == j.WAITING and r.session == session.id
+                          and alive(r.pid, r.mark)), key=lambda r: int(r.id[1:]))
+        for machine in live:
+            idle = _when(machine.idle_since)
+            if machine.session != session.id or machine.state != j.READY or not waiting or idle is None \
+                    or now - idle < IDLE_ALARM:
+                continue
+            ids = ", ".join(r.id for r in waiting)
+            found.append(_item(f"machine {machine.id} idle {int((now - idle).total_seconds() // 60)} min while {ids} "
+                               "wait - read flotilla rig for why", machine.idle_since, f"rig:idle:{machine.id}"))
     return found
 
 
@@ -167,16 +190,36 @@ def credit_line(session: j.Session) -> str:
 def run_lines(rig: j.Rig, now: dt.datetime) -> list[str]:
     """Who runs what and who waits: the program as the journal checked it, never a command's text. Why a run waits
     is worked out here again from the estimates, never read from the journal's `waits`, which any session may write."""
-    from flotilla.rig import packing
+    from flotilla.rig import line, packing
     lines = []
     runs = rig.runs()
     hist = packing.history(runs, now=now)
     machines = rig.machines()
-    for run in sorted(runs.values(), key=lambda r: int(r.id[1:])):
+    from flotilla.rig import commands
+    alive = commands._alive()   # a dead waiting run is listed, but holds no place in the line
+    places = {place.run.id: place for session_id in {r.session for r in runs.values() if r.state == j.WAITING}
+              for place in line.places(rig, session_id, now, alive)}
+
+    def kind(run) -> str:
+        return "exclusive" if run.exclusive else "shared"
+
+    def in_line(place) -> str:
+        starts = f"starts ~{_hhmm(place.starts)}" if place.starts else "starts once a machine is up"
+        late = ", DOES NOT FIT the session" if place.fits is False else ""
+        return f"#{place.number} in line, {kind(place.run)}, {starts}{late}; "
+
+    def order(run):
+        place = places.get(run.id)
+        return (run.state != j.RUNNING, place.number if place else 0, int(run.id[1:]))
+
+    for run in sorted(runs.values(), key=order):
         if run.state == j.RUNNING:
-            since = _when(run.since)
+            since = _when(run.command_at) or _when(run.since)
             minutes = f" for {int((now - since).total_seconds() // 60)} min" if since else ""
-            lines.append(f'  run {run.id} ({_who(run.who)}) running program "{run.program}" on {run.machine}{minutes}')
+            took = packing.estimate(run.ladder, hist).seconds
+            of = f" of ~{max(1, round(took / 60))} min" if took is not None and minutes else ""
+            lines.append(f'  run {run.id} ({_who(run.who)}) running program "{run.program}" on {run.machine}'
+                         f'{minutes}{of}, {kind(run)}')
         elif run.state == j.WAITING:
             need = packing.estimate(run.ladder, hist)
             since = _when(run.since)
@@ -188,6 +231,7 @@ def run_lines(rig: j.Rig, now: dt.datetime) -> list[str]:
             if ready:
                 said = rig.would_start(run.id, ready[0].id, alive=lambda pid, mark: True)
                 reason = f": {said}" if said else ": next to start"
-            lines.append(f"  run {run.id} ({_who(run.who)}) waits{reason} ({senior}{took}{need.cores:g} cores, "
-                         f"{need.ram_mb} MB, {gpu}; {need.source})")
+            place = places.get(run.id)
+            lines.append(f"  run {run.id} ({_who(run.who)}) waits{reason} ({in_line(place) if place else ''}"
+                         f"{senior}{took}{need.cores:g} cores, {need.ram_mb} MB, {gpu}; {need.source})")
     return lines

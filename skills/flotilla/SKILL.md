@@ -101,6 +101,8 @@ goes into a report:
 - a guard that says "a guard, not a fault" - write each flotilla command out in full, one per call.
 - `rig run --get` refused for a file type - the project's `[rig] get_types` decides what comes back; ask the
   orchestrator for a project row that adds the type.
+- `rig run` saying it `waits:` with its place in line - that is the session's line, not a fault; it starts by itself
+  when its turn comes. Leave it running in the background and do not ask the orchestrator for a turn.
 - Claude Code's auto-mode classifier refusing `flotilla rig down` after your run - the reaper returns an idle
   machine within 15 minutes; do not retry. A classifier "no verdict" is passing: retry once later, and tell the
   orchestrator only if it repeats.

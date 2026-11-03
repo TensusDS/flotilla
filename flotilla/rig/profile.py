@@ -25,6 +25,7 @@ class RigProfile:
     setup: str = ""
     max_run_seconds: int = DEFAULT_RUN_SECONDS
     get_types: tuple = ()
+    exclusive: bool = False   # every run of the project alone on its machine (rig queue design, A1)
 
 
 def read(data: dict) -> RigProfile:
@@ -60,4 +61,8 @@ def read(data: dict) -> RigProfile:
     if len(good) != len(extra):
         problems.append("[rig] get_types holds names that are not file extensions; they are left out")
     types = ARTIFACT_TYPES + tuple(t for t in good if t not in ARTIFACT_TYPES)
-    return RigProfile(image, kept, disk, tuple(problems), setup.strip(), seconds, types)
+    exclusive = section.get("exclusive", False)
+    if not isinstance(exclusive, bool):
+        problems.append(f"[rig] exclusive {exclusive!r} is not true or false; runs are shared")
+        exclusive = False
+    return RigProfile(image, kept, disk, tuple(problems), setup.strip(), seconds, types, exclusive)
