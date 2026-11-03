@@ -88,21 +88,14 @@ def plan(records: list[dict], now: dt.datetime) -> tuple[list[dict], list[dict]]
             if value not in (None, "", [], ()):
                 record[key] = list(value) if isinstance(value, tuple) else value
         rewritten[item.id] = record
-    kept, archived, placed = [], [], set()
-    for record in records:
+    last = {record.get("booking"): at for at, record in enumerate(records) if isinstance(record, dict)}
+    kept, archived = [], []
+    for at, record in enumerate(records):
         name = record.get("booking") if isinstance(record, dict) else None
         if name in verbatim:
             kept.append(record)
             continue
         archived.append(record)
-        if name in rewritten and name not in placed and record is _last_of(records, name):
+        if name in rewritten and last[name] == at:   # the rewritten record stands where the booking ended
             kept.append(rewritten[name])
-            placed.add(name)
     return kept, archived
-
-
-def _last_of(records: list[dict], name: str) -> dict | None:
-    for record in reversed(records):
-        if isinstance(record, dict) and record.get("booking") == name:
-            return record
-    return None
