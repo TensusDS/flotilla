@@ -2,16 +2,21 @@
 each to them or "never shown" (person inbox design, goal 1).
 
 The person answers by number. Exit codes as `watch --once`: 0 nothing waits, 1 something does, 2 the census or the
-ledger could not be asked. A run counts as shown only when it is the person's own (see `toolcall`).
+ledger could not be asked.
+
+A run records "shown" only from a terminal outside every Claude Code session. Measured on Claude Code 2.1.317: a
+model's Bash call and the person's `!` run with the same environment and the same parent process, so inside a session
+nothing tells the person's run from the model's, and a model's run counted as shown would be the claim this design
+refuses. A hook-side note tried and failed two security reviews (a word test, then a time window). The listing prints
+either way; the line flotilla puts on the person's screen records "shown" in the person's interactive session.
 """
 
 from __future__ import annotations
 
 import datetime as dt
-import time
 from pathlib import Path
 
-from flotilla.watch import inbox, shown, toolcall
+from flotilla.watch import inbox, shown
 from flotilla.watch.render import age
 
 
@@ -44,19 +49,18 @@ def listing(entries, shown_first: dict, now: dt.datetime) -> list[str]:
     return out
 
 
-def _persons_run(state) -> bool:
+def _persons_run() -> bool:
+    """A terminal outside every session: what a person's own shell has, and no session's tool call does."""
     from flotilla.core import caller
-    if caller.person_refusal("reads the inbox as shown to them"):
-        return False
     try:
-        ids = [session.session_id for session in caller.calling_sessions()]
+        if caller.calling_sessions():
+            return False
     except Exception:  # noqa: BLE001 - who calls is unknown: nothing is recorded as shown
         return False
-    return not toolcall.by_tool(state, ids, time.time())
+    return caller.has_terminal()
 
 
 def run_inbox_command(args) -> int:
-    from flotilla.core import paths
     from flotilla.core.config import find_project
     from flotilla.watch import context
     root = find_project(Path(args.root))
@@ -77,6 +81,6 @@ def run_inbox_command(args) -> int:
         print("nothing waits on you")
         return 0
     print("\n".join(listing(entries, shown.load(state, repo)["first"], now)))
-    if _persons_run(paths.state_dir()):
+    if _persons_run():
         shown.mark(state, repo, [entry.key for entry in entries], now.isoformat(timespec="seconds"))
     return 1

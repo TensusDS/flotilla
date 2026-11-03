@@ -79,10 +79,7 @@ def test_a_command_naming_no_guarded_program_imports_nothing(tmp_path):
         "print(','.join(heavy))\n"
     )
     done = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, check=True)
-    # the note every Bash call in a project leaves (0.26.0, `watch/toolcall.py`) needs where the project and the state
-    # are: two stdlib-only modules the inactive path already loads one of; nothing that reads guards or the ledger
-    assert set(filter(None, done.stdout.strip().split(","))) <= {"flotilla.core", "flotilla.core.config",
-                                                                  "flotilla.core.paths"}
+    assert done.stdout.strip() == ""
 
 
 def test_a_command_the_guards_read_stays_inside_the_budget(tmp_path, monkeypatch):

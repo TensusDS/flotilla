@@ -122,10 +122,12 @@ A person's path, today and after:
 - **What counts as shown.**
   - A row counts as shown the first time a line flotilla put on the person's screen counted it. The listing gives
     each row's first-shown time, and a row never shown says "never".
-  - The full listing counts too when the person runs it: from a terminal, or with `!` in a session.
-  - A model's Bash call of `flotilla inbox` does not count. The guard hook sees Bash tool calls and not `!` (measured
-    for `approve`), so it marks the model's call by rewriting it with a flag, as the guards already rewrite commands,
-    and that run records nothing.
+  - The full listing counts too when the person runs it from a terminal outside every Claude Code session.
+  - A run inside a session does not count, `!` included. *Changed while building, 2026-11-03:* measured on Claude Code
+    2.1.317, a model's Bash call and the person's `!` run with the same environment and the same parent process, so
+    nothing tells them apart there. A hook-side note on the model's calls was built and failed two security reviews:
+    keyed on the word `inbox`, `in''box` slipped past it; keyed on a time window, a slow or repeated command did.
+    The listing still prints inside a session; the person's line on the screen records "shown" there.
   - A line shown in a background session counts only if the measurement below finds that the prompt was the
     person's.
 - **When the line shows.**

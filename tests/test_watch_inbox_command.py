@@ -1,17 +1,14 @@
-"""`flotilla inbox` and what counts as shown (person inbox design, "What counts as shown"): the person's own run of
-the listing counts; a model's Bash call of it, or a background session's, records nothing."""
+"""`flotilla inbox` and what counts as shown (person inbox design, "What counts as shown"): the listing run from a
+terminal outside every session counts; a run inside any session - a model's Bash call, a background session, and
+the person's `!`, which nothing there tells apart from the model's - records nothing."""
 
-import datetime as dt
-import io
-import json
 from types import SimpleNamespace
 
 import pytest
 
-from flotilla import hooks
 from flotilla.core import caller
 from flotilla.core.census import Session
-from flotilla.watch import inbox, inbox_command, shown, toolcall
+from flotilla.watch import inbox, inbox_command, shown
 from watchkit import AT, NOW, context, onboarded, row, rows, sess
 
 ORCH = sess("orchestrator 1", state="working")
@@ -55,18 +52,15 @@ def test_a_put_off_row_is_listed_under_put_off(tmp_path, monkeypatch):
 
 @pytest.fixture
 def world(tmp_path, monkeypatch):
-    """A project with two rows waiting on the person, the command run from session `s1`."""
+    """A project with two rows waiting on the person; the listing run from a terminal outside every session."""
     root = onboarded(tmp_path / "project")
-    state = tmp_path / "state"
-    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(state))
+    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
     ctx = context(root, me=ORCH, rows_=rows(asking("r1"), asking("r2")))
     monkeypatch.setattr("flotilla.watch.context.gather", lambda r, sid: ctx)
-    me = Session(name="orchestrator 1", session_id="s1", kind="interactive", pid=1, short_id=None, status=None,
-                 state=None, cwd="/", started_at_ms=None)
-    monkeypatch.setattr(caller, "calling_sessions", lambda: [me])
-    monkeypatch.setattr(caller, "person_refusal", lambda what: "")
+    monkeypatch.setattr(caller, "calling_sessions", lambda: [])
+    monkeypatch.setattr(caller, "has_terminal", lambda: True)
     monkeypatch.setattr(inbox_command, "_now", lambda: NOW)
-    return SimpleNamespace(root=root, state=state, ctx=ctx)
+    return SimpleNamespace(root=root, ctx=ctx)
 
 
 def run(world, capsys):
@@ -74,26 +68,45 @@ def run(world, capsys):
     return code, capsys.readouterr().out
 
 
-def test_the_persons_listing_records_shown(world, capsys):
+def recorded(world):
+    return shown.load(world.ctx.ledger.state_dir, "repo")["first"]
+
+
+def test_the_persons_listing_in_a_terminal_records_shown(world, capsys):
     code, out = run(world, capsys)
     assert code == 1 and "feat/r1" in out and "feat/r2" in out
-    assert set(shown.load(world.ctx.ledger.state_dir, "repo")["first"]) == {"row:r1", "row:r2"}
+    assert set(recorded(world)) == {"row:r1", "row:r2"}
 
 
-def test_a_tool_call_of_inbox_records_nothing(world, capsys, monkeypatch):
-    payload = {"cwd": str(world.root), "tool_name": "Bash", "session_id": "s1",
-               "tool_input": {"command": "flotilla inbox", "description": "d"}, "permission_mode": "auto"}
-    out = io.StringIO()
-    assert hooks.run_hook("guard", io.StringIO(json.dumps(payload)), out=out) == 0
-    code, printed = run(world, capsys)
-    assert code == 1 and "feat/r1" in printed   # the model reads the queue; it is not shown to the person
-    assert shown.load(world.ctx.ledger.state_dir, "repo")["first"] == {}
+def session(kind):
+    return Session(name="orchestrator 1", session_id="s1", kind=kind, pid=1, short_id=None, status=None, state=None,
+                   cwd="/", started_at_ms=None)
 
 
-def test_a_background_session_records_nothing(world, capsys, monkeypatch):
-    monkeypatch.setattr(caller, "person_refusal", lambda what: "`orchestrator 1` is a background session")
+@pytest.mark.parametrize("kind", ["interactive", "background"])
+def test_a_listing_run_inside_a_session_records_nothing(world, capsys, monkeypatch, kind):
+    """Measured on Claude Code 2.1.317: a model's Bash call and the person's `!` run with the same environment and
+    the same parent, so inside a session nothing tells the person's run from the model's. Two security reviews
+    broke the hook-side note that tried (a word test, then a window). The listing prints either way; only flotilla's
+    line on the screen, and a terminal outside every session, record "shown"."""
+    monkeypatch.setattr(caller, "calling_sessions", lambda: [session(kind)])
+    code, out = run(world, capsys)
+    assert code == 1 and "feat/r1" in out
+    assert recorded(world) == {}
+
+
+def test_a_listing_with_no_terminal_records_nothing(world, capsys, monkeypatch):
+    monkeypatch.setattr(caller, "has_terminal", lambda: False)
     run(world, capsys)
-    assert shown.load(world.ctx.ledger.state_dir, "repo")["first"] == {}
+    assert recorded(world) == {}
+
+
+def test_a_census_that_cannot_be_asked_records_nothing(world, capsys, monkeypatch):
+    def down():
+        raise RuntimeError("`claude` is not on PATH")
+    monkeypatch.setattr(caller, "calling_sessions", down)
+    run(world, capsys)
+    assert recorded(world) == {}
 
 
 def test_an_empty_queue_exits_0(world, capsys, monkeypatch):
@@ -101,42 +114,3 @@ def test_an_empty_queue_exits_0(world, capsys, monkeypatch):
     monkeypatch.setattr("flotilla.watch.context.gather", lambda r, sid: empty)
     code, out = run(world, capsys)
     assert code == 0 and "nothing waits on you" in out
-
-
-def test_a_note_is_used_once_and_goes_stale(tmp_path):
-    toolcall.note(tmp_path, "s1", 1000.0)
-    assert toolcall.by_tool(tmp_path, ["s1"], 1010.0)
-    assert not toolcall.by_tool(tmp_path, ["s1"], 1011.0)   # used up: the next run is the person's own
-    toolcall.note(tmp_path, "s1", 1000.0)
-    assert not toolcall.by_tool(tmp_path, ["s1"], 1000.0 + 31)
-
-
-def test_the_guard_notes_a_call_naming_inbox_and_decides_nothing(tmp_path, monkeypatch):
-    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
-    payload = {"cwd": str(onboarded(tmp_path / "project")), "tool_name": "Bash", "session_id": "s9",
-               "tool_input": {"command": "cd x && ./bin/flotilla inbox", "description": "d"}}
-    out = io.StringIO()
-    assert hooks.run_hook("guard", io.StringIO(json.dumps(payload)), out=out) == 0
-    assert out.getvalue() == ""
-    assert toolcall.by_tool(tmp_path / "state", ["s9"], dt.datetime.now().timestamp())
-
-
-@pytest.mark.parametrize("command", ["./bin/flotilla in''box", '"$CLI" inbox', "f=flotilla; $f in\\box", "ls"])
-def test_every_bash_call_in_a_project_leaves_a_note_whatever_its_words(tmp_path, monkeypatch, command):
-    """Security review of eadba0b: a note left only when the word `inbox` showed let `in''box` or a variable run the
-    listing unnoted, so a model's run counted as shown to the person. Every Bash call in an onboarded project leaves
-    one; the person's `!` fires no hook and leaves none."""
-    root = onboarded(tmp_path / "project")
-    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
-    payload = {"cwd": str(root), "tool_name": "Bash", "session_id": "s9",
-               "tool_input": {"command": command, "description": "d"}}
-    assert hooks.run_hook("guard", io.StringIO(json.dumps(payload)), out=io.StringIO()) == 0
-    assert toolcall.by_tool(tmp_path / "state", ["s9"], dt.datetime.now().timestamp())
-
-
-def test_a_bash_call_outside_a_project_leaves_nothing(tmp_path, monkeypatch):
-    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
-    payload = {"cwd": str(tmp_path), "tool_name": "Bash", "session_id": "s9",
-               "tool_input": {"command": "ls", "description": "d"}}
-    assert hooks.run_hook("guard", io.StringIO(json.dumps(payload)), out=io.StringIO()) == 0
-    assert not (tmp_path / "state" / "watch").exists()

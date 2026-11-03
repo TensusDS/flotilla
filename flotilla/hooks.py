@@ -57,7 +57,6 @@ def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime
     if event == "guard":
         tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
         command = tool_input.get("command") if isinstance(tool_input.get("command"), str) else ""
-        _note_tool_call(payload, cwd)   # before the fast path: no word of the command decides it (security review)
         if not any(word in command for word in GUARD_TRIGGERS):
             return 0
         try:   # an exception here exits non-zero, which Claude Code does not read as a refusal: the push would run
@@ -88,22 +87,6 @@ def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime
         else:
             print(f"flotilla: the {event} hook failed: {err}", file=out)
         return 0
-
-
-def _note_tool_call(payload: dict, cwd: Path) -> None:
-    """Any Bash tool call in an onboarded project: a listing it runs is not shown to the person
-    (`watch/toolcall.py`). Its words decide nothing - `in''box` or a variable runs the same listing."""
-    try:
-        from flotilla.core.config import find_project
-        if find_project(cwd) is None:
-            return
-        from flotilla.core import paths as _paths
-        from flotilla.watch import toolcall
-        state = _paths.state_dir()
-        _paths.ensure_private(state)
-        toolcall.note(state, str(payload.get("session_id") or ""), time.time())
-    except Exception:  # noqa: BLE001 - a note that cannot be left over-reports "never shown"; the call still runs
-        return
 
 
 def _fresh(payload: dict) -> bool:
