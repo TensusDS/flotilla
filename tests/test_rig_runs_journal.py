@@ -23,9 +23,9 @@ def ready_machine(r, session=None):
     return s, m
 
 
-def queue(r, s, pid=1, who="minor 8"):
+def queue(r, s, pid=1, who="minor 8", exclusive=False):
     return r.queue_run(s.id, who=who, project="P", revision="a" * 40, program="node", ladder=("node shoot.mjs",),
-                       pid=pid, mark="m")
+                       pid=pid, mark="m", exclusive=exclusive)
 
 
 def shaped_machine(r, session=None, cpus=24, ram_mb=64000, gpu_total_mb=16000):
@@ -34,9 +34,9 @@ def shaped_machine(r, session=None, cpus=24, ram_mb=64000, gpu_total_mb=16000):
     return s, m
 
 
-def queue_ladder(r, s, ladder, pid=1):
+def queue_ladder(r, s, ladder, pid=1, exclusive=False):
     return r.queue_run(s.id, who="minor 8", project="P", revision="a" * 40, program="node", ladder=ladder, pid=pid,
-                       mark="m")
+                       mark="m", exclusive=exclusive)
 
 
 def measure(r, s, m, ladder, **measured):
@@ -346,3 +346,90 @@ def test_runs_on_two_machines_split_only_their_own_machine(tmp_path):
     r, s, shares, idle = _spend(tmp_path, [("twosuns", 0, 30, 0), ("void", 0, 15, 1)], machines=2)
     assert shares == {"twosuns": pytest.approx(0.30), "void": pytest.approx(0.15)} and idle == pytest.approx(0.15)
     assert sum(shares.values()) + idle == pytest.approx(r.spent(s.id))
+
+
+# -- exclusive runs (rig queue design, A1) ------------------------------------------------------------------------
+
+def test_an_exclusive_run_starts_only_on_an_empty_machine(tmp_path):
+    r = rig(tmp_path)
+    s, m = shaped_machine(r)
+    one = queue(r, s, pid=1)
+    assert r.start_run(one.id, m.id, alive=ALIVE, roomy=True)
+    alone = queue(r, s, pid=2, exclusive=True)
+    assert r.would_start(alone.id, m.id, alive=ALIVE) == f"exclusive: waits for {m.id} to empty (j1 run on it)"
+    assert r.start_run(alone.id, m.id, alive=ALIVE, roomy=True) is None
+    r.finish_run(one.id, "green", exit=0)
+    assert r.start_run(alone.id, m.id, alive=ALIVE, roomy=True)
+
+
+def test_nothing_starts_beside_an_exclusive_run(tmp_path):
+    r = rig(tmp_path)
+    s, m = shaped_machine(r)
+    alone = queue(r, s, pid=1, exclusive=True)
+    assert r.start_run(alone.id, m.id, alive=ALIVE, roomy=True)
+    other = queue(r, s, pid=2)
+    assert r.would_start(other.id, m.id, alive=ALIVE) == f"j1 runs alone on {m.id} (exclusive)"
+    assert r.start_run(other.id, m.id, alive=ALIVE, roomy=True) is None
+
+
+def test_later_shared_runs_wait_while_an_exclusive_run_waits(tmp_path):
+    r = rig(tmp_path)
+    s, m = shaped_machine(r)
+    one = queue(r, s, pid=1)
+    assert r.start_run(one.id, m.id, alive=ALIVE, roomy=True)
+    queue(r, s, pid=2, exclusive=True)
+    later = queue(r, s, pid=3)
+    assert r.would_start(later.id, m.id, alive=ALIVE) == "held for exclusive j2, which waits for a machine to empty"
+    assert r.start_run(later.id, m.id, alive=ALIVE, roomy=True) is None
+
+
+def test_an_earlier_shared_run_is_not_held_by_a_later_exclusive_one(tmp_path):
+    r = rig(tmp_path)
+    s, m = shaped_machine(r)
+    first = queue(r, s, pid=1)
+    alone = queue(r, s, pid=2, exclusive=True)
+    assert r.would_start(first.id, m.id, alive=ALIVE) == ""
+    assert r.would_start(alone.id, m.id, alive=ALIVE) == "j1 came first"
+
+
+def test_exclusive_runs_go_by_arrival(tmp_path):
+    r = rig(tmp_path)
+    s, m = shaped_machine(r)
+    measure(r, s, m, ("exact:short",), seconds=30.0, cores=1.0, peak_mb=200)
+    measure(r, s, m, ("exact:long",), seconds=480.0, cores=1.0, peak_mb=200)
+    short = queue_ladder(r, s, ("exact:short",), pid=1, exclusive=True)
+    long = queue_ladder(r, s, ("exact:long",), pid=2, exclusive=True)
+    assert r.start_run(long.id, m.id, alive=ALIVE, roomy=True) is None
+    assert r.start_run(short.id, m.id, alive=ALIVE, roomy=True)
+
+
+def test_exclusive_rules_hold_before_the_machine_is_measured(tmp_path):
+    r = rig(tmp_path)
+    s, m = ready_machine(r)
+    one = queue(r, s, pid=1)
+    assert r.start_run(one.id, m.id, alive=ALIVE, roomy=False)
+    alone = queue(r, s, pid=2, exclusive=True)
+    assert r.start_run(alone.id, m.id, alive=ALIVE, roomy=False) is None
+    assert r.runs()[alone.id].waits == f"exclusive: waits for {m.id} to empty (j1 run on it)"
+
+
+def test_a_dead_exclusive_run_holds_nobody(tmp_path):
+    r = rig(tmp_path)
+    s, m = shaped_machine(r)
+    queue(r, s, pid=404, exclusive=True)
+    later = queue(r, s, pid=2)
+    assert r.would_start(later.id, m.id, alive=ALIVE) == ""
+
+
+@pytest.mark.parametrize("exclusive, ceiling, kept", [
+    (True, 600, (True, 600)), ("yes", -5, (False, None)), (1, 0, (False, None)), (False, 86401, (False, None)),
+    (None, True, (False, None))])
+def test_exclusive_and_ceiling_fold_strictly(tmp_path, exclusive, ceiling, kept):
+    r = rig(tmp_path)
+    s, _ = ready_machine(r)
+    run = queue(r, s)
+    with r.store.transaction(j.KEY) as tx:
+        tx.append({"kind": "run", "id": run.id, "state": j.WAITING, "at": T0.isoformat(), "exclusive": exclusive,
+                   "ceiling": ceiling})
+    found = r.runs()[run.id]
+    assert (found.exclusive, found.ceiling) == kept
