@@ -59,10 +59,10 @@ project's file names a plugin nobody else can find.
 there, and flotilla's hooks and CLI run in every session of your project. To choose when you move, pin a release tag
 on the first line instead (the tags are listed in [CHANGELOG.md](CHANGELOG.md)):
 
-    claude plugin marketplace add TensusDS/flotilla#v0.25.0 --scope project
+    claude plugin marketplace add TensusDS/flotilla#v0.26.0 --scope project
     claude plugin install flotilla@flotilla --scope project
 
-That writes `"ref": "v0.25.0"` into the project's settings and installs that release; `claude plugin update` stays on
+That writes `"ref": "v0.26.0"` into the project's settings and installs that release; `claude plugin update` stays on
 it. Two caveats. A machine keeps one marketplace of a name for all its projects, and the last `marketplace add` on
 it repoints it: measured, after another project on the same machine added it without a pin, `claude plugin update`
 in a project pinned to v0.22.0 took the default branch's release. Give the projects on one machine the same pin;
@@ -350,7 +350,9 @@ A typical day, in a project onboarded to flotilla:
 5. The sender **queues** accepted work, merges it, pushes it, and the ledger asks origin whether it **shipped**.
 6. The judge **walks** the shipped work on the deployed build, the way a person would, and records what broke.
 7. When a session needs you - a permission it cannot get, a decision only you can make, a batch you must approve -
-   the orchestrator puts it to you, one question at a time.
+   the orchestrator puts it to you, one question at a time. flotilla also puts one line on your own screen, past
+   the model, with how many things wait on you; `flotilla inbox` lists them by number, and `flotilla attention
+   digest` collects them into one line per half hour, with what holds the fleet up shown at once.
 
 Nobody keeps state in their head or in chat. "Where does this stand" is answered by `flotilla status`, read from the
 ledger, and every move is refused unless its evidence holds: you cannot hand work over without a green test receipt

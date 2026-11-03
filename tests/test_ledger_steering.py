@@ -312,3 +312,123 @@ def test_an_added_name_is_recorded_once_under_its_own_id(world):
     row = steering.requires(ledger, actor(ledger, ORCH), "feat/c", add=["feat/a", "feat/a", "feat/x2"], why="both")
     assert row.requires == [first.id, other.id]
     assert row.history[-1]["evidence"]["added"] == ["feat/a", "feat/x2"]
+
+
+# --- putting off a wait on the person (person inbox design, goal 4) ---
+
+def asked_of_the_person(ledger, who="main session 1", branch="feat/x"):
+    from flotilla.ledger import handover
+    return handover.wait(ledger, actor(ledger, who), branch, on="the person", why="which colour should it be?")
+
+
+def test_a_question_on_a_claimed_row_can_be_put_off(world):
+    root, ledger = world
+    drive(root, ledger, to="claimed")
+    asked_of_the_person(ledger)
+    held = steering.hold(ledger, actor(ledger, ORCH), "feat/x", until="the person", why="after the teaser")
+    assert (held.state, held.held_until, held.held_why, held.waiting_on) == ("claimed", "the person",
+                                                                             "after the teaser", "the person")
+
+
+def test_a_check_on_a_shipped_row_can_be_put_off(tmp_path):
+    from ledgerkit import shipped_direct
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", live=LIVE,
+                         profile={"schema": 1, "trunk": {"branch": "main"}, "flow": {"mode": "direct"}})
+    shipped_direct(root, ledger)
+    asked_of_the_person(ledger)
+    held = steering.hold(ledger, actor(ledger, ORCH), "feat/x", until="the person", why="walk it after Friday")
+    assert (held.state, held.held_until) == ("shipped", "the person")
+
+
+def test_a_row_not_waiting_on_the_person_keeps_the_old_rule(world):
+    root, ledger = world
+    drive(root, ledger, to="claimed")
+    with pytest.raises(MoveRefused, match="reading queue"):
+        steering.hold(ledger, actor(ledger, ORCH), "feat/x", until="the person", why="later")
+
+
+def test_a_hold_until_a_session_still_needs_a_holdable_state(world):
+    root, ledger = world
+    drive(root, ledger, to="claimed")
+    asked_of_the_person(ledger)
+    with pytest.raises(MoveRefused, match="reading queue"):
+        steering.hold(ledger, actor(ledger, ORCH), "feat/x", until="review session 1", why="busy")
+
+
+def test_putting_off_needs_a_why(world):
+    root, ledger = world
+    drive(root, ledger, to="claimed")
+    asked_of_the_person(ledger)
+    with pytest.raises(MoveRefused, match="--why"):
+        steering.hold(ledger, actor(ledger, ORCH), "feat/x", until="the person", why=" ")
+
+
+def test_a_put_off_ends_with_its_question_when_the_state_moves(world):
+    """Correctness review of 5f65ad5, I-2: a move to another state ends the wait recorded in the old one, and the
+    put-off of that wait stayed - an answered question read as put off, and the handed row as held from its reader.
+    The put-off ends with it, on the record."""
+    from flotilla.ledger import handover
+    root, ledger = world
+    drive(root, ledger, to="claimed")
+    asked_of_the_person(ledger)
+    steering.hold(ledger, actor(ledger, ORCH), "feat/x", until="the person", why="after the teaser")
+    row = handover.hand(ledger, actor(ledger, "main session 1"), "feat/x")
+    assert (row.state, row.held_until, row.waiting_on) == ("handed", "", "")
+    assert "after the teaser" in row.history[-1]["evidence"].get("lifted", "")
+
+
+def test_a_held_release_stays_held_through_its_moves(world):
+    """A hold the old rule allowed - an accepted row's release put off until the person - is no put-off of a
+    question, and keeps the row out of the batch whatever moves around it."""
+    from flotilla.ledger import delivery
+    root, ledger = world
+    drive(root, ledger, to="accepted")
+    steering.hold(ledger, actor(ledger, ORCH), "feat/x", until="the person", why="release on Friday")
+    with pytest.raises(MoveRefused, match="held by"):
+        delivery.queue(ledger, actor(ledger, "sender 1"), "feat/x", pr=1)
+
+
+def test_the_answer_lifts_a_put_off_on_a_claimed_row(world):
+    """Final review, I4: the put-off outlived the question it put off - the builder's own claimed row read as held,
+    dropped out of its prompts, and the watch never flagged it. Clearing the wait lifts it in the same move."""
+    from flotilla.ledger import handover
+    root, ledger = world
+    drive(root, ledger, to="claimed")
+    asked_of_the_person(ledger)
+    steering.hold(ledger, actor(ledger, ORCH), "feat/x", until="the person", why="after the teaser")
+    row = handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", clear=True)
+    assert (row.waiting_on, row.held_until, row.held_by) == ("", "", "")
+
+
+def test_the_answer_keeps_a_hold_the_old_rule_allowed(world):
+    from flotilla.ledger import handover
+    root, ledger = world
+    drive(root, ledger, to="handed")
+    handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", on="the person", why="which colour?")
+    steering.hold(ledger, actor(ledger, ORCH), "feat/x", until="the person", why="release on Friday")
+    row = handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", clear=True)
+    assert row.held_until == "the person"
+
+
+def test_clearing_another_wait_keeps_the_put_off(world):
+    """Security review of da422de: clearing a wait must lift only the put-off of that wait on the person - a wait
+    since recorded on someone else, when cleared, leaves the orchestrator's hold for `unhold`."""
+    from flotilla.ledger import handover
+    root, ledger = world
+    drive(root, ledger, to="claimed")
+    asked_of_the_person(ledger)
+    steering.hold(ledger, actor(ledger, ORCH), "feat/x", until="the person", why="after the teaser")
+    handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", on="review session 1", why="a second look")
+    row = handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", clear=True)
+    assert row.held_until == "the person"
+
+
+def test_the_lifted_put_off_is_on_the_record(world):
+    from flotilla.ledger import handover
+    root, ledger = world
+    drive(root, ledger, to="claimed")
+    asked_of_the_person(ledger)
+    steering.hold(ledger, actor(ledger, ORCH), "feat/x", until="the person", why="after the teaser")
+    row = handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", clear=True)
+    assert "after the teaser" in row.history[-1]["evidence"].get("lifted", "")

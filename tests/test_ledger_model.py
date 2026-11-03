@@ -23,6 +23,14 @@ def test_history_keeps_every_move():
     assert rows["r1"].history[2]["by"] == "review session 1"
 
 
+def test_history_names_the_post_of_each_move():
+    """The person's inbox groups a wait by the post that recorded it (person inbox design, "Decided")."""
+    claim = event("r1", "claim", "claimed", {"branch": "b", "owner": "o"})
+    old = {key: value for key, value in event("r1", "hand", "handed").items() if key != "post"}
+    rows = fold([claim, old])
+    assert [h["post"] for h in rows["r1"].history] == ["main", ""]
+
+
 def test_an_unknown_field_is_refused_at_write():
     with pytest.raises(ValueError, match="colour"):
         event("r1", "claim", "claimed", {"colour": "red"})

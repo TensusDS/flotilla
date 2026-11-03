@@ -45,11 +45,20 @@ def run_watch_command(args, *, gather=None, now: dt.datetime | None = None, slee
         print("census: could not be asked for the second sample")
         return 2
     print(f"census: {len(ctx.live)} live session(s)")
-    if not items:
+    from flotilla.watch import inbox, inbox_command, shown
+    entries = inbox.collect(ctx, fleet_items=items)
+    if not items and not entries:
         print("attention: none")
         return 0
+    moment = now or dt.datetime.now(dt.timezone.utc)
     print("attention:")
-    print("\n".join(render.lines(items, now or dt.datetime.now(dt.timezone.utc), limit=10_000)))
+    if entries:   # the person's queue as `flotilla inbox` counts it, never one kind of item (final review, I5)
+        first = shown.load(ctx.ledger.state_dir, ctx.ledger.repo_key)["first"]
+        print(f"waits on the person ({len(entries)}):")
+        print("\n".join(line for line in inbox_command.listing(entries, first, moment)[1:]))
+    rest = [item for item in items if not inbox.covers(item)]
+    if rest:
+        print("\n".join(render.sections(rest, moment)))
     return 1
 
 

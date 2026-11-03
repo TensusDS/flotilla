@@ -143,6 +143,7 @@ def fold(records) -> dict[str, Row]:
         row.state = event["state"]
         row.updated_at = event["at"]
         row.history.append({"at": event["at"], "move": event["move"], "by": event["by"],
+                            "post": event.get("post", ""),
                             "caller": event.get("caller", ""), "rules_tree": event.get("rules_tree", ""),
                             "state": event["state"], "evidence": event.get("evidence") or {}})
         rows[row.id] = row

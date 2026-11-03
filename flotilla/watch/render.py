@@ -47,3 +47,27 @@ def lines(items: list[Item], now: dt.datetime, *, limit: int = MAX_LINES) -> lis
     if len(out) > limit:
         out = out[:limit - 1] + [f"  ... {len(out) - limit + 1} more; run `flotilla status`"]
     return out
+
+
+GONE_DEVIATIONS = ("mover_gone", "wait_gone")
+
+
+def _section(item) -> str:
+    if item.kind == "person":
+        return "waits on the person"
+    if item.kind == "nobody":
+        return "moves nobody can make"
+    if item.kind == "seats" or (item.kind == "deviation" and item.who in GONE_DEVIATIONS):
+        return "gone sessions"
+    return "other"
+
+
+def sections(items: list[Item], now: dt.datetime) -> list[str]:
+    """`watch --once` in counted sections, so the person's waits never hide in one number with everything else
+    (person inbox design, goal 2). An empty section is left out."""
+    out = []
+    for name in ("waits on the person", "moves nobody can make", "gone sessions", "other"):
+        mine = [item for item in items if _section(item) == name]
+        if mine:
+            out += [f"{name} ({len(mine)}):", *lines(mine, now, limit=10_000)]
+    return out

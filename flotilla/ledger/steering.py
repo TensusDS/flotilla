@@ -91,7 +91,10 @@ def hold(ledger: Ledger, actor: Actor, branch: str, *, until: str, why: str) -> 
         if row.state == "queued" and ledger.mode == "pr":
             raise MoveRefused(f"`{branch}` is queued as a pull request, which GitHub can merge whatever the ledger "
                               "says; hold an accepted branch before it is queued, or close its PR")
-        if row.state not in HOLDABLE:
+        # a wait on the person may be put off in any state: a judge's check on a shipped row, a question on a
+        # claimed one (60 of the twosuns trace's 144 waits); it stays in the person's queue as put off (0.26.0)
+        put_off = until == THE_PERSON and row.state != "reserved" and row.waiting_on.strip().lower() == THE_PERSON
+        if row.state not in HOLDABLE and not put_off:
             raise MoveRefused(f"a hold keeps work out of the reading queue, or out of the batch to ship; `{branch}` "
                               f"is {row.state}")
         if until == branch:

@@ -293,6 +293,14 @@ def build_parser() -> argparse.ArgumentParser:
     watch.add_argument("--interval", type=float, default=20.0, help=argparse.SUPPRESS)
     watch.add_argument("--confirm", type=float, default=5.0, help=argparse.SUPPRESS)
     watch.add_argument("--root", default=".")
+    attention = sub.add_parser("attention", help="how the person is asked: all (default) or digest - only the person "
+                                                 "sets it; with no mode, print it")
+    attention.add_argument("action", nargs="?", choices=("all", "digest"), default=None,
+                           help="all: the line shows when the queue changes; digest: once per period, blockers at once")
+    attention.add_argument("--every", type=int, default=None, help="digest only: the period in minutes (default 30)")
+    inbox_ = sub.add_parser("inbox", help="everything that waits on the person, grouped and numbered (exit 0 none, "
+                                          "1 some, 2 could not ask)")
+    inbox_.add_argument("--root", default=".")
     from flotilla.guards import CEILING
     guard = sub.add_parser("guard", help="the command guards and their git hooks", epilog=CEILING,
                            formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -440,4 +448,10 @@ def main(argv: list[str]) -> int:
     if args.command == "rig":
         from flotilla.rig.commands import run_rig_command
         return run_rig_command(args)
+    if args.command == "attention":
+        from flotilla.watch.attention import run_attention_command
+        return run_attention_command(args)
+    if args.command == "inbox":
+        from flotilla.watch.inbox_command import run_inbox_command
+        return run_inbox_command(args)
     return 2

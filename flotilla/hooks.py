@@ -224,9 +224,9 @@ def _prompt(ctx, payload, out, now) -> int:
     from flotilla.core import paths
     from flotilla.core.storage import LocalLogStore
     from flotilla.fleet import lead
-    from flotilla.watch import render, throttle
+    from flotilla.watch import inbox, render, throttle
     from flotilla.watch.whose import WAITING
-    blocks, keys = [], []
+    blocks, keys, entries = [], [], []
     current = (ctx.me.name or "") if getattr(ctx, "me", None) is not None else None
     title = lead.due(LocalLogStore(paths.state_dir() / "fleet"), str(payload.get("session_id") or ""),
                      current=current, now=now)
@@ -236,7 +236,14 @@ def _prompt(ctx, payload, out, now) -> int:
         blocks.append(f"flotilla: the ledger could not be read: {ctx.ledger_error}")
     elif ctx.me is not None:
         mine = [item for item in ctx.mine() if item.kind != WAITING]
-        fleet_items = ctx.fleet() if ctx.is_orchestrator else []
+        from flotilla.watch.shown import persons_prompt
+        # the queue asks git per row awaiting approval: only where a line or the orchestrator's count can follow
+        # (final review of 0.26.0, M9 - a hook past its 10 s budget loses all its output)
+        wanted = ctx.is_orchestrator or persons_prompt(payload.get("prompt"))
+        everything = ctx.fleet() if wanted else []
+        entries = inbox.collect(ctx, fleet_items=everything) if wanted else []
+        # what waits on the person is counted in its own line on every prompt, never folded as standing (0.26.0)
+        fleet_items = [item for item in everything if not inbox.covers(item)] if ctx.is_orchestrator else []
         if mine:
             blocks += ["flotilla - your move:", *render.lines(mine, now)]
         fleet_keys = [_fleet_key(item) for item in fleet_items]
@@ -252,6 +259,8 @@ def _prompt(ctx, payload, out, now) -> int:
             ([f"standing|{standing}"] if standing else [])
     keys = keys or blocks
     state = ctx.ledger.state_dir if ctx.ledger is not None else paths.state_dir()
+    shown_line = _persons_line(ctx, payload, entries, now) if ctx.ledger is not None and ctx.me is not None else ""
+    model_line = inbox.model_line(entries) if ctx.is_orchestrator else ""
     if title:   # the person's own session leads the fleet: it takes the orchestrator's name now (W9)
         unseen = lead.offered(LocalLogStore(paths.state_dir() / "fleet"),
                               str(payload.get("session_id"))) > lead.ASK_AFTER
@@ -263,18 +272,62 @@ def _prompt(ctx, payload, out, now) -> int:
             note += (f"\nClaude Code has not shown this name after {lead.ASK_AFTER} messages - ask the person to type "
                      f"`/rename {title}` and then send any message; `--fill` waits for the name.")
         body = {"hookEventName": "UserPromptSubmit", "sessionTitle": title,
-                "additionalContext": "\n".join([note, *blocks])}
-        print(json.dumps({"hookSpecificOutput": body}), file=out)
+                "additionalContext": "\n".join([note, *blocks, *([model_line] if model_line else [])])}
+        print(json.dumps({"hookSpecificOutput": body, **({"systemMessage": shown_line} if shown_line else {})}),
+              file=out)
         return 0
-    if not throttle.due(state, ctx.session_id, throttle.digest(keys) if keys else "", now):
+    said = blocks if throttle.due(state, ctx.session_id, throttle.digest(keys) if keys else "", now) else []
+    if not shown_line and not model_line:
+        if said:
+            print("\n".join(said), file=out)
         return 0
-    print("\n".join(blocks), file=out)
+    told = "\n".join([*said, *([model_line] if model_line else [])])
+    answer = {"systemMessage": shown_line} if shown_line else {}
+    if told:   # the model's context; the person's line goes past the model, as the hook's systemMessage
+        answer["hookSpecificOutput"] = {"hookEventName": "UserPromptSubmit", "additionalContext": told}
+    print(json.dumps(answer), file=out)
     return 0
+
+
+def _persons_line(ctx, payload, entries, now) -> str:
+    """The person's line when it is due on this prompt (`watch/shown.py`). Nothing is counted here: the turn is left
+    pending and the Stop hook counts it only if the transcript records the prompt as typed by a human. A record that
+    cannot be written never costs the person the line."""
+    from flotilla.core import paths
+    from flotilla.watch import attention, inbox, shown
+    if not shown.persons_prompt(payload.get("prompt")):
+        return ""
+    state, repo = ctx.ledger.state_dir, ctx.ledger.repo_key
+    interactive = getattr(ctx.me, "kind", "") == "interactive"
+    # the person's windows share one line per project; a background session keeps its own, so a seat's launch
+    # prompt or a firing nobody reads never uses up the person's line (final review of 0.26.0, I1)
+    throttle = repo if interactive else f"{repo}\x00{ctx.session_id}"
+    try:
+        mode, every = attention.mode(paths.state_dir())
+        due = shown.line_due(shown.load(state, throttle), entries, mode=mode, every=every, now=now)
+    except Exception:  # noqa: BLE001 - a schedule that cannot be read shows the line rather than hiding it
+        due = bool(entries)
+    try:
+        if not entries:
+            shown.clear_line(state, throttle)
+        shown.hold_turn(state, ctx.session_id, {
+            "repo": repo, "throttle": throttle, "interactive": interactive, "at": now.isoformat(timespec="seconds"),
+            "prompt_id": str(payload.get("prompt_id") or ""),
+            "line": shown.line_record(entries) if due else None})
+    except Exception:  # noqa: BLE001 - security review of 5f65ad5, I1: a record that fails never drops the line
+        pass
+    return inbox.person_line(entries) if due else ""
 
 
 def _stop(ctx, payload, out, now) -> int:
     from flotilla.ledger.model import now_iso
     from flotilla.watch import fleet, guard
+    if ctx.ledger is not None:
+        try:   # the turn's prompt is in the transcript now: counted only if a human typed it (watch/shown.py)
+            from flotilla.watch import shown
+            shown.settle(ctx.ledger.state_dir, ctx.session_id, payload.get("transcript_path"))
+        except Exception:  # noqa: BLE001 - a record that cannot be settled counts nothing, and stops nothing
+            pass
     verdict = guard.stop_verdict(ctx, payload, cli=str(CLI))
     if verdict.block:
         print(json.dumps({"decision": "block", "reason": verdict.reason}), file=out)

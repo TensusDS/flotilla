@@ -338,6 +338,12 @@ def check(segment) -> Finding | None:
                                     "on or off, or spends money - and a Claude tool call is never the person's. Show "
                                     "the person the command; they type it with `!` in front in their own Claude Code "
                                     "session, or run it in a terminal.")
+    if any(_is(command, "attention") and move for command, move in _parsed(words)) or any(
+            _is(command, "attention") and move and not move.startswith("-") for command, move in _reads(words)):
+        return Finding(GUARD, True, "flotilla: how the person is asked (`attention all` or `digest`) is the person's "
+                                    "own choice, and a Claude tool call is never the person's. Show the person the "
+                                    "command; they type it with `!` in front in their own Claude Code session, or run "
+                                    "it in a terminal.")
     if _move(words) != "approve":
         return None
     return Finding(GUARD, True, "flotilla: approving work for trunk is the person's own move, and a Claude tool call "
