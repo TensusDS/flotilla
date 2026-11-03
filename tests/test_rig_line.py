@@ -109,8 +109,11 @@ def test_a_run_past_the_session_end_does_not_fit(tmp_path):
     running(r, m, first, clock, 4 * MIN)
     queued(r, s, ("exact:b",), pid=2)
     (place,) = line.places(r, s.id, T0, ALIVE)
-    said = line.says(place, s)
-    assert place.fits is False and f"after session {s.id} ends at 14:15" in said and "--max" in said
+    said = line.warning(place, s)
+    assert place.fits is False and said == (f"by estimates {place.run.id} ends around 14:26, after session {s.id} "
+                                            "ends at 14:15 - lower its ceiling with --max, or run it in the next "
+                                            "session")
+    assert "--max" not in line.says(place, s)
 
 
 def test_two_machines_serve_the_line_side_by_side(tmp_path):
@@ -144,3 +147,9 @@ def test_says_names_place_runs_ahead_start_and_session_end(tmp_path):
                                  f"14:26; session {s.id} ends 15:00")
     assert line.says(two, s) == (f"j5 is 2nd in line, after j4; by estimates it starts around 14:26 or sooner and "
                                  f"ends around 14:36; session {s.id} ends 15:00")
+
+
+def test_a_run_that_fits_or_has_no_estimate_has_no_warning(tmp_path):
+    r, s, _, _ = world(tmp_path, machines=0)
+    queued(r, s, ("exact:a",), pid=1)
+    assert line.warning(line.places(r, s.id, T0, ALIVE)[0], s) == ""

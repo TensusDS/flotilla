@@ -98,7 +98,14 @@ def says(place: Place, session: j.Session) -> str:
             text += f" ({place.unmeasured} run(s) not measured yet, counted at their ceiling)"
     if until is not None:
         text += f"; session {session.id} ends {_hhmm(until)}"
-    if place.fits is False:
-        text += (f" - by estimates it ends after session {session.id} ends at {_hhmm(until)}: lower its ceiling "
-                 "with --max, or run it in the next session")
     return text
+
+
+def warning(place: Place, session: j.Session) -> str:
+    """What a run that by estimates ends after its session is told before it starts, once; "" when it fits or when
+    either end is unknown. It is told, not refused: the estimate may be wrong, and its own ceiling bounds it."""
+    from flotilla.rig.surface import _hhmm
+    if place.fits is not False:
+        return ""
+    return (f"by estimates {place.run.id} ends around {_hhmm(place.ends)}, after session {session.id} ends at "
+            f"{_hhmm(_when(session.until))} - lower its ceiling with --max, or run it in the next session")

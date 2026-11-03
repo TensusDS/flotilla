@@ -190,16 +190,35 @@ def credit_line(session: j.Session) -> str:
 def run_lines(rig: j.Rig, now: dt.datetime) -> list[str]:
     """Who runs what and who waits: the program as the journal checked it, never a command's text. Why a run waits
     is worked out here again from the estimates, never read from the journal's `waits`, which any session may write."""
-    from flotilla.rig import packing
+    from flotilla.rig import line, packing
     lines = []
     runs = rig.runs()
     hist = packing.history(runs, now=now)
     machines = rig.machines()
-    for run in sorted(runs.values(), key=lambda r: int(r.id[1:])):
+    everyone = lambda pid, mark: True   # the screen lists every waiting run the journal holds
+    places = {place.run.id: place for session_id in {r.session for r in runs.values() if r.state == j.WAITING}
+              for place in line.places(rig, session_id, now, everyone)}
+
+    def kind(run) -> str:
+        return "exclusive" if run.exclusive else "shared"
+
+    def in_line(place) -> str:
+        starts = f"starts ~{_hhmm(place.starts)}" if place.starts else "starts once a machine is up"
+        late = ", DOES NOT FIT the session" if place.fits is False else ""
+        return f"#{place.number} in line, {kind(place.run)}, {starts}{late}; "
+
+    def order(run):
+        place = places.get(run.id)
+        return (run.state != j.RUNNING, place.number if place else 0, int(run.id[1:]))
+
+    for run in sorted(runs.values(), key=order):
         if run.state == j.RUNNING:
-            since = _when(run.since)
+            since = _when(run.command_at) or _when(run.since)
             minutes = f" for {int((now - since).total_seconds() // 60)} min" if since else ""
-            lines.append(f'  run {run.id} ({_who(run.who)}) running program "{run.program}" on {run.machine}{minutes}')
+            took = packing.estimate(run.ladder, hist).seconds
+            of = f" of ~{max(1, round(took / 60))} min" if took is not None and minutes else ""
+            lines.append(f'  run {run.id} ({_who(run.who)}) running program "{run.program}" on {run.machine}'
+                         f'{minutes}{of}, {kind(run)}')
         elif run.state == j.WAITING:
             need = packing.estimate(run.ladder, hist)
             since = _when(run.since)
@@ -211,6 +230,7 @@ def run_lines(rig: j.Rig, now: dt.datetime) -> list[str]:
             if ready:
                 said = rig.would_start(run.id, ready[0].id, alive=lambda pid, mark: True)
                 reason = f": {said}" if said else ": next to start"
-            lines.append(f"  run {run.id} ({_who(run.who)}) waits{reason} ({senior}{took}{need.cores:g} cores, "
-                         f"{need.ram_mb} MB, {gpu}; {need.source})")
+            place = places.get(run.id)
+            lines.append(f"  run {run.id} ({_who(run.who)}) waits{reason} ({in_line(place) if place else ''}"
+                         f"{senior}{took}{need.cores:g} cores, {need.ram_mb} MB, {gpu}; {need.source})")
     return lines

@@ -27,7 +27,7 @@ from pathlib import Path, PurePosixPath
 from flotilla.lane import run as lane_run
 from flotilla.lane import signature
 from flotilla.rig import commands, journal as j, reaper, remote, sshkey, transfer
-from flotilla.rig import packing
+from flotilla.rig import line, packing
 from flotilla.rig.packing import GPU_MARGIN_MB, MARGIN_MB
 from flotilla.rig import settings as rs
 
@@ -172,6 +172,7 @@ class Run:
         """Every waiting run tries every ready machine of its session: the journal's packing decides which one goes,
         and only that one reads the machine. Only the session's oldest waiting run raises a machine."""
         said, market_again, no_offer, began = "", 0.0, False, time.monotonic()
+        told = None   # what this run last said of its place: said again only when the place or the reason moves
         while True:
             machines = [m for m in self.rig.machines().values() if m.session == session.id]
             reasons = {}
@@ -191,9 +192,11 @@ class Run:
                     return True
                 reasons[machine.id] = "next to start; the machine's live readings or settle minute say not yet"
             text = "; ".join(f"{mid}: {why}" if len(reasons) > 1 else why for mid, why in sorted(reasons.items()))
-            if text and text != said:
-                _say(f"rig run {self.run.id} waits: {text}")
-                said = text
+            place = self.place(session)
+            where = (place.number, place.ahead) if place is not None else None
+            if text and (text, where) != (said, told):
+                _say(f"rig run {self.run.id} waits: {text}" + (f"; {line.says(place, session)}" if place else ""))
+                said, told = text, where
             head = self.rig.head(session.id, self.alive)
             if (head is not None and head.id == self.run.id and time.monotonic() >= market_again
                     and not any(m.state in (j.READY, j.BUSY) for m in machines)):
@@ -228,6 +231,11 @@ class Run:
                 self.verdict, self.code, self.reason = "waited", 3, f"no room within --wait {waited}"
                 return False
             SLEEP(POLL)
+
+    def place(self, session):
+        """This run's place in its session's line, or None once it is no longer in it."""
+        return next((p for p in line.places(self.rig, session.id, self.rig.now(), self.alive)
+                     if p.run.id == self.run.id), None)
 
     def shape(self, machine):
         """The machine's size, read once: packing needs it before the first try, not only past the floor."""
@@ -436,6 +444,10 @@ def _main(state: Path, settings: rs.RigSettings, args) -> int:
     exclusive = args.exclusive or (profile.exclusive and not args.shared)
     task.run = rig.queue_run(session.id, who=who, project=key, revision=revision, program=program, ladder=ladder,
                              pid=os.getpid(), mark=mark, exclusive=exclusive, ceiling=int(ceiling))
+    place = task.place(session)
+    late = line.warning(place, session) if place is not None else ""
+    if late:
+        _say(f"rig run {task.run.id}: {late}")
     renewer = None
     try:
         if not task.take_room(session, time.monotonic() + _wait(args.wait, session, rig.now())):

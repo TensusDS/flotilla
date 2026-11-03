@@ -822,3 +822,18 @@ def test_the_wait_defaults_to_the_sessions_end(world, box, tree, monkeypatch, fl
     opened(world, hours=1)
     _, wait, _ = queued_only(world, tree, monkeypatch, *flags)
     assert abs(wait - expected) < 5
+
+
+def test_a_run_that_does_not_fit_its_session_is_warned_before_it_starts(world, box, tree, monkeypatch):
+    opened(world, hours=0.25)
+    raised(world, tree)
+    _, _, out = queued_only(world, tree, monkeypatch)
+    assert out.count("after session s1 ends at") == 1 and "--max" in out
+
+
+def test_a_run_that_fits_is_not_warned(world, box, tree, monkeypatch):
+    opened(world, hours=3)
+    raised(world, tree)
+    _, _, out = queued_only(world, tree, monkeypatch)
+    assert "after session" not in out
+
