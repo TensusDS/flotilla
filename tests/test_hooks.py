@@ -736,3 +736,15 @@ def test_a_shown_file_that_cannot_be_written_still_shows_the_line(tmp_path):
     (tmp_path / "state" / "watch" / "shown").write_text("not a folder", encoding="utf-8")
     context_, line = orchestrator_prompt(tmp_path, person_rows(), 5)
     assert line.startswith("flotilla: 22 wait on you") and "22 wait on the person" in context_
+
+
+@pytest.mark.parametrize("source", ["queued", "suggestion_accepted"])
+def test_a_prompt_the_person_queued_or_accepted_counts(tmp_path, source):
+    """Security review of e8be5f5, M1 raised: on this machine most of the person's prompts are recorded `queued`
+    (typed while the model worked: 2217 queued, 1123 typed, 35 suggestion_accepted, all turnOrigin human). Counting
+    only `typed` repeated the line and left nearly every row 'never shown'."""
+    from flotilla.watch import shown
+    found = person_rows()
+    assert orchestrator_prompt(tmp_path, found, 5, origin=(source, "human"))[1] != ""
+    assert len(shown.load(tmp_path / "state", "repo")["first"]) == 22
+    assert orchestrator_prompt(tmp_path, found, 6)[1] == ""

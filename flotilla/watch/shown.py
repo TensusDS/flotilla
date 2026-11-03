@@ -18,7 +18,7 @@ subagent's hand-back (`<agent-message`) reach the hook as well, the firing as pl
 record is not yet in the transcript (the first prompt finds no file at all); after the turn it is there, keyed by the
 hook's `prompt_id`, saying `promptSource` typed or system and `turnOrigin` human, scheduled, peer or
 task_notification. So the hook shows the line when it is due and leaves the turn pending; the Stop hook reads the
-transcript and only a prompt recorded as typed by a human is counted - the line as shown, the person as having
+transcript and only a prompt a human made (typed, queued while the model worked, or a suggestion accepted) is counted - the line as shown, the person as having
 prompted. Nothing confirmed, nothing counted: the line comes again rather than being spent on a tick nobody read. A
 background session's launch prompt is recorded as typed, so a background session's first confirmed prompt counts
 only as a prompt, never as the line shown.
@@ -34,6 +34,9 @@ from pathlib import Path
 
 MACHINE_PROMPTS = ("<cross-session-message", "<task-notification", "<agent-message")
 AWAY = dt.timedelta(hours=1)
+#: How a person's own prompt is recorded (transcripts on the build machine, 2026-11-03: 2217 queued - typed while the
+#: model worked -, 1123 typed, 35 suggestion_accepted, every one turnOrigin human; security review of e8be5f5, M1).
+PERSONS_SOURCES = ("typed", "queued", "suggestion_accepted")
 
 
 def persons_prompt(prompt) -> bool:
@@ -129,7 +132,7 @@ def typed_by_a_human(transcript_path, prompt_id: str) -> bool:
                 except ValueError:
                     continue
                 if record.get("type") == "user" and record.get("promptId") == prompt_id:
-                    return record.get("promptSource") == "typed" and record.get("turnOrigin") == "human"
+                    return record.get("promptSource") in PERSONS_SOURCES and record.get("turnOrigin") == "human"
     except OSError:
         return False
     return False
