@@ -368,8 +368,8 @@ _FLOTILLA = re.compile(r"(?:^|[\s'\"(\[,;|&`=])(?:\S*/bin/)?flotilla(?![\w./-])|
                        r"|-m[\s'\",]+flotilla\b")
 #: flotilla at the end of any path (`~/plug/flotilla`): enough to refuse a person's move beside it, too wide to ask
 #: about on its own - `ls ~/.config/flotilla` reads a folder.
-_FLOTILLA_ANY = re.compile(r"(?:^|[\s'\"(\[,;|&`=])(?:\S*/)?flotilla(?![\w./-])|\bflotilla\.cli\b"
-                           r"|-m[\s'\",]+flotilla\b")
+_FLOTILLA_ANY = re.compile(r"(?:^|[\s'\"(\[,;|&`=])(?:\S*/)?flotilla(?![\w./-])|\bflotilla\.\w"
+                           r"|-m[\s'\",]+flotilla\b|\b(?:from|import)\s+flotilla\b")
 WRAPPED_REFUSAL = ("flotilla: this line hands code to an interpreter (`bash -c`, `python3 -c`, a pipe, a heredoc or a "
                    "here-string), and that code runs a move only the person makes - approving work, turning rented "
                    "machines on or off or spending on them, or how the person is asked. A Claude tool call never runs "
@@ -419,14 +419,21 @@ def _interpreter_at(words: list[str]) -> int | None:
     return next((at for at, word in enumerate(words) if _INTERPRETER.fullmatch(os.path.basename(word))), None)
 
 
+def whole_text(segments) -> str:
+    """The command as the stdin check reads it: every segment, heredoc bodies included, each cut at its own `rig
+    run`'s `--` - never the line cut at the first one, which would drop what follows (fourth security review)."""
+    return "\n".join(_local(segment.text) for segment in segments)
+
+
 def wrapped_check(segment, command: str) -> Finding | None:
-    """Code an interpreter is handed: every word after it on its command line, whatever its options are called
+    """`command` is `whole_text` of the line's segments.
+
+    Code an interpreter is handed: every word after it on its command line, whatever its options are called
     (`-o pipefail -c`, `-Ic`, `-X dev -c`, `--eval`, `-p`, `-E`); and, when it reads its code from standard input -
     a pipe, a heredoc, a here-string - the whole command, bodies included. A person's move there is refused; flotilla
     named on a command line asks the person (the person, 2026-11-03). Code on standard input that only names flotilla
     is a helper script the guards do not read, as a script the session writes and runs is not."""
     words = argv(_local(segment.text))
-    command = _local(command)
     at = _interpreter_at(words)
     if at is None:
         return None
@@ -434,5 +441,5 @@ def wrapped_check(segment, command: str) -> Finding | None:
     on_line = None if all(word.startswith("-") for word in after) else _judge(" ".join(after), ask_on_flotilla=True)
     # whatever its arguments (`bash -s arg`, `python3 /dev/stdin`), an interpreter may read a heredoc, a here-string
     # or a pipe: then the whole command, bodies included, is its code too (third security review)
-    fed = not on_line and (all(word.startswith("-") for word in after) or any(sign in command for sign in ("<<", "|")))
-    return _stricter(on_line, _judge(command, ask_on_flotilla=False) if fed or on_line is None else None)
+    fed = all(word.startswith("-") for word in after) or any(sign in command for sign in ("<<", "|"))
+    return _stricter(on_line, _judge(command, ask_on_flotilla=False) if fed else None)

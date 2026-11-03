@@ -10,6 +10,16 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 
 ## From the person-inbox build and its reviews (2026-11-03, 0.26.0)
 
+- **The wrapped check of the person's moves reads text, and its gaps are logged, not chased** (decision 245, the
+  same as the organize guard's). Four security reviews of the 0.26.2 check each found more ways around a reader of
+  command text; it was fixed for what an overeager model would plausibly type (option spellings, code on standard
+  input, a move built in pieces, a path to the CLI, the package imported), and stops there. Known and left: a script
+  the session writes and then runs; `eval`; `ssh host '...'`; interpreters not in its list (`deno`, `osascript`); a
+  move spelled out of pieces of words (`'appr' + 'ove'`). *(checked 2026-11-03 on 0.26.2: still S, within decision 245
+  - flotilla/guards/person.py, wrapped_check)*
+- **The heredoc check refuses a quoted heredoc's body that holds backticks** next to a flotilla line: a `git commit -F
+  - <<'MSG'` whose message quoted code was refused as "a command substitution your own shell runs" (seen while
+  building 0.26.2). *(checked 2026-11-03 on 0.26.2: still P - flotilla/guards/person.py, heredoc_check)*
 - **The person guard refuses `python3 -c "..."` that names a flotilla path** as "a variable or a substitution" (seen
   by the twosuns orchestrator and while building 0.26.0 on heredocs naming the CLI). *(checked 2026-11-03 on 0.26.0:
   still P - flotilla/guards/person.py:303)*

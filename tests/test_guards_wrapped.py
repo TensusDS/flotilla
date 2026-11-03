@@ -154,3 +154,33 @@ def test_a_persons_move_spelled_loosely_or_fed_on_stdin_is_refused(tmp_path, mon
     CLI that is not .../bin/flotilla."""
     answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
     assert answer and answer["permissionDecision"] == "deny", answer
+
+
+REFUSED_FOURTH = [
+    "flotilla rig run --get out -- make shots; bash -c 'flotilla work approve feat/x'",
+    "flotilla rig run -- make shots && python3 -c \"import subprocess; subprocess.run(['flotilla', 'work', 'approve', 'x'])\"",
+    "python3 -c \"from flotilla.cli import main; main(['work', 'approve', 'x'])\"",
+    "python3 -c \"import flotilla.cli as c; c.main(['work'] + ['approve', 'x'])\"",
+    "python3 -c 'print(1)' | cat <<'EOF' | bash\nflotilla work approve feat/x\nEOF",
+]
+
+
+@pytest.mark.parametrize("command", REFUSED_FOURTH)
+def test_a_rig_run_cut_never_hides_what_follows_and_an_import_counts(tmp_path, monkeypatch, command):
+    """Fourth security review of the wrapped check: the cut after a `rig run`'s `--` dropped the rest of the line,
+    the package imported was not flotilla named, and a stdin body went unjudged once the line had a verdict."""
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny", answer
+
+
+REFUSED_FOURTH_EXACT = [
+    "flotilla rig run -- make x; cat <<'EOF' | python3\nimport subprocess\nsubprocess.run(['flotilla', 'work', 'approve', 'x'])\nEOF",
+    "python3 -c \"from flotilla.ledger import steering; steering.approve('x')\"",
+    "python3 -c \"import flotilla.rig.commands as r; r.run_rig_command(['open'])\"",
+]
+
+
+@pytest.mark.parametrize("command", REFUSED_FOURTH_EXACT)
+def test_a_body_past_a_rig_run_and_the_package_imported_are_judged(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] in ("deny", "ask"), answer
