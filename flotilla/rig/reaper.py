@@ -224,15 +224,18 @@ def _destroy(rig: j.Rig, providers, listings: dict, machine_key: str | None, out
             out.lines.append(f"machine {item.id} STUCK: instance {item.instance} does not carry this machine's label "
                              "for it - never destroyed; the journal is wrong or was written by hand")
             continue
+        taken = {}
         if listed is not None:
             try:
                 providers(item.provider).destroy(item.instance)
                 out.lines.append(f"machine {item.id}: destroy of {item.instance} sent ({attempts})")
+                if not item.destroyed:
+                    taken["destroyed"] = rig.now().isoformat()
             except ProviderError as err:
                 out.failed = True
                 out.lines.append(f"machine {item.id}: destroy of {item.instance} failed: {err}")
         state = j.STUCK if attempts > j.ATTEMPTS or item.state == j.STUCK else j.DRAINING
-        rig.move(item.id, state, attempts=attempts, expect={"state": item.state})
+        rig.move(item.id, state, attempts=attempts, expect={"state": item.state}, **taken)
         if state == j.STUCK:
             out.stuck.append(item.id)
             out.lines.append(f"machine {item.id} STUCK: still listed after {attempts - 1} destroys; instance "

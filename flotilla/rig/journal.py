@@ -112,6 +112,7 @@ class Machine:
     ram_mb: int | None = None
     gpu_total_mb: int | None = None
     keyed: str = ""      # when the rig's ssh key was put on the instance; not ready without it
+    destroyed: str = ""  # when the service first took a destroy of its instance (not when one was only tried)
 
 
 @dataclass
@@ -167,7 +168,7 @@ TEXT = ("who", "why", "waits",
         "session", "provider", "instance", "label", "gpu", "reason", "run_mark", "address", "project",
         "image", "suspect", "revision", "verdict", "machine", "mark")
 TIMES = ("until", "opened", "ended", "created", "lease_until", "idle_since", "requested", "keyed", "command_at",
-         "swept", "credited")
+         "swept", "credited", "destroyed")
 CREDIT = ("credit_open", "credit_now")   # an account's credit may be below zero
 MONEY = {"budget": 1e4, "hourly": 1e3, "cost": 1e4}
 WHOLE = {"peak_mb": 10 ** 7, "gpu_mb": 10 ** 7, "gpu_shared_mb": 10 ** 7,
@@ -309,13 +310,14 @@ def _holds(item, expect) -> bool:
 
 def _counts(machine, sessions) -> bool:
     """Whether a machine counts against the machine ceiling: every live one, except a machine draining from a session
-    that is no longer open whose destroy was sent - it is going, and it must not keep the next session's first run
-    waiting a reaper pass (twosuns item 4). For that pass two machines may be billed, one of them already told to
-    die; STUCK always counts."""
+    that is no longer open whose destroy the service took - it is going, and it must not keep the next session's
+    first run waiting a reaper pass (twosuns item 4). For that pass two machines may be billed, one of them already
+    told to die. An attempt the service refused, or one never sent for want of the machine key, frees nothing (the
+    review of 0.27.0: `attempts` counts tries, not destroys); STUCK always counts."""
     if machine.state not in LIVE:
         return False
     session = sessions.get(machine.session)
-    return not (machine.state == DRAINING and machine.attempts >= 1 and (session is None or session.state != OPEN))
+    return not (machine.state == DRAINING and machine.destroyed and (session is None or session.state != OPEN))
 
 
 class Rig:
