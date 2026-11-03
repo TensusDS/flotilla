@@ -35,12 +35,8 @@ journal figures: runs under 60 s waited a median 30.6 min for a median 6.8 s run
 (0.24.0 code) where a file is named.
 
 **The lane**
-- **The lane journal is never compacted, and a waiter still polls.** 0.24.2 made a poll cheap (a waiter folds only
-  the lines appended since its last poll, and plain text is not walked), but the journal grows without end (25 057
-  lines, 8.1 MB on 2026-11-02), so a new waiter's first read and every `flotilla lane` still pay for all of it, and
-  each waiter still wakes every 15 s. Compact ended bookings beyond what the estimates use (by rename, which a cached
-  reader detects), and wait on the lock file instead of polling. *(open, design: flotilla/lane/book.py,
-  flotilla/core/storage.py)*
+- **A lane waiter still polls every 15 s.** The journal is compacted since 0.26.1; what is left of the item is waiting
+  on the lock file instead of waking to poll. *(open, design: flotilla/lane/book.py, flotilla/lane/acquire.py)*
 - **An expired `--wait` re-queues at the tail.** Six void-lanes-online bookings expired at 1800 s and lost their
   place (lane spec section 3, seniority). *(open, design: docs/specs/2026-10-05-lane-resource-admission-design.md)*
 - **Mode 1, short runs overtake** - stages 2-3 of the lane spec (budget admission by cores and memory, the head's
@@ -592,6 +588,8 @@ Each is a limitation README states today, judged fixable in principle; none is p
 - The onboard skill does not state that background isolation stays on. *(checked 2026-10-04 on 0.7.8: still [P])*
 
 ## Done
+
+- The lane journal is compacted past 2 MB, the rest archived; a booking's number is past the highest (0.26.1).
 
 - 0.25.0: the lane's fair share across projects (`lane_share = "fair"`, rule 2, older seats never left waiting for a
   newer one); a rig session serves the projects the person shares it with, refuses the others before anything is
