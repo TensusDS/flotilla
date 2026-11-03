@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import copy
 import datetime as dt
+import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from flotilla.core.text import visible
 
@@ -112,6 +114,20 @@ class Booking:
     cut: bool = False                                # swept: its process died, nothing was measured
     inside: str = ""                                 # a run inside this booking, recorded beside it, never booked
     path: str = ""                                   # how it was admitted: fifo, or fair and for which project
+
+
+def number(name) -> int | None:
+    """A booking's number, or None for a name flotilla never gives: ASCII digits only, at most 18 of them - a name
+    `isdigit` accepts and `int` refuses must not stop the numbering for the machine (review of 0.26.1, I3)."""
+    digits = name[1:] if isinstance(name, str) and name[:1] == "b" else ""
+    return int(digits) if digits and len(digits) <= 18 and digits.isascii() and digits.isdecimal() else None
+
+
+def _next_id(found: dict) -> str:
+    """Past the highest number taken: a compacted journal holds fewer bookings than its highest number (compact.py),
+    so a number counted from the bookings, as flotilla before 0.26.1 counts it, may be one already taken."""
+    highest = max((found_number for found_number in map(number, found) if found_number is not None), default=0)
+    return f"b{max(highest, len(found)) + 1}"
 
 
 def fold(records, into: dict[str, Booking] | None = None) -> dict[str, Booking]:
@@ -219,13 +235,29 @@ class Book:
 
     def _write(self, tx, booking_id: str, state: str, **fields) -> Booking:
         tx.append({"at": self._now(), "booking": booking_id, "state": state, **fields})
+        self._compact(tx)
         return self._found(tx)[booking_id]
+
+    def _compact(self, tx) -> None:
+        """Past 2 MB the journal is rewritten to what the lane and the estimates read, in this lock (compact.py).
+        A compaction that fails leaves the journal as it was; the append it followed stands."""
+        from flotilla.lane import compact
+        root = getattr(self.store, "root", None)
+        if root is None:
+            return
+        path = Path(root) / f"{KEY}.jsonl"
+        try:
+            if compact.due(path, root):
+                now = self.clock() if self.clock else dt.datetime.now(dt.timezone.utc)
+                compact.compact(tx, root, path, now)
+        except Exception as err:  # noqa: BLE001 - a journal too big is no reason to fail a booking
+            print(f"flotilla: the lane journal could not be compacted, and stays as it was: {err}", file=sys.stderr)
 
     def enqueue(self, who: str, note: str, *, pid: int | None = None, mark: str = "", run_for: str = "",
                 command: str = "", ladder=(), will_run=(), project: str = "") -> Booking:
         with self.store.transaction(KEY) as tx:
             found = self._found(tx)
-            return self._write(tx, f"b{len(found) + 1}", WAITING, who=who, note=note, pid=pid, mark=mark,
+            return self._write(tx, _next_id(found), WAITING, who=who, note=note, pid=pid, mark=mark,
                                run_for=run_for, command=command[:MAX_TEXT],
                                ladder=[step[:MAX_TEXT] for step in ladder], will_run=list(will_run),
                                project=project, rule=RULE)
@@ -237,7 +269,7 @@ class Book:
         fields = {k: v for k, v in (measured or {}).items() if k in MEASURED and v is not None}
         with self.store.transaction(KEY) as tx:
             found = self._found(tx)
-            return self._write(tx, f"b{len(found) + 1}", RELEASED, who=who, note=note, command=command[:MAX_TEXT],
+            return self._write(tx, _next_id(found), RELEASED, who=who, note=note, command=command[:MAX_TEXT],
                                ladder=[step[:MAX_TEXT] for step in ladder], will_run=list(will_run),
                                project=project, rule=RULE, inside=inside, **fields)
 

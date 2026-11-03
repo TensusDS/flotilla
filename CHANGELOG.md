@@ -3,6 +3,19 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.26.1 - 2026-11-03
+
+The lane journal stops growing without end.
+
+- **Past 2 MB the lane journal is compacted.** It keeps every live booking and every booking of the last day as
+  written, and each other ended booking an estimate reads as one record holding what estimates read; a step no
+  estimate can read yet, last seen over a week ago, is not kept. The rest goes to
+  `<state>/lane/archive/<YYYY-MM>.jsonl.gz`, written before the journal is replaced. On the field journal of
+  2026-11-03: 8.35 MB to 1.63 MB, the first booking after the update paying about a second once, every usable
+  estimate unchanged. A journal already over the limit is compacted by the first booking a 0.26.1 seat makes.
+- **A booking's number is past the highest taken.** Seats on a flotilla before 0.26.1 number a booking by counting
+  them, which a compacted journal makes unsafe: update every fleet on a machine together.
+
 ## 0.26.0 - 2026-11-03
 
 What waits on the person reaches the person. On one field fleet 144 questions and approvals waited on the person
