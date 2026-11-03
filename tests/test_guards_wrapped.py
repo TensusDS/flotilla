@@ -137,3 +137,20 @@ def test_an_ask_keeps_the_other_guards_notes(tmp_path, monkeypatch):
     body = json.loads(out.getvalue())["hookSpecificOutput"]
     assert body["permissionDecision"] == "ask" and "ASKED" in body["permissionDecisionReason"]
     assert "A NOTE" in body["permissionDecisionReason"]
+
+
+REFUSED_THIRD = [
+    "bash -s arg <<'EOF'\nflotilla work approve feat/x\nEOF",
+    "python3 /dev/stdin <<'EOF'\nimport subprocess\nsubprocess.run(['flotilla', 'work', 'approve', 'x'])\nEOF",
+    "python3 - <<'EOF'\nimport subprocess\nsubprocess.run(['flotilla'] + ['work'] + ['approve', 'x'])\nEOF",
+    "bash -c '~/plug/flotilla work approve feat/x'",
+    "python3 -c \"import subprocess; c = ['flotilla']; c += ['rig']; c += ['open']; subprocess.run(c)\"",
+]
+
+
+@pytest.mark.parametrize("command", REFUSED_THIRD)
+def test_a_persons_move_spelled_loosely_or_fed_on_stdin_is_refused(tmp_path, monkeypatch, command):
+    """Third security review of the wrapped check: arguments beside a heredoc, a move built in pieces, a path to the
+    CLI that is not .../bin/flotilla."""
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny", answer

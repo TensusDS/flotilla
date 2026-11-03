@@ -356,12 +356,20 @@ def check(segment) -> Finding | None:
 _INTERPRETER = re.compile(r"(?:sh|bash|zsh|dash|ksh|fish|python(?:\d+(?:\.\d+)?)?|perl|ruby|node)")
 #: A move only the person makes, spelled as the CLI reads it - in a command line or an argv list (`'rig', 'open'`).
 #: `approve` alone is not one: `gh pr review --approve` and a grep for the word are ordinary work (review of bebab1b).
-_PERSONS_MOVE = re.compile(r"\bwork\b[\s'\",]+approve\b|\brig\b[\s'\",]+(?:enable|disable|open|close|allow-image)\b"
-                           r"|\battention\b[\s'\",]+(?:all|digest)\b")
+_PERSONS_MOVE = re.compile(r"\bwork\b[\s'\",\[\]+]+approve\b"
+                           r"|\brig\b[\s'\",\[\]+]+(?:enable|disable|open|close|allow-image)\b"
+                           r"|\battention\b[\s'\",\[\]+]+(?:all|digest)\b")
+#: The same moves' words anywhere in the code - a command built in pieces - judged only where flotilla is named too.
+_MOVE_WORDS = re.compile(r"\bapprove\b|\brig\b[\s\S]*?\b(?:enable|disable|open|close|allow-image)\b"
+                         r"|\battention\b[\s\S]*?\b(?:all|digest)\b")
 #: flotilla as the program a line runs - `flotilla`, `.../bin/flotilla`, `flotilla.cli`, `-m flotilla` - never a path
 #: or a name it is part of (`flotilla-field`, `.flotilla/`, `~/.config/flotilla`): those are reads, not runs.
 _FLOTILLA = re.compile(r"(?:^|[\s'\"(\[,;|&`=])(?:\S*/bin/)?flotilla(?![\w./-])|\bflotilla\.cli\b"
                        r"|-m[\s'\",]+flotilla\b")
+#: flotilla at the end of any path (`~/plug/flotilla`): enough to refuse a person's move beside it, too wide to ask
+#: about on its own - `ls ~/.config/flotilla` reads a folder.
+_FLOTILLA_ANY = re.compile(r"(?:^|[\s'\"(\[,;|&`=])(?:\S*/)?flotilla(?![\w./-])|\bflotilla\.cli\b"
+                           r"|-m[\s'\",]+flotilla\b")
 WRAPPED_REFUSAL = ("flotilla: this line hands code to an interpreter (`bash -c`, `python3 -c`, a pipe, a heredoc or a "
                    "here-string), and that code runs a move only the person makes - approving work, turning rented "
                    "machines on or off or spending on them, or how the person is asked. A Claude tool call never runs "
@@ -376,14 +384,35 @@ UNREADABLE_MOVE_ASK = ("flotilla: this code spells a move only the person makes 
 
 
 def _judge(text: str, *, ask_on_flotilla: bool) -> Finding | None:
-    named = bool(_FLOTILLA.search(text))
+    """Refused: a person's move spelled as the CLI spells it beside flotilla named any way or a variable, or the
+    move's words anywhere in code that names flotilla (a command built in pieces). Asked: such a move through a
+    program the guard cannot name, or - on a command line's code - flotilla run as a program."""
+    anywhere = bool(_FLOTILLA_ANY.search(text))
     if _PERSONS_MOVE.search(text):
-        if named or "$" in text or "`" in text:
+        if anywhere or "$" in text or "`" in text:
             return Finding(GUARD, True, WRAPPED_REFUSAL)
         return Finding(GUARD, False, UNREADABLE_MOVE_ASK, ask=True)   # review of bebab1b: never a silent pass
-    if named and ask_on_flotilla:
+    if anywhere and _MOVE_WORDS.search(text):
+        return Finding(GUARD, True, WRAPPED_REFUSAL)
+    if ask_on_flotilla and _FLOTILLA.search(text):
         return Finding(GUARD, False, WRAPPED_ASK, ask=True)
     return None
+
+
+def _stricter(*found: Finding | None) -> Finding | None:
+    return next((item for item in found if item is not None and item.refuse),
+                next((item for item in found if item is not None), None))
+
+
+def _local(text: str) -> str:
+    """The text before the `--` that ends a `flotilla rig run`: what follows runs on a rented machine, as data to this
+    guard (the same cut `check` makes)."""
+    _live, dashes = _scan(text)
+    for at in dashes:
+        if ("rig", "run") in _parsed(argv(text[:at])) or any(_is(command, "rig") and _is(move, "run")
+                                                              for command, move in _reads(argv(text[:at]))):
+            return text[:at]
+    return text
 
 
 def _interpreter_at(words: list[str]) -> int | None:
@@ -396,11 +425,14 @@ def wrapped_check(segment, command: str) -> Finding | None:
     a pipe, a heredoc, a here-string - the whole command, bodies included. A person's move there is refused; flotilla
     named on a command line asks the person (the person, 2026-11-03). Code on standard input that only names flotilla
     is a helper script the guards do not read, as a script the session writes and runs is not."""
-    words = argv(segment.text)
+    words = argv(_local(segment.text))
+    command = _local(command)
     at = _interpreter_at(words)
     if at is None:
         return None
     after = words[at + 1:]
-    if all(word.startswith("-") for word in after):   # no code and no script on the line: it reads standard input
-        return _judge(command, ask_on_flotilla=False)
-    return _judge(" ".join(after), ask_on_flotilla=True)
+    on_line = None if all(word.startswith("-") for word in after) else _judge(" ".join(after), ask_on_flotilla=True)
+    # whatever its arguments (`bash -s arg`, `python3 /dev/stdin`), an interpreter may read a heredoc, a here-string
+    # or a pipe: then the whole command, bodies included, is its code too (third security review)
+    fed = not on_line and (all(word.startswith("-") for word in after) or any(sign in command for sign in ("<<", "|")))
+    return _stricter(on_line, _judge(command, ask_on_flotilla=False) if fed or on_line is None else None)
