@@ -294,3 +294,36 @@ def test_a_reading_the_journal_would_drop_never_erases_a_good_one(tmp_path):
     r.note_credit("s1", 41.2)
     r.note_credit("s1", 5e6)
     assert r.sessions()["s1"].credit_now == 41.2
+
+
+# -- a closed session's machine that is being destroyed no longer blocks the next one (twosuns item 4) -----------
+
+def drained(r, attempts, state=j.DRAINING, close=True):
+    s1 = r.open_session("p", "x", hours=1, budget=1.0)
+    r.add_machine(s1.id, "vast", label_of, limit=1)
+    r.move("m1", j.PROVISIONING, instance="7")
+    r.move("m1", j.READY)
+    if close:
+        r.set_session(s1.id, j.CLOSING, reason="session ended")
+    r.move("m1", j.DRAINING, reason="session ended", attempts=attempts)
+    if state != j.DRAINING:
+        r.move("m1", state)
+    return s1
+
+
+def test_a_machine_draining_from_a_closed_session_after_its_destroy_does_not_block_the_next(tmp_path):
+    r = rig(tmp_path)
+    drained(r, attempts=1)
+    s2 = r.open_session("p", "y", hours=1, budget=1.0)
+    assert r.add_machine(s2.id, "vast", label_of, limit=1).id == "m2"
+
+
+@pytest.mark.parametrize("attempts, state, close", [(0, j.DRAINING, True), (1, j.STUCK, True),
+                                                    (1, j.DRAINING, False)])
+def test_a_draining_machine_still_blocks_before_its_destroy_or_while_its_session_is_open(tmp_path, attempts, state,
+                                                                                      close):
+    r = rig(tmp_path)
+    s1 = drained(r, attempts, state, close)
+    s = s1 if not close else r.open_session("p", "y", hours=1, budget=1.0)
+    with pytest.raises(j.RigError, match="ceiling"):
+        r.add_machine(s.id, "vast", label_of, limit=1)

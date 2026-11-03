@@ -307,6 +307,17 @@ def _holds(item, expect) -> bool:
     return all(getattr(item, key) == value for key, value in (expect or {}).items())
 
 
+def _counts(machine, sessions) -> bool:
+    """Whether a machine counts against the machine ceiling: every live one, except a machine draining from a session
+    that is no longer open whose destroy was sent - it is going, and it must not keep the next session's first run
+    waiting a reaper pass (twosuns item 4). For that pass two machines may be billed, one of them already told to
+    die; STUCK always counts."""
+    if machine.state not in LIVE:
+        return False
+    session = sessions.get(machine.session)
+    return not (machine.state == DRAINING and machine.attempts >= 1 and (session is None or session.state != OPEN))
+
+
 class Rig:
     def __init__(self, store, *, clock=None):
         self.store = store
@@ -382,7 +393,7 @@ class Rig:
                 raise RigError(f"session {session_id} is not open")
             if session.until and self.now() >= _parse(session.until):
                 raise RigError(f"session {session_id} has ended")
-            if limit is not None and sum(1 for m in machines.values() if m.state in LIVE) >= limit:
+            if limit is not None and sum(1 for m in machines.values() if _counts(m, sessions)) >= limit:
                 raise RigError(f"the machine ceiling ({limit}) is reached: another machine lives in this rig")
             machine_id = _next_id("m", machines)
             now = self.now()
