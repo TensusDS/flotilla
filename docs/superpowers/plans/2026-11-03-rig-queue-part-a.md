@@ -193,7 +193,7 @@
   - `packing.history` and `packing.estimate`;
   - `Run.ceiling`, `Run.exclusive`.
 - **Produces:**
-  - `@dataclass(frozen=True) class Place: run: j.Run; number: int; starts: dt.datetime | None; ends: dt.datetime | None; unmeasured_ahead: int; fits: bool | None`
+  - `@dataclass(frozen=True) class Place: run: j.Run; number: int; starts: dt.datetime | None; ends: dt.datetime | None; ahead: str; unmeasured: int; fits: bool | None`
   - `def places(rig: j.Rig, session_id: str, now: dt.datetime, alive) -> list[Place]`
     - Lists the live waiting runs of the session, in line order, numbered from 1.
     - Line order means:
@@ -214,12 +214,13 @@
   - `starts` = that lane's free time;
   - the lane becomes free at `starts + duration`;
   - `ends` = that same time.
-- **An exclusive run:** take the time when every lane is free, which is the latest free time of all lanes, and occupy
-  all of them until it ends.
+- **An exclusive run** needs one empty machine, which in this serial model is the lane that frees first, as for any run
+  (ruling, task 3: rule 1 of A1 is per machine, so the first plan text that held every lane was wrong).
 - **No lane:**
   - `starts` and `ends` are `None`;
   - `fits` is `None`.
-- `unmeasured_ahead` counts runs ahead of this one, and running ones, that were counted at their ceiling.
+- `unmeasured` counts the runs counted at their ceiling, the running ones and those in line up to and including this
+  one.
 - `fits` = `ends <= session.until`. It is `None` when `until` is unknown.
 
 - [ ] **Step 1: Write the failing tests.**
@@ -232,7 +233,7 @@
   - `test_an_unmeasured_run_counts_at_its_ceiling_and_is_counted`
     - j1 runs, never measured, with `ceiling` 900, started 5 min ago.
     - j2 starts at now + 10 min.
-    - `unmeasured_ahead == 1`.
+    - `unmeasured == 2`.
   - `test_no_machine_up_gives_no_number`
     - `starts is None`;
     - `says(...)` contains "a machine is raised first".
