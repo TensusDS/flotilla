@@ -1,6 +1,8 @@
 """The person's queue (person inbox design, goal 1 and "Decided"): what waits on the person, grouped by what they are
 asked to do, computed from the ledger and nothing else."""
 
+import pytest
+
 from flotilla.watch import inbox
 from flotilla.watch.fleet import PERSON, QUESTION
 from flotilla.watch.whose import Item
@@ -8,6 +10,12 @@ from watchkit import AT, PR, context, row, rows, sess
 
 ORCH = sess("orchestrator 1", state="working")
 HUMAN = {**PR, "flow": {"mode": "pr", "merge_authorized_by": "human"}}
+
+
+@pytest.fixture(autouse=True)
+def _in_tmp(tmp_path, monkeypatch):
+    """The watch context installs post templates under its root: each test's own folder, never the checkout."""
+    monkeypatch.chdir(tmp_path)
 
 
 def waited(id, by_post, **fields):
