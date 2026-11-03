@@ -116,10 +116,17 @@ class Booking:
     path: str = ""                                   # how it was admitted: fifo, or fair and for which project
 
 
+def number(name) -> int | None:
+    """A booking's number, or None for a name flotilla never gives: ASCII digits only, at most 18 of them - a name
+    `isdigit` accepts and `int` refuses must not stop the numbering for the machine (review of 0.26.1, I3)."""
+    digits = name[1:] if isinstance(name, str) and name[:1] == "b" else ""
+    return int(digits) if digits and len(digits) <= 18 and digits.isascii() and digits.isdecimal() else None
+
+
 def _next_id(found: dict) -> str:
     """Past the highest number taken: a compacted journal holds fewer bookings than its highest number (compact.py),
     so a number counted from the bookings, as flotilla before 0.26.1 counts it, may be one already taken."""
-    highest = max((int(name[1:]) for name in found if name[:1] == "b" and name[1:].isdigit()), default=0)
+    highest = max((found_number for found_number in map(number, found) if found_number is not None), default=0)
     return f"b{max(highest, len(found)) + 1}"
 
 

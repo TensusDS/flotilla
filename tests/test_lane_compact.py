@@ -213,3 +213,55 @@ def test_a_compaction_that_fails_leaves_the_journal_and_says_so(tmp_path, monkey
     lanes(tmp_path).enqueue("main session 1", "make check", pid=1, mark="m")
     assert path.read_bytes().startswith(before)
     assert "compact" in capsys.readouterr().err
+
+
+# --- the final review of the branch ---
+
+def test_a_second_compaction_archives_nothing_already_rewritten():
+    """Review, I1: each compaction archived the rewritten records again, so the archive counted the same runs twice."""
+    kept, _ = compact.plan(journal(), NOW)
+    again, archived = compact.plan(kept, NOW)
+    assert archived == [] and again == kept
+
+
+def test_the_highest_number_survives_a_compaction():
+    """Review, I2: with the highest-numbered booking archived, the next number was one already given."""
+    records = [{"at": at(days=3), "booking": "b1", "state": book.HELD, "who": "the person", "note": "by hand"}]
+    for n in range(2, 6):
+        records += [{"at": at(days=2), "booking": f"b{n}", "state": book.WAITING, "who": "s"},
+                    {"at": at(days=2), "booking": f"b{n}", "state": book.LEFT}]
+    records.append({"at": at(days=1, hours=2), "booking": "b1", "state": book.RELEASED})
+    before = book._next_id(book.fold(records))
+    kept, _ = compact.plan(records, NOW)
+    assert book._next_id(book.fold(kept)) == before == "b6"
+
+
+@pytest.mark.parametrize("name", ["b²", "b" + "9" * 5000, "b٣", "b-1", "b"])
+def test_an_odd_booking_name_never_stops_the_numbering(name):
+    """Review, I3: a name `isdigit` accepts and `int` refuses made every booking on the machine fail."""
+    found = book.fold([{"at": at(days=1), "booking": name, "state": book.RELEASED},
+                       {"at": at(days=1), "booking": "b7", "state": book.RELEASED}])
+    assert book._next_id(found) == "b8"
+
+
+def test_a_malformed_record_is_archived_not_fatal():
+    """Review, M4 raised: a booking name that is not text stopped every compaction, retried on every write."""
+    records = journal() + [{"at": at(days=9), "booking": ["x"], "state": book.RELEASED}]
+    kept, archived = compact.plan(records, NOW)
+    assert {"at": at(days=9), "booking": ["x"], "state": book.RELEASED} in archived
+
+
+def test_a_journal_that_cannot_shrink_is_not_retried_on_every_write(tmp_path, monkeypatch):
+    """Review, M4 raised: when nothing could be archived no record was written, so every write planned again."""
+    big_journal(tmp_path, bookings=10)
+    monkeypatch.setattr(compact, "THRESHOLD", 100)
+    calls = []
+    real = compact.plan
+
+    def counted(records, now):
+        calls.append(1)
+        return records, []   # nothing to archive
+    monkeypatch.setattr(compact, "plan", counted)
+    lanes(tmp_path).enqueue("main session 1", "a", pid=1, mark="m")
+    lanes(tmp_path).enqueue("main session 2", "b", pid=2, mark="m")
+    assert len(calls) == 1 and real

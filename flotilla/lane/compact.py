@@ -92,10 +92,26 @@ def plan(records: list[dict], now: dt.datetime) -> tuple[list[dict], list[dict]]
             if value not in (None, "", [], ()):
                 record[key] = list(value) if isinstance(value, tuple) else value
         rewritten[item.id] = record
-    last = {record.get("booking"): at for at, record in enumerate(records) if isinstance(record, dict)}
+    def name_of(record) -> str | None:
+        name = record.get("booking") if isinstance(record, dict) else None
+        return name if isinstance(name, str) else None   # a name that is not text folds to nothing: archived
+
+    lines: dict[str, list[dict]] = {}
+    for record in records:
+        if name_of(record) is not None:
+            lines.setdefault(name_of(record), []).append(record)
+    # a booking already rewritten by a compaction stands as it is: archiving it again would count its run twice
+    verbatim |= {name for name, record in rewritten.items() if lines.get(name) == [record]}
+    # the highest number stays, as one record if nothing else keeps it: the next booking is numbered past it, and an
+    # archived highest would give its number again (review of 0.26.1, I2)
+    highest = max((name for name in found if book.number(name) is not None), key=book.number, default=None)
+    if highest is not None and highest not in verbatim and highest not in rewritten:
+        item = found[highest]
+        rewritten[highest] = {"at": item.ended or item.since, "booking": highest, "state": item.state}
+    last = {name: at for at, record in enumerate(records) for name in [name_of(record)] if name is not None}
     kept, archived = [], []
     for at, record in enumerate(records):
-        name = record.get("booking") if isinstance(record, dict) else None
+        name = name_of(record)
         if name in verbatim:
             kept.append(record)
             continue
@@ -125,16 +141,18 @@ def due(path: Path, root: Path) -> bool:
 def compact(tx, root: Path, path: Path, now: dt.datetime) -> bool:
     """Under the lane's lock: archive what the journal no longer holds, then replace the journal by what it keeps.
     The archive comes first, so a failure between the two doubles history and loses none."""
-    records = tx.read().records
-    kept, archived = plan(records, now)
-    if not archived:
-        return False
-    folder = Path(root) / "archive"
-    folder.mkdir(parents=True, exist_ok=True)
-    with gzip.open(folder / f"{now:%Y-%m}.jsonl.gz", "at", encoding="utf-8") as out:
-        for record in archived:
-            out.write(json.dumps(record, sort_keys=True, ensure_ascii=False, separators=(",", ":")) + "\n")
-    tx.replace(kept)
-    (Path(root) / RECORD).write_text(json.dumps({"at": now.isoformat(timespec="seconds"),
-                                                 "bytes": Path(path).stat().st_size}), encoding="utf-8")
-    return True
+    try:
+        records = tx.read().records
+        kept, archived = plan(records, now)
+        if not archived:
+            return False
+        folder = Path(root) / "archive"
+        folder.mkdir(parents=True, exist_ok=True)
+        with gzip.open(folder / f"{now:%Y-%m}.jsonl.gz", "at", encoding="utf-8") as out:
+            for record in archived:
+                out.write(json.dumps(record, sort_keys=True, ensure_ascii=False, separators=(",", ":")) + "\n")
+        tx.replace(kept)
+        return True
+    finally:   # every attempt, done, empty or failed: the next one waits for the journal to grow (review, M4)
+        (Path(root) / RECORD).write_text(json.dumps({"at": now.isoformat(timespec="seconds"),
+                                                     "bytes": Path(path).stat().st_size}), encoding="utf-8")
