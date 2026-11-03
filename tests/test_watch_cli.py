@@ -165,3 +165,29 @@ def test_a_wait_that_woke_on_news_exits_0_so_the_wake_is_not_read_as_a_failure(t
                    rows_=HANDED)
     code, out = run_wait(tmp_path, capsys, [calm, news, news])
     assert code == 0 and out.splitlines()[1] == "attention (new):"
+
+
+def test_once_prints_counted_sections():
+    """Person inbox design, goal 2: one number for every kind of item hid the person's waits among the rest."""
+    from flotilla.watch import render
+    from flotilla.watch.fleet import DEVIATION, DROPPED, NOBODY, PERSON, SEATS
+    from flotilla.watch.whose import Item
+    items = [Item(DROPPED, "feat/a", "main session 2 holds the move (fixing) and is not working", NOW.isoformat(),
+                  who="main session 2"),
+             Item(DEVIATION, "feat/b", "mover_gone: the move is main session 9's, and that session is not alive", "",
+                  who="mover_gone"),
+             Item(SEATS, "", "1 post seat(s) with no live session: judge 1", "", who="judge 1"),
+             Item(NOBODY, "feat/c", "the move is the sender's, and no live session holds the `sender` post", "",
+                  who="the sender"),
+             Item(PERSON, "feat/d", "waits on the person: which colour?", "", who="which colour?")]
+    lines = render.sections(items, NOW)
+    headings = [line for line in lines if not line.startswith("  ")]
+    assert headings == ["waits on the person (1):", "moves nobody can make (1):", "gone sessions (2):",
+                        "other (1):"]
+
+
+def test_once_with_a_person_wait_names_its_section(tmp_path, capsys):
+    asked = rows(row(state="fixing", waiting_on="the person", note="which colour should the snake be?"))
+    code, out = run(tmp_path, context(tmp_path, me=None, sessions=[sess("main session 1", state="working")],
+                                      rows_=asked), capsys)
+    assert code == 1 and "waits on the person (1):" in out

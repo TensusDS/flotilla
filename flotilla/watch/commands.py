@@ -49,7 +49,7 @@ def run_watch_command(args, *, gather=None, now: dt.datetime | None = None, slee
         print("attention: none")
         return 0
     print("attention:")
-    print("\n".join(render.lines(items, now or dt.datetime.now(dt.timezone.utc), limit=10_000)))
+    print("\n".join(render.sections(items, now or dt.datetime.now(dt.timezone.utc))))
     return 1
 
 
