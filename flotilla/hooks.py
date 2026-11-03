@@ -30,7 +30,7 @@ PEERS_SHOWN = 8
 #: `flotilla` lets the person guard see its CLI however the word `approve` is quoted.
 GUARD_TRIGGERS = ("checkout", "restore", "reset", "clean", "switch", "sed", "push", "gh", "approve", "flotilla",
                   "pytest", "py.test", "playwright", "vitest", "jest", "cargo", "go test", "npm", "pnpm", "yarn",
-                  "npx", "bun", "tox", "nox")
+                  "npx", "bun", "tox", "nox", "inbox")
 
 
 def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime | None = None) -> int:
@@ -59,6 +59,8 @@ def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime
         command = tool_input.get("command") if isinstance(tool_input.get("command"), str) else ""
         if not any(word in command for word in GUARD_TRIGGERS):
             return 0
+        if "inbox" in command:
+            _note_tool_call(payload)
         try:   # an exception here exits non-zero, which Claude Code does not read as a refusal: the push would run
             return _guard(command, cwd, payload, out, now)
         except Exception as err:  # noqa: BLE001 - the guards' own rule for a failure, decided here when they fell
@@ -87,6 +89,16 @@ def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime
         else:
             print(f"flotilla: the {event} hook failed: {err}", file=out)
         return 0
+
+
+def _note_tool_call(payload: dict) -> None:
+    """A model's Bash call naming `inbox`: the listing it runs is not shown to the person (`watch/toolcall.py`)."""
+    try:
+        from flotilla.core import paths as _paths
+        from flotilla.watch import toolcall
+        toolcall.note(_paths.state_dir(), str(payload.get("session_id") or ""), time.time())
+    except Exception:  # noqa: BLE001 - a note that cannot be left over-reports "never shown"; the call still runs
+        return
 
 
 def _fresh(payload: dict) -> bool:

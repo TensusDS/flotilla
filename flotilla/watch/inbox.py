@@ -20,6 +20,15 @@ THE_PERSON = "the person"
 GROUPS = ("ship", "check", "question", "approve", "merge", "permission", "rig", "window", "other", "put off")
 #: The post of the session that recorded a wait, and the group it asks the person for.
 BY_POST = {"sender": "ship", "judge": "check", "main": "question", "minor": "question"}
+#: What each group asks of the person, as the listing heads it and the line counts it (singular, plural).
+LABELS = {"ship": ("a yes to ship", "yes to ship"), "check": ("a check only you can make", "checks only you can make"),
+          "question": ("a question", "questions"), "approve": ("your yes before the batch ships", "yeses before the "
+                                                                "batch ships"),
+          "merge": ("a pull request only you merge", "pull requests only you merge"),
+          "permission": ("a permission question (/flotilla:permit)", "permission questions (/flotilla:permit)"),
+          "rig": ("a rig request", "rig requests"),
+          "window": ("a session waiting in its own window", "sessions waiting in their own windows"),
+          "other": ("other", "other"), "put off": ("put off", "put off")}
 APPROVABLE = ("accepted", "queued")
 RIG_REQUEST = "rig:request:"
 
