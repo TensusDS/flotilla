@@ -59,10 +59,10 @@ project's file names a plugin nobody else can find.
 there, and flotilla's hooks and CLI run in every session of your project. To choose when you move, pin a release tag
 on the first line instead (the tags are listed in [CHANGELOG.md](CHANGELOG.md)):
 
-    claude plugin marketplace add TensusDS/flotilla#v0.26.2 --scope project
+    claude plugin marketplace add TensusDS/flotilla#v0.27.0 --scope project
     claude plugin install flotilla@flotilla --scope project
 
-That writes `"ref": "v0.26.2"` into the project's settings and installs that release; `claude plugin update` stays on
+That writes `"ref": "v0.27.0"` into the project's settings and installs that release; `claude plugin update` stays on
 it. Two caveats. A machine keeps one marketplace of a name for all its projects, and the last `marketplace add` on
 it repoints it: measured, after another project on the same machine added it without a pin, `claude plugin update`
 in a project pinned to v0.22.0 took the default branch's release. Give the projects on one machine the same pin;
@@ -564,7 +564,8 @@ rented machine with `flotilla rig run` and gets its output, its exit code and it
 - **A watchdog runs on the machine** and asks the service to destroy it (or, failing that, to stop it)
   `--watchdog-minutes` (default 45, 5 to 45) after our last heartbeat. `rig run` renews the heartbeat and the lease every 5
   minutes while it runs; an idle machine is given back after 15 minutes. It needs curl, node or python3 in the image. On vast the destroy is allowed (live check, 2026-10-07).
-- **`flotilla rig run [--put P]... [--get P]... [--env NAME=VALUE]... -- COMMAND`** runs one command there:
+- **`flotilla rig run [--put P]... [--get P]... [--env NAME=VALUE]... [--exclusive|--shared] -- COMMAND`** runs one
+  command there:
   - nothing is spent before the gate: rig on, a session open, `--root` this very tree, a committed HEAD (a tracked
     file changed since must be committed or passed with `--put`);
   - **several runs share a machine, packed by estimates:** what a run will take comes from the runs of the same
@@ -572,15 +573,21 @@ rented machine with `flotilla rig run` and gets its output, its exit code and it
     memory and GPU memory fit what the running runs leave (and past two runs, its cores), the longest first and
     short ones filling the rest; a run waiting 10 minutes is senior, and later runs leave it the room it needs.
     Past two runs the machine's live free memory and GPU memory must agree too. A waiting run says why it waits,
-    and keeps waiting for `--wait` (900 s) - for an offer too: with nothing to rent within your ceilings it asks the
-    market again every minute, spending nothing until something is rented and never trying again an offer it
-    found gone;
+    its place in the session's line and, by estimates, when it starts and ends, and keeps waiting until the session
+    ends (`--wait` lowers it) - for an offer too: with nothing to rent within your ceilings it asks the market again
+    every minute, spending nothing until something is rented and never trying again an offer it found gone. A run
+    that by estimates ends after its session is told so before it starts, not refused;
+  - **an exclusive run is alone on its machine** (`--exclusive`, or `[rig] exclusive = true` for every run of a
+    project; `--shared` overrides the profile): it starts only on a machine with nothing on it, nothing starts beside
+    it, and while it waits every run that came after it waits too, so shared runs cannot starve it. For runs that
+    measure time, frames or sound;
   - the revision travels once per machine (`git archive`, checked by sha256 there); each run works in its own copy
     and runs the profile's setup (`[rig] setup_command`, else `[tests] setup_command`) itself, with download caches
     shared on the machine;
   - `--put` sends untracked files and never `.env*`, `*.pem`, `id_*`, `credentials*`, `.npmrc`, `.netrc`,
     `.pypirc`, `.git`, a symlink, or anything under `~/.ssh`, `~/.claude`, `~/.config/flotilla` or flotilla's state;
-  - `--get` brings paths back after the run, red runs too, through a temporary directory, at most 500 MB, and only
+  - `--get` brings paths back after the run, red runs and stopped ones too (a stop spends at most 120 s on it),
+    through a temporary directory, at most 500 MB, and only
     artifact types (images, video, sound, `json`, `csv`, `tsv`, `txt`, `log`, `md`, `pdf`; more with
     `[rig] get_types`) - any other file is left on the machine and named; each path replaces the local one whole
     (untracked files in it go); never

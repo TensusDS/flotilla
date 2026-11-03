@@ -92,24 +92,18 @@ journal figures: runs under 60 s waited a median 30.6 min for a median 6.8 s run
   still B - flotilla/ledger/outside.py:55)*
 
 **The rig**
-- **A stopped run brings nothing back**: `--get` runs only when a run ends on its own, so a run stopped with two of
-  three clips done lost 28 min. Fetch the `--get` paths on stop (best effort, time-capped), or warn on stop.
-  *(open: flotilla/rig/run.py:317)*
-- **A machine draining from the previous rig session blocks the next session's first run** (ceiling 1; 15-18 min
-  idle after paying). Hand a draining machine to the new session, or count the ceiling against live sessions only.
-  *(open: flotilla/rig/run.py:211)*
-- **Runs of different seats share a machine at once**, skewing frame timing and audio capture. An opt-in exclusive
-  run, or a rig queue like the lane. *(open, design)*
-- **A seat waiting for the rig does not know who goes before it, and nobody tells the next one its turn** (twosuns
-  item 12; the person, 2026-11-01: a seat that cannot see the queue sits idle waiting for its turn on a paid
-  machine). The order lived in the orchestrator's letters; the machine idled ~40 min on s76 and 15 min on s74
+- **Part B of the rig queue: a seat books before it is ready, and is told its turn** (twosuns item 12; part A in
+  0.27.0 gave exclusive runs, a `rig run` that stands in line for the session and says its place and start, the line
+  on `flotilla rig` and the "idle while runs wait" item; part B is designed in `docs/specs/2026-11-03-rig-queue-design.md`
+  section 4, planned after A is seen in the field). The person, 2026-11-01: a seat that cannot see the queue sits
+  idle waiting for its turn on a paid machine. The order lived in the orchestrator's letters; the machine idled ~40 min on s76 and 15 min on s74
   because the next "go" was never sent, ~1 h across s73-s76. Asked: a rig queue per session - `rig book` with an
   estimate and exclusive/shared, `rig queue` showing the order, who is ahead of the caller and the time left in the
   session; the machine handed to the next seat by flotilla itself when a run ends (a letter, the orchestrator
   copied); a run out of turn refused; readiness (`rig ready`, `rig pass`) so a seat still running its checks keeps
   its place; a run that does not fit the session's end told before it starts; the unserved queue carried to the
-  next session; `watch` naming "rig idle with N waiting"; actual minutes recorded against estimates. Absorbs the
-  two items above. *(open, design)*
+  next session; `watch` naming "rig idle with N waiting"; actual minutes recorded against estimates.
+  *(open, designed: part B)*
 - **A deep local lane does not point at an open rig session, and a rig session is not shared by design** (twosuns
   item 15.1-3, 11-01 23:19-23:30: ~20 local waiters, about 2 h, while rig session s79 was paid for and mostly idle;
   once allowed, CPU probes finished there in seconds - 40 s against 1 h+ in the queue). Asked: when a lane run would
@@ -588,6 +582,8 @@ Each is a limitation README states today, judged fixable in principle; none is p
 - The onboard skill does not state that background isolation stays on. *(checked 2026-10-04 on 0.7.8: still [P])*
 
 ## Done
+
+- The rig queue, part A: exclusive runs, a rig run that stands in line for its session and says its place and start, the line on `flotilla rig`, a watch item when a machine idles while runs wait, a stopped run that brings back its `--get`, a closed session's machine destroyed no longer blocking the ceiling (0.27.0).
 
 - A person's move handed to an interpreter as text is refused, flotilla in such code asks the person; the approval check reads origin's profile (0.26.2).
 
