@@ -22,6 +22,7 @@ import contextlib
 import fnmatch
 import functools
 import io
+import re
 
 import os
 
@@ -349,3 +350,85 @@ def check(segment) -> Finding | None:
     return Finding(GUARD, True, "flotilla: approving work for trunk is the person's own move, and a Claude tool call "
                                 "is never the person's. Show the person the command; they type it with `!` in front "
                                 "in their own Claude Code session, or run it in a terminal.")
+
+
+#: Programs that run code handed to them as text: shells with `-c`, scripting languages with `-c` or `-e`.
+_INTERPRETER = re.compile(r"(?:sh|bash|zsh|dash|ksh|fish|python(?:\d+(?:\.\d+)?)?|perl|ruby|node)")
+#: A move only the person makes, as it reads inside code: argv lists (`'rig', 'open'`) or a command line.
+_PERSONS_MOVE = re.compile(r"\bapprove\b|\brig\b[\s'\",]+(?:enable|disable|open|close|allow-image)\b"
+                           r"|\battention\b[\s'\",]+(?:all|digest)\b")
+WRAPPED_REFUSAL = ("flotilla: this line hands code to an interpreter as text (`bash -c`, `python3 -c`, a heredoc), and "
+                   "that code runs a move only the person makes - approving work, turning rented machines on or "
+                   "off or spending on them, or how the person is asked. A Claude tool call never runs it, wrapped or "
+                   "not: show the person the line; they type it with `!` in front in their own Claude Code session, "
+                   "or run it in a terminal.")
+WRAPPED_ASK = ("flotilla: this line hands flotilla commands to an interpreter as text (`bash -c`, `python3 -c`), "
+               "which the guard cannot read move by move, so the person decides whether it runs. Written out as "
+               "plain flotilla commands, one per call, it needs no one's yes.")
+
+
+def _code_flag(program: str, word: str) -> bool:
+    if not word.startswith("-") or word.startswith("--"):
+        return False
+    letters = word[1:]
+    if program.startswith("python"):
+        return letters == "c"
+    if program in ("perl", "ruby", "node"):
+        return "e" in letters
+    return "c" in letters   # a shell: -c, -lc, -ec
+
+
+def _code(words: list[str]) -> list[str]:
+    """The code each interpreter in these words is handed as text."""
+    found = []
+    for at, word in enumerate(words):
+        program = os.path.basename(word)
+        if not _INTERPRETER.fullmatch(program):
+            continue
+        for later in range(at + 1, len(words) - 1):
+            if not words[later].startswith("-"):
+                break
+            if _code_flag(program, words[later]):
+                found.append(words[later + 1])
+                break
+    return found
+
+
+def _judge_code(text: str) -> Finding | None:
+    mentions = "flotilla" in text
+    if _PERSONS_MOVE.search(text) and (mentions or "$" in text or "`" in text):
+        return Finding(GUARD, True, WRAPPED_REFUSAL)
+    if mentions:
+        return Finding(GUARD, False, WRAPPED_ASK, ask=True)
+    return None
+
+
+def wrapped_check(segment) -> Finding | None:
+    """Code handed to an interpreter as text that names a move only the person makes is refused; code that names
+    flotilla but whose move cannot be read asks the person (the person, 2026-11-03). A script the session writes and
+    then runs is not seen - the ceiling the guards state."""
+    found = [finding for finding in map(_judge_code, _code(argv(segment.text))) if finding is not None]
+    return next((finding for finding in found if finding.refuse), found[0] if found else None)
+
+
+def heredoc_interpreter_check(command: str) -> Finding | None:
+    """A heredoc fed to an interpreter whose body runs a move only the person makes is refused. A body that only
+    names flotilla is the session's own script, which the guards do not read (no question for every helper)."""
+    if "<<" not in command:
+        return None
+    from flotilla.guards.shell import heredoc
+    lines = command.split("\n")
+    for at, line in enumerate(lines):
+        found = heredoc(line)
+        if not found or not any(_INTERPRETER.fullmatch(os.path.basename(word)) for word in argv(line.split("<<")[0])):
+            continue
+        label = found[0]
+        body = []
+        for later in lines[at + 1:]:
+            if later.strip() == label:
+                break
+            body.append(later)
+        text = "\n".join(body)
+        if _PERSONS_MOVE.search(text) and ("flotilla" in text or "$" in text):
+            return Finding(GUARD, True, WRAPPED_REFUSAL)
+    return None

@@ -38,6 +38,11 @@ def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run, who
     heredoc = person.heredoc_check(command, segments)
     if heredoc is not None:
         persons.append(heredoc)
+    # the person's own moves handed to an interpreter as text (the person, 2026-11-03): refused, or asked of them
+    persons += [found for found in (person.wrapped_check(segment) for segment in segments) if found]
+    wrapped_heredoc = person.heredoc_interpreter_check(command)
+    if wrapped_heredoc is not None:
+        persons.append(wrapped_heredoc)
     if root is None:   # the session stands in no project; a push into one is still judged by that project (F18)
         return persons + [found for found in (push.guard(segment, root=None, profile={}, env=env, run=run, who=who)
                                               for segment in segments if push.door(segment) is not None)
@@ -389,6 +394,7 @@ def guard_hook(command: str, cwd, root, out, *, env=os.environ, run=subprocess.r
     except Exception as err:  # noqa: BLE001 - decided by reversibility: a command that may push is refused
         findings = [on_failure(command, err, env)]
     refusals = [finding.text for finding in findings if finding.refuse]
+    asks = [finding.text for finding in findings if finding.ask and not finding.refuse]
     # the allow answers auto mode's classifier only: in ask mode the person sees what they chose to see
     sandboxed = not (tool_input or {}).get("dangerouslyDisableSandbox")   # its prompt stays (final review, M1)
     allowed, rewritten = ("", "") if findings or mode != "auto" or not sandboxed else \
@@ -396,6 +402,9 @@ def guard_hook(command: str, cwd, root, out, *, env=os.environ, run=subprocess.r
     if refusals:
         body = {"hookEventName": "PreToolUse", "permissionDecision": "deny",
                 "permissionDecisionReason": "\n\n".join(refusals)}
+    elif asks:   # the person's confirmation, in auto mode too (measured on Claude Code 2.1.317)
+        body = {"hookEventName": "PreToolUse", "permissionDecision": "ask",
+                "permissionDecisionReason": "\n\n".join(asks)}
     elif allowed:
         body = {"hookEventName": "PreToolUse", "permissionDecision": "allow", "permissionDecisionReason": allowed}
         if rewritten:   # the allow covers the pinned command, never the typed one

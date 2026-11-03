@@ -20,6 +20,7 @@ class Finding:
     guard: str
     refuse: bool     # False: the command runs, and the session is told
     text: str
+    ask: bool = False   # the person decides in Claude Code's confirmation (a PreToolUse `ask`; asks in auto mode too)
 
 
 PUSH_WORDS = ("push", "gh")
