@@ -457,8 +457,11 @@ def _unapproved(root, profile: dict, pairs, since: str = "") -> list[str]:
     if (profile.get("flow") or {}).get("merge_authorized_by") != "human" or not pairs:
         return []
     from flotilla.ledger import batch
-    from flotilla.ledger.commands import open_ledger
-    ledger = open_ledger(Path(root))
+    from flotilla.ledger.commands import open_ledger, trunk_rules
+    # the profile the approval is asked under is origin's, as the guard's own is: the local `origin/<trunk>` is a ref a
+    # seat can repoint at a profile whose `approve_paths` misses its work (final review of 0.21.0, closed in 0.26.1).
+    # A revision origin named that this checkout cannot read refuses through the caller, never opens
+    ledger = open_ledger(Path(root), rules=trunk_rules(Path(root), at=since) if since else None)
     found = []
     for label, sha in pairs:
         loose = batch.unaccounted(ledger, ledger.rows(), sha, since=since)
