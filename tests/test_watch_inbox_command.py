@@ -108,14 +108,35 @@ def test_a_note_is_used_once_and_goes_stale(tmp_path):
     assert toolcall.by_tool(tmp_path, ["s1"], 1010.0)
     assert not toolcall.by_tool(tmp_path, ["s1"], 1011.0)   # used up: the next run is the person's own
     toolcall.note(tmp_path, "s1", 1000.0)
-    assert not toolcall.by_tool(tmp_path, ["s1"], 1000.0 + 61)
+    assert not toolcall.by_tool(tmp_path, ["s1"], 1000.0 + 31)
 
 
 def test_the_guard_notes_a_call_naming_inbox_and_decides_nothing(tmp_path, monkeypatch):
     monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
-    payload = {"cwd": str(tmp_path), "tool_name": "Bash", "session_id": "s9",
+    payload = {"cwd": str(onboarded(tmp_path / "project")), "tool_name": "Bash", "session_id": "s9",
                "tool_input": {"command": "cd x && ./bin/flotilla inbox", "description": "d"}}
     out = io.StringIO()
     assert hooks.run_hook("guard", io.StringIO(json.dumps(payload)), out=out) == 0
     assert out.getvalue() == ""
     assert toolcall.by_tool(tmp_path / "state", ["s9"], dt.datetime.now().timestamp())
+
+
+@pytest.mark.parametrize("command", ["./bin/flotilla in''box", '"$CLI" inbox', "f=flotilla; $f in\\box", "ls"])
+def test_every_bash_call_in_a_project_leaves_a_note_whatever_its_words(tmp_path, monkeypatch, command):
+    """Security review of eadba0b: a note left only when the word `inbox` showed let `in''box` or a variable run the
+    listing unnoted, so a model's run counted as shown to the person. Every Bash call in an onboarded project leaves
+    one; the person's `!` fires no hook and leaves none."""
+    root = onboarded(tmp_path / "project")
+    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
+    payload = {"cwd": str(root), "tool_name": "Bash", "session_id": "s9",
+               "tool_input": {"command": command, "description": "d"}}
+    assert hooks.run_hook("guard", io.StringIO(json.dumps(payload)), out=io.StringIO()) == 0
+    assert toolcall.by_tool(tmp_path / "state", ["s9"], dt.datetime.now().timestamp())
+
+
+def test_a_bash_call_outside_a_project_leaves_nothing(tmp_path, monkeypatch):
+    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
+    payload = {"cwd": str(tmp_path), "tool_name": "Bash", "session_id": "s9",
+               "tool_input": {"command": "ls", "description": "d"}}
+    assert hooks.run_hook("guard", io.StringIO(json.dumps(payload)), out=io.StringIO()) == 0
+    assert not (tmp_path / "state" / "watch").exists()

@@ -30,7 +30,7 @@ PEERS_SHOWN = 8
 #: `flotilla` lets the person guard see its CLI however the word `approve` is quoted.
 GUARD_TRIGGERS = ("checkout", "restore", "reset", "clean", "switch", "sed", "push", "gh", "approve", "flotilla",
                   "pytest", "py.test", "playwright", "vitest", "jest", "cargo", "go test", "npm", "pnpm", "yarn",
-                  "npx", "bun", "tox", "nox", "inbox")
+                  "npx", "bun", "tox", "nox")
 
 
 def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime | None = None) -> int:
@@ -57,10 +57,9 @@ def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime
     if event == "guard":
         tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
         command = tool_input.get("command") if isinstance(tool_input.get("command"), str) else ""
+        _note_tool_call(payload, cwd)   # before the fast path: no word of the command decides it (security review)
         if not any(word in command for word in GUARD_TRIGGERS):
             return 0
-        if "inbox" in command:
-            _note_tool_call(payload)
         try:   # an exception here exits non-zero, which Claude Code does not read as a refusal: the push would run
             return _guard(command, cwd, payload, out, now)
         except Exception as err:  # noqa: BLE001 - the guards' own rule for a failure, decided here when they fell
@@ -91,12 +90,18 @@ def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime
         return 0
 
 
-def _note_tool_call(payload: dict) -> None:
-    """A model's Bash call naming `inbox`: the listing it runs is not shown to the person (`watch/toolcall.py`)."""
+def _note_tool_call(payload: dict, cwd: Path) -> None:
+    """Any Bash tool call in an onboarded project: a listing it runs is not shown to the person
+    (`watch/toolcall.py`). Its words decide nothing - `in''box` or a variable runs the same listing."""
     try:
+        from flotilla.core.config import find_project
+        if find_project(cwd) is None:
+            return
         from flotilla.core import paths as _paths
         from flotilla.watch import toolcall
-        toolcall.note(_paths.state_dir(), str(payload.get("session_id") or ""), time.time())
+        state = _paths.state_dir()
+        _paths.ensure_private(state)
+        toolcall.note(state, str(payload.get("session_id") or ""), time.time())
     except Exception:  # noqa: BLE001 - a note that cannot be left over-reports "never shown"; the call still runs
         return
 
@@ -236,9 +241,9 @@ def _prompt(ctx, payload, out, now) -> int:
     from flotilla.core import paths
     from flotilla.core.storage import LocalLogStore
     from flotilla.fleet import lead
-    from flotilla.watch import render, throttle
+    from flotilla.watch import inbox, render, throttle
     from flotilla.watch.whose import WAITING
-    blocks, keys = [], []
+    blocks, keys, entries = [], [], []
     current = (ctx.me.name or "") if getattr(ctx, "me", None) is not None else None
     title = lead.due(LocalLogStore(paths.state_dir() / "fleet"), str(payload.get("session_id") or ""),
                      current=current, now=now)
@@ -248,7 +253,10 @@ def _prompt(ctx, payload, out, now) -> int:
         blocks.append(f"flotilla: the ledger could not be read: {ctx.ledger_error}")
     elif ctx.me is not None:
         mine = [item for item in ctx.mine() if item.kind != WAITING]
-        fleet_items = ctx.fleet() if ctx.is_orchestrator else []
+        everything = ctx.fleet()
+        entries = inbox.collect(ctx, fleet_items=everything)
+        # what waits on the person is counted in its own line on every prompt, never folded as standing (0.26.0)
+        fleet_items = [item for item in everything if not inbox.covers(item)] if ctx.is_orchestrator else []
         if mine:
             blocks += ["flotilla - your move:", *render.lines(mine, now)]
         fleet_keys = [_fleet_key(item) for item in fleet_items]
@@ -264,6 +272,8 @@ def _prompt(ctx, payload, out, now) -> int:
             ([f"standing|{standing}"] if standing else [])
     keys = keys or blocks
     state = ctx.ledger.state_dir if ctx.ledger is not None else paths.state_dir()
+    shown_line = _persons_line(ctx, payload, entries, now) if ctx.ledger is not None and ctx.me is not None else ""
+    model_line = inbox.model_line(entries) if ctx.is_orchestrator else ""
     if title:   # the person's own session leads the fleet: it takes the orchestrator's name now (W9)
         unseen = lead.offered(LocalLogStore(paths.state_dir() / "fleet"),
                               str(payload.get("session_id"))) > lead.ASK_AFTER
@@ -275,13 +285,37 @@ def _prompt(ctx, payload, out, now) -> int:
             note += (f"\nClaude Code has not shown this name after {lead.ASK_AFTER} messages - ask the person to type "
                      f"`/rename {title}` and then send any message; `--fill` waits for the name.")
         body = {"hookEventName": "UserPromptSubmit", "sessionTitle": title,
-                "additionalContext": "\n".join([note, *blocks])}
-        print(json.dumps({"hookSpecificOutput": body}), file=out)
+                "additionalContext": "\n".join([note, *blocks, *([model_line] if model_line else [])])}
+        print(json.dumps({"hookSpecificOutput": body, **({"systemMessage": shown_line} if shown_line else {})}),
+              file=out)
         return 0
-    if not throttle.due(state, ctx.session_id, throttle.digest(keys) if keys else "", now):
+    said = blocks if throttle.due(state, ctx.session_id, throttle.digest(keys) if keys else "", now) else []
+    if not shown_line and not model_line:
+        if said:
+            print("\n".join(said), file=out)
         return 0
-    print("\n".join(blocks), file=out)
+    told = "\n".join([*said, *([model_line] if model_line else [])])
+    answer = {"systemMessage": shown_line} if shown_line else {}
+    if told:   # the model's context; the person's line goes past the model, as the hook's systemMessage
+        answer["hookSpecificOutput"] = {"hookEventName": "UserPromptSubmit", "additionalContext": told}
+    print(json.dumps(answer), file=out)
     return 0
+
+
+def _persons_line(ctx, payload, entries, now) -> str:
+    """The person's line when it is due on this prompt, and the record of it (`watch/shown.py`): shown only on a
+    prompt that can be the person's, recorded as shown only in an interactive session."""
+    from flotilla.core import paths
+    from flotilla.watch import attention, inbox, shown
+    if not shown.persons_prompt(payload.get("prompt")):
+        return ""
+    state, repo = ctx.ledger.state_dir, ctx.ledger.repo_key
+    mode, every = attention.mode(paths.state_dir())
+    due = shown.line_due(shown.load(state, repo), entries, mode=mode, every=every, now=now)
+    interactive = getattr(ctx.me, "kind", "") == "interactive"
+    shown.remember(state, repo, now=now, line_entries=entries if due else None, clear_line=not entries,
+                   shown_keys=[entry.key for entry in entries] if due and interactive else (), prompt=True)
+    return inbox.person_line(entries) if due else ""
 
 
 def _stop(ctx, payload, out, now) -> int:

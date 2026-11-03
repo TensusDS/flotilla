@@ -1,11 +1,12 @@
-"""A Bash tool call that names `inbox`, noted by the guard hook so the listing it runs records nothing as shown.
+"""A Bash tool call in an onboarded project, noted by the guard hook so a listing it runs records nothing as shown.
 
 `caller.person_refusal` passes a model in the person's own interactive session. What tells the two apart is the
 door: a Bash tool call fires the PreToolUse hook, a command the person types with `!` does not (measured on Claude
-Code 2.1.287, as for `approve` in `guards/person.py`). The guard leaves a note keyed by the session; the listing
-that runs under that session within the window uses it up and records nothing. A note the guard could not see - a
-command that hides the word - is the limit the person guard names; a missed note over-reports "never shown" only
-when the person's own run follows within the window, which errs the safe way.
+Code 2.1.287, as for `approve` in `guards/person.py`). The guard leaves a note keyed by the session for every Bash
+call, whatever its words: a note left only when the word `inbox` showed let `in''box` or a variable run the listing
+unnoted (security review of eadba0b). The listing that runs under that session within the window uses the note up
+and records nothing. The person's own `!` run within the window of the model's last Bash call is not recorded
+either: an over-reported "never shown", the safe way.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-WINDOW = 60.0   # seconds between the hook and the command it let run
+WINDOW = 30.0   # seconds between the hook and the command it let run
 
 
 def _path(state_dir, session_id: str) -> Path:

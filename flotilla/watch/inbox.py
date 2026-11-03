@@ -140,3 +140,29 @@ def counts(entries) -> dict[str, int]:
     counted["blocker"] = sum(entry.blocker for entry in entries)
     counted["total"] = len(entries)
     return counted
+
+
+def _breakdown(entries) -> str:
+    counted = counts(entries)
+    parts = [f"{counted[group]} {LABELS[group][0 if counted[group] == 1 else 1]}" for group in GROUPS
+             if counted[group]]
+    text = ", ".join(parts)
+    return f"{counted['urgent']} urgent; {text}" if counted["urgent"] else text
+
+
+def person_line(entries) -> str:
+    """The line flotilla puts on the person's own screen; "" when nothing waits on them."""
+    if not entries:
+        return ""
+    verb = "waits" if len(entries) == 1 else "wait"
+    return f"flotilla: {len(entries)} {verb} on you ({_breakdown(entries)}) - `flotilla inbox` lists them by number"
+
+
+def model_line(entries) -> str:
+    """The orchestrator's own line, on every prompt: the same count, and where the answer comes from."""
+    if not entries:
+        return ""
+    verb = "waits" if len(entries) == 1 else "wait"
+    return (f"flotilla - {len(entries)} {verb} on the person ({_breakdown(entries)}). Answer the person's status "
+            "questions from `flotilla inbox`, not from memory; never say nothing waits on them while this count is "
+            "above zero. Put a wait off only with `flotilla work hold <branch> --until \"the person\" --why ...`.")

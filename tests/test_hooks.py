@@ -404,23 +404,20 @@ def test_when_even_the_guards_rule_cannot_be_read_the_last_resort_decides(tmp_pa
 
 def test_the_orchestrator_is_told_what_is_new_and_the_rest_in_one_line(tmp_path):
     """Twosuns orchestrator, 0.7.16: the prompt hook printed the same twenty 'waits on the person' every time one
-    line changed - a day of the same list, paid in context each turn. New items are printed; the standing ones are
-    counted in one line."""
+    line changed - a day of the same list, paid in context each turn. 0.26.0 keeps the list off and the count on:
+    what waits on the person is one counted line on every prompt, and is no longer folded into 'standing' (the
+    person inbox design); `flotilla inbox` lists them."""
     orch, main = sess("orchestrator 1", state="working"), sess("main session 1", state="working")
     fleet_now = [orch, main]
     asked = [row(id=f"r{n}", state="fixing", branch=f"feat/{n}", owner="main session 1", waiting_on="the person",
                  note=f"question {n}") for n in range(20)]
-    first = call("prompt", tmp_path, context(tmp_path, me=orch, sessions=fleet_now, rows_=rows(*asked)))
-    assert first.count("waits on the person") == 20
+    first = said(call("prompt", tmp_path, context(tmp_path, me=orch, sessions=fleet_now, rows_=rows(*asked))))[0]
+    assert "waits on the person:" not in first and "20 wait on the person" in first
     one_more = [*asked, row(id="r99", state="fixing", branch="feat/new", owner="main session 1",
                             waiting_on="the person", note="the new one")]
-    second = call("prompt", tmp_path, context(tmp_path, me=orch, sessions=fleet_now, rows_=rows(*one_more)),
-                  now=NOW + dt.timedelta(minutes=5))
-    assert "the new one" in second and "question 3" not in second
-    assert "20 standing item(s)" in second and "flotilla watch --once" in second
-    later = call("prompt", tmp_path, context(tmp_path, me=orch, sessions=fleet_now, rows_=rows(*one_more)),
-                 now=NOW + dt.timedelta(minutes=50))
-    assert "waits on the person" not in later and "21 standing item(s)" in later
+    later = said(call("prompt", tmp_path, context(tmp_path, me=orch, sessions=fleet_now, rows_=rows(*one_more)),
+                      now=NOW + dt.timedelta(minutes=50)))[0]
+    assert "21 wait on the person" in later and "standing item" not in later and "flotilla inbox" in later
 
 
 def test_an_item_whose_wording_moves_is_not_news(tmp_path):
@@ -537,3 +534,115 @@ def test_session_start_stays_quiet_for_an_unpinned_marketplace(tmp_path, monkeyp
                            which=lambda name: "/usr/bin/" + name, read=lambda: [], os_name="linux",
                            python=(3, 12, 1), setup=False, home=tmp_path)
     assert not [line for line in doctor.render(found, quiet=True) if "marketplace" in line]
+
+
+# --- what waits on the person reaches the person (person inbox design, 0.26.0) ---
+
+def said(raw):
+    """(the model's context, the line on the person's screen) from one prompt hook's output."""
+    if raw.startswith("{"):
+        body = json.loads(raw)
+        return body.get("hookSpecificOutput", {}).get("additionalContext", ""), body.get("systemMessage", "")
+    return raw, ""
+
+
+def person_rows():
+    """The twosuns trace's shape: waits on the person recorded by sender, judge and main sessions, one hold until the
+    person, one row the orchestrator 'parked' in words."""
+    def asked(n, post, state):
+        history = [{"at": "2026-09-27T10:00:00+00:00", "move": "wait", "by": f"{post} session 1", "post": post}]
+        return row(id=f"r{n}", state=state, branch=f"feat/{n}", owner="main session 1", waiting_on="the person",
+                   note=f"question {n}", history=history)
+    found = [asked(n, post, state) for n, (post, state) in
+             enumerate([("sender", "accepted"), ("judge", "shipped"), ("main", "fixing")] * 6 + [("main", "claimed")] * 2)]
+    found.append(row(id="r90", state="accepted", branch="feat/held", held_until="the person", held_by="orchestrator 1",
+                     held_why="after the teaser"))
+    found.append(row(id="r91", state="fixing", branch="feat/parked", owner="main session 1", waiting_on="the person",
+                     note="parked until after the teaser"))
+    return found
+
+
+FLEET = [sess("orchestrator 1", state="working"), sess("main session 1", state="working")]
+
+
+def orchestrator_prompt(tmp_path, found, minutes, me=None, prompt="anything that needs me?"):
+    ctx = context(tmp_path, me=me or FLEET[0], sessions=FLEET, rows_=rows(*found))
+    return said(call("prompt", tmp_path, ctx, payload={"prompt": prompt}, now=NOW + dt.timedelta(minutes=minutes)))
+
+
+def test_person_waits_are_counted_on_every_prompt_and_never_folded(tmp_path):
+    """Twosuns, 2026-10-04..16: 144 rows waited on the person and the hook folded them into 'standing item(s), said
+    before and unchanged' at the moment the person typed; 104 were never named again. On 0.25.0 this fails."""
+    found = person_rows()
+    for minutes in (5, 50, 51, 200):
+        context_, _line = orchestrator_prompt(tmp_path, found, minutes)
+        assert "22 wait on the person" in context_, (minutes, context_)
+        assert "standing item" not in context_
+        assert "flotilla inbox" in context_
+
+
+def test_the_persons_line_shows_once_until_the_queue_changes(tmp_path):
+    found = person_rows()
+    _, first = orchestrator_prompt(tmp_path, found, 5)
+    assert first.startswith("flotilla: 22 wait on you") and "flotilla inbox" in first and "1 put off" in first
+    assert orchestrator_prompt(tmp_path, found, 10)[1] == ""
+    more = [*found, row(id="r99", state="fixing", branch="feat/new", owner="main session 1", waiting_on="the person",
+                        note="the new one")]
+    assert orchestrator_prompt(tmp_path, more, 15)[1].startswith("flotilla: 23 wait on you")
+
+
+def test_the_line_comes_back_after_an_hour_away(tmp_path):
+    found = person_rows()
+    orchestrator_prompt(tmp_path, found, 5)
+    assert orchestrator_prompt(tmp_path, found, 30)[1] == ""
+    assert orchestrator_prompt(tmp_path, found, 30 + 61)[1] != ""
+
+
+def test_digest_waits_for_its_period_but_not_for_a_blocker(tmp_path):
+    from flotilla.core import paths
+    from flotilla.onboard.machine import set_person_keys
+    set_person_keys(paths.state_dir(), attention="digest", attention_every=30)
+    found = person_rows()
+    assert orchestrator_prompt(tmp_path, found, 0)[1] != ""
+    more = [*found, row(id="r98", state="claimed", branch="feat/more", owner="main session 1",
+                        waiting_on="the person", note="not urgent",
+                        history=[{"move": "wait", "by": "main session 1", "post": "main"}]),
+            row(id="r97", state="claimed", branch="feat/busy", owner="main session 1")]
+    assert orchestrator_prompt(tmp_path, more, 10)[1] == ""      # changed, but nothing new blocks the fleet
+    hurry = [*more, row(id="r96", state="fixing", branch="feat/hurry", owner="main session 1",
+                        waiting_on="the person", note="the demo", urgent_at="2026-09-27T12:00:00+00:00")]
+    assert orchestrator_prompt(tmp_path, hurry, 12)[1] != ""      # a blocker does not wait for the period
+    assert orchestrator_prompt(tmp_path, hurry, 20)[1] == ""
+    assert orchestrator_prompt(tmp_path, hurry, 43)[1] != ""      # the period ran
+
+
+def test_a_seat_gets_the_line_but_no_instruction(tmp_path):
+    context_, line = orchestrator_prompt(tmp_path, person_rows(), 5, me=FLEET[1])
+    assert line.startswith("flotilla: 22 wait on you")
+    assert "wait on the person" not in context_
+
+
+def test_a_prompt_that_is_not_the_persons_shows_and_records_nothing(tmp_path):
+    from flotilla.watch import shown
+    found = person_rows()
+    for prompt in ('<cross-session-message from="x">hi</cross-session-message>', "<task-notification>\n<task-id>b1"):
+        context_, line = orchestrator_prompt(tmp_path, found, 5, prompt=prompt)
+        assert line == "" and "22 wait on the person" in context_
+    assert shown.load(tmp_path / "state", "repo")["first"] == {}
+
+
+def test_only_an_interactive_session_records_shown(tmp_path):
+    from flotilla.watch import shown
+    found = person_rows()
+    orchestrator_prompt(tmp_path, found, 5)   # FLEET's orchestrator is a background session: shown, not recorded
+    assert shown.load(tmp_path / "state", "repo")["first"] == {}
+    person = sess("orchestrator 1", kind="interactive")
+    orchestrator_prompt(tmp_path, [*found, row(id="r99", state="fixing", branch="feat/new", waiting_on="the person",
+                                               note="new")], 6, me=person)
+    assert len(shown.load(tmp_path / "state", "repo")["first"]) == 23
+
+
+def test_the_line_is_one_per_project(tmp_path):
+    found = person_rows()
+    assert orchestrator_prompt(tmp_path, found, 5)[1] != ""
+    assert orchestrator_prompt(tmp_path, found, 6, me=FLEET[1])[1] == ""

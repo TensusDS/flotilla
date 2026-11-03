@@ -63,3 +63,46 @@ def mark(state_dir, repo_key: str, keys, at: str) -> None:
     for key in keys:
         data["first"].setdefault(key, at)
     _save(state_dir, repo_key, data)
+
+
+def _signature(entries) -> list[str]:
+    return sorted(f"{entry.key}|{entry.group}" for entry in entries)
+
+
+def line_due(state: dict, entries, *, mode: str, every: int, now: dt.datetime) -> bool:
+    """Whether the person's line shows on this prompt. `all`: when what waits changed since it last showed, or the
+    person comes back after an hour away; `digest`: once per period, and at once for a new blocker."""
+    if not entries:
+        return False
+    last = state.get("line") or {}
+    try:
+        at = dt.datetime.fromisoformat(last["at"])
+    except (KeyError, TypeError, ValueError):
+        return True
+    if mode == "digest":
+        blockers = {entry.key for entry in entries if entry.blocker}
+        return now - at >= dt.timedelta(minutes=every) or bool(blockers - set(last.get("blockers") or []))
+    if _signature(entries) != last.get("signature"):
+        return True
+    try:
+        prompted = dt.datetime.fromisoformat(state.get("prompt_at") or "")
+    except ValueError:
+        return True
+    return now - prompted > AWAY
+
+
+def remember(state_dir, repo_key: str, *, now: dt.datetime, line_entries=None, clear_line: bool = False,
+             shown_keys=(), prompt: bool = False) -> None:
+    """One write for one prompt: the line shown (or cleared), the keys counted as shown, the person's prompt time."""
+    data = load(state_dir, repo_key)
+    at = now.isoformat(timespec="seconds")
+    if clear_line:
+        data["line"] = {}
+    if line_entries is not None:
+        data["line"] = {"at": at, "signature": _signature(line_entries),
+                        "blockers": sorted(entry.key for entry in line_entries if entry.blocker)}
+    for key in shown_keys:
+        data["first"].setdefault(key, at)
+    if prompt:
+        data["prompt_at"] = at
+    _save(state_dir, repo_key, data)
