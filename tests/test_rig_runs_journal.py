@@ -379,7 +379,7 @@ def test_later_shared_runs_wait_while_an_exclusive_run_waits(tmp_path):
     assert r.start_run(one.id, m.id, alive=ALIVE, roomy=True)
     queue(r, s, pid=2, exclusive=True)
     later = queue(r, s, pid=3)
-    assert r.would_start(later.id, m.id, alive=ALIVE) == "held for exclusive j2, which waits for a machine to empty"
+    assert r.would_start(later.id, m.id, alive=ALIVE) == "held for exclusive j2, which has not started yet"
     assert r.start_run(later.id, m.id, alive=ALIVE, roomy=True) is None
 
 

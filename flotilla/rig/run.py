@@ -177,6 +177,12 @@ class Run:
         said, market_again, no_offer, began = "", 0.0, False, time.monotonic()
         told = None   # what this run last said of its place: said again only when the place or the reason moves
         while True:
+            mine, now_session = self.rig.runs().get(self.run.id), self.rig.sessions().get(session.id)
+            if mine is None or mine.state != j.WAITING or now_session is None or now_session.state != j.OPEN:
+                # the session closed under it, or the reaper ended it: the journal's verdict stands (final review)
+                self.verdict = mine.verdict if mine is not None and mine.state == j.DONE else "session ended"
+                self.code, self.reason = 3, f"session {session.id} closed while it waited"
+                return False
             machines = [m for m in self.rig.machines().values() if m.session == session.id]
             reasons = {}
             for machine in machines:
@@ -362,15 +368,23 @@ class Run:
 
     def gets(self, gets, root, types, *, cap_seconds=None):
         """Bring back the --get paths. With `cap_seconds` (a stop), the transfer is cut at that many seconds and
-        nothing partial is placed."""
-        self.got = True
+        nothing partial is placed. Marked done only once the transfer ended, so a stop that cuts the ordinary fetch
+        leaves it to the stop's own (final review); the spool is removed however it ends."""
         if not gets or self.lost:
+            self.got = True
             return
         argv = self.box.argv(remote.PACK, self.paths.run, *gets)
         cap = transfer.CAP + 2 ** 20
-        cut = threading.Event()
         with tempfile.NamedTemporaryFile(prefix="flotilla-get-", suffix=".tar", delete=False) as handle:
             spool = Path(handle.name)
+        try:
+            self._fetch(argv, spool, cap, cap_seconds, gets, root, types)
+        finally:
+            spool.unlink(missing_ok=True)
+
+    def _fetch(self, argv, spool, cap, cap_seconds, gets, root, types):
+        cut = threading.Event()
+        with open(spool, "wb") as handle:
             process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                        stderr=subprocess.DEVNULL)
             timer = threading.Timer(cap_seconds, lambda: (cut.set(), process.kill())) if cap_seconds else None
@@ -388,6 +402,7 @@ class Run:
             finally:
                 if timer is not None:
                     timer.cancel()
+        self.got = True
         try:
             if cut.is_set():
                 print(f"flotilla: bringing back --get was cut at {cap_seconds:g} s after the stop; nothing was placed",
@@ -405,8 +420,6 @@ class Run:
                       + " - add a type with [rig] get_types if it is one", flush=True)
         except transfer.Refused as err:
             print(f"flotilla: nothing was placed: {err}", flush=True)
-        finally:
-            spool.unlink(missing_ok=True)
 
 
 class _Ended(Exception):
@@ -463,6 +476,8 @@ def _main(state: Path, settings: rs.RigSettings, args) -> int:
     task.run = rig.queue_run(session.id, who=who, project=key, revision=revision, program=program, ladder=ladder,
                              pid=os.getpid(), mark=mark, exclusive=exclusive, ceiling=int(ceiling))
     place = task.place(session)
+    if place is not None:
+        _say(f"rig run {task.run.id} queued: {line.says(place, session)}")
     late = line.warning(place, session) if place is not None else ""
     if late:
         _say(f"rig run {task.run.id}: {late}")
@@ -516,12 +531,13 @@ def _main(state: Path, settings: rs.RigSettings, args) -> int:
 
 def _wait(asked, session, now) -> float:
     """How long a run stands in line: what the caller asked, else until its session ends (rig queue design, A2)."""
-    if asked is not None:
-        return float(asked)
     try:
-        return max(1.0, (dt.datetime.fromisoformat(session.until) - now).total_seconds())
+        left = max(1.0, (dt.datetime.fromisoformat(session.until) - now).total_seconds())
     except (TypeError, ValueError):
-        return DEFAULT_WAIT
+        left = None
+    if asked is not None:
+        return float(asked) if left is None else min(float(asked), left)
+    return DEFAULT_WAIT if left is None else left
 
 
 def _phases(task: Run, root, revision, puts, gets, pairs, command, profile, ceiling):

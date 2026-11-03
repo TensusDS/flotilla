@@ -195,9 +195,10 @@ def run_lines(rig: j.Rig, now: dt.datetime) -> list[str]:
     runs = rig.runs()
     hist = packing.history(runs, now=now)
     machines = rig.machines()
-    everyone = lambda pid, mark: True   # the screen lists every waiting run the journal holds
+    from flotilla.rig import commands
+    alive = commands._alive()   # a dead waiting run is listed, but holds no place in the line
     places = {place.run.id: place for session_id in {r.session for r in runs.values() if r.state == j.WAITING}
-              for place in line.places(rig, session_id, now, everyone)}
+              for place in line.places(rig, session_id, now, alive)}
 
     def kind(run) -> str:
         return "exclusive" if run.exclusive else "shared"

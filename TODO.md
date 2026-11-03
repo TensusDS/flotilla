@@ -29,6 +29,26 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
   session waiting at its prompt flickers between samples; the shown file is not under `guards/files.py`; `/loop` and
   wakeup prompt shapes beyond CronCreate are not measured. *(checked 2026-11-03 on 0.26.0: still P)*
 
+## From the final review of the rig queue, part A (2026-11-03, 0.27.0)
+
+- **Ctrl-C during a stopped run's fetch aborts its cleanup.** `_cleaning` makes SIGTERM and SIGHUP harmless while
+  the `finally` runs, not SIGINT: a KeyboardInterrupt during the up-to-120 s `--get` after a stop skips DROP and
+  `finish_run`, and the run stays `running` until the reaper calls it `gone`. Interactive use only; seats run it in
+  the background. *(open: flotilla/rig/run.py, main's signal set)*
+- **The ceiling exception can outlast one pass when the service misbehaves.** A draining machine whose destroy the
+  service took stays out of the count until it is unlisted or goes STUCK - up to three passes (~15 min) if the
+  service keeps listing it; when it then goes STUCK, the next session's machine already exists, so ceiling + 1
+  machines bill until someone acts on the STUCK alarm. Follows from the design's rule (section A5).
+  *(open: flotilla/rig/journal.py `_counts`)*
+- **`test_a_run_stopped_before_its_command_fetches_nothing` cannot tell "fetch skipped" from "fetch found
+  nothing"**, and its SIGTERM races the command's start. It guards the 120 s hang only.
+  *(open: tests/test_rig_run.py)*
+- **A rig test run from a file outside `tests/` writes the live rig journal.** The reviewer ran a scratch test with
+  `--rootdir=tests` from its scratchpad; `tests/conftest.py` did not load, the state-dir fixture never redirected,
+  and the `world` fixture wrote session `s85` and request `r8` into `~/.local/state/flotilla/rig/rig.jsonl` (the
+  reaper closed `s85` at the next pass; `r8` names a project no orchestrator has). Idea: the rig test worlds refuse
+  to start when the state dir is the real one. *(open: tests/test_rig_up.py `world`)*
+
 ## From two field fleets, twosuns and void-lanes-online (2026-10-31..11-01, reported on 0.21.0 and 0.23.2)
 
 Order, the person's call (2026-11-01): the lane's fixes first (0.24.1), then the lane's modes (0.25.0), then the

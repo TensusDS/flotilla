@@ -79,7 +79,7 @@
   - Waiting-reason texts. They are exact, because the screen and the `rig run` output show them:
     - `"{rid} runs alone on {mid} (exclusive)"`
     - `"exclusive: waits for {mid} to empty ({ids} run on it)"`
-    - `"held for exclusive {rid}, which waits for a machine to empty"`
+    - `"held for exclusive {rid}, which has not started yet"`
 
 - [ ] **Step 1: Write the failing tests.** Use the helpers `queue`, `shaped_machine` and `ready_machine`, adding an
   `exclusive=` keyword to `queue` and `queue_ladder`.
@@ -94,7 +94,7 @@
   - `test_later_shared_runs_wait_while_an_exclusive_run_waits`
     - j1 (shared) running.
     - j2 (exclusive) waiting.
-    - j3 (shared) waiting gets `"held for exclusive j2, which waits for a machine to empty"`, even though m1 has room.
+    - j3 (shared) waiting gets `"held for exclusive j2, which has not started yet"`, even though m1 has room.
   - `test_an_earlier_shared_run_is_not_held_by_a_later_exclusive_one`
     - Waiting: j1 shared, j2 exclusive.
     - Nothing runs.

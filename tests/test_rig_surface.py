@@ -321,7 +321,9 @@ def test_no_idle_item_when_nothing_waits_or_the_idle_is_short(tmp_path, monkeypa
 
 # -- the line on screen (rig queue design, A3) ---------------------------------------------------------------------
 
-def line_world(tmp_path, hours=3):
+def line_world(tmp_path, monkeypatch, hours=3):
+    from flotilla.rig import commands
+    monkeypatch.setattr(commands, "ALIVE", lambda pid, mark: True)
     state = state_on(tmp_path)
     r = rig(state)
     s = r.open_session("p", "x", hours=hours, budget=2.0)
@@ -342,8 +344,8 @@ def line_world(tmp_path, hours=3):
     return state
 
 
-def test_rig_lines_show_the_line_in_order_with_starts(tmp_path):
-    state = line_world(tmp_path)
+def test_rig_lines_show_the_line_in_order_with_starts(tmp_path, monkeypatch):
+    state = line_world(tmp_path, monkeypatch)
     lines = surface.run_lines(rig(state), T0)
     running = next(line for line in lines if line.startswith("  run j3"))
     second, third = (next(line for line in lines if line.startswith(f"  run {rid}")) for rid in ("j4", "j5"))
@@ -352,16 +354,33 @@ def test_rig_lines_show_the_line_in_order_with_starts(tmp_path):
     assert lines.index(second) < lines.index(third) and "DOES NOT FIT" not in second
 
 
-def test_a_run_that_does_not_fit_is_marked_on_screen(tmp_path):
-    state = line_world(tmp_path, hours=0.5)
+def test_a_run_that_does_not_fit_is_marked_on_screen(tmp_path, monkeypatch):
+    state = line_world(tmp_path, monkeypatch, hours=0.5)
     lines = surface.run_lines(rig(state), T0)
     assert "DOES NOT FIT the session" in next(line for line in lines if line.startswith("  run j5"))
     assert "DOES NOT FIT" not in next(line for line in lines if line.startswith("  run j4"))
 
 
-def test_with_no_machine_up_the_line_says_so(tmp_path):
+def test_with_no_machine_up_the_line_says_so(tmp_path, monkeypatch):
+    from flotilla.rig import commands
+    monkeypatch.setattr(commands, "ALIVE", lambda pid, mark: True)
     state = state_on(tmp_path)
     r = rig(state)
     s = r.open_session("p", "x", hours=3, budget=2.0)
     r.queue_run(s.id, who="main 3", project="P", revision="a" * 40, program="node", ladder=(), pid=7, mark="m")
     assert "#1 in line, shared, starts once a machine is up" in " ".join(surface.run_lines(rig(state), T0))
+
+
+
+def test_the_screen_leaves_dead_waiting_runs_out_of_the_line(tmp_path, monkeypatch):
+    from flotilla.rig import commands
+    monkeypatch.setattr(commands, "ALIVE", lambda pid, mark: pid != 404)
+    state = state_on(tmp_path)
+    r = rig(state)
+    s = r.open_session("p", "x", hours=3, budget=2.0)
+    for pid in (404, 7):
+        r.queue_run(s.id, who="main 3", project="P", revision="a" * 40, program="node", ladder=(), pid=pid,
+                    mark="m")
+    lines = surface.run_lines(rig(state), T0)
+    alive = next(line for line in lines if line.startswith("  run j2"))
+    assert "#1 in line" in alive and not any("#2 in line" in line for line in lines)

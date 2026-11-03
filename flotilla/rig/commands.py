@@ -53,7 +53,9 @@ def _hhmm(moment) -> str:
     return when.astimezone().strftime("%H:%M")
 
 
-STOP_WAIT = 90.0   # how long `rig stop` waits for the run's own rig run to end it
+#: how long `rig stop` waits for the run's own rig run to end it: past the 120 s a stopped run spends bringing back
+#: its --get paths (rig run's GET_ON_STOP), and its ssh calls around them
+STOP_WAIT = 180.0
 
 
 def _alive():
@@ -670,7 +672,7 @@ def _stop(state: Path, args) -> int:
                     break
                 time.sleep(0.5)
             else:   # its own cleanup is still going: what it records stands, and nothing is recorded here
-                print(f"run {run.id}: its rig run (pid {run.pid}) has not ended after {STOP_WAIT:g} s; not recorded")
+                print(f"run {run.id}: its rig run (pid {run.pid}) has not ended after {STOP_WAIT:g} s (it may still be bringing back its --get paths); not recorded")
                 return 1
             done = rig.runs()[run.id]
             if done.state == j.DONE:

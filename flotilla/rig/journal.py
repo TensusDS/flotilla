@@ -476,7 +476,7 @@ class Rig:
             return f"{alone.id} runs alone on {machine.id} (exclusive)"
         first = min((item for item in live if item.exclusive), key=lambda item: _number(item.id), default=None)
         if first is not None and _number(run.id) > _number(first.id):
-            return f"held for exclusive {first.id}, which waits for a machine to empty"
+            return f"held for exclusive {first.id}, which has not started yet"
         if run.exclusive:
             earlier = min((item for item in live if _number(item.id) < _number(run.id)),
                           key=lambda item: _number(item.id), default=None)

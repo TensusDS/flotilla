@@ -865,3 +865,76 @@ def test_a_run_stopped_before_its_command_fetches_nothing(world, box, tree, tmp_
     child.wait(60)
     said = (tmp_path / "child.log").read_text(errors="replace")
     assert time.time() - began < 30 and "brought back" not in said and not (tree / "shots").exists(), said[-2000:]
+
+
+# -- the final review of 0.27.0 ------------------------------------------------------------------------------------
+
+def test_a_waiting_run_leaves_the_line_when_its_session_closes(world, box, tree, monkeypatch):
+    opened(world)
+    rig = journal(world)
+    session = next(s for s in rig.sessions().values() if s.state == j.OPEN)
+    monkeypatch.setattr(run_module, "SLEEP", lambda s: None)
+    task = waiting_task(world, tree, rig, session, ("exact:a",), pid=81)
+    rig.set_session(session.id, j.CLOSING, reason="the person closed it")
+    began = time.monotonic()
+    assert not task.take_room(rig.sessions()[session.id], time.monotonic() + 20)
+    assert time.monotonic() - began < 5 and task.code == 3 and "session" in task.reason, task.reason
+
+
+def test_a_waiting_run_finished_by_the_reaper_stops_waiting(world, box, tree, monkeypatch):
+    opened(world)
+    rig = journal(world)
+    session = next(s for s in rig.sessions().values() if s.state == j.OPEN)
+    monkeypatch.setattr(run_module, "SLEEP", lambda s: None)
+    task = waiting_task(world, tree, rig, session, ("exact:a",), pid=82)
+    rig.finish_run(task.run.id, "session ended", reason="its session is not open")
+    began = time.monotonic()
+    assert not task.take_room(rig.sessions()[session.id], time.monotonic() + 20)
+    assert time.monotonic() - began < 5 and task.verdict == "session ended"
+
+
+def test_an_explicit_wait_never_runs_past_the_sessions_end(world, box, tree, monkeypatch):
+    opened(world, hours=1)
+    _, wait, _ = queued_only(world, tree, monkeypatch, "--wait", "99999")
+    assert abs(wait - 3600.0) < 5
+
+
+def test_rig_stop_waits_longer_than_a_stopped_run_brings_things_back():
+    assert commands.STOP_WAIT >= run_module.GET_ON_STOP + 60
+
+
+def test_a_stop_during_the_fetch_leaves_it_to_be_done_again_and_no_spool(world, box, tree, tmp_path, monkeypatch):
+    import argparse
+    import tempfile as tempfile_module
+    spool_dir = tmp_path / "spool"
+    spool_dir.mkdir()
+    monkeypatch.setattr(tempfile_module, "tempdir", str(spool_dir))
+
+    class Cut:
+        def __init__(self, *a, **k):
+            self.stdout = self
+
+        def read(self, n):
+            raise SystemExit(143)
+
+        def kill(self):
+            pass
+
+        def wait(self, *a):
+            return 0
+    monkeypatch.setattr(run_module.subprocess, "Popen", Cut)
+    task = run_module.Run(world["state"], rs.settings(world["state"]), argparse.Namespace(why="t", root=str(tree)))
+
+    class Box:
+        def argv(self, *a, **k):
+            return ["true"]
+    task.box, task.paths = Box(), type("P", (), {"run": "/x"})()
+    with pytest.raises(SystemExit):
+        task.gets(["shots"], tree, ("txt",))
+    assert task.got is False and list(spool_dir.iterdir()) == []
+
+
+def test_a_queued_run_says_its_place_even_with_no_machine_up(world, box, tree, monkeypatch):
+    opened(world)
+    _, _, out = queued_only(world, tree, monkeypatch)
+    assert "j1 is 1st in line; a machine is raised first" in out

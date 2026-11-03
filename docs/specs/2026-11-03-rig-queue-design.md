@@ -59,7 +59,7 @@ Three things are missing:
   1. A machine with an exclusive run on it starts nothing else. The others wait: `j11 runs alone on m3 (exclusive)`.
   2. An exclusive run starts only on a machine with nothing on it: `exclusive: waits for m3 to empty (j9 runs on it)`.
   3. While an exclusive run waits, every run that arrived after it waits too, on every machine of the session, until
-     the exclusive run has started: `held for exclusive j11, which waits for a machine to empty`.
+     the exclusive run has started: `held for exclusive j11, which has not started yet`.
      - Runs that arrived before it are packed as today.
      - Exclusive runs among themselves go by arrival.
      - This is the rule that keeps an exclusive run from starving behind a stream of shared runs.
