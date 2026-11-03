@@ -12,7 +12,9 @@ xargs, find -exec, functions, aliases or scripts (./ship.sh), nor wrappers with 
 directory named through a variable (cd $D) is unknown: the revert guard then only warns, the push guard refuses.
 The line-number guard does not open sed -f scripts and does not know perl -i, awk -i inplace or ed. What the text
 hides from the push guard, the git pre-push hook catches: it asks git what is pushed. A program named through a
-variable (`$F rig open`) is not seen at all when nothing else in the line names flotilla."""
+variable (`$F rig open`) is not seen at all when nothing else in the line names flotilla. Code handed to an
+interpreter as text (`bash -c`, `python3 -c`, a heredoc) is read only for the person's own moves: one named there is
+refused, and flotilla named there asks the person; a script the session writes and then runs is not read."""
 
 
 @dataclass(frozen=True)

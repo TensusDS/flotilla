@@ -3,6 +3,21 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.26.2 - 2026-11-03
+
+Two holes in what only the person may do.
+
+- **A move only the person makes, wrapped in code, is refused.** `bash -c '... work approve ...'`, `sh -c`,
+  `python3 -c` or a heredoc to an interpreter ran approve, rig enable/disable/open/close/allow-image or attention
+  from a Claude tool call in the person's own session. They are refused now, like the plain line: the orchestrator
+  hands the person the line and never runs it. Code handed to an interpreter that names flotilla but whose move the
+  guard cannot read asks the person in Claude Code's confirmation, in auto mode too. What the guards still do not
+  read - a script the session writes and runs - is named in `flotilla guard --help`.
+- **The approval check reads origin's profile.** A push to trunk where the person authorizes merges asked the ledger
+  with the profile at the local `origin/<trunk>`, which a seat can repoint at a profile whose `approve_paths` miss
+  its work; it reads the revision origin names, as the rest of the push guard does.
+- The orchestrator template is version 26.
+
 ## 0.26.1 - 2026-11-03
 
 The lane journal stops growing without end.

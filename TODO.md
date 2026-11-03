@@ -10,11 +10,6 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 
 ## From the person-inbox build and its reviews (2026-11-03, 0.26.0)
 
-- **A wrapped `approve` passes the person guard in the person's interactive session.** `bash -c '... work approve
-  ...'`, `env X=1 flotilla work approve ...` and `echo b | xargs flotilla work approve` are not refused by
-  `guards/person.py`, and `caller.person_refusal` counts an interactive caller as the person, so a model in the
-  person's own session can approve past both (security review of 5f65ad5, outside the branch; `rig enable` and
-  `attention digest` fail the same way). *(checked 2026-11-03 on 0.26.0: still S - flotilla/guards/person.py:303)*
 - **The person guard refuses `python3 -c "..."` that names a flotilla path** as "a variable or a substitution" (seen
   by the twosuns orchestrator and while building 0.26.0 on heredocs naming the CLI). *(checked 2026-11-03 on 0.26.0:
   still P - flotilla/guards/person.py:303)*
@@ -233,11 +228,6 @@ journal figures: runs under 60 s waited a median 30.6 min for a median 6.8 s run
   run -- sh -c 'npx vitest ... | tail -40'` recorded green: the exit is tail's, inside a shell flotilla does not read.
   The skill says so; the run does not. Idea: warn when a lane command is `sh -c` / `bash -c` whose script ends in a
   pipe without `pipefail`. *(seen 2026-10-01 on 0.7.x: P - flotilla/lane/run.py)*
-- **The ledger the push guard asks reads its profile at the local remote-tracking ref.** `open_ledger` in
-  `_unapproved` takes the profile at `trunk_ref` (local `origin/<trunk>`), which a seat can repoint at a commit
-  carrying an edited `.flotilla/project.toml`; the guard itself reads origin's profile. Found by the final review
-  of 0.21.0 alongside C1 (which no longer trusts that ref for the approval check), not reproduced. *(seen
-  2026-10-27 on 0.21.0: S - flotilla/ledger/commands.py:99, flotilla/guards/push.py:454)*
 - **Code paths ask about trunk's work merged into a branch.** Since the final review of 0.21.0 (C1) nothing is
   excluded by a local ref, so a docs branch that merged trunk is asked about the code trunk brought, unless the
   landing diff alone is used. Idea: exclude below the last shipped row's merge, which `ship` verified on origin.
@@ -588,6 +578,8 @@ Each is a limitation README states today, judged fixable in principle; none is p
 - The onboard skill does not state that background isolation stays on. *(checked 2026-10-04 on 0.7.8: still [P])*
 
 ## Done
+
+- A person's move handed to an interpreter as text is refused, flotilla in such code asks the person; the approval check reads origin's profile (0.26.2).
 
 - The lane journal is compacted past 2 MB, the rest archived; a booking's number is past the highest (0.26.1).
 
