@@ -39,6 +39,37 @@ def capacity() -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 1 else 1
 
 
+#: machine.toml `lane_cpu_factor`: how far past its cores the machine is filled by light runs beside a heavy one.
+#: CPU over-subscription only slows runs; the bounds keep it bounded (lane light runs design, section 2).
+CPU_FACTOR, CPU_FACTOR_BOUNDS = 1.5, (1.0, 4.0)
+
+
+def cpu_factor() -> float:
+    """machine.toml `lane_cpu_factor`, 1.5 when unset, out of 1-4, not a number, or unreadable."""
+    value = _machine().get("lane_cpu_factor", CPU_FACTOR)
+    ok = isinstance(value, (int, float)) and not isinstance(value, bool) and \
+        CPU_FACTOR_BOUNDS[0] <= value <= CPU_FACTOR_BOUNDS[1]
+    return float(value) if ok else CPU_FACTOR
+
+
+def room_for(profile: dict):
+    """What a light run may take, built from each poll's reading: this machine's cores, the factor, the memory
+    available less the profile's floor (read when the grant decides, inside the lock), the foreign runs computing."""
+    from flotilla.core import resources
+    try:   # the cores this process may run on (a container's or a taskset's), not the host's
+        cpus = len(os.sched_getaffinity(0)) or os.cpu_count() or 1
+    except (AttributeError, OSError):
+        cpus = os.cpu_count() or 1
+    floor, factor = machine.memory_floor_mb(profile), cpu_factor()
+
+    def memory_left():
+        available = resources.available_mb()
+        return None if available is None else available - floor
+
+    return lambda reading: book.Room(cpus=cpus, factor=factor, memory_left=memory_left,
+                                     foreign=len(reading.computing))
+
+
 def share() -> str:
     """machine.toml `lane_share`: `fair`, or first come, first served for anything else, unset, or unreadable."""
     value = _machine().get("lane_share", "fifo")
@@ -145,7 +176,7 @@ def booked(root, *, note: str, wait: float, run_for: str = "", as_name=None, com
         ladder = signature.ladder(list(command), tree=str(Path(root).resolve()), project=project)
     with acq.held(lanes, _reader(lanes, table, profile, top, problem), who=_who(as_name), note=note,
                   capacity=capacity, share=share, wait=wait, table=table, run_for=run_for, say=print, command=text,
-                  ladder=ladder, will_run=list(will_run or []), project=project) as grant:
+                  ladder=ladder, will_run=list(will_run or []), project=project, room=room_for(profile)) as grant:
         yield grant
 
 
@@ -168,10 +199,7 @@ def describe_estimate(item, hist) -> str:
     """A booking's estimate as the person reads it, with where it comes from (lane admission, stage 1)."""
     if not item.ladder and not item.will_run:
         return "estimate: none (an older flotilla booked it)" if item.rule is None else "estimate: none (taken by hand)"
-    if item.will_run:
-        found = estimate.receipt_estimate(list(item.will_run), hist, project=item.project)
-    else:
-        found = estimate.estimate(list(item.ladder), hist, project=item.project)
+    found = estimate.for_booking(item, hist)
     seconds = "? s" if found.seconds is None else f"{found.seconds:.0f} s"
     cores = "? cores" if found.cores is None else f"{found.cores:g} cores"
     return f"estimate: {seconds}, {cores}, {_size(found.peak_mb)} ({found.source})"
@@ -180,6 +208,11 @@ def describe_estimate(item, hist) -> str:
 def _foreign(table, proc, tail: str) -> str:
     where = visible(table.cwd(proc.pid) or "an unknown directory")
     return f"foreign run pid {proc.pid} `{visible(proc.command[:80])}` in {where}{tail}"
+
+
+def _ordinal(number: int) -> str:
+    suffix = "th" if number % 100 in (11, 12, 13) else {1: "st", 2: "nd", 3: "rd"}.get(number % 10, "th")
+    return f"{number}{suffix}"
 
 
 def _status(args) -> int:
@@ -201,14 +234,24 @@ def _status(args) -> int:
     found = lanes.bookings()   # read once: each waiter's reason would read the whole journal again
     held, waiting = lanes.holders(found), lanes.waiters(found)
     reading = _reader(lanes, table, profile, top, problem)()
-    hist = estimate.history(found, now=dt.datetime.now(dt.timezone.utc))
+    now = dt.datetime.now(dt.timezone.utc)
+    hist = estimate.history(found, now=now)
+    room = room_for(profile)(reading)
+    used, total, reserved = book.budget(found, room, hist, lanes.live)
+    free = room.memory_left()
+    memory = "memory cannot be read" if free is None else f"{max(free - reserved, 0)} MB of memory left after the " \
+        f"holders' peaks"
+    print(f"budget for light runs: {used:g} of {total:g} cores (lane_cpu_factor {room.factor:g}), {memory} "
+          f"(floor {machine.memory_floor_mb(profile)} MB); a run measured at <= {estimate.LIGHT_SECONDS:g} s and "
+          f"<= {estimate.LIGHT_CORES:g} cores is light and takes no place")
     print("held:" if held or reading.computing else "held: nobody")
     for item in held:
         state = "alive" if lanes.live(item) else "its process is gone - `flotilla lane sweep`"
         by = f"pid {item.pid}" if item.pid else "taken by hand - `flotilla lane release`"
         target = f", for {item.run_for}" if item.run_for else ""
-        print(f"  {item.id} {item.who} ({item.note or 'no note'}) since {item.since}{_for_how_long(item.since)}"
-              f"{target}; {by}; {state}; {describe_estimate(item, hist)}")
+        kind = "light" if item.path.startswith("light") else "heavy"
+        print(f"  {item.id} {kind} {item.who} ({item.note or 'no note'}) since {item.since}"
+              f"{_for_how_long(item.since)}{target}; {by}; {state}; {describe_estimate(item, hist)}")
     for proc in reading.computing:
         print("  " + _foreign(table, proc, " (takes a slot, no booking)"))
     if mode == "fair":
@@ -220,10 +263,24 @@ def _status(args) -> int:
             print(f"project {visible(project) or '(none)'}: {count} waiting, holds {holds}, "
                   f"last turn {served.get(project) or 'not in 24 h'}")
     print("waiting:" if waiting else "waiting: nobody")
+    counted = book.older_waiting(found, lanes.live)   # an older flotilla waits: every run is counted, none is light
+    starts = book.heavy_starts(found, hist, slots=slots - len(reading.computing), now=now, live=lanes.live,
+                               ceiling=ceiling_for(args.root, profile), cpus=room.cpus, counted=counted)
+    order = {item_id: place for place, item_id in enumerate(starts, start=1)}
+    if counted:
+        print("  (a seat of a flotilla before 0.28 waits: every run is counted against lane_capacity until it goes)")
     for item in waiting:
         gone = "" if lanes.live(item) else "; its process is gone - `flotilla lane sweep`"
-        why = acq.in_the_way(lanes, reading, slots, item.id, found, share=mode)
-        print(f"  {item.id} {item.who} ({item.note or 'no note'}) since {item.since}{gone}; "
+        if not counted and book.is_light(item, hist, room.cpus):
+            kind, why = "light", book.light_verdict(found, item, room, hist, lanes.live) or "next to start"
+        else:
+            kind, why = "heavy", acq.in_the_way(lanes, reading, slots, item.id, found, share=mode)
+            if item.id in order:
+                when = starts[item.id]
+                why += (f"; {_ordinal(order[item.id])} of the heavy runs; " +
+                        (f"by estimates it starts around {when.astimezone().strftime('%H:%M')} or sooner"
+                         if when is not None else "no place for a heavy run now"))
+        print(f"  {item.id} {kind} {item.who} ({item.note or 'no note'}) since {item.since}{gone}; "
               f"{describe_estimate(item, hist)}; waits because: {why}")
     print("machine:")
     for answer in reading.answers:
@@ -244,7 +301,7 @@ def _take(args) -> int:
     pid = os.getpid()
     grant = acq.acquire(lanes, _reader(lanes, table, profile, top, problem), who=_who(args.as_name), note=args.note,
                         capacity=capacity, share=share, wait=args.wait, pid=pid, mark=table.start_mark(pid) or "",
-                        by_hand=True, say=print, project=_project(args.root))
+                        by_hand=True, say=print, project=_project(args.root), room=room_for(profile))
     if grant.booking is None:
         print(f"refused: {grant.why}")
         return 2

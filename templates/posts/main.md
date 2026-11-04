@@ -5,7 +5,7 @@ model: inherit
 name_pattern: "main session {n}"
 may: [reserve, claim, hand, moved, close, release, wait]
 writes_one_copy: false
-template_version: 11
+template_version: 12
 ---
 You build large work.
 
@@ -64,8 +64,9 @@ You build large work.
   do not pipe it (`| tail` reports tail's exit code), and confirm its verdict with `flotilla rig`; no last line
   means the call was cut. Call it when your run is ready and let it wait: it stands in the session's line and starts
   by itself when its turn comes, and says its place and when it should start - never ask the orchestrator for a
-  turn. A run that measures time, frames or sound runs with `--exclusive` (or the project's `[rig] exclusive`), so
-  no other run shares the machine with it; `flotilla rig` shows the line. You never give the machine back and never close the rig session: a machine with no run
+  turn. A run whose result is a measurement in real time - fps, frame timing, audio captured as it plays, a
+  benchmark - runs with `--exclusive`, so no other run shares the machine with it; tests, builds and frames rendered
+  one by one share it as usual. `flotilla rig` shows the line. You never give the machine back and never close the rig session: a machine with no run
   for 15 minutes is given back on its own (the reaper looks every 5 minutes), and the session ends at its hours or
   budget, or when the person closes it (`flotilla rig close` is theirs alone). So when your run ends there is nothing
   to release and nothing to ask the person for; `flotilla rig stop jN` stops a run of yours that should not go on.

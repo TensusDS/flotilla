@@ -15,6 +15,7 @@ from __future__ import annotations
 import copy
 import datetime as dt
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -25,13 +26,18 @@ HELD, RELEASED, WAITING, EXPIRED, LEFT = "held", "released", "waiting", "expired
 #: The admission rule a booking waits under. Stage 2 admits by budget only while every live booking carries this rule
 #: or a later one: a seat on an older plugin counts slots and knows nothing of reservations (lane admission, section 3).
 #: Rule 2 (0.25) knows the fair share across projects: a waiter under it may be passed by, or pass, for its project.
-RULE = 2
+#: Rule 3 (0.28) knows light runs: a light holder takes no place, so a waiter under an older rule - which would count
+#: it as one, and could wait for ever behind a stream of them - turns light admission off while it waits.
+RULE = 3
+#: What a foreign computing run (unbooked) is taken to use of the light budget, and a holder whose peak was never
+#: measured of its memory: the fixed prior (lane light runs design, section 2).
+FOREIGN_CORES, UNKNOWN_PEAK_MB = 4.0, 2048
 #: The share modes `machine.toml` `lane_share` may name; anything else is first come, first served.
 SHARES = ("fifo", "fair")
 #: How far back a project's last turn counts for the fair share (project share design, section 3).
 SERVED_WINDOW = dt.timedelta(hours=24)
 FIELDS = ("who", "note", "pid", "mark", "run_for", "why", "command", "ladder", "will_run", "project", "rule",
-          "seconds", "peak_mb", "cores", "busy", "verdict", "ran", "cut", "inside", "path")
+          "seconds", "peak_mb", "cores", "busy", "verdict", "ran", "cut", "inside", "path", "place")
 MEASURED = ("seconds", "peak_mb", "cores", "busy", "verdict", "ran")
 LISTS = ("ladder", "will_run")
 MAX_TEXT = 2048   # a command and each of its signatures: every session folds the whole journal, so text is bounded
@@ -75,6 +81,8 @@ def _clean(key, value):
         return visible(value[:40]) if isinstance(value, str) else ""
     if key == "rule":
         return value if isinstance(value, int) and not isinstance(value, bool) else None
+    if key == "place":
+        return value if isinstance(value, int) and not isinstance(value, bool) and value >= 1 else None
     return visible(value) if key in TEXT and isinstance(value, str) else value
 
 
@@ -114,6 +122,7 @@ class Booking:
     cut: bool = False                                # swept: its process died, nothing was measured
     inside: str = ""                                 # a run inside this booking, recorded beside it, never booked
     path: str = ""                                   # how it was admitted: fifo, or fair and for which project
+    place: int | None = None                         # the place it stands in: an expired booking's, made again
 
 
 def number(name) -> int | None:
@@ -152,7 +161,32 @@ def fold(records, into: dict[str, Booking] | None = None) -> dict[str, Booking]:
 
 
 def _order(item: Booking) -> int:
+    """Where a booking stands in the line: the place it inherited from its own expired wait, else its number."""
+    if item.place:
+        return item.place
     return int(item.id[1:]) if item.id[1:].isdigit() else 0
+
+
+#: How long after its wait ran out a booking made again keeps its place (lane light runs design, section 3).
+SENIORITY = dt.timedelta(minutes=10)
+
+
+def inherited(found: dict, who: str, ladder, now: dt.datetime) -> int | None:
+    """The place a new booking of `who` for `ladder` keeps: the latest expired booking of the same session and the
+    same exact signature, ended within SENIORITY, whose place no booking since has taken. None otherwise."""
+    if not ladder:
+        return None
+    for item in sorted(found.values(), key=lambda item: number(item.id) or 0, reverse=True):
+        ended = _when(item.ended)
+        if item.state != EXPIRED or item.who != who or item.ladder[:1] != list(ladder)[:1] or ended is None:
+            continue
+        if not now - SENIORITY <= ended <= now:
+            return None
+        place = _order(item)
+        taken = {other.place for other in found.values() if other.place and (number(other.id) or 0) >
+                 (number(item.id) or 0)}   # its own place is the one it hands on; only a later booking took it
+        return None if place in taken else place
+    return None
 
 
 def _when(text: str) -> dt.datetime | None:
@@ -168,7 +202,7 @@ def last_served(found: dict, now: dt.datetime) -> dict[str, str]:
     after it held; a nested run recorded already released never waited for a turn)."""
     served: dict[str, str] = {}
     for item in found.values():
-        if item.state not in (HELD, RELEASED) or item.inside:
+        if item.state not in (HELD, RELEASED) or item.inside or item.path.startswith("light"):   # no turn taken
             continue
         when = _when(item.since)
         if when is None or not now - SERVED_WINDOW <= when <= now + dt.timedelta(minutes=5):
@@ -176,6 +210,106 @@ def last_served(found: dict, now: dt.datetime) -> dict[str, str]:
         if item.since > served.get(item.project, ""):
             served[item.project] = item.since
     return served
+
+
+@dataclass(frozen=True)
+class Room:
+    """What a light run may take: `factor` x `cpus` cores, and `memory_left()` MB - the available memory less the
+    floor, read when the grant decides, inside the journal's lock - less what the holders are estimated to peak at.
+    `foreign`: unbooked runs computing now."""
+    cpus: int
+    factor: float
+    memory_left: Callable[[], int | None]
+    foreign: int = 0
+
+
+def _light(found: dict, mine: Booking, room: Room, hist, live) -> tuple[str, str]:
+    """("", how) when `mine` may start now as a light run, else (why not, "")."""
+    from flotilla.lane import estimate
+    own = estimate.for_booking(mine, hist, cpus=room.cpus)
+    if (mine.rule or 0) < RULE or not estimate.light_booking(mine, hist, cpus=room.cpus):
+        return f"not light: {own.source}", ""
+    waiting = [item for item in found.values() if item.state == WAITING and item.id != mine.id and live(item)]
+    if any((item.rule or 0) < RULE for item in waiting):
+        return "a waiter of an older flotilla is live", ""
+    earlier = [item for item in waiting if _order(item) < _order(mine)
+               and estimate.light_booking(item, hist, cpus=room.cpus)]
+    if earlier:
+        return f"behind light {min(earlier, key=_order).id}", ""
+    used, total, reserved = budget(found, room, hist, live)
+    if own.cores > total - used:
+        return f"needs {own.cores:g} cores, {max(total - used, 0):g} left", ""
+    free = room.memory_left()
+    if free is None:
+        return "memory cannot be read", ""
+    if own.peak_mb > free - reserved:
+        return f"needs {own.peak_mb} MB, {max(free - reserved, 0)} left", ""
+    return "", f"light: {used + own.cores:g} of {total:g} cores, {free - reserved - own.peak_mb} MB left"
+
+
+def budget(found: dict, room: Room, hist, live) -> tuple[float, float, int]:
+    """The cores the live holders and foreign runs use by estimates, the cores there are, and the memory the holders
+    are estimated to peak at: what a light run is measured against, and what `flotilla lane` prints."""
+    from flotilla.lane import estimate
+    used, reserved = room.foreign * FOREIGN_CORES, 0
+    for item in found.values():
+        if item.state == HELD and live(item):
+            theirs = estimate.for_booking(item, hist, cpus=room.cpus)
+            guessed = "prior" in theirs.source
+            used += room.cpus if guessed or theirs.cores is None else theirs.cores
+            reserved += theirs.peak_mb if theirs.peak_mb is not None else UNKNOWN_PEAK_MB
+    return used, room.factor * room.cpus, reserved
+
+
+def is_light(item: Booking, hist, cpus: int | None = None) -> bool:
+    """A waiter the light path serves: under this rule, and light by its own measurements."""
+    from flotilla.lane import estimate
+    return (item.rule or 0) >= RULE and estimate.light_booking(item, hist, cpus=cpus)
+
+
+def older_waiting(found: dict, live, mine: str = "") -> bool:
+    """A live waiter of a flotilla before light runs: while one waits, the lane counts every run as before - it counts
+    light holders as places and would wait for ever behind them, and it waits behind a light waiter ahead of it (the
+    final review of 0.28.0, C1)."""
+    return any(item.state == WAITING and item.id != mine and live(item) and (item.rule or 0) < RULE
+               for item in found.values())
+
+
+def heavy_starts(found: dict, hist, *, slots: int, now: dt.datetime, live, ceiling: float,
+                 cpus: int | None = None, counted: bool = False) -> dict[str, dt.datetime | None]:
+    """When each live heavy waiter starts by estimates: `slots` lanes, each serving one heavy run after another in
+    the line's order, the next run taking the lane that frees first. A heavy holder has its estimate less what it has
+    run left, at least a minute; a run never measured counts at `ceiling`. None with no slot at all. An answer, not a
+    promise: it reads "or sooner" (lane light runs design, section 5)."""
+    from flotilla.lane import estimate
+
+    def span(item) -> float:
+        seconds = estimate.for_booking(item, hist, cpus=cpus).seconds
+        return seconds if seconds is not None else ceiling
+
+    lanes = []
+    for item in found.values():
+        if item.state == HELD and live(item) and (counted or not item.path.startswith("light")):
+            began = _when(item.since) or now
+            lanes.append(max(began + dt.timedelta(seconds=span(item)), now + dt.timedelta(minutes=1)))
+    lanes = sorted(lanes)[len(lanes) - slots:] if 0 < slots <= len(lanes) else sorted(lanes) if slots > 0 else []
+    lanes += [now] * max(slots - len(lanes), 0)
+    starts: dict[str, dt.datetime | None] = {}
+    for item in sorted((item for item in found.values() if item.state == WAITING and live(item)
+                        and (counted or not is_light(item, hist, cpus))), key=_order):
+        if not lanes:
+            starts[item.id] = None
+            continue
+        first = min(range(len(lanes)), key=lambda at: lanes[at])
+        starts[item.id] = lanes[first]
+        lanes[first] = lanes[first] + dt.timedelta(seconds=span(item))
+    return starts
+
+
+def light_verdict(found: dict, mine: Booking, room: Room, hist, live) -> str:
+    """"" when `mine` may start now as a light run beside what holds the lane, else why not (lane light runs
+    design, section 2)."""
+    return _light(found, mine, room, hist, live)[0]
 
 
 def fair_choice(found: dict, live, now: dt.datetime, skip=()) -> Booking | None:
@@ -188,7 +322,7 @@ def fair_choice(found: dict, live, now: dt.datetime, skip=()) -> Booking | None:
         return None
     holding: dict[str, int] = {}
     for item in found.values():
-        if item.state == HELD and live(item):
+        if item.state == HELD and live(item) and not item.path.startswith("light"):   # a light run holds no place
             holding[item.project] = holding.get(item.project, 0) + 1
     served = last_served(found, now)
     oldest: dict[str, Booking] = {}
@@ -205,6 +339,7 @@ class Book:
         self.clock = clock
         self._read = (0, None, {})   # offset, identity, bookings: a waiter polls for minutes, so it reads on (item 14)
         self.passed_for = ""         # the fair choice the last grant refused for, so the caller can see who it waits on
+        self.waits_for = ""          # why the last grant refused a light run
 
     def _now(self) -> str:
         moment = self.clock() if self.clock else dt.datetime.now(dt.timezone.utc)
@@ -221,6 +356,16 @@ class Book:
 
     def bookings(self) -> dict[str, Booking]:
         return self._found()
+
+    def stamp(self) -> tuple | None:
+        """The journal file's size and modification time: what a waiter checks once a second, cheaply, to know the
+        lane changed. None when there is no file to ask."""
+        root = getattr(self.store, "root", None)
+        try:
+            found = (Path(root) / f"{KEY}.jsonl").stat() if root is not None else None
+        except OSError:
+            return None
+        return (found.st_size, found.st_mtime_ns) if found is not None else None
 
     def holders(self, found: dict | None = None) -> list[Booking]:
         found = self.bookings() if found is None else found
@@ -257,10 +402,12 @@ class Book:
                 command: str = "", ladder=(), will_run=(), project: str = "") -> Booking:
         with self.store.transaction(KEY) as tx:
             found = self._found(tx)
+            moment = self.clock() if self.clock else dt.datetime.now(dt.timezone.utc)
+            place = inherited(found, who, [step[:MAX_TEXT] for step in ladder], moment)
             return self._write(tx, _next_id(found), WAITING, who=who, note=note, pid=pid, mark=mark,
                                run_for=run_for, command=command[:MAX_TEXT],
                                ladder=[step[:MAX_TEXT] for step in ladder], will_run=list(will_run),
-                               project=project, rule=RULE)
+                               project=project, rule=RULE, **({"place": place} if place else {}))
 
     def record(self, inside: str, *, who: str, note: str, command: str = "", ladder=(), will_run=(),
                project: str = "", measured: dict | None = None) -> Booking:
@@ -274,33 +421,52 @@ class Book:
                                project=project, rule=RULE, inside=inside, **fields)
 
     def grant(self, booking_id: str, *, slots: int, by_hand: bool = False, share: str = "fifo",
-              skip=()) -> Booking | None:
+              skip=(), room: Room | None = None) -> Booking | None:
         """Admit `booking_id` if its turn has come. `skip`: fair choices the caller saw not take a free slot for a
-        while - held back by their own checks - and so passes over (final review of 0.25.0, I1)."""
-        self.passed_for = ""
+        while - held back by their own checks - and so passes over (final review of 0.25.0, I1).
+
+        With a `room`, a run its own measurements call light takes what the heavy runs leave, and only that; heavy
+        runs keep the count and the order, and neither counts nor waits behind a light one (lane light runs design).
+        Without one, the grant is the count alone, as before."""
+        self.passed_for = self.waits_for = ""
+        fields = {"pid": None, "mark": ""} if by_hand else {}   # by hand: it holds as nobody's, until released
         with self.store.transaction(KEY) as tx:
             found = self._found(tx)
             mine = found.get(booking_id)
             if mine is None or mine.state != WAITING:
                 return None
-            if len([item for item in self.holders(found) if self.live(item)]) >= slots:
+            lights: frozenset = frozenset()
+            light_path = room is not None and (mine.rule or 0) >= RULE and not older_waiting(found, self.live,
+                                                                                               booking_id)
+            if light_path:
+                from flotilla.lane import estimate
+                moment = self.clock() if self.clock else dt.datetime.now(dt.timezone.utc)
+                hist = estimate.history(found, now=moment)
+                if estimate.light_booking(mine, hist, cpus=room.cpus):
+                    self.waits_for, how = _light(found, mine, room, hist, self.live)
+                    return None if self.waits_for else self._write(tx, booking_id, HELD, path=how, **fields)
+                lights = frozenset(item.id for item in found.values() if item.state == WAITING and self.live(item)
+                                   and is_light(item, hist, room.cpus))
+            heavy = [item for item in self.holders(found) if self.live(item)
+                     and not (light_path and item.path.startswith("light"))]
+            if len(heavy) >= slots:
                 return None
-            path = self._path(found, mine, share, skip)
+            path = self._path(found, mine, share, skip, lights)
             if path is None:
                 return None
-            fields = {"pid": None, "mark": ""} if by_hand else {}   # by hand: it holds as nobody's, until released
             return self._write(tx, booking_id, HELD, path=path, **fields)
 
-    def _path(self, found: dict, mine: Booking, share: str, skip=()) -> str | None:
+    def _path(self, found: dict, mine: Booking, share: str, skip=(), lights=frozenset()) -> str | None:
         """How `mine` is admitted now, or None while it waits its turn. First come, first served unless the share is
         fair and `mine` waits under rule 2; then it goes when it is the fair choice, and also first come, first served
         when the fair choice waits under an older rule - that one knows nothing of being chosen, and waits for whoever
         is ahead of it, so yielding to it would leave the slot empty (project share design, section 3)."""
-        ahead = any(_order(item) < _order(mine) and self.live(item) for item in self.waiters(found))
+        ahead = any(_order(item) < _order(mine) and self.live(item) and item.id not in lights
+                    for item in self.waiters(found))
         if share != "fair" or (mine.rule or 0) < 2:
             return None if ahead else "fifo"
         moment = self.clock() if self.clock else dt.datetime.now(dt.timezone.utc)
-        choice = fair_choice(found, self.live, moment, skip)
+        choice = fair_choice(found, self.live, moment, frozenset(skip) | lights)
         if choice is not None and choice.id == mine.id:
             when = last_served(found, moment).get(mine.project, "")
             return f"fair: {mine.project or 'no project'} served {when or 'not in 24 h'}"

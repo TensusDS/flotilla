@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import datetime as dt
 import os
+import re
 import statistics
 from dataclasses import dataclass
 
@@ -134,3 +135,44 @@ def receipt_estimate(will_run: list[str], hist: dict[str, list[Sample]], *, proj
     peak = max((p.peak_mb for p in parts if p.peak_mb is not None), default=None)
     sources = sorted({p.source for p in parts})
     return Estimate(seconds, cores, peak, f"{len(parts)} tier(s): " + "; ".join(sources))
+
+
+#: A run is light when its own measurements say it is short and small (lane light runs design, section 2): it then
+#: takes what the heavy runs leave instead of a place of its own. A prior never makes a run light.
+LIGHT_SECONDS, LIGHT_CORES = 60.0, 2.0
+
+
+def for_booking(item, hist: dict[str, list[Sample]], *, cpus: int | None = None) -> Estimate:
+    """A booking's estimate: a receipt's by the tiers it will run, any other run's by its signature ladder."""
+    if item.will_run:
+        return receipt_estimate(list(item.will_run), hist, project=item.project, cpus=cpus)
+    return estimate(list(item.ladder), hist, project=item.project, cpus=cpus)
+
+
+#: The ladder steps that are this command's own history: never `prog:` (every run of the same program) nor the
+#: project's prior, so a full suite with a new flag is not light because single-file runs of its program are (the
+#: final review of 0.28.0). A receipt's parts answer by their tier.
+OWN_STEPS = ("exact", "norm", "tier")
+_ANSWERED = re.compile(r"^\d+ runs \((\w+) match\)$")
+
+
+def _own(found: Estimate) -> bool:
+    """Measured whole by this command's own history: duration, cores and peak, all from an own step."""
+    answered = _ANSWERED.match(found.source)
+    return (answered is not None and answered.group(1) in OWN_STEPS and found.seconds is not None
+            and found.cores is not None and found.peak_mb is not None)
+
+
+def light(found: Estimate) -> bool:
+    return _own(found) and found.seconds <= LIGHT_SECONDS and found.cores <= LIGHT_CORES
+
+
+def light_booking(item, hist: dict[str, list[Sample]], *, cpus: int | None = None) -> bool:
+    """Whether a booking is light: a run by its own estimate; a receipt only when every tier that will run is measured
+    whole by its own history, and together they stay within the bounds (lane light runs design, section 2)."""
+    if not item.will_run:
+        return light(for_booking(item, hist, cpus=cpus))
+    parts = [estimate([tier_signature(name, project=item.project)], hist, project=item.project, cpus=cpus)
+             for name in item.will_run]
+    return (bool(parts) and all(_own(part) for part in parts) and sum(p.seconds for p in parts) <= LIGHT_SECONDS
+            and max(p.cores for p in parts) <= LIGHT_CORES)

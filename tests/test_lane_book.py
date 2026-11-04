@@ -1,7 +1,12 @@
 import pytest
 
 from flotilla.core.storage import LocalLogStore
+import datetime as dt
+
 from flotilla.lane import book
+from flotilla.lane import estimate as est
+
+NOW = lambda: dt.datetime.now(dt.timezone.utc)  # noqa: E731
 
 
 class Procs:
@@ -359,3 +364,268 @@ def test_fair_never_grants_past_the_slots(tmp_path):
         for seat, item in zip(seats, waiting):
             seat.grant(item.id, slots=2, share="fair")
     assert len(seats[0].holders()) == 2
+
+
+# -- light runs beside one heavy run (lane light runs design) --------------------------------------------------------
+
+ROOM = book.Room(cpus=8, factor=1.5, memory_left=lambda: 8000)
+RECEIPT, FILE, BIG, MID = ["exact:receipt"], ["exact:one-file"], ["exact:big-light"], ["exact:mid"]
+
+
+def measured(lanes, ladder, seconds, cores, peak_mb, n=3):
+    """Teach the journal what `ladder` takes: n released runs of it."""
+    for _ in range(n):
+        item = lanes.enqueue("seed", "", pid=900, mark="m", ladder=ladder, command="seed")
+        assert lanes.grant(item.id, slots=99)
+        lanes.release(item.id, measured={"seconds": seconds, "peak_mb": peak_mb, "cores": cores, "verdict": "green"})
+
+
+def teach(lanes):
+    measured(lanes, RECEIPT, 660.0, 7.0, 1700)
+    measured(lanes, FILE, 4.0, 1.0, 300)
+    measured(lanes, BIG, 20.0, 1.0, 5000)
+    measured(lanes, MID, 30.0, 2.0, 400)
+
+
+def booked(lanes, ladder, pid):
+    return lanes.enqueue(f"seat {pid}", "", pid=pid, mark="m", ladder=ladder, command="x")
+
+
+def test_a_light_run_starts_beside_a_heavy_holder_at_capacity_one(lane):
+    lanes, _ = lane
+    teach(lanes)
+    heavy = booked(lanes, RECEIPT, 1)
+    assert lanes.grant(heavy.id, slots=1, room=ROOM).path == "fifo"
+    light = lanes.grant(booked(lanes, FILE, 2).id, slots=1, room=ROOM)
+    assert light is not None and light.path.startswith("light: ")
+
+
+def test_a_heavy_run_never_waits_for_light_holders(lane):
+    lanes, _ = lane
+    teach(lanes)
+    assert lanes.grant(booked(lanes, FILE, 1).id, slots=1, room=ROOM)
+    assert lanes.grant(booked(lanes, MID, 2).id, slots=1, room=ROOM)
+    assert lanes.grant(booked(lanes, RECEIPT, 3).id, slots=1, room=ROOM).path == "fifo"
+
+
+def test_a_second_heavy_run_still_waits_at_capacity_one(lane):
+    lanes, _ = lane
+    teach(lanes)
+    assert lanes.grant(booked(lanes, RECEIPT, 1).id, slots=1, room=ROOM)
+    assert lanes.grant(booked(lanes, RECEIPT, 2).id, slots=1, room=ROOM) is None
+
+
+def test_a_light_run_waits_when_cores_do_not_fit(lane):
+    lanes, _ = lane
+    teach(lanes)
+    measured(lanes, ["exact:wide"], 600.0, 11.0, 1000)
+    assert lanes.grant(booked(lanes, ["exact:wide"], 1).id, slots=1, room=ROOM)
+    mid = booked(lanes, MID, 2)
+    assert lanes.grant(mid.id, slots=1, room=ROOM) is None
+    found = lanes.bookings()
+    assert book.light_verdict(found, found[mid.id], ROOM, est.history(found, now=NOW()), lanes.live) == \
+        "needs 2 cores, 1 left"
+
+
+def test_a_light_run_waits_when_memory_does_not_fit(lane):
+    lanes, _ = lane
+    teach(lanes)
+    room = book.Room(cpus=8, factor=1.5, memory_left=lambda: 2000)
+    assert lanes.grant(booked(lanes, RECEIPT, 1).id, slots=1, room=room)
+    item = booked(lanes, MID, 2)
+    assert lanes.grant(item.id, slots=1, room=room) is None
+    found = lanes.bookings()
+    assert book.light_verdict(found, found[item.id], room, est.history(found, now=NOW()), lanes.live) == \
+        "needs 400 MB, 300 left"
+
+
+def test_light_runs_go_by_arrival_among_themselves(lane):
+    lanes, _ = lane
+    teach(lanes)
+    room = book.Room(cpus=8, factor=1.5, memory_left=lambda: 4000)
+    big = booked(lanes, BIG, 1)
+    small = booked(lanes, FILE, 2)
+    assert lanes.grant(big.id, slots=1, room=room) is None   # 5000 MB of 4000
+    assert lanes.grant(small.id, slots=1, room=room) is None
+    found = lanes.bookings()
+    assert book.light_verdict(found, found[small.id], room, est.history(found, now=NOW()), lanes.live) == \
+        f"behind light {big.id}"
+
+
+def test_a_light_waiter_is_not_ahead_of_a_heavy_one(lane):
+    lanes, _ = lane
+    teach(lanes)
+    room = book.Room(cpus=8, factor=1.5, memory_left=lambda: 4000)
+    assert lanes.grant(booked(lanes, BIG, 1).id, slots=1, room=room) is None
+    assert lanes.grant(booked(lanes, RECEIPT, 2).id, slots=1, room=room).path == "fifo"
+
+
+def test_no_light_admission_while_an_older_flotillas_waiter_is_live(lane, tmp_path):
+    lanes, _ = lane
+    teach(lanes)
+    _line(lanes.store, booking="b900", state="waiting", who="old seat", note="", pid=77, mark="m", rule=2)
+    item = booked(lanes, FILE, 2)
+    assert lanes.grant(item.id, slots=1, room=ROOM) is None
+    found = lanes.bookings()
+    assert book.light_verdict(found, found[item.id], ROOM, est.history(found, now=NOW()), lanes.live) == \
+        "a waiter of an older flotilla is live"
+
+
+def test_unreadable_memory_admits_no_light_run(lane):
+    lanes, _ = lane
+    teach(lanes)
+    room = book.Room(cpus=8, factor=1.5, memory_left=lambda: None)
+    assert lanes.grant(booked(lanes, RECEIPT, 1).id, slots=1, room=room)
+    assert lanes.grant(booked(lanes, FILE, 2).id, slots=1, room=room) is None
+
+
+def test_without_a_room_the_grant_is_todays(lane):
+    lanes, _ = lane
+    teach(lanes)
+    assert lanes.grant(booked(lanes, RECEIPT, 1).id, slots=1)
+    assert lanes.grant(booked(lanes, FILE, 2).id, slots=1) is None
+
+
+@pytest.mark.parametrize("foreign, fits", [(1, True), (2, False)])
+def test_a_foreign_computing_run_takes_four_cores_of_the_budget(lane, foreign, fits):
+    lanes, _ = lane
+    teach(lanes)
+    measured(lanes, ["exact:three"], 600.0, 3.0, 500)
+    room = book.Room(cpus=8, factor=1.5, memory_left=lambda: 8000, foreign=foreign)
+    assert lanes.grant(booked(lanes, ["exact:three"], 1).id, slots=9, room=room)
+    assert bool(lanes.grant(booked(lanes, MID, 2).id, slots=9, room=room)) is fits
+
+
+def test_an_unmeasured_run_is_heavy(lane):
+    lanes, _ = lane
+    teach(lanes)
+    assert lanes.grant(booked(lanes, RECEIPT, 1).id, slots=1, room=ROOM)
+    assert lanes.grant(booked(lanes, ["exact:never-seen"], 2).id, slots=1, room=ROOM) is None
+
+
+
+# -- seniority survives an expired wait (lane light runs design, section 3) -------------------------------------------
+
+def clocked(tmp_path):
+    moment = {"at": dt.datetime(2026, 11, 4, 10, 0, tzinfo=dt.timezone.utc)}
+    return book.Book(LocalLogStore(tmp_path / "clocked"), Procs(), clock=lambda: moment["at"]), moment
+
+
+def test_an_expired_booking_made_again_keeps_its_place(tmp_path):
+    lanes, moment = clocked(tmp_path)
+    holder = lanes.enqueue("seat 0", "", pid=1, mark="m")
+    assert lanes.grant(holder.id, slots=1)
+    first = lanes.enqueue("seat 1", "", pid=2, mark="m", ladder=["exact:suite"])
+    later = lanes.enqueue("seat 2", "", pid=3, mark="m", ladder=["exact:other"])
+    lanes.expire(first.id, "waited 1800 s")
+    moment["at"] += dt.timedelta(minutes=5)
+    again = lanes.enqueue("seat 1", "", pid=2, mark="m", ladder=["exact:suite"])
+    assert again.place == book.number(first.id)
+    assert [item.id for item in lanes.waiters()] == [again.id, later.id]
+    lanes.release(holder.id)
+    assert lanes.grant(later.id, slots=1) is None and lanes.grant(again.id, slots=1)
+
+
+@pytest.mark.parametrize("who, ladder, minutes", [("seat 9", ["exact:suite"], 5), ("seat 1", ["exact:else"], 5),
+                                                  ("seat 1", ["exact:suite"], 11)])
+def test_seniority_needs_the_same_session_signature_and_ten_minutes(tmp_path, who, ladder, minutes):
+    lanes, moment = clocked(tmp_path)
+    first = lanes.enqueue("seat 1", "", pid=2, mark="m", ladder=["exact:suite"])
+    lanes.expire(first.id, "waited")
+    moment["at"] += dt.timedelta(minutes=minutes)
+    assert lanes.enqueue(who, "", pid=4, mark="m", ladder=ladder).place is None
+
+
+def test_a_place_is_inherited_once(tmp_path):
+    lanes, moment = clocked(tmp_path)
+    first = lanes.enqueue("seat 1", "", pid=2, mark="m", ladder=["exact:suite"])
+    lanes.expire(first.id, "waited")
+    assert lanes.enqueue("seat 1", "", pid=2, mark="m", ladder=["exact:suite"]).place == book.number(first.id)
+    assert lanes.enqueue("seat 1", "", pid=5, mark="m", ladder=["exact:suite"]).place is None
+
+
+@pytest.mark.parametrize("value, kept", [(3, 3), (0, None), (-1, None), ("3", None), (True, None), (2.5, None)])
+def test_a_place_folds_only_from_a_whole_number(tmp_path, value, kept):
+    lanes, _ = clocked(tmp_path)
+    _line(lanes.store, booking="b1", state="waiting", who="x", place=value)
+    assert lanes.bookings()["b1"].place == kept
+
+
+
+# -- the final review of 0.28.0 ------------------------------------------------------------------------------------
+
+def test_with_an_older_waiter_live_a_light_run_goes_by_count_and_nobody_deadlocks(lane):
+    lanes, _ = lane
+    teach(lanes)
+    room = book.Room(cpus=8, factor=1.5, memory_left=lambda: 4000)
+    heavy = booked(lanes, RECEIPT, 1)
+    assert lanes.grant(heavy.id, slots=1, room=room)
+    light = booked(lanes, BIG, 2)                         # light, but 5000 MB does not fit 4000
+    assert lanes.grant(light.id, slots=1, room=room) is None
+    _line(lanes.store, booking="b900", state="waiting", who="old seat", note="", pid=77, mark="m", rule=2)
+    later = booked(lanes, RECEIPT, 3)
+    lanes.release(heavy.id)
+    granted = lanes.grant(light.id, slots=1, room=room)   # first in line, counted as before
+    assert granted is not None and granted.path == "fifo"
+    assert lanes.grant(later.id, slots=2, room=room) is None   # the older waiter came first
+
+
+def test_with_an_older_waiter_live_light_holders_count_again(lane):
+    lanes, _ = lane
+    teach(lanes)
+    assert lanes.grant(booked(lanes, FILE, 1).id, slots=1, room=ROOM).path.startswith("light")
+    first = booked(lanes, RECEIPT, 2)
+    _line(lanes.store, booking="b900", state="waiting", who="old seat", note="", pid=77, mark="m", rule=2)
+    assert lanes.grant(first.id, slots=1, room=ROOM) is None   # the old seat counts the light holder: so do we
+
+
+def test_a_place_is_kept_across_a_chain_of_expired_waits(tmp_path):
+    lanes, moment = clocked(tmp_path)
+    first = lanes.enqueue("seat 1", "", pid=2, mark="m", ladder=["exact:suite"])
+    other = lanes.enqueue("seat 2", "", pid=3, mark="m", ladder=["exact:other"])
+    current = first
+    for _ in range(4):
+        lanes.expire(current.id, "waited")
+        moment["at"] += dt.timedelta(minutes=1)
+        current = lanes.enqueue("seat 1", "", pid=2, mark="m", ladder=["exact:suite"])
+        assert current.place == book.number(first.id)
+    assert [item.id for item in lanes.waiters()] == [current.id, other.id]
+
+
+def test_a_never_measured_heavy_holder_counts_as_the_whole_machine(lane):
+    lanes, _ = lane
+    teach(lanes)
+    assert lanes.grant(booked(lanes, ["exact:never-seen"], 1).id, slots=1, room=ROOM)
+    assert lanes.grant(booked(lanes, FILE, 2).id, slots=1, room=ROOM)          # 8 + 1 of 12
+    assert lanes.grant(booked(lanes, MID, 3).id, slots=1, room=ROOM)           # 9 + 2 of 12
+    assert lanes.grant(booked(lanes, MID, 4).id, slots=1, room=ROOM) is None   # 11 + 2 of 12
+
+
+def test_without_a_room_light_holders_count_as_before(lane):
+    lanes, _ = lane
+    teach(lanes)
+    assert lanes.grant(booked(lanes, FILE, 1).id, slots=1, room=ROOM).path.startswith("light")
+    assert lanes.grant(booked(lanes, RECEIPT, 2).id, slots=1) is None
+
+
+def test_the_fair_share_does_not_count_a_projects_light_holders(tmp_path):
+    lanes = book.Book(LocalLogStore(tmp_path / "fair"), Procs())
+    teach(lanes)
+    a_light = lanes.enqueue("a 1", "", pid=1, mark="m", ladder=FILE, command="x", project="A")
+    assert lanes.grant(a_light.id, slots=1, room=ROOM).path.startswith("light")
+    a = lanes.enqueue("a 2", "", pid=3, mark="m", ladder=RECEIPT, command="x", project="A")
+    lanes.enqueue("b 1", "", pid=2, mark="m", ladder=RECEIPT, command="x", project="B")
+    assert book.fair_choice(lanes.bookings(), lanes.live, NOW()).id == a.id   # a light run is no turn
+
+
+def test_heavy_starts_with_more_holders_than_slots_wait_for_enough_of_them_to_end():
+    now = NOW()
+    sample = est.Sample(600.0, 1000, 4.0, 0.5, "green", "")
+    hist = {"exact:r": [sample] * 3}
+    holders = [book.Booking(id=f"b{i}", state=book.HELD, ladder=["exact:r"], path="fifo", rule=3,
+                            since=(now - dt.timedelta(minutes=minutes)).isoformat())
+               for i, minutes in ((1, 8), (2, 4), (3, 1))]
+    waiter = book.Booking(id="b4", state=book.WAITING, ladder=["exact:r"], rule=3)
+    found = {item.id: item for item in (*holders, waiter)}
+    starts = book.heavy_starts(found, hist, slots=1, now=now, live=lambda item: True, ceiling=1800)
+    assert abs((starts["b4"] - now).total_seconds() - 9 * 60) < 2   # all three must end at capacity 1

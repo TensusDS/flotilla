@@ -392,7 +392,8 @@ def build_parser() -> argparse.ArgumentParser:
                          help="seconds to wait for room (default: until the session ends)")
     alone = rig_run.add_mutually_exclusive_group()
     alone.add_argument("--exclusive", action="store_true",
-                       help="run alone on the machine: for runs that measure time, frames or sound")
+                       help="run alone on the machine: for runs whose result is a measurement in real time "
+                            "(fps, frame timing, audio capture, a benchmark)")
     alone.add_argument("--shared", action="store_true", help="may share the machine, whatever the profile says")
     rig_run.add_argument("--max", type=int, default=None, metavar="S",
                          help="this run's ceiling in seconds, at most the profile's [rig] max_run_seconds")

@@ -2,6 +2,8 @@ import io
 import sys
 from contextlib import redirect_stdout
 
+import pytest
+
 from flotilla import cli
 from flotilla.onboard.tomlw import render_toml
 from flotilla.posts import install_templates
@@ -454,7 +456,7 @@ def test_showing_the_lane_keeps_a_booking_whose_process_still_exists(tmp_path, m
     doubtful = book.Book(LocalLogStore(tmp_path / "state" / "lane"), ProcessTable.for_machine()).enqueue(
         "main session 2", "waiting", pid=os.getpid(), mark="not-its-mark")
     _, out = run_cli("lane", "--root", str(root))
-    assert "swept" not in out.splitlines()[0] and f"{doubtful.id} main session 2" in out
+    assert "swept" not in out.splitlines()[0] and f"{doubtful.id} heavy main session 2" in out
 
 
 def test_a_lane_that_cannot_be_swept_is_still_shown(tmp_path, monkeypatch):
@@ -526,3 +528,95 @@ def test_a_hand_take_books_under_its_project(tmp_path, monkeypatch):
     assert run_cli("lane", "take", "--note", "a race", "--root", str(root), "--as", "main session 1")[0] == 0
     [item] = _journal(tmp_path).values()
     assert item.project == repo.identify(root).key
+
+
+
+@pytest.mark.parametrize("keys, factor", [({}, 1.5), ({"lane_cpu_factor": 2.0}, 2.0), ({"lane_cpu_factor": 1}, 1.0),
+                                          ({"lane_cpu_factor": 9.0}, 1.5), ({"lane_cpu_factor": "x"}, 1.5),
+                                          ({"lane_cpu_factor": True}, 1.5)])
+def test_cpu_factor_reads_bounds(tmp_path, monkeypatch, keys, factor):
+    from flotilla.lane import commands as lane_commands
+    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
+    _machine(tmp_path, **keys)
+    assert lane_commands.cpu_factor() == factor
+
+
+def test_the_room_counts_foreign_runs_and_reads_memory_less_the_floor(tmp_path, monkeypatch):
+    from flotilla.core import resources
+    from flotilla.lane import commands as lane_commands
+    from flotilla.lane.machine import Reading
+    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
+    _machine(tmp_path)
+    monkeypatch.setattr(resources, "available_mb", lambda **k: 9000)
+    room = lane_commands.room_for({"lane": {"memory_floor_mb": 1500}})(Reading([], ["a", "b"], []))
+    assert room.foreign == 2 and room.memory_left() == 7500 and room.factor == 1.5 and room.cpus >= 1
+    monkeypatch.setattr(resources, "available_mb", lambda **k: None)
+    assert room.memory_left() is None
+
+
+
+# -- light and heavy on screen (lane light runs design, section 5) ---------------------------------------------------
+
+def _lane_book(tmp_path):
+    from flotilla.core.storage import LocalLogStore
+    from flotilla.lane import book
+    from flotilla.lane.procs import ProcessTable
+    return book.Book(LocalLogStore(tmp_path / "state" / "lane"), ProcessTable.for_machine())
+
+
+def _taught(lanes, ladder, seconds, cores, peak_mb):
+    for _ in range(3):
+        item = lanes.enqueue("seed", "", pid=None, ladder=ladder, command="seed")
+        lanes.grant(item.id, slots=99)
+        lanes.release(item.id, measured={"seconds": seconds, "peak_mb": peak_mb, "cores": cores, "verdict": "green"})
+
+
+def test_status_marks_light_and_heavy_prints_the_budget_and_heavy_starts(tmp_path, monkeypatch):
+    from flotilla.core import resources
+    from flotilla.lane import book
+    root = onboarded(tmp_path, monkeypatch)
+    monkeypatch.setattr(resources, "available_mb", lambda **k: 9000)
+    lanes = _lane_book(tmp_path)
+    _taught(lanes, ["exact:receipt"], 660.0, 7.0, 1700)
+    _taught(lanes, ["exact:file"], 4.0, 1.0, 300)
+    room = book.Room(cpus=8, factor=1.5, memory_left=lambda: 8000)
+    heavy = lanes.enqueue("main session 1", "receipt", pid=None, ladder=["exact:receipt"], command="r")
+    assert lanes.grant(heavy.id, slots=1, room=room)
+    light = lanes.enqueue("main session 2", "one file", pid=None, ladder=["exact:file"], command="f")
+    assert lanes.grant(light.id, slots=1, room=room)
+    lanes.enqueue("main session 3", "receipt", pid=None, ladder=["exact:receipt"], command="r")
+    lanes.enqueue("main session 4", "receipt", pid=None, ladder=["exact:receipt"], command="r")
+    code, out = run_cli("lane", "--root", str(root))
+    assert code == 0, out
+    assert "budget for light runs: " in out and " of " in out and "cores" in out, out
+    assert f"  {heavy.id} heavy main session 1" in out and f"  {light.id} light main session 2" in out, out
+    assert "1st of the heavy runs; by estimates it starts around" in out, out
+    assert "2nd of the heavy runs; by estimates it starts around" in out, out
+
+
+def test_heavy_starts_serve_the_heavy_line_in_order():
+    import datetime as dt
+    from flotilla.lane import book, estimate
+    now = dt.datetime(2026, 11, 4, 10, 0, tzinfo=dt.timezone.utc)
+    sample = estimate.Sample(600.0, 1000, 4.0, 0.5, "green", "")
+    hist = {"exact:r": [sample] * 3}
+    held = book.Booking(id="b1", state=book.HELD, ladder=["exact:r"], since=(now - dt.timedelta(minutes=4)).isoformat(),
+                        path="fifo", rule=3)
+    one = book.Booking(id="b2", state=book.WAITING, ladder=["exact:r"], rule=3)
+    two = book.Booking(id="b3", state=book.WAITING, ladder=["exact:new"], rule=3)
+    three = book.Booking(id="b4", state=book.WAITING, ladder=["exact:r"], rule=3)
+    found = {item.id: item for item in (held, one, two, three)}
+    starts = book.heavy_starts(found, hist, slots=1, now=now, live=lambda item: True, ceiling=1800)
+    assert starts == {"b2": now + dt.timedelta(minutes=6), "b3": now + dt.timedelta(minutes=16),
+                      "b4": now + dt.timedelta(minutes=46)}
+
+
+
+def test_the_room_counts_the_cores_this_process_may_use(tmp_path, monkeypatch):
+    import os as os_module
+    from flotilla.lane import commands as lane_commands
+    from flotilla.lane.machine import Reading
+    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
+    _machine(tmp_path)
+    monkeypatch.setattr(os_module, "sched_getaffinity", lambda pid: {0, 1, 2}, raising=False)
+    assert lane_commands.room_for({})(Reading([], [], [])).cpus == 3

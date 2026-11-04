@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import random
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -40,7 +41,7 @@ class Grant:
 
 
 def _order(item) -> int:
-    return int(item.id[1:]) if item.id[1:].isdigit() else 0
+    return book._order(item)
 
 
 def in_the_way(lanes, reading, capacity: int, mine: str = "", found: dict | None = None, share: str = "fifo") -> str:
@@ -59,8 +60,8 @@ def in_the_way(lanes, reading, capacity: int, mine: str = "", found: dict | None
     if held:
         parts.append("held by " + "; ".join(f"{item.who} ({item.note or 'no note'}) since {item.since}"
                                             for item in held))
-    ahead = [item for item in lanes.waiters(found) if mine and item.id != mine and lanes.live(item)
-             and _order(item) < int(mine[1:] or 0)]
+    ahead = [item for item in lanes.waiters(found) if mine and me is not None and item.id != mine
+             and lanes.live(item) and _order(item) < _order(me)]
     if ahead:
         parts.append("waiting ahead: " + "; ".join(f"{item.id} {item.who} ({item.note or 'no note'})"
                                                     for item in ahead))
@@ -72,7 +73,8 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
             share: str | Callable[[], str] = "fifo",
             pid: int | None = None, mark: str = "", run_for: str = "", by_hand: bool = False, poll: float = POLL,
             clock=time.monotonic, sleep=time.sleep, say=None, command: str = "", ladder=(), will_run=(),
-            project: str = "") -> Grant:
+            project: str = "", room: Callable | None = None, jitter=lambda: random.uniform(0.0, 1.0)) -> Grant:
+    """`room(reading)`: what a light run may take on this poll (lane light runs design); None, the count alone."""
     mine = lanes.enqueue(who, note, pid=pid, mark=mark, run_for=run_for, command=command, ladder=ladder,
                          will_run=will_run, project=project)
     deadline = clock() + max(wait, 0)
@@ -81,25 +83,30 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
     skip: set[str] = set()
     try:
         while True:
+            stamp = lanes.stamp() if hasattr(lanes, "stamp") else None   # before the look: a release during it wakes
             reading = read_machine()
             slots = capacity() if callable(capacity) else capacity   # read each poll: a raise reaches the queue
             mode = share() if callable(share) else share
             outright = [answer for answer in reading.answers
                         if answer.question in OUTRIGHT and answer.blocks is not False]
             unknown = [answer for answer in reading.answers if answer.blocks is None]
+            space = room(reading) if room is not None else None
             if not outright and not unknown:
                 granted = lanes.grant(mine.id, slots=slots - len(reading.computing), by_hand=by_hand,
-                                     share=mode, skip=frozenset(skip))
+                                     share=mode, skip=frozenset(skip), room=space)
                 if granted is not None:
                     return Grant(granted, reading, "")
                 choice = getattr(lanes, "passed_for", "")
                 if choice and choice not in skip and clock() - seen.setdefault(choice, clock()) >= FAIR_GRACE:
                     skip.add(choice)   # it has had the free slot for two polls and not taken it: ask once more now
                     granted = lanes.grant(mine.id, slots=slots - len(reading.computing), by_hand=by_hand,
-                                          share=mode, skip=frozenset(skip))
+                                          share=mode, skip=frozenset(skip), room=space)
                     if granted is not None:
                         return Grant(granted, reading, "")
             why = in_the_way(lanes, reading, slots, mine.id, share=mode)
+            light = getattr(lanes, "waits_for", "")
+            if light and not outright and not unknown:   # a light run waits for room, not for the holders' places
+                why = f"a light run that waits for room: {light}"
             lasting = [answer for answer in unknown if answer.lasting]
             remaining = deadline - clock()
             if lasting or remaining <= 0:
@@ -108,17 +115,28 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
             if say is not None and why != said:
                 say(f"waiting for the lane: {why}")
                 said = why
-            sleep(min(poll, remaining))
+            _nap(lanes, poll + jitter(), remaining, clock=clock, sleep=sleep, stamp=stamp)
     except BaseException:
         lanes.leave(mine.id)
         raise
+
+
+def _nap(lanes, poll: float, remaining: float, *, clock, sleep, stamp=None) -> None:
+    """Wait for the next poll a second at a time, and wake at once when the journal changed: a release reaches the
+    next waiter in about a second, not a poll's 15 (lane light runs design, section 4). Only a `stat` each second;
+    the machine is read again by the caller."""
+    until = clock() + min(poll, remaining)
+    while clock() < until:
+        sleep(min(1.0, until - clock()))
+        if stamp is not None and lanes.stamp() != stamp:
+            return
 
 
 @contextlib.contextmanager
 def held(lanes, read_machine, *, who: str, note: str, capacity: int | Callable[[], int], wait: float, table,
          share: str | Callable[[], str] = "fifo",
          run_for: str = "", poll: float = POLL, clock=time.monotonic, sleep=time.sleep, say=None, command: str = "",
-         ladder=(), will_run=(), project: str = ""):
+         ladder=(), will_run=(), project: str = "", room: Callable | None = None):
     outer = lanes.bookings().get(os.environ.get(ENV, ""))
     if outer is not None and outer.state == "held" and lanes.live(outer) and \
             (outer.pid is None or outer.pid in set(table.ancestors(os.getpid()))):
@@ -135,7 +153,7 @@ def held(lanes, read_machine, *, who: str, note: str, capacity: int | Callable[[
     pid = os.getpid()
     grant = acquire(lanes, read_machine, who=who, note=note, capacity=capacity, wait=wait, share=share, pid=pid,
                     mark=table.start_mark(pid) or "", run_for=run_for, poll=poll, clock=clock, sleep=sleep, say=say,
-                    command=command, ladder=ladder, will_run=will_run, project=project)
+                    command=command, ladder=ladder, will_run=will_run, project=project, room=room)
     if grant.booking is None:
         raise LaneRefused(grant.why)
     previous = os.environ.get(ENV)

@@ -3,6 +3,25 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.28.0 - 2026-11-04
+
+The lane: one heavy run, light runs beside it (the person's option B; twosuns items 13 and 16, void-lanes-online's
+lane report; design `docs/specs/2026-11-04-lane-light-runs-design.md`).
+
+- **Light runs take what the heavy run leaves.** A run measured at most 60 s and 2 cores, with a known peak, is light:
+  it starts beside whatever holds the lane when its cores fit what is left of 1.5 x the machine's cores
+  (`lane_cpu_factor`) and its peak fits the memory left after every holder's peak, and it takes no place.
+  `lane_capacity` now counts heavy runs only, so at capacity 1 a one-file test no longer waits behind an 11-minute
+  receipt, and two receipts still never choke each other. A run never measured is heavy. While a seat of an older
+  flotilla waits, the lane counts as before (rule 3).
+- **An expired wait keeps its place** when the same session books the same command again within 10 minutes.
+- **A waiter is handed the lane within a second** of a release instead of at its next 15-second look.
+- **`flotilla lane`** shows the budget, marks each run light or heavy, says what a light waiter lacks, and when each
+  heavy waiter starts by estimates.
+- **`rig run --exclusive` is described for what it is:** a run whose result is a measurement in real time (fps, frame
+  timing, audio capture, a benchmark); tests, builds and frames rendered one by one share the machine (posts main 12,
+  minor 10).
+
 ## 0.27.0 - 2026-11-03
 
 The rig queue, part A: runs that keep apart, a line that moves itself (twosuns items 3, 4, 6 and 12; design

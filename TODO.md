@@ -29,6 +29,16 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
   session waiting at its prompt flickers between samples; the shown file is not under `guards/files.py`; `/loop` and
   wakeup prompt shapes beyond CronCreate are not measured. *(checked 2026-11-03 on 0.26.0: still P)*
 
+## From the final review of the lane's light runs (2026-11-04, 0.28.0)
+
+- **Every lane waiter wakes on every journal write.** Each light run's booking, grant, release and record makes every
+  waiter read the whole machine (process table, CPU samples, CI) at once - cost, not correctness; a busy light stream
+  multiplies it. Idea: wake on a write only when it frees something (a release, an expiry). *(open: flotilla/lane/acquire.py `_nap`)*
+- **One light run that does not fit holds up every light run behind it.** Light runs go strictly by arrival (pinned
+  by a test), so a 5 GB light run waiting for memory keeps one-file tests behind it until memory frees; with an
+  expired wait keeping its place, the holdup survives retries. Decide on purpose whether a later light run that fits
+  may pass. *(open: flotilla/lane/book.py `_light`)*
+
 ## From the final review of the rig queue, part A (2026-11-03, 0.27.0)
 
 - **Ctrl-C during a stopped run's fetch aborts its cleanup.** `_cleaning` makes SIGTERM and SIGHUP harmless while
@@ -60,11 +70,7 @@ journal figures: runs under 60 s waited a median 30.6 min for a median 6.8 s run
 (0.24.0 code) where a file is named.
 
 **The lane**
-- **A lane waiter still polls every 15 s.** The journal is compacted since 0.26.1; what is left of the item is waiting
-  on the lock file instead of waking to poll. *(open, design: flotilla/lane/book.py, flotilla/lane/acquire.py)*
-- **An expired `--wait` re-queues at the tail.** Six void-lanes-online bookings expired at 1800 s and lost their
-  place (lane spec section 3, seniority). *(open, design: docs/specs/2026-10-05-lane-resource-admission-design.md)*
-- **Mode 1, short runs overtake** - stages 2-3 of the lane spec (budget admission by cores and memory, the head's
+- **Budget admission and overtaking for every run, if light runs beside one heavy run (0.28.0) are not enough** - stages 2-3 of the lane spec (budget admission by cores and memory, the head's
   shadow, a starvation guard, printed reasons), opt-in per machine, FIFO the default, gated by `RULE` for mixed
   versions. The spec's precondition (a week of field measurements) is met: 24 000 journal lines from two projects.
   *(open, design: lane spec stages 2-3)*
@@ -81,13 +87,17 @@ journal figures: runs under 60 s waited a median 30.6 min for a median 6.8 s run
   measured (CPU-seconds per wall-second, which the lane records already) - and admission by the sum of costs against
   the machine's cores, unbooked runs counted by their measured load; a tier that times out under a load far above
   the core count recorded as starved, not red. The admission is mode 1 below (the lane spec's budget by cores and
-  memory); the per-tier declaration and the starved verdict are not in the spec yet. *(open, design: lane spec
+  memory); the per-tier declaration and the starved verdict are not in the spec yet. 0.28.0 removes the cause at
+  capacity 1: light runs fill what one heavy run leaves, so capacity 2 is no longer needed for short runs to move.
+  Left: the declared cost and the starved verdict, if capacity above 1 comes back. *(open, design: lane spec
   stages 2-3, flotilla/lane/run.py)*
 - **The orchestrator cannot reorder the lane, and a waiter cannot see when it will start** (twosuns item 16, 11-02
   02:52: 21 waiters at capacity 1, five void-lanes-online runs of 21-38 s behind about 2.5 h of 11-min receipts;
   letting them pass meant re-booking eight waiters at the back). Asked besides mode 1 and seniority above: `lane bump
   <booking> --why`, recorded, limited to the orchestrators of the projects sharing the lane; each waiter's expected
-  start from the estimates ahead of it, in `flotilla lane` and before booking. *(open, design)*
+  start from the estimates ahead of it, in `flotilla lane` and before booking. 0.28.0 gives heavy waiters their
+  expected start in `flotilla lane` and lets light runs pass without a bump; left: `lane bump`, and the start said
+  before booking. *(open, design)*
 - **An unknown estimate (`? s`) for another project's rows**, and a full receipt rerun after every trunk merge (an
   affected-tests tier for hand and review, the full tier only for the push receipt). *(open, design)*
 
@@ -602,6 +612,8 @@ Each is a limitation README states today, judged fixable in principle; none is p
 - The onboard skill does not state that background isolation stays on. *(checked 2026-10-04 on 0.7.8: still [P])*
 
 ## Done
+
+- The lane: light runs (measured <= 60 s, <= 2 cores) take what one heavy run leaves and no place; an expired wait keeps its place; a waiter is handed the lane within a second; `flotilla lane` shows the budget and heavy runs' expected starts (0.28.0; twosuns items 13 and 16).
 
 - The rig queue, part A: exclusive runs, a rig run that stands in line for its session and says its place and start, the line on `flotilla rig`, a watch item when a machine idles while runs wait, a stopped run that brings back its `--get`, a closed session's machine destroyed no longer blocking the ceiling (0.27.0).
 

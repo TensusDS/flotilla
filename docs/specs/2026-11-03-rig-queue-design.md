@@ -81,8 +81,9 @@ Three things are missing:
   `by estimates j12 ends around 15:10, after session s80 ends at 15:00 - lower its ceiling with --max, or run it in the next session`.
   - It does not refuse: the estimate may be wrong, and the run's own ceiling already bounds it.
 - Templates:
-  - **main and minor:** queue through `rig run` and never ask the orchestrator for a turn; a run that measures time,
-    frames or sound is exclusive.
+  - **main and minor:** queue through `rig run` and never ask the orchestrator for a turn; a run whose result is a
+    measurement in real time (fps, frame timing, audio capture, a benchmark) is exclusive - tests, builds and frames
+    rendered one by one are not (the person, 2026-11-03).
   - **orchestrator:** the rig's order is flotilla's; never send "go" letters; read the new watch item as flotilla's own
     handover having broken.
 

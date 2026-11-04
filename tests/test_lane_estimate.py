@@ -1,5 +1,7 @@
 import datetime as dt
 
+import pytest
+
 from flotilla.lane import book, estimate as est
 
 NOW = dt.datetime(2026, 10, 5, 12, 0, tzinfo=dt.timezone.utc)
@@ -167,3 +169,51 @@ def test_setup_history_never_mixes_with_a_tier_named_setup():
     hist = est.history(bookings(*runs), now=NOW)
     assert [s.seconds for s in hist["tier:p:setup"]] == [2.0] * 3
     assert [s.seconds for s in hist["setup:p"]] == [90.0] * 3
+
+
+# -- light runs (lane light runs design, section 2) ----------------------------------------------------------------
+
+@pytest.mark.parametrize("found, light", [
+    (est.Estimate(4.0, 1.0, 300, "3 runs (exact match)"), True),
+    (est.Estimate(60.0, 2.0, 300, "3 runs (exact match)"), True),
+    (est.Estimate(61.0, 1.0, 300, "3 runs (exact match)"), False),
+    (est.Estimate(4.0, 3.0, 300, "3 runs (exact match)"), False),
+    (est.Estimate(4.0, 1.0, None, "3 runs (exact match)"), False),
+    (est.Estimate(None, 1.0, 300, "3 runs (exact match)"), False),
+    (est.Estimate(None, 1.0, 300, "project prior: 90th percentile of 5 runs"), False),
+    (est.PRIOR, False),
+    (est.Estimate(8.0, 1.0, 300, "2 tier(s): 3 runs (exact match); fixed prior: 4 cores, 2 GB"), False),
+])
+def test_light_needs_a_measured_short_small_run(found, light):
+    assert est.light(found) is light
+
+
+def test_for_booking_reads_a_receipts_tiers_and_a_runs_ladder():
+    hist = {"exact:a": [est.Sample(4.0, 300, 1.0, 0.5, "green", "")] * 3,
+            "tier:P:unit": [est.Sample(30.0, 900, 6.0, 0.5, "green", "")] * 3}
+    run = book.Booking(id="j1", ladder=["exact:a"], project="P")
+    receipt = book.Booking(id="j2", will_run=["unit"], project="P")
+    assert est.for_booking(run, hist).seconds == 4.0 and est.for_booking(receipt, hist).cores == 6.0
+
+
+
+def _hist(**steps):
+    return {step: [est.Sample(*figures, "green", "")] * 3 for step, figures in steps.items()}
+
+
+def test_a_command_light_only_by_its_programs_history_is_heavy():
+    hist = _hist(**{"prog:P:pytest": (4.0, 300, 1.0, 0.5)})
+    item = book.Booking(id="b1", ladder=["exact:P:pytest tests/ -q -x", "norm:P:pytest tests/ -q -x", "prog:P:pytest"],
+                        project="P", rule=3)
+    assert est.light_booking(item, hist) is False
+    hist.update(_hist(**{"norm:P:pytest tests/ -q -x": (4.0, 300, 1.0, 0.5)}))
+    assert est.light_booking(item, hist) is True
+
+
+def test_a_receipt_is_light_only_when_every_tier_is_measured_whole():
+    hist = _hist(**{"tier:P:lint": (5.0, 200, 1.0, 0.5)})
+    hist["tier:P:smoke"] = [est.Sample(20.0, None, None, 0.9, "green", "")] * 3
+    receipt = book.Booking(id="b1", will_run=["lint", "smoke"], project="P", rule=3)
+    assert est.light_booking(receipt, hist) is False
+    hist.update(_hist(**{"tier:P:smoke": (20.0, 400, 2.0, 0.5)}))
+    assert est.light_booking(receipt, hist) is True
