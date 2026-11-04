@@ -2,6 +2,8 @@ import io
 import sys
 from contextlib import redirect_stdout
 
+import pytest
+
 from flotilla import cli
 from flotilla.onboard.tomlw import render_toml
 from flotilla.posts import install_templates
@@ -526,3 +528,27 @@ def test_a_hand_take_books_under_its_project(tmp_path, monkeypatch):
     assert run_cli("lane", "take", "--note", "a race", "--root", str(root), "--as", "main session 1")[0] == 0
     [item] = _journal(tmp_path).values()
     assert item.project == repo.identify(root).key
+
+
+
+@pytest.mark.parametrize("keys, factor", [({}, 1.5), ({"lane_cpu_factor": 2.0}, 2.0), ({"lane_cpu_factor": 1}, 1.0),
+                                          ({"lane_cpu_factor": 9.0}, 1.5), ({"lane_cpu_factor": "x"}, 1.5),
+                                          ({"lane_cpu_factor": True}, 1.5)])
+def test_cpu_factor_reads_bounds(tmp_path, monkeypatch, keys, factor):
+    from flotilla.lane import commands as lane_commands
+    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
+    _machine(tmp_path, **keys)
+    assert lane_commands.cpu_factor() == factor
+
+
+def test_the_room_counts_foreign_runs_and_reads_memory_less_the_floor(tmp_path, monkeypatch):
+    from flotilla.core import resources
+    from flotilla.lane import commands as lane_commands
+    from flotilla.lane.machine import Reading
+    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
+    _machine(tmp_path)
+    monkeypatch.setattr(resources, "available_mb", lambda **k: 9000)
+    room = lane_commands.room_for({"lane": {"memory_floor_mb": 1500}})(Reading([], ["a", "b"], []))
+    assert room.foreign == 2 and room.memory_left() == 7500 and room.factor == 1.5 and room.cpus >= 1
+    monkeypatch.setattr(resources, "available_mb", lambda **k: None)
+    assert room.memory_left() is None

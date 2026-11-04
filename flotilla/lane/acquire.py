@@ -72,7 +72,8 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
             share: str | Callable[[], str] = "fifo",
             pid: int | None = None, mark: str = "", run_for: str = "", by_hand: bool = False, poll: float = POLL,
             clock=time.monotonic, sleep=time.sleep, say=None, command: str = "", ladder=(), will_run=(),
-            project: str = "") -> Grant:
+            project: str = "", room: Callable | None = None) -> Grant:
+    """`room(reading)`: what a light run may take on this poll (lane light runs design); None, the count alone."""
     mine = lanes.enqueue(who, note, pid=pid, mark=mark, run_for=run_for, command=command, ladder=ladder,
                          will_run=will_run, project=project)
     deadline = clock() + max(wait, 0)
@@ -87,16 +88,17 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
             outright = [answer for answer in reading.answers
                         if answer.question in OUTRIGHT and answer.blocks is not False]
             unknown = [answer for answer in reading.answers if answer.blocks is None]
+            space = room(reading) if room is not None else None
             if not outright and not unknown:
                 granted = lanes.grant(mine.id, slots=slots - len(reading.computing), by_hand=by_hand,
-                                     share=mode, skip=frozenset(skip))
+                                     share=mode, skip=frozenset(skip), room=space)
                 if granted is not None:
                     return Grant(granted, reading, "")
                 choice = getattr(lanes, "passed_for", "")
                 if choice and choice not in skip and clock() - seen.setdefault(choice, clock()) >= FAIR_GRACE:
                     skip.add(choice)   # it has had the free slot for two polls and not taken it: ask once more now
                     granted = lanes.grant(mine.id, slots=slots - len(reading.computing), by_hand=by_hand,
-                                          share=mode, skip=frozenset(skip))
+                                          share=mode, skip=frozenset(skip), room=space)
                     if granted is not None:
                         return Grant(granted, reading, "")
             why = in_the_way(lanes, reading, slots, mine.id, share=mode)
@@ -118,7 +120,7 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
 def held(lanes, read_machine, *, who: str, note: str, capacity: int | Callable[[], int], wait: float, table,
          share: str | Callable[[], str] = "fifo",
          run_for: str = "", poll: float = POLL, clock=time.monotonic, sleep=time.sleep, say=None, command: str = "",
-         ladder=(), will_run=(), project: str = ""):
+         ladder=(), will_run=(), project: str = "", room: Callable | None = None):
     outer = lanes.bookings().get(os.environ.get(ENV, ""))
     if outer is not None and outer.state == "held" and lanes.live(outer) and \
             (outer.pid is None or outer.pid in set(table.ancestors(os.getpid()))):
@@ -135,7 +137,7 @@ def held(lanes, read_machine, *, who: str, note: str, capacity: int | Callable[[
     pid = os.getpid()
     grant = acquire(lanes, read_machine, who=who, note=note, capacity=capacity, wait=wait, share=share, pid=pid,
                     mark=table.start_mark(pid) or "", run_for=run_for, poll=poll, clock=clock, sleep=sleep, say=say,
-                    command=command, ladder=ladder, will_run=will_run, project=project)
+                    command=command, ladder=ladder, will_run=will_run, project=project, room=room)
     if grant.booking is None:
         raise LaneRefused(grant.why)
     previous = os.environ.get(ENV)

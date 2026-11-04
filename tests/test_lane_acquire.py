@@ -252,3 +252,19 @@ def test_a_fair_choice_that_does_not_take_the_slot_is_passed_over(lanes):
     grant = acquire.acquire(lanes, lambda: QUIET, who="a 2", note="suite", capacity=1, share="fair", wait=600,
                             clock=clock, sleep=clock.sleep, project="A")
     assert grant.booking is not None and acquire.FAIR_GRACE <= clock.now < acquire.FAIR_GRACE + 2 * acquire.POLL
+
+
+def test_the_room_built_from_the_reading_reaches_the_grant(lanes, monkeypatch):
+    seen = []
+    real = book.Book.grant
+
+    def grant(self, booking_id, **kwargs):
+        seen.append(kwargs.get("room"))
+        return real(self, booking_id, **kwargs)
+    monkeypatch.setattr(book.Book, "grant", grant)
+    busy = Reading([Answer("foreign run", True, "1 unbooked run computing")], [Proc(5, 1, "vitest")], [])
+    acquire.acquire(lanes, lambda: busy, who="main session 1", note="suite", capacity=2, wait=0.0,
+                    clock=Clock(), sleep=lambda s: None,
+                    room=lambda reading: book.Room(cpus=8, factor=1.5, memory_left=lambda: 8000,
+                                                   foreign=len(reading.computing)))
+    assert seen and seen[0] == book.Room(cpus=8, factor=1.5, memory_left=seen[0].memory_left, foreign=1)

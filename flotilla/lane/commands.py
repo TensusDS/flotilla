@@ -39,6 +39,33 @@ def capacity() -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 1 else 1
 
 
+#: machine.toml `lane_cpu_factor`: how far past its cores the machine is filled by light runs beside a heavy one.
+#: CPU over-subscription only slows runs; the bounds keep it bounded (lane light runs design, section 2).
+CPU_FACTOR, CPU_FACTOR_BOUNDS = 1.5, (1.0, 4.0)
+
+
+def cpu_factor() -> float:
+    """machine.toml `lane_cpu_factor`, 1.5 when unset, out of 1-4, not a number, or unreadable."""
+    value = _machine().get("lane_cpu_factor", CPU_FACTOR)
+    ok = isinstance(value, (int, float)) and not isinstance(value, bool) and \
+        CPU_FACTOR_BOUNDS[0] <= value <= CPU_FACTOR_BOUNDS[1]
+    return float(value) if ok else CPU_FACTOR
+
+
+def room_for(profile: dict):
+    """What a light run may take, built from each poll's reading: this machine's cores, the factor, the memory
+    available less the profile's floor (read when the grant decides, inside the lock), the foreign runs computing."""
+    from flotilla.core import resources
+    floor, factor, cpus = machine.memory_floor_mb(profile), cpu_factor(), os.cpu_count() or 1
+
+    def memory_left():
+        available = resources.available_mb()
+        return None if available is None else available - floor
+
+    return lambda reading: book.Room(cpus=cpus, factor=factor, memory_left=memory_left,
+                                     foreign=len(reading.computing))
+
+
 def share() -> str:
     """machine.toml `lane_share`: `fair`, or first come, first served for anything else, unset, or unreadable."""
     value = _machine().get("lane_share", "fifo")
@@ -145,7 +172,7 @@ def booked(root, *, note: str, wait: float, run_for: str = "", as_name=None, com
         ladder = signature.ladder(list(command), tree=str(Path(root).resolve()), project=project)
     with acq.held(lanes, _reader(lanes, table, profile, top, problem), who=_who(as_name), note=note,
                   capacity=capacity, share=share, wait=wait, table=table, run_for=run_for, say=print, command=text,
-                  ladder=ladder, will_run=list(will_run or []), project=project) as grant:
+                  ladder=ladder, will_run=list(will_run or []), project=project, room=room_for(profile)) as grant:
         yield grant
 
 
@@ -244,7 +271,7 @@ def _take(args) -> int:
     pid = os.getpid()
     grant = acq.acquire(lanes, _reader(lanes, table, profile, top, problem), who=_who(args.as_name), note=args.note,
                         capacity=capacity, share=share, wait=args.wait, pid=pid, mark=table.start_mark(pid) or "",
-                        by_hand=True, say=print, project=_project(args.root))
+                        by_hand=True, say=print, project=_project(args.root), room=room_for(profile))
     if grant.booking is None:
         print(f"refused: {grant.why}")
         return 2
