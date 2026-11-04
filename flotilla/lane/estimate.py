@@ -134,3 +134,20 @@ def receipt_estimate(will_run: list[str], hist: dict[str, list[Sample]], *, proj
     peak = max((p.peak_mb for p in parts if p.peak_mb is not None), default=None)
     sources = sorted({p.source for p in parts})
     return Estimate(seconds, cores, peak, f"{len(parts)} tier(s): " + "; ".join(sources))
+
+
+#: A run is light when its own measurements say it is short and small (lane light runs design, section 2): it then
+#: takes what the heavy runs leave instead of a place of its own. A prior never makes a run light.
+LIGHT_SECONDS, LIGHT_CORES = 60.0, 2.0
+
+
+def for_booking(item, hist: dict[str, list[Sample]], *, cpus: int | None = None) -> Estimate:
+    """A booking's estimate: a receipt's by the tiers it will run, any other run's by its signature ladder."""
+    if item.will_run:
+        return receipt_estimate(list(item.will_run), hist, project=item.project, cpus=cpus)
+    return estimate(list(item.ladder), hist, project=item.project, cpus=cpus)
+
+
+def light(found: Estimate) -> bool:
+    return (found.seconds is not None and found.seconds <= LIGHT_SECONDS and found.cores is not None
+            and found.cores <= LIGHT_CORES and found.peak_mb is not None and "prior" not in found.source)
