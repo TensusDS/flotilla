@@ -81,10 +81,15 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
     said = ""
     seen: dict[str, float] = {}   # each fair choice this waiter was refused for, and since when
     skip: set[str] = set()
+    reading, read_at = None, 0.0
     try:
         while True:
             stamp = lanes.stamp() if hasattr(lanes, "stamp") else None   # before the look: a release during it wakes
-            reading = read_machine()
+            if reading is None or clock() - read_at >= poll:
+                # the machine - process table, CPU samples, CI through `gh` - is read once a poll; a wake on a journal
+                # write decides on the journal with the last reading, so N waiters woken by every write cost N
+                # journal folds, not N machine reads (0.28.1, the regression review of 0.28.0)
+                reading, read_at = read_machine(), clock()
             slots = capacity() if callable(capacity) else capacity   # read each poll: a raise reaches the queue
             mode = share() if callable(share) else share
             outright = [answer for answer in reading.answers
