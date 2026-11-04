@@ -40,7 +40,7 @@ class Grant:
 
 
 def _order(item) -> int:
-    return int(item.id[1:]) if item.id[1:].isdigit() else 0
+    return book._order(item)
 
 
 def in_the_way(lanes, reading, capacity: int, mine: str = "", found: dict | None = None, share: str = "fifo") -> str:
@@ -59,8 +59,8 @@ def in_the_way(lanes, reading, capacity: int, mine: str = "", found: dict | None
     if held:
         parts.append("held by " + "; ".join(f"{item.who} ({item.note or 'no note'}) since {item.since}"
                                             for item in held))
-    ahead = [item for item in lanes.waiters(found) if mine and item.id != mine and lanes.live(item)
-             and _order(item) < int(mine[1:] or 0)]
+    ahead = [item for item in lanes.waiters(found) if mine and me is not None and item.id != mine
+             and lanes.live(item) and _order(item) < _order(me)]
     if ahead:
         parts.append("waiting ahead: " + "; ".join(f"{item.id} {item.who} ({item.note or 'no note'})"
                                                     for item in ahead))

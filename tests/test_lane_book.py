@@ -501,3 +501,51 @@ def test_an_unmeasured_run_is_heavy(lane):
     teach(lanes)
     assert lanes.grant(booked(lanes, RECEIPT, 1).id, slots=1, room=ROOM)
     assert lanes.grant(booked(lanes, ["exact:never-seen"], 2).id, slots=1, room=ROOM) is None
+
+
+
+# -- seniority survives an expired wait (lane light runs design, section 3) -------------------------------------------
+
+def clocked(tmp_path):
+    moment = {"at": dt.datetime(2026, 11, 4, 10, 0, tzinfo=dt.timezone.utc)}
+    return book.Book(LocalLogStore(tmp_path / "clocked"), Procs(), clock=lambda: moment["at"]), moment
+
+
+def test_an_expired_booking_made_again_keeps_its_place(tmp_path):
+    lanes, moment = clocked(tmp_path)
+    holder = lanes.enqueue("seat 0", "", pid=1, mark="m")
+    assert lanes.grant(holder.id, slots=1)
+    first = lanes.enqueue("seat 1", "", pid=2, mark="m", ladder=["exact:suite"])
+    later = lanes.enqueue("seat 2", "", pid=3, mark="m", ladder=["exact:other"])
+    lanes.expire(first.id, "waited 1800 s")
+    moment["at"] += dt.timedelta(minutes=5)
+    again = lanes.enqueue("seat 1", "", pid=2, mark="m", ladder=["exact:suite"])
+    assert again.place == book.number(first.id)
+    assert [item.id for item in lanes.waiters()] == [again.id, later.id]
+    lanes.release(holder.id)
+    assert lanes.grant(later.id, slots=1) is None and lanes.grant(again.id, slots=1)
+
+
+@pytest.mark.parametrize("who, ladder, minutes", [("seat 9", ["exact:suite"], 5), ("seat 1", ["exact:else"], 5),
+                                                  ("seat 1", ["exact:suite"], 11)])
+def test_seniority_needs_the_same_session_signature_and_ten_minutes(tmp_path, who, ladder, minutes):
+    lanes, moment = clocked(tmp_path)
+    first = lanes.enqueue("seat 1", "", pid=2, mark="m", ladder=["exact:suite"])
+    lanes.expire(first.id, "waited")
+    moment["at"] += dt.timedelta(minutes=minutes)
+    assert lanes.enqueue(who, "", pid=4, mark="m", ladder=ladder).place is None
+
+
+def test_a_place_is_inherited_once(tmp_path):
+    lanes, moment = clocked(tmp_path)
+    first = lanes.enqueue("seat 1", "", pid=2, mark="m", ladder=["exact:suite"])
+    lanes.expire(first.id, "waited")
+    assert lanes.enqueue("seat 1", "", pid=2, mark="m", ladder=["exact:suite"]).place == book.number(first.id)
+    assert lanes.enqueue("seat 1", "", pid=5, mark="m", ladder=["exact:suite"]).place is None
+
+
+@pytest.mark.parametrize("value, kept", [(3, 3), (0, None), (-1, None), ("3", None), (True, None), (2.5, None)])
+def test_a_place_folds_only_from_a_whole_number(tmp_path, value, kept):
+    lanes, _ = clocked(tmp_path)
+    _line(lanes.store, booking="b1", state="waiting", who="x", place=value)
+    assert lanes.bookings()["b1"].place == kept

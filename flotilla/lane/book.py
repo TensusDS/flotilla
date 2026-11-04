@@ -37,7 +37,7 @@ SHARES = ("fifo", "fair")
 #: How far back a project's last turn counts for the fair share (project share design, section 3).
 SERVED_WINDOW = dt.timedelta(hours=24)
 FIELDS = ("who", "note", "pid", "mark", "run_for", "why", "command", "ladder", "will_run", "project", "rule",
-          "seconds", "peak_mb", "cores", "busy", "verdict", "ran", "cut", "inside", "path")
+          "seconds", "peak_mb", "cores", "busy", "verdict", "ran", "cut", "inside", "path", "place")
 MEASURED = ("seconds", "peak_mb", "cores", "busy", "verdict", "ran")
 LISTS = ("ladder", "will_run")
 MAX_TEXT = 2048   # a command and each of its signatures: every session folds the whole journal, so text is bounded
@@ -81,6 +81,8 @@ def _clean(key, value):
         return visible(value[:40]) if isinstance(value, str) else ""
     if key == "rule":
         return value if isinstance(value, int) and not isinstance(value, bool) else None
+    if key == "place":
+        return value if isinstance(value, int) and not isinstance(value, bool) and value >= 1 else None
     return visible(value) if key in TEXT and isinstance(value, str) else value
 
 
@@ -120,6 +122,7 @@ class Booking:
     cut: bool = False                                # swept: its process died, nothing was measured
     inside: str = ""                                 # a run inside this booking, recorded beside it, never booked
     path: str = ""                                   # how it was admitted: fifo, or fair and for which project
+    place: int | None = None                         # the place it stands in: an expired booking's, made again
 
 
 def number(name) -> int | None:
@@ -158,7 +161,31 @@ def fold(records, into: dict[str, Booking] | None = None) -> dict[str, Booking]:
 
 
 def _order(item: Booking) -> int:
+    """Where a booking stands in the line: the place it inherited from its own expired wait, else its number."""
+    if item.place:
+        return item.place
     return int(item.id[1:]) if item.id[1:].isdigit() else 0
+
+
+#: How long after its wait ran out a booking made again keeps its place (lane light runs design, section 3).
+SENIORITY = dt.timedelta(minutes=10)
+
+
+def inherited(found: dict, who: str, ladder, now: dt.datetime) -> int | None:
+    """The place a new booking of `who` for `ladder` keeps: the latest expired booking of the same session and the
+    same exact signature, ended within SENIORITY, whose place no booking since has taken. None otherwise."""
+    if not ladder:
+        return None
+    taken = {item.place for item in found.values() if item.place}
+    for item in sorted(found.values(), key=lambda item: number(item.id) or 0, reverse=True):
+        ended = _when(item.ended)
+        if item.state != EXPIRED or item.who != who or item.ladder[:1] != list(ladder)[:1] or ended is None:
+            continue
+        if not now - SENIORITY <= ended <= now:
+            return None
+        place = _order(item)
+        return None if place in taken else place
+    return None
 
 
 def _when(text: str) -> dt.datetime | None:
@@ -311,10 +338,12 @@ class Book:
                 command: str = "", ladder=(), will_run=(), project: str = "") -> Booking:
         with self.store.transaction(KEY) as tx:
             found = self._found(tx)
+            moment = self.clock() if self.clock else dt.datetime.now(dt.timezone.utc)
+            place = inherited(found, who, [step[:MAX_TEXT] for step in ladder], moment)
             return self._write(tx, _next_id(found), WAITING, who=who, note=note, pid=pid, mark=mark,
                                run_for=run_for, command=command[:MAX_TEXT],
                                ladder=[step[:MAX_TEXT] for step in ladder], will_run=list(will_run),
-                               project=project, rule=RULE)
+                               project=project, rule=RULE, **({"place": place} if place else {}))
 
     def record(self, inside: str, *, who: str, note: str, command: str = "", ladder=(), will_run=(),
                project: str = "", measured: dict | None = None) -> Booking:
