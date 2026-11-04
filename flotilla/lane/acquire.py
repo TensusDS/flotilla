@@ -45,23 +45,32 @@ def _order(item) -> int:
 
 
 def in_the_way(lanes, reading, capacity: int, mine: str = "", found: dict | None = None, share: str = "fifo") -> str:
+    import datetime as dt
     parts = []
     found = lanes.bookings() if found is None else found
     me = found.get(mine)
+    now = dt.datetime.now(dt.timezone.utc)
+    lights: set[str] = set()   # a heavy waiter waits for no light run: they are left out of its reason (0.28.1)
+    if me is not None and (me.rule or 0) >= book.RULE and not book.older_waiting(found, lanes.live, mine):
+        from flotilla.lane import estimate
+        hist = estimate.history(found, now=now)
+        from flotilla.lane import machine
+        if not book.is_light(me, hist, machine.cpus()):
+            lights = {item.id for item in found.values() if item.state == book.WAITING and lanes.live(item)
+                      and book.is_light(item, hist)}
+            lights |= {item.id for item in found.values() if item.state == book.HELD and item.path.startswith("light")}
     if share == "fair" and me is not None and (me.rule or 0) >= 2:
-        import datetime as dt
-        now = dt.datetime.now(dt.timezone.utc)
-        choice = book.fair_choice(found, lanes.live, now)
+        choice = book.fair_choice(found, lanes.live, now, frozenset(lights))
         if choice is not None and choice.id != mine:
             served = book.last_served(found, now).get(choice.project, "")
             parts.append(f"`{choice.project or 'no project'}` goes first: {choice.id} {choice.who}, its project served "
                          f"{served or 'not in 24 h'}")
-    held = [item for item in lanes.holders(found) if lanes.live(item)]
+    held = [item for item in lanes.holders(found) if lanes.live(item) and item.id not in lights]
     if held:
         parts.append("held by " + "; ".join(f"{item.who} ({item.note or 'no note'}) since {item.since}"
                                             for item in held))
     ahead = [item for item in lanes.waiters(found) if mine and me is not None and item.id != mine
-             and lanes.live(item) and _order(item) < _order(me)]
+             and lanes.live(item) and _order(item) < _order(me) and item.id not in lights]
     if ahead:
         parts.append("waiting ahead: " + "; ".join(f"{item.id} {item.who} ({item.note or 'no note'})"
                                                     for item in ahead))
@@ -81,10 +90,15 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
     said = ""
     seen: dict[str, float] = {}   # each fair choice this waiter was refused for, and since when
     skip: set[str] = set()
+    reading, read_at = None, 0.0
     try:
         while True:
             stamp = lanes.stamp() if hasattr(lanes, "stamp") else None   # before the look: a release during it wakes
-            reading = read_machine()
+            if reading is None or clock() - read_at >= poll:
+                # the machine - process table, CPU samples, CI through `gh` - is read once a poll; a wake on a journal
+                # write decides on the journal with the last reading, so N waiters woken by every write cost N
+                # journal folds, not N machine reads (0.28.1, the regression review of 0.28.0)
+                reading, read_at = read_machine(), clock()
             slots = capacity() if callable(capacity) else capacity   # read each poll: a raise reaches the queue
             mode = share() if callable(share) else share
             outright = [answer for answer in reading.answers
@@ -105,8 +119,8 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
                         return Grant(granted, reading, "")
             why = in_the_way(lanes, reading, slots, mine.id, share=mode)
             light = getattr(lanes, "waits_for", "")
-            if light and not outright and not unknown:   # a light run waits for room, not for the holders' places
-                why = f"a light run that waits for room: {light}"
+            if light and not outright and not unknown:   # a light run waits for room beside the heavy ones, or a place
+                why = f"{why}; as a light run beside them: {light}"
             lasting = [answer for answer in unknown if answer.lasting]
             remaining = deadline - clock()
             if lasting or remaining <= 0:
@@ -115,7 +129,9 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
             if say is not None and why != said:
                 say(f"waiting for the lane: {why}")
                 said = why
-            _nap(lanes, poll + jitter(), remaining, clock=clock, sleep=sleep, stamp=stamp)
+            # never past the next look at the machine: a wake that reused the last one must not push it back
+            _nap(lanes, min(poll + jitter(), max(1.0, read_at + poll - clock())), remaining, clock=clock,
+                 sleep=sleep, stamp=stamp)
     except BaseException:
         lanes.leave(mine.id)
         raise

@@ -443,9 +443,10 @@ def test_light_runs_go_by_arrival_among_themselves(lane):
     lanes, _ = lane
     teach(lanes)
     room = book.Room(cpus=8, factor=1.5, memory_left=lambda: 4000)
+    assert lanes.grant(booked(lanes, RECEIPT, 0).id, slots=1, room=room)   # the place is taken: no count to fall to
     big = booked(lanes, BIG, 1)
     small = booked(lanes, FILE, 2)
-    assert lanes.grant(big.id, slots=1, room=room) is None   # 5000 MB of 4000
+    assert lanes.grant(big.id, slots=1, room=room) is None   # 5000 MB of 2300 left
     assert lanes.grant(small.id, slots=1, room=room) is None
     found = lanes.bookings()
     assert book.light_verdict(found, found[small.id], room, est.history(found, now=NOW()), lanes.live) == \
@@ -456,8 +457,12 @@ def test_a_light_waiter_is_not_ahead_of_a_heavy_one(lane):
     lanes, _ = lane
     teach(lanes)
     room = book.Room(cpus=8, factor=1.5, memory_left=lambda: 4000)
+    holder = booked(lanes, RECEIPT, 0)
+    assert lanes.grant(holder.id, slots=1, room=room)
     assert lanes.grant(booked(lanes, BIG, 1).id, slots=1, room=room) is None
-    assert lanes.grant(booked(lanes, RECEIPT, 2).id, slots=1, room=room).path == "fifo"
+    heavy = booked(lanes, RECEIPT, 2)
+    lanes.release(holder.id)
+    assert lanes.grant(heavy.id, slots=1, room=room).path == "fifo"   # the light one waiting first is not ahead
 
 
 def test_no_light_admission_while_an_older_flotillas_waiter_is_live(lane, tmp_path):
@@ -492,8 +497,8 @@ def test_a_foreign_computing_run_takes_four_cores_of_the_budget(lane, foreign, f
     teach(lanes)
     measured(lanes, ["exact:three"], 600.0, 3.0, 500)
     room = book.Room(cpus=8, factor=1.5, memory_left=lambda: 8000, foreign=foreign)
-    assert lanes.grant(booked(lanes, ["exact:three"], 1).id, slots=9, room=room)
-    assert bool(lanes.grant(booked(lanes, MID, 2).id, slots=9, room=room)) is fits
+    assert lanes.grant(booked(lanes, ["exact:three"], 1).id, slots=1, room=room)
+    assert bool(lanes.grant(booked(lanes, MID, 2).id, slots=1, room=room)) is fits
 
 
 def test_an_unmeasured_run_is_heavy(lane):
@@ -629,3 +634,32 @@ def test_heavy_starts_with_more_holders_than_slots_wait_for_enough_of_them_to_en
     found = {item.id: item for item in (*holders, waiter)}
     starts = book.heavy_starts(found, hist, slots=1, now=now, live=lambda item: True, ceiling=1800)
     assert abs((starts["b4"] - now).total_seconds() - 9 * 60) < 2   # all three must end at capacity 1
+
+
+# -- 0.28.1: a light run the room refuses still goes by count when a place is free ---------------------------------
+
+@pytest.mark.parametrize("memory", [lambda: None, lambda: 250])
+def test_a_light_run_on_an_empty_lane_goes_by_count_when_the_room_refuses(lane, memory):
+    lanes, _ = lane
+    teach(lanes)
+    room = book.Room(cpus=8, factor=1.5, memory_left=memory)   # unreadable, or less than its 300 MB
+    granted = lanes.grant(booked(lanes, FILE, 1).id, slots=1, room=room)
+    assert granted is not None and granted.path == "fifo"
+
+
+def test_a_light_run_behind_a_big_light_one_is_not_stranded_on_an_empty_lane(lane):
+    lanes, _ = lane
+    teach(lanes)
+    room = book.Room(cpus=8, factor=1.5, memory_left=lambda: 4000)
+    big, small = booked(lanes, BIG, 1), booked(lanes, FILE, 2)
+    assert lanes.grant(small.id, slots=1, room=room) is None              # the big one came first
+    assert lanes.grant(big.id, slots=1, room=room).path == "fifo"          # 5000 MB: by count, as a heavy run would
+    assert lanes.grant(small.id, slots=1, room=room) is None              # 0 MB left beside it, place taken
+
+
+def test_a_light_run_the_room_refuses_still_waits_when_the_place_is_taken(lane):
+    lanes, _ = lane
+    teach(lanes)
+    room = book.Room(cpus=8, factor=1.5, memory_left=lambda: None)
+    assert lanes.grant(booked(lanes, RECEIPT, 1).id, slots=1, room=room)
+    assert lanes.grant(booked(lanes, FILE, 2).id, slots=1, room=room) is None

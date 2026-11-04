@@ -287,7 +287,7 @@ def test_a_waiter_wakes_within_a_second_of_a_journal_change(lanes):
         return QUIET
     grant = acquire.acquire(lanes, read, who="main session 1", note="suite", capacity=1, wait=60.0, clock=clock,
                             sleep=sleep, jitter=lambda: 0.0)
-    assert grant.booking is not None and clock.now <= 4.0 and reads == [0.0, clock.now]
+    assert grant.booking is not None and clock.now <= 4.0 and reads == [0.0]   # the release, not the machine
 
 
 def test_without_a_change_the_machine_is_read_once_per_poll(lanes):
@@ -300,7 +300,7 @@ def test_without_a_change_the_machine_is_read_once_per_poll(lanes):
 
     acquire.acquire(lanes, lambda: reads.append(clock.now) or QUIET, who="main session 1", note="suite",
                     capacity=1, wait=31.0, clock=clock, sleep=sleep, jitter=lambda: 0.0)
-    assert reads == [0.0, 15.0, 30.0, 31.0] and max(naps) <= 1.0
+    assert reads == [0.0, 15.0, 30.0] and max(naps) <= 1.0   # the last second reuses the look before it
 
 
 
@@ -311,3 +311,48 @@ def test_a_light_waiter_is_told_its_own_reason(lanes, monkeypatch):
     grant = acquire.acquire(lanes, lambda: QUIET, who="main session 1", note="suite", capacity=1, wait=0.0,
                             clock=Clock(), sleep=lambda s: None, say=said.append, jitter=lambda: 0.0)
     assert grant.booking is None and grant.why.endswith("needs 400 MB, 300 left")
+
+
+def test_a_waiter_woken_by_every_write_still_reads_the_machine_once_per_poll(lanes):
+    take(lanes, who="review session 1")
+    clock, reads = Clock(), []
+
+    def sleep(seconds):
+        clock.sleep(seconds)
+        lanes.enqueue("main session 9", "noise", pid=None)   # the journal changes every second
+
+    acquire.acquire(lanes, lambda: reads.append(clock.now) or QUIET, who="main session 1", note="suite",
+                    capacity=1, wait=31.0, clock=clock, sleep=sleep, jitter=lambda: 0.0)
+    assert reads == [0.0, 15.0, 30.0]
+
+
+def test_a_heavy_waiter_is_told_only_what_it_waits_for(tmp_path):
+    """0.28.1, the regression review: a heavy waiter's reason named light holders and light waiters the grant does
+    not make it wait for."""
+    from test_lane_book import BIG, FILE, RECEIPT, booked, teach
+    lanes = book.Book(LocalLogStore(tmp_path / "why"), Procs())
+    teach(lanes)
+    room = book.Room(cpus=8, factor=1.5, memory_left=lambda: 4000)
+    heavy = booked(lanes, RECEIPT, 1)
+    assert lanes.grant(heavy.id, slots=1, room=room)
+    assert lanes.grant(booked(lanes, FILE, 2).id, slots=1, room=room).path.startswith("light")
+    assert lanes.grant(booked(lanes, BIG, 3).id, slots=1, room=room) is None
+    mine = booked(lanes, RECEIPT, 4)
+    why = acquire.in_the_way(lanes, QUIET, 1, mine.id)
+    assert "seat 1" in why and "seat 2" not in why and "seat 3" not in why, why
+
+
+def test_a_wake_between_looks_does_not_push_the_next_look_back(lanes):
+    """The final review of 0.28.1, M2: after a wake that reused the last look, the next nap was a whole poll again, so
+    the machine was looked at again two polls after the last look, not one."""
+    take(lanes, who="review session 1")
+    clock, reads = Clock(), []
+
+    def sleep(seconds):
+        clock.sleep(seconds)
+        if clock.now == 14.0:
+            lanes.enqueue("main session 9", "noise", pid=None)   # one write between two looks
+
+    acquire.acquire(lanes, lambda: reads.append(clock.now) or QUIET, who="main session 1", note="suite",
+                    capacity=1, wait=31.0, clock=clock, sleep=sleep, jitter=lambda: 0.0)
+    assert reads == [0.0, 15.0, 30.0]

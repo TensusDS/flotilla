@@ -56,10 +56,7 @@ def room_for(profile: dict):
     """What a light run may take, built from each poll's reading: this machine's cores, the factor, the memory
     available less the profile's floor (read when the grant decides, inside the lock), the foreign runs computing."""
     from flotilla.core import resources
-    try:   # the cores this process may run on (a container's or a taskset's), not the host's
-        cpus = len(os.sched_getaffinity(0)) or os.cpu_count() or 1
-    except (AttributeError, OSError):
-        cpus = os.cpu_count() or 1
+    cpus = machine.cpus()
     floor, factor = machine.memory_floor_mb(profile), cpu_factor()
 
     def memory_left():
@@ -229,7 +226,7 @@ def _status(args) -> int:
     if swept:
         print(f"swept {len(swept)} booking(s) whose process is gone: " + ", ".join(visible(item.id) for item in swept))
     slots, mode = capacity(), share()
-    print(f"capacity: {slots} long run(s) at a time (machine.toml lane_capacity)")
+    print(f"capacity: {slots} heavy run(s) at a time (machine.toml lane_capacity); light runs take no place")
     print(_share_line())
     found = lanes.bookings()   # read once: each waiter's reason would read the whole journal again
     held, waiting = lanes.holders(found), lanes.waiters(found)

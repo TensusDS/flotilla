@@ -59,10 +59,10 @@ project's file names a plugin nobody else can find.
 there, and flotilla's hooks and CLI run in every session of your project. To choose when you move, pin a release tag
 on the first line instead (the tags are listed in [CHANGELOG.md](CHANGELOG.md)):
 
-    claude plugin marketplace add TensusDS/flotilla#v0.28.0 --scope project
+    claude plugin marketplace add TensusDS/flotilla#v0.28.1 --scope project
     claude plugin install flotilla@flotilla --scope project
 
-That writes `"ref": "v0.28.0"` into the project's settings and installs that release; `claude plugin update` stays on
+That writes `"ref": "v0.28.1"` into the project's settings and installs that release; `claude plugin update` stays on
 it. Two caveats. A machine keeps one marketplace of a name for all its projects, and the last `marketplace add` on
 it repoints it: measured, after another project on the same machine added it without a pin, `claude plugin update`
 in a project pinned to v0.22.0 took the default branch's release. Give the projects on one machine the same pin;
@@ -561,7 +561,8 @@ rented machine with `flotilla rig run` and gets its output, its exit code and it
 - **A session serves the projects you share it with.** It starts with the project whose request opened it (or the
   repository you opened it in; outside one, every project). Another project's seat is refused before anything is
   rented - `rig run`, `rig up` and `rig down` alike - and its orchestrator relays the line
-  `! flotilla rig share <project>`; `flotilla rig unshare <project>` takes one off. `flotilla rig` shows whom the
+  `! flotilla rig share <project>`; `! flotilla rig unshare <project>` takes one off - both are the person's moves, refused
+  to a Claude tool call. `flotilla rig` shows whom the
   session serves, what each project's runs cost of it and the machines' idle time; runs that share a machine split
   its minutes.
 - **Images are yours to allow.** `rig enable` writes `rig_images` into `machine.toml` with one default

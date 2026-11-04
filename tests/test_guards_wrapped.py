@@ -192,3 +192,133 @@ def test_a_pipe_into_an_interpreter_with_an_argument_is_read(tmp_path, monkeypat
     command = "printf \"import subprocess; subprocess.run(['flotilla', 'work', 'approve', 'x'])\" | python3 /dev/stdin"
     answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
     assert answer and answer["permissionDecision"] == "deny", answer
+
+
+# --- 0.28.1: the narrowing of when the guard asks was withdrawn after three rounds of bypasses (the final review of
+# 0.28.1: a wrapper's own interpreter-named word chose the wrong option table; fish -C, python -m timeit, node --import,
+# perl -M carry code the table did not know). Anything after an interpreter that names flotilla asks, as at 0.28.0;
+# what was asked about at 0.28.0 must still be asked about.
+
+ASKED_AS_AT_0_28_0 = [
+    "uv run --python python3.12 node -e 'require(\"child_process\").execSync(\"flotilla work land b\")'",
+    "docker run --rm node bash -c 'flotilla work land b'",
+    "sudo -u node bash -c 'flotilla work land b'",
+    "perl x.pl python3 -c 'flotilla work land b'",
+    "fish -C 'flotilla work land b'",
+    "python3 -m timeit -n1 \"import os; os.system('flotilla work land b')\"",
+    "node --import 'data:text/javascript,flotilla work land b'",
+    "perl '-Mstrict;`flotilla work land b`' /dev/null",
+    "python3 -m flotilla work show feat/x",
+    "flotilla lane run -- python -m pytest -k flotilla tests/",
+]
+
+
+@pytest.mark.parametrize("command", ASKED_AS_AT_0_28_0)
+def test_code_or_arguments_naming_flotilla_after_an_interpreter_ask_as_at_0_28_0(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] in ("ask", "deny"), answer
+
+
+SHARE_IS_A_WORD = [
+    "bash -c \"flotilla rig run --why 'share gpu' -- pytest\"",
+    "bash -c \"grep -rn rig flotilla | grep share\"",
+    "python3 -c \"print('flotilla rig run --why share-it')\"",
+]
+
+
+@pytest.mark.parametrize("command", SHARE_IS_A_WORD)
+def test_the_word_share_near_rig_in_wrapped_code_is_not_a_refusal(tmp_path, monkeypatch, command):
+    """`share` is a common word: only `rig share` spelled as the CLI spells it is the person's move (final review of
+    0.28.1, M1); built from pieces it stays a gap of decision 245, as it was before share was guarded."""
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert not answer or answer.get("permissionDecision") != "deny", answer
+
+
+STILL_REFUSED = [
+    "python3 -m flotilla work approve feat/x",
+    "python3 /opt/p/bin/flotilla rig open --hours 1",
+    "python3 tools/x.py flotilla work approve feat/x",
+    "python3 -X dev -c \"import subprocess; subprocess.run(['flotilla', 'work', 'approve', 'x'])\"",
+]
+
+
+@pytest.mark.parametrize("command", STILL_REFUSED)
+def test_a_persons_move_in_a_scripts_arguments_is_still_refused(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny", answer
+
+
+STILL_ASKED = [
+    "python3 tools/x.py work approve feat/x",          # a move through a program the guard cannot read
+    "bash -lc 'flotilla work show feat/x'",            # code handed as text that runs flotilla
+    "node -e \"require('child_process').execSync('flotilla status')\"",
+]
+
+
+@pytest.mark.parametrize("command", STILL_ASKED)
+def test_code_handed_as_text_or_an_unreadable_move_still_asks(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "ask", answer
+
+
+# the commit security review of c4d060a: what the script-or-code reading must not be fooled by - fail closed
+CODE_HOWEVER_SPELLED = [
+    "bash --rcfile /tmp/rc -c 'flotilla work show feat/x'",
+    "bash --init-file /tmp/rc -c 'flotilla work show feat/x'",
+    "node --eval=\"require('child_process').execSync('flotilla status')\"",
+    "node --require ./x.js -e \"require('child_process').execSync('flotilla status')\"",
+    "fish --command 'flotilla work show feat/x'",
+    "python3 <(echo \"import os; os.system('flotilla status')\")",
+    "python3 /dev/fd/3 3<<< \"import os; os.system('flotilla work approve x')\"",   # stdin: moves refused
+]
+
+
+@pytest.mark.parametrize("command", CODE_HOWEVER_SPELLED)
+def test_code_handed_as_text_however_spelled_still_asks(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] in ("ask", "deny"), answer
+
+
+
+SHARE_BUILT_IN_CODE = [
+    "python3 - <<'EOF'\nimport subprocess\ncmd = ['flotilla', 'rig']\ncmd.append('share')\nsubprocess.run(cmd + ['x'])\nEOF",
+    "python3 -c \"import subprocess; c=['flotilla','rig']; c.append('unshare'); subprocess.run(c+['x'])\"",
+]
+
+
+@pytest.mark.parametrize("command", SHARE_BUILT_IN_CODE)
+def test_share_built_into_an_argv_in_code_is_refused_on_stdin_too(tmp_path, monkeypatch, command):
+    """The commit security review of bd6b7dd: stdin-fed code is never asked about, only refused, so `share` must stay
+    a move word there - as a quoted token, which prose does not use."""
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny", answer
+
+
+
+SHARE_AMONG_WORDS_ON_STDIN = [
+    "python3 - <<'EOF'\nimport subprocess\nsubprocess.run('flotilla rig ' + 'now share'.split()[1] + ' x', shell=True)\nEOF",
+    "cat <<'EOF' | python3\nimport os\nos.system('flotilla rig ' + 'it unshare'.split()[1] + ' x')\nEOF",
+]
+
+
+@pytest.mark.parametrize("command", SHARE_AMONG_WORDS_ON_STDIN)
+def test_share_among_other_words_in_stdin_code_naming_flotilla_asks(tmp_path, monkeypatch, command):
+    """The commit security review of c7c5eba: a quoted token alone missed `share` inside a longer string. Refusing any
+    such string would refuse prose; stdin code that names flotilla and has `share` after `rig` asks the person."""
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] in ("ask", "deny"), answer
+
+
+
+SHARE_BEFORE_RIG = [
+    "python3 - <<'EOF'\nimport subprocess\nm = 'share'\nsubprocess.run(['flotilla', 'rig', m, 'x'])\nEOF",
+    "cat <<'EOF' | python3\nimport os\nm = 'it unshare'.split()[1]\nos.system('flotilla rig ' + m + ' x')\nEOF",
+]
+
+
+@pytest.mark.parametrize("command", SHARE_BEFORE_RIG)
+def test_share_before_rig_in_code_naming_flotilla_asks_too(tmp_path, monkeypatch, command):
+    """The commit security review of 0dccc07: the ask read `rig` before `share`, so a word set first and used after
+    passed. Order no longer matters; a move assembled from pieces of words stays decision 245's gap."""
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] in ("ask", "deny"), answer

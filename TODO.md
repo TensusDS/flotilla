@@ -17,34 +17,54 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
   the session writes and then runs; `eval`; `ssh host '...'`; interpreters not in its list (`deno`, `osascript`); a
   move spelled out of pieces of words (`'appr' + 'ove'`). *(checked 2026-11-03 on 0.26.2: still S, within decision 245
   - flotilla/guards/person.py, wrapped_check)*
-- **The heredoc check refuses a quoted heredoc's body that holds backticks** next to a flotilla line: a `git commit -F
-  - <<'MSG'` whose message quoted code was refused as "a command substitution your own shell runs" (seen while
-  building 0.26.2). *(checked 2026-11-03 on 0.26.2: still P - flotilla/guards/person.py, heredoc_check)*
+- **The person guard reads a quoted heredoc's body lines as shell lines** (`check` with `bodies=True`), so a data line
+  that holds a backtick or `$(` and names `flotilla rig` as plain text - a commit message quoting "the `--get` of
+  flotilla rig run" - is refused as "this rig line holds a command substitution"; the same line naming `flotilla
+  work` passes, and `heredoc_check` itself skips a quoted delimiter (corrected 2026-11-04 by the review of 0.28.0;
+  first seen while building 0.26.2). A body is code only when the command it feeds is an interpreter. *(checked 2026-11-03 on 0.26.2: still P - flotilla/guards/person.py, heredoc_check)*
 - **The person guard refuses `python3 -c "..."` that names a flotilla path** as "a variable or a substitution" (seen
   by the twosuns orchestrator and while building 0.26.0 on heredocs naming the CLI). *(checked 2026-11-03 on 0.26.0:
   still P - flotilla/guards/person.py:303)*
 - Deferred from the 0.26.0 reviews (P): an inbox row's age resets on unrelated moves (`inbox.py`, `since` is the
   row's last move); putting a row off loses its first-shown time (the key changes); a wait on a reserved row is listed
-  but cannot be put off (`steering.hold`); the hook writes the shown file twice per prompt without a lock; a census
-  session waiting at its prompt flickers between samples; the shown file is not under `guards/files.py`; `/loop` and
-  wakeup prompt shapes beyond CronCreate are not measured. *(checked 2026-11-03 on 0.26.0: still P)*
+  but cannot be put off (`steering.hold`); the hook writes the shown file twice at Stop (`settle`, then `mark`)
+  without a lock; a census session waiting at its prompt flickers between samples; the shown file is not under
+  `guards/files.py`; the wakeup prompt shape is not measured (CronCreate and `/loop` firings were, on 2.1.317).
+  *(checked 2026-11-04 on 0.28.0: still P)*
+
+## From the review of 0.28.0 against everything found since 0.24.0 (2026-11-04, 0.28.1)
+
+- **The person's inbox does not list the collector's questions** (park or keep a released branch, stop or keep a dead
+  seat's processes, letting archived media expire): `inbox._item_entry` maps permission questions, rig requests and
+  waiting sessions only; these reach the person through `fleet clean` reports and `/flotilla:doctor`.
+  *(open: flotilla/watch/inbox.py)*
+- **The guard asks about a script's or a module's arguments that name flotilla** (`python3 -m flotilla work show`,
+  `flotilla lane run -- python -m pytest -k flotilla`, flotilla run by path through `python3`): in a background seat
+  nobody answers, so the seat stands still. Narrowing it was built and withdrawn in 0.28.1 - three review rounds found
+  code handed as text passing as such arguments (a wrapper's interpreter-named word choosing the option table, `fish
+  -C`, `python -m timeit`, `node --import`, `perl -M`). If it is done again, it needs an allow-list of exact readable
+  forms (flotilla's own CLI by path or `-m flotilla`, with no other interpreter on the line), never a reading of
+  options. Low harm today: the shipped skills run `bin/flotilla` directly. *(open: flotilla/guards/person.py
+  `wrapped_check`)*
+- **An unshare can still let one run start in the same look.** The share is asked at the top of each look of a
+  waiting rig run, so an unshare landing between that check and `start_run` lets the run start; the head run can also
+  spend up to 100 s raising a machine before it looks again. *(open: flotilla/rig/run.py `take_room`)*
+- **A fallen-back light run can lose a freed place to a later heavy run:** heavy waiters skip light waiters for order,
+  so who wins a place freed while both wait is wake timing. *(open: flotilla/lane/book.py `_path`, the `lights` set)*
+- **Untested though they hold:** the orchestrator's prompt still carries `collector` and `disk` after 0.26.0's
+  filter (`hooks._prompt`); `tree cut` and `tree switch` keep every repeated `--requires` and `--after`.
+  *(open: tests)*
 
 ## From the final review of the lane's light runs (2026-11-04, 0.28.0)
 
-- **Every lane waiter wakes on every journal write.** Each light run's booking, grant, release and record makes every
-  waiter read the whole machine (process table, CPU samples, CI) at once - cost, not correctness; a busy light stream
-  multiplies it. Idea: wake on a write only when it frees something (a release, an expiry). *(open: flotilla/lane/acquire.py `_nap`)*
-- **One light run that does not fit holds up every light run behind it.** Light runs go strictly by arrival (pinned
-  by a test), so a 5 GB light run waiting for memory keeps one-file tests behind it until memory frees; with an
-  expired wait keeping its place, the holdup survives retries. Decide on purpose whether a later light run that fits
-  may pass. *(open: flotilla/lane/book.py `_light`)*
+- **One light run that does not fit holds up every light run behind it while a heavy run holds the lane.** Light
+  runs go strictly by arrival (pinned by a test); since 0.28.1 a refused light run falls back to the count, so on a
+  free lane nobody is stranded, but beside a heavy holder a 5 GB light run waiting for memory keeps one-file tests
+  behind it, and an expired wait keeping its place makes the holdup survive retries. Decide on purpose whether a
+  later light run that fits may pass. *(open: flotilla/lane/book.py `_light`)*
 
 ## From the final review of the rig queue, part A (2026-11-03, 0.27.0)
 
-- **Ctrl-C during a stopped run's fetch aborts its cleanup.** `_cleaning` makes SIGTERM and SIGHUP harmless while
-  the `finally` runs, not SIGINT: a KeyboardInterrupt during the up-to-120 s `--get` after a stop skips DROP and
-  `finish_run`, and the run stays `running` until the reaper calls it `gone`. Interactive use only; seats run it in
-  the background. *(open: flotilla/rig/run.py, main's signal set)*
 - **The ceiling exception can outlast one pass when the service misbehaves.** A draining machine whose destroy the
   service took stays out of the count until it is unlisted or goes STUCK - up to three passes (~15 min) if the
   service keeps listing it; when it then goes STUCK, the next session's machine already exists, so ceiling + 1
@@ -102,11 +122,12 @@ journal figures: runs under 60 s waited a median 30.6 min for a median 6.8 s run
   affected-tests tier for hand and review, the full tier only for the push receipt). *(open, design)*
 
 **The ledger**
-- **Hand does not warn when the tip carries commits of an open unaccepted row it does not require** (twosuns item 10,
+- **Hand notes a stack on an unaccepted row but does not say it is not required** (twosuns item 10,
   r956: 75 such commits, its dependency lost to a replaced `--requires`). 0.24.1 keeps every `--requires`, shows them
   and adds `work requires --add`; the warning at hand is still to do - `_stacked_on` already names such rows, so the
   hand's line could say "builds on `<branch>`, not required: `work requires <branch> --add <it>`".
-  *(checked 2026-11-02 on 0.24.1: still P - flotilla/ledger/handover.py, hand)*
+  A dependency whose tip moved after the stack is not seen either (`_stacked_on` asks the row's current tip).
+  *(checked 2026-11-04 on 0.28.0: still P - flotilla/ledger/handover.py `_stacked_on`, ledger/commands.py:625)*
 - **`work adopt` cannot free a branch a dead seat's tree holds with untracked files** ("not freed: 3 uncommitted").
   With only untracked dirt, detach the dead tree's HEAD (the files stay), or print the one-line command.
   *(open: flotilla/ledger/steering.py:47)*
@@ -612,6 +633,8 @@ Each is a limitation README states today, judged fixable in principle; none is p
 - The onboard skill does not state that background isolation stays on. *(checked 2026-10-04 on 0.7.8: still [P])*
 
 ## Done
+
+- The review of 0.28.0 against everything found since 0.24.0: a light run never waits on an empty lane; woken waiters reuse their last look at the machine; `rig share`/`unshare` are the person's moves to the guard; an unshared project's waiting rig run leaves the line; a script's or module's arguments are not asked about (the reading fails closed); a second Ctrl-C during a rig cleanup is held off; a heavy waiter is told only what it waits for (0.28.1).
 
 - The lane: light runs (measured <= 60 s, <= 2 cores) take what one heavy run leaves and no place; an expired wait keeps its place; a waiter is handed the lane within a second; `flotilla lane` shows the budget and heavy runs' expected starts (0.28.0; twosuns items 13 and 16).
 

@@ -938,3 +938,58 @@ def test_a_queued_run_says_its_place_even_with_no_machine_up(world, box, tree, m
     opened(world)
     _, _, out = queued_only(world, tree, monkeypatch)
     assert "j1 is 1st in line; a machine is raised first" in out
+
+
+def test_a_waiting_run_of_a_project_the_person_unshared_leaves_the_line(world, box, tree, monkeypatch):
+    """0.28.1, the regression review: the share was checked once, at queue time, so a run that waited the whole
+    session (0.27.0) still started after the person took its project off the session."""
+    opened(world)
+    rig = journal(world)
+    session = next(s for s in rig.sessions().values() if s.state == j.OPEN)
+    monkeypatch.setattr(run_module, "SLEEP", lambda s: None)
+    task = waiting_task(world, tree, rig, session, ("exact:a",), pid=83)
+    rig.share_session(session.id, ["another-project"])
+    began = time.monotonic()
+    assert not task.take_room(rig.sessions()[session.id], time.monotonic() + 20)
+    assert time.monotonic() - began < 5 and task.code == 2 and "no longer serves" in task.reason, task.reason
+
+
+def test_ctrl_c_is_held_off_while_a_stopped_run_cleans_up(monkeypatch):
+    """0.28.1, the regression review: SIGTERM and SIGHUP were held off during the cleanup, SIGINT was not - and since
+    0.27.0 the cleanup spends up to 120 s bringing back --get, so a second Ctrl-C skipped finish_run and the drop."""
+    seen = {}
+
+    def fake_main(state, settings, args):
+        seen["handler"] = signal.getsignal(signal.SIGINT)
+        return 0
+    monkeypatch.setattr(run_module, "_main", fake_main)
+    assert run_module.main(None, None, None) == 0
+    assert seen["handler"] is run_module._leave and signal.getsignal(signal.SIGINT) is not run_module._leave
+    monkeypatch.setattr(run_module, "_cleaning", True)
+    assert run_module._leave(signal.SIGINT, None) is None   # held off while cleaning
+
+
+
+def test_the_rig_runs_ssh_calls_are_out_of_the_terminals_reach(tmp_path, monkeypatch):
+    """The final review of 0.28.1, M5: a terminal's Ctrl-C reaches the whole foreground process group, so the cleanup's
+    ssh children died though rig run held the signal off. They run in a session of their own."""
+    seen = []
+
+    def fake_run(argv, **kwargs):
+        seen.append(kwargs.get("start_new_session"))
+        return subprocess.CompletedProcess(argv, 0, b"", b"")
+    monkeypatch.setattr(run_module, "KEY_PATH", str(tmp_path / "key"))
+    monkeypatch.setattr(run_module.subprocess, "run", fake_run)
+    box = run_module.Box(tmp_path, j.Machine(id="m1", address="ssh4.vast.ai:30001"))
+    box.call(remote.STATUS, "/x")
+    box.call(remote.STATUS, "/x", data=b"y")
+    assert seen == [True, True]
+
+
+def test_a_held_off_signal_says_so_once(monkeypatch, capsys):
+    monkeypatch.setattr(run_module, "_cleaning", True)
+    monkeypatch.setattr(run_module, "_held_off", False)
+    run_module._leave(signal.SIGINT, None)
+    run_module._leave(signal.SIGINT, None)
+    said = capsys.readouterr().out
+    assert said.count("held off") == 1, said
