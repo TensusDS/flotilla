@@ -110,7 +110,36 @@ directory), so a fleet of twelve seats does not repeat it twelve times. Doctor p
 - each of those projects whose committed `.claude/settings.json` pins the `flotilla` marketplace to a ref other
   than the channel, with the exact edit (not made: it is a change to that repository, its owner's to commit).
 
+- each project where a fleet is working now: its live seats (the census, matched to the project's main checkout
+  and its seat trees), and the copy they run.
+
 It ends with a plan and a mark (as `onboard write` does): the steps below that apply.
+
+### A project whose fleet is working
+
+Updating under a live fleet does not touch the sessions already running - they keep what they loaded - but every
+session started afterwards (a helper, `spawn --fill`, a replacement seat) loads the new release beside seats on the
+old one. One fleet on two releases is the hazard, not the update. So for each project with live seats the person
+chooses (the person's request, 2026-11-04):
+
+- **Stop the fleet and update** - that project's background seats are stood down as `/flotilla:down` does (open
+  work is named and left for `flotilla work adopt`; trees and branches are kept or collected by its rules), its
+  install is updated, and the person is told to raise the fleet again with `/flotilla:spawn`. Nothing is raised
+  automatically. An interactive session there is the person's own: it is not stopped, and the report says it keeps
+  the old release until it is started again.
+- **Defer** - that project's install is left as it is, and the deferral is recorded in the state directory (project,
+  target release, when). The project's next session start and its `/flotilla:down` close with one line: the update
+  to vB waits; run `/flotilla:update` now that the fleet is down.
+
+The user install counts as such a project for every fleet that runs on it (a project with no install of its own,
+or one whose sessions load the user's copy): updating it asks the same question, once, naming those fleets.
+
+Automatic updates do not wait for this choice: Claude Code's background pass may update the copy on disk under a
+live fleet. So the fleet guards itself at the moment the hazard happens: before `flotilla spawn` raises a seat
+(any path - spawn, `--fill`, a helper), it compares the release the new seat would load (the project's install
+record, else the user's) with the release the fleet runs (the copy running the command). When they differ it
+raises nothing and says so: stand the fleet down and raise it again on vB, or `--anyway` to raise one seat on vB
+beside the rest.
 
 `flotilla update apply --confirm <mark> [--pin <ref>]` carries the plan out, the person's move, refused from a
 background session and by the guard as `work approve` is:
@@ -121,16 +150,19 @@ background session and by the guard as `work approve` is:
 4. Write `autoUpdate: true` back on the entry when following `stable` - measured 5.
 5. Read both back: the settings entry and `claude plugin marketplace list` name the new ref, else stop and say
    which step did not take, with the backup's path.
-6. `claude plugin update flotilla@flotilla --scope user` when a user install exists; then in each listed project
-   behind the newest, `claude plugin update flotilla@flotilla --scope <project|local>` run there. Each result is
-   printed; a failure does not stop the others.
-7. Say that running sessions keep what they loaded; a session started after this runs the new release.
+6. For each project with a working fleet, the person's choice from the plan: stand its seats down, or record the
+   deferral (above).
+7. `claude plugin update flotilla@flotilla --scope user` when a user install exists and is not deferred; then in
+   each listed project behind the newest and not deferred, `claude plugin update flotilla@flotilla --scope
+   <project|local>` run there. Each result is printed; a failure does not stop the others.
+8. Say that running sessions keep what they loaded; a session started after this runs the new release.
 
 A changed plan changes the mark, so the yes covers exactly what was shown.
 
 `/flotilla:update` runs `flotilla update`, shows the report, asks one question - "Follow stable with automatic
-updates (Recommended)" / "Move the pin to v<newest> only" / "Leave it" - and on a choice that changes something,
-shows the plan and runs `apply --confirm` on the person's yes.
+updates (Recommended)" / "Move the pin to v<newest> only" / "Leave it" - then, for each project with a working
+fleet, "Stop the fleet and update" / "Defer" (one question per project, naming its live seats), and on choices
+that change something shows the plan and runs `apply --confirm` on the person's yes.
 
 ## D. Install instructions
 
