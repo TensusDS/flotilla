@@ -307,3 +307,18 @@ def test_share_among_other_words_in_stdin_code_naming_flotilla_asks(tmp_path, mo
     such string would refuse prose; stdin code that names flotilla and has `share` after `rig` asks the person."""
     answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
     assert answer and answer["permissionDecision"] in ("ask", "deny"), answer
+
+
+
+SHARE_BEFORE_RIG = [
+    "python3 - <<'EOF'\nimport subprocess\nm = 'share'\nsubprocess.run(['flotilla', 'rig', m, 'x'])\nEOF",
+    "cat <<'EOF' | python3\nimport os\nm = 'it unshare'.split()[1]\nos.system('flotilla rig ' + m + ' x')\nEOF",
+]
+
+
+@pytest.mark.parametrize("command", SHARE_BEFORE_RIG)
+def test_share_before_rig_in_code_naming_flotilla_asks_too(tmp_path, monkeypatch, command):
+    """The commit security review of 0dccc07: the ask read `rig` before `share`, so a word set first and used after
+    passed. Order no longer matters; a move assembled from pieces of words stays decision 245's gap."""
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] in ("ask", "deny"), answer
