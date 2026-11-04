@@ -59,10 +59,10 @@ project's file names a plugin nobody else can find.
 there, and flotilla's hooks and CLI run in every session of your project. To choose when you move, pin a release tag
 on the first line instead (the tags are listed in [CHANGELOG.md](CHANGELOG.md)):
 
-    claude plugin marketplace add TensusDS/flotilla#v0.27.0 --scope project
+    claude plugin marketplace add TensusDS/flotilla#v0.28.0 --scope project
     claude plugin install flotilla@flotilla --scope project
 
-That writes `"ref": "v0.27.0"` into the project's settings and installs that release; `claude plugin update` stays on
+That writes `"ref": "v0.28.0"` into the project's settings and installs that release; `claude plugin update` stays on
 it. Two caveats. A machine keeps one marketplace of a name for all its projects, and the last `marketplace add` on
 it repoints it: measured, after another project on the same machine added it without a pin, `claude plugin update`
 in a project pinned to v0.22.0 took the default branch's release. Give the projects on one machine the same pin;
@@ -493,6 +493,18 @@ each one waits, low memory, and CI using this machine; a booking whose process i
 How many long runs may share the machine is `lane_capacity` in the machine profile (`machine.toml` in the state
 directory, 1 by default); a change reaches the runs already waiting, and lowering it never stops a run that holds a
 slot. The lane is a booking, not a lock: a run started outside it is not stopped - the command guard warns about it.
+
+**Light runs beside a heavy one.** `lane_capacity` counts heavy runs only. A run its own measurements call light -
+the same command measured at most 60 s and at most 2 cores, with a known peak, three times or more - takes no place:
+it starts at once beside whatever holds the lane when its cores fit what is left of 1.5 x the machine's cores
+(`lane_cpu_factor` in `machine.toml`, 1 to 4) after the holders' estimates and 4 per unbooked run computing, and its
+peak fits the memory left after the floor and every holder's peak. So one test file no longer waits behind an
+11-minute receipt, and at capacity 1 two receipts still never run at once. A run never measured is heavy; light runs
+go in arrival order among themselves and never hold a heavy run back. While a seat of a flotilla before 0.28 waits,
+nothing is admitted light. A booking whose `--wait` ran out and that the same session makes again for the same
+command within 10 minutes keeps its place. A waiter notices a release within a second instead of at its next
+15-second look. `flotilla lane` shows the budget, marks each run light or heavy, and says when each heavy waiter
+starts by estimates.
 
 **Projects sharing a machine.** By default the lane is first come, first served across every project on the machine,
 so one project's backlog holds every other project's work behind it. `lane_share = "fair"` in `machine.toml` changes
