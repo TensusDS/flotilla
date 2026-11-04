@@ -56,10 +56,7 @@ def room_for(profile: dict):
     """What a light run may take, built from each poll's reading: this machine's cores, the factor, the memory
     available less the profile's floor (read when the grant decides, inside the lock), the foreign runs computing."""
     from flotilla.core import resources
-    try:   # the cores this process may run on (a container's or a taskset's), not the host's
-        cpus = len(os.sched_getaffinity(0)) or os.cpu_count() or 1
-    except (AttributeError, OSError):
-        cpus = os.cpu_count() or 1
+    cpus = machine.cpus()
     floor, factor = machine.memory_floor_mb(profile), cpu_factor()
 
     def memory_left():

@@ -13,6 +13,7 @@ GitHub's queue is asked too. Anything else that could not be asked blocks, becau
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -48,6 +49,15 @@ class Reading:
     answers: list
     computing: list
     idle: list
+
+
+def cpus() -> int:
+    """The cores this process may run on - a container's or a taskset's, not the host's: the one count light runs are
+    measured against, in the grant and in what a waiter is told (0.28.1)."""
+    try:
+        return len(os.sched_getaffinity(0)) or os.cpu_count() or 1
+    except (AttributeError, OSError):
+        return os.cpu_count() or 1
 
 
 def patterns_for(profile: dict) -> list[str]:

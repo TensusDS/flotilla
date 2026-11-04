@@ -54,7 +54,8 @@ def in_the_way(lanes, reading, capacity: int, mine: str = "", found: dict | None
     if me is not None and (me.rule or 0) >= book.RULE and not book.older_waiting(found, lanes.live, mine):
         from flotilla.lane import estimate
         hist = estimate.history(found, now=now)
-        if not book.is_light(me, hist):
+        from flotilla.lane import machine
+        if not book.is_light(me, hist, machine.cpus()):
             lights = {item.id for item in found.values() if item.state == book.WAITING and lanes.live(item)
                       and book.is_light(item, hist)}
             lights |= {item.id for item in found.values() if item.state == book.HELD and item.path.startswith("light")}
@@ -118,8 +119,8 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
                         return Grant(granted, reading, "")
             why = in_the_way(lanes, reading, slots, mine.id, share=mode)
             light = getattr(lanes, "waits_for", "")
-            if light and not outright and not unknown:   # a light run waits for room, not for the holders' places
-                why = f"a light run that waits for room: {light}"
+            if light and not outright and not unknown:   # a light run waits for room beside the heavy ones, or a place
+                why = f"{why}; as a light run beside them: {light}"
             lasting = [answer for answer in unknown if answer.lasting]
             remaining = deadline - clock()
             if lasting or remaining <= 0:
@@ -128,7 +129,9 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
             if say is not None and why != said:
                 say(f"waiting for the lane: {why}")
                 said = why
-            _nap(lanes, poll + jitter(), remaining, clock=clock, sleep=sleep, stamp=stamp)
+            # never past the next look at the machine: a wake that reused the last one must not push it back
+            _nap(lanes, min(poll + jitter(), max(1.0, read_at + poll - clock())), remaining, clock=clock,
+                 sleep=sleep, stamp=stamp)
     except BaseException:
         lanes.leave(mine.id)
         raise

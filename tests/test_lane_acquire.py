@@ -340,3 +340,19 @@ def test_a_heavy_waiter_is_told_only_what_it_waits_for(tmp_path):
     mine = booked(lanes, RECEIPT, 4)
     why = acquire.in_the_way(lanes, QUIET, 1, mine.id)
     assert "seat 1" in why and "seat 2" not in why and "seat 3" not in why, why
+
+
+def test_a_wake_between_looks_does_not_push_the_next_look_back(lanes):
+    """The final review of 0.28.1, M2: after a wake that reused the last look, the next nap was a whole poll again, so
+    the machine was looked at again two polls after the last look, not one."""
+    take(lanes, who="review session 1")
+    clock, reads = Clock(), []
+
+    def sleep(seconds):
+        clock.sleep(seconds)
+        if clock.now == 14.0:
+            lanes.enqueue("main session 9", "noise", pid=None)   # one write between two looks
+
+    acquire.acquire(lanes, lambda: reads.append(clock.now) or QUIET, who="main session 1", note="suite",
+                    capacity=1, wait=31.0, clock=clock, sleep=sleep, jitter=lambda: 0.0)
+    assert reads == [0.0, 15.0, 30.0]
