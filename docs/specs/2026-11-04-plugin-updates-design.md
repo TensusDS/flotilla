@@ -141,8 +141,9 @@ record, else the user's) with the release the fleet runs (the copy running the c
 raises nothing and says so: stand the fleet down and raise it again on vB, or `--anyway` to raise one seat on vB
 beside the rest.
 
-`flotilla update apply --confirm <mark> [--pin <ref>]` carries the plan out, the person's move, refused from a
-background session and by the guard as `work approve` is:
+`flotilla update apply --confirm <mark> [--pin <ref>]` carries the plan out. It is the person's move:
+`caller.person_refusal` refuses it from a background session (as `gc apply` and `organize apply` are), and the
+skill does not pre-approve it, so Claude Code asks the person before it runs:
 
 1. Back up `<config>/settings.json` to the state directory, with the time in its name.
 2. Set the user entry's `source.ref` to `stable` (or `--pin v<X.Y.Z>`), keeping every other key of the file.
