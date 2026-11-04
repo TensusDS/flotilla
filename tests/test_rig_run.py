@@ -952,3 +952,18 @@ def test_a_waiting_run_of_a_project_the_person_unshared_leaves_the_line(world, b
     began = time.monotonic()
     assert not task.take_room(rig.sessions()[session.id], time.monotonic() + 20)
     assert time.monotonic() - began < 5 and task.code == 2 and "no longer serves" in task.reason, task.reason
+
+
+def test_ctrl_c_is_held_off_while_a_stopped_run_cleans_up(monkeypatch):
+    """0.28.1, the regression review: SIGTERM and SIGHUP were held off during the cleanup, SIGINT was not - and since
+    0.27.0 the cleanup spends up to 120 s bringing back --get, so a second Ctrl-C skipped finish_run and the drop."""
+    seen = {}
+
+    def fake_main(state, settings, args):
+        seen["handler"] = signal.getsignal(signal.SIGINT)
+        return 0
+    monkeypatch.setattr(run_module, "_main", fake_main)
+    assert run_module.main(None, None, None) == 0
+    assert seen["handler"] is run_module._leave and signal.getsignal(signal.SIGINT) is not run_module._leave
+    monkeypatch.setattr(run_module, "_cleaning", True)
+    assert run_module._leave(signal.SIGINT, None) is None   # held off while cleaning

@@ -75,7 +75,8 @@ def _say(text: str) -> None:
 def main(state: Path, settings: rs.RigSettings, args) -> int:
     global _cleaning
     _cleaning = False
-    previous = {number: signal.getsignal(number) for number in (signal.SIGTERM, signal.SIGHUP)}
+    # SIGINT too: a second Ctrl-C during a stopped run's up-to-120 s --get must not skip finish_run (0.28.1)
+    previous = {number: signal.getsignal(number) for number in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT)}
     for number in previous:
         signal.signal(number, _leave)
     try:
