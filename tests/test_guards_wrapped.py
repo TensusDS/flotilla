@@ -192,3 +192,52 @@ def test_a_pipe_into_an_interpreter_with_an_argument_is_read(tmp_path, monkeypat
     command = "printf \"import subprocess; subprocess.run(['flotilla', 'work', 'approve', 'x'])\" | python3 /dev/stdin"
     answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
     assert answer and answer["permissionDecision"] == "deny", answer
+
+
+# --- 0.28.1, the regression review: a script's or a module's arguments are not code handed as text ---------------
+
+ARGUMENTS_NOT_CODE = [
+    "python3 /opt/p/bin/flotilla work claim feat/x",
+    "python3 -m flotilla work show feat/x",
+    "timeout 60 python3 -m flotilla.cli lane",
+    "flotilla lane run -- uv run python -m pytest --cov=flotilla tests/",
+    "flotilla lane run -- python -m pytest -k flotilla tests/",
+    "python3 tools/report.py flotilla",
+    "python3 -X dev -m pytest -p no:cacheprovider -k flotilla tests/",
+    "bash scripts/check.sh flotilla",
+]
+
+
+@pytest.mark.parametrize("command", ARGUMENTS_NOT_CODE)
+def test_a_scripts_or_modules_arguments_naming_flotilla_are_not_asked_about(tmp_path, monkeypatch, command):
+    """In a background seat an ask has nobody to answer it: the seat stands still. A line the guard reads whole -
+    flotilla run by path or as a module, a test run that merely names flotilla - is not code handed as text."""
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert not answer or answer.get("permissionDecision") not in ("deny", "ask"), answer
+
+
+STILL_REFUSED = [
+    "python3 -m flotilla work approve feat/x",
+    "python3 /opt/p/bin/flotilla rig open --hours 1",
+    "python3 tools/x.py flotilla work approve feat/x",
+    "python3 -X dev -c \"import subprocess; subprocess.run(['flotilla', 'work', 'approve', 'x'])\"",
+]
+
+
+@pytest.mark.parametrize("command", STILL_REFUSED)
+def test_a_persons_move_in_a_scripts_arguments_is_still_refused(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny", answer
+
+
+STILL_ASKED = [
+    "python3 tools/x.py work approve feat/x",          # a move through a program the guard cannot read
+    "bash -lc 'flotilla work show feat/x'",            # code handed as text that runs flotilla
+    "node -e \"require('child_process').execSync('flotilla status')\"",
+]
+
+
+@pytest.mark.parametrize("command", STILL_ASKED)
+def test_code_handed_as_text_or_an_unreadable_move_still_asks(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "ask", answer

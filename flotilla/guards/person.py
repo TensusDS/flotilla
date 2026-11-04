@@ -417,6 +417,42 @@ def _local(text: str) -> str:
     return text
 
 
+#: Per interpreter, the short options that hand it code as text, the long ones, and the short ones that take a value
+#: (whose value is not a script). Anything else on its command line that is not an option is the script or module it
+#: runs - and the words after that are that program's arguments, not code (0.28.1, the regression review of 0.28.0).
+_CODE_FLAGS = {"shell": ("c", (), "oO"), "python": ("c", (), "XWQ"), "perl": ("eE", (), "IMm"),
+               "ruby": ("e", (), "Ir"), "node": ("ep", ("--eval", "--print"), "r")}
+
+
+def _family(name: str) -> str:
+    base = os.path.basename(name)
+    if base.startswith("python"):
+        return "python"
+    return base if base in ("perl", "ruby", "node") else "shell"
+
+
+def _hands_code(name: str, after: list[str]) -> bool:
+    """Whether the interpreter's command line hands it code as text (`-c`, `-lc`, `-X dev -c`, `-e`, `--eval`), as
+    against running a script or a module (`python3 tools/x.py`, `python -m pytest`), whose arguments are data."""
+    short, long_, valued = _CODE_FLAGS[_family(name)]
+    skip = False
+    for word in after:
+        if skip:
+            skip = False
+            continue
+        if word in long_:
+            return True
+        if word.startswith("--") or word in ("-", "--"):
+            continue
+        if not word.startswith("-") or word.startswith("-m") and _family(name) == "python":
+            return False   # a script, or a module: what follows is its argv
+        letters = word[1:]
+        if any(letter in short for letter in letters):
+            return True
+        skip = letters[-1:] in valued and len(letters) == 1
+    return False
+
+
 def _interpreter_at(words: list[str]) -> int | None:
     return next((at for at, word in enumerate(words) if _INTERPRETER.fullmatch(os.path.basename(word))), None)
 
@@ -440,7 +476,10 @@ def wrapped_check(segment, command: str, raw: str = "") -> Finding | None:
     if at is None:
         return None
     after = words[at + 1:]
-    on_line = None if all(word.startswith("-") for word in after) else _judge(" ".join(after), ask_on_flotilla=True)
+    # code handed as text asks when it names flotilla; a script's or a module's arguments are data the guard reads
+    # whole - flotilla run by path or as a module is read by `check` - so they are judged for a person's move only
+    on_line = None if all(word.startswith("-") for word in after) else \
+        _judge(" ".join(after), ask_on_flotilla=_hands_code(words[at], after))
     # whatever its arguments (`bash -s arg`, `python3 /dev/stdin`), an interpreter may read a heredoc, a here-string
     # or a pipe: then the whole command, bodies included, is its code too (third security review)
     fed = all(word.startswith("-") for word in after) or any(sign in (raw or command) for sign in ("<<", "|"))
