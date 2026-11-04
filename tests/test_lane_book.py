@@ -1,7 +1,12 @@
 import pytest
 
 from flotilla.core.storage import LocalLogStore
+import datetime as dt
+
 from flotilla.lane import book
+from flotilla.lane import estimate as est
+
+NOW = lambda: dt.datetime.now(dt.timezone.utc)  # noqa: E731
 
 
 class Procs:
@@ -359,3 +364,140 @@ def test_fair_never_grants_past_the_slots(tmp_path):
         for seat, item in zip(seats, waiting):
             seat.grant(item.id, slots=2, share="fair")
     assert len(seats[0].holders()) == 2
+
+
+# -- light runs beside one heavy run (lane light runs design) --------------------------------------------------------
+
+ROOM = book.Room(cpus=8, factor=1.5, memory_left=lambda: 8000)
+RECEIPT, FILE, BIG, MID = ["exact:receipt"], ["exact:one-file"], ["exact:big-light"], ["exact:mid"]
+
+
+def measured(lanes, ladder, seconds, cores, peak_mb, n=3):
+    """Teach the journal what `ladder` takes: n released runs of it."""
+    for _ in range(n):
+        item = lanes.enqueue("seed", "", pid=900, mark="m", ladder=ladder, command="seed")
+        assert lanes.grant(item.id, slots=99)
+        lanes.release(item.id, measured={"seconds": seconds, "peak_mb": peak_mb, "cores": cores, "verdict": "green"})
+
+
+def teach(lanes):
+    measured(lanes, RECEIPT, 660.0, 7.0, 1700)
+    measured(lanes, FILE, 4.0, 1.0, 300)
+    measured(lanes, BIG, 20.0, 1.0, 5000)
+    measured(lanes, MID, 30.0, 2.0, 400)
+
+
+def booked(lanes, ladder, pid):
+    return lanes.enqueue(f"seat {pid}", "", pid=pid, mark="m", ladder=ladder, command="x")
+
+
+def test_a_light_run_starts_beside_a_heavy_holder_at_capacity_one(lane):
+    lanes, _ = lane
+    teach(lanes)
+    heavy = booked(lanes, RECEIPT, 1)
+    assert lanes.grant(heavy.id, slots=1, room=ROOM).path == "fifo"
+    light = lanes.grant(booked(lanes, FILE, 2).id, slots=1, room=ROOM)
+    assert light is not None and light.path.startswith("light: ")
+
+
+def test_a_heavy_run_never_waits_for_light_holders(lane):
+    lanes, _ = lane
+    teach(lanes)
+    assert lanes.grant(booked(lanes, FILE, 1).id, slots=1, room=ROOM)
+    assert lanes.grant(booked(lanes, MID, 2).id, slots=1, room=ROOM)
+    assert lanes.grant(booked(lanes, RECEIPT, 3).id, slots=1, room=ROOM).path == "fifo"
+
+
+def test_a_second_heavy_run_still_waits_at_capacity_one(lane):
+    lanes, _ = lane
+    teach(lanes)
+    assert lanes.grant(booked(lanes, RECEIPT, 1).id, slots=1, room=ROOM)
+    assert lanes.grant(booked(lanes, RECEIPT, 2).id, slots=1, room=ROOM) is None
+
+
+def test_a_light_run_waits_when_cores_do_not_fit(lane):
+    lanes, _ = lane
+    teach(lanes)
+    measured(lanes, ["exact:wide"], 600.0, 11.0, 1000)
+    assert lanes.grant(booked(lanes, ["exact:wide"], 1).id, slots=1, room=ROOM)
+    mid = booked(lanes, MID, 2)
+    assert lanes.grant(mid.id, slots=1, room=ROOM) is None
+    found = lanes.bookings()
+    assert book.light_verdict(found, found[mid.id], ROOM, est.history(found, now=NOW()), lanes.live) == \
+        "needs 2 cores, 1 left"
+
+
+def test_a_light_run_waits_when_memory_does_not_fit(lane):
+    lanes, _ = lane
+    teach(lanes)
+    room = book.Room(cpus=8, factor=1.5, memory_left=lambda: 2000)
+    assert lanes.grant(booked(lanes, RECEIPT, 1).id, slots=1, room=room)
+    item = booked(lanes, MID, 2)
+    assert lanes.grant(item.id, slots=1, room=room) is None
+    found = lanes.bookings()
+    assert book.light_verdict(found, found[item.id], room, est.history(found, now=NOW()), lanes.live) == \
+        "needs 400 MB, 300 left"
+
+
+def test_light_runs_go_by_arrival_among_themselves(lane):
+    lanes, _ = lane
+    teach(lanes)
+    room = book.Room(cpus=8, factor=1.5, memory_left=lambda: 4000)
+    big = booked(lanes, BIG, 1)
+    small = booked(lanes, FILE, 2)
+    assert lanes.grant(big.id, slots=1, room=room) is None   # 5000 MB of 4000
+    assert lanes.grant(small.id, slots=1, room=room) is None
+    found = lanes.bookings()
+    assert book.light_verdict(found, found[small.id], room, est.history(found, now=NOW()), lanes.live) == \
+        f"behind light {big.id}"
+
+
+def test_a_light_waiter_is_not_ahead_of_a_heavy_one(lane):
+    lanes, _ = lane
+    teach(lanes)
+    room = book.Room(cpus=8, factor=1.5, memory_left=lambda: 4000)
+    assert lanes.grant(booked(lanes, BIG, 1).id, slots=1, room=room) is None
+    assert lanes.grant(booked(lanes, RECEIPT, 2).id, slots=1, room=room).path == "fifo"
+
+
+def test_no_light_admission_while_an_older_flotillas_waiter_is_live(lane, tmp_path):
+    lanes, _ = lane
+    teach(lanes)
+    _line(lanes.store, booking="b900", state="waiting", who="old seat", note="", pid=77, mark="m", rule=2)
+    item = booked(lanes, FILE, 2)
+    assert lanes.grant(item.id, slots=1, room=ROOM) is None
+    found = lanes.bookings()
+    assert book.light_verdict(found, found[item.id], ROOM, est.history(found, now=NOW()), lanes.live) == \
+        "a waiter of an older flotilla is live"
+
+
+def test_unreadable_memory_admits_no_light_run(lane):
+    lanes, _ = lane
+    teach(lanes)
+    room = book.Room(cpus=8, factor=1.5, memory_left=lambda: None)
+    assert lanes.grant(booked(lanes, RECEIPT, 1).id, slots=1, room=room)
+    assert lanes.grant(booked(lanes, FILE, 2).id, slots=1, room=room) is None
+
+
+def test_without_a_room_the_grant_is_todays(lane):
+    lanes, _ = lane
+    teach(lanes)
+    assert lanes.grant(booked(lanes, RECEIPT, 1).id, slots=1)
+    assert lanes.grant(booked(lanes, FILE, 2).id, slots=1) is None
+
+
+@pytest.mark.parametrize("foreign, fits", [(1, True), (2, False)])
+def test_a_foreign_computing_run_takes_four_cores_of_the_budget(lane, foreign, fits):
+    lanes, _ = lane
+    teach(lanes)
+    measured(lanes, ["exact:three"], 600.0, 3.0, 500)
+    room = book.Room(cpus=8, factor=1.5, memory_left=lambda: 8000, foreign=foreign)
+    assert lanes.grant(booked(lanes, ["exact:three"], 1).id, slots=9, room=room)
+    assert bool(lanes.grant(booked(lanes, MID, 2).id, slots=9, room=room)) is fits
+
+
+def test_an_unmeasured_run_is_heavy(lane):
+    lanes, _ = lane
+    teach(lanes)
+    assert lanes.grant(booked(lanes, RECEIPT, 1).id, slots=1, room=ROOM)
+    assert lanes.grant(booked(lanes, ["exact:never-seen"], 2).id, slots=1, room=ROOM) is None
