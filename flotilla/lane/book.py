@@ -235,13 +235,7 @@ def _light(found: dict, mine: Booking, room: Room, hist, live) -> tuple[str, str
                and estimate.light(estimate.for_booking(item, hist, cpus=room.cpus))]
     if earlier:
         return f"behind light {min(earlier, key=_order).id}", ""
-    used, reserved = room.foreign * FOREIGN_CORES, 0
-    for item in found.values():
-        if item.state == HELD and live(item):
-            theirs = estimate.for_booking(item, hist, cpus=room.cpus)
-            used += theirs.cores if theirs.cores is not None else room.cpus
-            reserved += theirs.peak_mb if theirs.peak_mb is not None else UNKNOWN_PEAK_MB
-    total = room.factor * room.cpus
+    used, total, reserved = budget(found, room, hist, live)
     if own.cores > total - used:
         return f"needs {own.cores:g} cores, {max(total - used, 0):g} left", ""
     free = room.memory_left()
@@ -250,6 +244,56 @@ def _light(found: dict, mine: Booking, room: Room, hist, live) -> tuple[str, str
     if own.peak_mb > free - reserved:
         return f"needs {own.peak_mb} MB, {max(free - reserved, 0)} left", ""
     return "", f"light: {used + own.cores:g} of {total:g} cores, {free - reserved - own.peak_mb} MB left"
+
+
+def budget(found: dict, room: Room, hist, live) -> tuple[float, float, int]:
+    """The cores the live holders and foreign runs use by estimates, the cores there are, and the memory the holders
+    are estimated to peak at: what a light run is measured against, and what `flotilla lane` prints."""
+    from flotilla.lane import estimate
+    used, reserved = room.foreign * FOREIGN_CORES, 0
+    for item in found.values():
+        if item.state == HELD and live(item):
+            theirs = estimate.for_booking(item, hist, cpus=room.cpus)
+            used += theirs.cores if theirs.cores is not None else room.cpus
+            reserved += theirs.peak_mb if theirs.peak_mb is not None else UNKNOWN_PEAK_MB
+    return used, room.factor * room.cpus, reserved
+
+
+def is_light(item: Booking, hist, cpus: int | None = None) -> bool:
+    """A waiter the light path serves: under this rule, and light by its own measurements."""
+    from flotilla.lane import estimate
+    return (item.rule or 0) >= RULE and estimate.light(estimate.for_booking(item, hist, cpus=cpus))
+
+
+def heavy_starts(found: dict, hist, *, slots: int, now: dt.datetime, live, ceiling: float,
+                 cpus: int | None = None) -> dict[str, dt.datetime | None]:
+    """When each live heavy waiter starts by estimates: `slots` lanes, each serving one heavy run after another in
+    the line's order, the next run taking the lane that frees first. A heavy holder has its estimate less what it has
+    run left, at least a minute; a run never measured counts at `ceiling`. None with no slot at all. An answer, not a
+    promise: it reads "or sooner" (lane light runs design, section 5)."""
+    from flotilla.lane import estimate
+
+    def span(item) -> float:
+        seconds = estimate.for_booking(item, hist, cpus=cpus).seconds
+        return seconds if seconds is not None else ceiling
+
+    lanes = []
+    for item in found.values():
+        if item.state == HELD and live(item) and not item.path.startswith("light"):
+            began = _when(item.since) or now
+            lanes.append(max(began + dt.timedelta(seconds=span(item)), now + dt.timedelta(minutes=1)))
+    lanes = sorted(lanes)[:max(slots, 0)]
+    lanes += [now] * max(slots - len(lanes), 0)
+    starts: dict[str, dt.datetime | None] = {}
+    for item in sorted((item for item in found.values() if item.state == WAITING and live(item)
+                        and not is_light(item, hist, cpus)), key=_order):
+        if not lanes:
+            starts[item.id] = None
+            continue
+        first = min(range(len(lanes)), key=lambda at: lanes[at])
+        starts[item.id] = lanes[first]
+        lanes[first] = lanes[first] + dt.timedelta(seconds=span(item))
+    return starts
 
 
 def light_verdict(found: dict, mine: Booking, room: Room, hist, live) -> str:

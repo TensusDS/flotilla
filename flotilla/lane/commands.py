@@ -195,10 +195,7 @@ def describe_estimate(item, hist) -> str:
     """A booking's estimate as the person reads it, with where it comes from (lane admission, stage 1)."""
     if not item.ladder and not item.will_run:
         return "estimate: none (an older flotilla booked it)" if item.rule is None else "estimate: none (taken by hand)"
-    if item.will_run:
-        found = estimate.receipt_estimate(list(item.will_run), hist, project=item.project)
-    else:
-        found = estimate.estimate(list(item.ladder), hist, project=item.project)
+    found = estimate.for_booking(item, hist)
     seconds = "? s" if found.seconds is None else f"{found.seconds:.0f} s"
     cores = "? cores" if found.cores is None else f"{found.cores:g} cores"
     return f"estimate: {seconds}, {cores}, {_size(found.peak_mb)} ({found.source})"
@@ -207,6 +204,11 @@ def describe_estimate(item, hist) -> str:
 def _foreign(table, proc, tail: str) -> str:
     where = visible(table.cwd(proc.pid) or "an unknown directory")
     return f"foreign run pid {proc.pid} `{visible(proc.command[:80])}` in {where}{tail}"
+
+
+def _ordinal(number: int) -> str:
+    suffix = "th" if number % 100 in (11, 12, 13) else {1: "st", 2: "nd", 3: "rd"}.get(number % 10, "th")
+    return f"{number}{suffix}"
 
 
 def _status(args) -> int:
@@ -228,14 +230,24 @@ def _status(args) -> int:
     found = lanes.bookings()   # read once: each waiter's reason would read the whole journal again
     held, waiting = lanes.holders(found), lanes.waiters(found)
     reading = _reader(lanes, table, profile, top, problem)()
-    hist = estimate.history(found, now=dt.datetime.now(dt.timezone.utc))
+    now = dt.datetime.now(dt.timezone.utc)
+    hist = estimate.history(found, now=now)
+    room = room_for(profile)(reading)
+    used, total, reserved = book.budget(found, room, hist, lanes.live)
+    free = room.memory_left()
+    memory = "memory cannot be read" if free is None else f"{max(free - reserved, 0)} MB of memory left after the " \
+        f"holders' peaks"
+    print(f"budget for light runs: {used:g} of {total:g} cores (lane_cpu_factor {room.factor:g}), {memory} "
+          f"(floor {machine.memory_floor_mb(profile)} MB); a run measured at <= {estimate.LIGHT_SECONDS:g} s and "
+          f"<= {estimate.LIGHT_CORES:g} cores is light and takes no place")
     print("held:" if held or reading.computing else "held: nobody")
     for item in held:
         state = "alive" if lanes.live(item) else "its process is gone - `flotilla lane sweep`"
         by = f"pid {item.pid}" if item.pid else "taken by hand - `flotilla lane release`"
         target = f", for {item.run_for}" if item.run_for else ""
-        print(f"  {item.id} {item.who} ({item.note or 'no note'}) since {item.since}{_for_how_long(item.since)}"
-              f"{target}; {by}; {state}; {describe_estimate(item, hist)}")
+        kind = "light" if item.path.startswith("light") else "heavy"
+        print(f"  {item.id} {kind} {item.who} ({item.note or 'no note'}) since {item.since}"
+              f"{_for_how_long(item.since)}{target}; {by}; {state}; {describe_estimate(item, hist)}")
     for proc in reading.computing:
         print("  " + _foreign(table, proc, " (takes a slot, no booking)"))
     if mode == "fair":
@@ -247,10 +259,21 @@ def _status(args) -> int:
             print(f"project {visible(project) or '(none)'}: {count} waiting, holds {holds}, "
                   f"last turn {served.get(project) or 'not in 24 h'}")
     print("waiting:" if waiting else "waiting: nobody")
+    starts = book.heavy_starts(found, hist, slots=slots - len(reading.computing), now=now, live=lanes.live,
+                               ceiling=ceiling_for(args.root, profile), cpus=room.cpus)
+    order = {item_id: place for place, item_id in enumerate(starts, start=1)}
     for item in waiting:
         gone = "" if lanes.live(item) else "; its process is gone - `flotilla lane sweep`"
-        why = acq.in_the_way(lanes, reading, slots, item.id, found, share=mode)
-        print(f"  {item.id} {item.who} ({item.note or 'no note'}) since {item.since}{gone}; "
+        if book.is_light(item, hist, room.cpus):
+            kind, why = "light", book.light_verdict(found, item, room, hist, lanes.live) or "next to start"
+        else:
+            kind, why = "heavy", acq.in_the_way(lanes, reading, slots, item.id, found, share=mode)
+            if item.id in order:
+                when = starts[item.id]
+                why += (f"; {_ordinal(order[item.id])} of the heavy runs; " +
+                        (f"by estimates it starts around {when.astimezone().strftime('%H:%M')} or sooner"
+                         if when is not None else "no place for a heavy run now"))
+        print(f"  {item.id} {kind} {item.who} ({item.note or 'no note'}) since {item.since}{gone}; "
               f"{describe_estimate(item, hist)}; waits because: {why}")
     print("machine:")
     for answer in reading.answers:
