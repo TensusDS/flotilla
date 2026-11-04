@@ -417,11 +417,13 @@ def _local(text: str) -> str:
     return text
 
 
-#: Per interpreter, the short options that hand it code as text, the long ones, and the short ones that take a value
-#: (whose value is not a script). Anything else on its command line that is not an option is the script or module it
-#: runs - and the words after that are that program's arguments, not code (0.28.1, the regression review of 0.28.0).
-_CODE_FLAGS = {"shell": ("c", (), "oO"), "python": ("c", (), "XWQ"), "perl": ("eE", (), "IMm"),
-               "ruby": ("e", (), "Ir"), "node": ("ep", ("--eval", "--print"), "r")}
+#: Per interpreter, the short option letters and the long options that hand it code as text (0.28.1). The reading
+#: fails closed: one such option anywhere on the line, or a script that is a file descriptor or a process substitution,
+#: makes the line code - an option the reader does not know never turns code into a script's arguments (the commit
+#: security review of c4d060a: `bash --rcfile x -c ...`, `node --eval=...`, `fish --command`, `python3 <(...)`).
+_CODE_FLAGS = {"shell": ("c", ("--command",)), "python": ("c", ()), "perl": ("eE", ()), "ruby": ("e", ()),
+               "node": ("ep", ("--eval", "--print"))}
+_FED_SCRIPT = re.compile(r"^(?:[<>]\(|/dev/stdin$|/dev/fd/|/proc/[^/]+/fd/)")
 
 
 def _family(name: str) -> str:
@@ -432,24 +434,19 @@ def _family(name: str) -> str:
 
 
 def _hands_code(name: str, after: list[str]) -> bool:
-    """Whether the interpreter's command line hands it code as text (`-c`, `-lc`, `-X dev -c`, `-e`, `--eval`), as
-    against running a script or a module (`python3 tools/x.py`, `python -m pytest`), whose arguments are data."""
-    short, long_, valued = _CODE_FLAGS[_family(name)]
-    skip = False
+    """Whether the interpreter's command line hands it code as text (`-c`, `-lc`, `-X dev -c`, `-e`, `--eval=...`),
+    as against only running a script or a module (`python3 tools/x.py`, `python -m pytest`), whose arguments are
+    data the guard reads whole. Any code option anywhere counts, whatever stands before it."""
+    short, long_ = _CODE_FLAGS[_family(name)]
     for word in after:
-        if skip:
-            skip = False
-            continue
-        if word in long_:
+        if _FED_SCRIPT.match(word):
             return True
-        if word.startswith("--") or word in ("-", "--"):
+        if word.startswith("--"):
+            if word.split("=", 1)[0] in long_:
+                return True
             continue
-        if not word.startswith("-") or word.startswith("-m") and _family(name) == "python":
-            return False   # a script, or a module: what follows is its argv
-        letters = word[1:]
-        if any(letter in short for letter in letters):
+        if word.startswith("-") and len(word) > 1 and any(letter in short for letter in word[1:]):
             return True
-        skip = letters[-1:] in valued and len(letters) == 1
     return False
 
 
@@ -478,8 +475,10 @@ def wrapped_check(segment, command: str, raw: str = "") -> Finding | None:
     after = words[at + 1:]
     # code handed as text asks when it names flotilla; a script's or a module's arguments are data the guard reads
     # whole - flotilla run by path or as a module is read by `check` - so they are judged for a person's move only
-    on_line = None if all(word.startswith("-") for word in after) else \
-        _judge(" ".join(after), ask_on_flotilla=_hands_code(words[at], after))
+    # a process substitution is gone from the words once they are split: it is read in the segment's own text
+    hands = _hands_code(words[at], after) or bool(re.search(r"[<>]\(", segment.text))
+    on_line = None if all(word.startswith("-") for word in after) and not hands else \
+        _judge(" ".join(after), ask_on_flotilla=hands)
     # whatever its arguments (`bash -s arg`, `python3 /dev/stdin`), an interpreter may read a heredoc, a here-string
     # or a pipe: then the whole command, bodies included, is its code too (third security review)
     fed = all(word.startswith("-") for word in after) or any(sign in (raw or command) for sign in ("<<", "|"))

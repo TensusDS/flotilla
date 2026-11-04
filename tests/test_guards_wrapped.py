@@ -241,3 +241,21 @@ STILL_ASKED = [
 def test_code_handed_as_text_or_an_unreadable_move_still_asks(tmp_path, monkeypatch, command):
     answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
     assert answer and answer["permissionDecision"] == "ask", answer
+
+
+# the commit security review of c4d060a: what the script-or-code reading must not be fooled by - fail closed
+CODE_HOWEVER_SPELLED = [
+    "bash --rcfile /tmp/rc -c 'flotilla work show feat/x'",
+    "bash --init-file /tmp/rc -c 'flotilla work show feat/x'",
+    "node --eval=\"require('child_process').execSync('flotilla status')\"",
+    "node --require ./x.js -e \"require('child_process').execSync('flotilla status')\"",
+    "fish --command 'flotilla work show feat/x'",
+    "python3 <(echo \"import os; os.system('flotilla status')\")",
+    "python3 /dev/fd/3 3<<< \"import os; os.system('flotilla work approve x')\"",   # stdin: moves refused
+]
+
+
+@pytest.mark.parametrize("command", CODE_HOWEVER_SPELLED)
+def test_code_handed_as_text_however_spelled_still_asks(tmp_path, monkeypatch, command):
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] in ("ask", "deny"), answer
