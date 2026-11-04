@@ -365,6 +365,9 @@ _PERSONS_MOVE = re.compile(r"\bwork\b[\s'\",\[\]+]+approve\b"
 #: `share` is a common word (`--why 'share gpu'`, `grep share`): anywhere after `rig` it counts only as a quoted token
 #: of its own - an argv element (`cmd.append('share')`) - so a command built in code, on standard input too, is still
 #: refused (the commit security review of bd6b7dd) while prose that mentions sharing is not.
+#: `share` or `unshare` as a word anywhere after `rig` in code that names flotilla - inside a longer string - asks
+#: the person rather than being refused or passed (the commit security review of c7c5eba).
+_SHARE_WORDS = re.compile(r"\brig\b[\s\S]*?\b(?:unshare|share)\b")
 _MOVE_WORDS = re.compile(r"\bapprove\b|\brig\b[\s\S]*?\b(?:enable|disable|open|close|allow-image)\b"
                          r"|\brig\b[\s\S]*?['\"](?:unshare|share)['\"]"
                          r"|\battention\b[\s\S]*?\b(?:all|digest)\b")
@@ -400,6 +403,8 @@ def _judge(text: str, *, ask_on_flotilla: bool) -> Finding | None:
         return Finding(GUARD, False, UNREADABLE_MOVE_ASK, ask=True)   # review of bebab1b: never a silent pass
     if anywhere and _MOVE_WORDS.search(text):
         return Finding(GUARD, True, WRAPPED_REFUSAL)
+    if anywhere and _SHARE_WORDS.search(text):   # `share` in a longer string: not refused, never silently passed
+        return Finding(GUARD, False, UNREADABLE_MOVE_ASK, ask=True)
     if ask_on_flotilla and _FLOTILLA.search(text):
         return Finding(GUARD, False, WRAPPED_ASK, ask=True)
     return None

@@ -292,3 +292,18 @@ def test_share_built_into_an_argv_in_code_is_refused_on_stdin_too(tmp_path, monk
     a move word there - as a quoted token, which prose does not use."""
     answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
     assert answer and answer["permissionDecision"] == "deny", answer
+
+
+
+SHARE_AMONG_WORDS_ON_STDIN = [
+    "python3 - <<'EOF'\nimport subprocess\nsubprocess.run('flotilla rig ' + 'now share'.split()[1] + ' x', shell=True)\nEOF",
+    "cat <<'EOF' | python3\nimport os\nos.system('flotilla rig ' + 'it unshare'.split()[1] + ' x')\nEOF",
+]
+
+
+@pytest.mark.parametrize("command", SHARE_AMONG_WORDS_ON_STDIN)
+def test_share_among_other_words_in_stdin_code_naming_flotilla_asks(tmp_path, monkeypatch, command):
+    """The commit security review of c7c5eba: a quoted token alone missed `share` inside a longer string. Refusing any
+    such string would refuse prose; stdin code that names flotilla and has `share` after `rig` asks the person."""
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] in ("ask", "deny"), answer
