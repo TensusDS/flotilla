@@ -38,6 +38,19 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
   seat's processes, letting archived media expire): `inbox._item_entry` maps permission questions, rig requests and
   waiting sessions only; these reach the person through `fleet clean` reports and `/flotilla:doctor`.
   *(open: flotilla/watch/inbox.py)*
+- **The guard asks about a script's or a module's arguments that name flotilla** (`python3 -m flotilla work show`,
+  `flotilla lane run -- python -m pytest -k flotilla`, flotilla run by path through `python3`): in a background seat
+  nobody answers, so the seat stands still. Narrowing it was built and withdrawn in 0.28.1 - three review rounds found
+  code handed as text passing as such arguments (a wrapper's interpreter-named word choosing the option table, `fish
+  -C`, `python -m timeit`, `node --import`, `perl -M`). If it is done again, it needs an allow-list of exact readable
+  forms (flotilla's own CLI by path or `-m flotilla`, with no other interpreter on the line), never a reading of
+  options. Low harm today: the shipped skills run `bin/flotilla` directly. *(open: flotilla/guards/person.py
+  `wrapped_check`)*
+- **An unshare can still let one run start in the same look.** The share is asked at the top of each look of a
+  waiting rig run, so an unshare landing between that check and `start_run` lets the run start; the head run can also
+  spend up to 100 s raising a machine before it looks again. *(open: flotilla/rig/run.py `take_room`)*
+- **A fallen-back light run can lose a freed place to a later heavy run:** heavy waiters skip light waiters for order,
+  so who wins a place freed while both wait is wake timing. *(open: flotilla/lane/book.py `_path`, the `lights` set)*
 - **Untested though they hold:** the orchestrator's prompt still carries `collector` and `disk` after 0.26.0's
   filter (`hooks._prompt`); `tree cut` and `tree switch` keep every repeated `--requires` and `--after`.
   *(open: tests)*

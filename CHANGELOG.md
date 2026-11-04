@@ -13,16 +13,19 @@ by 0.27.0 and 0.28.0.
 - **Waiters woken by journal writes no longer read the machine each time.** A wake decides on the journal with the
   last look; the process table, CPU samples and `gh` are asked once a poll, so a stream of light runs no longer
   multiplies the load 0.24.2 removed, nor the GitHub API calls.
-- **`rig share` and `rig unshare` are the person's moves to the guard,** refused to a Claude tool call however spelled
-  or wrapped - the hole 0.26.2 closed for `approve` and `rig open`.
+- **`rig share` and `rig unshare` are the person's moves to the guard,** refused to a Claude tool call however spelled,
+  wrapped or built into an argv - the hole 0.26.2 closed for `approve` and `rig open`. `share` is a common word, so
+  in code that names flotilla a `share` inside a longer string asks the person rather than being refused.
 - **A waiting rig run of a project the person unshared leaves the line,** instead of starting on the session's machine
   hours later.
-- **A script's or a module's arguments naming flotilla are not asked about** (`python3 -m flotilla work show`, a lane
-  run of `pytest -k flotilla`): in a background seat an ask stood the seat still. Code handed as text still asks, and
-  the reading fails closed - any code option anywhere, a process substitution or a file-descriptor script makes a line
-  code.
-- **A second Ctrl-C during a stopped rig run's cleanup is held off,** so its `--get`, drop and record finish.
-- **A heavy waiter is told only what it waits for;** `flotilla lane` says `lane_capacity` counts heavy runs.
+- **The guard asks about two kinds of code it passed:** a line of nothing but options that carries code
+  (`node --eval=...`) and code fed through a process substitution. An attempt to stop it asking about a script's or a
+  module's arguments that name flotilla (`python -m pytest -k flotilla`) was withdrawn in review: three rounds found
+  ways code handed as text would pass as such arguments, and the guard asks about those lines as before.
+- **A second Ctrl-C during a stopped rig run's cleanup is held off and says so,** and the cleanup's ssh calls run
+  outside the terminal's reach, so its `--get`, drop and record finish.
+- **A heavy waiter is told only what it waits for;** `flotilla lane` says `lane_capacity` counts heavy runs; a wake
+  never pushes the next look at the machine back; one count of cores for the grant and for what a waiter is told.
 
 ## 0.28.0 - 2026-11-04
 
