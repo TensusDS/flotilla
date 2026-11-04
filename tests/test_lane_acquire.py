@@ -324,3 +324,19 @@ def test_a_waiter_woken_by_every_write_still_reads_the_machine_once_per_poll(lan
     acquire.acquire(lanes, lambda: reads.append(clock.now) or QUIET, who="main session 1", note="suite",
                     capacity=1, wait=31.0, clock=clock, sleep=sleep, jitter=lambda: 0.0)
     assert reads == [0.0, 15.0, 30.0]
+
+
+def test_a_heavy_waiter_is_told_only_what_it_waits_for(tmp_path):
+    """0.28.1, the regression review: a heavy waiter's reason named light holders and light waiters the grant does
+    not make it wait for."""
+    from test_lane_book import BIG, FILE, RECEIPT, booked, teach
+    lanes = book.Book(LocalLogStore(tmp_path / "why"), Procs())
+    teach(lanes)
+    room = book.Room(cpus=8, factor=1.5, memory_left=lambda: 4000)
+    heavy = booked(lanes, RECEIPT, 1)
+    assert lanes.grant(heavy.id, slots=1, room=room)
+    assert lanes.grant(booked(lanes, FILE, 2).id, slots=1, room=room).path.startswith("light")
+    assert lanes.grant(booked(lanes, BIG, 3).id, slots=1, room=room) is None
+    mine = booked(lanes, RECEIPT, 4)
+    why = acquire.in_the_way(lanes, QUIET, 1, mine.id)
+    assert "seat 1" in why and "seat 2" not in why and "seat 3" not in why, why

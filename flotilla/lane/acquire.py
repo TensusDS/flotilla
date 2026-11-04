@@ -45,23 +45,31 @@ def _order(item) -> int:
 
 
 def in_the_way(lanes, reading, capacity: int, mine: str = "", found: dict | None = None, share: str = "fifo") -> str:
+    import datetime as dt
     parts = []
     found = lanes.bookings() if found is None else found
     me = found.get(mine)
+    now = dt.datetime.now(dt.timezone.utc)
+    lights: set[str] = set()   # a heavy waiter waits for no light run: they are left out of its reason (0.28.1)
+    if me is not None and (me.rule or 0) >= book.RULE and not book.older_waiting(found, lanes.live, mine):
+        from flotilla.lane import estimate
+        hist = estimate.history(found, now=now)
+        if not book.is_light(me, hist):
+            lights = {item.id for item in found.values() if item.state == book.WAITING and lanes.live(item)
+                      and book.is_light(item, hist)}
+            lights |= {item.id for item in found.values() if item.state == book.HELD and item.path.startswith("light")}
     if share == "fair" and me is not None and (me.rule or 0) >= 2:
-        import datetime as dt
-        now = dt.datetime.now(dt.timezone.utc)
-        choice = book.fair_choice(found, lanes.live, now)
+        choice = book.fair_choice(found, lanes.live, now, frozenset(lights))
         if choice is not None and choice.id != mine:
             served = book.last_served(found, now).get(choice.project, "")
             parts.append(f"`{choice.project or 'no project'}` goes first: {choice.id} {choice.who}, its project served "
                          f"{served or 'not in 24 h'}")
-    held = [item for item in lanes.holders(found) if lanes.live(item)]
+    held = [item for item in lanes.holders(found) if lanes.live(item) and item.id not in lights]
     if held:
         parts.append("held by " + "; ".join(f"{item.who} ({item.note or 'no note'}) since {item.since}"
                                             for item in held))
     ahead = [item for item in lanes.waiters(found) if mine and me is not None and item.id != mine
-             and lanes.live(item) and _order(item) < _order(me)]
+             and lanes.live(item) and _order(item) < _order(me) and item.id not in lights]
     if ahead:
         parts.append("waiting ahead: " + "; ".join(f"{item.id} {item.who} ({item.note or 'no note'})"
                                                     for item in ahead))
