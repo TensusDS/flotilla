@@ -362,7 +362,8 @@ _PERSONS_MOVE = re.compile(r"\bwork\b[\s'\",\[\]+]+approve\b"
                            r"|\brig\b[\s'\",\[\]+]+(?:enable|disable|open|close|allow-image|unshare|share)\b"
                            r"|\battention\b[\s'\",\[\]+]+(?:all|digest)\b")
 #: The same moves' words anywhere in the code - a command built in pieces - judged only where flotilla is named too.
-_MOVE_WORDS = re.compile(r"\bapprove\b|\brig\b[\s\S]*?\b(?:enable|disable|open|close|allow-image|unshare|share)\b"
+#: `share` is a common word: built from pieces it stays a gap of decision 245; spelled `rig share` it is refused above.
+_MOVE_WORDS = re.compile(r"\bapprove\b|\brig\b[\s\S]*?\b(?:enable|disable|open|close|allow-image)\b"
                          r"|\battention\b[\s\S]*?\b(?:all|digest)\b")
 #: flotilla as the program a line runs - `flotilla`, `.../bin/flotilla`, `flotilla.cli`, `-m flotilla` - never a path
 #: or a name it is part of (`flotilla-field`, `.flotilla/`, `~/.config/flotilla`): those are reads, not runs.
@@ -417,10 +418,10 @@ def _local(text: str) -> str:
     return text
 
 
-#: Per interpreter, the short option letters and the long options that hand it code as text (0.28.1). The reading
-#: fails closed: one such option anywhere on the line, or a script that is a file descriptor or a process substitution,
-#: makes the line code - an option the reader does not know never turns code into a script's arguments (the commit
-#: security review of c4d060a: `bash --rcfile x -c ...`, `node --eval=...`, `fish --command`, `python3 <(...)`).
+#: Per interpreter, the short option letters and the long options known to hand it code as text. Used only to tell
+#: that a line of nothing but options (`node --eval=...`) still hands code - never to call a line a script's
+#: arguments: that narrowing was withdrawn in 0.28.1 after three rounds of bypasses (a wrapper's own interpreter-named
+#: word picked the wrong table; `fish -C`, `python -m timeit`, `node --import`, `perl -M` carry code it did not know).
 _CODE_FLAGS = {"shell": ("c", ("--command",)), "python": ("c", ()), "perl": ("eE", ()), "ruby": ("e", ()),
                "node": ("ep", ("--eval", "--print"))}
 _FED_SCRIPT = re.compile(r"^(?:[<>]\(|/dev/stdin$|/dev/fd/|/proc/[^/]+/fd/)")
@@ -473,12 +474,12 @@ def wrapped_check(segment, command: str, raw: str = "") -> Finding | None:
     if at is None:
         return None
     after = words[at + 1:]
-    # code handed as text asks when it names flotilla; a script's or a module's arguments are data the guard reads
-    # whole - flotilla run by path or as a module is read by `check` - so they are judged for a person's move only
-    # a process substitution is gone from the words once they are split: it is read in the segment's own text
+    # everything after the interpreter that names flotilla asks, as at 0.28.0; a line of nothing but options is code
+    # too when one of them carries it (`node --eval=...`) or a process substitution feeds it - a process substitution
+    # is gone from the words once they are split, so it is read in the segment's own text (0.28.1)
     hands = _hands_code(words[at], after) or bool(re.search(r"[<>]\(", segment.text))
     on_line = None if all(word.startswith("-") for word in after) and not hands else \
-        _judge(" ".join(after), ask_on_flotilla=hands)
+        _judge(" ".join(after), ask_on_flotilla=True)
     # whatever its arguments (`bash -s arg`, `python3 /dev/stdin`), an interpreter may read a heredoc, a here-string
     # or a pipe: then the whole command, bodies included, is its code too (third security review)
     fed = all(word.startswith("-") for word in after) or any(sign in (raw or command) for sign in ("<<", "|"))

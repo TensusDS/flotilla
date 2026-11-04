@@ -194,26 +194,44 @@ def test_a_pipe_into_an_interpreter_with_an_argument_is_read(tmp_path, monkeypat
     assert answer and answer["permissionDecision"] == "deny", answer
 
 
-# --- 0.28.1, the regression review: a script's or a module's arguments are not code handed as text ---------------
+# --- 0.28.1: the narrowing of when the guard asks was withdrawn after three rounds of bypasses (the final review of
+# 0.28.1: a wrapper's own interpreter-named word chose the wrong option table; fish -C, python -m timeit, node --import,
+# perl -M carry code the table did not know). Anything after an interpreter that names flotilla asks, as at 0.28.0;
+# what was asked about at 0.28.0 must still be asked about.
 
-ARGUMENTS_NOT_CODE = [
-    "python3 /opt/p/bin/flotilla work claim feat/x",
+ASKED_AS_AT_0_28_0 = [
+    "uv run --python python3.12 node -e 'require(\"child_process\").execSync(\"flotilla work land b\")'",
+    "docker run --rm node bash -c 'flotilla work land b'",
+    "sudo -u node bash -c 'flotilla work land b'",
+    "perl x.pl python3 -c 'flotilla work land b'",
+    "fish -C 'flotilla work land b'",
+    "python3 -m timeit -n1 \"import os; os.system('flotilla work land b')\"",
+    "node --import 'data:text/javascript,flotilla work land b'",
+    "perl '-Mstrict;`flotilla work land b`' /dev/null",
     "python3 -m flotilla work show feat/x",
-    "timeout 60 python3 -m flotilla.cli lane",
-    "flotilla lane run -- uv run python -m pytest --cov=flotilla tests/",
     "flotilla lane run -- python -m pytest -k flotilla tests/",
-    "python3 tools/report.py flotilla",
-    "python3 -X dev -m pytest -p no:cacheprovider -k flotilla tests/",
-    "bash scripts/check.sh flotilla",
 ]
 
 
-@pytest.mark.parametrize("command", ARGUMENTS_NOT_CODE)
-def test_a_scripts_or_modules_arguments_naming_flotilla_are_not_asked_about(tmp_path, monkeypatch, command):
-    """In a background seat an ask has nobody to answer it: the seat stands still. A line the guard reads whole -
-    flotilla run by path or as a module, a test run that merely names flotilla - is not code handed as text."""
+@pytest.mark.parametrize("command", ASKED_AS_AT_0_28_0)
+def test_code_or_arguments_naming_flotilla_after_an_interpreter_ask_as_at_0_28_0(tmp_path, monkeypatch, command):
     answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
-    assert not answer or answer.get("permissionDecision") not in ("deny", "ask"), answer
+    assert answer and answer["permissionDecision"] in ("ask", "deny"), answer
+
+
+SHARE_IS_A_WORD = [
+    "bash -c \"flotilla rig run --why 'share gpu' -- pytest\"",
+    "bash -c \"grep -rn rig flotilla | grep share\"",
+    "python3 -c \"print('flotilla rig run --why share-it')\"",
+]
+
+
+@pytest.mark.parametrize("command", SHARE_IS_A_WORD)
+def test_the_word_share_near_rig_in_wrapped_code_is_not_a_refusal(tmp_path, monkeypatch, command):
+    """`share` is a common word: only `rig share` spelled as the CLI spells it is the person's move (final review of
+    0.28.1, M1); built from pieces it stays a gap of decision 245, as it was before share was guarded."""
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert not answer or answer.get("permissionDecision") != "deny", answer
 
 
 STILL_REFUSED = [
