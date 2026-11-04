@@ -444,9 +444,13 @@ class Book:
                 hist = estimate.history(found, now=moment)
                 if estimate.light_booking(mine, hist, cpus=room.cpus):
                     self.waits_for, how = _light(found, mine, room, hist, self.live)
-                    return None if self.waits_for else self._write(tx, booking_id, HELD, path=how, **fields)
-                lights = frozenset(item.id for item in found.values() if item.state == WAITING and self.live(item)
-                                   and is_light(item, hist, room.cpus))
+                    if not self.waits_for:
+                        return self._write(tx, booking_id, HELD, path=how, **fields)
+                    # what the heavy runs leave does not hold it: it still goes by count and arrival when a place is
+                    # free, as any run did before 0.28 - a light run never fares worse than a heavy one (0.28.1)
+                else:
+                    lights = frozenset(item.id for item in found.values() if item.state == WAITING
+                                       and self.live(item) and is_light(item, hist, room.cpus))
             heavy = [item for item in self.holders(found) if self.live(item)
                      and not (light_path and item.path.startswith("light"))]
             if len(heavy) >= slots:
