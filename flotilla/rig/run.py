@@ -50,6 +50,7 @@ _NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _SECRET = ("KEY", "TOKEN", "SECRET", "PASSWORD")
 HOST_CHANGED = "REMOTE HOST IDENTIFICATION HAS CHANGED"
 _cleaning = False
+_held_off = False
 
 
 class Refused(RuntimeError):
@@ -61,7 +62,12 @@ class Lost(RuntimeError):
 
 
 def _leave(number, _frame):
+    global _held_off
     if _cleaning:
+        if not _held_off:   # said once: the person knows why the line has not come back yet
+            _held_off = True
+            _say("the signal is held off: the run is being ended on the machine and its --get brought back "
+                 "(at most about 2 minutes)")
         return
     raise SystemExit(128 + number)
 
@@ -73,8 +79,8 @@ def _say(text: str) -> None:
 
 
 def main(state: Path, settings: rs.RigSettings, args) -> int:
-    global _cleaning
-    _cleaning = False
+    global _cleaning, _held_off
+    _cleaning = _held_off = False
     # SIGINT too: a second Ctrl-C during a stopped run's up-to-120 s --get must not skip finish_run (0.28.1)
     previous = {number: signal.getsignal(number) for number in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT)}
     for number in previous:
@@ -114,13 +120,18 @@ class Box:
     def call(self, script: str, *args, data=None, timeout=remote.SHORT) -> subprocess.CompletedProcess:
         argv = self.argv(script, *args, stdin=data is not None)
         try:
+            # a session of its own: a terminal's Ctrl-C reaches the whole foreground group, and the cleanup's
+            # STOP and DROP must outlive it while rig run holds the signal off (the final review of 0.28.1, M5)
             if data is None:
-                done = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, timeout=timeout)
+                done = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, timeout=timeout,
+                                      start_new_session=True)
             elif isinstance(data, Path):
                 with open(data, "rb") as handle:
-                    done = subprocess.run(argv, stdin=handle, capture_output=True, timeout=timeout)
+                    done = subprocess.run(argv, stdin=handle, capture_output=True, timeout=timeout,
+                                          start_new_session=True)
             else:
-                done = subprocess.run(argv, input=data, capture_output=True, timeout=timeout)
+                done = subprocess.run(argv, input=data, capture_output=True, timeout=timeout,
+                                      start_new_session=True)
         except subprocess.TimeoutExpired:
             return subprocess.CompletedProcess(argv, 255, b"", b"timed out")
         if HOST_CHANGED.encode() in (done.stderr or b""):
@@ -394,7 +405,7 @@ class Run:
         cut = threading.Event()
         with open(spool, "wb") as handle:
             process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                       stderr=subprocess.DEVNULL)
+                                       stderr=subprocess.DEVNULL, start_new_session=True)
             timer = threading.Timer(cap_seconds, lambda: (cut.set(), process.kill())) if cap_seconds else None
             if timer is not None:
                 timer.start()
