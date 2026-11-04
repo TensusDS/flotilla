@@ -49,8 +49,9 @@ def _runs_flotilla(word: str, previous: str) -> bool:
 EXPANDS = ("{", "$'", '$"', "@(", "+(", "!(", "?(", "*(")
 
 
-#: `flotilla rig` moves that turn rented machines on or off, spend money, or widen what runs (rig design, section 4).
-RIG_MOVES = ("enable", "disable", "open", "close", "allow-image")
+#: `flotilla rig` moves that turn rented machines on or off, spend money, or widen what runs (rig design, section 4),
+#: and who a paid session serves (`share`, `unshare`: the person's since 0.25.0, guarded here since 0.28.1).
+RIG_MOVES = ("enable", "disable", "open", "close", "allow-image", "share", "unshare")
 
 #: The moves a variable program could be running when another of its words is built at run time.
 GUARDED = ("approve",) + RIG_MOVES
@@ -336,7 +337,8 @@ def check(segment) -> Finding | None:
     rig_move = _rig_move(words)
     if rig_move:
         return Finding(GUARD, True, f"flotilla: `rig {rig_move}` is the person's own move - it turns rented machines "
-                                    "on or off, or spends money - and a Claude tool call is never the person's. Show "
+                                    "on or off, spends money, or changes who a paid session serves - and a Claude "
+                                    "tool call is never the person's. Show "
                                     "the person the command; they type it with `!` in front in their own Claude Code "
                                     "session, or run it in a terminal.")
     if any(_is(command, "attention") and move for command, move in _parsed(words)) or any(
@@ -357,10 +359,10 @@ _INTERPRETER = re.compile(r"(?:sh|bash|zsh|dash|ksh|fish|python(?:\d+(?:\.\d+)?)
 #: A move only the person makes, spelled as the CLI reads it - in a command line or an argv list (`'rig', 'open'`).
 #: `approve` alone is not one: `gh pr review --approve` and a grep for the word are ordinary work (review of bebab1b).
 _PERSONS_MOVE = re.compile(r"\bwork\b[\s'\",\[\]+]+approve\b"
-                           r"|\brig\b[\s'\",\[\]+]+(?:enable|disable|open|close|allow-image)\b"
+                           r"|\brig\b[\s'\",\[\]+]+(?:enable|disable|open|close|allow-image|unshare|share)\b"
                            r"|\battention\b[\s'\",\[\]+]+(?:all|digest)\b")
 #: The same moves' words anywhere in the code - a command built in pieces - judged only where flotilla is named too.
-_MOVE_WORDS = re.compile(r"\bapprove\b|\brig\b[\s\S]*?\b(?:enable|disable|open|close|allow-image)\b"
+_MOVE_WORDS = re.compile(r"\bapprove\b|\brig\b[\s\S]*?\b(?:enable|disable|open|close|allow-image|unshare|share)\b"
                          r"|\battention\b[\s\S]*?\b(?:all|digest)\b")
 #: flotilla as the program a line runs - `flotilla`, `.../bin/flotilla`, `flotilla.cli`, `-m flotilla` - never a path
 #: or a name it is part of (`flotilla-field`, `.flotilla/`, `~/.config/flotilla`): those are reads, not runs.
