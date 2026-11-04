@@ -176,7 +176,6 @@ def inherited(found: dict, who: str, ladder, now: dt.datetime) -> int | None:
     same exact signature, ended within SENIORITY, whose place no booking since has taken. None otherwise."""
     if not ladder:
         return None
-    taken = {item.place for item in found.values() if item.place}
     for item in sorted(found.values(), key=lambda item: number(item.id) or 0, reverse=True):
         ended = _when(item.ended)
         if item.state != EXPIRED or item.who != who or item.ladder[:1] != list(ladder)[:1] or ended is None:
@@ -184,6 +183,8 @@ def inherited(found: dict, who: str, ladder, now: dt.datetime) -> int | None:
         if not now - SENIORITY <= ended <= now:
             return None
         place = _order(item)
+        taken = {other.place for other in found.values() if other.place and (number(other.id) or 0) >
+                 (number(item.id) or 0)}   # its own place is the one it hands on; only a later booking took it
         return None if place in taken else place
     return None
 
@@ -201,7 +202,7 @@ def last_served(found: dict, now: dt.datetime) -> dict[str, str]:
     after it held; a nested run recorded already released never waited for a turn)."""
     served: dict[str, str] = {}
     for item in found.values():
-        if item.state not in (HELD, RELEASED) or item.inside:
+        if item.state not in (HELD, RELEASED) or item.inside or item.path.startswith("light"):   # no turn taken
             continue
         when = _when(item.since)
         if when is None or not now - SERVED_WINDOW <= when <= now + dt.timedelta(minutes=5):
@@ -226,13 +227,13 @@ def _light(found: dict, mine: Booking, room: Room, hist, live) -> tuple[str, str
     """("", how) when `mine` may start now as a light run, else (why not, "")."""
     from flotilla.lane import estimate
     own = estimate.for_booking(mine, hist, cpus=room.cpus)
-    if (mine.rule or 0) < RULE or not estimate.light(own):
+    if (mine.rule or 0) < RULE or not estimate.light_booking(mine, hist, cpus=room.cpus):
         return f"not light: {own.source}", ""
     waiting = [item for item in found.values() if item.state == WAITING and item.id != mine.id and live(item)]
     if any((item.rule or 0) < RULE for item in waiting):
         return "a waiter of an older flotilla is live", ""
     earlier = [item for item in waiting if _order(item) < _order(mine)
-               and estimate.light(estimate.for_booking(item, hist, cpus=room.cpus))]
+               and estimate.light_booking(item, hist, cpus=room.cpus)]
     if earlier:
         return f"behind light {min(earlier, key=_order).id}", ""
     used, total, reserved = budget(found, room, hist, live)
@@ -254,7 +255,8 @@ def budget(found: dict, room: Room, hist, live) -> tuple[float, float, int]:
     for item in found.values():
         if item.state == HELD and live(item):
             theirs = estimate.for_booking(item, hist, cpus=room.cpus)
-            used += theirs.cores if theirs.cores is not None else room.cpus
+            guessed = "prior" in theirs.source
+            used += room.cpus if guessed or theirs.cores is None else theirs.cores
             reserved += theirs.peak_mb if theirs.peak_mb is not None else UNKNOWN_PEAK_MB
     return used, room.factor * room.cpus, reserved
 
@@ -262,11 +264,19 @@ def budget(found: dict, room: Room, hist, live) -> tuple[float, float, int]:
 def is_light(item: Booking, hist, cpus: int | None = None) -> bool:
     """A waiter the light path serves: under this rule, and light by its own measurements."""
     from flotilla.lane import estimate
-    return (item.rule or 0) >= RULE and estimate.light(estimate.for_booking(item, hist, cpus=cpus))
+    return (item.rule or 0) >= RULE and estimate.light_booking(item, hist, cpus=cpus)
+
+
+def older_waiting(found: dict, live, mine: str = "") -> bool:
+    """A live waiter of a flotilla before light runs: while one waits, the lane counts every run as before - it counts
+    light holders as places and would wait for ever behind them, and it waits behind a light waiter ahead of it (the
+    final review of 0.28.0, C1)."""
+    return any(item.state == WAITING and item.id != mine and live(item) and (item.rule or 0) < RULE
+               for item in found.values())
 
 
 def heavy_starts(found: dict, hist, *, slots: int, now: dt.datetime, live, ceiling: float,
-                 cpus: int | None = None) -> dict[str, dt.datetime | None]:
+                 cpus: int | None = None, counted: bool = False) -> dict[str, dt.datetime | None]:
     """When each live heavy waiter starts by estimates: `slots` lanes, each serving one heavy run after another in
     the line's order, the next run taking the lane that frees first. A heavy holder has its estimate less what it has
     run left, at least a minute; a run never measured counts at `ceiling`. None with no slot at all. An answer, not a
@@ -279,14 +289,14 @@ def heavy_starts(found: dict, hist, *, slots: int, now: dt.datetime, live, ceili
 
     lanes = []
     for item in found.values():
-        if item.state == HELD and live(item) and not item.path.startswith("light"):
+        if item.state == HELD and live(item) and (counted or not item.path.startswith("light")):
             began = _when(item.since) or now
             lanes.append(max(began + dt.timedelta(seconds=span(item)), now + dt.timedelta(minutes=1)))
-    lanes = sorted(lanes)[:max(slots, 0)]
+    lanes = sorted(lanes)[len(lanes) - slots:] if 0 < slots <= len(lanes) else sorted(lanes) if slots > 0 else []
     lanes += [now] * max(slots - len(lanes), 0)
     starts: dict[str, dt.datetime | None] = {}
     for item in sorted((item for item in found.values() if item.state == WAITING and live(item)
-                        and not is_light(item, hist, cpus)), key=_order):
+                        and (counted or not is_light(item, hist, cpus))), key=_order):
         if not lanes:
             starts[item.id] = None
             continue
@@ -312,7 +322,7 @@ def fair_choice(found: dict, live, now: dt.datetime, skip=()) -> Booking | None:
         return None
     holding: dict[str, int] = {}
     for item in found.values():
-        if item.state == HELD and live(item):
+        if item.state == HELD and live(item) and not item.path.startswith("light"):   # a light run holds no place
             holding[item.project] = holding.get(item.project, 0) + 1
     served = last_served(found, now)
     oldest: dict[str, Booking] = {}
@@ -426,17 +436,19 @@ class Book:
             if mine is None or mine.state != WAITING:
                 return None
             lights: frozenset = frozenset()
-            if room is not None and (mine.rule or 0) >= RULE:
+            light_path = room is not None and (mine.rule or 0) >= RULE and not older_waiting(found, self.live,
+                                                                                               booking_id)
+            if light_path:
                 from flotilla.lane import estimate
                 moment = self.clock() if self.clock else dt.datetime.now(dt.timezone.utc)
                 hist = estimate.history(found, now=moment)
-                if estimate.light(estimate.for_booking(mine, hist, cpus=room.cpus)):
+                if estimate.light_booking(mine, hist, cpus=room.cpus):
                     self.waits_for, how = _light(found, mine, room, hist, self.live)
                     return None if self.waits_for else self._write(tx, booking_id, HELD, path=how, **fields)
                 lights = frozenset(item.id for item in found.values() if item.state == WAITING and self.live(item)
-                                   and (item.rule or 0) >= RULE
-                                   and estimate.light(estimate.for_booking(item, hist, cpus=room.cpus)))
-            heavy = [item for item in self.holders(found) if self.live(item) and not item.path.startswith("light")]
+                                   and is_light(item, hist, room.cpus))
+            heavy = [item for item in self.holders(found) if self.live(item)
+                     and not (light_path and item.path.startswith("light"))]
             if len(heavy) >= slots:
                 return None
             path = self._path(found, mine, share, skip, lights)

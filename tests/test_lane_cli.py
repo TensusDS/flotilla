@@ -609,3 +609,14 @@ def test_heavy_starts_serve_the_heavy_line_in_order():
     starts = book.heavy_starts(found, hist, slots=1, now=now, live=lambda item: True, ceiling=1800)
     assert starts == {"b2": now + dt.timedelta(minutes=6), "b3": now + dt.timedelta(minutes=16),
                       "b4": now + dt.timedelta(minutes=46)}
+
+
+
+def test_the_room_counts_the_cores_this_process_may_use(tmp_path, monkeypatch):
+    import os as os_module
+    from flotilla.lane import commands as lane_commands
+    from flotilla.lane.machine import Reading
+    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
+    _machine(tmp_path)
+    monkeypatch.setattr(os_module, "sched_getaffinity", lambda pid: {0, 1, 2}, raising=False)
+    assert lane_commands.room_for({})(Reading([], [], [])).cpus == 3

@@ -56,7 +56,11 @@ def room_for(profile: dict):
     """What a light run may take, built from each poll's reading: this machine's cores, the factor, the memory
     available less the profile's floor (read when the grant decides, inside the lock), the foreign runs computing."""
     from flotilla.core import resources
-    floor, factor, cpus = machine.memory_floor_mb(profile), cpu_factor(), os.cpu_count() or 1
+    try:   # the cores this process may run on (a container's or a taskset's), not the host's
+        cpus = len(os.sched_getaffinity(0)) or os.cpu_count() or 1
+    except (AttributeError, OSError):
+        cpus = os.cpu_count() or 1
+    floor, factor = machine.memory_floor_mb(profile), cpu_factor()
 
     def memory_left():
         available = resources.available_mb()
@@ -259,12 +263,15 @@ def _status(args) -> int:
             print(f"project {visible(project) or '(none)'}: {count} waiting, holds {holds}, "
                   f"last turn {served.get(project) or 'not in 24 h'}")
     print("waiting:" if waiting else "waiting: nobody")
+    counted = book.older_waiting(found, lanes.live)   # an older flotilla waits: every run is counted, none is light
     starts = book.heavy_starts(found, hist, slots=slots - len(reading.computing), now=now, live=lanes.live,
-                               ceiling=ceiling_for(args.root, profile), cpus=room.cpus)
+                               ceiling=ceiling_for(args.root, profile), cpus=room.cpus, counted=counted)
     order = {item_id: place for place, item_id in enumerate(starts, start=1)}
+    if counted:
+        print("  (a seat of a flotilla before 0.28 waits: every run is counted against lane_capacity until it goes)")
     for item in waiting:
         gone = "" if lanes.live(item) else "; its process is gone - `flotilla lane sweep`"
-        if book.is_light(item, hist, room.cpus):
+        if not counted and book.is_light(item, hist, room.cpus):
             kind, why = "light", book.light_verdict(found, item, room, hist, lanes.live) or "next to start"
         else:
             kind, why = "heavy", acq.in_the_way(lanes, reading, slots, item.id, found, share=mode)

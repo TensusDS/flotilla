@@ -301,3 +301,13 @@ def test_without_a_change_the_machine_is_read_once_per_poll(lanes):
     acquire.acquire(lanes, lambda: reads.append(clock.now) or QUIET, who="main session 1", note="suite",
                     capacity=1, wait=31.0, clock=clock, sleep=sleep, jitter=lambda: 0.0)
     assert reads == [0.0, 15.0, 30.0, 31.0] and max(naps) <= 1.0
+
+
+
+def test_a_light_waiter_is_told_its_own_reason(lanes, monkeypatch):
+    monkeypatch.setattr(book.Book, "grant", lambda self, booking_id, **k: setattr(self, "waits_for",
+                                                                                  "needs 400 MB, 300 left"))
+    said = []
+    grant = acquire.acquire(lanes, lambda: QUIET, who="main session 1", note="suite", capacity=1, wait=0.0,
+                            clock=Clock(), sleep=lambda s: None, say=said.append, jitter=lambda: 0.0)
+    assert grant.booking is None and grant.why.endswith("needs 400 MB, 300 left")

@@ -194,3 +194,26 @@ def test_for_booking_reads_a_receipts_tiers_and_a_runs_ladder():
     run = book.Booking(id="j1", ladder=["exact:a"], project="P")
     receipt = book.Booking(id="j2", will_run=["unit"], project="P")
     assert est.for_booking(run, hist).seconds == 4.0 and est.for_booking(receipt, hist).cores == 6.0
+
+
+
+def _hist(**steps):
+    return {step: [est.Sample(*figures, "green", "")] * 3 for step, figures in steps.items()}
+
+
+def test_a_command_light_only_by_its_programs_history_is_heavy():
+    hist = _hist(**{"prog:P:pytest": (4.0, 300, 1.0, 0.5)})
+    item = book.Booking(id="b1", ladder=["exact:P:pytest tests/ -q -x", "norm:P:pytest tests/ -q -x", "prog:P:pytest"],
+                        project="P", rule=3)
+    assert est.light_booking(item, hist) is False
+    hist.update(_hist(**{"norm:P:pytest tests/ -q -x": (4.0, 300, 1.0, 0.5)}))
+    assert est.light_booking(item, hist) is True
+
+
+def test_a_receipt_is_light_only_when_every_tier_is_measured_whole():
+    hist = _hist(**{"tier:P:lint": (5.0, 200, 1.0, 0.5)})
+    hist["tier:P:smoke"] = [est.Sample(20.0, None, None, 0.9, "green", "")] * 3
+    receipt = book.Booking(id="b1", will_run=["lint", "smoke"], project="P", rule=3)
+    assert est.light_booking(receipt, hist) is False
+    hist.update(_hist(**{"tier:P:smoke": (20.0, 400, 2.0, 0.5)}))
+    assert est.light_booking(receipt, hist) is True

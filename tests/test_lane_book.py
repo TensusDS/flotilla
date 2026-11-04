@@ -549,3 +549,83 @@ def test_a_place_folds_only_from_a_whole_number(tmp_path, value, kept):
     lanes, _ = clocked(tmp_path)
     _line(lanes.store, booking="b1", state="waiting", who="x", place=value)
     assert lanes.bookings()["b1"].place == kept
+
+
+
+# -- the final review of 0.28.0 ------------------------------------------------------------------------------------
+
+def test_with_an_older_waiter_live_a_light_run_goes_by_count_and_nobody_deadlocks(lane):
+    lanes, _ = lane
+    teach(lanes)
+    room = book.Room(cpus=8, factor=1.5, memory_left=lambda: 4000)
+    heavy = booked(lanes, RECEIPT, 1)
+    assert lanes.grant(heavy.id, slots=1, room=room)
+    light = booked(lanes, BIG, 2)                         # light, but 5000 MB does not fit 4000
+    assert lanes.grant(light.id, slots=1, room=room) is None
+    _line(lanes.store, booking="b900", state="waiting", who="old seat", note="", pid=77, mark="m", rule=2)
+    later = booked(lanes, RECEIPT, 3)
+    lanes.release(heavy.id)
+    granted = lanes.grant(light.id, slots=1, room=room)   # first in line, counted as before
+    assert granted is not None and granted.path == "fifo"
+    assert lanes.grant(later.id, slots=2, room=room) is None   # the older waiter came first
+
+
+def test_with_an_older_waiter_live_light_holders_count_again(lane):
+    lanes, _ = lane
+    teach(lanes)
+    assert lanes.grant(booked(lanes, FILE, 1).id, slots=1, room=ROOM).path.startswith("light")
+    first = booked(lanes, RECEIPT, 2)
+    _line(lanes.store, booking="b900", state="waiting", who="old seat", note="", pid=77, mark="m", rule=2)
+    assert lanes.grant(first.id, slots=1, room=ROOM) is None   # the old seat counts the light holder: so do we
+
+
+def test_a_place_is_kept_across_a_chain_of_expired_waits(tmp_path):
+    lanes, moment = clocked(tmp_path)
+    first = lanes.enqueue("seat 1", "", pid=2, mark="m", ladder=["exact:suite"])
+    other = lanes.enqueue("seat 2", "", pid=3, mark="m", ladder=["exact:other"])
+    current = first
+    for _ in range(4):
+        lanes.expire(current.id, "waited")
+        moment["at"] += dt.timedelta(minutes=1)
+        current = lanes.enqueue("seat 1", "", pid=2, mark="m", ladder=["exact:suite"])
+        assert current.place == book.number(first.id)
+    assert [item.id for item in lanes.waiters()] == [current.id, other.id]
+
+
+def test_a_never_measured_heavy_holder_counts_as_the_whole_machine(lane):
+    lanes, _ = lane
+    teach(lanes)
+    assert lanes.grant(booked(lanes, ["exact:never-seen"], 1).id, slots=1, room=ROOM)
+    assert lanes.grant(booked(lanes, FILE, 2).id, slots=1, room=ROOM)          # 8 + 1 of 12
+    assert lanes.grant(booked(lanes, MID, 3).id, slots=1, room=ROOM)           # 9 + 2 of 12
+    assert lanes.grant(booked(lanes, MID, 4).id, slots=1, room=ROOM) is None   # 11 + 2 of 12
+
+
+def test_without_a_room_light_holders_count_as_before(lane):
+    lanes, _ = lane
+    teach(lanes)
+    assert lanes.grant(booked(lanes, FILE, 1).id, slots=1, room=ROOM).path.startswith("light")
+    assert lanes.grant(booked(lanes, RECEIPT, 2).id, slots=1) is None
+
+
+def test_the_fair_share_does_not_count_a_projects_light_holders(tmp_path):
+    lanes = book.Book(LocalLogStore(tmp_path / "fair"), Procs())
+    teach(lanes)
+    a_light = lanes.enqueue("a 1", "", pid=1, mark="m", ladder=FILE, command="x", project="A")
+    assert lanes.grant(a_light.id, slots=1, room=ROOM).path.startswith("light")
+    a = lanes.enqueue("a 2", "", pid=3, mark="m", ladder=RECEIPT, command="x", project="A")
+    lanes.enqueue("b 1", "", pid=2, mark="m", ladder=RECEIPT, command="x", project="B")
+    assert book.fair_choice(lanes.bookings(), lanes.live, NOW()).id == a.id   # a light run is no turn
+
+
+def test_heavy_starts_with_more_holders_than_slots_wait_for_enough_of_them_to_end():
+    now = NOW()
+    sample = est.Sample(600.0, 1000, 4.0, 0.5, "green", "")
+    hist = {"exact:r": [sample] * 3}
+    holders = [book.Booking(id=f"b{i}", state=book.HELD, ladder=["exact:r"], path="fifo", rule=3,
+                            since=(now - dt.timedelta(minutes=minutes)).isoformat())
+               for i, minutes in ((1, 8), (2, 4), (3, 1))]
+    waiter = book.Booking(id="b4", state=book.WAITING, ladder=["exact:r"], rule=3)
+    found = {item.id: item for item in (*holders, waiter)}
+    starts = book.heavy_starts(found, hist, slots=1, now=now, live=lambda item: True, ceiling=1800)
+    assert abs((starts["b4"] - now).total_seconds() - 9 * 60) < 2   # all three must end at capacity 1

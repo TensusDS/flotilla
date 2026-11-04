@@ -83,6 +83,7 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
     skip: set[str] = set()
     try:
         while True:
+            stamp = lanes.stamp() if hasattr(lanes, "stamp") else None   # before the look: a release during it wakes
             reading = read_machine()
             slots = capacity() if callable(capacity) else capacity   # read each poll: a raise reaches the queue
             mode = share() if callable(share) else share
@@ -103,6 +104,9 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
                     if granted is not None:
                         return Grant(granted, reading, "")
             why = in_the_way(lanes, reading, slots, mine.id, share=mode)
+            light = getattr(lanes, "waits_for", "")
+            if light and not outright and not unknown:   # a light run waits for room, not for the holders' places
+                why = f"a light run that waits for room: {light}"
             lasting = [answer for answer in unknown if answer.lasting]
             remaining = deadline - clock()
             if lasting or remaining <= 0:
@@ -111,17 +115,16 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
             if say is not None and why != said:
                 say(f"waiting for the lane: {why}")
                 said = why
-            _nap(lanes, poll + jitter(), remaining, clock=clock, sleep=sleep)
+            _nap(lanes, poll + jitter(), remaining, clock=clock, sleep=sleep, stamp=stamp)
     except BaseException:
         lanes.leave(mine.id)
         raise
 
 
-def _nap(lanes, poll: float, remaining: float, *, clock, sleep) -> None:
+def _nap(lanes, poll: float, remaining: float, *, clock, sleep, stamp=None) -> None:
     """Wait for the next poll a second at a time, and wake at once when the journal changed: a release reaches the
     next waiter in about a second, not a poll's 15 (lane light runs design, section 4). Only a `stat` each second;
     the machine is read again by the caller."""
-    stamp = lanes.stamp() if hasattr(lanes, "stamp") else None
     until = clock() + min(poll, remaining)
     while clock() < until:
         sleep(min(1.0, until - clock()))

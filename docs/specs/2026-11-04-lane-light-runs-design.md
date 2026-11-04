@@ -31,7 +31,9 @@ That fails both ways.
 Every booking is **light** or **heavy**.
 
 - **Light:** its own measured history says it is short and small. That means, from the lane's estimate (stage 1, by
-  the signature ladder) at a measured step, not the project prior and not the fixed prior:
+  the signature ladder) answered by the command's own step - `exact` or `norm`, never `prog` (every run of the same
+  program) and never a prior (the final review: a full suite with a new flag was light by single-file runs of its
+  program):
   - duration ≤ 60 s (`LIGHT_SECONDS`);
   - cores ≤ 2 (`LIGHT_CORES`);
   - a known peak memory.
@@ -64,7 +66,9 @@ Light runs take what the heavy runs leave. A light waiter is admitted now when a
    of it is already in use. That is conservative on purpose: memory refuses by killing.
 4. **No older waiter:** no live waiter of the lane waits under an older rule. A flotilla before this one knows nothing
    of light runs, sees a light holder as a taken place, and could wait for ever behind a stream of them. While such a
-   waiter is live, every run waits by count, as today.
+   waiter is live, every run - light ones too - is admitted by count and arrival, as today, and light holders count
+   as places (the final review found that refusing light runs outright instead left a light waiter and an older
+   waiter each waiting for the other, and the lane empty).
 
 There is no count of light runs. The cores and the memory bound them.
 

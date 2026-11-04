@@ -29,6 +29,16 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
   session waiting at its prompt flickers between samples; the shown file is not under `guards/files.py`; `/loop` and
   wakeup prompt shapes beyond CronCreate are not measured. *(checked 2026-11-03 on 0.26.0: still P)*
 
+## From the final review of the lane's light runs (2026-11-04, 0.28.0)
+
+- **Every lane waiter wakes on every journal write.** Each light run's booking, grant, release and record makes every
+  waiter read the whole machine (process table, CPU samples, CI) at once - cost, not correctness; a busy light stream
+  multiplies it. Idea: wake on a write only when it frees something (a release, an expiry). *(open: flotilla/lane/acquire.py `_nap`)*
+- **One light run that does not fit holds up every light run behind it.** Light runs go strictly by arrival (pinned
+  by a test), so a 5 GB light run waiting for memory keeps one-file tests behind it until memory frees; with an
+  expired wait keeping its place, the holdup survives retries. Decide on purpose whether a later light run that fits
+  may pass. *(open: flotilla/lane/book.py `_light`)*
+
 ## From the final review of the rig queue, part A (2026-11-03, 0.27.0)
 
 - **Ctrl-C during a stopped run's fetch aborts its cleanup.** `_cleaning` makes SIGTERM and SIGHUP harmless while
