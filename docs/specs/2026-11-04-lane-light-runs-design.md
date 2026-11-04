@@ -2,7 +2,7 @@
 
 Date: 2026-11-04.
 
-The person's ruling (2026-11-03): option Б of the lane fork, "one heavy, and the small ones on what is left". It
+The person's ruling (2026-11-03): option B of the lane fork, "one heavy, and the small ones on what is left". It
 stands instead of stages 2-3 of `2026-10-05-lane-resource-admission-design.md`, budget admission and overtaking for
 every run. Those stages stay as the later option if the field needs more.
 
