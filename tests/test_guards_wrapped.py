@@ -277,3 +277,18 @@ CODE_HOWEVER_SPELLED = [
 def test_code_handed_as_text_however_spelled_still_asks(tmp_path, monkeypatch, command):
     answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
     assert answer and answer["permissionDecision"] in ("ask", "deny"), answer
+
+
+
+SHARE_BUILT_IN_CODE = [
+    "python3 - <<'EOF'\nimport subprocess\ncmd = ['flotilla', 'rig']\ncmd.append('share')\nsubprocess.run(cmd + ['x'])\nEOF",
+    "python3 -c \"import subprocess; c=['flotilla','rig']; c.append('unshare'); subprocess.run(c+['x'])\"",
+]
+
+
+@pytest.mark.parametrize("command", SHARE_BUILT_IN_CODE)
+def test_share_built_into_an_argv_in_code_is_refused_on_stdin_too(tmp_path, monkeypatch, command):
+    """The commit security review of bd6b7dd: stdin-fed code is never asked about, only refused, so `share` must stay
+    a move word there - as a quoted token, which prose does not use."""
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny", answer

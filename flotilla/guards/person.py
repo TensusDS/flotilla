@@ -362,8 +362,11 @@ _PERSONS_MOVE = re.compile(r"\bwork\b[\s'\",\[\]+]+approve\b"
                            r"|\brig\b[\s'\",\[\]+]+(?:enable|disable|open|close|allow-image|unshare|share)\b"
                            r"|\battention\b[\s'\",\[\]+]+(?:all|digest)\b")
 #: The same moves' words anywhere in the code - a command built in pieces - judged only where flotilla is named too.
-#: `share` is a common word: built from pieces it stays a gap of decision 245; spelled `rig share` it is refused above.
+#: `share` is a common word (`--why 'share gpu'`, `grep share`): anywhere after `rig` it counts only as a quoted token
+#: of its own - an argv element (`cmd.append('share')`) - so a command built in code, on standard input too, is still
+#: refused (the commit security review of bd6b7dd) while prose that mentions sharing is not.
 _MOVE_WORDS = re.compile(r"\bapprove\b|\brig\b[\s\S]*?\b(?:enable|disable|open|close|allow-image)\b"
+                         r"|\brig\b[\s\S]*?['\"](?:unshare|share)['\"]"
                          r"|\battention\b[\s\S]*?\b(?:all|digest)\b")
 #: flotilla as the program a line runs - `flotilla`, `.../bin/flotilla`, `flotilla.cli`, `-m flotilla` - never a path
 #: or a name it is part of (`flotilla-field`, `.flotilla/`, `~/.config/flotilla`): those are reads, not runs.
