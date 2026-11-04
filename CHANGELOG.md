@@ -3,6 +3,27 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.28.1 - 2026-11-04
+
+The review of 0.28.0 against every problem found since 0.24.0: seven regressions and holes, five of them brought in
+by 0.27.0 and 0.28.0.
+
+- **A light run never waits on an empty lane.** Refused by what the heavy runs leave - memory unreadable, a little
+  short of its peak, behind a big light run - it still goes by count and arrival, as any run did.
+- **Waiters woken by journal writes no longer read the machine each time.** A wake decides on the journal with the
+  last look; the process table, CPU samples and `gh` are asked once a poll, so a stream of light runs no longer
+  multiplies the load 0.24.2 removed, nor the GitHub API calls.
+- **`rig share` and `rig unshare` are the person's moves to the guard,** refused to a Claude tool call however spelled
+  or wrapped - the hole 0.26.2 closed for `approve` and `rig open`.
+- **A waiting rig run of a project the person unshared leaves the line,** instead of starting on the session's machine
+  hours later.
+- **A script's or a module's arguments naming flotilla are not asked about** (`python3 -m flotilla work show`, a lane
+  run of `pytest -k flotilla`): in a background seat an ask stood the seat still. Code handed as text still asks, and
+  the reading fails closed - any code option anywhere, a process substitution or a file-descriptor script makes a line
+  code.
+- **A second Ctrl-C during a stopped rig run's cleanup is held off,** so its `--get`, drop and record finish.
+- **A heavy waiter is told only what it waits for;** `flotilla lane` says `lane_capacity` counts heavy runs.
+
 ## 0.28.0 - 2026-11-04
 
 The lane: one heavy run, light runs beside it (the person's option B; twosuns items 13 and 16, void-lanes-online's

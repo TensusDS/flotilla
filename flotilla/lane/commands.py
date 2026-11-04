@@ -229,7 +229,7 @@ def _status(args) -> int:
     if swept:
         print(f"swept {len(swept)} booking(s) whose process is gone: " + ", ".join(visible(item.id) for item in swept))
     slots, mode = capacity(), share()
-    print(f"capacity: {slots} long run(s) at a time (machine.toml lane_capacity)")
+    print(f"capacity: {slots} heavy run(s) at a time (machine.toml lane_capacity); light runs take no place")
     print(_share_line())
     found = lanes.bookings()   # read once: each waiter's reason would read the whole journal again
     held, waiting = lanes.holders(found), lanes.waiters(found)

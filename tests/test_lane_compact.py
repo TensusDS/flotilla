@@ -265,3 +265,18 @@ def test_a_journal_that_cannot_shrink_is_not_retried_on_every_write(tmp_path, mo
     lanes(tmp_path).enqueue("main session 1", "a", pid=1, mark="m")
     lanes(tmp_path).enqueue("main session 2", "b", pid=2, mark="m")
     assert len(calls) == 1 and real
+
+
+def test_a_compaction_keeps_what_light_runs_and_seniority_read():
+    """0.28.1, the regression review: a light holder's `path`, a waiter's inherited `place`, and the expired booking
+    seniority reads must all survive a compaction (it held by reading; nothing pinned it)."""
+    light = [{"at": at(minutes=3), "booking": "l", "state": book.WAITING, "who": "main session 3", "rule": 3},
+             {"at": at(minutes=2), "booking": "l", "state": book.HELD, "path": "light: 3 of 12 cores, 900 MB left"}]
+    expired = [{"at": at(minutes=9), "booking": "e", "state": book.WAITING, "who": "main session 4", "rule": 3,
+                "ladder": [f"exact:{P}:make check"]},
+               {"at": at(minutes=4), "booking": "e", "state": book.EXPIRED, "why": "waited 300 s"}]
+    again = [{"at": at(minutes=1), "booking": "a", "state": book.WAITING, "who": "main session 4", "rule": 3,
+              "ladder": [f"exact:{P}:make check"], "place": 7}]
+    kept, _ = compact.plan(journal() + light + expired + again, NOW)
+    found = book.fold(kept)
+    assert found["l"].path.startswith("light") and found["a"].place == 7 and found["e"].state == book.EXPIRED
