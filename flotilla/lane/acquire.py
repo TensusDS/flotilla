@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import random
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -72,7 +73,7 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
             share: str | Callable[[], str] = "fifo",
             pid: int | None = None, mark: str = "", run_for: str = "", by_hand: bool = False, poll: float = POLL,
             clock=time.monotonic, sleep=time.sleep, say=None, command: str = "", ladder=(), will_run=(),
-            project: str = "", room: Callable | None = None) -> Grant:
+            project: str = "", room: Callable | None = None, jitter=lambda: random.uniform(0.0, 1.0)) -> Grant:
     """`room(reading)`: what a light run may take on this poll (lane light runs design); None, the count alone."""
     mine = lanes.enqueue(who, note, pid=pid, mark=mark, run_for=run_for, command=command, ladder=ladder,
                          will_run=will_run, project=project)
@@ -110,10 +111,22 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
             if say is not None and why != said:
                 say(f"waiting for the lane: {why}")
                 said = why
-            sleep(min(poll, remaining))
+            _nap(lanes, poll + jitter(), remaining, clock=clock, sleep=sleep)
     except BaseException:
         lanes.leave(mine.id)
         raise
+
+
+def _nap(lanes, poll: float, remaining: float, *, clock, sleep) -> None:
+    """Wait for the next poll a second at a time, and wake at once when the journal changed: a release reaches the
+    next waiter in about a second, not a poll's 15 (lane light runs design, section 4). Only a `stat` each second;
+    the machine is read again by the caller."""
+    stamp = lanes.stamp() if hasattr(lanes, "stamp") else None
+    until = clock() + min(poll, remaining)
+    while clock() < until:
+        sleep(min(1.0, until - clock()))
+        if stamp is not None and lanes.stamp() != stamp:
+            return
 
 
 @contextlib.contextmanager

@@ -39,7 +39,7 @@ def lanes(tmp_path):
 def take(lanes, reading=QUIET, *, capacity=1, wait=0.0, clock=None, sleep=None, who="main session 1"):
     clock = clock or Clock()
     return acquire.acquire(lanes, lambda: reading, who=who, note="suite", capacity=capacity, wait=wait,
-                           clock=clock, sleep=sleep or clock.sleep)
+                           clock=clock, sleep=sleep or clock.sleep, jitter=lambda: 0.0)
 
 
 def test_a_free_lane_is_taken_at_once(lanes):
@@ -63,7 +63,7 @@ def test_waiting_ends_when_the_holder_releases(lanes):
         clock.sleep(seconds)
         lanes.release(held.booking.id)
     grant = take(lanes, wait=60, clock=clock, sleep=sleep)
-    assert grant.booking.state == book.HELD and clock.now == acquire.POLL
+    assert grant.booking.state == book.HELD and clock.now == 1.0   # woken by the release, not by the next poll
 
 
 def test_a_computing_foreign_run_uses_a_slot(lanes):
@@ -268,3 +268,36 @@ def test_the_room_built_from_the_reading_reaches_the_grant(lanes, monkeypatch):
                     room=lambda reading: book.Room(cpus=8, factor=1.5, memory_left=lambda: 8000,
                                                    foreign=len(reading.computing)))
     assert seen and seen[0] == book.Room(cpus=8, factor=1.5, memory_left=seen[0].memory_left, foreign=1)
+
+
+
+# -- handoff without the 15-second poll (lane light runs design, section 4) ----------------------------------------
+
+def test_a_waiter_wakes_within_a_second_of_a_journal_change(lanes):
+    holder = take(lanes, who="review session 1")
+    clock, reads = Clock(), []
+
+    def sleep(seconds):
+        clock.sleep(seconds)
+        if clock.now >= 3 and lanes.holders():
+            lanes.release(holder.booking.id)   # another process releases the lane at second 3
+
+    def read():
+        reads.append(clock.now)
+        return QUIET
+    grant = acquire.acquire(lanes, read, who="main session 1", note="suite", capacity=1, wait=60.0, clock=clock,
+                            sleep=sleep, jitter=lambda: 0.0)
+    assert grant.booking is not None and clock.now <= 4.0 and reads == [0.0, clock.now]
+
+
+def test_without_a_change_the_machine_is_read_once_per_poll(lanes):
+    take(lanes, who="review session 1")
+    clock, reads, naps = Clock(), [], []
+
+    def sleep(seconds):
+        naps.append(seconds)
+        clock.sleep(seconds)
+
+    acquire.acquire(lanes, lambda: reads.append(clock.now) or QUIET, who="main session 1", note="suite",
+                    capacity=1, wait=31.0, clock=clock, sleep=sleep, jitter=lambda: 0.0)
+    assert reads == [0.0, 15.0, 30.0, 31.0] and max(naps) <= 1.0

@@ -303,6 +303,16 @@ class Book:
     def bookings(self) -> dict[str, Booking]:
         return self._found()
 
+    def stamp(self) -> tuple | None:
+        """The journal file's size and modification time: what a waiter checks once a second, cheaply, to know the
+        lane changed. None when there is no file to ask."""
+        root = getattr(self.store, "root", None)
+        try:
+            found = (Path(root) / f"{KEY}.jsonl").stat() if root is not None else None
+        except OSError:
+            return None
+        return (found.st_size, found.st_mtime_ns) if found is not None else None
+
     def holders(self, found: dict | None = None) -> list[Booking]:
         found = self.bookings() if found is None else found
         return sorted((item for item in found.values() if item.state == HELD), key=_order)
