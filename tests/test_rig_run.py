@@ -938,3 +938,17 @@ def test_a_queued_run_says_its_place_even_with_no_machine_up(world, box, tree, m
     opened(world)
     _, _, out = queued_only(world, tree, monkeypatch)
     assert "j1 is 1st in line; a machine is raised first" in out
+
+
+def test_a_waiting_run_of_a_project_the_person_unshared_leaves_the_line(world, box, tree, monkeypatch):
+    """0.28.1, the regression review: the share was checked once, at queue time, so a run that waited the whole
+    session (0.27.0) still started after the person took its project off the session."""
+    opened(world)
+    rig = journal(world)
+    session = next(s for s in rig.sessions().values() if s.state == j.OPEN)
+    monkeypatch.setattr(run_module, "SLEEP", lambda s: None)
+    task = waiting_task(world, tree, rig, session, ("exact:a",), pid=83)
+    rig.share_session(session.id, ["another-project"])
+    began = time.monotonic()
+    assert not task.take_room(rig.sessions()[session.id], time.monotonic() + 20)
+    assert time.monotonic() - began < 5 and task.code == 2 and "no longer serves" in task.reason, task.reason

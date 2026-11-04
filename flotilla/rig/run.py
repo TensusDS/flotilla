@@ -183,6 +183,13 @@ class Run:
                 self.verdict = mine.verdict if mine is not None and mine.state == j.DONE else "session ended"
                 self.code, self.reason = 3, f"session {session.id} closed while it waited"
                 return False
+            if now_session.projects is not None and self.run.project not in now_session.projects:
+                # the person took this project off the session while it waited: the share is asked on every look,
+                # not once at queue time, now that a run waits the whole session (0.28.1)
+                self.verdict, self.code = "refused", 2
+                self.reason = f"session {session.id} no longer serves this project; the person shares it again with " \
+                    f"`! flotilla rig share`"
+                return False
             machines = [m for m in self.rig.machines().values() if m.session == session.id]
             reasons = {}
             for machine in machines:
