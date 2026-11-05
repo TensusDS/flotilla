@@ -407,6 +407,19 @@ def build_parser() -> argparse.ArgumentParser:
     rig_stop = rig_actions.add_parser("stop", help="stop your own run (jN): it ends on the machine and is recorded")
     rig_stop.add_argument("run_id", metavar="RUN")
     rig_stop.add_argument("--as", dest="as_name", default=None)
+    update_ = sub.add_parser("update", help="every flotilla install on this machine, the channel it follows, and "
+                                            "one plan to bring them up (applied only with --confirm, by the person)")
+    channel = update_.add_mutually_exclusive_group()
+    channel.add_argument("--pin", default=None, metavar="vX.Y.Z", help="move the user entry to this release, not to "
+                                                                       "the stable channel")
+    channel.add_argument("--keep-channel", action="store_true", help="leave the user entry as it is")
+    update_.add_argument("--stop", action="append", default=[], metavar="DIR",
+                         help="stand the fleet working in DIR down, then update it")
+    update_.add_argument("--defer", action="append", default=[], metavar="DIR",
+                         help="leave the install in DIR as it is while its fleet works")
+    update_.add_argument("--skip", action="append", default=[], metavar="DIR",
+                         help="leave the install in DIR out of this update")
+    update_.add_argument("--confirm", default=None, metavar="MARK", help="carry out the plan this mark was printed for")
     return parser
 
 
@@ -457,6 +470,9 @@ def main(argv: list[str]) -> int:
     if args.command == "attention":
         from flotilla.watch.attention import run_attention_command
         return run_attention_command(args)
+    if args.command == "update":
+        from flotilla.update import run_update
+        return run_update(args)
     if args.command == "inbox":
         from flotilla.watch.inbox_command import run_inbox_command
         return run_inbox_command(args)

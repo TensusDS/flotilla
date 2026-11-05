@@ -351,6 +351,10 @@ def _down(ledger) -> int:
                                    "command short; nothing was stopped: run `flotilla fleet down` from a terminal")
     lines, refused = retire.down(ledger, caller=f"fleet down {caller_line(sessions)}", me=me, census=census)
     print("\n".join(lines))
+    from flotilla import update
+    waits = update.deferred(paths.state_dir(), launch.main_checkout(ledger.root, run=ledger.run))
+    if waits:
+        print(waits)
     if any("its tree is kept" in line for line in lines):
         print("some trees were kept; `flotilla fleet clean` names why, and removes them once their work is on trunk")
     return 1 if refused else 0

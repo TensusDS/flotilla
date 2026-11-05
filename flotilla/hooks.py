@@ -215,6 +215,11 @@ def _session_start(ctx, payload, out, now) -> int:
         print("flotilla: " + "; ".join(checks), file=out)
     if _fresh(payload):
         _update_note(ctx.root, out)
+        if (Path(ctx.root) / ".git").is_dir():   # the main checkout, where the person works; seats run in trees
+            from flotilla import update
+            waits = update.deferred(paths.state_dir(), Path(ctx.root))
+            if waits:
+                print(f"flotilla: {waits}", file=out)
     for line in _identity(ctx) + _event_problems(ctx):
         print(f"flotilla: {line}", file=out)
     mine = ctx.mine()

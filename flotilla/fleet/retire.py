@@ -233,9 +233,10 @@ def _stop_leftovers(ledger, tree: str, census, *, short_id: str = "", was_runnin
 
 
 def down(ledger, *, caller: str, me: str, census, wait: float = 60.0, poll: float = 1.0,
-         sleep=time.sleep) -> tuple[list[str], int]:
-    """Retire every seat of this ledger but the caller's own (field test F27). The census is asked first: a
-    fleet that cannot be counted is not stood down at all."""
+         sleep=time.sleep, keep: frozenset = frozenset()) -> tuple[list[str], int]:
+    """Retire every seat of this ledger but the caller's own and those in `keep` (the person's own sessions, when
+    `flotilla update` stands a fleet down from elsewhere) (field test F27). The census is asked first: a fleet that
+    cannot be counted is not stood down at all."""
     try:
         census()
     except CensusUnavailable as err:
@@ -251,6 +252,9 @@ def down(ledger, *, caller: str, me: str, census, wait: float = 60.0, poll: floa
         if row.owner == me:
             lines.append(f"kept {me}: it runs this command; retire it last, from elsewhere: "
                          f"`flotilla retire \"{me}\"`")
+            continue
+        if row.owner in keep:
+            lines.append(f"kept {row.owner}: the person's own session")
             continue
         try:
             lines += retire(ledger, row.owner, caller=caller, census=census, wait=wait, poll=poll, sleep=sleep)
