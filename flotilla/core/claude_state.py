@@ -277,6 +277,63 @@ def marketplace_pin(root: Path, *, version: str, env=os.environ,
             "it for every project on this machine")
 
 
+def user_entry(env=os.environ, home: Path | None = None) -> dict | None:
+    """The `flotilla` entry of `extraKnownMarketplaces` in the user's settings (`<config>/settings.json`), or None when
+    there is none or the file does not read as Claude Code writes it."""
+    try:
+        data = json.loads((config_dir(env, home) / "settings.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError, RecursionError):
+        return None
+    known = data.get("extraKnownMarketplaces") if isinstance(data, dict) else None
+    found = known.get("flotilla") if isinstance(known, dict) else None
+    return found if isinstance(found, dict) and isinstance(found.get("source"), dict) else None
+
+
+CHANNEL = "stable"
+REFUSAL = ("Claude Code refuses `claude plugin marketplace add` with \"doesn't match its extraKnownMarketplaces "
+           "entry in user or managed settings\"")
+
+
+def _older(ref: str, newest: str) -> bool:
+    return bool(RELEASE.fullmatch(ref or "")) and (_version(ref[1:]) or ()) < (_version(newest) or ())
+
+
+def update_findings(entry: dict | None, project_ref: str, releases, running: str) -> list[tuple[str, str, str]]:
+    """(status, detail, fix) for the release this machine follows against the newest one (spec
+    2026-11-04-plugin-updates, part B). `entry` is the user's marketplace entry, `project_ref` the ref the project's
+    own settings pin ("" for none), `releases` what GitHub answered; nothing is said when the newest is unknown."""
+    newest = getattr(releases, "newest", None)
+    if not newest:
+        return []
+    latest = f"v{newest}"
+    update = "/flotilla:update"
+    ways = (f"follow the `{CHANNEL}` channel with automatic updates (recommended), or move the pin to {latest}; "
+            f"{update} does either on your yes")
+    if entry is None:
+        return [("info", f"this project pins flotilla to {project_ref}; the newest release is {latest}", ways)] \
+            if _older(project_ref, newest) else []
+    source = entry["source"]
+    if source.get("source") != "github" or str(source.get("repo") or "").lower() != REPO.lower():
+        return [("info", f"the user settings take flotilla from {_following(source)}, not {REPO}: flotilla does "
+                         f"not change that source; the newest release of {REPO} is {latest}", "")]
+    ref = str(source.get("ref") or "")
+    if not ref:
+        return [("info", "the user settings follow flotilla's default branch (main): every commit reaches this "
+                         "machine, not only releases", f"follow the `{CHANNEL}` channel instead: {update}")]
+    if ref == CHANNEL:
+        if entry.get("autoUpdate") is True:
+            return [("ok", f"the user settings follow the `{CHANNEL}` channel with automatic updates; the newest "
+                           f"release is {latest}, this session runs {running}", "")]
+        return [("info", f"the user settings follow the `{CHANNEL}` channel, but automatic updates are off: a "
+                         f"release reaches this machine only when you update by hand (newest {latest})",
+                 f"turn them on: {update}")]
+    if _older(ref, newest):
+        return [("warn", f"the user settings pin the flotilla marketplace to {ref}; the newest release is {latest}. "
+                         f"While that entry stands, a project cannot pin another release - {REFUSAL} - and "
+                         f"`claude plugin install` takes {ref} without a word", ways)]
+    return [("ok", f"the user settings pin the flotilla marketplace to {ref}; the newest release is {latest}", "")]
+
+
 def trusted(path: Path, *, home: Path | None = None) -> bool | None:
     try:
         data = json.loads(((home or Path.home()) / ".claude.json").read_text(encoding="utf-8"))

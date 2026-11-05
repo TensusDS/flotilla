@@ -122,6 +122,12 @@ def collect(*, cwd: Path, env=os.environ, run=subprocess.run, which=shutil.which
     if copy is not None:
         findings.append(Finding(copy[0], "plugin copy", copy[1], copy[2]))
 
+    if setup:   # a hook says only a warning, once a day (update_lines); doctor asks GitHub afresh
+        try:
+            findings += update_findings(config.find_project(cwd) or Path(cwd), env=env, home=home, run=run)
+        except Exception as err:  # noqa: BLE001 - a check that could not ask says so
+            findings.append(Finding("warn", "updates", f"could not be checked: {err}"))
+
     root = config.find_project(cwd)
     if root is None:
         findings.append(Finding("info", "project", f"not onboarded here ({cwd}); flotilla stays inactive"))
@@ -152,6 +158,14 @@ def collect(*, cwd: Path, env=os.environ, run=subprocess.run, which=shutil.which
     except Exception as err:  # noqa: BLE001 - a check that could not ask says so
         findings.append(Finding("warn", "rig", f"could not be checked: {err}"))
     return findings
+
+
+def update_findings(root: Path, *, env=os.environ, home: Path | None = None, run=subprocess.run,
+                    releases=None) -> list[Finding]:
+    """Doctor's rows about the release this machine follows; GitHub is asked afresh."""
+    from flotilla.core import updates
+    found = updates.findings(root, env=env, home=home, run=run, fresh=True, releases=releases)
+    return [Finding(status, "updates", detail, fix) for status, detail, fix in found]
 
 
 def _seats(ledger, sessions, *, proc_root=None) -> Finding:
