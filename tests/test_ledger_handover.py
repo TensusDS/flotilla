@@ -256,3 +256,14 @@ def test_a_refused_wait_shows_session_names_as_data(tmp_path):
     with pytest.raises(MoveRefused) as refused:
         handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", on="orchestrator 4\x1b[2J", why="x")
     assert "\x1b" not in str(refused.value)
+
+
+def test_the_person_is_a_wait_target_after_the_person_has_moved_on_the_ledger(world):
+    """void-lanes, 2026-11-04: an approve or a take-in records "the person" as a mover, and a wait on the person -
+    the form the flotilla skill prescribes - was refused as a wait on a session that is not alive."""
+    from types import SimpleNamespace
+    root, ledger = world
+    claimed(root, ledger)
+    rows = dict(ledger.rows())
+    rows["r-person"] = SimpleNamespace(owner="main session 1", reader="", history=[{"by": "the person"}])
+    assert handover._whom(ledger, rows, "the person") == ("the person", {})

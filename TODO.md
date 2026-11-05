@@ -32,6 +32,26 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
   `guards/files.py`; the wakeup prompt shape is not measured (CronCreate and `/loop` firings were, on 2.1.317).
   *(checked 2026-11-04 on 0.28.0: still P)*
 
+## From void-lanes-online's field notes (2026-11-03..05, on 0.26.0)
+
+- **The collector names an unrelated file as the last copy of an empty one.** `fleet down` printed "the last copy of
+  clients/core/.../VoidLane.BCD1E3CF.Up2Date is now in .../.remember/logs/hook-errors.log": an empty file matched
+  another plugin's empty log in the main checkout. Nothing was moved there; the wording says it was. The rule behind
+  it trusts any file of the main checkout as a twin, untracked and ignored ones of other tools included, which can
+  be rewritten or removed at any time (flotilla/gc/twins.py `find`). Planned for 0.29.1.
+- **`work wait --on "the person"` is refused** once the person has made a move on the ledger (an approve, a take-in):
+  `_known_names` counts the mover "the person" as a session, which is not alive (flotilla/ledger/handover.py:150),
+  though the flotilla skill and `watch/ask.py` prescribe exactly that form. Planned for 0.29.1.
+- **A receipt whose tier exited unknown was accepted for a hand-over** (main 13, r64, d18999b: the seat restarted
+  while the run was detached). A run with no recorded exit has no verdict; refuse it for a hand-over, or mark it.
+- **The sender cannot remove its own `send/*` merge branches** in a direct-push project: no move deletes them, and one
+  was removed with `git branch -D` by hand. Suggested: `work land` deletes the local merge branch once the push is
+  confirmed.
+- **Post texts say "the person's yes" where `merge_authorized_by = "sender"`;** a seat read it as merges needing the
+  person and raised a false alarm. The letters should follow the profile's value.
+- **`work reconcile` right after a push said "nothing is queued or landed"** while two rows sat in the send queue.
+  If it means "nothing to reconcile with origin", say that, with the count still queued.
+
 ## From the review of 0.28.0 against everything found since 0.24.0 (2026-11-04, 0.28.1)
 
 - **The person's inbox does not list the collector's questions** (park or keep a released branch, stop or keep a dead

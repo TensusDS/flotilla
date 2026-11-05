@@ -129,7 +129,7 @@ def _known_names(rows: dict) -> set[str]:
     found = set()
     for row in rows.values():
         found |= {row.owner, row.reader} | {entry.get("by", "") for entry in row.history}
-    return found - {""}
+    return found - {"", "the person"}   # the person's own moves (approve, take-in) do not make them a session
 
 
 def _whom(ledger: Ledger, rows: dict, on: str) -> tuple[str, dict]:
