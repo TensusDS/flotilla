@@ -71,10 +71,10 @@ fleet.
 **Pin a release** instead, to choose when you move: name a tag on the first line (the tags are listed in
 [CHANGELOG.md](CHANGELOG.md)):
 
-    claude plugin marketplace add TensusDS/flotilla#v0.29.0 --scope project
+    claude plugin marketplace add TensusDS/flotilla#v0.29.1 --scope project
     claude plugin install flotilla@flotilla --scope project
 
-That writes `"ref": "v0.29.0"` into the project's settings and installs that release; `claude plugin update` stays on
+That writes `"ref": "v0.29.1"` into the project's settings and installs that release; `claude plugin update` stays on
 it. A machine keeps one marketplace of a name for all its projects, so give the projects on one machine the same
 channel or pin; `/flotilla:doctor` names a pin the machine does not follow. And a tag can be moved on GitHub, so a pin
 chooses when you move, not who can change what the tag names.
@@ -296,8 +296,9 @@ It retires every session but your own and names the work left open so the next f
 uncommitted, untracked or stashed, nothing ignored but what an install or a build makes again, its commits on a ref
 that stays - and its branch goes when its work has landed (origin's trunk, a squash whose exact tip the ledger
 shipped, or a line declared under `[gc] trunks`). Commits only a reflog reaches are parked under
-`refs/flotilla/parked/`, not lost. A file with a byte-identical copy that stays (the main checkout, a folder you
-declare, a commit) lets its tree go; small unique outputs move to `<project>-gc-archive/` and you are told, with the
+`refs/flotilla/parked/`, not lost. A file with a byte-identical copy that stays (a file git holds as it is in the main
+checkout or in a tree that stays, a folder you declare, a commit; never an empty file, an untracked file another
+tool keeps, or an edit over a tracked file) lets its tree go; small unique outputs move to `<project>-gc-archive/` and you are told, with the
 command that restores them. What only you can settle - uncommitted work, your own files, large outputs - waits for
 `/flotilla:gc`: one question per piece of work, and only your recorded answer is carried out. `flotilla fleet clean` sweeps the same
 way for what a forced stop or an older fleet left - only what the fleet made, never a tree or branch of your own: a

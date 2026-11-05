@@ -204,7 +204,23 @@ def test_a_twin_in_a_store_names_the_last_copy(tmp_path):
     tree = ignored_seat(root, tmp_path, 1)
     shown = sweep.lines(sweep.run_pass(ledger, sessions=[], act=True, proc_root=tmp_path / "no-proc"))
     assert not tree.exists()
-    assert any(line.startswith("the last copy of out/x.bin is now in ") and "feedback" in line for line in shown)
+    assert any(line.startswith("removed out/x.bin: an identical copy stays at ") and "feedback" in line
+               and line.endswith("(nothing was moved there)") for line in shown), shown
+
+
+def test_an_empty_file_goes_to_the_archive_with_its_name_not_onto_an_empty_twin(tmp_path):
+    """void-lanes, 2026-11-05: an empty build marker was matched to another plugin's empty log in the checkout."""
+    from flotilla.gc import archive
+    root, ledger = world(tmp_path)
+    ignoring(root)
+    (root / ".remember" / "logs").mkdir(parents=True)
+    (root / ".remember" / "logs" / "hook-errors.log").write_bytes(b"")
+    tree = ignored_seat(root, tmp_path, 1, data=b"", path="out/VoidLane.Up2Date")
+    shown = sweep.lines(sweep.run_pass(ledger, sessions=[], act=True, proc_root=tmp_path / "no-proc"))
+    assert not tree.exists(), shown
+    assert not any("hook-errors.log" in line for line in shown), shown
+    kept = [item["from"] for entry in archive.entries(ledger) for item in entry.files]
+    assert str(tree / "out" / "VoidLane.Up2Date") in kept, kept
 
 
 def test_freed_and_moved_are_reported_apart(tmp_path):
@@ -224,7 +240,7 @@ def test_report_lines_show_control_characters_visibly(tmp_path):
     (root.parent / "feedback" / "x.bin").write_bytes(b"12345")
     ignored_seat(root, tmp_path, 1, path="out/a\x1b[31m.bin")
     shown = sweep.lines(sweep.run_pass(ledger, sessions=[], act=True, proc_root=tmp_path / "no-proc"))
-    assert any(line.startswith("the last copy of out/a") for line in shown), shown
+    assert any(line.startswith("removed out/a") for line in shown), shown
     assert not any("\x1b" in line for line in shown), shown
 
 
@@ -372,9 +388,22 @@ def test_a_twin_in_a_tree_that_stays_names_the_last_copy(tmp_path):
     git(root, "worktree", "add", "-q", "-b", "mine", str(staying))
     (staying / "out").mkdir()
     (staying / "out" / "x.bin").write_bytes(b"12345")
+    git(staying, "add", "-f", "out/x.bin")   # only a copy git tracks there counts (void-lanes, 2026-11-05)
     tree = ignored_seat(root, tmp_path, 1)
     shown = sweep.lines(sweep.run_pass(ledger, sessions=[], act=True, proc_root=tmp_path / "no-proc"))
     assert not tree.exists() and staying.exists(), shown
-    assert f"the last copy of out/x.bin is now in {staying / 'out' / 'x.bin'}" in shown, shown
+    assert f"removed out/x.bin: an identical copy stays at {staying / 'out' / 'x.bin'} (nothing was moved there)" \
+        in shown, shown
     recorded = [copy for entry in archive.entries(ledger) for copy in entry.last_copies]
     assert {"from": str(tree / "out" / "x.bin"), "where": str(staying / "out" / "x.bin")} in recorded, recorded
+
+
+def test_the_overflow_line_does_not_say_files_moved():
+    """Review of 0.29.1, I1: past the shown lines, the count said the rest "moved the same way"."""
+    report = sweep.Report(removed=["app-main-1"])
+    report.last_copies = [f"removed out/{n}.bin: an identical copy stays at x (nothing was moved there)"
+                          for n in range(sweep.SHOWN + 3)]
+    shown = sweep.lines(report)
+    tail = next(line for line in shown if line.startswith("and "))
+    import re
+    assert not re.search(r"\bmoved the same way", tail) and "3 more files removed the same way" in tail, tail
