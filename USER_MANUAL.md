@@ -21,6 +21,7 @@ You run these in an interactive Claude Code session in the project's main checko
 | `/flotilla:guard` | which command guards are on; installs the git hooks, one yes each |
 | `/flotilla:retire` | stops one session and releases its post; its worktree and work stay |
 | `/flotilla:down` | retires the whole fleet but your own session |
+| `/flotilla:update` | shows every flotilla install on the machine and the channel it follows; on your yes moves the machine to the `stable` channel with automatic updates (or pins a release) and brings every install up, a working fleet stood down first or its update deferred |
 
 `flotilla:flotilla` is not for you: it is the arrangement every fleet session follows.
 
@@ -37,6 +38,13 @@ The CLI is `${CLAUDE_PLUGIN_ROOT}/bin/flotilla`. Every command takes `--help`.
     flotilla fleet down            retire every seat but your own
     flotilla fleet clean [--yes]   remove trees holding nothing of their own, branches that landed (plan without --yes)
     flotilla retire "<name>"       stop one session, release its post
+
+**Updates**
+
+    flotilla update                       every install, the channel, the newest release, working fleets; a plan and its mark
+    flotilla update --stop DIR | --defer DIR | --skip DIR    what to do with a project whose fleet works, or leave one out
+    flotilla update --pin vX.Y.Z | --keep-channel             pin a release instead of the stable channel, or leave the channel
+    flotilla update ... --confirm MARK    carry out the plan printed with that mark (the person only)
     flotilla helper raise --for <branch> --task "<what>"     a helper in its own tree (from a working session)
     flotilla helper done --summary "<what was done>"         finish as a helper
 

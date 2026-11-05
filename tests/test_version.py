@@ -103,3 +103,15 @@ def test_without_git_installed_it_says_so_without_a_traceback(tmp_path, capsys, 
     assert check_version.main(root) == 1
     err = capsys.readouterr().err
     assert "git" in err and "could not be run" in err and "Traceback" not in err
+
+
+def test_stable_passes_only_on_exactly_the_tag_of_its_version(tmp_path, capsys):
+    """The `stable` channel names a release and nothing else (spec 2026-11-04-plugin-updates, part A)."""
+    root = plugin_repo(tmp_path)
+    assert check_version.main(root, stable=True) == 1
+    assert "v1.2.3" in capsys.readouterr().err
+    git(root, "tag", "v1.2.3")
+    assert check_version.main(root, stable=True) == 0
+    commit(root, "docs only", "README.md")
+    assert check_version.main(root, stable=True) == 1          # a commit past the tag, even one of docs
+    assert "exactly" in capsys.readouterr().err

@@ -22,13 +22,37 @@ def _git(root: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True)
 
 
-def main(root: Path | None = None) -> int:
+def main(root: Path | None = None, *, stable: bool = False) -> int:
     try:
-        return _check(root)
+        return _stable(root) if stable else _check(root)
     except OSError as error:   # git not installed, or not runnable here
         print(f"git could not be run ({error}): this check compares the plugin with its release tag and needs git",
               file=sys.stderr)
         return 1
+
+
+def _stable(root: Path | None) -> int:
+    """The `stable` channel (a branch people's machines follow with automatic updates) names a release and nothing
+    else: its tip is exactly the tag of the version it carries (spec 2026-11-04-plugin-updates, part A)."""
+    root = Path.cwd() if root is None else Path(root)
+    try:
+        version = json.loads((root / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))["version"]
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        print(f"cannot read the version from .claude-plugin/plugin.json: {error}", file=sys.stderr)
+        return 1
+    tag = f"v{version}"
+    tagged = _git(root, "rev-parse", "--verify", "--quiet", f"refs/tags/{tag}^{{commit}}")
+    head = _git(root, "rev-parse", "HEAD")
+    if tagged.returncode != 0:
+        print(f"stable carries version {version}, and there is no tag {tag}: move stable only to a release tag",
+              file=sys.stderr)
+        return 1
+    if tagged.stdout.strip() != head.stdout.strip():
+        print(f"stable is not exactly at {tag} ({head.stdout.strip()[:12]} against {tagged.stdout.strip()[:12]}): "
+              f"move it with `git push origin {tag}^{{commit}}:refs/heads/stable`", file=sys.stderr)
+        return 1
+    print(f"stable is at {tag}")
+    return 0
 
 
 def _check(root: Path | None) -> int:
@@ -59,4 +83,4 @@ def _check(root: Path | None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(stable="--stable" in sys.argv[1:]))

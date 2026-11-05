@@ -46,7 +46,7 @@ still change between minor versions.
 
 flotilla is its own marketplace. In the project a fleet will work on:
 
-    claude plugin marketplace add TensusDS/flotilla --scope project
+    claude plugin marketplace add TensusDS/flotilla#stable --scope project
     claude plugin install flotilla@flotilla --scope project
 
 `--scope project` on both lines records flotilla in the project's `.claude/settings.json`, so every session started in
@@ -55,26 +55,44 @@ marketplace entry that points at this repository, so everyone who opens the proj
 from here. Without `--scope project` on the first line the marketplace goes into your own settings only, and the
 project's file names a plugin nobody else can find.
 
-**Pin a release.** As written, the marketplace follows this repository's default branch: every update brings what is
-there, and flotilla's hooks and CLI run in every session of your project. To choose when you move, pin a release tag
-on the first line instead (the tags are listed in [CHANGELOG.md](CHANGELOG.md)):
+**`stable` is the release channel.** It is a branch that only ever points at a released version, so following it
+brings releases and never the commits between them - flotilla's hooks run on every Bash call of every session. Then,
+in a Claude Code session, turn on automatic updates for the machine:
 
-    claude plugin marketplace add TensusDS/flotilla#v0.28.1 --scope project
+    /flotilla:update
+
+It shows every flotilla install on the machine - yours and each project's - with its version, and on your yes moves
+the machine to `stable` with automatic updates and brings every install up. A project whose fleet is working is
+stood down first, or its update deferred, as you choose. With automatic updates on, Claude Code updates the copies
+on disk by itself; sessions already running keep the release they loaded, and the next session started runs the
+new one. Before raising a seat, `flotilla spawn` checks that it would load the same release as the rest of its
+fleet.
+
+**Pin a release** instead, to choose when you move: name a tag on the first line (the tags are listed in
+[CHANGELOG.md](CHANGELOG.md)):
+
+    claude plugin marketplace add TensusDS/flotilla#v0.29.0 --scope project
     claude plugin install flotilla@flotilla --scope project
 
-That writes `"ref": "v0.28.1"` into the project's settings and installs that release; `claude plugin update` stays on
-it. Two caveats. A machine keeps one marketplace of a name for all its projects, and the last `marketplace add` on
-it repoints it: measured, after another project on the same machine added it without a pin, `claude plugin update`
-in a project pinned to v0.22.0 took the default branch's release. Give the projects on one machine the same pin;
-`/flotilla:doctor` names a pin the machine does not follow. And a tag can be moved on GitHub, so a pin chooses when
-you move, not who can change what the tag names.
+That writes `"ref": "v0.29.0"` into the project's settings and installs that release; `claude plugin update` stays on
+it. A machine keeps one marketplace of a name for all its projects, so give the projects on one machine the same
+channel or pin; `/flotilla:doctor` names a pin the machine does not follow. And a tag can be moved on GitHub, so a pin
+chooses when you move, not who can change what the tag names.
+
+**If the first line is refused** with *Cannot add marketplace "flotilla": its source doesn't match its
+extraKnownMarketplaces entry in user or managed settings*, your own settings (`~/.claude/settings.json`) already
+declare the flotilla marketplace at another release, and a project cannot follow a different one while that entry
+stands. The second line then succeeds and installs the release your settings name, without saying so. Run
+`/flotilla:update` from any Claude Code session: it names the release your settings hold and moves them, on your
+yes, to `stable` or to the release you pick. From 0.29.0 on, a session's start and `/flotilla:doctor` say this
+themselves when it happens.
 
 If flotilla is also installed for your user (`--scope user`, which `flotilla rig` suggests), Claude Code has been
-seen loading that copy in place of the project's own. Keep both at the same version. From 0.23.2 on,
-`/flotilla:doctor` and a session's fresh start name a mismatch, with the copy that runs, the project's, and which
-install to bring up or remove - but only the copy that runs can say so: a user install older than 0.23.2 says
-nothing, so bring it to 0.23.2 or newer first. Start sessions in the project's root: `claude plugin list` has been
-measured not to apply a project's install in a directory below it.
+seen loading that copy in place of the project's own. Keep both at the same version - `/flotilla:update` brings
+both up. From 0.23.2 on, `/flotilla:doctor` and a session's fresh start name a mismatch, with the copy that runs,
+the project's, and which install to bring up or remove - but only the copy that runs can say so: a user install
+older than 0.23.2 says nothing, so bring it to 0.23.2 or newer first. Start sessions in the project's root: `claude
+plugin list` has been measured not to apply a project's install in a directory below it.
 
 Then check the machine:
 
