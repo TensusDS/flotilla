@@ -191,11 +191,20 @@ def test_an_intent_to_add_entry_is_no_twin(tmp_path):
 
 
 def test_a_name_that_is_not_utf8_does_not_stop_the_search(tmp_path):
-    """Review of 0.29.1, M3: `ls-files` names are bytes; a strict decode raised and aborted the pass."""
+    """Review of 0.29.1, M3: `ls-files` names are bytes; a strict decode raised and aborted the pass. macOS's APFS
+    refuses such a name outright (EILSEQ, seen in CI 2026-11-05), so there it cannot arise and is not tested."""
+    import errno
     import os
+
+    import pytest
     root, ledger = world(tmp_path)
-    with open(os.path.join(os.fsencode(root), b"caf\xe9.txt"), "wb") as handle:
-        handle.write(b"latin-1 named")
+    try:
+        with open(os.path.join(os.fsencode(root), b"caf\xe9.txt"), "wb") as handle:
+            handle.write(b"latin-1 named")
+    except OSError as err:
+        if err.errno != errno.EILSEQ:
+            raise
+        pytest.skip("this filesystem refuses a name that is not UTF-8, so no such name can reach the collector")
     git(root, "add", "-f", "--", os.fsdecode(b"caf\xe9.txt"))
     mine = put(tmp_path / "app-main-1" / "cafe.txt", b"latin-1 named")
     found = finder(ledger).find(mine)
