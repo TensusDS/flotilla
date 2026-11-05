@@ -405,4 +405,5 @@ def test_the_overflow_line_does_not_say_files_moved():
                           for n in range(sweep.SHOWN + 3)]
     shown = sweep.lines(report)
     tail = next(line for line in shown if line.startswith("and "))
-    assert "moved the same way" not in tail and "3 more files removed the same way" in tail, tail
+    import re
+    assert not re.search(r"\bmoved the same way", tail) and "3 more files removed the same way" in tail, tail
