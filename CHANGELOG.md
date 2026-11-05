@@ -3,6 +3,12 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.29.2 - 2026-11-05
+
+0.29.1's code, with its test of a file name that is not UTF-8 skipped where the filesystem refuses such a name
+(macOS's APFS): the test, not the collector, failed there, and the `stable` channel moves only to a release whose
+checks are green.
+
 ## 0.29.1 - 2026-11-05
 
 Two faults from void-lanes-online's field notes.
