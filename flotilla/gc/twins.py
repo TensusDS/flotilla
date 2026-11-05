@@ -3,9 +3,11 @@ pass - in the main checkout, in a store the project declares (`[gc] stores`), in
 does not judge, or as a blob a surviving ref reaches (`rev-list --objects` over the pass's holders: an unreachable
 blob in the object store is pruned by git's own gc).
 
-In the main checkout and in an untouched tree only a file git tracks there counts: anything else there - another
-tool's log or cache, an output - can go at any time, and its "last copy" with it (void-lanes, 2026-11-05: an empty
-build marker's twin was another plugin's empty log). An empty file has no twin: any empty file matches it.
+In the main checkout and in an untouched tree a file counts only when git can give its bytes back: it is in the
+index and its bytes are its index blob. Anything else there - another tool's log or cache, an output, an edit over
+a tracked file, an intent-to-add entry - can go at any time, and its "last copy" with it (void-lanes, 2026-11-05:
+an empty build marker's twin was another plugin's empty log; the review of 0.29.1: an edit `git restore` takes). An
+empty file has no twin: any empty file matches it.
 
 Hashes are sha256 of the bytes, cached by (path, size, mtime, ctime, inode) so a daily pass does not reread
 gigabytes: a rewrite can keep size and mtime, never ctime (security review of dea3c4e). `verify` hashes both files
@@ -142,6 +144,7 @@ class Twins:
         self.ledger, self.holders, self.cache, self.verify = ledger, list(holders), cache, verify
         self.sources = [(Path(where), kind) for where, kind in sources]
         self._by_size: list[tuple[str, dict[int, list[Path]]]] | None = None
+        self._indexed: dict[Path, str] = {}   # a checkout's or tree's tracked file -> its index blob
         self._reachable: set[str] | None = None
         self._format: str | None = None
 
@@ -152,16 +155,24 @@ class Twins:
     def checking(self) -> "Twins":
         """The same sources and cache, hashing afresh: for the check under the removal lock."""
         found = Twins(self.ledger, holders=self.holders, sources=self.sources, cache=self.cache, verify=True)
-        found._by_size, found._format = self._by_size, self._format
+        found._by_size, found._format, found._indexed = self._by_size, self._format, self._indexed
         return found
 
-    def _tracked(self, top: Path) -> set[Path] | None:
-        """The files git tracks in the checkout or tree `top`, from its index; None when git cannot say."""
-        done = self.ledger.run(["git", "-C", str(top), "ls-files", "-z", "--cached"], capture_output=True,
-                               text=True, check=False)
+    def _tracked(self, top: Path) -> dict[Path, str] | None:
+        """The files git tracks in the checkout or tree `top`, each with its index blob; None when git cannot say.
+        Names are decoded as the filesystem's walk decodes them, so a name that is not UTF-8 matches and never
+        raises (review of 0.29.1, M3)."""
+        done = self.ledger.run(["git", "-C", str(top), "ls-files", "-z", "--stage"], capture_output=True,
+                               text=True, errors="surrogateescape", check=False)
         if done.returncode != 0:
             return None
-        return {top / name for name in done.stdout.split("\0") if name}
+        found = {}
+        for entry in done.stdout.split("\0"):
+            info, tab, name = entry.partition("\t")
+            parts = info.split()
+            if tab and len(parts) == 3 and parts[2] == "0":   # stage 0: a merge in progress has no one blob
+                found[top / name] = parts[1]
+        return found
 
     def _index(self) -> list[tuple[str, dict[int, list[Path]]]]:
         if self._by_size is None:
@@ -173,6 +184,8 @@ class Twins:
                 if kind in ("checkout", "tree") and tracked is None:
                     continue   # git could not say what it tracks there: nothing there counts
                 sizes: dict[int, list[Path]] = {}
+                if tracked is not None:
+                    self._indexed.update(tracked)
                 for path in _walk(where):
                     if tracked is not None and path not in tracked:
                         continue
@@ -231,7 +244,8 @@ class Twins:
                 try:
                     if other.resolve() == path.resolve():
                         continue
-                    if sha256(other, self.cache, fresh=self.verify) == digest:
+                    if sha256(other, self.cache, fresh=self.verify) == digest and \
+                            (kind not in ("checkout", "tree") or self._blob_id(other) == self._indexed.get(other)):
                         return Twin(str(other), kind)
                 except OSError:
                     continue

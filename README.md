@@ -296,9 +296,9 @@ It retires every session but your own and names the work left open so the next f
 uncommitted, untracked or stashed, nothing ignored but what an install or a build makes again, its commits on a ref
 that stays - and its branch goes when its work has landed (origin's trunk, a squash whose exact tip the ledger
 shipped, or a line declared under `[gc] trunks`). Commits only a reflog reaches are parked under
-`refs/flotilla/parked/`, not lost. A file with a byte-identical copy that stays (a file git tracks in the main
-checkout, a folder you declare, a commit; never an empty file, and never an untracked file another tool keeps) lets
-its tree go; small unique outputs move to `<project>-gc-archive/` and you are told, with the
+`refs/flotilla/parked/`, not lost. A file with a byte-identical copy that stays (a file git holds as it is in the main
+checkout or in a tree that stays, a folder you declare, a commit; never an empty file, an untracked file another
+tool keeps, or an edit over a tracked file) lets its tree go; small unique outputs move to `<project>-gc-archive/` and you are told, with the
 command that restores them. What only you can settle - uncommitted work, your own files, large outputs - waits for
 `/flotilla:gc`: one question per piece of work, and only your recorded answer is carried out. `flotilla fleet clean` sweeps the same
 way for what a forced stop or an older fleet left - only what the fleet made, never a tree or branch of your own: a

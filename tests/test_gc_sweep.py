@@ -396,3 +396,13 @@ def test_a_twin_in_a_tree_that_stays_names_the_last_copy(tmp_path):
         in shown, shown
     recorded = [copy for entry in archive.entries(ledger) for copy in entry.last_copies]
     assert {"from": str(tree / "out" / "x.bin"), "where": str(staying / "out" / "x.bin")} in recorded, recorded
+
+
+def test_the_overflow_line_does_not_say_files_moved():
+    """Review of 0.29.1, I1: past the shown lines, the count said the rest "moved the same way"."""
+    report = sweep.Report(removed=["app-main-1"])
+    report.last_copies = [f"removed out/{n}.bin: an identical copy stays at x (nothing was moved there)"
+                          for n in range(sweep.SHOWN + 3)]
+    shown = sweep.lines(report)
+    tail = next(line for line in shown if line.startswith("and "))
+    assert "moved the same way" not in tail and "3 more files removed the same way" in tail, tail

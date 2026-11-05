@@ -267,3 +267,10 @@ def test_the_person_is_a_wait_target_after_the_person_has_moved_on_the_ledger(wo
     rows = dict(ledger.rows())
     rows["r-person"] = SimpleNamespace(owner="main session 1", reader="", history=[{"by": "the person"}])
     assert handover._whom(ledger, rows, "the person") == ("the person", {})
+
+
+def test_the_person_is_never_a_live_session_by_suffix(tmp_path):
+    """Review of 0.29.1, M6: a live session whose name ends in " the person" took a wait on the person."""
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", live=("main session 1", "ask the person"))
+    assert handover._whom(ledger, ledger.rows(), "the person") == ("the person", {})

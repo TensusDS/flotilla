@@ -153,9 +153,9 @@ def test_a_rewrite_keeping_size_and_mtime_is_hashed_again(tmp_path):
 
 
 def test_verify_hashes_the_twin_without_the_cache(tmp_path):
-    root, ledger = world(tmp_path)
-    theirs = put(root / "out" / "a.bin", b"payload")
-    git(root, "add", "-f", "out/a.bin")   # only a copy git tracks in the checkout counts (void-lanes, 2026-11-05)
+    # a store: in a checkout the twin's index blob is read from its bytes as well (review of 0.29.1)
+    root, ledger = world(tmp_path, {**PROFILE, "gc": {"stores": ["feedback"]}})
+    theirs = put(root.parent / "feedback" / "a.bin", b"payload")
     mine = put(tmp_path / "app-main-1" / "out" / "a.bin", b"payload")
     cache: dict = {}
     assert finder(ledger, cache).find(mine) is not None
@@ -169,3 +169,34 @@ def test_verify_hashes_the_twin_without_the_cache(tmp_path):
     checking = twins.Twins(ledger, holders=refs.holders(ledger), cache=cache, verify=True,
                            sources=twins.sources(ledger, untouched=[], archive_root=tmp_path / "none"))
     assert checking.find(mine) is None
+
+
+def test_a_tracked_file_edited_in_the_working_copy_is_no_twin(tmp_path):
+    """Review of 0.29.1, I2: a copy counts when git can give its bytes back - its index blob is those bytes. An edit
+    over a tracked file lasts no longer than an untracked one (`git restore` takes it)."""
+    root, ledger = world(tmp_path)
+    put(root / "out" / "report.json", b"what git holds")
+    git(root, "add", "-f", "out/report.json")
+    put(root / "out" / "report.json", b"the seat's output")
+    mine = put(tmp_path / "app-main-1" / "out" / "report.json", b"the seat's output")
+    assert finder(ledger).find(mine) is None
+
+
+def test_an_intent_to_add_entry_is_no_twin(tmp_path):
+    root, ledger = world(tmp_path)
+    put(root / "notes.txt", b"not yet in git")
+    git(root, "add", "-N", "notes.txt")
+    mine = put(tmp_path / "app-main-1" / "notes.txt", b"not yet in git")
+    assert finder(ledger).find(mine) is None
+
+
+def test_a_name_that_is_not_utf8_does_not_stop_the_search(tmp_path):
+    """Review of 0.29.1, M3: `ls-files` names are bytes; a strict decode raised and aborted the pass."""
+    import os
+    root, ledger = world(tmp_path)
+    with open(os.path.join(os.fsencode(root), b"caf\xe9.txt"), "wb") as handle:
+        handle.write(b"latin-1 named")
+    git(root, "add", "-f", "--", os.fsdecode(b"caf\xe9.txt"))
+    mine = put(tmp_path / "app-main-1" / "cafe.txt", b"latin-1 named")
+    found = finder(ledger).find(mine)
+    assert found is not None and found.kind == "checkout"

@@ -44,7 +44,7 @@ class Report:
     archived: list[str] = field(default_factory=list)      # one line per tree whose files went to the archive
     moved: int = 0                                         # bytes moved to the archive
     freed: int = 0                                         # bytes removing the trees freed
-    last_copies: list[str] = field(default_factory=list)   # where the last copy of a file removed on a twin is
+    last_copies: list[str] = field(default_factory=list)   # a file removed on a twin, and where the copy stays
     released: list = field(default_factory=list, repr=False)   # released work's unlanded branches (questions)
     judged: dict = field(default_factory=dict, repr=False)  # the trees' verdicts, for the questions (not printed)
     going: set = field(default_factory=set, repr=False)     # the trees small enough to archive and remove
@@ -302,7 +302,8 @@ def lines(report: Report) -> list[str]:
     out += report.archived
     out += report.last_copies[:SHOWN]
     if len(report.last_copies) > SHOWN:
-        out.append(f"and the last copies of {len(report.last_copies) - SHOWN} more files moved the same way")
+        out.append(f"and {len(report.last_copies) - SHOWN} more files removed the same way, each with an identical "
+                   "copy that stays (nothing was moved)")
     if report.deleted:
         out.append(f"{verb[1]}: {_list(report.deleted)}")
     for key, names in report.kept.items():

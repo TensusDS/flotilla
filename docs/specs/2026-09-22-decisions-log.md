@@ -1818,6 +1818,13 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    outside a tree's own directory: the archive's records are files any session can edit. A guard refuses sessions
    removing fleet trees, fleet branches, parked refs or the archive by hand (decision 245's ceiling stands). The
    report keeps space freed apart from space moved.
+249. **A copy counts only where git can give it back** (the person, 2026-11-05; void-lanes field note, 0.29.1). A
+   seat's empty build marker was removed on a "last copy" that was another plugin's empty log in the main checkout,
+   and the report said the file "is now in" that log. In the main checkout and in a tree the pass leaves, a twin is
+   now a file git tracks whose bytes are its index blob; a declared store, the archive and a reachable blob count as
+   before. An empty file has no twin and goes to the archive by name. The report says "an identical copy stays at",
+   never that a file moved. Cost, accepted: a seat's output that matches only the person's own untracked output is
+   archived, or asked about when large, instead of removed.
 
 ## Open questions (for the foundation spec)
 

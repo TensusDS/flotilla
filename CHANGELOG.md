@@ -10,10 +10,12 @@ Two faults from void-lanes-online's field notes.
 - **The collector counts a copy only where it lasts.** A file in a seat's tree was removed when a byte-identical
   copy survived anywhere in the main checkout - another plugin's log or cache included, which that tool may rewrite
   or remove at any time. An empty build marker's "last copy" was another plugin's empty log. Now a copy in the main
-  checkout, or in a tree the pass leaves, counts only when git tracks it there; a declared store, the archive and a
-  reachable commit count as before. An empty file has no twin and goes to the archive with its name. The report
-  says "removed X: an identical copy stays at Y (nothing was moved there)" instead of "the last copy of X is now in
-  Y".
+  checkout, or in a tree the pass leaves, counts only when git holds it there as it is - tracked, with its bytes
+  its index blob, so neither another tool's file nor an edit `git restore` would take counts; a declared store, the
+  archive and a reachable commit count as before. An empty file has no twin and goes to the archive with its name.
+  The report says "removed X: an identical copy stays at Y (nothing was moved there)" instead of "the last copy of
+  X is now in Y". What it costs: a seat's output that matches only your own untracked output now goes to the
+  archive, or waits for `/flotilla:gc` when large, instead of being removed.
 - **`work wait --on "the person"` is no longer refused** once the person has approved or taken in work: the
   person's own moves made "the person" read as a session that is not alive.
 
