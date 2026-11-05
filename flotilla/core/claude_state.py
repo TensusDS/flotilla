@@ -56,6 +56,31 @@ def install_hint(cwd: Path, *, run=subprocess.run, timeout: float = 30) -> str:
     return f"{MARKETPLACE}, then {INSTALL}"
 
 
+def installs(env=os.environ, home: Path | None = None) -> list[tuple[str, dict]]:
+    """Every flotilla install Claude Code records (`<config>/plugins/installed_plugins.json`), as (id, record); []
+    when the file cannot be read."""
+    try:
+        data = json.loads((config_dir(env, home) / "plugins" / "installed_plugins.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError, RecursionError):
+        return []
+    plugins = data.get("plugins") if isinstance(data, dict) else None
+    return [(str(name), item) for name, items in (plugins if isinstance(plugins, dict) else {}).items()
+            if str(name).startswith("flotilla@") and isinstance(items, list)
+            for item in items if isinstance(item, dict)]
+
+
+def loads_in(directory: Path, env=os.environ, home: Path | None = None) -> str | None:
+    """The release a session started in `directory` would load: that directory's own install (local before
+    project), else the user's; None when no record names one."""
+    found = installs(env, home)
+    own = [item for _, item in found if item.get("scope") in ("local", "project")
+           and _same(item.get("projectPath"), Path(directory).resolve())]
+    if own:
+        return str(min(own, key=lambda item: item.get("scope") != "local").get("version") or "") or None
+    user = next((item for _, item in found if item.get("scope") == "user"), None)
+    return str(user.get("version") or "") or None if user else None
+
+
 def running_root() -> Path:
     """The plugin copy this process runs: the directory that holds `bin/` and `flotilla/`."""
     return Path(__file__).resolve().parents[2]

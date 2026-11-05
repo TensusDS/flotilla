@@ -32,6 +32,15 @@ def github_is_not_asked(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def the_machines_installs_do_not_split_a_test_fleet(monkeypatch):
+    """A seat is not raised beside a fleet on another release (spec 2026-11-04-plugin-updates); the release a seat
+    would load is read from this machine's install records, which no test may depend on. The tests of that check
+    hold the real function from before this fixture (tests/test_release_split.py)."""
+    from flotilla.fleet import spawn
+    monkeypatch.setattr(spawn, "release_split", lambda *args, **kwargs: "")
+
+
+@pytest.fixture(autouse=True)
 def memory_is_not_asked(monkeypatch):
     """No test depends on this machine's free memory; the tests of the floor set it themselves."""
     from flotilla.fleet import spawn
