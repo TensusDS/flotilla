@@ -147,6 +147,15 @@ def test_fleet_down_keeps_the_callers_own_seat(tmp_path):
     assert any("kept orchestrator 1" in line and "flotilla retire" in line for line in lines)
 
 
+def test_fleet_down_from_elsewhere_keeps_the_persons_own_sessions(tmp_path):
+    fake = FakeClaude()
+    ledger = fleet_world(tmp_path, fake, {"orchestrator": 1, "sender": 1})
+    lines, refused = retire.down(ledger, caller="update", me="", keep=frozenset({"orchestrator 1"}),
+                                 census=fake.census, wait=0.2, poll=0.05, sleep=lambda seconds: None)
+    assert refused == 0 and [row.owner for row in retire.post_rows(ledger)] == ["orchestrator 1"]
+    assert any("kept orchestrator 1: the person's own session" in line for line in lines)
+
+
 def test_fleet_down_refuses_whole_when_the_census_is_down(tmp_path):
     fake = FakeClaude()
     ledger = fleet_world(tmp_path, fake, {"reviewer": 1})

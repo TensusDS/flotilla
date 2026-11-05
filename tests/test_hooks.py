@@ -1,6 +1,7 @@
 import datetime as dt
 import io
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -21,7 +22,8 @@ def hook(cwd, env_state):
     # interpreter gate instead of the hook.
     return subprocess.run([sys.executable, str(ENTRY), "hook", "session-start"],
                           input=json.dumps({"cwd": str(cwd)}), capture_output=True, text=True,
-                          env={"PATH": "/usr/bin:/bin", "FLOTILLA_STATE_DIR": str(env_state)})
+                          env={"PATH": "/usr/bin:/bin", "FLOTILLA_STATE_DIR": str(env_state),
+                               "CLAUDE_CONFIG_DIR": str(Path(env_state).parent / "claude-config")})
 
 
 
@@ -77,7 +79,8 @@ def test_hook_checks_fit_inside_the_declared_timeout(tmp_path, monkeypatch):
 def test_inactive_project_is_silent(tmp_path, event):
     done = subprocess.run([sys.executable, str(ENTRY), "hook", event], input=json.dumps({"cwd": str(tmp_path)}),
                           capture_output=True, text=True,
-                          env={"PATH": "/usr/bin:/bin", "FLOTILLA_STATE_DIR": str(tmp_path / "state")})
+                          env={"PATH": "/usr/bin:/bin", "FLOTILLA_STATE_DIR": str(tmp_path / "state"),
+                               "CLAUDE_CONFIG_DIR": str(tmp_path / "claude")})
     assert done.returncode == 0
     assert done.stdout == "" and done.stderr == ""
 
@@ -93,7 +96,8 @@ def test_inactive_path_imports_nothing_heavy(tmp_path, event):
         "                     'flotilla.watch.context', 'flotilla.ledger.core') if m in sys.modules]\n"
         "print(','.join(heavy))\n"
     )
-    done = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, check=True)
+    env = {**os.environ, "FLOTILLA_STATE_DIR": str(tmp_path / "state"), "CLAUDE_CONFIG_DIR": str(tmp_path / "claude")}
+    done = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, check=True, env=env)
     assert done.stdout.strip() == ""
 
 

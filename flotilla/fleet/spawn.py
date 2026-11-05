@@ -11,6 +11,7 @@ census, because names are checked against it.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import tempfile
@@ -370,6 +371,25 @@ def _moment(value):
         return None
 
 
+def release_split(ledger, *, running: str, env=os.environ, home: Path | None = None) -> str:
+    """Why a seat raised now would run another release than the fleet, or "" (spec 2026-11-04-plugin-updates, part
+    C): an update on disk does not touch running sessions, but every session started after it loads the new copy.
+    `running` is the release of the copy running this command; an unknown release on either side says nothing."""
+    from flotilla.core import claude_state
+    try:
+        main = launch.main_checkout(ledger.root, run=ledger.run)
+    except launch.LaunchError:
+        return ""
+    coming = claude_state.loads_in(main, env, home)
+    if not coming or claude_state._version(coming) is None or claude_state._version(running) is None \
+            or claude_state._version(coming) == claude_state._version(running):
+        return ""
+    return (f"a seat raised now would load flotilla {coming}, which is installed for {main}, while this session "
+            f"runs {running}: one fleet on two releases - start this session again so it runs {coming} (and stand "
+            f"down any seat still on {running}, `/flotilla:down`), then raise; or `--anyway` to raise it beside the "
+            "rest")
+
+
 def raise_seat(ledger, seat: launch.Seat, *, caller: str, census, wait: float = 30.0, poll: float = 1.0,
                sleep=time.sleep, base: str = "", fields: dict | None = None, prompt: str = "",
                settings_json: str | None = None) -> Raised:
@@ -438,6 +458,11 @@ def raise_seat(ledger, seat: launch.Seat, *, caller: str, census, wait: float = 
 
 def spawn(ledger, counts: dict, *, census, store, caller: str, wait: float = 30.0, poll: float = 1.0,
           sleep=time.sleep, anyway: bool = False) -> tuple[list[Raised], list[str]]:
+    if not anyway:
+        from flotilla import __version__
+        split = release_split(ledger, running=__version__)
+        if split:
+            raise SpawnRefused(split)
     seats, warnings = plan(ledger, counts, census=census, store=store, reserve=True, anyway=anyway)
     narrow = plugins.narrowing(ledger.run, launch.main_checkout(ledger.root, run=ledger.run))   # once (H49)
     warnings = warnings + narrow.warnings([ledger.posts[seat.post] for seat in seats])

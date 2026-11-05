@@ -106,6 +106,18 @@ def _copy_note(cwd: Path, out) -> None:
     if found is not None and found[0] != "ok":
         status, detail, fix = found
         print(f"flotilla: {status:<5} plugin copy: {detail}" + (f" (fix: {fix})" if fix else ""), file=out)
+    _update_note(cwd, out)
+
+
+def _update_note(root: Path, out) -> None:
+    """A pin that holds this machine on an older release, said once a day (spec 2026-11-04-plugin-updates)."""
+    try:
+        from flotilla.core import updates
+        lines = updates.lines(root)
+    except Exception as err:  # noqa: BLE001 - a note that cannot be made is no reason to fail a session's start
+        lines = [f"could not compare this machine's flotilla with the newest release: {err}"]
+    for line in lines:
+        print(f"flotilla: {line}", file=out)
 
 
 def _guard(command: str, cwd: Path, payload: dict, out, now) -> int:
@@ -201,6 +213,13 @@ def _session_start(ctx, payload, out, now) -> int:
         checks = [f"could not check this project: {err}"]
     if checks:
         print("flotilla: " + "; ".join(checks), file=out)
+    if _fresh(payload):
+        _update_note(ctx.root, out)
+        if (Path(ctx.root) / ".git").is_dir():   # the main checkout, where the person works; seats run in trees
+            from flotilla import update
+            waits = update.deferred(paths.state_dir(), Path(ctx.root))
+            if waits:
+                print(f"flotilla: {waits}", file=out)
     for line in _identity(ctx) + _event_problems(ctx):
         print(f"flotilla: {line}", file=out)
     mine = ctx.mine()

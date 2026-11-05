@@ -6,7 +6,7 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [main, stable]
   pull_request:
 
 permissions:
@@ -50,6 +50,18 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - run: python3 tools/check_version.py
+
+  # `stable` is the channel machines follow with automatic updates: it names a release and nothing else.
+  stable:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/stable'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - run: python3 tools/check_version.py --stable
 
   plugin:
     runs-on: ubuntu-latest

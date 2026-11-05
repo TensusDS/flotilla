@@ -1,0 +1,87 @@
+import json
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from flotilla.fleet import spawn
+from flotilla.fleet.spawn import release_split as REAL   # before conftest's double
+
+
+def records(config: Path, *items):
+    (config / "plugins").mkdir(parents=True, exist_ok=True)
+    (config / "plugins" / "installed_plugins.json").write_text(json.dumps(
+        {"version": 2, "plugins": {"flotilla@flotilla": list(items)}}), encoding="utf-8")
+
+
+def install(scope, version, project=None):
+    found = {"scope": scope, "version": version, "installPath": f"/cache/flotilla/{version}"}
+    if project:
+        found["projectPath"] = str(project)
+    return found
+
+
+class Ledger:
+    def __init__(self, root):
+        self.root = root
+
+    def run(self, argv, **kw):   # `git rev-parse --git-common-dir` for the main checkout
+        return subprocess.CompletedProcess(argv, 0, str(self.root / ".git") + "\n", "")
+
+
+@pytest.fixture
+def machine(tmp_path):
+    root = tmp_path / "proj"
+    (root / ".git").mkdir(parents=True)
+    config = tmp_path / "claude"
+    return Ledger(root), config, {"CLAUDE_CONFIG_DIR": str(config)}
+
+
+def test_a_project_install_on_another_release_is_a_split(machine):
+    ledger, config, env = machine
+    records(config, install("project", "0.30.0", ledger.root), install("user", "0.29.0"))
+    said = REAL(ledger, running="0.29.0", env=env)
+    assert "0.30.0" in said and "0.29.0" in said and "--anyway" in said
+    assert "start this session again" in said
+
+
+def test_with_no_project_install_the_users_decides(machine):
+    ledger, config, env = machine
+    records(config, install("user", "0.30.0"), install("project", "0.29.0", "/elsewhere"))
+    assert "0.30.0" in REAL(ledger, running="0.29.0", env=env)
+
+
+def test_the_same_release_or_an_unknown_one_says_nothing(machine):
+    ledger, config, env = machine
+    assert REAL(ledger, running="0.29.0", env=env) == ""        # no records at all
+    records(config, install("project", "0.29.0", ledger.root))
+    assert REAL(ledger, running="0.29.0", env=env) == ""
+    records(config, install("project", "a1b2c3d4e5f6", ledger.root))
+    assert REAL(ledger, running="0.29.0", env=env) == ""
+    (config / "plugins" / "installed_plugins.json").write_text("{broken", encoding="utf-8")
+    assert REAL(ledger, running="0.29.0", env=env) == ""
+
+
+SPLIT = "a seat raised now would load flotilla 0.30.0 ... `--anyway` to raise it beside the rest"
+
+
+def test_spawn_raises_nothing_on_a_split_unless_anyway(tmp_path, monkeypatch):
+    from tests.test_fleet_spawn import FakeClaude, run, world
+    fake = FakeClaude()
+    _, ledger, store = world(tmp_path, fake)
+    monkeypatch.setattr(spawn, "release_split", lambda *args, **kwargs: SPLIT)
+    with pytest.raises(spawn.SpawnRefused, match="0.30.0"):
+        run(ledger, store, fake, {"main": 1})
+    assert fake.launched == []
+    raised, _ = run(ledger, store, fake, {"main": 1}, anyway=True)
+    assert len(raised) == 1
+
+
+def test_a_helper_is_not_raised_on_a_split_unless_anyway(tmp_path, monkeypatch):
+    from flotilla.ledger.errors import MoveRefused
+    from tests.test_fleet_helpers import PROFILE, raise_one, world
+    _, ledger, fake, _, _ = world(tmp_path, {**PROFILE, "permissions": {"mode": "auto"}})
+    monkeypatch.setattr(spawn, "release_split", lambda *args, **kwargs: SPLIT)
+    with pytest.raises(MoveRefused, match="0.30.0"):
+        raise_one(ledger, fake)
+    assert raise_one(ledger, fake, anyway=True).seat.name == "helper 1"

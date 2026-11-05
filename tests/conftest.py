@@ -21,6 +21,26 @@ def state_dir_per_test(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def github_is_not_asked(monkeypatch):
+    """No test asks GitHub for the newest release: a pin in the user's real settings would make a doctor or hook test
+    depend on the network. The tests of that door call it with a double of their own."""
+    from flotilla.core import releases, updates
+
+    def offline(*args, **kwargs):
+        return releases.Releases(None, None, "", "offline in tests")
+    monkeypatch.setattr(updates, "ASK", offline)
+
+
+@pytest.fixture(autouse=True)
+def the_machines_installs_do_not_split_a_test_fleet(monkeypatch):
+    """A seat is not raised beside a fleet on another release (spec 2026-11-04-plugin-updates); the release a seat
+    would load is read from this machine's install records, which no test may depend on. The tests of that check
+    hold the real function from before this fixture (tests/test_release_split.py)."""
+    from flotilla.fleet import spawn
+    monkeypatch.setattr(spawn, "release_split", lambda *args, **kwargs: "")
+
+
+@pytest.fixture(autouse=True)
 def memory_is_not_asked(monkeypatch):
     """No test depends on this machine's free memory; the tests of the floor set it themselves."""
     from flotilla.fleet import spawn

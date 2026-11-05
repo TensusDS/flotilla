@@ -68,6 +68,11 @@ def raise_helper(ledger, actor: Actor, branch: str, *, task: str, census, store,
     short = "" if anyway else spawn.memory_short(ledger)
     if short:
         raise MoveRefused(short)
+    if not anyway:
+        from flotilla import __version__
+        split = spawn.release_split(ledger, running=__version__)
+        if split:
+            raise MoveRefused(split)
     tip = gitq.branch_tip(ledger.root, branch, run=ledger.run)
     if tip is None:
         raise MoveRefused(f"git could not resolve the tip of `{branch}`; a helper starts from a tip someone can name")

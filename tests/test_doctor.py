@@ -21,7 +21,8 @@ def which_all(name):
 
 
 def collect(tmp_path, **overrides):
-    options = dict(cwd=tmp_path, env={"FLOTILLA_STATE_DIR": str(tmp_path / "state")},
+    options = dict(cwd=tmp_path, env={"FLOTILLA_STATE_DIR": str(tmp_path / "state"),
+                                     "CLAUDE_CONFIG_DIR": str(tmp_path / "claude")},
                    run=fake_run(), which=which_all, read=lambda: [], os_name="linux", python=(3, 12, 1))
     options.update(overrides)
     return {f.check: f for f in doctor.collect(**options)}
@@ -103,7 +104,8 @@ def test_timeout_reaches_both_external_calls(tmp_path):
         seen.append((argv[1], kwargs.get("timeout")))
         out = "2.1.280 (Claude Code)" if argv[1] == "--version" else "[]"
         return subprocess.CompletedProcess(argv, 0, stdout=out, stderr="")
-    doctor.collect(cwd=tmp_path, env={"FLOTILLA_STATE_DIR": str(tmp_path / "s")}, run=run,
+    doctor.collect(cwd=tmp_path, env={"FLOTILLA_STATE_DIR": str(tmp_path / "s"),
+                                  "CLAUDE_CONFIG_DIR": str(tmp_path / "claude")}, run=run,
                    which=which_all, os_name="linux", python=(3, 12, 1), timeout=3)
     assert seen == [("--version", 3), ("agents", 3)]
 

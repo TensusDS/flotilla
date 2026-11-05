@@ -56,6 +56,31 @@ def install_hint(cwd: Path, *, run=subprocess.run, timeout: float = 30) -> str:
     return f"{MARKETPLACE}, then {INSTALL}"
 
 
+def installs(env=os.environ, home: Path | None = None) -> list[tuple[str, dict]]:
+    """Every flotilla install Claude Code records (`<config>/plugins/installed_plugins.json`), as (id, record); []
+    when the file cannot be read."""
+    try:
+        data = json.loads((config_dir(env, home) / "plugins" / "installed_plugins.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError, RecursionError):
+        return []
+    plugins = data.get("plugins") if isinstance(data, dict) else None
+    return [(str(name), item) for name, items in (plugins if isinstance(plugins, dict) else {}).items()
+            if str(name).startswith("flotilla@") and isinstance(items, list)
+            for item in items if isinstance(item, dict)]
+
+
+def loads_in(directory: Path, env=os.environ, home: Path | None = None) -> str | None:
+    """The release a session started in `directory` would load: that directory's own install (local before
+    project), else the user's; None when no record names one."""
+    found = installs(env, home)
+    own = [item for _, item in found if item.get("scope") in ("local", "project")
+           and _same(item.get("projectPath"), Path(directory).resolve())]
+    if own:
+        return str(min(own, key=lambda item: item.get("scope") != "local").get("version") or "") or None
+    user = next((item for _, item in found if item.get("scope") == "user"), None)
+    return str(user.get("version") or "") or None if user else None
+
+
 def running_root() -> Path:
     """The plugin copy this process runs: the directory that holds `bin/` and `flotilla/`."""
     return Path(__file__).resolve().parents[2]
@@ -275,6 +300,66 @@ def marketplace_pin(root: Path, *, version: str, env=os.environ,
                     "`claude plugin update` here takes what the machine follows",
             f"add it again from here: `claude plugin marketplace add {repo}#{wanted} --scope project` - which repoints "
             "it for every project on this machine")
+
+
+def user_entry(env=os.environ, home: Path | None = None) -> dict | None:
+    """The `flotilla` entry of `extraKnownMarketplaces` in the user's settings (`<config>/settings.json`), or None when
+    there is none or the file does not read as Claude Code writes it."""
+    try:
+        data = json.loads((config_dir(env, home) / "settings.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError, RecursionError):
+        return None
+    known = data.get("extraKnownMarketplaces") if isinstance(data, dict) else None
+    found = known.get("flotilla") if isinstance(known, dict) else None
+    return found if isinstance(found, dict) and isinstance(found.get("source"), dict) else None
+
+
+CHANNEL = "stable"
+REFUSAL = ("Claude Code refuses `claude plugin marketplace add` with \"doesn't match its extraKnownMarketplaces "
+           "entry in user or managed settings\"")
+
+
+def _older(ref: str, newest: str) -> bool:
+    return bool(RELEASE.fullmatch(ref or "")) and (_version(ref[1:]) or ()) < (_version(newest) or ())
+
+
+def update_findings(entry: dict | None, project_ref: str, releases, running: str) -> list[tuple[str, str, str]]:
+    """(status, detail, fix) for the release this machine follows against the newest one (spec
+    2026-11-04-plugin-updates, part B). `entry` is the user's marketplace entry, `project_ref` the ref the project's
+    own settings pin ("" for none), `releases` what GitHub answered; nothing is said when the newest is unknown."""
+    newest = getattr(releases, "newest", None)
+    if not newest:
+        return []
+    latest = f"v{newest}"
+    update = "/flotilla:update"
+    ways = (f"follow the `{CHANNEL}` channel with automatic updates (recommended), or move the pin to {latest}; "
+            f"{update} does either on your yes")
+    if entry is None:
+        return [("info", f"this project pins flotilla to {project_ref}; the newest release is {latest}", ways)] \
+            if _older(project_ref, newest) else []
+    source = entry["source"]
+    if source.get("source") != "github" or str(source.get("repo") or "").lower() != REPO.lower():
+        return [("info", f"the user settings take flotilla from {_following(source)}, not {REPO}: flotilla does "
+                         f"not change that source; the newest release of {REPO} is {latest}", "")]
+    ref = str(source.get("ref") or "")
+    if not ref:
+        return [("info", "the user settings follow flotilla's default branch (main): every commit reaches this "
+                         "machine, not only releases", f"follow the `{CHANNEL}` channel instead: {update}")]
+    if ref == CHANNEL:
+        if entry.get("autoUpdate") is True:
+            return [("ok", f"the user settings follow the `{CHANNEL}` channel with automatic updates; the newest "
+                           f"release is {latest}, this session runs {running}", "")]
+        return [("info", f"the user settings follow the `{CHANNEL}` channel, but automatic updates are off: a "
+                         f"release reaches this machine only when you update by hand (newest {latest})",
+                 f"turn them on: {update}")]
+    if not RELEASE.fullmatch(ref) and not COMMIT.fullmatch(ref):
+        return [("info", f"the user settings follow the branch `{ref}` of {REPO}: every commit there reaches this "
+                         "machine, not only releases", f"follow the `{CHANNEL}` channel instead: {update}")]
+    if _older(ref, newest):
+        return [("warn", f"the user settings pin the flotilla marketplace to {ref}; the newest release is {latest}. "
+                         f"While that entry stands, a project cannot pin another release - {REFUSAL} - and "
+                         f"`claude plugin install` takes {ref} without a word", ways)]
+    return [("ok", f"the user settings pin the flotilla marketplace to {ref}; the newest release is {latest}", "")]
 
 
 def trusted(path: Path, *, home: Path | None = None) -> bool | None:

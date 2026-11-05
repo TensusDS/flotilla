@@ -3,6 +3,29 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.29.0 - 2026-11-05
+
+Keeping flotilla current. A machine whose own settings pinned an older release could not install a newer one into a
+project, and was not told: the project's `marketplace add` was refused and the next line installed the old release
+without a word (field test 2026-11-04).
+
+- **The `stable` release channel.** A branch that only ever points at a released version, checked in CI on every
+  push to it. Following it with Claude Code's automatic updates brings each release and nothing between them. The
+  README's install now follows it.
+- **`/flotilla:update` and `flotilla update`.** Every flotilla install on the machine - the user's and each
+  project's - with its version, the channel the machine follows, the newest release, projects pinned off the
+  channel (with the edit their owner makes) and every project where a fleet is working. On the person's yes, and
+  only for the exact plan shown (a mark), it moves the user entry to `stable` with automatic updates or to a pinned
+  release, backing the settings up first, then brings every install up. A working fleet is stood down first (the
+  person's own sessions kept) or its update deferred, as the person chooses; a deferred update is said at that
+  project's next start and at `/flotilla:down`. A background session is refused.
+- **A pin that holds the machine back is named.** `/flotilla:doctor` says which release the user settings follow
+  against the newest one, and a session's start says it once a day when a pin is older than the newest release -
+  with the refusal it causes and both ways out.
+- **One fleet, one release.** Before raising a seat or a helper, `flotilla spawn` checks that the new session would
+  load the same release as the fleet; an update on disk does not touch running sessions but reaches every later one.
+  `--anyway` raises it beside the rest.
+
 ## 0.28.1 - 2026-11-04
 
 The review of 0.28.0 against every problem found since 0.24.0: seven regressions and holes, five of them brought in
