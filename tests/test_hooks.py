@@ -22,7 +22,8 @@ def hook(cwd, env_state):
     # interpreter gate instead of the hook.
     return subprocess.run([sys.executable, str(ENTRY), "hook", "session-start"],
                           input=json.dumps({"cwd": str(cwd)}), capture_output=True, text=True,
-                          env={"PATH": "/usr/bin:/bin", "FLOTILLA_STATE_DIR": str(env_state)})
+                          env={"PATH": "/usr/bin:/bin", "FLOTILLA_STATE_DIR": str(env_state),
+                               "CLAUDE_CONFIG_DIR": str(Path(env_state).parent / "claude-config")})
 
 
 

@@ -140,9 +140,20 @@ def report(*, run=subprocess.run, census, env=os.environ, home: Path | None = No
 def _mark(report_: Report, ref, stop, defer, updates) -> str:
     body = json.dumps({"entry": report_.entry, "ref": ref, "stop": [str(p) for p in stop],
                        "defer": [str(p) for p in defer],
+                       "fleets": [[str(f.project), f.seats, f.interactive] for f in report_.fleets],
                        "updates": [[item.scope, str(item.project or ""), item.version] for item in updates],
                        "newest": report_.newest}, sort_keys=True)
     return hashlib.sha256(body.encode("utf-8")).hexdigest()[:12]
+
+
+def _target(report_: Report, ref: str | None) -> str | None:
+    """The release the marketplace will deliver once the plan has run: the pin it moves to, else the tag the user
+    entry already pins, else the newest (`stable`, or a source flotilla cannot read - apply checks what arrived)."""
+    current = str(((report_.entry or {}).get("source") or {}).get("ref") or "")
+    wanted = ref if ref is not None else current
+    if claude_state.RELEASE.fullmatch(wanted or ""):
+        return wanted[1:]
+    return report_.newest
 
 
 def plan(report_: Report, *, pin: str | None = None, keep_channel: bool = False, stop=(), defer=(),
@@ -159,7 +170,8 @@ def plan(report_: Report, *, pin: str | None = None, keep_channel: bool = False,
             ref = wanted
     undecided = [fleet.project for fleet in report_.fleets if fleet.project not in stop and fleet.project not in defer]
     user_held = any(fleet.on_user_copy for fleet in report_.fleets if fleet.project in defer)
-    updates = [item for item in report_.installs if item.behind
+    target = _target(report_, ref)
+    updates = [item for item in report_.installs if _behind(item.version, target)
                and not (item.scope == "user" and user_held)
                and not (item.project is not None and (item.project in defer or item.project in skip))]
     if report_.error and "census" in report_.error:
@@ -202,6 +214,10 @@ def render(report_: Report, chosen: Plan) -> list[str]:
         out.append(f"no plan: {report_.error}")
         return out
     out.append("plan:")
+    target = _target(report_, chosen.ref)
+    if target and report_.newest and target != report_.newest:
+        out.append(f"  the user entry will pin v{target}: updates bring installs to v{target} at most, not "
+                   f"v{report_.newest}")
     if chosen.ref:
         out.append(f"  move the user entry to {REPO}#{chosen.ref}" +
                    (" with automatic updates" if chosen.ref == CHANNEL else "") + " (settings backed up first)")
@@ -218,12 +234,11 @@ def render(report_: Report, chosen: Plan) -> list[str]:
     return out
 
 
-def stand_down(project: Path, *, keep: frozenset, census) -> list[str]:
+def stand_down(project: Path, *, keep: frozenset, census) -> tuple[list[str], int]:
+    """`flotilla fleet down` for a project, from wherever the person runs this: (lines, seats refused)."""
     from flotilla.fleet import retire
     from flotilla.ledger.commands import open_ledger
-    ledger = open_ledger(project)
-    lines, _ = retire.down(ledger, caller="update", me="", keep=keep, census=census)
-    return lines
+    return retire.down(open_ledger(project), caller="update", me="", keep=keep, census=census)
 
 
 def _deferrals(state: Path) -> dict:
@@ -234,9 +249,15 @@ def _deferrals(state: Path) -> dict:
         return {}
 
 
-def deferred(state: Path, project: Path) -> str:
+def deferred(state: Path, project: Path, *, env=os.environ, home: Path | None = None) -> str:
+    """The line a deferred project says, or "" - also once the release it waited for is what a session there loads
+    (Claude Code's automatic update, or an update made elsewhere, got there first)."""
     found = _deferrals(Path(state)).get(str(Path(project).resolve()))
     if not isinstance(found, dict):
+        return ""
+    loads = claude_state._version(claude_state.loads_in(Path(project), env, home) or "")
+    wanted = claude_state._version(str(found.get("to") or ""))
+    if loads and wanted and loads >= wanted:
         return ""
     return (f"the update of flotilla to v{found.get('to')} waits here (deferred {found.get('at', '')[:10]}): run "
             "/flotilla:update once the fleet is down")
@@ -247,24 +268,25 @@ def _write_deferrals(state: Path, data: dict) -> None:
     (state / DEFERRED).write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
 
 
-def _claude(run, args: list[str], cwd: Path) -> tuple[bool, str]:
+def _claude(run, args: list[str], cwd: Path) -> tuple[bool, str, str]:
+    """(ok, last line, whole output)."""
     try:
         done = run(["claude", *args], cwd=str(cwd), capture_output=True, text=True, check=False, timeout=TIMEOUT)
     except (OSError, subprocess.TimeoutExpired) as err:
-        return False, str(err)
-    text = ((done.stdout or "") + (done.stderr or "")).strip().splitlines()
-    return done.returncode == 0, (text[-1] if text else f"exit {done.returncode}")
+        return False, str(err), str(err)
+    whole = ((done.stdout or "") + (done.stderr or "")).strip()
+    text = whole.splitlines()
+    return done.returncode == 0, (text[-1] if text else f"exit {done.returncode}"), whole
 
 
 def _move_channel(ref: str, *, run, env, home, state: Path, now: dt.datetime) -> list[str]:
+    """Move the user entry to `ref` (measured 4 and 5); any failure puts the settings back as they were."""
     settings = claude_state.config_dir(env, home) / "settings.json"
-    backups = state / "backups"
-    backups.mkdir(parents=True, exist_ok=True)
-    backup = backups / f"settings.json.{now.strftime('%Y%m%dT%H%M%S')}"
+    target = settings.resolve() if settings.is_symlink() else settings   # a dotfiles link stays a link
+    existed = target.exists()
     try:
-        data = json.loads(settings.read_text(encoding="utf-8")) if settings.exists() else {}
-        if settings.exists():
-            shutil.copy2(settings, backup)
+        original = target.read_bytes() if existed else b""
+        data = json.loads(original.decode("utf-8")) if existed else {}
     except (OSError, ValueError) as err:
         raise UpdateRefused(f"{settings} could not be read ({err}); nothing was changed") from err
     if not isinstance(data, dict):
@@ -272,32 +294,63 @@ def _move_channel(ref: str, *, run, env, home, state: Path, now: dt.datetime) ->
     known = data.setdefault("extraKnownMarketplaces", {})
     if not isinstance(known, dict):
         raise UpdateRefused(f"extraKnownMarketplaces in {settings} is not an object; nothing was changed")
-    entry = known.get("flotilla") if isinstance(known.get("flotilla"), dict) else {}
+    entry = known.get("flotilla", {})
+    if not isinstance(entry, dict) or not isinstance(entry.get("source", {}), dict):
+        raise UpdateRefused(f"extraKnownMarketplaces.flotilla in {settings} is not an object of the shape Claude "
+                            "Code writes; nothing was changed")
+    backups = state / "backups"
+    backup = backups / f"settings.json.{now.strftime('%Y%m%dT%H%M%S')}"
+    try:
+        backups.mkdir(parents=True, exist_ok=True)
+        if existed:
+            backup.write_bytes(original)
+    except OSError as err:
+        raise UpdateRefused(f"the settings could not be backed up to {backup} ({err}); nothing was changed") from err
     source = dict(entry.get("source") or {"source": "github", "repo": REPO})
     source["ref"] = ref
     known["flotilla"] = {**entry, "source": source}
 
-    def write():
-        tmp = settings.with_name(settings.name + ".flotilla-tmp")
-        tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-        os.replace(tmp, settings)
-    write()
-    said = f"(your settings before this are in {backup})" if backup.exists() else "(there was no settings file)"
-    ok, last = _claude(run, ["plugin", "marketplace", "add", f"{REPO}#{ref}"], Path(home or Path.home()))
+    def write(body: bytes) -> None:
+        tmp = target.with_name(target.name + ".flotilla-tmp")
+        tmp.write_bytes(body)
+        if existed:
+            shutil.copymode(target, tmp)
+        os.replace(tmp, target)
+
+    def put_back(why: str) -> UpdateRefused:
+        try:
+            if existed:
+                write(original)
+            else:
+                target.unlink(missing_ok=True)
+            back = f"your settings were put back as they were (a copy is in {backup})" if existed else \
+                "the settings file this made was removed"
+        except OSError as err:
+            back = f"putting your settings back failed ({err}): copy {backup} over {settings} by hand"
+        return UpdateRefused(f"{why}; no install was updated, and {back}")
+
+    try:
+        write((json.dumps(data, indent=2) + "\n").encode("utf-8"))
+    except OSError as err:
+        raise put_back(f"{settings} could not be written ({err})") from err
+    where = Path(home or Path.home())
+    ok, last, _ = _claude(run, ["plugin", "marketplace", "add", f"{REPO}#{ref}"], where)
     if not ok:
-        raise UpdateRefused(f"`claude plugin marketplace add {REPO}#{ref}` failed: {last}; no install was updated "
-                            f"{said}")
+        raise put_back(f"`claude plugin marketplace add {REPO}#{ref}` failed: {last}")
     if ref == CHANNEL:   # the add rewrote the entry and dropped autoUpdate (measured 5)
-        data = json.loads(settings.read_text(encoding="utf-8"))
-        data["extraKnownMarketplaces"]["flotilla"]["autoUpdate"] = True
-        write()
+        try:
+            data = json.loads(target.read_text(encoding="utf-8"))
+            data["extraKnownMarketplaces"]["flotilla"]["autoUpdate"] = True
+            write((json.dumps(data, indent=2) + "\n").encode("utf-8"))
+        except (OSError, ValueError, KeyError, TypeError) as err:
+            raise put_back(f"automatic updates could not be turned on after the move ({err})") from err
     back = claude_state.user_entry(env, home) or {}
-    ok, listing = _claude(run, ["plugin", "marketplace", "list"], Path(home or Path.home()))
-    if (back.get("source") or {}).get("ref") != ref or (ok and f"{REPO}@{ref}" not in listing):
-        raise UpdateRefused(f"the user entry or the machine's marketplace does not name {ref} after the move; no "
-                            f"install was updated {said}")
+    ok, _, listing = _claude(run, ["plugin", "marketplace", "list"], where)
+    if (back.get("source") or {}).get("ref") != ref or not ok or f"{REPO}@{ref}" not in listing:
+        raise put_back(f"the move to {ref} could not be confirmed: the user entry or `claude plugin marketplace "
+                       "list` does not name it")
     return [f"the user entry follows {REPO}#{ref}" + (" with automatic updates" if ref == CHANNEL else "")
-            + f" {said}"]
+            + (f" (your settings before this are in {backup})" if existed else "")]
 
 
 def apply(report_: Report, chosen: Plan, mark: str, *, run=subprocess.run, census, env=os.environ,
@@ -320,31 +373,52 @@ def apply(report_: Report, chosen: Plan, mark: str, *, run=subprocess.run, censu
         fleet = fleets.get(project)
         keep = frozenset(fleet.interactive if fleet else ())
         try:
-            lines += stand_down(project, keep=keep, census=census)
-            stopped.append(project)
+            down_lines, refused_seats = stand_down(project, keep=keep, census=census)
+            lines += down_lines
+            if refused_seats:
+                lines.append(f"{project}: {refused_seats} seat(s) could not be stood down; its install was not "
+                             "updated")
+            else:
+                stopped.append(project)
         except Exception as err:  # noqa: BLE001 - one fleet that could not be stood down holds only its own update
             lines.append(f"{project}: the fleet could not be stood down ({err}); its install was not updated")
         for name in sorted(keep):
             lines.append(f"{name} is the person's own session in {project}: it was not stopped and keeps the old "
                          "release until it is started again")
     failed_stops = set(chosen.stop) - set(stopped)
+    user_held = any(fleets[p].on_user_copy for p in failed_stops if p in fleets)
     data = _deferrals(state)
     for project in chosen.defer:
         data[str(project)] = {"to": report_.newest, "at": now.isoformat()}
         lines.append(f"deferred {project}: its fleet keeps working; its next session start and /flotilla:down say "
                      "the update waits")
+    owned = {item.project for item in report_.installs if item.project is not None}
     for item in chosen.updates:
-        if item.project is not None and item.project in failed_stops:
+        if item.project is not None and item.project in failed_stops or item.scope == "user" and user_held:
             continue
         where = item.project or Path(home or Path.home())
-        ok, last = _claude(run, ["plugin", "update", item.id, "--scope", item.scope], where)
-        lines.append(f"{'updated' if ok else 'refused'}: {item.scope}" + (f" {item.project}" if item.project else "")
-                     + f": {last}")
+        ok, last, _ = _claude(run, ["plugin", "update", item.id, "--scope", item.scope], where)
+        label = item.scope + (f" {item.project}" if item.project else "")
+        now_at = next((str(found.get("version") or "") for _, found in claude_state.installs(env, home)
+                       if found.get("scope") == item.scope and (item.project is None or claude_state._same(
+                           found.get("projectPath"), item.project))), "")
+        if ok and claude_state._version(now_at) and claude_state._version(now_at) == claude_state._version(item.version):
+            lines.append(f"refused: {label}: `claude plugin update` succeeded but the install is still {now_at} - "
+                         "the marketplace does not deliver a newer release yet")
+            continue
+        lines.append(f"{'updated' if ok else 'refused'}: {label}: {last}")
         if ok and item.project is not None:
             data.pop(str(item.project), None)
-    _write_deferrals(state, data)
+        if ok and item.scope == "user":   # the projects whose sessions load the user's copy
+            for key in [key for key in data if Path(key) not in owned]:
+                data.pop(key)
+    try:
+        _write_deferrals(state, data)
+    except OSError as err:
+        lines.append(f"refused: the deferrals could not be recorded in {state / DEFERRED} ({err})")
     for project in stopped:
-        lines.append(f"raise the fleet in {project} again when you want it: /flotilla:spawn there")
+        lines.append(f"raise the fleet in {project} again when you want it: /flotilla:spawn from a session started "
+                     "there after this update")
     lines.append("running sessions keep the release they loaded; a session started from now on runs the new one")
     return lines
 

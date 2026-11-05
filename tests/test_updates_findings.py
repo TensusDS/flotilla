@@ -116,3 +116,24 @@ def test_github_is_not_asked_when_there_is_no_pin_to_compare(tmp_path):
         raise AssertionError("GitHub asked with nothing to compare")
     assert updates.lines(tmp_path, env=env, releases=never) == []
     assert doctor.update_findings(tmp_path, env=env, releases=never) == []
+
+
+def test_a_branch_other_than_stable_is_info():
+    found = claude_state.update_findings(entry("main"), "", NEWEST, "0.28.1")
+    assert statuses(found) == ["info"] and "main" in found[0][1]
+
+
+def test_doctor_says_it_could_not_ask(tmp_path):
+    env = _machine(tmp_path)
+    found = doctor.update_findings(tmp_path, env=env, releases=lambda **_: UNKNOWN)
+    assert [(item.status, item.check) for item in found] == [("info", "updates")]
+    assert "offline" in found[0].detail
+    assert updates.lines(tmp_path, env=env, releases=lambda **_: UNKNOWN) == []
+
+
+def test_a_session_start_does_not_ask_github_when_no_warning_is_possible(tmp_path):
+    env = _machine(tmp_path, ref="stable")
+
+    def never(**_):
+        raise AssertionError("GitHub asked although stable can raise no warning")
+    assert updates.lines(tmp_path, env=env, releases=never) == []

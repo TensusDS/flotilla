@@ -352,6 +352,9 @@ def update_findings(entry: dict | None, project_ref: str, releases, running: str
         return [("info", f"the user settings follow the `{CHANNEL}` channel, but automatic updates are off: a "
                          f"release reaches this machine only when you update by hand (newest {latest})",
                  f"turn them on: {update}")]
+    if not RELEASE.fullmatch(ref) and not COMMIT.fullmatch(ref):
+        return [("info", f"the user settings follow the branch `{ref}` of {REPO}: every commit there reaches this "
+                         "machine, not only releases", f"follow the `{CHANNEL}` channel instead: {update}")]
     if _older(ref, newest):
         return [("warn", f"the user settings pin the flotilla marketplace to {ref}; the newest release is {latest}. "
                          f"While that entry stands, a project cannot pin another release - {REFUSAL} - and "

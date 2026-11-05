@@ -1,7 +1,7 @@
 """The newest flotilla release and the commit the `stable` channel names, asked of GitHub and kept for a day.
 
-`git ls-remote` with no repository of its own (no hooks, no config of a checkout) and no prompt; five seconds at
-most, because a session's start waits for it. A failed answer is not kept, so the next start asks again. Only
+`git ls-remote` with no repository of its own (run in `/`: no hooks, no config of a checkout) and no prompt; five
+seconds at most, because a session's start waits for it. A failed answer is kept an hour, a good one a day. Only
 `vX.Y.Z` tags count: a pre-release or any other tag is not a release (spec 2026-11-04-plugin-updates, part B).
 """
 
@@ -34,7 +34,7 @@ def ask(run=subprocess.run, *, timeout: float = 5.0, now: dt.datetime | None = N
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "", "SSH_ASKPASS": ""}
     try:
         done = run(["git", "ls-remote", "--refs", URL, "refs/tags/v*", STABLE], capture_output=True, text=True,
-                   check=False, timeout=timeout, env=env, cwd=os.path.expanduser("~"))
+                   check=False, timeout=timeout, env=env, cwd="/")   # no repository's config around it
     except (OSError, subprocess.TimeoutExpired) as err:
         return Releases(None, None, asked, f"GitHub could not be asked: {err}")
     if done.returncode != 0:
@@ -52,6 +52,9 @@ def ask(run=subprocess.run, *, timeout: float = 5.0, now: dt.datetime | None = N
     return Releases(newest, stable, asked, "" if newest else "no vX.Y.Z tag in the answer")
 
 
+FAILED_FOR = dt.timedelta(hours=1)   # offline: a session's start does not wait five seconds every time
+
+
 def cached(state: Path, run=subprocess.run, *, now: dt.datetime | None = None,
            max_age: dt.timedelta = dt.timedelta(days=1), fresh: bool = False) -> Releases:
     now = now or dt.datetime.now(dt.timezone.utc)
@@ -59,15 +62,14 @@ def cached(state: Path, run=subprocess.run, *, now: dt.datetime | None = None,
     if not fresh:
         try:
             kept = Releases(**json.loads(path.read_text(encoding="utf-8")))
-            if kept.newest and now - dt.datetime.fromisoformat(kept.asked_at) < max_age:
+            if now - dt.datetime.fromisoformat(kept.asked_at) < (max_age if kept.newest else FAILED_FOR):
                 return kept
         except (OSError, ValueError, TypeError):
             pass
     found = ask(run, now=now)
-    if found.newest:
-        try:
-            Path(state).mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(asdict(found)), encoding="utf-8")
-        except OSError:
-            pass
+    try:
+        Path(state).mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(asdict(found)), encoding="utf-8")
+    except OSError:
+        pass
     return found

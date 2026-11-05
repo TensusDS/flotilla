@@ -34,6 +34,7 @@ class Machine:
         self.env = {"CLAUDE_CONFIG_DIR": str(self.config), "FLOTILLA_STATE_DIR": str(self.state)}
         self.calls = []
         self.fail = set()
+        self.delivers = "0.29.0"
         self.settings = {"theme": "dark", "extraKnownMarketplaces": {
             "flotilla": {"source": {"source": "github", "repo": "TensusDS/flotilla", "ref": user_ref}},
             "other": {"source": {"source": "github", "repo": "x/y"}}}}
@@ -80,11 +81,17 @@ class Machine:
             (self.config / "settings.json").write_text(json.dumps(data), encoding="utf-8")
             self.known = ref
             return subprocess.CompletedProcess(argv, 0, "Successfully added marketplace: flotilla", "")
-        if argv[1:4] == ["plugin", "marketplace", "list"]:
-            return subprocess.CompletedProcess(argv, 0, f"  flotilla\n    Source: GitHub (TensusDS/flotilla@"
-                                                        f"{getattr(self, 'known', '?')})\n", "")
+        if argv[1:4] == ["plugin", "marketplace", "list"]:   # the shape measured on 2.1.318
+            return subprocess.CompletedProcess(argv, 0, f"  \u276f flotilla\n    Source: GitHub (TensusDS/flotilla@"
+                                                        f"{getattr(self, 'known', '?')})\n\n  \u276f other\n"
+                                                        "    Source: GitHub (x/y)\n", "")
         if argv[1:3] == ["plugin", "update"]:
-            return subprocess.CompletedProcess(argv, 0, "updated", "")
+            scope = argv[argv.index("--scope") + 1]
+            for item in self.records:
+                if item["scope"] == scope and (scope == "user" or item.get("projectPath") == kw.get("cwd")):
+                    item["version"] = self.delivers
+            self.write_records()
+            return subprocess.CompletedProcess(argv, 0, f"updated to {self.delivers}", "")
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     def census(self):
@@ -181,7 +188,7 @@ def test_a_failed_marketplace_add_stops_before_any_update_and_names_the_backup(t
     chosen = update.plan(rep)
     with pytest.raises(update.UpdateRefused) as err:
         update.apply(rep, chosen, chosen.mark, run=m.run, census=m.census, env=m.env, state=m.state)
-    assert "backups" in str(err.value)
+    assert "backups" in str(err.value) and "put back" in str(err.value)
     assert not any(argv[:2] == ["plugin", "update"] for argv, _ in m.calls)
 
 
@@ -205,12 +212,13 @@ def test_a_deferral_is_recorded_and_said_until_the_update_is_done(tmp_path):
     chosen = update.plan(rep, defer={a})
     update.apply(rep, chosen, chosen.mark, run=m.run, census=m.census, env=m.env, state=m.state)
     assert not any(cwd == str(a) for _, cwd in m.calls)
-    assert "0.29.0" in update.deferred(m.state, a) and "/flotilla:update" in update.deferred(m.state, a)
+    assert "0.29.0" in update.deferred(m.state, a, env=m.env)
+    assert "/flotilla:update" in update.deferred(m.state, a, env=m.env)
     m.sessions = []
     rep = m.report()
     chosen = update.plan(rep)
     update.apply(rep, chosen, chosen.mark, run=m.run, census=m.census, env=m.env, state=m.state)
-    assert update.deferred(m.state, a) == ""
+    assert update.deferred(m.state, a, env=m.env) == ""
 
 
 def test_another_marketplace_source_is_reported_never_rewritten(tmp_path):
@@ -231,7 +239,7 @@ def test_a_stopped_fleet_is_stood_down_keeping_the_persons_own_session_then_upda
     m.sessions = [session("a-main session 1", a), session("a-orchestrator 1", a, kind="interactive", short="s2")]
     downs = []
     monkeypatch.setattr(update, "stand_down", lambda project, *, keep, census: downs.append((project, keep)) or
-                        ["retired a-main session 1"])
+                        (["retired a-main session 1"], 0))
     rep = m.report()
     chosen = update.plan(rep, stop={a})
     lines = update.apply(rep, chosen, chosen.mark, run=m.run, census=m.census, env=m.env, state=m.state)
@@ -265,3 +273,117 @@ def test_the_cli_prints_the_plan_and_confirms_only_with_the_mark(tmp_path, monke
     assert cli.main(["update", "--confirm", mark]) == 0
     assert f"applied {mark}" in capsys.readouterr().out
     assert cli.main(["update", "--pin", "latest"]) == 2
+
+
+def test_a_failed_marketplace_add_puts_the_settings_back(tmp_path):
+    m = Machine(tmp_path)
+    m.fail = {"marketplace add"}
+    before = (m.config / "settings.json").read_bytes()
+    rep = m.report()
+    chosen = update.plan(rep)
+    with pytest.raises(update.UpdateRefused, match="put back"):
+        update.apply(rep, chosen, chosen.mark, run=m.run, census=m.census, env=m.env, state=m.state)
+    assert (m.config / "settings.json").read_bytes() == before
+
+
+def test_a_marketplace_list_that_cannot_be_read_does_not_pass_for_a_move(tmp_path):
+    m = Machine(tmp_path)
+    m.fail = {"marketplace list"}
+    rep = m.report()
+    chosen = update.plan(rep)
+    with pytest.raises(update.UpdateRefused, match="could not be confirmed"):
+        update.apply(rep, chosen, chosen.mark, run=m.run, census=m.census, env=m.env, state=m.state)
+    assert not any(argv[:2] == ["plugin", "update"] for argv, _ in m.calls)
+
+
+def test_an_update_that_did_not_move_the_release_is_not_called_updated(tmp_path):
+    m = Machine(tmp_path)
+    m.project("a")
+    m.delivers = "0.26.0"                       # stable lags, or the marketplace was not refreshed
+    rep = m.report()
+    chosen = update.plan(rep)
+    lines = update.apply(rep, chosen, chosen.mark, run=m.run, census=m.census, env=m.env, state=m.state)
+    assert not any(line.startswith("updated:") for line in lines)
+    assert sum(line.startswith("refused:") and "still 0.26.0" in line for line in lines) == 2
+
+
+def test_keeping_an_older_pin_plans_no_update_past_it(tmp_path):
+    m = Machine(tmp_path)                        # the user entry pins v0.26.0
+    m.project("a", version="0.20.0")
+    rep = m.report()
+    kept = update.plan(rep, keep_channel=True)
+    assert [(item.scope, item.version) for item in kept.updates] == [("project", "0.20.0")]
+    assert any("v0.26.0" in line and "at most" in line for line in update.render(rep, kept))
+
+
+def test_a_deferral_on_the_user_copy_ends_when_the_user_install_is_updated(tmp_path):
+    m = Machine(tmp_path)
+    b = git_repo(tmp_path / "b")
+    m.sessions = [session("b-main session 1", b)]
+    rep = m.report()
+    chosen = update.plan(rep, defer={b})
+    update.apply(rep, chosen, chosen.mark, run=m.run, census=m.census, env=m.env, state=m.state)
+    assert update.deferred(m.state, b, env=m.env)
+    m.sessions = []
+    rep = m.report()
+    chosen = update.plan(rep)
+    update.apply(rep, chosen, chosen.mark, run=m.run, census=m.census, env=m.env, state=m.state)
+    assert update.deferred(m.state, b, env=m.env) == ""
+
+
+def test_a_deferral_is_not_said_once_the_project_loads_the_release(tmp_path):
+    m = Machine(tmp_path)
+    a = m.project("a")
+    update._write_deferrals(m.state, {str(a): {"to": "0.29.0", "at": "2026-11-05T12:00:00+00:00"}})
+    assert update.deferred(m.state, a, env=m.env)
+    m.records[-1]["version"] = "0.29.0"          # Claude Code's automatic update moved it
+    m.write_records()
+    assert update.deferred(m.state, a, env=m.env) == ""
+
+
+def test_an_entry_of_another_shape_is_refused_and_left_as_it_is(tmp_path):
+    m = Machine(tmp_path)
+    m.settings["extraKnownMarketplaces"]["flotilla"] = "TensusDS/flotilla"
+    m.write_settings()
+    before = (m.config / "settings.json").read_bytes()
+    rep = m.report()
+    chosen = update.plan(rep)
+    with pytest.raises(update.UpdateRefused, match="not an object"):
+        update.apply(rep, chosen, chosen.mark, run=m.run, census=m.census, env=m.env, state=m.state)
+    assert (m.config / "settings.json").read_bytes() == before
+
+
+def test_settings_kept_through_a_symlink_stay_a_symlink(tmp_path):
+    m = Machine(tmp_path)
+    real = tmp_path / "dotfiles" / "claude-settings.json"
+    real.parent.mkdir()
+    (m.config / "settings.json").rename(real)
+    real.chmod(0o600)
+    (m.config / "settings.json").symlink_to(real)
+    rep = m.report()
+    chosen = update.plan(rep)
+    update.apply(rep, chosen, chosen.mark, run=m.run, census=m.census, env=m.env, state=m.state)
+    assert (m.config / "settings.json").is_symlink()
+    assert json.loads(real.read_text())["extraKnownMarketplaces"]["flotilla"]["autoUpdate"] is True
+    assert real.stat().st_mode & 0o777 == 0o600
+
+
+def test_a_fleet_stood_down_only_in_part_is_not_updated(tmp_path, monkeypatch):
+    m = Machine(tmp_path)
+    a = m.project("a")
+    m.sessions = [session("a-main session 1", a)]
+    monkeypatch.setattr(update, "stand_down", lambda project, *, keep, census: (["refused a-main session 1"], 1))
+    rep = m.report()
+    chosen = update.plan(rep, stop={a})
+    lines = update.apply(rep, chosen, chosen.mark, run=m.run, census=m.census, env=m.env, state=m.state)
+    assert not any(cwd == str(a) for argv, cwd in m.calls if argv[:2] == ["plugin", "update"])
+    assert any("not updated" in line for line in lines)
+
+
+def test_a_seat_raised_after_the_plan_was_shown_changes_the_mark(tmp_path):
+    m = Machine(tmp_path)
+    a = m.project("a")
+    m.sessions = [session("a-main session 1", a)]
+    first = update.plan(m.report(), stop={a})
+    m.sessions.append(session("a-main session 2", a, short="s9"))
+    assert update.plan(m.report(), stop={a}).mark != first.mark

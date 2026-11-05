@@ -384,9 +384,10 @@ def release_split(ledger, *, running: str, env=os.environ, home: Path | None = N
     if not coming or claude_state._version(coming) is None or claude_state._version(running) is None \
             or claude_state._version(coming) == claude_state._version(running):
         return ""
-    return (f"a seat raised now would load flotilla {coming}, which is installed for {main}, while this fleet runs "
-            f"{running}: one fleet on two releases. Stand the fleet down (`/flotilla:down`) and raise it again on "
-            f"{coming}, or `--anyway` to raise it beside the rest")
+    return (f"a seat raised now would load flotilla {coming}, which is installed for {main}, while this session "
+            f"runs {running}: one fleet on two releases - start this session again so it runs {coming} (and stand "
+            f"down any seat still on {running}, `/flotilla:down`), then raise; or `--anyway` to raise it beside the "
+            "rest")
 
 
 def raise_seat(ledger, seat: launch.Seat, *, caller: str, census, wait: float = 30.0, poll: float = 1.0,

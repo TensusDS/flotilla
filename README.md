@@ -82,10 +82,18 @@ chooses when you move, not who can change what the tag names.
 **If the first line is refused** with *Cannot add marketplace "flotilla": its source doesn't match its
 extraKnownMarketplaces entry in user or managed settings*, your own settings (`~/.claude/settings.json`) already
 declare the flotilla marketplace at another release, and a project cannot follow a different one while that entry
-stands. The second line then succeeds and installs the release your settings name, without saying so. Run
-`/flotilla:update` from any Claude Code session: it names the release your settings hold and moves them, on your
-yes, to `stable` or to the release you pick. From 0.29.0 on, a session's start and `/flotilla:doctor` say this
-themselves when it happens.
+stands. The second line then succeeds and installs the release your settings name, without saying so. From 0.29.0
+on, a session's start and `/flotilla:doctor` say this themselves, and `/flotilla:update` moves your settings on your
+yes. A machine still on an older copy has no `/flotilla:update`; move it once by hand:
+
+1. In `~/.claude/settings.json`, under `extraKnownMarketplaces` -> `flotilla` -> `source`, set `"ref": "stable"`.
+2. `claude plugin marketplace add TensusDS/flotilla#stable` - the same source the entry now names, which moves
+   the machine's marketplace and keeps every install (editing the entry alone makes `claude plugin update` say the
+   marketplace is not found).
+3. Add `"autoUpdate": true` beside `"source"` in that entry again: the command in step 2 rewrites the entry without
+   it.
+4. `claude plugin update flotilla@flotilla --scope user`, and `claude plugin update flotilla@flotilla --scope
+   project` in each project - or `/flotilla:update`, which is there now.
 
 If flotilla is also installed for your user (`--scope user`, which `flotilla rig` suggests), Claude Code has been
 seen loading that copy in place of the project's own. Keep both at the same version - `/flotilla:update` brings

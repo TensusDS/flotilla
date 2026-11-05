@@ -42,6 +42,7 @@ def test_a_project_install_on_another_release_is_a_split(machine):
     records(config, install("project", "0.30.0", ledger.root), install("user", "0.29.0"))
     said = REAL(ledger, running="0.29.0", env=env)
     assert "0.30.0" in said and "0.29.0" in said and "--anyway" in said
+    assert "start this session again" in said
 
 
 def test_with_no_project_install_the_users_decides(machine):

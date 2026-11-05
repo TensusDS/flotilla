@@ -40,6 +40,7 @@ def test_ask_names_the_repository_and_never_prompts():
     assert "https://github.com/TensusDS/flotilla" in argv
     assert kw["env"]["GIT_TERMINAL_PROMPT"] == "0"
     assert kw["timeout"] == 5.0
+    assert kw["cwd"] == "/"
 
 
 def test_a_failed_or_slow_ask_gives_no_newest_and_says_why():
@@ -61,12 +62,16 @@ def test_cached_reuses_a_fresh_answer_and_asks_again_when_old(tmp_path):
     assert len(calls) == 3
 
 
-def test_a_failed_ask_is_not_kept(tmp_path):
+def test_a_failed_ask_is_kept_an_hour_so_offline_starts_do_not_wait_each_time(tmp_path):
     now = dt.datetime(2026, 11, 4, 12, tzinfo=dt.timezone.utc)
     calls = []
     releases.cached(tmp_path, fake(code=128, calls=calls), now=now)
-    found = releases.cached(tmp_path, fake(calls=calls), now=now + dt.timedelta(minutes=1))
+    still = releases.cached(tmp_path, fake(calls=calls), now=now + dt.timedelta(minutes=30))
+    assert still.newest is None and len(calls) == 1
+    found = releases.cached(tmp_path, fake(calls=calls), now=now + dt.timedelta(minutes=61))
     assert found.newest == "0.28.1" and len(calls) == 2
+    fresh = releases.cached(tmp_path, fake(code=128, calls=calls), now=now + dt.timedelta(minutes=62), fresh=True)
+    assert fresh.newest is None and len(calls) == 3
 
 
 def test_a_corrupt_cache_is_asked_again(tmp_path):
