@@ -208,6 +208,21 @@ def test_a_twin_in_a_store_names_the_last_copy(tmp_path):
                and line.endswith("(nothing was moved there)") for line in shown), shown
 
 
+def test_an_empty_file_goes_to_the_archive_with_its_name_not_onto_an_empty_twin(tmp_path):
+    """void-lanes, 2026-11-05: an empty build marker was matched to another plugin's empty log in the checkout."""
+    from flotilla.gc import archive
+    root, ledger = world(tmp_path)
+    ignoring(root)
+    (root / ".remember" / "logs").mkdir(parents=True)
+    (root / ".remember" / "logs" / "hook-errors.log").write_bytes(b"")
+    tree = ignored_seat(root, tmp_path, 1, data=b"", path="out/VoidLane.Up2Date")
+    shown = sweep.lines(sweep.run_pass(ledger, sessions=[], act=True, proc_root=tmp_path / "no-proc"))
+    assert not tree.exists(), shown
+    assert not any("hook-errors.log" in line for line in shown), shown
+    kept = [item["from"] for entry in archive.entries(ledger) for item in entry.files]
+    assert str(tree / "out" / "VoidLane.Up2Date") in kept, kept
+
+
 def test_freed_and_moved_are_reported_apart(tmp_path):
     root, ledger = world(tmp_path)
     ignoring(root)
