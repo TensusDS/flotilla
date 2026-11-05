@@ -267,6 +267,7 @@ def test_a_twinned_ignored_file_lets_the_tree_go(tmp_path):
     root, ledger = world(tmp_path)
     commit(root, "ignore", ".gitignore", "*.bin\n")
     (root / "big.bin").write_bytes(b"12345")
+    git(root, "add", "-f", "big.bin")   # only a copy git tracks in the checkout counts (void-lanes, 2026-11-05)
     tree = seat(root, tmp_path)
     (tree / "big.bin").write_bytes(b"12345")
     finder = twins.Twins(ledger, holders=refs.holders(ledger), cache={},

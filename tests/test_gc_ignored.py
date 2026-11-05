@@ -131,6 +131,7 @@ def classify(root, tree, ledger=None, profile=None):
 def test_a_twinned_ignored_file_does_not_hold_the_tree(tmp_path):
     root, tree = tree_with(tmp_path, "*.log\n")
     put(root, "out.log", "same bytes")
+    git(root, "add", "-f", "out.log")   # only a copy git tracks in the checkout counts (void-lanes, 2026-11-05)
     put(tree, "out.log", "same bytes")
     found = classify(root, tree)
     assert [(path, twin.kind) for path, twin in found.twins] == [("out.log", "checkout")]
@@ -170,6 +171,7 @@ def test_a_twin_beats_the_persons_exclude(tmp_path):
     with open(f"{common}/info/exclude", "a", encoding="utf-8") as handle:
         handle.write("notes.txt\n")
     put(root, "notes.txt", "shared")
+    git(root, "add", "-f", "notes.txt")   # only a copy git tracks in the checkout counts (void-lanes, 2026-11-05)
     put(tree, "notes.txt", "shared")
     found = classify(root, tree)
     assert [path for path, _ in found.twins] == ["notes.txt"] and found.personal == []

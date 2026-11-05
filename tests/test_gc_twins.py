@@ -25,12 +25,43 @@ def finder(ledger, cache=None, archive_root=None, untouched=()):
     return twins.Twins(ledger, holders=refs.holders(ledger), sources=sources, cache={} if cache is None else cache)
 
 
-def test_a_byte_identical_file_in_the_main_checkout_is_a_twin(tmp_path):
+def test_a_byte_identical_file_git_tracks_in_the_main_checkout_is_a_twin(tmp_path):
     root, ledger = world(tmp_path)
     put(root / "out" / "a.bin", b"payload")
+    git(root, "add", "-f", "out/a.bin")   # tracked, not committed: neither blob-reachable nor untracked
     mine = put(tmp_path / "app-main-1" / "out" / "a.bin", b"payload")
     found = finder(ledger).find(mine)
     assert found == twins.Twin(str(root / "out" / "a.bin"), "checkout")
+
+
+def test_an_untracked_file_in_the_main_checkout_is_no_twin(tmp_path):
+    """void-lanes, 2026-11-05: an empty build marker's "last copy" was another plugin's empty log in the main
+    checkout. A file git does not track there - another tool's log, cache or output - can go at any time."""
+    root, ledger = world(tmp_path)
+    put(root / ".remember" / "logs" / "hook-errors.log", b"some bytes")
+    mine = put(tmp_path / "app-main-1" / "out" / "marker", b"some bytes")
+    assert finder(ledger).find(mine) is None
+
+
+def test_an_empty_file_has_no_twin(tmp_path):
+    root, ledger = world(tmp_path)
+    put(root / "pkg" / "__init__.py", b"")
+    git(root, "add", "pkg/__init__.py")
+    mine = put(tmp_path / "app-main-1" / "out" / "VoidLane.Up2Date", b"")
+    assert finder(ledger).find(mine) is None
+
+
+def test_in_an_untouched_tree_only_a_tracked_file_is_a_twin(tmp_path):
+    root, ledger = world(tmp_path)
+    other = tmp_path / "mine"
+    git(root, "worktree", "add", "-q", "-b", "mine", str(other))
+    put(other / "out" / "loose.bin", b"loose")
+    put(other / "out" / "kept.bin", b"kept")
+    git(other, "add", "-f", "out/kept.bin")
+    seat = tmp_path / "app-main-1"
+    assert finder(ledger, untouched=[other]).find(put(seat / "loose.bin", b"loose")) is None
+    found = finder(ledger, untouched=[other]).find(put(seat / "kept.bin", b"kept"))
+    assert found == twins.Twin(str(other / "out" / "kept.bin"), "tree")
 
 
 def test_same_size_other_bytes_is_no_twin(tmp_path):
@@ -124,6 +155,7 @@ def test_a_rewrite_keeping_size_and_mtime_is_hashed_again(tmp_path):
 def test_verify_hashes_the_twin_without_the_cache(tmp_path):
     root, ledger = world(tmp_path)
     theirs = put(root / "out" / "a.bin", b"payload")
+    git(root, "add", "-f", "out/a.bin")   # only a copy git tracks in the checkout counts (void-lanes, 2026-11-05)
     mine = put(tmp_path / "app-main-1" / "out" / "a.bin", b"payload")
     cache: dict = {}
     assert finder(ledger, cache).find(mine) is not None

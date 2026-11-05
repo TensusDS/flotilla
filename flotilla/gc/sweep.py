@@ -246,8 +246,9 @@ def run_pass(ledger, *, sessions, act: bool, proc_root=None) -> Report:
             report.removed.append(tree.name)
             report.parked += len(verdict.park)
             report.freed += done.get("freed", 0)
-            report.last_copies += [f"the last copy of {Path(item['from']).relative_to(tree)} is now in "
-                                   f"{item['where']}" for item in done.get("last_copies", [])]
+            report.last_copies += [f"removed {Path(item['from']).relative_to(tree)}: an identical copy stays at "
+                                   f"{item['where']} (nothing was moved there)"
+                                   for item in done.get("last_copies", [])]
             gone_trees.add(holds[tree])
         else:
             _keep(report, "tree", line.split(": ", 1)[1] if ": " in line else line, tree.name)

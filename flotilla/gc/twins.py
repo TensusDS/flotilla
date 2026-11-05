@@ -3,6 +3,10 @@ pass - in the main checkout, in a store the project declares (`[gc] stores`), in
 does not judge, or as a blob a surviving ref reaches (`rev-list --objects` over the pass's holders: an unreachable
 blob in the object store is pruned by git's own gc).
 
+In the main checkout and in an untouched tree only a file git tracks there counts: anything else there - another
+tool's log or cache, an output - can go at any time, and its "last copy" with it (void-lanes, 2026-11-05: an empty
+build marker's twin was another plugin's empty log). An empty file has no twin: any empty file matches it.
+
 Hashes are sha256 of the bytes, cached by (path, size, mtime, ctime, inode) so a daily pass does not reread
 gigabytes: a rewrite can keep size and mtime, never ctime (security review of dea3c4e). `verify` hashes both files
 afresh, for the check under the removal lock. A symlink is never followed: it is hashed as its target's text, never
@@ -151,14 +155,27 @@ class Twins:
         found._by_size, found._format = self._by_size, self._format
         return found
 
+    def _tracked(self, top: Path) -> set[Path] | None:
+        """The files git tracks in the checkout or tree `top`, from its index; None when git cannot say."""
+        done = self.ledger.run(["git", "-C", str(top), "ls-files", "-z", "--cached"], capture_output=True,
+                               text=True, check=False)
+        if done.returncode != 0:
+            return None
+        return {top / name for name in done.stdout.split("\0") if name}
+
     def _index(self) -> list[tuple[str, dict[int, list[Path]]]]:
         if self._by_size is None:
             self._by_size = []
             for where, kind in self.sources:
                 if kind == "archive" or not where.is_dir():
                     continue
+                tracked = self._tracked(where) if kind in ("checkout", "tree") else None
+                if kind in ("checkout", "tree") and tracked is None:
+                    continue   # git could not say what it tracks there: nothing there counts
                 sizes: dict[int, list[Path]] = {}
                 for path in _walk(where):
+                    if tracked is not None and path not in tracked:
+                        continue
                     try:
                         sizes.setdefault(path.lstat().st_size, []).append(path)
                     except OSError:
@@ -201,7 +218,10 @@ class Twins:
                 return None
         except OSError:
             return None
-        size, digest = path.lstat().st_size, sha256(path, self.cache, fresh=self.verify)
+        size = path.lstat().st_size
+        if size == 0:   # every empty file is byte-identical to every other: no copy says anything about this one
+            return None
+        digest = sha256(path, self.cache, fresh=self.verify)
         for where, kind in self.sources:
             stored = where / digest[:2] / digest
             if kind == "archive" and stored.exists() and (not self.verify or sha256(stored, {}, fresh=True) == digest):
