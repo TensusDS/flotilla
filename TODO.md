@@ -8,6 +8,113 @@ something through, B a bug a user meets, P polish, tests or docs), or `open, des
 run). A later triage re-checks only items whose named files changed since that version. An item that is done -
 fixed by a release, or found fixed - leaves its section for **Done** at the bottom, one line with the version.
 
+## From the field test of two demo fleets on one lane (2026-11-06, 0.29.3)
+
+Two four-seat fleets (flotest-a, flotest-b), five small rows each, one lane (`lane_capacity = 1`, `lane_share =
+"fair"`, 8 cores, 15 GB), watched for 9 h with the lane journal, a sampler and the orchestrators asked every 20 min.
+Both backlogs landed (b in ~1 h 20 min, a in ~1 h 45 min); no stalls, no orphaned rows, no wrong waits; load stayed
+below 4.4 of 8, 9 GB free, the fleets' own processes 4-17 % CPU. Whole test, 83 bookings: 13 short runs waited ~76 min
+for ~100 s of running, heavy runs waited up to 13 min on an idle machine; no light run turned out heavy, the slot
+never stood empty while a heavy run waited, fair alternation held. Neither orchestrator saw the lane cost from its
+seat ("normal queueing"); only the journal across both projects shows it. The lane items come first: the person asked
+for them first.
+
+**The lane (priority).**
+
+- **Heaviness is counted in seconds, not in what a run takes.** A run over 60 s is heavy whatever it uses, so the one
+  slot was held, turn after turn, by 200 s slow-tier runs at about 1 core, 0.23 busy and 73 MB, while 7 cores and 9 GB
+  stood free; the slow tier runs about three times a row (handover receipt, reviewer, push receipt). Heavy waits of
+  150-798 s each, all of the heavy waiting in the test. The demo's slow tier is a sleep; a network-bound or e2e suite
+  looks the same. Asked: a long run that is measured small (cores and memory within the light bounds) takes what the
+  heavy runs leave, as a light run does, and only a run that needs the machine takes the slot. *(closed in 0.30.0:
+  heavy is a fifth of the memory the lane can give, never a duration - flotilla/lane/policy.py `is_heavy`)*
+- **A receipt tier's measurement does not teach `lane run` of the same command.** A tier's sample is kept only under
+  `tier:<project>:<name>`; a `lane run` ladder is `exact/norm/prog/project`, so the same `pytest tests/unit -q`,
+  measured 0.28 s / 0.78 cores in a receipt four minutes earlier, waited as a 4-core prior run. 7 first runs waited
+  161-377 s each (~24 min) for 0.0-0.3 s of running, until each command had its own history. Asked: a tier's sample
+  is also filed under its command's `exact`/`norm` signatures. *(cost gone in 0.30.0: a command never measured is
+  admitted by the memory free now at this machine's first-run percentile, not as a 4-core prior; the cross-filing
+  itself is still not done - flotilla/lane/estimate.py `history`)*
+- **A command with a new path is never measured, so always heavy.** The review skill's injected-regression script has
+  a per-row path (`.../jobs/<id>/tmp/mutants-r12.sh`); each waited behind the receipts as a "project prior" run: 5
+  scripts, ~40 min of waiting for ~55 s of running. Asked: the path normalised in the signature (as hashes and numbers
+  already are), or an unmeasured run that is short on probation - started beside the holder and stopped back into the
+  queue if it outgrows the bounds. *(closed in 0.30.0: an unmeasured run is admitted by free memory at the first-run
+  percentile, and is frozen rather than queued if a higher run needs its room - flotilla/lane/admission.py
+  `default_mb`)*
+- **A narrowed variant of a measured light command is heavy.** `pytest tests/unit -q -k long_punctuated` waited 596 s
+  as heavy while `flotilla lane` printed its estimate as "0 s, 1.02 cores (10 runs (prog match))". A `prog:` match is
+  never light on purpose (a full suite with a new flag must not ride on single-file runs, final review of 0.28.0), but
+  the cheap direction - a `-k` filter or one test file of a command measured light - pays as the risky one. Asked: a
+  variant that only narrows (adds `-k`, a test path, `-x`) of an `exact`/`norm` command measured light is light; and
+  `flotilla lane` says why a waiter with a light-looking estimate is not light. *(closed in 0.30.0: light and heavy
+  are memory, and `flotilla lane` prints each run's memory and its reason to wait - flotilla/lane/commands.py
+  `value_of`)*
+- **Push receipts queue behind the reviewer's own runs** (flotest-a sender): ~10 min of queueing per push plus the
+  200 s slow tier, ~15 min a push. Asked by the seat: a push receipt ranks before a reviewer's checks in the queue.
+  Weigh against the items above - with heaviness by resources most of this queue goes away. *(closed in 0.30.0: a
+  push receipt's type is 1.0 against a reviewer's 0.5 in the priority - flotilla/lane/policy.py `TYPES`)*
+- **`budget for light runs: 0 of 12 cores` reads as "none left"**; it means none in use (the test's watcher misread
+  it so). Say "0 of 12 cores in use". *(closed in 0.30.0: the line is gone; the lane says "heavy runs: 0 of 12 cores
+  in use" - flotilla/lane/commands.py `_status_by_value`)*
+
+**The person's road.**
+
+- **A collector pass the classifier refuses has no road to the person.** With `skip_classifier_for_checked = false`
+  (the default), auto mode refuses the orchestrator's `fleet clean --daily` ("Irreversible Deletion"). flotest-b
+  recorded a wait on its reserved row, which reached the inbox; flotest-a wrote "run it with `!`" three times in its
+  own transcript and recorded nothing, so its inbox said "nothing waits on you" while 10 `send/` branches and a dead
+  tree waited. Whether the person hears depends on the seat's choice. Asked: the inbox lists a due pass the
+  orchestrator could not run, or the arrangement routes the pass to the person from the start when the opt-in is off.
+  *(checked 2026-11-06 on 0.29.3: still B - flotilla/gc/due.py:15, flotilla/watch/fleet.py:246, flotilla/watch/inbox.py)*
+- **A standing item is re-announced after every ship.** flotest-b's collector wait was re-raised and relayed by the
+  sender after each of five ships, and every hook line repeated "2 standing item(s), said before and unchanged" for
+  3 h. Once the item is with the person it is said once. *(checked 2026-11-06 on 0.29.3: P - flotilla/hooks.py:275)*
+- **`flotilla inbox` cuts an item mid-word** ("by flotest-b-orchestrator 2...") and does not say how to answer it;
+  `inbox --help` names no answering command; the full text is only in `work show`. *(checked 2026-11-06 on 0.29.3: P
+  - flotilla/watch/inbox.py)*
+- **No ledger place for a reviewer's side-notes** ("noted, not returned": kelvin below absolute zero, `parse("1e999
+  km")` -> inf). Four such notes in flotest-b lived only in letters; a decision pending on the person has no row.
+  *(open, design)*
+
+**The ledger.**
+
+- **A row's base stays the pre-rebase one** after its owner rebases following the claim: `work show`, the reader's
+  letter and `work assign` print a base two ships old (both fleets, two days); one orchestrator corrected the reviewer
+  by hand. *(checked 2026-11-06 on 0.29.3: still B - flotilla/ledger, base recorded at claim)*
+- **`--requires` / `--after` refuse a delivered row by branch name**: "no such row or open branch" once the row has
+  shipped and closed; by id it works. A work order written up front cannot know which rows close first; a delivered
+  row should count as satisfied, or the refusal should say "closed - name it by id". Both fleets, both flags.
+  *(checked 2026-11-06 on 0.29.3: still B - flotilla/ledger/core.py:225)*
+- **The reviewer's lane runs are not recorded**: the skill tells the reviewer to `git switch --detach <tip>`, then
+  `lane run --for <branch>` notes "the tree is on no branch" and records nothing - flotest-b, every row. flotest-a's
+  reviewer was recorded (it stayed on the branch). The skill and the lane disagree. *(checked 2026-11-06 on 0.29.3:
+  still B - skills/flotilla/SKILL.md:36, flotilla/lane/commands.py:353)*
+- **No overlap warning at claim**: parallel rows all appended to one test file; two conflicted, found by the reviewer
+  with `git merge-tree`, at the cost of a rebase and a ~200 s re-receipt. *(open, design - flotilla/ledger/gitq.py:82
+  can already answer)*
+- **The merge of two rows is covered only by the push receipt**: kelvin merged over a trunk that gained cli; no
+  verdict read the combination and no vouch was asked. Fine for disjoint files. *(open, design)*
+- **No default reader with one reviewer**: `work hand` prints no letter and leaves the reader unnamed until the
+  orchestrator assigns; with one reviewer and `review.depth = every` that is a round trip per row. *(open, P)*
+
+**Wording.**
+
+- **The roster says "blocked on <row>" for a `--requires` link** while the seat builds another row (both fleets), and
+  **"idle" for a seat whose push receipt waits in the lane** (~6 min; the orchestrator messaged the sender to learn
+  it). Say "after <row>" and "in the lane". *(checked 2026-11-06 on 0.29.3: P - flotilla/ledger/report.py:42,
+  flotilla/ledger/views.py:131)*
+- **`work wait` on the orchestrator's reserved row echoes the row line only**, not that a wait was recorded.
+  *(checked 2026-11-06 on 0.29.3: P - flotilla/ledger/commands.py)*
+- **`work adopt` prints "not freed: <tree> holds `no branch` now"** - the orchestrator could not tell whether that was a
+  problem. *(checked 2026-11-06 on 0.29.3: P - flotilla/ledger/steering.py:48)*
+- **"not onboarded: no .flotilla/project.toml" names no remedy** for a branch cut before the onboarding commit (merge
+  or rebase trunk); it stalled a row for a day. *(checked 2026-11-06 on 0.29.3: P - flotilla/ledger/commands.py:59,
+  94)*
+- **The trunk merge reads "Merge branch 'feat/kelvin' into fleet/sender-2"** when the sender merges in its home tree
+  and pushes `HEAD:main`; flotest-a's sender wrote "into main". Pass `-m "Merge branch '<row>' into <trunk>"`.
+  *(checked 2026-11-06 on 0.29.3: P - flotilla/ledger/delivery.py)*
+
 ## From twosuns' field notes, second part (2026-11-02..04, on 0.24-0.26) and the demo onboarding (2026-11-05, 0.29.2)
 
 - **A superseded shipped row has no honest end** (twosuns item 19). Shipped rows whose content a later row replaced
@@ -17,8 +124,10 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
   flotilla/ledger/transitions.py, "shipped")*
 - **`work adopt` leaves the old tree held by the adopter** (twosuns item 22). The row keeps its old tree path, so
   `fleet clean` reports "<seat> is alive and works in it" and the collector never archives it: ~35 trees, ~8 GB on
-  twosuns. Asked: adopt re-points the row to the adopter's home tree, or marks the old tree orphaned. *(checked
-  2026-11-06 on 0.29.2: still B - flotilla/ledger/steering.py, adopt keeps `row.tree`)*
+  twosuns. Asked: adopt re-points the row to the adopter's home tree, or marks the old tree orphaned. Narrowed live
+  (demo field test, 0.29.3): once the adopted row closes, `fleet clean` marks the old tree "would remove", so it is
+  held only while the row is open - twosuns' 35 trees were rows still open. *(checked 2026-11-06 on 0.29.3: still B,
+  narrowed - flotilla/ledger/steering.py, adopt keeps `row.tree`)*
 - **`rig --put/--get` only inside the tree collides with a receipt in the same tree** (twosuns item 20). A rig kit
   must be staged in the seat's tree; a queued receipt refuses any untracked file there, so the seat stops its receipt
   to run the kit. Asked: put/get from a seat-private directory outside the tree, or a kit directory the receipt

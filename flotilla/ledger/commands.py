@@ -358,7 +358,7 @@ def _receipt(args) -> int:
                     raise
                 grant.measured.update(receipts.measured_of(result))
         for tier in result["tiers"]:
-            print(f"{tier['status']:<9} {tier['name']}: {tier['summary']}")
+            print(receipts.tier_line(tier))
             if tier["status"] != "green":   # why, not only that (worldcore field test W23)
                 code = tier.get("exit")
                 print(f"          {'exit ' + str(code) if code is not None else 'stopped for its time'}; "

@@ -6,7 +6,7 @@ from flotilla.fleet.sizing import Machine, recommend
 
 PACE = Pace(1.0, 0.33, False, "authoring: default; review: default")
 ROOMY = dict(free_mb=64_000, floor_mb=2000, seat_mb=800, live_seats=0, run_mb=1000, run_seconds=60, ceiling=200,
-             lane_capacity=4, free_disk_mb=500_000, tree_mb=100)
+             lane_runs=4, free_disk_mb=500_000, tree_mb=100)
 
 
 def machine(**over):
@@ -23,7 +23,7 @@ def work(main=20, minor=0):
     # ceil(3 x 1 x 0.33) = 1 -> 5 seats; a = 4 -> r = 2 -> 7 seats) -> 4
     ({"free_mb": 9000}, work(), {}, "memory", 4),
     # one run of 600 s at a time verifies 6 handovers an hour; authors at 1/h each -> 6
-    ({"run_seconds": 600, "lane_capacity": 1}, work(), {}, "test runs", 6),
+    ({"run_seconds": 600, "lane_runs": 1}, work(), {}, "test runs", 6),
     # 0.5 x 2000 MB disk / 100 MB a tree = 10 seats; a + reviewers + sender <= 10 -> a = 7 (r = 3? ceil(7 x .33) = 3 ->
     # 11) -> a = 6 (r = 2 -> 9)
     ({"free_disk_mb": 2000}, work(), {}, "disk", 6),
@@ -50,7 +50,7 @@ def test_an_unknown_backlog_source_is_named_and_the_rest_stands():
 
 def test_a_fresh_project_stands_on_named_defaults():
     m = Machine(free_mb=None, floor_mb=2000, seat_mb=800, live_seats=0, run_mb=None, run_seconds=None,
-                lane_capacity=1, free_disk_mb=None, tree_mb=None)
+                lane_runs=1, free_disk_mb=None, tree_mb=None)
     rec = recommend(m, Backlog([Source("ledger", 0, 0, "")]), PACE, {})
     assert rec.authors == 1 and rec.counts["reviewer"] == 1 and rec.counts["main"] == 1
     text = "\n".join(rec.lines)
@@ -110,13 +110,13 @@ def test_max_seats_is_never_exceeded():
 
 def test_the_runs_cap_divides_by_each_authors_pace():
     fast = Pace(2.0, 0.33, True, "measured")
-    rec = recommend(machine(run_seconds=600, lane_capacity=1), work(), fast, {})
+    rec = recommend(machine(run_seconds=600, lane_runs=1), work(), fast, {})
     assert (rec.binding, rec.authors) == ("test runs", 3)      # 6 verified an hour / 2 each
 
 
 def test_memory_left_after_the_seats_limits_the_runs_that_fit():
     """Four lane slots, but after the seats only one 4 GB run fits: one run an hour verifies one author."""
-    rec = recommend(machine(free_mb=12_000, run_mb=4000, run_seconds=3600, lane_capacity=4), work(), PACE, {})
+    rec = recommend(machine(free_mb=12_000, run_mb=4000, run_seconds=3600, lane_runs=4), work(), PACE, {})
     assert (rec.binding, rec.authors) == ("test runs", 1)
 
 
@@ -208,7 +208,7 @@ def test_reviewers_never_outnumber_authors():
 
 def test_a_ceiling_holds_when_every_machine_signal_is_unknown():
     blind = Machine(free_mb=None, floor_mb=2000, seat_mb=800, live_seats=0, run_mb=None, run_seconds=None,
-                    lane_capacity=1, free_disk_mb=None, tree_mb=None)
+                    lane_runs=1, free_disk_mb=None, tree_mb=None)
     rec = recommend(blind, work(5000), PACE, {})
     raised = sum(n for post, n in rec.counts.items() if post != "orchestrator")
     assert raised <= 12 and rec.binding == "max seats"
@@ -259,3 +259,9 @@ def test_an_unknown_leader_is_not_called_this_session():
     from flotilla.fleet.sizing import render
     rec = recommend(machine(), work(2), PACE, {}, orchestrator="unknown")
     assert "(this session)" not in render(rec)[0] and "census" in render(rec)[0]
+
+
+
+def test_test_runs_say_the_lane_runs_up_to_its_cap_as_memory_allows():
+    rec = recommend(machine(run_seconds=600, lane_runs=10), work(), PACE, {})
+    assert any("the lane runs up to 10 at once, as memory allows" in line for line in rec.lines)

@@ -82,10 +82,13 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
             share: str | Callable[[], str] = "fifo",
             pid: int | None = None, mark: str = "", run_for: str = "", by_hand: bool = False, poll: float = POLL,
             clock=time.monotonic, sleep=time.sleep, say=None, command: str = "", ladder=(), will_run=(),
-            project: str = "", room: Callable | None = None, jitter=lambda: random.uniform(0.0, 1.0)) -> Grant:
-    """`room(reading)`: what a light run may take on this poll (lane light runs design); None, the count alone."""
+            project: str = "", room: Callable | None = None, jitter=lambda: random.uniform(0.0, 1.0),
+            value: Callable | None = None, kind: str = "", pinned: bool = False) -> Grant:
+    """`room(reading)`: what a light run may take on this poll (lane light runs design); None, the count alone.
+    `value(reading)`: what a grant by value reads on this poll (lane shared machine design); with it, the run is
+    admitted by memory and priority while no waiter of an older flotilla is live."""
     mine = lanes.enqueue(who, note, pid=pid, mark=mark, run_for=run_for, command=command, ladder=ladder,
-                         will_run=will_run, project=project)
+                         will_run=will_run, project=project, kind=kind, pinned=pinned)
     deadline = clock() + max(wait, 0)
     said = ""
     seen: dict[str, float] = {}   # each fair choice this waiter was refused for, and since when
@@ -105,21 +108,24 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
                         if answer.question in OUTRIGHT and answer.blocks is not False]
             unknown = [answer for answer in reading.answers if answer.blocks is None]
             space = room(reading) if room is not None else None
+            worth = value(reading) if value is not None else None
             if not outright and not unknown:
                 granted = lanes.grant(mine.id, slots=slots - len(reading.computing), by_hand=by_hand,
-                                     share=mode, skip=frozenset(skip), room=space)
+                                     share=mode, skip=frozenset(skip), room=space, value=worth)
                 if granted is not None:
                     return Grant(granted, reading, "")
                 choice = getattr(lanes, "passed_for", "")
                 if choice and choice not in skip and clock() - seen.setdefault(choice, clock()) >= FAIR_GRACE:
                     skip.add(choice)   # it has had the free slot for two polls and not taken it: ask once more now
                     granted = lanes.grant(mine.id, slots=slots - len(reading.computing), by_hand=by_hand,
-                                          share=mode, skip=frozenset(skip), room=space)
+                                          share=mode, skip=frozenset(skip), room=space, value=worth)
                     if granted is not None:
                         return Grant(granted, reading, "")
             why = in_the_way(lanes, reading, slots, mine.id, share=mode)
             light = getattr(lanes, "waits_for", "")
-            if light and not outright and not unknown:   # a light run waits for room beside the heavy ones, or a place
+            if light and not outright and not unknown and worth is not None:   # by value: the policy's reason
+                why = f"waits because: {light}; {why}"
+            elif light and not outright and not unknown:   # a light run waits for room beside the heavy ones
                 why = f"{why}; as a light run beside them: {light}"
             lasting = [answer for answer in unknown if answer.lasting]
             remaining = deadline - clock()
@@ -152,7 +158,8 @@ def _nap(lanes, poll: float, remaining: float, *, clock, sleep, stamp=None) -> N
 def held(lanes, read_machine, *, who: str, note: str, capacity: int | Callable[[], int], wait: float, table,
          share: str | Callable[[], str] = "fifo",
          run_for: str = "", poll: float = POLL, clock=time.monotonic, sleep=time.sleep, say=None, command: str = "",
-         ladder=(), will_run=(), project: str = "", room: Callable | None = None):
+         ladder=(), will_run=(), project: str = "", room: Callable | None = None, value: Callable | None = None,
+         kind: str = "", pinned: bool = False):
     outer = lanes.bookings().get(os.environ.get(ENV, ""))
     if outer is not None and outer.state == "held" and lanes.live(outer) and \
             (outer.pid is None or outer.pid in set(table.ancestors(os.getpid()))):
@@ -169,14 +176,22 @@ def held(lanes, read_machine, *, who: str, note: str, capacity: int | Callable[[
     pid = os.getpid()
     grant = acquire(lanes, read_machine, who=who, note=note, capacity=capacity, wait=wait, share=share, pid=pid,
                     mark=table.start_mark(pid) or "", run_for=run_for, poll=poll, clock=clock, sleep=sleep, say=say,
-                    command=command, ladder=ladder, will_run=will_run, project=project, room=room)
+                    command=command, ladder=ladder, will_run=will_run, project=project, room=room, value=value,
+                    kind=kind, pinned=pinned)
     if grant.booking is None:
         raise LaneRefused(grant.why)
     previous = os.environ.get(ENV)
     os.environ[ENV] = grant.booking.id
+    watcher = None
+    if value is not None and grant.booking.path.startswith("value") and not grant.booking.pinned:
+        from flotilla.lane import freeze, watch
+        watcher = watch.Watch(lanes, grant.booking.id, freeze.slot(), value)   # it obeys this booking's orders
+        watcher.start()
     try:
         yield grant
     finally:
+        if watcher is not None:
+            watcher.stop()
         lanes.release(grant.booking.id, measured=grant.measured)
         if previous is None:
             os.environ.pop(ENV, None)

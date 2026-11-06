@@ -29,7 +29,7 @@ class Machine:
     live_seats: int | None        # this project's seats running now (not the orchestrator): outside free_mb
     run_mb: int | None            # the heaviest tier's measured peak
     run_seconds: float | None     # one full run, all handover tiers
-    lane_capacity: int
+    lane_runs: int                # runs the lane admits at once at most (machine.toml lane_max_runs)
     free_disk_mb: int | None
     tree_mb: int | None
     ceiling: int = CEILING        # the person's own limit, from machine.toml; a trunk profile may only lower it
@@ -124,8 +124,8 @@ def recommend(machine: Machine, backlog, pace, profile, *, orchestrator: str = "
     if machine.run_seconds:
         def runs_fit(a: int) -> int:
             if room is None or not machine.run_mb:
-                return machine.lane_capacity
-            return max(0, min(machine.lane_capacity, (room - seats(a) * machine.seat_mb) // machine.run_mb))
+                return machine.lane_runs
+            return max(0, min(machine.lane_runs, (room - seats(a) * machine.seat_mb) // machine.run_mb))
 
         def verified(a: int) -> float:
             return runs_fit(a) * 3600 / machine.run_seconds
@@ -134,7 +134,8 @@ def recommend(machine: Machine, backlog, pace, profile, *, orchestrator: str = "
         detail["test runs"] = (f"test runs {_shown(caps['test runs'])}: one full run takes "
                                f"{machine.run_seconds / 60:.1f} min"
                                + (f" and {machine.run_mb} MB" if machine.run_mb else "")
-                               + f", the lane takes {machine.lane_capacity} at a time; authors hand over "
+                               + f", the lane runs up to {machine.lane_runs} at once, as memory allows; "
+                               f"authors hand over "
                                f"{pace.handovers_per_author_hour}/h each")
     else:
         unknown.append("test runs: unknown (no tier measured green on this machine), not counted")
@@ -299,7 +300,7 @@ def gather(ledger, *, tasks=None, tasks_file=None, census=None, run=subprocess.r
     from flotilla.fleet import backlog as backlog_
     from flotilla.fleet import launch, spawn
     from flotilla.fleet import pace as pace_
-    from flotilla.lane.commands import capacity
+    from flotilla.lane.commands import max_runs
     from flotilla.onboard.firstrun import load_measurements, load_peaks, measurements_problem
 
     floor, seat, setting_notes = spawn.memory_settings(ledger)
@@ -331,7 +332,7 @@ def gather(ledger, *, tasks=None, tasks_file=None, census=None, run=subprocess.r
     if free_note:
         notes.append(f"free memory: {free_note}")
     machine = Machine(free_mb=free, floor_mb=floor, seat_mb=seat, live_seats=live,
-                      run_mb=run_mb, run_seconds=run_seconds, lane_capacity=capacity(),
+                      run_mb=run_mb, run_seconds=run_seconds, lane_runs=max_runs(),
                       free_disk_mb=resources.free_disk_mb(Path(main).parent), tree_mb=tree, ceiling=ceiling)
     rows = ledger.rows()
     work = backlog_.gather(main, ledger.profile, rows, tasks=tasks, tasks_file=tasks_file, run=run)

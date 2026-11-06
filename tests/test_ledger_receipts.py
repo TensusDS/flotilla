@@ -473,3 +473,25 @@ def test_a_tier_trunk_renamed_after_the_branch_was_cut_is_not_added(tmp_path):
     git(root, "push", "-q", "origin", "main")
     effective, problem, _ = receipts.with_branch_tiers(root, tip, renamed)
     assert problem == "" and [t["name"] for t in receipts.tiers_for(effective, "handover")] == ["unit"]
+
+
+def test_a_tiers_peak_cores_reaches_the_lanes_journal():
+    from flotilla.ledger.receipts import measured_of
+    found = measured_of({"tiers": [{"name": "unit", "status": "green", "seconds": 30.0, "elapsed": 30.0,
+                                    "peak_mb": 400, "cores": 1.0, "busy": 0.3, "peak_cores": 5.5}]})
+    assert found["peak_cores"] == 5.5 and found["ran"][0]["peak_cores"] == 5.5
+
+
+def test_a_receipt_tier_carries_its_frozen_time():
+    from flotilla.ledger.receipts import _tier_result
+    from flotilla.onboard.firstrun import TierRun
+    found = _tier_result(TierRun("unit", "red", None, "2 failed", "", 1, frozen_s=120.0))
+    assert found["frozen_s"] == 120.0
+
+
+def test_a_receipt_tier_red_after_a_freeze_says_so():
+    from flotilla.ledger.receipts import tier_line
+    assert tier_line({"name": "unit", "status": "red", "summary": "2 failed", "frozen_s": 120.0}) == \
+        "red       unit: 2 failed (red after a freeze of 2 min)"
+    assert tier_line({"name": "unit", "status": "green", "summary": "ok", "frozen_s": 120.0}) == \
+        "green     unit: ok"

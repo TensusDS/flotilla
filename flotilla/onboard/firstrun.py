@@ -38,6 +38,8 @@ class TierRun:
     cores: float | None = None   # CPU seconds over wall seconds, green runs only (lane admission, stage 1)
     busy: float | None = None    # the machine's busy share meanwhile, green runs only
     elapsed: float | None = None  # wall time whatever the outcome: a red or timed-out tier still held the lane
+    peak_cores: float | None = None  # its busiest stretch of cores, green runs only (lane shared machine, 4.4)
+    frozen_s: float = 0.0  # how long it stood frozen for a higher run; its timeout counts run time only
 
 
 def _tail(text: str) -> str:
@@ -50,17 +52,39 @@ def _summary(text: str) -> str | None:
 
 
 def run_tier(name: str, command: str, cwd: Path, *, timeout: float) -> TierRun:
+    from flotilla.lane import acquire, freeze
+    booking = os.environ.get(acquire.ENV, "")
+    held = freeze.slot() if booking else None   # under a booking the tier can be frozen for a higher run
+    argv = ["/bin/sh", "-c", command]
+    if held is not None:
+        held.wait_thawed()   # a frozen holder starts nothing new
+        argv = held.contain(argv, booking=booking)
+    scoped = held is not None and bool(held.unit)
     started = time.monotonic()
     # stdin is closed so a tier that reads it gets end-of-file instead of waiting out the timeout; output
     # that is not UTF-8 is replaced, never a crash.
-    proc = subprocess.Popen(["/bin/sh", "-c", command], cwd=cwd, stdin=subprocess.DEVNULL,
+    proc = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.DEVNULL,
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                             encoding="utf-8", errors="replace", start_new_session=True)
+    frozen_before = held.frozen_seconds() if held is not None else 0.0
+    if held is not None:
+        held.attach(proc.pid)
+
+    def frozen_since() -> float:
+        return held.frozen_seconds() - frozen_before if held is not None else 0.0
     from flotilla.lane.measure import Measurer
-    sampler = Measurer(proc.pid)
+    sampler = Measurer(proc.pid, paused=held.frozen_seconds if held is not None else (lambda: 0.0))
     try:
         with sampler:
-            output, _ = proc.communicate(timeout=timeout)
+            while True:   # the timeout counts run time: frozen time is added back each second
+                try:
+                    output, _ = proc.communicate(timeout=1.0)
+                    break
+                except subprocess.TimeoutExpired:
+                    if held is not None:
+                        held.guard()
+                    if time.monotonic() - started - frozen_since() >= timeout:
+                        raise
     except subprocess.TimeoutExpired:
         os.killpg(proc.pid, signal.SIGKILL)
         try:
@@ -71,10 +95,13 @@ def run_tier(name: str, command: str, cwd: Path, *, timeout: float) -> TierRun:
             proc.wait()
             output = ""
         return TierRun(name, "timed-out", None, None, _tail(output or ""),
-                       elapsed=round(time.monotonic() - started, 2))
+                       elapsed=round(time.monotonic() - started, 2), frozen_s=round(frozen_since(), 2))
     except BaseException:
         # stopped (`flotilla lane stop`, the session ending): the tier's whole group goes with it, never left
-        # computing unbooked (review of 0.6.2, I3)
+        # computing unbooked (review of 0.6.2, I3); a frozen tier is thawed first, so what lives outside its group
+        # is not left frozen for ever (final review of 0.30.0, I6)
+        if held is not None and held.frozen():
+            held.thaw()
         try:
             os.killpg(proc.pid, signal.SIGKILL)
         except (ProcessLookupError, PermissionError):
@@ -84,8 +111,14 @@ def run_tier(name: str, command: str, cwd: Path, *, timeout: float) -> TierRun:
         except subprocess.TimeoutExpired:
             pass
         raise
-    seconds = round(time.monotonic() - started, 2)
+    finally:
+        if held is not None:
+            held.detach()
+    seconds = round(max(0.0, time.monotonic() - started - frozen_since()), 2)
     output = output or ""
+    if scoped and proc.returncode != 0 and freeze.scope_refused(output.lstrip().split("\n", 1)[0]):
+        held.lost_scope()   # systemd-run refused the scope and ran nothing: run the tier now, without one
+        return run_tier(name, command, cwd, timeout=timeout)
     if proc.returncode < 0:
         status = "killed"
     elif proc.returncode == 0:
@@ -95,7 +128,8 @@ def run_tier(name: str, command: str, cwd: Path, *, timeout: float) -> TierRun:
     usage = sampler.usage if status == "green" else None
     return TierRun(name, status, seconds if status == "green" else None, _summary(output), _tail(output),
                    proc.returncode, usage.peak_mb if usage else None, usage.cores if usage else None,
-                   usage.busy if usage else None, seconds)
+                   usage.busy if usage else None, seconds, usage.peak_cores if usage else None,
+                   round(frozen_since(), 2))
 
 
 def _path(state: Path, repo_key: str) -> Path:

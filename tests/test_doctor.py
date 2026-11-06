@@ -771,3 +771,24 @@ def test_doctor_names_dead_seats(tmp_path):
                  fields={"branch": "fleet/main-1", "owner": "main session 1", "tree": str(tree)})
     found = doctor._seats(ledger, [], proc_root=proc)
     assert found.status == "warn" and "main session 1" in found.detail and "fleet clean --daily" in found.fix
+
+
+
+def test_the_lane_says_lane_capacity_no_longer_has_an_effect(tmp_path):
+    (tmp_path / "state").mkdir()
+    (tmp_path / "state" / "machine.toml").write_text("lane_capacity = 2\n", encoding="utf-8")
+    found = collect(tmp_path, swap=lambda: (8000, 8000))
+    assert "lane_capacity no longer has an effect" in found["lane"].detail
+
+
+def test_freezing_off_is_a_warning_with_the_reason_to_keep_it(tmp_path):
+    (tmp_path / "state").mkdir()
+    (tmp_path / "state" / "machine.toml").write_text("lane_freeze = false\n", encoding="utf-8")
+    found = collect(tmp_path, swap=lambda: (8000, 8000))
+    assert found["lane"].status == "warn" and "freezing off" in found["lane"].detail
+    assert "a younger run is frozen, never killed, to let a higher one in" in found["lane"].fix
+
+
+def test_no_swap_means_nothing_can_be_frozen(tmp_path):
+    found = collect(tmp_path, swap=lambda: (0, 0))
+    assert "no swap - nothing can be frozen" in found["lane"].detail

@@ -217,3 +217,19 @@ def test_a_receipt_is_light_only_when_every_tier_is_measured_whole():
     assert est.light_booking(receipt, hist) is False
     hist.update(_hist(**{"tier:P:smoke": (20.0, 400, 2.0, 0.5)}))
     assert est.light_booking(receipt, hist) is True
+
+
+def test_history_carries_peak_cores():
+    runs = [done(i, LADDER, cores=1.2) for i in range(3)]
+    for item, busiest in zip(runs, (2.0, 6.0, 4.0)):
+        item.peak_cores = busiest
+    e = est.estimate(LADDER, est.history(bookings(*runs), now=NOW), project="p")
+    assert e.peak_cores == 6.0 and e.cores == 1.2
+
+
+def test_a_tiers_peak_cores_reaches_the_receipt_estimate():
+    ran = [{"name": "unit", "status": "green", "seconds": 30.0, "peak_mb": 400, "cores": 1.0, "busy": 0.3,
+            "peak_cores": 5.5}]
+    runs = [done(i, ["exact:flotilla receipt"], ran=ran) for i in range(3)]
+    e = est.receipt_estimate(["unit"], est.history(bookings(*runs), now=NOW), project="p")
+    assert e.peak_cores == 5.5

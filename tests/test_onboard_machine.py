@@ -131,3 +131,14 @@ def test_every_key_the_measurement_writes_is_named_as_measured(tmp_path):
     data = machine.measure_machine(proc_root=proc, which=lambda name: "/usr/bin/" + name, run=run)
     data.update(cpu_count=1, memory_bytes=1)
     assert set(data) <= set(machine.MEASURED_KEYS)
+
+
+def test_new_lane_keys_survive_a_machine_toml_rewrite(tmp_path):
+    from flotilla.onboard.machine import PERSON_KEYS, read_machine, set_person_keys, write_machine
+    keys = {"lane_cpu_factor": 2.0, "lane_share": "fair", "lane_light_reserve": 0.3, "lane_immortal_minutes": 20,
+            "lane_freeze": False, "lane_max_runs": 6}
+    assert set(keys) <= set(PERSON_KEYS)
+    set_person_keys(tmp_path, **keys)
+    write_machine(tmp_path, {"cpu_count": 8})
+    found = read_machine(tmp_path)
+    assert {key: found.get(key) for key in keys} == keys

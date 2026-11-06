@@ -35,6 +35,8 @@ class RunResult:
     signal: int | None
     usage: Usage | None = None   # what the run took (lane admission, stage 1); None when it never started
     at_ceiling: bool = False     # stopped at the ceiling: its time is a lower bound, not a full run
+    frozen_s: float = 0.0        # how long it stood frozen for a higher run (lane shared machine)
+    freezes: int = 0
 
 
 def summarize(lines) -> str:
@@ -77,7 +79,12 @@ def _group_left(process) -> bool:
 def _stop(process) -> None:
     """SIGTERM to the group, then SIGKILL to whatever of it is left after 5 s. The leader's death is no sign the
     group is gone: a shell leader dies at once, while a member that holds SIGTERM - a test runner whose output went
-    to a file - computed on after the lane said stopped (2026-10-15)."""
+    to a file - computed on after the lane said stopped (2026-10-15). A frozen command is thawed first: a frozen
+    group holds its signals until it thaws, and would sit out the grace and the SIGKILL in swap."""
+    from flotilla.lane import freeze
+    held = freeze.SLOT
+    if held is not None and held.frozen():
+        held.thaw()
     _signal_group(process, signals.SIGTERM)
     end = time.monotonic() + 5
     try:
@@ -93,44 +100,78 @@ def execute(command: list[str], *, cwd=None, popen=subprocess.Popen, out=None, c
     """Run `command` in its own process group. Past `ceiling` seconds the group is stopped and the run has no verdict
     (worldcore field test W21: one looping test held the machine's lane for 28 minutes)."""
     out = out if out is not None else sys.stdout   # chosen at call time, so a redirected stdout is honoured
+    from flotilla.lane import acquire, freeze
+    booking = os.environ.get(acquire.ENV, "")
+    held = freeze.slot() if booking else None   # under a booking the command can be frozen for a higher run
+    asked = list(command)
+    if held is not None:
+        held.wait_thawed()
+        command = held.contain(command, booking=booking)
+    scoped = held is not None and bool(held.unit)
     try:
         process = popen(command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                         errors="replace", bufsize=1, start_new_session=True)
     except OSError as err:
         return RunResult(127, "red", f"could not start: {err}", None)
-    measurer = Measurer(process.pid).__enter__()
+    frozen_before = held.frozen_seconds() if held is not None else 0.0
+    freezes_before = getattr(held, "freezes", 0)
+    if held is not None:
+        held.attach(process.pid)
+    measurer = Measurer(process.pid, paused=held.frozen_seconds if held is not None else (lambda: 0.0)).__enter__()
     tail: deque = deque(maxlen=200)
-    over = threading.Event()
+    first: list[str] = []
+    over, ended = threading.Event(), threading.Event()
+    began = time.monotonic()
 
-    def stop_at_ceiling():
-        over.set()
-        _stop(process)
-    timer = threading.Timer(ceiling, stop_at_ceiling) if ceiling else None
-    if timer is not None:
-        timer.daemon = True
-        timer.start()
+    def frozen_since() -> float:
+        return held.frozen_seconds() - frozen_before if held is not None else 0.0
+
+    def keep():
+        """The ceiling counts run time, not frozen time; and a watch that died never leaves the command frozen."""
+        while not ended.wait(0.5):
+            if held is not None:
+                held.guard()
+            if ceiling and time.monotonic() - began - frozen_since() >= ceiling:
+                over.set()
+                _stop(process)
+                return
+    keeper = threading.Thread(target=keep, daemon=True) if ceiling or held is not None else None
+    if keeper is not None:
+        keeper.start()
     try:
         for line in process.stdout:
             out.write(line)
             out.flush()
             tail.append(line.rstrip("\n"))
+            if not first:
+                first.append(line)
         status = process.wait()   # inside: a command that closed its output is waited for here, and a signal
     except BaseException:         # meanwhile must stop its group as one during the reading does
         _stop(process)   # the booking is about to be released; the command must not go on computing under it
         measurer.__exit__(None, None, None)
         raise
     finally:
-        if timer is not None:
-            timer.cancel()
-            if over.is_set():   # the ceiling's stop may still be waiting the group out: the lane is not let go first
-                timer.join()
+        ended.set()
+        if keeper is not None and over.is_set():   # the ceiling's stop may still be waiting the group out: the lane
+            keeper.join()                          # is not let go first
+        if held is not None:
+            held.detach()
     verdict, signal_number, code = verdict_of(status)
     measurer.__exit__(None, None, None)
+    if scoped and status != 0 and first and freeze.scope_refused(first[0]):
+        # systemd-run refused the scope and ran nothing: the command runs now, freezable by signal (review focus 1)
+        held.lost_scope()
+        out.write("lane: the run's scope could not be made; running it without a scope, freezable by signal\n")
+        out.flush()
+        return execute(asked, cwd=cwd, popen=popen, out=out, ceiling=ceiling)
     usage = measurer.usage
     summary = summarize(tail)
+    frozen = round(frozen_since(), 2)
+    freezes = getattr(held, "freezes", 0) - freezes_before
     if over.is_set():
         return RunResult(code if code else 124, "killed",
-                         f"stopped at the ceiling of {ceiling:g} s - no verdict (last line: {summary})", signal_number, usage, True)
+                         f"stopped at the ceiling of {ceiling:g} s - no verdict (last line: {summary})", signal_number,
+                         usage, True, frozen, freezes)
     if verdict == "killed":
         summary = f"killed by signal {signal_number} - no verdict (last line: {summary})"
-    return RunResult(code, verdict, summary, signal_number, usage)
+    return RunResult(code, verdict, summary, signal_number, usage, False, frozen, freezes)

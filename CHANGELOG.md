@@ -3,6 +3,36 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.30.0 - 2026-11-06
+
+The lane shares the machine by value. Before, `lane_capacity` booked one slot per heavy run, predicted from the
+command's history - and 40-60 % of runs in the field were commands never seen, so the prediction was a guess. Now a
+run is admitted by the memory free now, the line is ordered by what the run is worth, and a younger run is frozen,
+never killed, to let a higher one in.
+
+- **Admission by the memory free now.** A run starts when the memory it needs is free; a command never measured is
+  expected at the 75th percentile of this machine's first runs (1 GB until 20 are measured). Heavy runs - a fifth or
+  more of the memory the lane can give - together stay within `lane_cpu_factor` x the cores by their measured busiest
+  stretch, and leave `lane_light_reserve` (20 %) to light runs; at most `lane_max_runs` (10) at once.
+- **Priority.** `P = 0.2 * purpose + 0.3 * wait + 0.5 * run time`: push 1.0, handover 0.7, a reviewer's run 0.5,
+  anything else 0.3; the wait is full at 10 minutes, the run time at `lane_immortal_minutes` (15).
+- **Freezing, never killing.** A run of higher priority that does not fit may freeze a younger, lower one: on Linux
+  in a user systemd scope, moving only the memory the waiter needs to swap; elsewhere by a stop signal, let go after
+  two minutes held for nothing. Never a run in its first minute, an immortal one, a heavy one for a heavy one, or a
+  tier marked `freeze = false`; never past 80 % of the machine's swap. A frozen run's ceiling stops; a red after a
+  freeze says so. `lane_freeze = false` turns it off.
+- **A frozen command never stays frozen.** The next grant thaws one whose holder died or whose watch went silent; a
+  watch that fails thaws its own command; a scope that cannot be made runs the command without one.
+- **`lane_capacity` is retired.** `flotilla lane` and `flotilla doctor` say so while it is set; while a seat of a
+  flotilla before 0.30 waits, the lane counts runs against it as before. Fleet sizing reads `lane_max_runs`.
+- Every run now measures its busiest stretch of cores (`peak_cores`), and the lane's journal records each run's
+  purpose, first ask, run time and freeze orders (rule 4).
+- The policy was checked against the brainstorm's model on its twenty thirty-run queues, each freeze order answered
+  a step later as a real one is: makespan 189.8 min (model 182.8), light runs' 95th-percentile wait 5.5 min (model
+  5.5), no run frozen more than twice. Found before release and fixed: a heavy waiter freezing one light run four
+  times (free memory was checked before the heavy bounds), and a waiter ordering a second freeze before its first
+  had freed the memory.
+
 ## 0.29.3 - 2026-11-06
 
 Two ways the person's `machine.toml` lost what they had set.

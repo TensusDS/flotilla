@@ -71,10 +71,10 @@ fleet.
 **Pin a release** instead, to choose when you move: name a tag on the first line (the tags are listed in
 [CHANGELOG.md](CHANGELOG.md)):
 
-    claude plugin marketplace add TensusDS/flotilla#v0.29.3 --scope project
+    claude plugin marketplace add TensusDS/flotilla#v0.30.0 --scope project
     claude plugin install flotilla@flotilla --scope project
 
-That writes `"ref": "v0.29.3"` into the project's settings and installs that release; `claude plugin update` stays on
+That writes `"ref": "v0.30.0"` into the project's settings and installs that release; `claude plugin update` stays on
 it. A machine keeps one marketplace of a name for all its projects, so give the projects on one machine the same
 channel or pin; `/flotilla:doctor` names a pin the machine does not follow. And a tag can be moved on GitHub, so a pin
 chooses when you move, not who can change what the tag names.
@@ -515,33 +515,54 @@ that started it. The **lane** books the machine for long runs:
     flotilla lane run --for <branch> -- <command>
 
 It waits its turn, runs the command, releases the booking and records the run on the row. `/flotilla:lane` shows who
-holds it - an unbooked run computing takes a slot, so it is listed there too, with its directory - who waits and why
-each one waits, low memory, and CI using this machine; a booking whose process is gone is swept when the lane is shown.
-How many long runs may share the machine is `lane_capacity` in the machine profile (`machine.toml` in the state
-directory, 1 by default); a change reaches the runs already waiting, and lowering it never stops a run that holds a
-slot. The lane is a booking, not a lock: a run started outside it is not stopped - the command guard warns about it.
+holds it and who waits and why - an unbooked run computing is listed too, with its directory, since its memory is
+simply not free - low memory, and CI using this machine; a booking whose process is gone is swept when the lane is
+shown. The lane is a booking, not a lock: a run started outside it is not stopped - the command guard warns about it.
 
-**Light runs beside a heavy one.** `lane_capacity` counts heavy runs only. A run its own measurements call light -
-the same command measured at most 60 s and at most 2 cores, with a known peak, three times or more - takes no place:
-it starts at once beside whatever holds the lane when its cores fit what is left of 1.5 x the machine's cores
-(`lane_cpu_factor` in `machine.toml`, 1 to 4) after the holders' estimates and 4 per unbooked run computing, and its
-peak fits the memory left after the floor and every holder's peak. So one test file no longer waits behind an
-11-minute receipt, and at capacity 1 two receipts still never run at once. A run never measured is heavy; light runs
-go in arrival order among themselves and never hold a heavy run back. While a seat of a flotilla before 0.28 waits,
-nothing is admitted light. A booking whose `--wait` ran out and that the same session makes again for the same
-command within 10 minutes keeps its place. A waiter notices a release within a second instead of at its next
-15-second look. `flotilla lane` shows the budget, marks each run light or heavy, and says when each heavy waiter
-starts by estimates.
+**Runs share the machine by memory and priority** (0.30). A run starts when the memory it needs is free now: its
+history's peak, or, for a command never measured, the 75th percentile of the first runs measured on this machine
+(1 GB until 20 are). A run that needs a fifth or more of the memory the lane can give is heavy. Heavy runs together
+stay within 1.5 x the machine's cores by their measured busiest stretch, and leave 20 % of the memory to light
+runs; at most 10 runs hold the lane at once. The line is ordered by priority - a run's purpose (push 1.0, handover
+0.7, a reviewer's run 0.5, any other 0.3), how long it has waited (full at 10 minutes) and how long it has run (full
+at 15):
 
-**Projects sharing a machine.** By default the lane is first come, first served across every project on the machine,
-so one project's backlog holds every other project's work behind it. `lane_share = "fair"` in `machine.toml` changes
-who gets a freed slot: the oldest waiter of the project holding the fewest slots and served least recently in the
-last day, so a 7-second check of one project no longer waits behind another project's ten receipts; within a project
-the order is unchanged. A chosen waiter its own project's checks hold back (CI on this machine, a memory floor) is
+    P = 0.2 * purpose + 0.3 * wait + 0.5 * run time
+
+A light run passes a heavy one that does not fit; no heavy run passes a higher heavy one that does not fit.
+
+**A younger run is frozen, never killed.** When a run of higher priority does not fit, the lane may freeze a lower
+one to make room: never one in its first minute, never one that has run 15 minutes, never a heavy run for a heavy
+one, and never a receipt whose tier says `freeze = false` in `.flotilla/project.toml` (a test that times itself or
+holds a lease). On Linux with a user systemd each run starts in a scope of its own; a freeze stops it and moves only
+the memory the waiter needs to swap, so the run comes back in seconds (about 13 s for each gigabyte moved). On macOS,
+and on Linux without a user systemd, a freeze is a stop by signal; the waiter starts only when the memory shows free,
+and a stop held two minutes for nothing is let go. A frozen run waits again keeping its first ask and its run time,
+its ceiling stops while it is frozen, and a red after a freeze says so. A freeze never leaves the machine's swap more
+than 80 % used. A frozen command never stays frozen for a wrapper that died or hung: the next grant thaws it.
+
+| key (`machine.toml` in the state directory, yours) | default | meaning |
+|---|---|---|
+| `lane_cpu_factor` | 1.5 | heavy runs' combined cores, times the machine's cores (1-4) |
+| `lane_light_reserve` | 0.2 | the share of memory heavy runs leave to light ones (0-0.5) |
+| `lane_immortal_minutes` | 15 | run time after which a run is never frozen (1-240) |
+| `lane_freeze` | on | `false`: admission and order only, nothing is frozen; `flotilla doctor` recommends keeping it on |
+| `lane_max_runs` | 10 | runs holding the lane at once (1-64) |
+
+`lane_capacity` no longer has an effect; `flotilla lane` and `flotilla doctor` say so while it is set. While a seat
+of a flotilla before 0.30 waits, the lane counts every run against `lane_capacity` as before, until it goes. A
+booking taken by hand (`flotilla lane take`) is a heavy run of every core: it takes the heavy room and is never
+frozen. A booking whose `--wait` ran out and that the same session makes again for the same command within 10
+minutes keeps its place. A waiter notices a release within a second. `flotilla lane` shows each run's priority and
+its parts, whether it is heavy and its memory now, when it becomes immortal, and for each frozen run by whose order.
+
+**Projects sharing a machine.** `lane_share = "fair"` in `machine.toml` breaks ties between runs of equal priority
+by project: the project holding the fewest runs and served least recently in the last day goes first; within a
+project the order is unchanged. A chosen waiter its own project's checks hold back (CI on this machine, a memory floor) is
 passed over after two polls, about 30 s. Only seats on flotilla 0.25 or later take part - an older seat keeps its
 place in line and is never left waiting for a seat that yielded to it - so the protection reaches a project once its
 fleet is updated.
-`flotilla lane` shows the mode, each project's waiters and last turn, and who goes first.
+`flotilla lane` shows the mode and each project's waiters and last turn.
 
 The lane is also where a fleet loses its time. Measured on a fleet that ran three days: the way from "handed over"
 to "on trunk" grew about tenfold after the first hours, almost all of it waiting for the lane, while the model's own
@@ -777,10 +798,10 @@ What flotilla does not do yet, or does only partly. Each one was met in a field 
 `docs/field-tests/`.
 
 - **No Windows.** Linux and macOS only; see [Requirements](#requirements) for what macOS skips.
-- **One lane per machine, shared by every project's fleet.** At the default `lane_capacity` of 1, two fleets on one
-  machine wait for each other's long runs unless the person sets `lane_share = "fair"`, and then only seats on 0.25
-  or later take part (see [Long runs and the lane](#long-runs-and-the-lane)); short runs do not yet overtake long
-  ones.
+- **One lane per machine, shared by every project's fleet.** Runs share it by memory and priority (see
+  [Long runs and the lane](#long-runs-and-the-lane)); the numbers behind it - the reservation window, the default
+  memory of a new command, the heavy mark, how long a freeze order waits for an answer - await a field test with two
+  fleets on one machine.
 - **Long-lived seats get slower.** A model turn over 600k tokens of context took about twice as long as one under
   100k. flotilla does not replace a seat by itself yet; after many tasks, retire a seat that holds no open work
   with `/flotilla:retire` and raise a fresh one with `flotilla spawn --fill`. Your own leading session is not

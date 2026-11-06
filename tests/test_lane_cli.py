@@ -20,6 +20,13 @@ def run_cli(*args):
     return code, out.getvalue()
 
 
+def one_run_at_a_time(tmp_path):
+    """machine.toml `lane_max_runs = 1`: the lane admits by memory, so a refusal by number needs the cap (0.30)."""
+    state = tmp_path / "state"
+    state.mkdir(exist_ok=True)
+    (state / "machine.toml").write_text("lane_max_runs = 1\n", encoding="utf-8")
+
+
 def onboarded(tmp_path, monkeypatch, profile=PROFILE):
     monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
     monkeypatch.setenv("FLOTILLA_NO_CENSUS", "1")
@@ -36,7 +43,7 @@ def onboarded(tmp_path, monkeypatch, profile=PROFILE):
 def test_the_lane_is_shown_empty_on_a_quiet_machine(tmp_path, monkeypatch):
     root = onboarded(tmp_path, monkeypatch)
     code, out = run_cli("lane", "--root", str(root))
-    assert code == 0 and "capacity: 1" in out and "held: nobody" in out and "foreign run: ok" in out
+    assert code == 0 and "held: nobody" in out and "foreign run: ok" in out
 
 
 def test_a_lane_taken_by_hand_refuses_the_next_taker_until_released(tmp_path, monkeypatch):
@@ -71,6 +78,7 @@ def test_a_killed_run_exits_non_zero_and_says_so(tmp_path, monkeypatch):
 
 def test_a_run_waits_its_turn_and_is_refused_when_the_wait_runs_out(tmp_path, monkeypatch):
     root = onboarded(tmp_path, monkeypatch)
+    one_run_at_a_time(tmp_path)   # beside a take by hand a light run would start in the light reserve
     run_cli("lane", "take", "--note", "hands off", "--root", str(root), "--as", "main session 1")
     code, out = run_cli("lane", "run", "--wait", "0", "--tree", str(root), "--as", "review session 1", "--",
                         sys.executable, "-c", "print('never')")
@@ -86,6 +94,7 @@ def test_a_run_needs_a_command(tmp_path, monkeypatch):
 def test_a_receipt_takes_the_lane(tmp_path, monkeypatch):
     tier = {"name": "unit", "command": f"{sys.executable} -c \"print('1 passed')\"", "required_for": ["handover"]}
     root = onboarded(tmp_path, monkeypatch, {**PROFILE, "tests": {"tier": [tier]}})   # something to run: it queues
+    one_run_at_a_time(tmp_path)
     run_cli("lane", "take", "--note", "hands off", "--root", str(root), "--as", "main session 1")
     code, out = run_cli("receipt", "run", "--purpose", "handover", "--tree", str(root), "--lane-wait", "0")
     assert code == 2 and "held by main session 1 (hands off)" in out
@@ -203,7 +212,7 @@ def test_lane_status_is_the_bare_lane(tmp_path, monkeypatch):
     "invalid choice"; the status is the bare `flotilla lane`."""
     root = onboarded(tmp_path, monkeypatch)
     code, out = run_cli("lane", "status", "--root", str(root))
-    assert code == 0 and "capacity: 1" in out and "held: nobody" in out, out
+    assert code == 0 and "cores shared by the kernel" in out and "held: nobody" in out, out
 
 
 def test_a_peers_booking_note_cannot_forge_lines_or_move_the_cursor(tmp_path, monkeypatch):
@@ -388,10 +397,11 @@ def test_foreign_runs_are_named_where_the_slots_are(tmp_path, monkeypatch):
     code, out = run_cli("lane", "--root", str(root))
     assert code == 0 and "held: nobody" not in out
     head = out.split("waiting:")[0]
-    assert "foreign run pid 901 `python -m pytest tests/` in /work/game (takes a slot, no booking)" in head
+    assert "foreign run pid 901 `python -m pytest tests/` in /work/game (foreign: its memory is simply not free)" \
+        in head   # 0.30: a foreign run takes no slot; its memory is simply not free
     assert "foreign run pid 902 " in head and "in an unknown directory" in head and "\x1b" not in out
     assert "pid 903" not in head   # idle: it takes no slot
-    machine = out.split("machine:")[1]
+    machine = out.split("\nmachine:\n")[1]
     assert all(f"pid {pid}" in machine for pid in (901, 902, 903)) and "/work/site" in machine
 
 
@@ -400,12 +410,14 @@ def test_a_waiter_says_why_it_waits(tmp_path, monkeypatch):
     from flotilla.lane import book
     from flotilla.lane.procs import ProcessTable
     root = onboarded(tmp_path, monkeypatch)
+    one_run_at_a_time(tmp_path)   # 0.30: beside a take by hand a light run would start in the light reserve
     assert run_cli("lane", "take", "--note", "hands off", "--root", str(root), "--as", "main session 1")[0] == 0
     book.Book(LocalLogStore(tmp_path / "state" / "lane"), ProcessTable.for_machine()).enqueue(
         "review session 1", "suite", pid=None)
     _, out = run_cli("lane", "--root", str(root))
     waiter = [line for line in out.splitlines() if "review session 1" in line]
-    assert len(waiter) == 1 and "waits because: held by main session 1 (hands off)" in waiter[0], out
+    assert len(waiter) == 1 and "waits because: runs at once: 1 of 1" in waiter[0], out
+    assert "held by main session 1 (hands off)" in waiter[0], out
 
 
 def test_showing_the_lane_sweeps_dead_bookings(tmp_path, monkeypatch):
@@ -456,7 +468,8 @@ def test_showing_the_lane_keeps_a_booking_whose_process_still_exists(tmp_path, m
     doubtful = book.Book(LocalLogStore(tmp_path / "state" / "lane"), ProcessTable.for_machine()).enqueue(
         "main session 2", "waiting", pid=os.getpid(), mark="not-its-mark")
     _, out = run_cli("lane", "--root", str(root))
-    assert "swept" not in out.splitlines()[0] and f"{doubtful.id} heavy main session 2" in out
+    assert "swept" not in out.splitlines()[0]
+    assert any(line.startswith(f"  {doubtful.id} ") and "main session 2" in line for line in out.splitlines()), out
 
 
 def test_a_lane_that_cannot_be_swept_is_still_shown(tmp_path, monkeypatch):
@@ -467,7 +480,7 @@ def test_a_lane_that_cannot_be_swept_is_still_shown(tmp_path, monkeypatch):
         raise OSError("read-only file system")
     monkeypatch.setattr(book.Book, "sweep", unwritable)
     code, out = run_cli("lane", "--root", str(root))
-    assert code == 0 and "could not sweep" in out and "capacity:" in out
+    assert code == 0 and "could not sweep" in out and "machine:" in out
 
 
 
@@ -501,7 +514,7 @@ def test_a_waiter_says_which_project_goes_first(tmp_path, monkeypatch):
     _queue(tmp_path, ("twosuns main 1", "twosuns"), ("void main 1", "void"), ("twosuns main 2", "twosuns"))
     _, out = run_cli("lane", "--root", str(root))
     [line] = [line for line in out.splitlines() if "twosuns main 2" in line]
-    assert "`twosuns` goes first" in line or "`void` goes first" in line, line
+    assert "waits because:" in line and "P 0." in line, line   # 0.30: the fair share breaks ties of priority
 
 
 def test_a_share_not_understood_reads_as_fifo_and_says_so(tmp_path, monkeypatch):
@@ -571,7 +584,7 @@ def _taught(lanes, ladder, seconds, cores, peak_mb):
         lanes.release(item.id, measured={"seconds": seconds, "peak_mb": peak_mb, "cores": cores, "verdict": "green"})
 
 
-def test_status_marks_light_and_heavy_prints_the_budget_and_heavy_starts(tmp_path, monkeypatch):
+def test_status_marks_light_and_heavy_and_prints_the_heavy_room(tmp_path, monkeypatch):
     from flotilla.core import resources
     from flotilla.lane import book
     root = onboarded(tmp_path, monkeypatch)
@@ -580,18 +593,18 @@ def test_status_marks_light_and_heavy_prints_the_budget_and_heavy_starts(tmp_pat
     _taught(lanes, ["exact:receipt"], 660.0, 7.0, 1700)
     _taught(lanes, ["exact:file"], 4.0, 1.0, 300)
     room = book.Room(cpus=8, factor=1.5, memory_left=lambda: 8000)
-    heavy = lanes.enqueue("main session 1", "receipt", pid=None, ladder=["exact:receipt"], command="r")
+    import os   # 0.30: a run has a process; a booking with none is a take by hand, the heavy room whole
+    heavy = lanes.enqueue("main session 1", "receipt", pid=os.getpid(), ladder=["exact:receipt"], command="r")
     assert lanes.grant(heavy.id, slots=1, room=room)
-    light = lanes.enqueue("main session 2", "one file", pid=None, ladder=["exact:file"], command="f")
+    light = lanes.enqueue("main session 2", "one file", pid=os.getpid(), ladder=["exact:file"], command="f")
     assert lanes.grant(light.id, slots=1, room=room)
     lanes.enqueue("main session 3", "receipt", pid=None, ladder=["exact:receipt"], command="r")
     lanes.enqueue("main session 4", "receipt", pid=None, ladder=["exact:receipt"], command="r")
     code, out = run_cli("lane", "--root", str(root))
     assert code == 0, out
-    assert "budget for light runs: " in out and " of " in out and "cores" in out, out
+    assert "heavy runs: " in out and "(light reserve 20 %)" in out, out   # 0.30: no light budget, no heavy line
     assert f"  {heavy.id} heavy main session 1" in out and f"  {light.id} light main session 2" in out, out
-    assert "1st of the heavy runs; by estimates it starts around" in out, out
-    assert "2nd of the heavy runs; by estimates it starts around" in out, out
+    assert out.count("waits because: ") == 2, out
 
 
 def test_heavy_starts_serve_the_heavy_line_in_order():
@@ -620,3 +633,105 @@ def test_the_room_counts_the_cores_this_process_may_use(tmp_path, monkeypatch):
     _machine(tmp_path)
     monkeypatch.setattr(os_module, "sched_getaffinity", lambda pid: {0, 1, 2}, raising=False)
     assert lane_commands.room_for({})(Reading([], [], [])).cpus == 3
+
+
+def test_settings_fall_back_to_their_defaults(monkeypatch):
+    from flotilla.lane import commands
+    for bad in ({"lane_light_reserve": 2}, {"lane_light_reserve": True}, {"lane_max_runs": 0},
+                {"lane_immortal_minutes": "15"}, {"lane_max_runs": 65}, {}):
+        monkeypatch.setattr(commands, "_machine", lambda bad=bad: bad)
+        assert (commands.light_reserve(), commands.max_runs(), commands.immortal_minutes()) == (0.2, 10, 15)
+    monkeypatch.setattr(commands, "_machine", lambda: {"lane_light_reserve": 0.3, "lane_max_runs": 4,
+                                                       "lane_immortal_minutes": 30})
+    assert (commands.light_reserve(), commands.max_runs(), commands.immortal_minutes()) == (0.3, 4, 30)
+
+
+def test_lane_freeze_false_turns_freezing_off(monkeypatch):
+    from flotilla.lane import commands
+    for setting, on in (({"lane_freeze": False}, False), ({"lane_freeze": "false"}, True), ({}, True),
+                        ({"lane_freeze": True}, True)):
+        monkeypatch.setattr(commands, "_machine", lambda setting=setting: setting)
+        assert commands.freeze_on() is on
+
+
+def test_a_push_or_handover_receipt_books_by_its_purpose(tmp_path):
+    from flotilla.lane import commands
+    assert commands.kind_of("push", "main session 1", tmp_path) == "push"
+    assert commands.kind_of("handover", "main session 1", tmp_path) == "handover"
+    assert commands.kind_of("", "main session 1", tmp_path) == "run"
+
+
+def test_a_reviewer_session_books_as_review(tmp_path, monkeypatch):
+    from flotilla.lane import commands
+    root = onboarded(tmp_path, monkeypatch)
+    assert commands.kind_of("", "review session 3", root) == "review"
+    assert commands.kind_of("", "main session 3", root) == "run"
+
+
+def test_a_freeze_false_tier_pins_the_receipts_booking(tmp_path, monkeypatch):
+    from flotilla.lane import commands
+    tiers = [{"name": "unit", "command": "true", "required_for": ["handover"]},
+             {"name": "e2e", "command": "true", "required_for": ["handover"], "freeze": False}]
+    profile = {**PROFILE, "tests": {"tier": tiers}}
+    assert commands.pinned_for(profile, "handover", ["unit", "e2e"])
+    assert not commands.pinned_for(profile, "handover", ["unit"])
+
+
+def test_a_lane_run_books_by_value_with_its_purpose(tmp_path, monkeypatch):
+    from flotilla.core.storage import LocalLogStore
+    from flotilla.lane import book
+    root = onboarded(tmp_path, monkeypatch)
+    code, _out = run_cli("lane", "run", "--tree", str(root), "--as", "review session 2", "--", sys.executable, "-c",
+                         "pass")
+    assert code == 0
+    found = book.Book(LocalLogStore(tmp_path / "state" / "lane"), None).bookings()
+    item = max(found.values(), key=lambda item: book.number(item.id) or 0)
+    assert item.kind == "review" and item.path.startswith("value") and item.asked
+
+
+
+def test_the_lane_says_how_it_shares_the_machine(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    code, out = run_cli("lane", "--root", str(root))
+    assert code == 0 and "cores shared by the kernel; memory the lane can give" in out and "freezing: " in out
+    assert "heavy runs: 0 of 12 cores in use" in out or "heavy runs: 0 of" in out
+    assert "(light reserve 20 %)" in out and "capacity: 1" not in out
+
+
+def test_lane_capacity_set_is_said_to_have_no_effect(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    (tmp_path / "state").mkdir(exist_ok=True)
+    (tmp_path / "state" / "machine.toml").write_text("lane_capacity = 1\n", encoding="utf-8")
+    _code, out = run_cli("lane", "--root", str(root))
+    assert out.count("lane_capacity = 1 in machine.toml no longer has an effect (0.30); runs share the machine by "
+                     "memory and priority") == 1
+
+
+def test_a_run_reads_its_priority_and_a_frozen_one_says_by_whose_order():
+    import datetime as dt
+    from flotilla.lane import book, commands, policy
+    now = dt.datetime(2026, 11, 6, 10, 30, tzinfo=dt.timezone.utc)
+    machine = policy.Machine(cpus=8, give_mb=9000, free_mb=3000, swap_free_mb=8000, swap_total_mb=8000)
+    run = policy.Run("b3", policy.RUNNING, 3174, True, 4, kind="run", waited_s=600, ran_s=240, since_start_s=240)
+    line = commands.value_of(run, book.Booking(id="b3", heavy=True), machine, now)
+    assert "P 0.49 (type 0.06, wait 0.30, run 0.13)" in line and "heavy (memory now 3.1 GB)" in line
+    assert "immortal from " in line
+    frozen = policy.Run("b4", policy.FROZEN, 900, False, 1, ran_s=120)
+    item = book.Booking(id="b4", frozen="frozen", order_by="b14", frozen_at="2026-11-06T10:31:00+00:00")
+    assert "frozen since " in commands.value_of(frozen, item, machine, now)
+    assert "by b14's order" in commands.value_of(frozen, item, machine, now)
+    lapsed = book.Booking(id="b9", unanswered=True)
+    assert "b9 did not answer a freeze order" in commands.value_of(run, lapsed, machine, now)
+
+
+def test_an_older_waiter_is_named_in_the_lane(tmp_path, monkeypatch):
+    from flotilla.core.storage import LocalLogStore
+    from flotilla.lane import book
+    import os
+    root = onboarded(tmp_path, monkeypatch)
+    store = LocalLogStore(tmp_path / "state" / "lane")
+    with store.transaction(book.KEY) as tx:
+        tx.append({"at": "2026-11-06T10:00:00+00:00", "booking": "b1", "state": book.WAITING, "who": "old",
+                   "pid": None, "rule": 3})
+    _code, out = run_cli("lane", "--root", str(root))
+    assert "a seat of a flotilla before 0.30 waits: lane_capacity counts every run until it goes" in out

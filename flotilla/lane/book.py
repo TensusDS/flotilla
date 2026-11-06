@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import copy
 import datetime as dt
+import re
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -28,7 +29,10 @@ HELD, RELEASED, WAITING, EXPIRED, LEFT = "held", "released", "waiting", "expired
 #: Rule 2 (0.25) knows the fair share across projects: a waiter under it may be passed by, or pass, for its project.
 #: Rule 3 (0.28) knows light runs: a light holder takes no place, so a waiter under an older rule - which would count
 #: it as one, and could wait for ever behind a stream of them - turns light admission off while it waits.
-RULE = 3
+#: Rule 4 (0.30) knows value: it admits by the memory free now, orders by purpose, wait and run time, and freezes a
+#: younger run for a higher one. A waiter under an older rule turns the lane back to the count while it waits; a
+#: frozen booking stays a held record, so an older flotilla still sees it holding (lane shared machine, section 7).
+RULE = 4
 #: What a foreign computing run (unbooked) is taken to use of the light budget, and a holder whose peak was never
 #: measured of its memory: the fixed prior (lane light runs design, section 2).
 FOREIGN_CORES, UNKNOWN_PEAK_MB = 4.0, 2048
@@ -37,20 +41,37 @@ SHARES = ("fifo", "fair")
 #: How far back a project's last turn counts for the fair share (project share design, section 3).
 SERVED_WINDOW = dt.timedelta(hours=24)
 FIELDS = ("who", "note", "pid", "mark", "run_for", "why", "command", "ladder", "will_run", "project", "rule",
-          "seconds", "peak_mb", "cores", "busy", "verdict", "ran", "cut", "inside", "path", "place")
-MEASURED = ("seconds", "peak_mb", "cores", "busy", "verdict", "ran")
+          "seconds", "peak_mb", "cores", "busy", "verdict", "ran", "cut", "inside", "path", "place",
+          "kind", "asked", "started", "ran_s", "frozen", "order_by", "ordered_at", "reclaim_mb", "frozen_at",
+          "held_mb", "frozen_s", "freezes", "heavy", "pinned", "unanswered", "freeze_kind", "unit", "group",
+          "peak_cores", "group_mark")
+MEASURED = ("seconds", "peak_mb", "cores", "busy", "verdict", "ran", "peak_cores")
+#: A freeze order's progress on a held booking: ordered by a waiter, then frozen by its holder; absent while it runs.
+FROZEN_STATES = ("ordered", "frozen")
+#: A run's purpose, the type part of its priority (lane shared machine, section 2.6); anything else is a plain run.
+KINDS = ("push", "handover", "review", "run")
+FREEZE_KINDS = ("scope", "signal")
+MOMENTS = ("asked", "started", "ordered_at", "frozen_at")
+FLAGS = ("heavy", "pinned", "unanswered")
+#: A lane scope's name as the holder makes it: any session writes the journal, and a unit's name reaches systemctl,
+#: so anything else folds to nothing (final review of 0.30.0, I7).
+UNIT = re.compile(r"flotilla-lane-[A-Za-z0-9_.-]{1,120}\.scope")
 LISTS = ("ladder", "will_run")
 MAX_TEXT = 2048   # a command and each of its signatures: every session folds the whole journal, so text is bounded
 #: Every session writes the journal and any may be steered: a measured figure of the wrong type or out of range
 #: folds as unknown, never as a crash of `flotilla lane` for all of them (review of stage 1).
 BOUNDS = {"seconds": (0.0, 7 * 86400.0), "peak_mb": (0.0, 1e7), "cores": (0.0, 1024.0), "busy": (0.0, 1.0)}
+#: The booking's own figures beside the measured ones a tier also carries (a tier's are BOUNDS alone).
+FIGURES = {**BOUNDS, "ran_s": BOUNDS["seconds"], "frozen_s": BOUNDS["seconds"], "reclaim_mb": BOUNDS["peak_mb"],
+           "held_mb": BOUNDS["peak_mb"], "peak_cores": BOUNDS["cores"]}
+WHOLE = ("peak_mb", "reclaim_mb", "held_mb")
 
 
 def _figure(key, value):
-    low, high = BOUNDS[key]
+    low, high = FIGURES[key]
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not low <= value <= high:
         return None   # NaN fails both comparisons; infinities fail the bound
-    return int(value) if key == "peak_mb" else value
+    return int(value) if key in WHOLE else value
 
 
 def _tier(value) -> dict | None:
@@ -62,13 +83,33 @@ def _tier(value) -> dict | None:
         tier["kind"] = "setup"
     for key in BOUNDS:
         tier[key] = _figure(key, value.get(key))
+    if _figure("peak_cores", value.get("peak_cores")) is not None:   # only where measured: older tiers stay as read
+        tier["peak_cores"] = _figure("peak_cores", value.get("peak_cores"))
     return tier
 
 
 def _clean(key, value):
     """A field as the journal may hold it, or its empty form."""
-    if key in BOUNDS:
+    if key in FIGURES:
         return _figure(key, value)
+    if key == "frozen":
+        return value if value in FROZEN_STATES else ""
+    if key == "kind":
+        return value if value in KINDS else "run"
+    if key == "freeze_kind":
+        return value if value in FREEZE_KINDS else ""
+    if key in MOMENTS:
+        return value if _aware(value) else ""
+    if key == "unit":
+        return value if isinstance(value, str) and UNIT.fullmatch(value) else ""
+    if key in ("order_by", "group_mark"):
+        return visible(value[:80]) if isinstance(value, str) else ""
+    if key in FLAGS:
+        return value is True
+    if key == "freezes":
+        return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+    if key == "group":
+        return value if isinstance(value, int) and not isinstance(value, bool) and value >= 2 else None
     if key in LISTS:
         return [visible(v[:MAX_TEXT]) for v in value if isinstance(v, str)] if isinstance(value, list) else []
     if key == "ran":
@@ -123,6 +164,26 @@ class Booking:
     inside: str = ""                                 # a run inside this booking, recorded beside it, never booked
     path: str = ""                                   # how it was admitted: fifo, or fair and for which project
     place: int | None = None                         # the place it stands in: an expired booking's, made again
+    kind: str = ""                                   # its purpose: push, handover, review or run (rule 4)
+    asked: str = ""                                  # when it first asked; `since` moves with every record
+    started: str = ""                                # when it last started or thawed
+    ran_s: float | None = None                       # run time before its last start, frozen time left out
+    frozen: str = ""                                 # "", "ordered" (a waiter asked) or "frozen" (its holder obeyed)
+    order_by: str = ""                               # the waiter whose order froze it
+    ordered_at: str = ""
+    reclaim_mb: int | None = None                    # what the order asks to move to swap
+    frozen_at: str = ""
+    held_mb: int | None = None                       # what it held when frozen
+    frozen_s: float | None = None                    # all its frozen time
+    freezes: int = 0
+    heavy: bool = False                              # heavy once, heavy for good (section 2.3)
+    pinned: bool = False                             # never frozen: by hand, a `freeze = false` tier
+    unanswered: bool = False                         # an order lapsed, or it was let go: never ordered again
+    freeze_kind: str = ""                            # how its holder froze it: scope or signal
+    unit: str = ""                                   # its scope, for whoever thaws it when its holder is gone
+    group: int | None = None                         # its command's process group, likewise
+    group_mark: str = ""                             # that group leader's start mark: the same process, not a reused pid
+    peak_cores: float | None = None                  # the busiest stretch of cores it used, measured
 
 
 def number(name) -> int | None:
@@ -312,6 +373,36 @@ def light_verdict(found: dict, mine: Booking, room: Room, hist, live) -> str:
     return _light(found, mine, room, hist, live)[0]
 
 
+def _seconds_since(text: str, now: dt.datetime) -> float:
+    moment = _when(text)
+    return max(0.0, (now - moment).total_seconds()) if moment is not None else 0.0
+
+
+def _frozen_for(item: Booking, now: dt.datetime) -> float:
+    return round((item.frozen_s or 0.0) + _seconds_since(item.frozen_at, now), 2)
+
+
+def _thaw_command(item: Booking, procs=None) -> bool:
+    """Thaw a frozen booking's command from outside its holder: its scope, else its process tree. False when that
+    failed, so whoever asked keeps the booking and tries again. A process tree is signalled only when its leader is
+    provably the command that was frozen - the same pid and start mark - never a pid reused since, nor one a crafted
+    record names (final review of 0.30.0, I7)."""
+    from flotilla.lane import freeze
+    if item.unit:
+        return freeze.thaw_unit(item.unit)
+    if item.group:
+        exists = getattr(procs, "exists", None)
+        there = exists(item.group) if exists is not None else None
+        if there is None:   # cannot ask whether it exists: ask its start mark instead
+            there = getattr(procs, "start_mark", lambda pid: None)(item.group) is not None
+        if there is False or not item.group_mark:
+            return True     # gone, or never proven ours: nothing of the lane's to thaw
+        if getattr(procs, "start_mark", lambda pid: None)(item.group) != item.group_mark:
+            return True     # another process has its number now
+        return freeze.thaw_tree(item.group)
+    return True   # frozen with no command running: nothing to thaw but the record
+
+
 def fair_choice(found: dict, live, now: dt.datetime, skip=()) -> Booking | None:
     """The live waiter that gets the next slot under the fair share: among the projects with live waiters, the one
     holding the fewest live slots now, then the one whose last turn is the earliest (none first), then the one whose
@@ -399,15 +490,18 @@ class Book:
             print(f"flotilla: the lane journal could not be compacted, and stays as it was: {err}", file=sys.stderr)
 
     def enqueue(self, who: str, note: str, *, pid: int | None = None, mark: str = "", run_for: str = "",
-                command: str = "", ladder=(), will_run=(), project: str = "") -> Booking:
+                command: str = "", ladder=(), will_run=(), project: str = "", kind: str = "",
+                pinned: bool = False) -> Booking:
         with self.store.transaction(KEY) as tx:
             found = self._found(tx)
             moment = self.clock() if self.clock else dt.datetime.now(dt.timezone.utc)
             place = inherited(found, who, [step[:MAX_TEXT] for step in ladder], moment)
+            extra = {**({"place": place} if place else {}), **({"kind": kind} if kind else {}),
+                     **({"pinned": True} if pinned else {})}
             return self._write(tx, _next_id(found), WAITING, who=who, note=note, pid=pid, mark=mark,
                                run_for=run_for, command=command[:MAX_TEXT],
                                ladder=[step[:MAX_TEXT] for step in ladder], will_run=list(will_run),
-                               project=project, rule=RULE, **({"place": place} if place else {}))
+                               project=project, rule=RULE, asked=moment.isoformat(timespec="seconds"), **extra)
 
     def record(self, inside: str, *, who: str, note: str, command: str = "", ladder=(), will_run=(),
                project: str = "", measured: dict | None = None) -> Booking:
@@ -421,13 +515,15 @@ class Book:
                                project=project, rule=RULE, inside=inside, **fields)
 
     def grant(self, booking_id: str, *, slots: int, by_hand: bool = False, share: str = "fifo",
-              skip=(), room: Room | None = None) -> Booking | None:
+              skip=(), room: Room | None = None, value=None) -> Booking | None:
         """Admit `booking_id` if its turn has come. `skip`: fair choices the caller saw not take a free slot for a
         while - held back by their own checks - and so passes over (final review of 0.25.0, I1).
 
-        With a `room`, a run its own measurements call light takes what the heavy runs leave, and only that; heavy
-        runs keep the count and the order, and neither counts nor waits behind a light one (lane light runs design).
-        Without one, the grant is the count alone, as before."""
+        With a `value` (admission.Value) and no waiter of an older flotilla, the grant goes by value: by the memory
+        free now and the priority of every run, and it may order a younger run frozen for this one (lane shared
+        machine design). Otherwise, with a `room`, a run its own measurements call light takes what the heavy runs
+        leave, and only that; heavy runs keep the count and the order (lane light runs design). Without either, the
+        grant is the count alone, as before."""
         self.passed_for = self.waits_for = ""
         fields = {"pid": None, "mark": ""} if by_hand else {}   # by hand: it holds as nobody's, until released
         with self.store.transaction(KEY) as tx:
@@ -435,6 +531,11 @@ class Book:
             mine = found.get(booking_id)
             if mine is None or mine.state != WAITING:
                 return None
+            from flotilla.lane import admission
+            if value is not None:   # whichever way it admits, a frozen command is never left for a dead holder
+                found = self._rescue(tx, found, value)
+            if value is not None and admission.by_value(found, self.live):
+                return self._by_value(tx, booking_id, value, share, fields, by_hand)
             lights: frozenset = frozenset()
             light_path = room is not None and (mine.rule or 0) >= RULE and not older_waiting(found, self.live,
                                                                                                booking_id)
@@ -459,6 +560,105 @@ class Book:
             if path is None:
                 return None
             return self._write(tx, booking_id, HELD, path=path, **fields)
+
+    def _moment(self) -> dt.datetime:
+        return self.clock() if self.clock else dt.datetime.now(dt.timezone.utc)
+
+    def _rescue(self, tx, found: dict, value) -> dict:
+        """Before deciding, in the same lock: a freeze order nobody answered lapses; a frozen command whose holder is
+        dead, or whose watch went silent, is thawed - a frozen command never stays frozen for a holder that cannot
+        thaw it (the person's ruling, 2026-11-06). A thaw that fails is tried again by the next grant."""
+        from flotilla.lane import admission
+        now = self._moment()
+        for item in [item for item in found.values() if item.state != HELD and item.frozen == "frozen"]:
+            # ended still frozen: an older flotilla's sweep released a dead holder without thawing its command
+            if _thaw_command(item, self.procs):
+                self._write(tx, item.id, item.state, frozen="")
+        for item in [item for item in found.values() if item.state == HELD and item.frozen and item.pid is not None]:
+            if item.frozen == "ordered":
+                asked = _when(item.ordered_at)
+                if asked is None or (now - asked).total_seconds() > admission.ANSWER_S:
+                    self._write(tx, item.id, HELD, frozen="", unanswered=True)
+                continue
+            dead = item.pid is not None and not self.live(item)
+            age = None if dead else value.beat_age_s(item.id)
+            if not dead and age is not None and age <= admission.BEAT_STALE_S:
+                continue
+            if not _thaw_command(item, self.procs):
+                continue
+            if dead:
+                self._write(tx, item.id, RELEASED, why="no process behind it", cut=True, frozen="")
+            else:
+                self._write(tx, item.id, HELD, frozen="", unanswered=True, started=self._now(),
+                            frozen_s=_frozen_for(item, now))
+        return self._found(tx)
+
+    def _by_value(self, tx, booking_id: str, value, share: str, fields: dict,
+                  by_hand: bool = False) -> Booking | None:
+        from flotilla.lane import admission, estimate, policy
+        found = self._found(tx)
+        now = self._moment()
+        hist = estimate.history(found, now=now)
+        runs, machine = admission.view(found, hist, value, now=now, live=self.live, mine=booking_id, share=share,
+                                       by_hand=booking_id if by_hand else "")
+        by_id = {run.id: run for run in runs}
+        for run in runs:   # a run that grew past the mark is heavy for good (section 2.3)
+            if run.heavy and not found[run.id].heavy and run.state != policy.WAITING:
+                self._write(tx, run.id, HELD, heavy=True)
+        decision = policy.decide(runs, machine, booking_id)
+        self.waits_for = decision.why
+        if decision.start:
+            me = by_id[booking_id]
+            how = f"value: P {policy.priority(me, machine.immortal_s):.2f}, {'heavy' if me.heavy else 'light'}"
+            return self._write(tx, booking_id, HELD, path=how, started=self._now(), heavy=me.heavy, **fields)
+        for victim, reclaim in decision.freeze:
+            self._write(tx, victim, HELD, frozen="ordered", order_by=booking_id, ordered_at=self._now(),
+                        reclaim_mb=reclaim)
+        return None
+
+    def frozen(self, booking_id: str, *, freeze_kind: str, unit: str, group: int | None,
+               held_mb: int | None) -> Booking | None:
+        """Its holder obeyed: the command is frozen, and its run time so far is kept, frozen time left out. None, and
+        nothing written, when the booking no longer holds: a record never brings a released booking back."""
+        with self.store.transaction(KEY) as tx:
+            item = self._found(tx).get(booking_id)
+            if item is None or item.state != HELD:
+                return None
+            ran = (item.ran_s or 0.0) + _seconds_since(item.started or item.since, self._moment())
+            mark = getattr(self.procs, "start_mark", lambda pid: None)(group) if group else None
+            return self._write(tx, booking_id, HELD, frozen="frozen", frozen_at=self._now(), ran_s=round(ran, 2),
+                               freezes=item.freezes + 1, freeze_kind=freeze_kind, unit=unit,
+                               **({"group": group} if group else {}), **({"group_mark": mark} if mark else {}),
+                               **({"held_mb": held_mb} if held_mb else {}))
+
+    def thaw(self, booking_id: str, value, *, force: bool = False, never_again: bool = False) -> Booking | None:
+        """A frozen run asks to come back, as a waiter does: it thaws when the policy starts it (or `force`), and
+        keeps its first ask and its run time. None while it waits; `waits_for` says for what."""
+        from flotilla.lane import admission, estimate, policy
+        self.waits_for = ""
+        with self.store.transaction(KEY) as tx:
+            found = self._found(tx)
+            item = found.get(booking_id)
+            if item is None or item.state != HELD or item.frozen != "frozen":
+                return None
+            now = self._moment()
+            if not force:
+                runs, machine = admission.view(found, estimate.history(found, now=now), value, now=now,
+                                               live=self.live, mine=booking_id)
+                decision = policy.decide(runs, machine, booking_id, may_freeze=False)
+                self.waits_for = decision.why
+                if not decision.start:
+                    return None
+            return self._write(tx, booking_id, HELD, frozen="", started=self._now(),
+                               frozen_s=_frozen_for(item, now), **({"unanswered": True} if never_again else {}))
+
+    def unfreezable(self, booking_id: str) -> Booking | None:
+        """Its holder can no longer obey orders (its watch failed): any order lapses, and it is never ordered again."""
+        with self.store.transaction(KEY) as tx:
+            item = self._found(tx).get(booking_id)
+            if item is None or item.state != HELD:
+                return None
+            return self._write(tx, booking_id, HELD, frozen="", unanswered=True)
 
     def _path(self, found: dict, mine: Booking, share: str, skip=(), lights=frozenset()) -> str | None:
         """How `mine` is admitted now, or None while it waits its turn. First come, first served unless the share is
@@ -503,6 +703,8 @@ class Book:
                 if item.pid is None or self.live(item) or (gone is not None and not gone(item)):
                     continue
                 state = RELEASED if item.state == HELD else LEFT
+                if item.frozen == "frozen" and not _thaw_command(item, self.procs):
+                    continue   # kept: a frozen command must not stay in swap for ever, so the next look tries again
                 cut = {"cut": True} if state == RELEASED else {}   # a run cut short measures nothing; never dropped
                 swept.append(self._write(tx, item.id, state, why="no process behind it", **cut))
         return swept
