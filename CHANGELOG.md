@@ -27,9 +27,11 @@ never killed, to let a higher one in.
   flotilla before 0.30 waits, the lane counts runs against it as before. Fleet sizing reads `lane_max_runs`.
 - Every run now measures its busiest stretch of cores (`peak_cores`), and the lane's journal records each run's
   purpose, first ask, run time and freeze orders (rule 4).
-- The policy was checked against the brainstorm's model on its twenty thirty-run queues: makespan 189.8 min (model
-  182.8), light runs' 95th-percentile wait 5.4 min (model 5.5), no run frozen twice. The replay found a heavy waiter
-  freezing one light run four times - free memory was checked before the heavy bounds; fixed before release.
+- The policy was checked against the brainstorm's model on its twenty thirty-run queues, each freeze order answered
+  a step later as a real one is: makespan 189.8 min (model 182.8), light runs' 95th-percentile wait 5.5 min (model
+  5.5), no run frozen more than twice. Found before release and fixed: a heavy waiter freezing one light run four
+  times (free memory was checked before the heavy bounds), and a waiter ordering a second freeze before its first
+  had freed the memory.
 
 ## 0.29.3 - 2026-11-06
 
