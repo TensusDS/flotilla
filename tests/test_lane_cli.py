@@ -761,6 +761,18 @@ def test_a_frozen_scope_names_the_thaw_that_fits_it():   # review of ed148e3, 4
     frozen = policy.Run("b4", policy.FROZEN, 900, False, 1, ran_s=120)
     scoped = book.Booking(id="b4", frozen="frozen", order_by="b14", group=4242, unit="flotilla-lane-b4-9-1.scope")
     stopped = book.Booking(id="b4", frozen="frozen", order_by="b14", group=4242)
-    assert "systemctl --user thaw flotilla-lane-b4-9-1.scope" in commands.value_of(frozen, scoped, machine, now)
+    assert "flotilla-lane-b4-9-1.scope" in commands.value_of(frozen, scoped, machine, now)
     assert "kill -CONT" not in commands.value_of(frozen, scoped, machine, now)
     assert "kill -CONT -4242" in commands.value_of(frozen, stopped, machine, now)
+
+
+
+def test_a_frozen_scopes_hint_writes_the_freeze_file_itself():   # review of the follow-up, declined: systemd's thaw
+    import datetime as dt
+    from flotilla.lane import book, commands, policy
+    now = dt.datetime(2026, 11, 6, 10, 30, tzinfo=dt.timezone.utc)
+    machine = policy.Machine(cpus=8, give_mb=9000, free_mb=3000, swap_free_mb=8000, swap_total_mb=8000)
+    frozen = policy.Run("b4", policy.FROZEN, 900, False, 1, ran_s=120)
+    scoped = book.Booking(id="b4", frozen="frozen", order_by="b14", group=4242, unit="flotilla-lane-b4-9-1.scope")
+    line = commands.value_of(frozen, scoped, machine, now)
+    assert "cgroup.freeze" in line and "flotilla-lane-b4-9-1.scope" in line

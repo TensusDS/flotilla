@@ -11,19 +11,22 @@ Security and hygiene of a public repository.
   record could name a process or a scope that is not a lane run.
   - A frozen command is thawed from outside only when the process itself proves it is the booking's - its own
     environment carries `FLOTILLA_LANE_BOOKING` - or when the scope's name carries the booking. A process that
-    gives no word either way (its environment cleared or unreadable) is continued when it is the very process that
-    was frozen, by its start mark, and still stands stopped; while even that cannot be read it is kept, never
-    dropped, and `flotilla lane` shows the command that resumes it (`systemctl --user thaw` for a scope,
-    `kill -CONT` for a stop by signal).
+    gives no word either way (its environment cleared or unreadable) is continued when the process the record
+    names - its pid and start mark - still stands stopped, so a lane command is never left stopped; while even that
+    cannot be read the booking is kept, never dropped, and `flotilla lane` shows the command that resumes it (a
+    write to the scope's `cgroup.freeze`, or `kill -CONT` for a stop by signal).
   - A holder freezes its command only for a fresh order from a waiter with a live process and its start mark that
-    the lane's rules let it be frozen for (not immortal, past its first minute, lower in priority). Any other order
-    lapses, and the waiter does not order that run again until the answer bound is over.
+    the lane's rules let it be frozen for (not immortal, past its first minute, lower in priority; whether it is
+    heavy beside a heavy waiter is the waiter's to judge). Any other order lapses, and no waiter orders that run
+    again until the answer bound is over.
   - A booking's pid must be a real process number, and `flotilla lane stop` signals only a pid with its start mark:
     a crafted `pid` of `-1` could otherwise have signalled every process of the user.
   - What this does not do: a line written as the same user can name any live process with its real start mark as a
     waiter, and a run may be frozen for it within the lane's rules, for two minutes: any freeze, a scope's as well
     as a stop by signal, is let go when its waiter still has not started by then, and that run is not frozen
-    again. The lane bounds what a crafted line can do; it cannot tell who wrote it. The journal is a booking, not a
+    again. A crafted line can also have a session continue any stopped process of the user whose environment names no
+    other booking, by giving its pid and start mark, which are not secret. The lane bounds what a crafted line can
+    do; it cannot tell who wrote it. The journal is a booking, not a
     lock.
 - **No project or client names, and no personal paths, in the repository.** Field-test reports are no longer kept
   here (they name the projects they ran on); tests, specs, plans, the changelog and code comments name their

@@ -232,18 +232,29 @@ def carries(pid: int, booking: str, *, proc_root: Path = Path("/proc"), run=subp
     return named == booking
 
 
+def _state(proc_root: Path, pid: int) -> str | None:
+    try:
+        stat = (proc_root / str(int(pid)) / "stat").read_text(encoding="utf-8", errors="replace")
+    except FileNotFoundError:
+        return ""
+    except (OSError, ValueError):
+        return None
+    fields = stat[stat.rfind(")") + 2:].split()
+    return fields[0] if fields else None
+
+
 def stopped(pid: int, *, proc_root: Path = Path("/proc"), run=subprocess.run) -> bool | None:
-    """Whether process `pid` stands stopped (T, t) - or ended a zombie whose group may still hold stopped members.
-    False when it runs or is gone; None when its state cannot be read."""
+    """Whether process group `pid` - its leader or any member or descendant - stands stopped by a signal (T), or its
+    leader ended a zombie whose group may still hold stopped members. A debugger's trace stop (t) is not the lane's.
+    False when nothing of it is stopped or it is gone; None when its leader's state cannot be read."""
     if proc_root.is_dir():
-        try:
-            stat = (proc_root / str(int(pid)) / "stat").read_text(encoding="utf-8", errors="replace")
-        except FileNotFoundError:
-            return False
-        except (OSError, ValueError):
+        leader = _state(proc_root, pid)
+        if leader is None:
             return None
-        fields = stat[stat.rfind(")") + 2:].split()
-        return bool(fields) and fields[0] in ("T", "t", "Z")
+        if leader in ("T", "Z"):
+            return True
+        table = peak._proc_table(proc_root, peak._page_kb())
+        return any(_state(proc_root, member) == "T" for member in peak._members(table, int(pid)) if member != pid)
     try:
         done = run(["ps", "-o", "stat=", "-p", str(int(pid))], capture_output=True, text=True, timeout=5, check=False)
     except (OSError, subprocess.SubprocessError, ValueError):

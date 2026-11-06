@@ -61,9 +61,10 @@ class Watch:
             waits = orderer is not None and orderer.state == book.WAITING
             if waits and self._frozen_since is not None and \
                     self.clock() - self._frozen_since >= self.let_go_s:
-                self.lanes.thaw(self.booking_id, self.value_of(None), force=True, never_again=True)
-                self._thaw()
-                return "let go"
+                if self.lanes.thaw(self.booking_id, self.value_of(None), force=True, never_again=True,
+                                   while_waits=item.order_by) is not None:
+                    self._thaw()
+                    return "let go"
             if self.lanes.thaw(self.booking_id, self.value_of(None)) is not None:
                 self._thaw()
                 return "thawed"
@@ -95,7 +96,8 @@ class Watch:
         # by the rules alone, never by this holder's own reading of the waiter's room: each project has its own memory
         # floor, a waiter may be a take by hand, and a reading that differs for good refused true orders for ever
         # (review of ed148e3, 1)
-        return me is not None and them is not None and not policy.victim_reason(me, them, machine)
+        return me is not None and them is not None and not policy.victim_reason(me, them, machine,
+                                                                                 by_rules_only=True)
 
     def _reclaim(self, asked: int) -> int:
         """What an order may move to swap: any session writes the journal, so the figure is held to what the swap

@@ -649,9 +649,12 @@ class Book:
                                **({"group": group} if group else {}), **({"group_mark": mark} if mark else {}),
                                **({"held_mb": held_mb} if held_mb else {}))
 
-    def thaw(self, booking_id: str, value, *, force: bool = False, never_again: bool = False) -> Booking | None:
+    def thaw(self, booking_id: str, value, *, force: bool = False, never_again: bool = False,
+             while_waits: str = "") -> Booking | None:
         """A frozen run asks to come back, as a waiter does: it thaws when the policy starts it (or `force`), and
-        keeps its first ask and its run time. None while it waits; `waits_for` says for what."""
+        keeps its first ask and its run time. None while it waits; `waits_for` says for what. `while_waits`: force
+        only while that booking still waits, read in this lock - a waiter that started meanwhile took the room, and
+        the run comes back through the queue instead of beside it."""
         from flotilla.lane import admission, estimate, policy
         self.waits_for = ""
         with self.store.transaction(KEY) as tx:
@@ -660,6 +663,8 @@ class Book:
             if item is None or item.state != HELD or item.frozen != "frozen":
                 return None
             now = self._moment()
+            if force and while_waits and (found.get(while_waits) is None or found[while_waits].state != WAITING):
+                force = False
             if not force:
                 runs, machine = admission.view(found, estimate.history(found, now=now), value, now=now,
                                                live=self.live, mine=booking_id)

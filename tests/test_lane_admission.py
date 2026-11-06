@@ -466,3 +466,29 @@ def test_a_silent_process_that_runs_is_left_alone(lane, monkeypatch):
     lanes, procs, later = lane
     first, calls = _silent(lanes, procs, later, monkeypatch, False)
     assert calls == [] and lanes.bookings()[first.id].state == book.RELEASED   # nothing of the lane's stopped there
+
+
+
+def test_a_run_that_refused_an_order_is_left_alone_by_every_waiter(lane):   # review of the follow-up, I2
+    lanes, _procs, later = lane
+    first = holder(lanes, later, tree={11: 5000}, after=61)
+    one = lanes.enqueue("main session 2", "receipt", pid=12, mark="m", kind="push")
+    two = lanes.enqueue("main session 3", "receipt", pid=13, mark="m", kind="push")
+    v = value(tree={11: 5000}, available=300)
+    lanes.grant(one.id, slots=1, value=v)
+    order = lanes.bookings()[first.id]
+    assert order.frozen == "ordered" and order.order_by == one.id
+    lanes.refuse(first.id, order_by=order.order_by, ordered_at=order.ordered_at)
+    later(2)
+    lanes.grant(two.id, slots=1, value=v)
+    lanes.grant(one.id, slots=1, value=v)
+    assert lanes.bookings()[first.id].frozen == ""   # neither waiter orders it again within the answer bound
+
+
+def test_a_refusal_with_no_moment_or_a_future_one_holds_nobody_off(lane):   # minor 2
+    lanes, _procs, later = lane
+    first = holder(lanes, later, tree={11: 5000}, after=61)
+    mine = lanes.enqueue("main session 2", "receipt", pid=12, mark="m", kind="push")
+    raw(lanes, booking=first.id, state=book.HELD, refused_by=mine.id, refused_at="2099-01-01T00:00:00+00:00")
+    lanes.grant(mine.id, slots=1, value=value(tree={11: 5000}, available=300))
+    assert lanes.bookings()[first.id].frozen == "ordered"

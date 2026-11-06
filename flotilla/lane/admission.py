@@ -102,6 +102,12 @@ def _seconds(now: dt.datetime, text: str) -> float:
     return max(0.0, (now - moment).total_seconds()) if moment is not None else 0.0
 
 
+def _fresh(now: dt.datetime, text: str) -> bool:
+    """Within the answer bound of `now` - a missing, unreadable or future moment is not."""
+    moment = book._when(text)
+    return moment is not None and 0 <= (now - moment).total_seconds() < ANSWER_S
+
+
 def _own(item, hist, cpus: int):
     """The run's measured estimate - any step of its ladder, the project prior included (section 2.2) - or None
     when only the fixed prior answers, which measures nothing on this machine."""
@@ -161,7 +167,7 @@ def view(found: dict, hist, value: Value, *, now: dt.datetime, live, mine: str, 
             order=book._order(item), fair=(projects.get(item.project, 0), served.get(item.project, ""))
             if share == "fair" else (), pinned=pinned, freezable=freezable,
             holds=item.state == book.WAITING and item.id in holding,
-            refused_for=item.refused_by if item.refused_by and _seconds(now, item.refused_at) < ANSWER_S else ""))
+            refused_for=item.refused_by if _fresh(now, item.refused_at) else ""))
     swap = value.swap_mb()
     from flotilla.lane import freeze
     machine = policy.Machine(

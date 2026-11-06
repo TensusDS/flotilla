@@ -227,6 +227,20 @@ def test_a_run_that_just_refused_this_waiter_is_no_candidate():   # review of ed
     runs = [run("y", RUNNING, 2000, ran_s=90, since_start_s=90, refused_for="b2"),
             run("b2", WAITING, 1000, kind="push")]
     d = decide(runs, machine(free=0), "b2")
-    assert d.freeze == () and "y refused b2's order a moment ago" in d.why
-    runs[0] = run("y", RUNNING, 2000, ran_s=90, since_start_s=90, refused_for="b9")   # another waiter's refusal
-    assert decide(runs, machine(free=0), "b2").freeze != ()
+    assert d.freeze == () and "y refused an order a moment ago" in d.why
+
+
+
+def test_a_run_that_just_refused_any_waiter_is_no_candidate():   # review of the follow-up, I2
+    runs = [run("y", RUNNING, 2000, ran_s=90, since_start_s=90, refused_for="b9"),
+            run("b2", WAITING, 1000, kind="push")]
+    d = decide(runs, machine(free=0), "b2")
+    assert d.freeze == () and "y refused an order a moment ago" in d.why
+
+
+def test_the_holders_check_leaves_heaviness_to_the_waiter():   # review of the follow-up, I1
+    from flotilla.lane.policy import victim_reason
+    me, them = run("h", RUNNING, 4000, True, 4, ran_s=120, since_start_s=120), run("w", WAITING, 4000, True, 4,
+                                                                                    kind="push", waited_s=600)
+    assert "heavy" in victim_reason(me, them, machine(free=0))
+    assert victim_reason(me, them, machine(free=0), by_rules_only=True) == ""

@@ -51,7 +51,7 @@ class Run:
     pinned: bool = False        # never a victim: by hand, a `freeze = false` tier, an older flotilla's
     freezable: bool = True      # its wrapper can obey an order
     holds: bool = False         # its freeze orders are out: the runs behind it leave it the memory it needs
-    refused_for: str = ""       # the waiter whose order it refused a moment ago: not that waiter's candidate yet
+    refused_for: str = ""       # whose order it refused a moment ago: no waiter's candidate until the bound is over
 
 
 @dataclass(frozen=True)
@@ -139,14 +139,16 @@ def _why_not(v: Run, mine: Run, machine: Machine) -> str:
         return f"{v.id} is being frozen already"
     if v.state != RUNNING:
         return ""
-    if v.refused_for and v.refused_for == mine.id:   # no order and refusal trading lines in the journal
-        return f"{v.id} refused {mine.id}'s order a moment ago"
+    if v.refused_for:   # no order and refusal trading lines in the journal, whichever waiters ask
+        return f"{v.id} refused an order a moment ago"
     return victim_reason(v, mine, machine)
 
 
-def victim_reason(v: Run, mine: Run, machine: Machine) -> str:
+def victim_reason(v: Run, mine: Run, machine: Machine, *, by_rules_only: bool = False) -> str:
     """Why running `v` may not be frozen for waiting `mine` by the rules of section 2.8; "" when it may. The holder
-    asks it too, of an order it finds on its booking, before it obeys (security review of 0.30.0)."""
+    asks it too, of an order it finds on its booking, before it obeys (security review of 0.30.0) - `by_rules_only`:
+    only what no reading of the machine changes. Heaviness depends on the memory the lane can give, which each
+    project reads with its own floor, so the holder leaves it to the waiter (review of the 0.30.1 follow-up, I1)."""
     if v.pinned:
         return f"{v.id} is pinned"
     if not v.freezable:
@@ -155,7 +157,7 @@ def victim_reason(v: Run, mine: Run, machine: Machine) -> str:
         return f"{v.id} is immortal"
     if v.since_start_s < GRACE_S:
         return f"{v.id} is in its first minute"
-    if v.heavy and mine.heavy:
+    if v.heavy and mine.heavy and not by_rules_only:
         return f"{v.id} is heavy, as this run is"
     if not priority(v, machine.immortal_s) + MARGIN < priority(mine, machine.immortal_s):
         return f"{v.id} ranks as high"

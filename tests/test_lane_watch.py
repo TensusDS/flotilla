@@ -428,3 +428,37 @@ def test_a_scope_freeze_is_let_go_when_its_waiter_never_starts(lane):   # review
     assert w.step() == "froze"
     tick["now"] = 121.0   # its memory moved to swap two minutes ago, and the waiter still has not started
     assert w.step() == "let go" and not s.frozen() and lanes.bookings()[mine].unanswered
+
+
+
+def floored(available=300, floor=0, tree=5000):
+    return admission.Value(cpus=8, cpu_factor=1.5, light_reserve=0.2, immortal_s=900.0, max_runs=10,
+                           freeze=freeze.SCOPE, available_mb=lambda: available, floor_mb=floor,
+                           swap_mb=lambda: (8000, 8000), tree_mb=lambda pid: tree if pid == 11 else 100,
+                           beat_age_s=lambda booking: 0.0)
+
+
+def test_a_true_order_is_obeyed_whatever_the_holders_own_floor(lane):   # review of the follow-up, I1
+    # the holder's project keeps a larger floor: by its reading the waiter is heavy, as this run is; the waiter's
+    # reading said light. Heaviness is the waiter's to judge - the holder checks only what no reading changes
+    lanes, mine, _waiter, _later, _root = lane
+    s = FakeSlot()
+    w = watch.Watch(lanes, mine, s, lambda reading: floored(available=1800, floor=1700), swap=lambda: (8000, 8000))
+    assert w.step() == "froze" and s.calls
+
+
+def test_the_let_go_does_not_force_a_thaw_beside_a_waiter_that_started(lane, monkeypatch):   # minor 1
+    lanes, mine, waiter, _later, _root = lane
+    s = FakeSlot(freeze.SIGNAL)
+    tick = {"now": 0.0}
+    w = watch.Watch(lanes, mine, s, lambda reading: value(available=300), clock=lambda: tick["now"], let_go_s=120)
+    assert w.step() == "froze"
+    real = lanes.thaw
+
+    def thaw(booking_id, value_, **kw):   # the waiter's grant takes the lock first and starts it
+        with lanes.store.transaction(book.KEY) as tx:
+            tx.append({"at": lanes._now(), "booking": waiter, "state": book.HELD})
+        return real(booking_id, value_, **kw)
+    monkeypatch.setattr(lanes, "thaw", thaw)
+    tick["now"] = 121.0
+    assert w.step() != "let go" and s.frozen()   # back through the queue, not forced in beside the run it froze for
