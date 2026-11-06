@@ -103,9 +103,11 @@ def execute(command: list[str], *, cwd=None, popen=subprocess.Popen, out=None, c
     from flotilla.lane import acquire, freeze
     booking = os.environ.get(acquire.ENV, "")
     held = freeze.slot() if booking else None   # under a booking the command can be frozen for a higher run
+    asked = list(command)
     if held is not None:
         held.wait_thawed()
         command = held.contain(command, booking=booking)
+    scoped = held is not None and bool(held.unit)
     try:
         process = popen(command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                         errors="replace", bufsize=1, start_new_session=True)
@@ -117,6 +119,7 @@ def execute(command: list[str], *, cwd=None, popen=subprocess.Popen, out=None, c
         held.attach(process.pid)
     measurer = Measurer(process.pid, paused=held.frozen_seconds if held is not None else (lambda: 0.0)).__enter__()
     tail: deque = deque(maxlen=200)
+    first: list[str] = []
     over, ended = threading.Event(), threading.Event()
     began = time.monotonic()
 
@@ -140,6 +143,8 @@ def execute(command: list[str], *, cwd=None, popen=subprocess.Popen, out=None, c
             out.write(line)
             out.flush()
             tail.append(line.rstrip("\n"))
+            if not first:
+                first.append(line)
         status = process.wait()   # inside: a command that closed its output is waited for here, and a signal
     except BaseException:         # meanwhile must stop its group as one during the reading does
         _stop(process)   # the booking is about to be released; the command must not go on computing under it
@@ -153,6 +158,12 @@ def execute(command: list[str], *, cwd=None, popen=subprocess.Popen, out=None, c
             held.detach()
     verdict, signal_number, code = verdict_of(status)
     measurer.__exit__(None, None, None)
+    if scoped and status != 0 and first and freeze.scope_refused(first[0]):
+        # systemd-run refused the scope and ran nothing: the command runs now, freezable by signal (review focus 1)
+        held.lost_scope()
+        out.write("lane: the run's scope could not be made; running it without a scope, freezable by signal\n")
+        out.flush()
+        return execute(asked, cwd=cwd, popen=popen, out=out, ceiling=ceiling)
     usage = measurer.usage
     summary = summarize(tail)
     frozen = round(frozen_since(), 2)

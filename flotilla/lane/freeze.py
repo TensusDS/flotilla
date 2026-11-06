@@ -13,6 +13,7 @@ loop asks it whether it is frozen, for how long it has been, and whether the wat
 
 from __future__ import annotations
 
+import itertools
 import os
 import re
 import shutil
@@ -31,6 +32,7 @@ CGROUP_ROOT = Path("/sys/fs/cgroup")
 PROC_SELF = Path("/proc/self/cgroup")
 FROZEN_WAIT_S = 5.0   # how long a freeze waits for the kernel to say the scope is frozen
 _probed: dict[tuple, tuple[str, str]] = {}
+_scopes = itertools.count(1)   # per process, not per slot: a scope not yet collected keeps its name a while
 
 
 def _own_cgroup(proc_self: Path) -> str:
@@ -92,6 +94,14 @@ def backend(*, setting: bool = True, platform: str = sys.platform, which=shutil.
     if key is not None:
         _probed[key] = answer
     return answer
+
+
+#: What systemd-run says when it could not make the scope - it then exits without running the command at all.
+SCOPE_REFUSED = re.compile(r"^Failed to (start transient scope unit|connect to|create bus connection)")
+
+
+def scope_refused(first_line: str) -> bool:
+    return bool(SCOPE_REFUSED.match((first_line or "").strip()))
 
 
 def swap_mb(meminfo: Path = Path("/proc/meminfo"), run=subprocess.run) -> tuple[int, int] | None:
@@ -183,7 +193,6 @@ class Slot:
         self.tree_mb = tree_mb or peak.tree_rss_mb
         self.unit = ""            # the scope of the command running now, when it has one
         self.pid: int | None = None
-        self._n = 0
         self._lock = threading.RLock()
         self._frozen_at: float | None = None
         self._frozen_total = 0.0
@@ -196,11 +205,16 @@ class Slot:
         if self.kind != SCOPE or UNIT_PREFIX in _own_cgroup(self.proc_self):
             self.unit = ""
             return list(argv)
-        self._n += 1
         name = re.sub(r"[^A-Za-z0-9_.-]", "_", booking or "run")[:40]
-        self.unit = f"{UNIT_PREFIX}{name}-{os.getpid()}-{self._n}.scope"
+        self.unit = f"{UNIT_PREFIX}{name}-{os.getpid()}-{next(_scopes)}.scope"
         return ["systemd-run", "--user", "--scope", "--quiet", "--collect", f"--unit={self.unit}", "-p",
                 "CPUWeight=100", "--", *argv]
+
+    def lost_scope(self) -> None:
+        """The scope could not be made after all (a user manager gone since the probe, a name still taken): this
+        process freezes by signal from now on, and the command is started again without a scope."""
+        with self._lock:
+            self.kind, self.unit = SIGNAL, ""
 
     def attach(self, pid: int) -> None:
         with self._lock:

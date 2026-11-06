@@ -212,3 +212,12 @@ def test_swap_on_macos_is_read_from_sysctl(tmp_path):
 
 def test_swap_unread_is_unknown(tmp_path):
     assert freeze.swap_mb(tmp_path / "none", run=lambda argv, **kw: done(1, "")) is None
+
+
+
+def test_scope_names_never_repeat_within_a_process(tmp_path):
+    cg = tmp_path / "cgroup"
+    cg.write_text("0::/user.slice/user-1000.slice/session-1.scope\n")
+    first = freeze.Slot(freeze.SCOPE, proc_self=cg).contain(["true"], booking="b1")[5]
+    second = freeze.Slot(freeze.SCOPE, proc_self=cg).contain(["true"], booking="b1")[5]
+    assert first != second   # a scope systemd has not collected yet would refuse a second start under its name

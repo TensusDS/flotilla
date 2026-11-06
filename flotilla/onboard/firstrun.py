@@ -59,6 +59,7 @@ def run_tier(name: str, command: str, cwd: Path, *, timeout: float) -> TierRun:
     if held is not None:
         held.wait_thawed()   # a frozen holder starts nothing new
         argv = held.contain(argv, booking=booking)
+    scoped = held is not None and bool(held.unit)
     started = time.monotonic()
     # stdin is closed so a tier that reads it gets end-of-file instead of waiting out the timeout; output
     # that is not UTF-8 is replaced, never a crash.
@@ -112,6 +113,9 @@ def run_tier(name: str, command: str, cwd: Path, *, timeout: float) -> TierRun:
             held.detach()
     seconds = round(max(0.0, time.monotonic() - started - frozen_since()), 2)
     output = output or ""
+    if scoped and proc.returncode != 0 and freeze.scope_refused(output.lstrip().split("\n", 1)[0]):
+        held.lost_scope()   # systemd-run refused the scope and ran nothing: run the tier now, without one
+        return run_tier(name, command, cwd, timeout=timeout)
     if proc.returncode < 0:
         status = "killed"
     elif proc.returncode == 0:

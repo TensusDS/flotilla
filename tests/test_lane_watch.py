@@ -1,3 +1,4 @@
+import io
 """The holder's watch: it freezes its command on an order, thaws it through the queue, lets a signal stop go, never
 leaves its command frozen when it fails, and beats while it lives (lane shared machine design, 4.1-4.3)."""
 
@@ -23,7 +24,7 @@ class Procs:
 
 class FakeSlot:
     def __init__(self, kind=freeze.SCOPE):
-        self.kind, self.calls, self._frozen, self.seconds = kind, [], False, 0.0
+        self.kind, self.calls, self._frozen, self.seconds, self.unit = kind, [], False, 0.0, ""
         self.watcher = None
 
     def freeze(self, reclaim_mb):
@@ -230,3 +231,46 @@ def test_held_by_value_starts_a_watch_and_stops_it(lane, monkeypatch):
                       value=lambda r: value(available=9000, tree=100)) as grant:
         assert grant.booking.path.startswith("value") and started == [grant.booking.id]
     assert admission.beat_age(root, grant.booking.id) is None
+
+
+
+class BrokenScope(freeze.Slot):
+    """A slot whose scope cannot be made: systemd-run says so and exits 1 without running the command."""
+
+    def __init__(self):
+        super().__init__(freeze.SCOPE)
+
+    def contain(self, argv, *, booking):
+        if self.kind != freeze.SCOPE:
+            return list(argv)
+        self.unit = "flotilla-lane-b1-1-1.scope"
+        return ["/bin/sh", "-c", "echo 'Failed to start transient scope unit: Unit flotilla-lane-b1-1-1.scope was "
+                "already loaded or has a fragment file.' >&2; exit 1"]
+
+
+def test_a_run_whose_scope_cannot_be_made_runs_without_one(monkeypatch):   # review focus 1
+    s = BrokenScope()
+    monkeypatch.setattr(freeze, "slot", lambda: s)
+    monkeypatch.setenv(acquire.ENV, "b1")
+    out = io.StringIO()
+    result = run.execute([sys.executable, "-c", "print('ran')"], out=out)
+    assert result.verdict == "green" and "ran" in out.getvalue() and s.kind == freeze.SIGNAL
+    assert "without a scope" in out.getvalue()
+
+
+def test_a_tier_whose_scope_cannot_be_made_runs_without_one(monkeypatch, tmp_path):
+    s = BrokenScope()
+    monkeypatch.setattr(freeze, "slot", lambda: s)
+    monkeypatch.setenv(acquire.ENV, "b1")
+    tier = firstrun.run_tier("unit", "echo 1 passed", tmp_path, timeout=30)
+    assert tier.status == "green" and s.kind == freeze.SIGNAL
+
+
+def test_a_command_that_fails_on_its_own_is_not_run_twice(monkeypatch, tmp_path):
+    s = freeze.Slot(freeze.SIGNAL)
+    monkeypatch.setattr(freeze, "slot", lambda: s)
+    monkeypatch.setenv(acquire.ENV, "b1")
+    marks = tmp_path / "marks"
+    tier = firstrun.run_tier("unit", f"echo x >> {marks}; echo 'Failed to start transient scope unit' >&2; exit 1",
+                             tmp_path, timeout=30)
+    assert tier.status == "red" and marks.read_text().count("x") == 1   # no scope was asked for: nothing to retry
