@@ -71,10 +71,10 @@ fleet.
 **Pin a release** instead, to choose when you move: name a tag on the first line (the tags are listed in
 [CHANGELOG.md](CHANGELOG.md)):
 
-    claude plugin marketplace add TensusDS/flotilla#v0.29.2 --scope project
+    claude plugin marketplace add TensusDS/flotilla#v0.29.3 --scope project
     claude plugin install flotilla@flotilla --scope project
 
-That writes `"ref": "v0.29.2"` into the project's settings and installs that release; `claude plugin update` stays on
+That writes `"ref": "v0.29.3"` into the project's settings and installs that release; `claude plugin update` stays on
 it. A machine keeps one marketplace of a name for all its projects, so give the projects on one machine the same
 channel or pin; `/flotilla:doctor` names a pin the machine does not follow. And a tag can be moved on GitHub, so a pin
 chooses when you move, not who can change what the tag names.

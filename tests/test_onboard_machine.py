@@ -102,3 +102,32 @@ def test_a_torn_machine_file_leaves_the_lane_at_one_slot(tmp_path, monkeypatch):
     monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path))
     (tmp_path / machine.MACHINE_FILE).write_text("lane_capacity = ", encoding="utf-8")
     assert commands.capacity() == 1
+
+
+def test_measuring_again_keeps_every_key_it_does_not_measure(tmp_path):
+    """`onboard machine` kept only the keys listed as the person's, so `lane_share = "fair"` and `lane_cpu_factor`,
+    added later and never listed, vanished on a re-measure and the shared lane fell back to first come, first served
+    (2026-11-05). What the measurement writes is replaced; everything else is the person's and stays."""
+    path = tmp_path / machine.MACHINE_FILE
+    path.write_text('lane_share = "fair"\nlane_cpu_factor = 2.0\nnot_yet_known = "kept"\ncpu_count = 64\n'
+                    'memory_bytes = 1\nos = "darwin"\n', encoding="utf-8")
+    machine.write_machine(tmp_path, {"schema": 1, "os": "linux", "memory_bytes": 2})
+    data = machine.read_machine(tmp_path)
+    assert data["lane_share"] == "fair" and data["lane_cpu_factor"] == 2.0 and data["not_yet_known"] == "kept"
+    assert data["os"] == "linux" and data["memory_bytes"] == 2
+    assert "cpu_count" not in data    # a fact the measurement no longer knows is dropped, never kept stale
+
+
+def test_every_key_the_measurement_writes_is_named_as_measured(tmp_path):
+    """The keep rule rests on knowing which keys are measured: one the measurement writes but the list misses would be
+    kept stale whenever the next measurement could not know it."""
+    import subprocess
+    proc = tmp_path / "proc"
+    proc.mkdir()
+    (proc / "meminfo").write_text("MemTotal: 1024 kB\n", encoding="utf-8")
+
+    def run(args, **kwargs):
+        return subprocess.CompletedProcess(args, 0, stdout="/usr/bin/python3\n3.12.1\n", stderr="")
+    data = machine.measure_machine(proc_root=proc, which=lambda name: "/usr/bin/" + name, run=run)
+    data.update(cpu_count=1, memory_bytes=1)
+    assert set(data) <= set(machine.MEASURED_KEYS)

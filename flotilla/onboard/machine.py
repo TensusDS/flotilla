@@ -86,8 +86,13 @@ def measure_machine(*, os_name: str = sys.platform, proc_root: Path = Path("/pro
     return data
 
 
-#: Keys the person sets by hand; measuring the machine again keeps them (review of 0.7.14). The rig's switch and
-#: ceilings are the person's too (rig design, section 4).
+#: Keys `measure_machine` writes. Measuring again replaces these and keeps every other key it can read: a fact it can
+#: no longer know is dropped rather than kept stale, and a key the person added, listed below or not, stays
+#: (`lane_share` was lost, 2026-11-05). A torn file is still rewritten from nothing (TODO).
+MEASURED_KEYS = ("schema", "measured_at", "os", "parent_pid_source", "timeout_command", "has_flock", "gh", "python3",
+                 "cpu_count", "memory_bytes")
+#: Keys the person sets by command (`set_person_keys`); the rig's switch and ceilings are the person's too (rig
+#: design, section 4).
 PERSON_KEYS = ("lane_capacity", "max_seats", "rig", "rig_provider", "rig_max_machines", "rig_max_hourly",
                "rig_max_hours", "rig_images", "rig_default_hours", "rig_default_budget", "attention",
                "attention_every")
@@ -102,7 +107,7 @@ def write_machine(state: Path, data: dict) -> Path:
         old = read_machine(state) or {}
     except (OSError, ValueError):
         old = {}
-    data = {**RIG_DEFAULTS, **{key: old[key] for key in PERSON_KEYS if key in old}, **data}
+    data = {**RIG_DEFAULTS, **{key: value for key, value in old.items() if key not in MEASURED_KEYS}, **data}
     header = "Measured by `flotilla onboard machine`. Facts about this computer only; re-run to refresh."
     path.write_text(render_toml(data, header=header), encoding="utf-8")
     return path

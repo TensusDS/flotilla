@@ -1,4 +1,48 @@
+import hashlib
+import os
+from pathlib import Path
+
 import pytest
+
+
+def _real_machine_file() -> Path:
+    """The person's machine.toml, found as the plugin finds it; read once, before any test sets its own directory."""
+    override = os.environ.get("FLOTILLA_STATE_DIR")
+    if override:
+        return Path(override) / "machine.toml"
+    base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
+    return Path(base) / "flotilla" / "machine.toml"
+
+
+def _fingerprint(path: Path) -> str:
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except FileNotFoundError:
+        return "absent"
+    except OSError as err:
+        return f"unreadable: {err}"
+
+
+def pytest_sessionstart(session):
+    session.config.stash[_MACHINE] = (_real_machine_file(), _fingerprint(_real_machine_file()))
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """twosuns feedback item 21: a test run rewrote the person's machine.toml. The state-directory refusal covers the
+    plugin's own door; this covers every other road (a shell hook, a child with a scrubbed environment)."""
+    path, before = session.config.stash.get(_MACHINE, (None, None))
+    if path is None:
+        return
+    after = _fingerprint(path)
+    if after != before:
+        import sys
+        print(f"\nFAILED: the person's real {path} changed during this run ({before[:12]} -> {after[:12]}): a test "
+              f"wrote outside its own state directory, or something else on this machine wrote it", file=sys.stderr)
+        if session.exitstatus in (pytest.ExitCode.OK, pytest.ExitCode.NO_TESTS_COLLECTED):
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
+_MACHINE = pytest.StashKey[tuple]()
 
 
 @pytest.fixture(autouse=True)
