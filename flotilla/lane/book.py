@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import copy
 import datetime as dt
+import re
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -43,7 +44,7 @@ FIELDS = ("who", "note", "pid", "mark", "run_for", "why", "command", "ladder", "
           "seconds", "peak_mb", "cores", "busy", "verdict", "ran", "cut", "inside", "path", "place",
           "kind", "asked", "started", "ran_s", "frozen", "order_by", "ordered_at", "reclaim_mb", "frozen_at",
           "held_mb", "frozen_s", "freezes", "heavy", "pinned", "unanswered", "freeze_kind", "unit", "group",
-          "peak_cores")
+          "peak_cores", "group_mark")
 MEASURED = ("seconds", "peak_mb", "cores", "busy", "verdict", "ran", "peak_cores")
 #: A freeze order's progress on a held booking: ordered by a waiter, then frozen by its holder; absent while it runs.
 FROZEN_STATES = ("ordered", "frozen")
@@ -52,6 +53,9 @@ KINDS = ("push", "handover", "review", "run")
 FREEZE_KINDS = ("scope", "signal")
 MOMENTS = ("asked", "started", "ordered_at", "frozen_at")
 FLAGS = ("heavy", "pinned", "unanswered")
+#: A lane scope's name as the holder makes it: any session writes the journal, and a unit's name reaches systemctl,
+#: so anything else folds to nothing (final review of 0.30.0, I7).
+UNIT = re.compile(r"flotilla-lane-[A-Za-z0-9_.-]{1,120}\.scope")
 LISTS = ("ladder", "will_run")
 MAX_TEXT = 2048   # a command and each of its signatures: every session folds the whole journal, so text is bounded
 #: Every session writes the journal and any may be steered: a measured figure of the wrong type or out of range
@@ -96,7 +100,9 @@ def _clean(key, value):
         return value if value in FREEZE_KINDS else ""
     if key in MOMENTS:
         return value if _aware(value) else ""
-    if key in ("order_by", "unit"):
+    if key == "unit":
+        return value if isinstance(value, str) and UNIT.fullmatch(value) else ""
+    if key in ("order_by", "group_mark"):
         return visible(value[:80]) if isinstance(value, str) else ""
     if key in FLAGS:
         return value is True
@@ -176,6 +182,7 @@ class Booking:
     freeze_kind: str = ""                            # how its holder froze it: scope or signal
     unit: str = ""                                   # its scope, for whoever thaws it when its holder is gone
     group: int | None = None                         # its command's process group, likewise
+    group_mark: str = ""                             # that group leader's start mark: the same process, not a reused pid
     peak_cores: float | None = None                  # the busiest stretch of cores it used, measured
 
 
@@ -375,13 +382,23 @@ def _frozen_for(item: Booking, now: dt.datetime) -> float:
     return round((item.frozen_s or 0.0) + _seconds_since(item.frozen_at, now), 2)
 
 
-def _thaw_command(item: Booking) -> bool:
+def _thaw_command(item: Booking, procs=None) -> bool:
     """Thaw a frozen booking's command from outside its holder: its scope, else its process tree. False when that
-    failed, so whoever asked keeps the booking and tries again."""
+    failed, so whoever asked keeps the booking and tries again. A process tree is signalled only when its leader is
+    provably the command that was frozen - the same pid and start mark - never a pid reused since, nor one a crafted
+    record names (final review of 0.30.0, I7)."""
     from flotilla.lane import freeze
     if item.unit:
         return freeze.thaw_unit(item.unit)
     if item.group:
+        exists = getattr(procs, "exists", None)
+        there = exists(item.group) if exists is not None else None
+        if there is None:   # cannot ask whether it exists: ask its start mark instead
+            there = getattr(procs, "start_mark", lambda pid: None)(item.group) is not None
+        if there is False or not item.group_mark:
+            return True     # gone, or never proven ours: nothing of the lane's to thaw
+        if getattr(procs, "start_mark", lambda pid: None)(item.group) != item.group_mark:
+            return True     # another process has its number now
         return freeze.thaw_tree(item.group)
     return True   # frozen with no command running: nothing to thaw but the record
 
@@ -515,6 +532,8 @@ class Book:
             if mine is None or mine.state != WAITING:
                 return None
             from flotilla.lane import admission
+            if value is not None:   # whichever way it admits, a frozen command is never left for a dead holder
+                found = self._rescue(tx, found, value)
             if value is not None and admission.by_value(found, self.live):
                 return self._by_value(tx, booking_id, value, share, fields, by_hand)
             lights: frozenset = frozenset()
@@ -551,7 +570,11 @@ class Book:
         thaw it (the person's ruling, 2026-11-06). A thaw that fails is tried again by the next grant."""
         from flotilla.lane import admission
         now = self._moment()
-        for item in [item for item in found.values() if item.state == HELD and item.frozen]:
+        for item in [item for item in found.values() if item.state != HELD and item.frozen == "frozen"]:
+            # ended still frozen: an older flotilla's sweep released a dead holder without thawing its command
+            if _thaw_command(item, self.procs):
+                self._write(tx, item.id, item.state, frozen="")
+        for item in [item for item in found.values() if item.state == HELD and item.frozen and item.pid is not None]:
             if item.frozen == "ordered":
                 asked = _when(item.ordered_at)
                 if asked is None or (now - asked).total_seconds() > admission.ANSWER_S:
@@ -561,7 +584,7 @@ class Book:
             age = None if dead else value.beat_age_s(item.id)
             if not dead and age is not None and age <= admission.BEAT_STALE_S:
                 continue
-            if not _thaw_command(item):
+            if not _thaw_command(item, self.procs):
                 continue
             if dead:
                 self._write(tx, item.id, RELEASED, why="no process behind it", cut=True, frozen="")
@@ -573,7 +596,7 @@ class Book:
     def _by_value(self, tx, booking_id: str, value, share: str, fields: dict,
                   by_hand: bool = False) -> Booking | None:
         from flotilla.lane import admission, estimate, policy
-        found = self._rescue(tx, self._found(tx), value)
+        found = self._found(tx)
         now = self._moment()
         hist = estimate.history(found, now=now)
         runs, machine = admission.view(found, hist, value, now=now, live=self.live, mine=booking_id, share=share,
@@ -594,14 +617,19 @@ class Book:
         return None
 
     def frozen(self, booking_id: str, *, freeze_kind: str, unit: str, group: int | None,
-               held_mb: int | None) -> Booking:
-        """Its holder obeyed: the command is frozen, and its run time so far is kept, frozen time left out."""
+               held_mb: int | None) -> Booking | None:
+        """Its holder obeyed: the command is frozen, and its run time so far is kept, frozen time left out. None, and
+        nothing written, when the booking no longer holds: a record never brings a released booking back."""
         with self.store.transaction(KEY) as tx:
-            item = self._found(tx)[booking_id]
+            item = self._found(tx).get(booking_id)
+            if item is None or item.state != HELD:
+                return None
             ran = (item.ran_s or 0.0) + _seconds_since(item.started or item.since, self._moment())
+            mark = getattr(self.procs, "start_mark", lambda pid: None)(group) if group else None
             return self._write(tx, booking_id, HELD, frozen="frozen", frozen_at=self._now(), ran_s=round(ran, 2),
                                freezes=item.freezes + 1, freeze_kind=freeze_kind, unit=unit,
-                               **({"group": group} if group else {}), **({"held_mb": held_mb} if held_mb else {}))
+                               **({"group": group} if group else {}), **({"group_mark": mark} if mark else {}),
+                               **({"held_mb": held_mb} if held_mb else {}))
 
     def thaw(self, booking_id: str, value, *, force: bool = False, never_again: bool = False) -> Booking | None:
         """A frozen run asks to come back, as a waiter does: it thaws when the policy starts it (or `force`), and
@@ -675,8 +703,8 @@ class Book:
                 if item.pid is None or self.live(item) or (gone is not None and not gone(item)):
                     continue
                 state = RELEASED if item.state == HELD else LEFT
-                if item.frozen == "frozen":
-                    _thaw_command(item)   # a dead holder's frozen command must not stay in swap for ever
+                if item.frozen == "frozen" and not _thaw_command(item, self.procs):
+                    continue   # kept: a frozen command must not stay in swap for ever, so the next look tries again
                 cut = {"cut": True} if state == RELEASED else {}   # a run cut short measures nothing; never dropped
                 swept.append(self._write(tx, item.id, state, why="no process behind it", **cut))
         return swept

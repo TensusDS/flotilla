@@ -30,7 +30,7 @@ class FakeSlot:
     def freeze(self, reclaim_mb):
         self.calls.append(("freeze", reclaim_mb))
         self._frozen = True
-        return {"freeze_kind": self.kind, "unit": "u1" if self.kind == freeze.SCOPE else "", "group": 11,
+        return {"freeze_kind": self.kind, "unit": "flotilla-lane-b1-11-1.scope" if self.kind == freeze.SCOPE else "", "group": 11,
                 "held_mb": 5000}
 
     def thaw(self):
@@ -73,7 +73,7 @@ def test_the_watch_freezes_its_command_on_an_order(lane):
     w = watch.Watch(lanes, mine, s, lambda reading: value(available=300))
     assert w.step() == "froze"
     found = lanes.bookings()[mine]
-    assert s.calls == [("freeze", found.reclaim_mb)] and found.frozen == "frozen" and found.unit == "u1"
+    assert s.calls == [("freeze", found.reclaim_mb)] and found.frozen == "frozen" and found.unit == "flotilla-lane-b1-11-1.scope"
 
 
 def test_the_watch_thaws_when_the_policy_lets_it(lane):

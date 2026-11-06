@@ -103,11 +103,11 @@ def _seconds(now: dt.datetime, text: str) -> float:
 
 
 def _own(item, hist, cpus: int):
-    """The run's own measured estimate, or None when nothing of its own command was measured (a project or fixed
-    prior is no measurement of this run)."""
+    """The run's measured estimate - any step of its ladder, the project prior included (section 2.2) - or None
+    when only the fixed prior answers, which measures nothing on this machine."""
     from flotilla.lane import estimate
     found = estimate.for_booking(item, hist, cpus=cpus)
-    return None if "prior" in found.source else found
+    return None if found.source.startswith("fixed prior") else found
 
 
 def view(found: dict, hist, value: Value, *, now: dt.datetime, live, mine: str, share: str = "fifo",
@@ -153,8 +153,6 @@ def view(found: dict, hist, value: Value, *, now: dt.datetime, live, mine: str, 
             # seen, so it is kept from the runs that come after it - only the light reserve stays theirs
             heavy, par, pinned = True, value.cpus, True
             mem = round((1 - value.light_reserve) * give) if give is not None else expected
-            if item.state == book.HELD:
-                reserved += mem
         if older:
             pinned = True
         runs.append(policy.Run(
@@ -168,6 +166,7 @@ def view(found: dict, hist, value: Value, *, now: dt.datetime, live, mine: str, 
     machine = policy.Machine(
         cpus=value.cpus, give_mb=give, free_mb=None if available is None else available - value.floor_mb - reserved,
         swap_free_mb=swap[0] if swap else None, swap_total_mb=swap[1] if swap else None,
+        swap_pending_mb=sum(item.reclaim_mb or 0 for item in held if item.frozen == "ordered"),
         cpu_factor=value.cpu_factor, light_reserve=value.light_reserve, immortal_s=value.immortal_s,
         max_runs=value.max_runs, freeze=value.freeze != freeze.OFF)
     return runs, machine

@@ -161,8 +161,19 @@ def test_thaw_unit_writes_the_scopes_freeze_file(tmp_path):
     assert (scope / "cgroup.freeze").read_text().strip() == "0"
 
 
-def test_thaw_unit_of_a_unit_that_is_gone_says_so(tmp_path):
-    assert not freeze.thaw_unit("gone.scope", run=lambda argv, **kw: done(0, ""), root=tmp_path)
+def test_thaw_unit_of_a_unit_that_is_gone_counts_as_thawed(tmp_path):   # final review I5b
+    assert freeze.thaw_unit("gone.scope", run=lambda argv, **kw: done(0, ""), root=tmp_path)
+
+
+def test_thaw_unit_when_systemd_cannot_be_asked_says_so(tmp_path):
+    assert not freeze.thaw_unit("x.scope", run=lambda argv, **kw: done(1, ""), root=tmp_path)
+
+
+def test_thaw_unit_ends_the_options_before_the_name(tmp_path):   # final review I7
+    seen = []
+    freeze.thaw_unit("flotilla-lane-b1-1-1.scope", run=lambda argv, **kw: seen.append(argv) or done(0, ""),
+                     root=tmp_path)
+    assert seen[0][-2:] == ["--", "flotilla-lane-b1-1-1.scope"]
 
 
 def test_frozen_seconds_add_up_across_freezes():

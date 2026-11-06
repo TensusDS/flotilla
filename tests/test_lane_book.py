@@ -696,12 +696,12 @@ def test_freeze_fields_fold_as_written():
     found = book.fold([{"at": "2026-11-06T10:00:00+00:00", "booking": "b1", "state": "held", "frozen": "frozen",
                         "ran_s": 300.5, "reclaim_mb": 1128, "freezes": 2, "heavy": True, "kind": "review",
                         "order_by": "b2", "peak_cores": 6.5, "group": 4242, "freeze_kind": "scope",
-                        "unit": "flotilla-lane-b1-9-1", "held_mb": 2048, "frozen_s": 40.0,
+                        "unit": "flotilla-lane-b1-9-1.scope", "held_mb": 2048, "frozen_s": 40.0,
                         "started": "2026-11-06T09:55:00+00:00", "unanswered": True, "pinned": True}])["b1"]
     assert (found.frozen, found.ran_s, found.reclaim_mb, found.freezes, found.heavy, found.kind, found.order_by,
             found.peak_cores, found.group, found.freeze_kind, found.unit, found.held_mb, found.frozen_s,
             found.started, found.unanswered, found.pinned) == \
-        ("frozen", 300.5, 1128, 2, True, "review", "b2", 6.5, 4242, "scope", "flotilla-lane-b1-9-1", 2048, 40.0,
+        ("frozen", 300.5, 1128, 2, True, "review", "b2", 6.5, 4242, "scope", "flotilla-lane-b1-9-1.scope", 2048, 40.0,
          "2026-11-06T09:55:00+00:00", True, True)
 
 

@@ -129,7 +129,7 @@ def swap_mb(meminfo: Path = Path("/proc/meminfo"), run=subprocess.run) -> tuple[
 
 def _cgroup_of(unit: str, run, root: Path) -> Path | None:
     try:
-        done = run(["systemctl", "--user", "show", "-p", "ControlGroup", "--value", unit], capture_output=True,
+        done = run(["systemctl", "--user", "show", "-p", "ControlGroup", "--value", "--", unit], capture_output=True,
                    text=True, timeout=10, check=False)
     except (OSError, subprocess.SubprocessError):
         return None
@@ -165,10 +165,19 @@ def _signal_tree(pid: int, number: int, table) -> bool:
 
 
 def thaw_unit(unit: str, *, run=subprocess.run, root: Path = CGROUP_ROOT) -> bool:
-    """Thaw a scope whose holder is gone or silent; False when the scope is gone or would not take the write."""
-    cgroup = _cgroup_of(unit, run, root)
-    if cgroup is None:
+    """Thaw a scope whose holder is gone or silent. True when it is thawed or gone (nothing left frozen); False when
+    systemd could not be asked or the scope would not take the write, so the caller tries again."""
+    try:
+        done = run(["systemctl", "--user", "show", "-p", "ControlGroup", "--value", "--", unit], capture_output=True,
+                   text=True, timeout=10, check=False)
+    except (OSError, subprocess.SubprocessError):
         return False
+    if done.returncode != 0:
+        return False
+    path = (done.stdout or "").strip()
+    cgroup = root / path.lstrip("/") if path else None
+    if cgroup is None or not (cgroup / "cgroup.freeze").exists():
+        return True   # the scope ended: its command is gone with it
     try:
         (cgroup / "cgroup.freeze").write_text("0", encoding="utf-8")
         return True
