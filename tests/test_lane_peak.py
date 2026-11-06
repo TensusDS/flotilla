@@ -132,3 +132,46 @@ def test_waiting_for_a_cpu_does_not_stretch_the_gap(monkeypatch):
     """Wall time a read spends off the CPU on a loaded machine is not its cost (review of 0.7.14): only CPU counts.
     (A wall-clock version of this test failed on a slow macOS runner - CI of 0.7.14.)"""
     assert _waits(monkeypatch, sample=0.02, cost=0.0) == [0.02, 0.02, 0.02]
+
+def test_peak_cores_is_the_busiest_stretch_not_the_average():
+    readings = iter([(1000, 0.0), (1000, 8.0), (1000, 9.0), (1000, 10.0)])   # (kB, group CPU s) a second apart
+    times = iter([0.0, 1.0, 2.0, 3.0])
+    meter = peak.GroupPeak(1, sample=1.0, sampler=lambda group: next(readings), clock=lambda: next(times),
+                           rusage=lambda: None)
+    for _ in range(4):
+        meter._take()
+    assert meter.peak_cores == 8.0 and meter.peak_mb == 1
+
+
+def test_peak_cores_waits_for_a_whole_sample_between_readings():
+    readings = iter([(1000, 0.0), (1000, 5.0), (1000, 6.0)])
+    times = iter([0.0, 0.25, 1.0])   # the reading at 0.25 s is too close to rate; 6 CPU s over 1 s is
+    meter = peak.GroupPeak(1, sample=1.0, sampler=lambda group: next(readings), clock=lambda: next(times),
+                           rusage=lambda: None)
+    for _ in range(3):
+        meter._take()
+    assert meter.peak_cores == 6.0
+
+
+def test_a_memory_only_reader_has_no_peak_cores():
+    meter = peak.GroupPeak(1, read=lambda group: 2048, rusage=lambda: None)
+    meter._take()
+    assert meter.peak_mb == 2 and meter.peak_cores is None
+
+
+def test_group_usage_sums_cpu_of_the_group_and_its_tree(tmp_path):
+    root = fake_proc(tmp_path, {7: (7, 100, 1), 8: (8, 50, 7), 9: (9, 999, 1)})
+    for pid, ticks in ((7, (100, 50, 0, 0)), (8, (200, 0, 25, 25)), (9, (9999, 0, 0, 0))):
+        fields = ["S", "1" if pid != 8 else "7", str(pid)] + ["0"] * 8 + [str(t) for t in ticks] + ["0"] * 40
+        (root / str(pid) / "stat").write_text(f"{pid} (cmd x) " + " ".join(fields), encoding="utf-8")
+    kb, cpu = peak.group_usage(7, proc_root=root, page_kb=4, tick=100)
+    assert kb == 600 and cpu == 4.0   # (150 + 250) ticks at 100 a second; pid 9 is neither group nor tree
+
+
+def test_tree_rss_counts_the_wrapper_and_its_command(tmp_path):
+    root = fake_proc(tmp_path, {10: (10, 100, 1), 11: (11, 300, 10), 12: (10, 999, 1)})   # 12: same group, no child
+    assert peak.tree_rss_mb(10, proc_root=root, page_kb=4) == 2   # 400 pages * 4 kB, rounded up
+
+
+def test_tree_rss_of_a_pid_that_is_gone_is_unknown(tmp_path):
+    assert peak.tree_rss_mb(10, proc_root=fake_proc(tmp_path, {11: (11, 5, 1)}), page_kb=4) is None

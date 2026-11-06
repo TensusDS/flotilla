@@ -79,6 +79,8 @@ def _tier(value) -> dict | None:
         tier["kind"] = "setup"
     for key in BOUNDS:
         tier[key] = _figure(key, value.get(key))
+    if _figure("peak_cores", value.get("peak_cores")) is not None:   # only where measured: older tiers stay as read
+        tier["peak_cores"] = _figure("peak_cores", value.get("peak_cores"))
     return tier
 
 

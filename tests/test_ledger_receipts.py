@@ -473,3 +473,10 @@ def test_a_tier_trunk_renamed_after_the_branch_was_cut_is_not_added(tmp_path):
     git(root, "push", "-q", "origin", "main")
     effective, problem, _ = receipts.with_branch_tiers(root, tip, renamed)
     assert problem == "" and [t["name"] for t in receipts.tiers_for(effective, "handover")] == ["unit"]
+
+
+def test_a_tiers_peak_cores_reaches_the_lanes_journal():
+    from flotilla.ledger.receipts import measured_of
+    found = measured_of({"tiers": [{"name": "unit", "status": "green", "seconds": 30.0, "elapsed": 30.0,
+                                    "peak_mb": 400, "cores": 1.0, "busy": 0.3, "peak_cores": 5.5}]})
+    assert found["peak_cores"] == 5.5 and found["ran"][0]["peak_cores"] == 5.5

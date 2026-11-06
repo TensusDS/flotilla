@@ -38,6 +38,7 @@ class TierRun:
     cores: float | None = None   # CPU seconds over wall seconds, green runs only (lane admission, stage 1)
     busy: float | None = None    # the machine's busy share meanwhile, green runs only
     elapsed: float | None = None  # wall time whatever the outcome: a red or timed-out tier still held the lane
+    peak_cores: float | None = None  # its busiest stretch of cores, green runs only (lane shared machine, 4.4)
 
 
 def _tail(text: str) -> str:
@@ -95,7 +96,7 @@ def run_tier(name: str, command: str, cwd: Path, *, timeout: float) -> TierRun:
     usage = sampler.usage if status == "green" else None
     return TierRun(name, status, seconds if status == "green" else None, _summary(output), _tail(output),
                    proc.returncode, usage.peak_mb if usage else None, usage.cores if usage else None,
-                   usage.busy if usage else None, seconds)
+                   usage.busy if usage else None, seconds, usage.peak_cores if usage else None)
 
 
 def _path(state: Path, repo_key: str) -> Path:

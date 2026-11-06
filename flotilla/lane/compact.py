@@ -26,7 +26,7 @@ STALE = dt.timedelta(days=7)   # a step no estimate can read yet, whose newest s
 WINDOW = dt.timedelta(days=30)   # what estimate.history reads
 RECORD = "lane.compacted"   # beside the journal: when the last compaction ran and what it left
 #: What estimate.history reads from an ended booking, besides its state and time.
-ESTIMATE_FIELDS = ("project", "ladder", "ran", "seconds", "peak_mb", "cores", "busy", "verdict", "cut")
+ESTIMATE_FIELDS = ("project", "ladder", "ran", "seconds", "peak_mb", "cores", "busy", "verdict", "cut", "peak_cores")
 
 
 def _when(text) -> dt.datetime | None:

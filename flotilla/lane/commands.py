@@ -390,6 +390,7 @@ def _run(args) -> int:
             if result.usage is not None:
                 grant.measured.update({"seconds": result.usage.seconds, "peak_mb": result.usage.peak_mb,
                                        "cores": result.usage.cores, "busy": result.usage.busy,
+                                       "peak_cores": result.usage.peak_cores,
                                        "verdict": "ceiling" if result.at_ceiling else result.verdict})
     except acq.LaneRefused as err:
         print(f"refused: {err}")

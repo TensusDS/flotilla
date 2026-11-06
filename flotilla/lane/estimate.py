@@ -30,6 +30,7 @@ class Sample:
     busy: float | None
     verdict: str
     at: str
+    peak_cores: float | None = None
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,7 @@ class Estimate:
     cores: float | None
     peak_mb: int | None
     source: str
+    peak_cores: float | None = None   # the busiest stretch any sample saw: a heavy run's parallelism (section 4.4)
 
 
 PRIOR = Estimate(None, 4.0, 2048, "fixed prior: 4 cores, 2 GB")
@@ -58,7 +60,8 @@ def history(bookings: dict, *, now: dt.datetime, days: int = 30) -> dict[str, li
             and since <= _when(item.ended) <= latest]
     for item in sorted(done, key=lambda item: _when(item.ended)):
         if item.seconds is not None and item.verdict not in UNMEASURED:   # a red receipt's tiers still teach
-            sample = Sample(item.seconds, item.peak_mb, item.cores, item.busy, item.verdict, item.ended)
+            sample = Sample(item.seconds, item.peak_mb, item.cores, item.busy, item.verdict, item.ended,
+                            item.peak_cores)
             for step in item.ladder:
                 found.setdefault(step, []).append(sample)
         for tier in item.ran or []:
@@ -68,7 +71,7 @@ def history(bookings: dict, *, now: dt.datetime, days: int = 30) -> dict[str, li
                 found.setdefault(key, []).append(Sample(
                     tier.get("seconds"), tier.get("peak_mb"), tier.get("cores"), tier.get("busy"),
                     {"green": "green", "timed-out": "ceiling"}.get(tier.get("status"), str(tier.get("status") or "")),
-                    item.ended))
+                    item.ended, tier.get("peak_cores")))
     return {step: samples[-KEEP:] for step, samples in found.items()}
 
 
@@ -95,6 +98,11 @@ def _peak(samples: list[Sample]) -> int | None:
     return max(usable) if usable else None
 
 
+def _peak_cores(samples: list[Sample]) -> float | None:
+    usable = [s.peak_cores for s in samples if s.peak_cores is not None]
+    return max(usable) if usable else None
+
+
 def _p90(values: list) -> float | int | None:
     values = sorted(v for v in values if v is not None)
     if not values:
@@ -116,11 +124,12 @@ def estimate(ladder: list[str], hist: dict[str, list[Sample]], *, project: str, 
                 if seconds is not None:
                     source += f"; duration from {len(more)} runs ({coarser.split(':', 1)[0]} match)"
                     break
-        return Estimate(seconds, _cores(samples, cpus), _peak(samples), source)
+        return Estimate(seconds, _cores(samples, cpus), _peak(samples), source, _peak_cores(samples))
     samples = hist.get(f"project:{project}", [])
     if len(samples) >= ENOUGH:
         return Estimate(None, _p90([s.cores for s in samples]), _p90([s.peak_mb for s in samples]),
-                        f"project prior: 90th percentile of {len(samples)} runs")
+                        f"project prior: 90th percentile of {len(samples)} runs",
+                        _p90([s.peak_cores for s in samples]))
     return PRIOR
 
 
@@ -134,7 +143,8 @@ def receipt_estimate(will_run: list[str], hist: dict[str, list[Sample]], *, proj
     cores = max((p.cores for p in parts if p.cores is not None), default=None)
     peak = max((p.peak_mb for p in parts if p.peak_mb is not None), default=None)
     sources = sorted({p.source for p in parts})
-    return Estimate(seconds, cores, peak, f"{len(parts)} tier(s): " + "; ".join(sources))
+    busiest = max((p.peak_cores for p in parts if p.peak_cores is not None), default=None)
+    return Estimate(seconds, cores, peak, f"{len(parts)} tier(s): " + "; ".join(sources), busiest)
 
 
 #: A run is light when its own measurements say it is short and small (lane light runs design, section 2): it then

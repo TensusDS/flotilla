@@ -47,3 +47,19 @@ def test_a_measurer_with_nothing_readable_still_has_its_time():
     with m:
         pass
     assert m.usage == measure.Usage(seconds=3.0, peak_mb=None, cores=None, busy=None)
+
+
+class _CorePeak(_Peak):
+    def __init__(self, mb, cores):
+        super().__init__(mb)
+        self.peak_cores = cores
+
+
+def test_frozen_time_is_not_run_time():
+    clock = iter([0.0, 100.0])
+    paused = iter([0.0, 60.0])
+    m = measure.Measurer(1, clock=lambda: next(clock), cpu=iter([0.0, 40.0]).__next__, stat=lambda: None,
+                         peak=_CorePeak(300, 3.5), paused=lambda: next(paused))
+    with m:
+        pass
+    assert m.usage.seconds == 40.0 and m.usage.cores == 1.0 and m.usage.peak_cores == 3.5

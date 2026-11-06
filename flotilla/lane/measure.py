@@ -24,6 +24,7 @@ class Usage:
     peak_mb: int | None
     cores: float | None
     busy: float | None
+    peak_cores: float | None = None   # the busiest stretch, where the run's average hides it
 
 
 def cpu_times(path: Path = PROC_STAT) -> CpuTimes | None:
@@ -59,15 +60,19 @@ class Measurer:
     """Measures the run of process group `pgid` between enter and exit. The run must be reaped before exit, so its
     CPU time reaches RUSAGE_CHILDREN. Like the peak sampler it holds, it never fails the run it measures."""
 
-    def __init__(self, pgid: int, *, clock=time.monotonic, cpu=children_cpu_seconds, stat=cpu_times, peak=None):
+    def __init__(self, pgid: int, *, clock=time.monotonic, cpu=children_cpu_seconds, stat=cpu_times, peak=None,
+                 paused=lambda: 0.0):
+        """`paused`: the seconds the run has been frozen so far; what it grows by between enter and exit is not run
+        time, so a frozen run's cores and seconds are those it ran (lane shared machine, section 4.4)."""
         from flotilla.lane.peak import GroupPeak
-        self.clock, self.cpu, self.stat = clock, cpu, stat
+        self.clock, self.cpu, self.stat, self.paused = clock, cpu, stat, paused
         self.peak = peak if peak is not None else GroupPeak(pgid)
         self.usage: Usage | None = None
         self._done = False
 
     def __enter__(self) -> "Measurer":
         self._began, self._cpu, self._stat = self.clock(), self.cpu(), self.stat()
+        self._paused = self._read_paused()
         self.peak.__enter__()
         return self
 
@@ -76,9 +81,16 @@ class Measurer:
             return
         self._done = True
         self.peak.__exit__(*exc)
-        seconds = max(0.0, self.clock() - self._began)
+        seconds = max(0.0, self.clock() - self._began - max(0.0, self._read_paused() - self._paused))
         cpu_after = self.cpu()
         cores = None
         if self._cpu is not None and cpu_after is not None and seconds > 0:
             cores = round(max(0.0, cpu_after - self._cpu) / seconds, 2)
-        self.usage = Usage(round(seconds, 2), self.peak.peak_mb, cores, busy_share(self._stat, self.stat()))
+        self.usage = Usage(round(seconds, 2), self.peak.peak_mb, cores, busy_share(self._stat, self.stat()),
+                           getattr(self.peak, "peak_cores", None))
+
+    def _read_paused(self) -> float:
+        try:
+            return float(self.paused())
+        except Exception:  # noqa: BLE001 - an unreadable pause counts as none; the run is still measured
+            return 0.0
