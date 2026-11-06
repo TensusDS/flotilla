@@ -78,7 +78,7 @@ def _decision(got: dict, asked: queue.Question, wait: float) -> dict:
 
 
 #: flotilla's own subcommands a seat runs without asking the person: reading the fleet, and ledger moves flotilla
-#: checks itself - post, evidence, revision (worldcore field test W16). Each maps to the words that refuse it anyway:
+#: checks itself - post, evidence, revision (beta field test W16). Each maps to the words that refuse it anyway:
 #: standing the fleet down, the person's approval. `lane` passes only bare (who holds the machine), never a booking;
 #: bare `lane` ends bookings whose process no longer exists, which blocks nobody's run (0.24.1), while `lane sweep`,
 #: which also ends a booking whose process only fails a look, stays the person's.
@@ -212,7 +212,7 @@ def decide(payload: dict, ctx, *, clock=time.time, sleep=time.sleep, timer=time.
         return _deny(f"the orchestrator's own question cannot be put to itself; the person answers it with "
                      f"`claude attach {handle}`")
     mine = ctx.project if ctx.project is not None else ctx.sessions   # an orchestrator of another project never reads
-    leading = _leads(ctx)   # the person's own session leads before its name shows (worldcore field test W13)
+    leading = _leads(ctx)   # the person's own session leads before its name shows (beta field test W13)
     if not any(s.name and s.name != me and (ctx.post_of(s.name) == "orchestrator" or s.session_id in leading)
                for s in mine):
         return _deny("no live orchestrator to put this question to; spawn one (`flotilla spawn -o 1`), or give this "

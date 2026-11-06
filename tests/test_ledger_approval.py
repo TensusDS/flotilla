@@ -49,7 +49,7 @@ def test_a_person_authorizing_every_merge_approves_everything(tmp_path):
 
 
 def test_with_approve_paths_only_work_touching_them_waits_for_the_person(tmp_path):
-    """twosuns field report B1, the person's decision 2026-10-27: code ships on a yes; docs, credits and data do not
+    """alpha field report B1, the person's decision 2026-10-27: code ships on a yes; docs, credits and data do not
     ask, so the questions put to the person stay few."""
     root, base = _world(tmp_path)
     profile = {"flow": {"merge_authorized_by": "human", "approve_paths": CODE}}

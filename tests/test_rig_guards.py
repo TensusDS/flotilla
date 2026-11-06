@@ -311,7 +311,7 @@ def test_a_hash_inside_a_word_is_no_comment(tmp_path, monkeypatch):
     assert answer and answer["permissionDecision"] == "deny"
 
 
-@pytest.mark.parametrize("move", ["share twosuns", "unshare twosuns", "share ."])
+@pytest.mark.parametrize("move", ["share alpha", "unshare alpha", "share ."])
 def test_sharing_the_rig_session_is_the_persons_move_too(tmp_path, monkeypatch, move):
     """0.28.1, the regression review: share and unshare were the person's by 0.25.0's word, guarded only against
     background sessions - the model in the person's own session could widen a paid session to another project."""
@@ -320,6 +320,6 @@ def test_sharing_the_rig_session_is_the_persons_move_too(tmp_path, monkeypatch, 
 
 
 def test_sharing_handed_to_an_interpreter_is_refused_too(tmp_path, monkeypatch):
-    command = f"python3 -c \"import os; os.system('{CLI} rig share twosuns')\""
+    command = f"python3 -c \"import os; os.system('{CLI} rig share alpha')\""
     answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
     assert answer and answer["permissionDecision"] == "deny", answer

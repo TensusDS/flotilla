@@ -228,15 +228,15 @@ def test_only_the_judge_template_keeps_a_plugin_and_it_is_the_browser():
 
 
 def test_a_session_of_a_fleet_before_its_name_is_known_by_its_former_post(tmp_path):
-    """Twosuns field test of 0.6.7: rows owned by `main session 19`, raised before the profile named the fleet,
-    matched no post once the patterns read `twosuns-main session {n}` - so nobody could say whose post the gone owner
+    """Alpha field test of 0.6.7: rows owned by `main session 19`, raised before the profile named the fleet,
+    matched no post once the patterns read `alpha-main session {n}` - so nobody could say whose post the gone owner
     held. The former name is recognised for that question only."""
     P.install_templates(tmp_path)
-    posts = P.load_posts(tmp_path, project="twosuns")
+    posts = P.load_posts(tmp_path, project="alpha")
     assert P.post_for_session(posts, "main session 19") is None            # a former name holds no post now
     assert P.post_or_former(posts, "main session 19") == "main"
-    assert P.post_or_former(posts, "twosuns-main session 2") == "main"
-    assert P.post_or_former(posts, "worldcore-main session 2") == ""        # another project's seat is not ours
+    assert P.post_or_former(posts, "alpha-main session 2") == "main"
+    assert P.post_or_former(posts, "beta-main session 2") == ""        # another project's seat is not ours
     assert P.post_or_former(P.load_posts(tmp_path), "main session 19") == "main"
 
 
@@ -303,7 +303,7 @@ def test_the_orchestrator_runs_the_daily_pass():
 
 
 def test_the_orchestrator_may_amend_requires():
-    """Twosuns, 2026-11-01, item 11: a stale requirement on an accepted row had no move that lifted it."""
+    """Alpha, 2026-11-01, item 11: a stale requirement on an accepted row had no move that lifted it."""
     from flotilla.posts import TEMPLATE_DIR, load_post
     post = load_post(TEMPLATE_DIR / "orchestrator.md")
     body = " ".join((TEMPLATE_DIR / "orchestrator.md").read_text(encoding="utf-8").split())

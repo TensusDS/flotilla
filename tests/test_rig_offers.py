@@ -1,4 +1,4 @@
-"""A stale offer, an empty market and a reaper armed again (field report of 2026-10-14, flotilla 0.10.2 on twosuns):
+"""A stale offer, an empty market and a reaper armed again (field report of 2026-10-14, flotilla 0.10.2 on alpha):
 `rig up` took the first offer only, so an ask vast still listed but could no longer rent failed every run; a failed
 machine with no instance held the one-machine ceiling until a reap; `rig run --wait` waited for room but never for an
 offer; and `flotilla rig` called the reaper silent while cron was firing - it had only just been armed again."""

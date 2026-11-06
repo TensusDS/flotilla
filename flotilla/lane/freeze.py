@@ -186,6 +186,45 @@ def thaw_unit(unit: str, *, run=subprocess.run, root: Path = CGROUP_ROOT) -> boo
         return False
 
 
+BOOKING_ENV = "FLOTILLA_LANE_BOOKING"   # set by the lane for every booked command (acquire.ENV)
+
+
+def _booking_of(entries) -> str | None:
+    """The booking an environment names, "" when it names none."""
+    for entry in entries:
+        if entry.startswith(f"{BOOKING_ENV}="):
+            return entry[len(BOOKING_ENV) + 1:]
+    return ""
+
+
+def carries(pid: int, booking: str, *, proc_root: Path = Path("/proc"), run=subprocess.run) -> bool | None:
+    """Whether process `pid` runs under lane booking `booking`, by its own environment - the journal, which any
+    session writes, cannot say (security review of 0.30.0). True: it names this booking. False: positive proof it is
+    not this booking's run - it is gone, or names another booking. None: no word either way (unreadable, or no lane
+    variable at all, as after a re-exec with a cleared environment) - never read as "not ours", since that would
+    leave a lane command stopped for good (review of 0.30.1, I2)."""
+    if proc_root.is_dir():
+        try:
+            entries = (proc_root / str(int(pid)) / "environ").read_bytes().decode("utf-8", "replace").split("\0")
+        except FileNotFoundError:
+            return False
+        except (OSError, ValueError):
+            return None
+    else:
+        try:   # macOS: `ps -E` appends the environment to the command, for the user's own processes
+            done = run(["ps", "-wwE", "-p", str(int(pid)), "-o", "command="], capture_output=True, text=True,
+                       timeout=5, check=False)
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return None
+        if done.returncode != 0:
+            return False
+        entries = (done.stdout or "").split()
+    named = _booking_of(entries)
+    if not named:
+        return None
+    return named == booking
+
+
 def thaw_tree(pid: int, *, table=None) -> bool:
     """Continue every process of `pid`'s tree and group after a stop by signal whose holder is gone or silent."""
     return _signal_tree(pid, signal.SIGCONT, table if table is not None else _table())

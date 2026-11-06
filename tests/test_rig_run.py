@@ -354,7 +354,7 @@ def test_max_above_the_profiles_ceiling_is_refused(world, box, tree):
 
 
 def test_a_get_of_a_type_that_never_comes_back_is_refused_before_any_money(world, box, tree):
-    """twosuns field report A8: a 3.3 GB dust map was converted on the machine and could not come back, because
+    """alpha field report A8: a 3.3 GB dust map was converted on the machine and could not come back, because
     .f16 is no artifact type; the run learnt it only at the end. The refusal comes first, and says it is the
     project's setting, not a fault (the person, 2026-10-27)."""
     opened(world)
@@ -716,10 +716,10 @@ def test_no_session_suggests_the_persons_hours_and_budget(world, box, tree):
 
 
 def test_a_run_from_a_project_the_session_does_not_serve_is_refused_with_the_line(world, box, tree):
-    """Twosuns item 15.3: one session, one ceiling, one budget, and any project's run took it."""
-    journal(world).open_session("the person", "frames", hours=3, budget=2.0, projects=["twosuns-key"])
+    """Alpha item 15.3: one session, one ceiling, one budget, and any project's run took it."""
+    journal(world).open_session("the person", "frames", hours=3, budget=2.0, projects=["alpha-key"])
     code, out = rig_run(world, tree, "--", "sh", "shoot.sh")
-    assert code == 2 and "serves twosuns-key" in out and "! flotilla rig share " in out, out
+    assert code == 2 and "serves alpha-key" in out and "! flotilla rig share " in out, out
     assert journal(world).runs() == {} and world["fake"].created == 0
     [asked] = [r for r in journal(world).requests().values() if r.kind == "share"]
     assert asked.project and asked.project in out
@@ -838,7 +838,7 @@ def test_a_run_that_fits_is_not_warned(world, box, tree, monkeypatch):
     assert "after session" not in out
 
 
-# -- a stopped run brings back what it made (twosuns item 3) ------------------------------------------------------
+# -- a stopped run brings back what it made (alpha item 3) ------------------------------------------------------
 
 def test_a_stopped_run_brings_back_what_it_made(world, box, tree, tmp_path):
     opened(world)

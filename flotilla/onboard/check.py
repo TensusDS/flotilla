@@ -28,7 +28,7 @@ def check_drift(profile: dict, det: dict, measured: dict[str, float], posts: set
     if trunk and det.get("trunk") and det["trunk"] != trunk:
         findings.append(f"trunk: the profile says `{trunk}`, the repository says `{det['trunk']}`")
     default = (profile.get("fleet") or {}).get("default")
-    if isinstance(default, dict):   # profiles written before both were always composed (twosuns 0.6.7, W3)
+    if isinstance(default, dict):   # profiles written before both were always composed (alpha 0.6.7, W3)
         if not default.get("orchestrator") and (posts is None or "orchestrator" in posts):
             findings.append("fleet: the default composition has no orchestrator, so a fleet raised from it has nobody "
                             "to route work; add `orchestrator = 1` under [fleet.default] (a session leading the fleet "

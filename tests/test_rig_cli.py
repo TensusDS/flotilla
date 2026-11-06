@@ -27,7 +27,7 @@ class Table:
     def __call__(self, argv, *, input=None, **kwargs):
         if argv == ["crontab", "-l"]:
             if self.text is None:
-                return subprocess.CompletedProcess(argv, 1, "", "no crontab for max")
+                return subprocess.CompletedProcess(argv, 1, "", "no crontab for person")
             return subprocess.CompletedProcess(argv, 0, self.text, "")
         self.text = input
         return subprocess.CompletedProcess(argv, 0, "", "")
@@ -68,7 +68,7 @@ def journal(world):
 
 def machine(world, instance="101", hourly=0.30, hours=3, budget=2.0):
     rig = journal(world)
-    rig.open_session("max", "night frames", hours=hours, budget=budget)
+    rig.open_session("person", "night frames", hours=hours, budget=budget)
     key = rs.machine_key(world["state"])
     item = rig.add_machine("s1", "vast", lambda mid: rs.label(key, mid))
     world["fake"].instances[instance] = {"label": item.label, "dph_total": hourly}
@@ -123,7 +123,7 @@ def test_status_shows_the_session_its_money_the_machine_and_the_reaper(world):
     code, out = run_cli("rig")
     assert code == 0
     assert "rig: on, provider vast; ceilings: 1 machine(s), 0.60 $/h, 8 h" in out
-    assert "session s1 open (max: night frames) until 23:00, spent at least 0.05 of 2.00 $" in out
+    assert "session s1 open (person: night frames) until 23:00, spent at least 0.05 of 2.00 $" in out
     assert "machine m1 busy: instance 101, RTX A5000, 0.30 $/h, lease until 20:30" in out
     assert "reaper: last pass 20:10" in out
 
@@ -415,7 +415,7 @@ def test_a_peers_run_that_just_ended_keeps_the_machine(world):
 def test_rig_down_names_a_machine_still_coming_up(world):
     turn(world["state"], "on")
     rig = journal(world)
-    rig.open_session("max", "night frames", hours=3, budget=2.0)
+    rig.open_session("person", "night frames", hours=3, budget=2.0)
     rig.add_machine("s1", "vast", lambda mid: f"flotilla:k:{mid}")
     code, out = run_cli("rig", "down", "--as", "minor 3")
     assert code == 0 and "m1" in out and "coming up" in out
@@ -452,7 +452,7 @@ def test_an_unforeseen_credit_failure_never_fails_the_pass(world, monkeypatch):
 
 
 def test_the_advice_to_install_for_the_user_names_what_it_costs(world, monkeypatch):
-    """void-lanes-online, 2026-10-29: the user install this advice made ran in place of the project's own newer
+    """gamma, 2026-10-29: the user install this advice made ran in place of the project's own newer
     copy, and nothing said so. The advice names that cost, and what keeps it harmless."""
     import json as _json
     turn(world["state"], "on")

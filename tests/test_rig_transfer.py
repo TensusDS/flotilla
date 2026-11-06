@@ -141,9 +141,9 @@ def test_root_must_be_the_callers_tree(tmp_path):
 
 
 def test_the_project_slug_is_safe_and_stable(tmp_path):
-    slug = transfer.project_slug(tmp_path / "two suns!", "github:x/twosuns")
-    assert slug == transfer.project_slug(tmp_path / "two suns!", "github:x/twosuns")
-    assert all(c.isalnum() or c in "._-" for c in slug) and slug.startswith("two-suns-")
+    slug = transfer.project_slug(tmp_path / "alpha!", "github:x/alpha")
+    assert slug == transfer.project_slug(tmp_path / "alpha!", "github:x/alpha")
+    assert all(c.isalnum() or c in "._-" for c in slug) and slug.startswith("alpha-")
 
 
 @pytest.mark.parametrize("member", ["shots/.envrc", "shots/.git/hooks/pre-commit", "shots/node_modules/x/index.js",

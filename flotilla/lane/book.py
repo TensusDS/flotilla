@@ -120,6 +120,8 @@ def _clean(key, value):
         return visible(value[:MAX_TEXT]) if isinstance(value, str) else ""   # cut first: visible walks every char
     if key == "inside":
         return visible(value[:40]) if isinstance(value, str) else ""
+    if key == "pid":   # a number another session's signal may reach: a real process's, never 0, 1, -1 or text
+        return value if isinstance(value, int) and not isinstance(value, bool) and value >= 2 else None
     if key == "rule":
         return value if isinstance(value, int) and not isinstance(value, bool) else None
     if key == "place":
@@ -389,6 +391,8 @@ def _thaw_command(item: Booking, procs=None) -> bool:
     record names (final review of 0.30.0, I7)."""
     from flotilla.lane import freeze
     if item.unit:
+        if not item.unit.startswith(f"flotilla-lane-{item.id}-"):
+            return True   # a scope of another booking, or none of the lane's: never thawed for this one
         return freeze.thaw_unit(item.unit)
     if item.group:
         exists = getattr(procs, "exists", None)
@@ -399,6 +403,11 @@ def _thaw_command(item: Booking, procs=None) -> bool:
             return True     # gone, or never proven ours: nothing of the lane's to thaw
         if getattr(procs, "start_mark", lambda pid: None)(item.group) != item.group_mark:
             return True     # another process has its number now
+        theirs = freeze.carries(item.group, item.id)   # proof from the process itself, not from the journal
+        if theirs is None:
+            return False    # cannot be read now: kept, and asked again
+        if not theirs:
+            return True     # not a run of this booking: nothing of the lane's to thaw
         return freeze.thaw_tree(item.group)
     return True   # frozen with no command running: nothing to thaw but the record
 
@@ -651,6 +660,18 @@ class Book:
                     return None
             return self._write(tx, booking_id, HELD, frozen="", started=self._now(),
                                frozen_s=_frozen_for(item, now), **({"unanswered": True} if never_again else {}))
+
+    def refuse(self, booking_id: str, *, order_by: str = "", ordered_at: str = "") -> Booking | None:
+        """An order its holder will not obey - from no live waiter, stale, or one the rules would not give: it lapses,
+        and the booking stays freezable by a true order. With `order_by`/`ordered_at`, only that very order lapses:
+        a newer one written meanwhile is left to be read."""
+        with self.store.transaction(KEY) as tx:
+            item = self._found(tx).get(booking_id)
+            if item is None or item.state != HELD or item.frozen != "ordered":
+                return None
+            if (order_by or ordered_at) and (item.order_by, item.ordered_at) != (order_by, ordered_at):
+                return None
+            return self._write(tx, booking_id, HELD, frozen="")
 
     def unfreezable(self, booking_id: str) -> Booking | None:
         """Its holder can no longer obey orders (its watch failed): any order lapses, and it is never ordered again."""

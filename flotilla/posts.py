@@ -42,7 +42,7 @@ class Post:
     permission_mode: str = ""
     plugins: tuple = ()   # the MCP-bearing plugins a seat of this post keeps; the rest are turned off (decision 154)
     plugins_written: bool = False   # whether the post says `plugins:` at all (a post older than the key does not)
-    project: str = ""   # the fleet's name its seats carry (`worldcore-orchestrator 1`); "" for a profile without one
+    project: str = ""   # the fleet's name its seats carry (`beta-orchestrator 1`); "" for a profile without one
     effort: str = ""   # `claude --effort` for its seats; "" leaves Claude Code's default
 
     def matches(self, session_name: str) -> bool:
@@ -126,7 +126,7 @@ def _folder(root: Path) -> Path:
 
 
 def load_posts(root: Path, *, project: str = "") -> dict[str, Post]:
-    """The project's posts; with a fleet name, every pattern is prefixed with it (`worldcore-` + `orchestrator {n}`),
+    """The project's posts; with a fleet name, every pattern is prefixed with it (`beta-` + `orchestrator {n}`),
     so the project's seats count from 1 and another project's sessions match none of its posts."""
     folder = _folder(root)
     if not folder.is_dir():
@@ -181,8 +181,8 @@ def install_templates(root: Path, *, template_dir: Path = TEMPLATE_DIR) -> list[
 
 def post_or_former(posts: dict[str, Post], session_name: str) -> str:
     """The post a session holds - or held under its former name, before the profile named the fleet
-    (`main session 19` in a fleet now called `twosuns`). For saying who can take a gone session's move only: a
-    former name holds no post today (twosuns field test of 0.6.7)."""
+    (`main session 19` in a fleet now called `alpha`). For saying who can take a gone session's move only: a
+    former name holds no post today (alpha field test of 0.6.7)."""
     try:
         found = post_for_session(posts, session_name)
     except PostError:

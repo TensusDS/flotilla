@@ -44,7 +44,7 @@ during the run (from `/proc/stat`); estimates use only samples taken while the m
 command (the note stays a note, cut to 80 characters as today) and a ladder of signatures, from exact to coarse:
 
 1. exact: the command with the seat's tree path replaced by a placeholder, matched on the whole path component (so
-   `twosuns-main-1` and `twosuns-main-12` never fold into one);
+   `alpha-main-1` and `alpha-main-12` never fold into one);
 2. normalised: also hashes (hex runs of 8+), numbers in paths and ports, temporary paths and redirections replaced;
 3. program: the program and its script or subcommand (`vitest run`, `node shoot.mjs`, `vite build`), flags that set
    parallelism kept (`--maxWorkers=1` stays);
@@ -57,7 +57,7 @@ cores; each tier keeps its own history under the signature `tier:<name>`.
 **The estimate** comes from the most exact step of the ladder with at least three measurements in the last 30 days:
 duration = median of green runs (a red or killed run that ended early says nothing about how long a full run takes; a
 run stopped at the ceiling counts as "at least" its time), cores = maximum of unsaturated samples, peak = maximum. An
-estimate drifts with the code (the twosuns receipt tier went from 10.7 s to 43.8 s in six days), so only the last 10
+estimate drifts with the code (the alpha receipt tier went from 10.7 s to 43.8 s in six days), so only the last 10
 measurements of a step count. Each estimate names its source: "5 runs of this command", "12 runs of `vitest run`",
 "project prior".
 

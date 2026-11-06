@@ -4,16 +4,16 @@ P = "proj"
 
 
 def test_a_tree_placeholder_matches_whole_path_components():
-    one = sig.ladder(["npx", "vitest", "run", "/w/twosuns-main-1/tests/a.test.ts"], tree="/w/twosuns-main-1", project=P)
-    twelve = sig.ladder(["npx", "vitest", "run", "/w/twosuns-main-12/tests/a.test.ts"], tree="/w/twosuns-main-1",
+    one = sig.ladder(["npx", "vitest", "run", "/w/alpha-main-1/tests/a.test.ts"], tree="/w/alpha-main-1", project=P)
+    twelve = sig.ladder(["npx", "vitest", "run", "/w/alpha-main-12/tests/a.test.ts"], tree="/w/alpha-main-1",
                         project=P)
     assert one[0] == "exact:proj:npx vitest run <tree>/tests/a.test.ts"
-    assert twelve[0] == "exact:proj:npx vitest run /w/twosuns-main-12/tests/a.test.ts"
+    assert twelve[0] == "exact:proj:npx vitest run /w/alpha-main-12/tests/a.test.ts"
 
 
 def test_two_seats_running_one_command_share_its_exact_signature():
-    a = sig.ladder(["npx", "vitest", "run", "tests/a.test.ts"], tree="/w/twosuns-main-3", project=P)
-    b = sig.ladder(["npx", "vitest", "run", "tests/a.test.ts"], tree="/w/twosuns-minor-7", project=P)
+    a = sig.ladder(["npx", "vitest", "run", "tests/a.test.ts"], tree="/w/alpha-main-3", project=P)
+    b = sig.ladder(["npx", "vitest", "run", "tests/a.test.ts"], tree="/w/alpha-minor-7", project=P)
     assert a == b
 
 
@@ -31,7 +31,7 @@ def test_parallelism_flags_stay_in_the_program_step():
 
 
 def test_a_shell_wrapper_is_read_through():
-    steps = sig.ladder(["sh", "-c", "cd /w/twosuns-main-9 && npx vite build"], tree="/w/twosuns-main-9", project=P)
+    steps = sig.ladder(["sh", "-c", "cd /w/alpha-main-9 && npx vite build"], tree="/w/alpha-main-9", project=P)
     assert steps[0] == "exact:proj:npx vite build" and steps[2] == "prog:proj:vite build"
 
 
@@ -55,8 +55,8 @@ def test_a_flags_value_is_not_taken_for_a_subcommand():
 
 def test_every_step_carries_the_project():
     """Review of stage 1: `npm test` in two repositories is two commands; without the project they shared a history."""
-    a = sig.ladder(["npm", "test"], tree=None, project="twosuns")
-    b = sig.ladder(["npm", "test"], tree=None, project="curve-no")
+    a = sig.ladder(["npm", "test"], tree=None, project="alpha")
+    b = sig.ladder(["npm", "test"], tree=None, project="client-repo")
     assert not set(a) & set(b)
 
 

@@ -133,7 +133,7 @@ def _known_names(rows: dict) -> set[str]:
 
 
 def _whom(ledger: Ledger, rows: dict, on: str) -> tuple[str, dict]:
-    """The session a wait names, and what the move records about the name (twosuns item 5). A name the census lists
+    """The session a wait names, and what the move records about the name (alpha item 5). A name the census lists
     stands; a short name that exactly one live session ends with (`-<name>` or ` <name>`) becomes that session's;
     a name the ledger knows that is not alive is refused - with the live session it may mean, never silently
     redirected to it, since that one is another session - because a wait on it would never be seen to end. Anything

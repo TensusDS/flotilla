@@ -108,8 +108,8 @@ def copy_in_use(cwd: Path, *, running: Path | None = None, env=os.environ,
     """(status, detail, fix) for the copy of flotilla running here against the one the project installed, or None
     when Claude Code's record of installs (`<config>/plugins/installed_plugins.json`) cannot be read or names none.
     `cwd` is where the session started: a project's install applies there, not in a directory below it (measured
-    with `claude plugin list`, ai-os til plugin-scope-project-enabledplugins, 2026-07-08). Which copy loads when the
-    user and a project both install flotilla is not documented; measured, the user's did (void-lanes-online on 0.23.1
+    with `claude plugin list`, 2026-07-08). Which copy loads when the
+    user and a project both install flotilla is not documented; measured, the user's did (gamma on 0.23.1
     ran 0.21.0, 2026-10-29; the khrushchevka fleet on 0.13.0 ran 0.10.2, 2026-10-12). Only the copy that runs can say
     so: an older one, from before 0.23.2, says nothing."""
     try:

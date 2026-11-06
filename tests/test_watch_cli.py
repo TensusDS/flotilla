@@ -112,9 +112,9 @@ def test_a_census_word_that_flickers_is_not_news(tmp_path, capsys):
 
 def test_a_question_waiting_on_the_person_needs_attention(tmp_path, capsys):
     asking = rows(row(state="handed", reader="review session 1", waiting_on="the person",
-                      note="which colour should the snake be?"))
+                      note="which colour should the epsilon be?"))
     code, out = run(tmp_path, context(tmp_path, me=None, sessions=[sess("review session 1")], rows_=asking), capsys)
-    assert code == 1 and "feat/x: which colour should the snake be?" in out
+    assert code == 1 and "feat/x: which colour should the epsilon be?" in out
 
 
 def test_once_does_not_report_a_ball_the_second_sample_clears(tmp_path, capsys):
@@ -158,7 +158,7 @@ def test_a_real_drop_after_a_flicker_wakes_it(tmp_path, capsys):
 
 
 def test_a_wait_that_woke_on_news_exits_0_so_the_wake_is_not_read_as_a_failure(tmp_path, capsys):
-    """Twosuns orchestrator, 0.7.16: every wake exited 1, and Claude Code showed each one as a failed task. The news
+    """Alpha orchestrator, 0.7.16: every wake exited 1, and Claude Code showed each one as a failed task. The news
     is in the output; the exit says only whether the watch could ask (2) or not."""
     calm = context(tmp_path, me=None, sessions=QUIET)
     news = context(tmp_path, me=None, sessions=[sess("review session 1"), sess("main session 1", state="working")],
@@ -187,7 +187,7 @@ def test_once_prints_counted_sections():
 
 
 def test_once_with_a_person_wait_names_its_section(tmp_path, capsys):
-    asked = rows(row(state="fixing", waiting_on="the person", note="which colour should the snake be?"))
+    asked = rows(row(state="fixing", waiting_on="the person", note="which colour should the epsilon be?"))
     code, out = run(tmp_path, context(tmp_path, me=None, sessions=[sess("main session 1", state="working")],
                                       rows_=asked), capsys)
     assert code == 1 and "waits on the person (1):" in out
@@ -198,7 +198,7 @@ def test_once_counts_the_persons_queue_as_the_inbox_does(tmp_path, capsys):
     fell under 'other' or nowhere, so the watch said 4 where the line said 9."""
     held = row(id="r2", branch="feat/held", state="accepted", held_until="the person", held_by="orchestrator 1",
                held_why="after Friday")
-    asked = row(state="fixing", waiting_on="the person", note="which colour should the snake be?")
+    asked = row(state="fixing", waiting_on="the person", note="which colour should the epsilon be?")
     code, out = run(tmp_path, context(tmp_path, me=None, sessions=[sess("main session 1", state="working")],
                                       rows_=rows(asked, held)), capsys)
     assert code == 1 and "waits on the person (2):" in out and "feat/held" in out

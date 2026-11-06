@@ -3,6 +3,26 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.30.1 - 2026-11-06
+
+Security and hygiene of a public repository.
+
+- **A journal record no longer names a process on its own word.** Any session writes the lane's journal, so a
+  record could name a process or a scope that is not a lane run.
+  - A frozen command is thawed from outside only when the process itself proves it is the booking's - its own
+    environment carries `FLOTILLA_LANE_BOOKING` - or when the scope's name carries the booking. A process that
+    gives no word either way is kept, never dropped: `flotilla lane` shows it with the `kill -CONT` that resumes it.
+  - A holder freezes its command only for a fresh order from a waiter with a live process and its start mark, that
+    lacks memory alone, and that the lane's rules let it be frozen for (not immortal, past its first minute, lower in
+    priority). Any other order lapses.
+  - A booking's pid must be a real process number, and `flotilla lane stop` signals only a pid with its start mark:
+    a crafted `pid` of `-1` could otherwise have signalled every process of the user.
+  - What this bounds is what a crafted line can do; a process writing as the same user can still name a live run
+    of its own. The journal is a booking, not a lock.
+- **No project or client names, and no personal paths, in the repository.** Field-test reports are no longer kept
+  here (they name the projects they ran on); tests, specs, plans, the changelog and code comments name their
+  projects neutrally.
+
 ## 0.30.0 - 2026-11-06
 
 The lane shares the machine by value. Before, `lane_capacity` booked one slot per heavy run, predicted from the
@@ -42,7 +62,7 @@ Two ways the person's `machine.toml` lost what they had set.
   a re-measure silently put a shared lane back to first come, first served. What the measurement writes is now named,
   and everything else in a readable file stays; a fact the measurement can no longer know is dropped rather than kept
   stale.
-- **A test never writes the real state directory.** A test run rewrote the person's `machine.toml` to two lines (twosuns
+- **A test never writes the real state directory.** A test run rewrote the person's `machine.toml` to two lines (alpha
   field notes, item 21): a test file outside `tests/` does not load the suite's conftest, so the rig tests' world
   wrote into the real directory. The state directory is now refused to any test that names none of its own, wherever
   the test file lives (a process the test starts inherits pytest's marker and is not refused), and flotilla's own
@@ -56,7 +76,7 @@ checks are green.
 
 ## 0.29.1 - 2026-11-05
 
-Two faults from void-lanes-online's field notes.
+Two faults from gamma's field notes.
 
 - **The collector counts a copy only where it lasts.** A file in a seat's tree was removed when a byte-identical
   copy survived anywhere in the main checkout - another plugin's log or cache included, which that tool may rewrite
@@ -119,7 +139,7 @@ by 0.27.0 and 0.28.0.
 
 ## 0.28.0 - 2026-11-04
 
-The lane: one heavy run, light runs beside it (the person's option B; twosuns items 13 and 16, void-lanes-online's
+The lane: one heavy run, light runs beside it (the person's option B; alpha items 13 and 16, gamma's
 lane report; design `docs/specs/2026-11-04-lane-light-runs-design.md`).
 
 - **Light runs take what the heavy run leaves.** A run measured at most 60 s and 2 cores, with a known peak, is light:
@@ -138,7 +158,7 @@ lane report; design `docs/specs/2026-11-04-lane-light-runs-design.md`).
 
 ## 0.27.0 - 2026-11-03
 
-The rig queue, part A: runs that keep apart, a line that moves itself (twosuns items 3, 4, 6 and 12; design
+The rig queue, part A: runs that keep apart, a line that moves itself (alpha items 3, 4, 6 and 12; design
 `docs/specs/2026-11-03-rig-queue-design.md`).
 
 - **Exclusive runs.** `rig run --exclusive` runs alone on its machine: it starts only on an empty one, nothing starts
@@ -309,7 +329,7 @@ Fixes two field fleets asked for, each of which cost them hours.
 ## 0.23.2 - 2026-10-29
 
 - **You are told when a session runs another copy of flotilla than the project installed.** With flotilla installed
-  both for your user and for a project, Claude Code was seen loading the user's copy - void-lanes-online on 0.23.1
+  both for your user and for a project, Claude Code was seen loading the user's copy - gamma on 0.23.1
   ran 0.21.0, and nothing said so. `/flotilla:doctor` and a session's fresh start, before onboarding too, now name
   the copy that runs, the project's, and which install to bring up: the project's when the user's is newer, the
   user's when it is older, and either one to remove when the two cannot be ordered. A session started below the
@@ -518,7 +538,7 @@ Fixes two field fleets asked for, each of which cost them hours.
 
 ## 0.15.0 - 2026-10-14
 
-From a field report on twosuns (flotilla 0.10.2, 2026-10-14): two runs a minute apart failed on the same stale vast
+From a field report on alpha (flotilla 0.10.2, 2026-10-14): two runs a minute apart failed on the same stale vast
 offer, each leaving a failed machine that held the one-machine ceiling; a run told to wait 900 s was refused in 0 s;
 and `flotilla rig` called the reaper silent while cron was firing.
 
@@ -640,14 +660,14 @@ Rig stage 2c: runs on a rented machine are packed by estimates (the person's dec
 
 ## 0.10.4 - 2026-10-09
 
-From the twosuns fleet's field use of 0.10.2:
+From the alpha fleet's field use of 0.10.2:
 - **`flotilla rig run --max S`**: one run's ceiling in seconds, at most the profile's `[rig] max_run_seconds`.
 - **`flotilla rig stop jN`**: a seat stops its own run (the person may stop any). Its `rig run` ends it on the machine
   and records it `stopped`; when that process is already gone, the run is stopped on the machine through its own
   status files and recorded. A machine that cannot be reached leaves the run `gone`, for the next run there to end,
   and exits 1; a `rig run` still cleaning up after 90 s is left to record its own verdict. Whose run it is comes from
   the census: outside any listed session `--as` proves nothing, and only the person may stop.
-- The hang twosuns reported (a script's background vite holding ssh's channel until the 30-minute ceiling) was fixed
+- The hang alpha reported (a script's background vite holding ssh's channel until the 30-minute ceiling) was fixed
   in 0.10.3.
 
 ## 0.10.3 - 2026-10-08
@@ -861,7 +881,7 @@ Delivery says only what it asked:
 ## 0.7.2 - 2026-10-03
 
 - **A seat number whose tree an earlier fleet left is skipped.** `spawn` and `helper raise` stepped over the numbers of older seats'
-  branches, not of their trees: a tree left with no branch beside it (twosuns, after an older fleet named without the
+  branches, not of their trees: a tree left with no branch beside it (alpha, after an older fleet named without the
   project) stopped the whole spawn. The number is skipped, the plan says so and points at `flotilla fleet clean`,
   and the tree is never touched.
 

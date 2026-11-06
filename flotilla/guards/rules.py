@@ -39,7 +39,7 @@ def rules_for(root, run=subprocess.run) -> tuple[dict, str]:
         local = config.load_project(found)
     except config.ConfigError as err:
         # a profile a session broke in its own tree must not switch off the guards that judge that tree: trunk's
-        # rules still stand, read without it (void-lanes-online, 2026-11-02)
+        # rules still stand, read without it (gamma, 2026-11-02)
         return _trunk_without_the_tree(found, err, run)
     trunk = (local.data.get("trunk") or {}).get("branch", "main")
     ref = gitq.trunk_ref(found, trunk, run=run)

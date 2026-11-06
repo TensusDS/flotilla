@@ -45,7 +45,7 @@ def due(state_dir, session_id: str, said: str, now: dt.datetime) -> bool:
 
 def fresh(state_dir, session_id: str, keys: list[str]) -> tuple[set[str], int]:
     """(the keys not said to this session before, how many were), remembering this set: an orchestrator is told
-    what is new and the count of what stands, not the same twenty lines again (twosuns orchestrator, 0.7.16)."""
+    what is new and the count of what stands, not the same twenty lines again (alpha orchestrator, 0.7.16)."""
     name = hashlib.sha256(session_id.encode("utf-8")).hexdigest()[:32]
     path = Path(state_dir) / "watch" / "said" / f"{name}.fleet.json"
     try:

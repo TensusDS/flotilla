@@ -33,7 +33,7 @@ def test_visible_also_shows_line_separators_fillers_and_tag_characters():
 
 
 def test_printable_ascii_is_returned_as_it_is_without_walking_it(monkeypatch):
-    """Twosuns item 14: the lane folds every text field of every booking through visible on each poll, and walking
+    """Alpha item 14: the lane folds every text field of every booking through visible on each poll, and walking
     each character of plain ASCII cost a waiter a fifth of a core. Printable ASCII cannot hide anything."""
     from flotilla.core import text
 

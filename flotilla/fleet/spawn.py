@@ -42,7 +42,7 @@ class Raised:
 
 MEMORY_FLOOR_MB = 2000
 HELPER = "helper"
-SEAT_COST_MB = 800   # a seat with its MCP servers, as measured in the twosuns run (H49)
+SEAT_COST_MB = 800   # a seat with its MCP servers, as measured in the alpha run (H49)
 MEMINFO = Path("/proc/meminfo")
 
 
@@ -180,7 +180,7 @@ def _left_by_older_seats(ledger) -> set[str]:
 
 def tree_left_behind(main, post):
     """Why a name's seat cannot be made here - its tree is already on disk, with no branch to number it by, as an
-    older fleet leaves it (twosuns, 2026-10-03) - or "". Numbering steps over such a number; nothing there is
+    older fleet leaves it (alpha, 2026-10-03) - or "". Numbering steps over such a number; nothing there is
     touched."""
     def occupied(name: str) -> str:
         tree = launch.seat_for(main, post, name).tree

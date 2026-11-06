@@ -32,7 +32,7 @@ def _caller(root) -> tuple[str | None, str]:
         post = post_for_session(posts, found.name)
     except PostError:
         post = None
-    if post is None:   # the person's own session leads before its name shows (worldcore field test W13)
+    if post is None:   # the person's own session leads before its name shows (beta field test W13)
         from flotilla.core import paths
         from flotilla.core.storage import LocalLogStore
         from flotilla.fleet import lead

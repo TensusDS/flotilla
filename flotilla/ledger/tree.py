@@ -85,7 +85,7 @@ def _undo(ledger: core.Ledger, branch: str, tree: Path) -> None:
 
 
 def _unclean(ledger: core.Ledger, home: Path) -> str:
-    """Why the home tree cannot switch, naming what is in the way (twosuns C3: an untracked output folder blocked a
+    """Why the home tree cannot switch, naming what is in the way (alpha C3: an untracked output folder blocked a
     switch and the refusal named nothing)."""
     listed = ledger.run(["git", "-C", str(home), "status", "--porcelain"], capture_output=True, text=True,
                         errors="replace", check=False)

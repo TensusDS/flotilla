@@ -359,7 +359,7 @@
 - [ ] **Step 4: Run** `tests/test_rig_run.py`.
   - Expected: all pass.
 
-- [ ] **Step 5: Commit.** Message: `fix(rig): a stopped run brings back its --get paths (twosuns item 3)`.
+- [ ] **Step 5: Commit.** Message: `fix(rig): a stopped run brings back its --get paths (alpha item 3)`.
 
 ### Task 7: A machine drained from a closed session stops blocking the ceiling once destroyed
 
@@ -385,7 +385,7 @@
 - [ ] **Step 4: Run** `tests/test_rig_journal.py tests/test_rig_up.py tests/test_rig_reaper.py`.
   - Expected: all pass.
 
-- [ ] **Step 5: Commit.** Message: `fix(rig): a closed session's machine stops counting against the ceiling once its destroy is sent (twosuns item 4)`.
+- [ ] **Step 5: Commit.** Message: `fix(rig): a closed session's machine stops counting against the ceiling once its destroy is sent (alpha item 4)`.
 
 ### Task 8: Templates, documents, version
 
@@ -405,7 +405,7 @@
     the line.
   - `CHANGELOG.md`: a 0.27.0 entry.
   - Version in three places, and the README pin.
-  - `TODO.md`: move the stopped-run, draining-machine and overlap items to Done. Narrow the twosuns item 12 entry to
+  - `TODO.md`: move the stopped-run, draining-machine and overlap items to Done. Narrow the alpha item 12 entry to
     part B.
 - Test: the existing doctor and template tests, and the version check.
 

@@ -147,7 +147,7 @@ def _made_by(ledger: Ledger, rows: dict, name: str, sha: str) -> str:
 
 def _vouch_on_trunk(ledger: Ledger, actor: Actor, s, sha: str) -> Row:
     """A reader vouches for a commit that reached trunk with no row at all - a person's or a planner's commit, a
-    profile change (twosuns field test of 0.6.7, W5). Nothing else closes that finding: vouch and offledger want an
+    profile change (alpha field test of 0.6.7, W5). Nothing else closes that finding: vouch and offledger want an
     open row, inbatch is for the batch, and trunk never has a row. The reading is recorded as a finished row on
     trunk, so the commit is accounted the way any vouched commit is."""
     if actor.post is not None and ("land" in actor.post.may or actor.post.writes_one_copy):

@@ -105,7 +105,7 @@ def on_first_parent(root: Path, sha: str, ref: str, *, run=subprocess.run, depth
 def patch_fingerprint(root: Path, base: str, tip: str, run=subprocess.run) -> str | None:
     """What a branch brings, by content: survives a rebase onto a new base, changes with the change."""
     # a submodule pointer is a change whatever .gitmodules says, and no diff driver of the repository's runs here
-    # bytes, never text: a file git diffs as text may hold bytes no codec reads (a float16 table, twosuns A1)
+    # bytes, never text: a file git diffs as text may hold bytes no codec reads (a float16 table, alpha A1)
     diff = run(["git", "-C", str(root), "diff", "--no-color", "--ignore-submodules=none", "--no-ext-diff",
                 "--no-textconv", base, tip], capture_output=True, check=False)
     if diff.returncode != 0:

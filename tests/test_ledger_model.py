@@ -91,7 +91,7 @@ def _released(rid, branch, settled_by=""):
 
 
 def test_an_after_link_to_a_released_row_no_longer_orders_anything():
-    """twosuns field report A3: r754 went after r520, r520 was released as superseded, and r754 could never be
+    """alpha field report A3: r754 went after r520, r520 was released as superseded, and r754 could never be
     queued - a released row is never delivered, so an order behind it waits for ever."""
     from flotilla.ledger.model import Row, blocked_by
     rows = {"r1": _released("r1", "a"), "r3": Row(id="r3", branch="c", state="accepted", after=["r1"])}

@@ -1,4 +1,4 @@
-"""The fleet's name on this machine: the word a project's seat names start with (`worldcore-orchestrator 1`).
+"""The fleet's name on this machine: the word a project's seat names start with (`beta-orchestrator 1`).
 
 Session names are machine-wide addresses - messages are delivered by name - so two projects must not share the word.
 The profile names the fleet (`[fleet] name`, written at onboarding from the project's directory); a machine-wide

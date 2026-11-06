@@ -141,7 +141,7 @@ def test_write_names_the_step_that_puts_the_profile_where_sessions_read_it(proje
 
 
 def test_quick_on_a_project_without_github_says_no_ci_rather_than_an_empty_gate(project):
-    """worldcore's origin is a bare repository with no CI; the profile asked for a gate command "or nothing checks
+    """beta's origin is a bare repository with no CI; the profile asked for a gate command "or nothing checks
     shipped" (field test W5). Quick answers "no CI" there, and the profile carries no gate to fill in."""
     from flotilla.onboard.profile import build_profile
     det = detect(project)
@@ -232,7 +232,7 @@ def test_quick_names_the_test_commands_it_left_out(project):
 
 
 def test_quick_lets_the_classifier_decide_rather_than_ask_the_person_everything(project):
-    """Worldcore field test W16 and the person's decision (2026-10-02): with `ask`, three seats' first census put six
+    """Beta field test W16 and the person's decision (2026-10-02): with `ask`, three seats' first census put six
     questions to the person in a minute, each about flotilla's own read commands. Quick recommends Claude Code's auto
     mode; `ask` stays an answer for whoever chooses it."""
     det = detect(project)
@@ -243,7 +243,7 @@ def test_quick_lets_the_classifier_decide_rather_than_ask_the_person_everything(
 
 
 def test_write_says_in_plain_words_what_the_person_agrees_to(project):
-    """Worldcore field test W12: the 0.6.0 skill told the session to say the answers in words before asking to write,
+    """Beta field test W12: the 0.6.0 skill told the session to say the answers in words before asking to write,
     and the session skipped it - the person never heard that merges go to trunk without them. The command says it,
     so it reaches the person through the output whatever the model retells."""
     assert run_cli("onboard", "quick", "--root", str(project))[0] == 0

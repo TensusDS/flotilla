@@ -4,7 +4,7 @@
 
 **Goal:** A fleet session may raise a short-lived helper session for a piece of its own work: the helper works in
 its own tree on a branch cut from the parent's work, follows the fleet's rules, is kept in the ledger, and finishes
-by recording what it did and leaving — never vanishing without a trace (twosuns H8; the person's decision: a helper
+by recording what it did and leaving — never vanishing without a trace (alpha H8; the person's decision: a helper
 works in its own tree, so edits never race).
 
 **Architecture:** A helper is a seat of a new post, `helper` (`helper {n}`), raised by `flotilla helper raise --for
@@ -16,7 +16,7 @@ hands over as usual: the reviewer reads the parent's whole range, the helper's c
 orchestrator about a finished helper still running (retire it) and about a helper whose parent is gone. In-session
 subagents stay the tool for reading and research (H40); a helper session is for work that edits.
 
-**Spec:** `docs/field-tests/2026-09-29-twosuns-fleet.md` — H8, H40; the person's design choices of 2026-09-30.
+**Spec:** the field-test report (not kept in the repository) — H8, H40; the person's design choices of 2026-09-30.
 
 ## Decisions (the planner's, 2026-10-01; the person approved the design)
 

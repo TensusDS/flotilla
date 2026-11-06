@@ -27,7 +27,7 @@ class Table:
     def __call__(self, argv, *, input=None, **kwargs):
         if argv == ["crontab", "-l"]:
             return subprocess.CompletedProcess(argv, 0 if self.text is not None else 1, self.text or "",
-                                               "" if self.text is not None else "no crontab for max")
+                                               "" if self.text is not None else "no crontab for person")
         self.text = input
         return subprocess.CompletedProcess(argv, 0, "", "")
 
@@ -142,7 +142,7 @@ def test_one_session_at_a_time(world):
 
 
 def test_a_session_past_its_end_does_not_stand_in_the_way(world, monkeypatch):
-    """twosuns field report A8: at 18:25 `rig open` was refused for a session open until 18:23, and `rig close`
+    """alpha field report A8: at 18:25 `rig open` was refused for a session open until 18:23, and `rig close`
     then said nothing was open, because the reaper had passed in between."""
     assert run_cli("rig", "open", "--hours", "1", "--budget", "1", "--why", "a")[0] == 0
     later = T0 + dt.timedelta(hours=1, minutes=2)
@@ -282,9 +282,9 @@ def _repo(tmp_path):
 
 
 def test_a_session_opened_for_a_request_serves_its_project(world):
-    journal(world).ask("main session 3", "frames", project="twosuns-key")
+    journal(world).ask("main session 3", "frames", project="alpha-key")
     assert run_cli("rig", "open", "--hours", "1", "--budget", "1", "--for", "r1")[0] == 0
-    assert journal(world).sessions()["s1"].projects == ["twosuns-key"]
+    assert journal(world).sessions()["s1"].projects == ["alpha-key"]
 
 
 def test_a_session_opened_in_a_repository_serves_it(world, tmp_path, monkeypatch):
@@ -301,35 +301,35 @@ def test_a_session_opened_outside_a_repository_serves_every_project(world, tmp_p
 
 
 def test_share_adds_a_project_and_unshare_takes_it_off(world):
-    journal(world).ask("main session 3", "frames", project="twosuns-key")
+    journal(world).ask("main session 3", "frames", project="alpha-key")
     run_cli("rig", "open", "--hours", "1", "--budget", "1", "--for", "r1")
     code, out = run_cli("rig", "share", "void-key")
-    assert code == 0 and journal(world).sessions()["s1"].projects == ["twosuns-key", "void-key"]
-    assert "serves twosuns-key, void-key" in out
+    assert code == 0 and journal(world).sessions()["s1"].projects == ["alpha-key", "void-key"]
+    assert "serves alpha-key, void-key" in out
     code, out = run_cli("rig", "unshare", "void-key")
-    assert code == 0 and journal(world).sessions()["s1"].projects == ["twosuns-key"]
+    assert code == 0 and journal(world).sessions()["s1"].projects == ["alpha-key"]
 
 
 def test_share_and_unshare_are_the_persons_moves(world, monkeypatch):
     from flotilla.core import caller
     from flotilla.core.census import Session
-    journal(world).ask("main session 3", "frames", project="twosuns-key")
+    journal(world).ask("main session 3", "frames", project="alpha-key")
     run_cli("rig", "open", "--hours", "1", "--budget", "1", "--for", "r1")
     monkeypatch.setattr(caller, "calling_sessions", lambda: [Session(
         name="main 3", session_id="bg", kind="background", pid=None, short_id=None, status=None, state=None, cwd="",
         started_at_ms=None)])
     assert run_cli("rig", "share", "void-key")[0] == 2
-    assert run_cli("rig", "unshare", "twosuns-key")[0] == 2
-    assert journal(world).sessions()["s1"].projects == ["twosuns-key"]
+    assert run_cli("rig", "unshare", "alpha-key")[0] == 2
+    assert journal(world).sessions()["s1"].projects == ["alpha-key"]
 
 
 def test_sharing_a_project_twice_or_unsharing_the_last_one(world):
-    journal(world).ask("main session 3", "frames", project="twosuns-key")
+    journal(world).ask("main session 3", "frames", project="alpha-key")
     run_cli("rig", "open", "--hours", "1", "--budget", "1", "--for", "r1")
-    code, out = run_cli("rig", "share", "twosuns-key")
-    assert code == 0 and "already" in out and journal(world).sessions()["s1"].projects == ["twosuns-key"]
-    code, out = run_cli("rig", "unshare", "twosuns-key")
-    assert code == 2 and "rig close" in out and journal(world).sessions()["s1"].projects == ["twosuns-key"]
+    code, out = run_cli("rig", "share", "alpha-key")
+    assert code == 0 and "already" in out and journal(world).sessions()["s1"].projects == ["alpha-key"]
+    code, out = run_cli("rig", "unshare", "alpha-key")
+    assert code == 2 and "rig close" in out and journal(world).sessions()["s1"].projects == ["alpha-key"]
 
 
 def test_the_first_share_of_a_session_serving_everyone_says_who_is_left_out(world, tmp_path, monkeypatch):
@@ -342,20 +342,20 @@ def test_the_first_share_of_a_session_serving_everyone_says_who_is_left_out(worl
 
 def test_share_takes_a_repository_path_and_records_its_key(world, tmp_path):
     root, key = _repo(tmp_path)
-    journal(world).ask("main session 3", "frames", project="twosuns-key")
+    journal(world).ask("main session 3", "frames", project="alpha-key")
     run_cli("rig", "open", "--hours", "1", "--budget", "1", "--for", "r1")
     code, out = run_cli("rig", "share", str(root))
-    assert code == 0 and journal(world).sessions()["s1"].projects == ["twosuns-key", key] and key in out
+    assert code == 0 and journal(world).sessions()["s1"].projects == ["alpha-key", key] and key in out
 
 
 
 def test_rig_status_shows_each_projects_share(world, monkeypatch):
     rig = journal(world)
-    rig.open_session("the person", "frames", hours=3, budget=2.0, projects=["twosuns-key"])
+    rig.open_session("the person", "frames", hours=3, budget=2.0, projects=["alpha-key"])
     monkeypatch.setattr(j.Rig, "shares", lambda self, session_id, now=None: (
-        {"twosuns-key": 0.42, "evil\x1b[2J": 0.01}, 0.07))
+        {"alpha-key": 0.42, "evil\x1b[2J": 0.01}, 0.07))
     code, out = run_cli("rig")
-    assert code == 0 and "twosuns-key: 0.42 $" in out and "idle: 0.07 $" in out, out
+    assert code == 0 and "alpha-key: 0.42 $" in out and "idle: 0.07 $" in out, out
     assert "\x1b" not in out
 
 
@@ -364,19 +364,19 @@ def test_share_says_when_a_project_not_on_the_list_used_the_session(world):
     """Final review of 0.25.0, I3 (design section 4): an older seat does not read the list, so the person is told."""
     journal(world).ask("main session 3", "frames", project="void-key")
     run_cli("rig", "open", "--hours", "1", "--budget", "1", "--for", "r1")
-    journal(world).queue_run("s1", who="main 9", project="twosuns-key", revision="a" * 40, program="node",
+    journal(world).queue_run("s1", who="main 9", project="alpha-key", revision="a" * 40, program="node",
                              ladder=("node x",), pid=1, mark="m")
     code, out = run_cli("rig", "share", "other-key")
-    assert code == 0 and "twosuns-key" in out and "not on the list" in out, out
+    assert code == 0 and "alpha-key" in out and "not on the list" in out, out
 
 
 def test_the_first_share_of_an_older_session_keeps_the_project_that_opened_it(world):
     """Final review of 0.25.0, I4: a session opened before 0.25 for a request answered that request, which names its
     project; the first share keeps it on the list rather than locking its own fleet out."""
     rig = journal(world)
-    rig.ask("main session 3", "frames", project="twosuns-key")
+    rig.ask("main session 3", "frames", project="alpha-key")
     made = rig.open_session("the person", "frames", hours=1, budget=1.0)   # before 0.25: no list
     rig.answer_requests(f"session {made.id} opened", kind="machine")
     code, out = run_cli("rig", "share", "void-key")
-    assert code == 0 and journal(world).sessions()["s1"].projects == ["twosuns-key", "void-key"], out
+    assert code == 0 and journal(world).sessions()["s1"].projects == ["alpha-key", "void-key"], out
     assert "not known" not in out

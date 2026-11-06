@@ -36,7 +36,7 @@ Estimates (`lane/estimate.py`) fold the journal's history into per-signature fig
    history - Task 3 `test_a_swept_holder_is_cut_and_carries_no_measurement`, Task 5 `test_cut_runs_feed_no_estimate`.
 3. A `lane run` nested inside a receipt's booking: measured once, by the outer booking - Task 4
    `test_a_nested_run_is_not_measured_twice`.
-4. Seat trees `twosuns-main-1` and `twosuns-main-12`: exact signatures never collide - Task 2
+4. Seat trees `alpha-main-1` and `alpha-main-12`: exact signatures never collide - Task 2
    `test_a_tree_placeholder_matches_whole_path_components`.
 5. A machine with no `/proc/stat` (macOS): busy share is unknown, cores and peak still recorded, estimates still form -
    Task 1 `test_busy_share_is_unknown_without_proc_stat`, Task 5 `test_unknown_busy_counts_as_unsaturated`.
@@ -269,16 +269,16 @@ P = "proj"
 
 
 def test_a_tree_placeholder_matches_whole_path_components():
-    one = sig.ladder(["npx", "vitest", "run", "/w/twosuns-main-1/tests/a.test.ts"], tree="/w/twosuns-main-1", project=P)
-    twelve = sig.ladder(["npx", "vitest", "run", "/w/twosuns-main-12/tests/a.test.ts"], tree="/w/twosuns-main-1",
+    one = sig.ladder(["npx", "vitest", "run", "/w/alpha-main-1/tests/a.test.ts"], tree="/w/alpha-main-1", project=P)
+    twelve = sig.ladder(["npx", "vitest", "run", "/w/alpha-main-12/tests/a.test.ts"], tree="/w/alpha-main-1",
                         project=P)
     assert one[0] == "exact:npx vitest run <tree>/tests/a.test.ts"
-    assert twelve[0] == "exact:npx vitest run /w/twosuns-main-12/tests/a.test.ts"
+    assert twelve[0] == "exact:npx vitest run /w/alpha-main-12/tests/a.test.ts"
 
 
 def test_two_seats_running_one_command_share_its_exact_signature():
-    a = sig.ladder(["npx", "vitest", "run", "tests/a.test.ts"], tree="/w/twosuns-main-3", project=P)
-    b = sig.ladder(["npx", "vitest", "run", "tests/a.test.ts"], tree="/w/twosuns-minor-7", project=P)
+    a = sig.ladder(["npx", "vitest", "run", "tests/a.test.ts"], tree="/w/alpha-main-3", project=P)
+    b = sig.ladder(["npx", "vitest", "run", "tests/a.test.ts"], tree="/w/alpha-minor-7", project=P)
     assert a == b
 
 
@@ -296,7 +296,7 @@ def test_parallelism_flags_stay_in_the_program_step():
 
 
 def test_a_shell_wrapper_is_read_through():
-    steps = sig.ladder(["sh", "-c", "cd /w/twosuns-main-9 && npx vite build"], tree="/w/twosuns-main-9", project=P)
+    steps = sig.ladder(["sh", "-c", "cd /w/alpha-main-9 && npx vite build"], tree="/w/alpha-main-9", project=P)
     assert steps[0] == "exact:npx vite build" and steps[2] == "prog:vite build"
 
 

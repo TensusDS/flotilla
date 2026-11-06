@@ -91,7 +91,7 @@ def blocked_by(rows: dict[str, Row], row: Row, profile: dict) -> list[Row]:
     stands as a bare row. Only `requires` makes a part (`views.pending_dependents`); `after` only orders.
 
     A released row stands for the work it was settled by. One released unsettled will never be delivered: an order
-    behind it orders nothing any more, so `after` stops waiting (twosuns A3); work built on it still waits, and the
+    behind it orders nothing any more, so `after` stops waiting (alpha A3); work built on it still waits, and the
     queue says how out."""
     waiting = []
     for wanted in dict.fromkeys([*(row.requires or []), *(row.after or [])]):

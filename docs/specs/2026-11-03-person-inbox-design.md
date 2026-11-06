@@ -1,11 +1,11 @@
 # What waits on the person reaches the person (0.26.0) - design
 
 Status: draft for the person's approval. Source: the field trace
-`docs/field-tests/2026-11-03-twosuns-person-relay.md`.
+the field-test report (not kept in the repository).
 
 ## Why
 
-On twosuns, 144 rows waited on the person between 2026-10-04 and 2026-10-16. The person asked "what needs my
+On alpha, 144 rows waited on the person between 2026-10-04 and 2026-10-16. The person asked "what needs my
 attention?" eighteen times, and the replies named 24 of them. After 2026-10-10, 104 were never named again. Then
 "nothing urgent" was given as the answer.
 
@@ -111,7 +111,7 @@ A person's path, today and after:
   Each is a group of its own in the listing.
 - **Where the line appears:** on the person's prompt in any session of the project they type into, whether it is
   interactive or a background session they attached to.
-  - On twosuns the person talked to background orchestrators by attaching to them. A rule limited to interactive
+  - On alpha the person talked to background orchestrators by attaching to them. A rule limited to interactive
     sessions would miss the case this release exists for.
   - A line shown where nobody watches loses nothing. What must not happen there is recording it as shown (see
     below).
@@ -194,9 +194,9 @@ then are a `terminalSequence` notification or the window title (interactive only
   - one row "parked" in words only;
   - repeated person prompts in the orchestrator's session.
   It must fail on 0.25.0, where the hook folds the rows into "standing" and no line reaches the person. The real
-  twosuns data stays out of the repository.
+  alpha data stays out of the repository.
 
 ## Compatibility
 
-Seats on older flotillas keep today's behaviour. twosuns (user-scope 0.21) gets this only when the person updates
+Seats on older flotillas keep today's behaviour. alpha (user-scope 0.21) gets this only when the person updates
 it. The hook change is local to each session's flotilla, so mixed versions need no gating.

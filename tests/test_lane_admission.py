@@ -155,7 +155,7 @@ def test_memory_unread_freezes_nothing(lane):   # review focus 4
 
 def test_a_booking_by_hand_is_heavy_with_the_full_cores(lane):
     lanes, _procs, _later = lane
-    raw(lanes, booking="b7", state=book.HELD, who="max", pid=None, mark="", rule=4)
+    raw(lanes, booking="b7", state=book.HELD, who="person", pid=None, mark="", rule=4)
     runs, machine = admission.view(lanes.bookings(), {}, value(), now=T0, live=lanes.live, mine="")
     found = next(r for r in runs if r.id == "b7")
     assert found.heavy and found.pinned and found.par == 8 and found.mem_mb == round(0.8 * machine.give_mb)
@@ -189,6 +189,7 @@ def test_the_next_grant_thaws_a_dead_holders_frozen_command(lane, monkeypatch): 
     lanes.frozen(first.id, freeze_kind="signal", unit="", group=13, held_mb=100)   # its command's group, alive
     thawed = []
     monkeypatch.setattr(freeze, "thaw_tree", lambda pid, **kw: thawed.append(pid) or True)
+    monkeypatch.setattr(freeze, "carries", lambda pid, booking: booking == first.id)   # its environment says so
     procs.dead.add(11)   # the holder (the wrapper) died; its frozen command did not
     mine = lanes.enqueue("main session 2", "x", pid=12, mark="m")
     lanes.grant(mine.id, slots=1, value=value())
@@ -243,7 +244,7 @@ def test_under_twenty_first_runs_the_default_is_1024():
 
 def test_a_take_by_hand_keeps_its_promised_memory_from_later_runs(lane):
     lanes, _procs, _later = lane
-    raw(lanes, booking="b7", state=book.HELD, who="max", pid=None, mark="", rule=4)
+    raw(lanes, booking="b7", state=book.HELD, who="person", pid=None, mark="", rule=4)
     runs, machine = admission.view(lanes.bookings(), {}, value(available=9000), now=T0, live=lanes.live, mine="")
     # its real use is seen as foreign memory (spec 4.6): free memory is what is free; the heavy room is what it takes
     assert machine.free_mb == 9000 and next(r for r in runs if r.id == "b7").mem_mb == 7200
@@ -251,7 +252,7 @@ def test_a_take_by_hand_keeps_its_promised_memory_from_later_runs(lane):
 
 def test_a_waiting_take_by_hand_is_heavy_with_the_full_cores(lane):
     lanes, _procs, _later = lane
-    mine = lanes.enqueue("max", "by hand", pid=12, mark="m")
+    mine = lanes.enqueue("person", "by hand", pid=12, mark="m")
     runs, _m = admission.view(lanes.bookings(), {}, value(), now=T0, live=lanes.live, mine=mine.id, by_hand=mine.id)
     found = next(r for r in runs if r.id == mine.id)
     assert found.heavy and found.par == 8 and found.pinned
@@ -359,3 +360,63 @@ def test_a_reused_group_number_is_not_signalled(lane, monkeypatch):   # final re
     mine = lanes.enqueue("main session 2", "x", pid=12, mark="m")
     lanes.grant(mine.id, slots=1, value=value())
     assert calls == [] and lanes.bookings()[first.id].state == book.RELEASED
+
+
+
+def test_a_process_group_is_thawed_only_when_it_carries_the_booking(lane, monkeypatch):   # security review, 0.30.1
+    lanes, procs, later = lane
+    first = holder(lanes, later)
+    lanes.frozen(first.id, freeze_kind="signal", unit="", group=13, held_mb=100)
+    calls = []
+    monkeypatch.setattr(freeze, "thaw_tree", lambda pid, **kw: calls.append(pid) or True)
+    monkeypatch.setattr(freeze, "carries", lambda pid, booking: False)   # mark matches, but not the lane's process
+    procs.dead.add(11)
+    mine = lanes.enqueue("main session 2", "x", pid=12, mark="m")
+    lanes.grant(mine.id, slots=1, value=value())
+    assert calls == [] and lanes.bookings()[first.id].state == book.RELEASED
+
+
+def test_a_scope_of_another_booking_is_never_thawed_for_this_one(lane, monkeypatch):   # security review, 0.30.1
+    lanes, procs, later = lane
+    first = holder(lanes, later)
+    lanes.frozen(first.id, freeze_kind="scope", unit="flotilla-lane-b77-11-1.scope", group=11, held_mb=100)
+    calls = []
+    monkeypatch.setattr(freeze, "thaw_unit", lambda unit, **kw: calls.append(unit) or True)
+    procs.dead.add(11)
+    mine = lanes.enqueue("main session 2", "x", pid=12, mark="m")
+    lanes.grant(mine.id, slots=1, value=value())
+    assert calls == []
+
+
+
+def test_a_group_with_no_word_of_its_booking_is_kept_not_cleared(lane, monkeypatch):   # review of 0.30.1, I2
+    lanes, procs, later = lane
+    first = holder(lanes, later)
+    lanes.frozen(first.id, freeze_kind="signal", unit="", group=13, held_mb=100)
+    calls = []
+    monkeypatch.setattr(freeze, "thaw_tree", lambda pid, **kw: calls.append(pid) or True)
+    monkeypatch.setattr(freeze, "carries", lambda pid, booking: None)   # a re-exec cleared its environment
+    procs.dead.add(11)
+    mine = lanes.enqueue("main session 2", "x", pid=12, mark="m")
+    lanes.grant(mine.id, slots=1, value=value())
+    kept = lanes.bookings()[first.id]
+    assert calls == [] and kept.state == book.HELD and kept.frozen == "frozen"   # shown, never silently dropped
+
+
+def test_a_pid_that_is_no_process_number_folds_away():   # review of 0.30.1, I4: -1 would signal every process
+    for bad in (-1, 0, 1, True, "7", 2.5):
+        found = book.fold([{"at": "2026-11-06T10:00:00+00:00", "booking": "b1", "state": "held", "pid": bad}])["b1"]
+        assert found.pid is None, bad
+    assert book.fold([{"at": "2026-11-06T10:00:00+00:00", "booking": "b1", "state": "held", "pid": 4242}])["b1"].pid \
+        == 4242
+
+
+def test_refuse_cancels_only_the_order_it_read(lane):   # review of 0.30.1, minor
+    lanes, _procs, later = lane
+    first = holder(lanes, later, tree={11: 5000})
+    mine = lanes.enqueue("main session 2", "receipt", pid=12, mark="m", kind="push")
+    lanes.grant(mine.id, slots=1, value=value(tree={11: 5000}, available=300))
+    order = lanes.bookings()[first.id]
+    assert lanes.refuse(first.id, order_by="b999", ordered_at=order.ordered_at) is None   # a newer order: kept
+    assert lanes.bookings()[first.id].frozen == "ordered"
+    assert lanes.refuse(first.id, order_by=order.order_by, ordered_at=order.ordered_at).frozen == ""

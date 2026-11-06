@@ -3,3 +3,6 @@ __pycache__/
 .pytest_cache/
 .venv/
 uv.lock
+
+# field-test reports: kept outside the repository (they name the projects they ran on)
+docs/field-tests/

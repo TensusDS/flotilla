@@ -1,5 +1,5 @@
-"""Seat names carry the project, and numbers run per project (worldcore field test W10, W11; the person's request,
-2026-10-01: "worldcore-orchestrator 1, 2, 3"). Session names stay machine-wide addresses - messages are delivered by
+"""Seat names carry the project, and numbers run per project (beta field test W10, W11; the person's request,
+2026-10-01: "beta-orchestrator 1, 2, 3"). Session names stay machine-wide addresses - messages are delivered by
 name - so the project's fleet name is unique on the machine: a second project that wants a taken one gets `-2`."""
 
 import pytest
@@ -33,11 +33,11 @@ def posts_of(tmp_path, project=""):
 
 
 def test_a_projects_posts_carry_its_name(tmp_path):
-    posts = posts_of(tmp_path, project="worldcore")
-    assert posts["orchestrator"].matches("worldcore-orchestrator 1")
+    posts = posts_of(tmp_path, project="beta")
+    assert posts["orchestrator"].matches("beta-orchestrator 1")
     assert not posts["orchestrator"].matches("orchestrator 1")
-    assert not posts["orchestrator"].matches("twosuns-orchestrator 1")
-    assert names.number_of(posts["main"], "worldcore-main session 3") == 3
+    assert not posts["orchestrator"].matches("alpha-orchestrator 1")
+    assert names.number_of(posts["main"], "beta-main session 3") == 3
 
 
 def test_a_profile_without_a_fleet_name_keeps_the_old_names(tmp_path):
@@ -49,11 +49,11 @@ def test_numbers_run_per_project(tmp_path):
     store = LocalLogStore(tmp_path / "fleet")
     old = posts_of(tmp_path / "a")["orchestrator"]
     names.next_names(old, 4, taken=set(), store=store, reserve=True)       # an older fleet took 1..4 machine-wide
-    world = posts_of(tmp_path / "b", project="worldcore")["orchestrator"]
-    suns = posts_of(tmp_path / "c", project="twosuns")["orchestrator"]
-    assert names.next_names(world, 1, taken=set(), store=store, reserve=True) == ["worldcore-orchestrator 1"]
-    assert names.next_names(suns, 1, taken=set(), store=store, reserve=True) == ["twosuns-orchestrator 1"]
-    assert names.next_names(world, 1, taken=set(), store=store, reserve=True) == ["worldcore-orchestrator 2"]
+    world = posts_of(tmp_path / "b", project="beta")["orchestrator"]
+    suns = posts_of(tmp_path / "c", project="alpha")["orchestrator"]
+    assert names.next_names(world, 1, taken=set(), store=store, reserve=True) == ["beta-orchestrator 1"]
+    assert names.next_names(suns, 1, taken=set(), store=store, reserve=True) == ["alpha-orchestrator 1"]
+    assert names.next_names(world, 1, taken=set(), store=store, reserve=True) == ["beta-orchestrator 2"]
     assert names.next_names(old, 1, taken=set(), store=store, reserve=True) == ["orchestrator 5"]
 
 
@@ -66,7 +66,7 @@ def test_a_fleet_name_is_unique_on_the_machine(tmp_path):
     assert project_name.resolve(store, "repo-b", "app")[0] == "app-2"            # and for the second one
 
 
-@pytest.mark.parametrize("raw, clean", [("worldcore", "worldcore"), ("My Game!", "My-Game"),
+@pytest.mark.parametrize("raw, clean", [("beta", "beta"), ("My Game!", "My-Game"),
                                         ("  ", "project"), ("a/b", "a-b"), ("κόσμος", "κόσμος"), ("x" * 500, "x" * 40)])
 def test_a_fleet_name_is_cleaned_to_an_address_word(raw, clean):
     """Review of 0.6.0, M7: a directory in a non-Latin script became `project`; a 5000-character name went through whole."""
@@ -87,16 +87,16 @@ def test_the_ledger_reads_posts_under_the_profiles_fleet_name(tmp_path, monkeypa
     monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
     root = repo_with_origin(tmp_path)
     (root / ".flotilla").mkdir()
-    profile = {**PROFILE, "fleet": {"name": "worldcore", "default": {"main": 1}}}
+    profile = {**PROFILE, "fleet": {"name": "beta", "default": {"main": 1}}}
     (root / ".flotilla" / "project.toml").write_text(render_toml(profile), encoding="utf-8")
     install_templates(root)
     git(root, "add", ".flotilla")
     commit(root, "onboard")
     git(root, "push", "-q", "origin", "main")
-    assert trunk_rules(root).posts["sender"].matches("worldcore-sender 1")
+    assert trunk_rules(root).posts["sender"].matches("beta-sender 1")
 
 
-def world(tmp_path, sessions, fleet_name="worldcore"):
+def world(tmp_path, sessions, fleet_name="beta"):
     root = repo_with_origin(tmp_path)
     fake = FakeClaude(sessions)
     project = posts_of(tmp_path / "posts", project=fleet_name)
@@ -106,23 +106,23 @@ def world(tmp_path, sessions, fleet_name="worldcore"):
 
 
 def test_another_projects_sender_does_not_hold_this_ones(tmp_path):
-    """W10: twosuns' live `sender 9` refused worldcore's sender: a sender's one-copy resources are its project's."""
-    elsewhere = tmp_path / "twosuns"
+    """W10: alpha's live `sender 9` refused beta's sender: a sender's one-copy resources are its project's."""
+    elsewhere = tmp_path / "alpha"
     elsewhere.mkdir()
     root, ledger, store, fake = world(tmp_path, [at("sender 9", elsewhere)])
     seats, _ = spawn.plan(ledger, {"sender": 1}, census=fake.census, store=store, reserve=False)
-    assert [seat.name for seat in seats] == ["worldcore-sender 1"]
+    assert [seat.name for seat in seats] == ["beta-sender 1"]
 
 
 def test_this_projects_sender_still_holds_it_and_the_refusal_names_only_this_project(tmp_path):
-    elsewhere = tmp_path / "twosuns"
+    elsewhere = tmp_path / "alpha"
     elsewhere.mkdir()
     root = tmp_path / "app"
-    sessions = [at("worldcore-sender 1", root), at("main session 19", elsewhere)]
+    sessions = [at("beta-sender 1", root), at("main session 19", elsewhere)]
     root, ledger, store, fake = world(tmp_path, sessions)
     with pytest.raises(spawn.SpawnRefused, match="one-copy") as refused:
         spawn.plan(ledger, {"sender": 1}, census=fake.census, store=store, reserve=False)
-    assert "worldcore-sender 1" in str(refused.value) and "main session 19" not in str(refused.value)
+    assert "beta-sender 1" in str(refused.value) and "main session 19" not in str(refused.value)
 
 
 def test_numbering_steps_over_a_seat_branch_an_older_fleet_left(tmp_path):
@@ -131,18 +131,18 @@ def test_numbering_steps_over_a_seat_branch_an_older_fleet_left(tmp_path):
     git(root, "branch", "fleet/main-1")
     git(root, "branch", "fleet/main-2")
     seats, _ = spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False)
-    assert [seat.name for seat in seats] == ["worldcore-main session 3"]
+    assert [seat.name for seat in seats] == ["beta-main session 3"]
 
 
 def test_onboarding_names_the_fleet_after_the_project(tmp_path):
     from flotilla.onboard.profile import build_profile
-    det = {"root": str(tmp_path / "worldcore"), "trunk": "main", "remote": "", "tests": [], "ci": {"provider": "none"}}
+    det = {"root": str(tmp_path / "beta"), "trunk": "main", "remote": "", "tests": [], "ci": {"provider": "none"}}
     profile = build_profile(det, {"flow": "local", "review": "every", "permissions": "ask", "tiers": ["none"],
                                   "model": "one"})
-    assert profile["fleet"]["name"] == "worldcore"
+    assert profile["fleet"]["name"] == "beta"
 
 
-@pytest.mark.parametrize("live_name, fleet_name", [("sender 9", "worldcore"), ("worldcore-sender 1", "wc")])
+@pytest.mark.parametrize("live_name, fleet_name", [("sender 9", "beta"), ("beta-sender 1", "bt")])
 def test_a_fleet_name_arriving_under_a_live_fleet_is_refused(tmp_path, live_name, fleet_name):
     """Review of 0.6.0, I1: a live seat named before the fleet name (or under another one) matches no post, so the
     one-copy check counted no sender and raised a second one."""

@@ -84,7 +84,7 @@ def trunk_rules(root: Path, *, at: str = "", trunk: str | None = None) -> Rules:
     """The profile and posts as trunk carries them, and the label `<ref>@<sha>` they were read at. `at` is a revision
     origin named as its trunk: rules that grant are read there, never at the local ref, which any session can repoint
     (scan of 0.6.10, F1). `trunk` names trunk without reading the tree's own profile, for a tree whose profile does
-    not parse: its rules are still trunk's (void-lanes-online, 2026-11-02)."""
+    not parse: its rules are still trunk's (gamma, 2026-11-02)."""
     if trunk is None:
         local = _project(root)
         trunk = (local.data.get("trunk") or {}).get("branch", "main")
@@ -229,7 +229,7 @@ STUCK = ("next: if no move named above is yours to make, record whom you wait on
          "--on \"<whom>\" --why \"<why>\"`) and tell the orchestrator. A refusal that names no way forward is a "
          "flotilla defect: send it to the orchestrator verbatim, and never work around flotilla with git plumbing.")
 #: Printed after a wait the rules intend (`not yet`): the session must not read it as a fault to report (the person,
-#: 2026-10-27, on twosuns field report A5).
+#: 2026-10-27, on alpha field report A5).
 WAITING = ("next: nothing is wrong; this waits on what is named above, as the fleet's order intends. Ask again once "
            "it moves, and if the wait is yours record it (`flotilla work wait <branch> --on \"<whom>\" --why "
            "\"<why>\"`). This is not a flotilla defect and there is nothing to report.")
@@ -329,7 +329,7 @@ def _receipt(args) -> int:
             return 2
         from flotilla.lane.commands import _on_signals
         _on_signals()   # a stop reaches the tier as an exception, so its processes are stopped too (review of 0.6.2)
-        if not args.timeout:   # a tier that will not end is stopped at the lane's ceiling (worldcore W21)
+        if not args.timeout:   # a tier that will not end is stopped at the lane's ceiling (beta W21)
             from flotilla.lane.commands import ceiling_for
             args.timeout = float(ceiling_for(tree, profile, tiers=True))
         planned = receipts.to_run(ident.root, state=state, repo_key=ident.key, purpose=args.purpose,
@@ -359,7 +359,7 @@ def _receipt(args) -> int:
                 grant.measured.update(receipts.measured_of(result))
         for tier in result["tiers"]:
             print(receipts.tier_line(tier))
-            if tier["status"] != "green":   # why, not only that (worldcore field test W23)
+            if tier["status"] != "green":   # why, not only that (beta field test W23)
                 code = tier.get("exit")
                 print(f"          {'exit ' + str(code) if code is not None else 'stopped for its time'}; "
                       "last lines:")
@@ -425,7 +425,7 @@ def _broke(ledger, caller, args) -> tuple[Row, str]:
         gone = fix.owner not in ledger.live_names()
     except MoveRefused:
         gone = False   # liveness unknown: the author may well be there
-    if gone:   # a session of a past fleet takes nothing in a home tree (twosuns field test of 0.6.7)
+    if gone:   # a session of a past fleet takes nothing in a home tree (alpha field test of 0.6.7)
         return broken, (f"fix row {fix.id} `{fix.branch}` filed; its author {fix.owner} is not alive, so the "
                         "orchestrator gives it an owner")
     return broken, (f"fix row {fix.id} `{fix.branch}` filed for {fix.owner}: take it in the home tree with "

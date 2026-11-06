@@ -88,7 +88,7 @@ def test_a_counting_line_still_wins():
 
 
 def test_a_run_past_its_ceiling_is_stopped_with_everything_it_started(tmp_path):
-    """Worldcore field test W21: a vitest worker looped for 28 minutes and held the machine's one lane - another
+    """Beta field test W21: a vitest worker looped for 28 minutes and held the machine's one lane - another
     project's push receipt waited behind it. A run has a ceiling; past it, the command and every process it started
     are stopped, and the run is recorded as stopped, not as a verdict."""
     import os

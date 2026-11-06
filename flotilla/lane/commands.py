@@ -197,7 +197,7 @@ CEILING_FLOOR = 600
 
 
 def ceiling(profile: dict, measured: dict, *, tiers: bool = False) -> int:
-    """Seconds a run in the lane may take (worldcore field test W21): the profile's `[lane] max_run_seconds`; else ten
+    """Seconds a run in the lane may take (beta field test W21): the profile's `[lane] max_run_seconds`; else ten
     times the slowest tier measured on this machine - never under ten minutes for a receipt, whose commands are those
     tiers, and never under half an hour for any other run, which no measurement describes; else half an hour."""
     named = (profile.get("lane") or {}).get("max_run_seconds")
@@ -334,6 +334,8 @@ def value_of(run, item, machine, now: dt.datetime) -> str:
     if item.frozen == "frozen":
         since = book._when(item.frozen_at)
         text += f"; frozen since {_clock(since) if since else '?'} by {visible(item.order_by)}'s order"
+        if item.group:
+            text += f" (if its command stays stopped: kill -CONT -{item.group})"
     elif item.frozen == "ordered":
         text += f"; ordered frozen by {visible(item.order_by)}, not yet answered"
     if item.unanswered:
@@ -604,10 +606,11 @@ def _run(args) -> int:
 
 def _stop_run(args) -> int:
     """Stop the caller's own run in the lane by the pid flotilla recorded, so nobody has to find it with `pkill`
-    (worldcore field test W22: a seat's `pkill -f` matched its own command line and killed itself first)."""
+    (beta field test W22: a seat's `pkill -f` matched its own command line and killed itself first)."""
     lanes = _lanes(ProcessTable.for_machine())
     who = _who(args.as_name)
-    held = [item for item in lanes.holders() if item.pid and args.booking in (None, item.id)]
+    # a pid with its start mark only: one without could be any process the journal names (review of 0.30.1, I4)
+    held = [item for item in lanes.holders() if item.pid and item.mark and args.booking in (None, item.id)]
     mine = [item for item in held if item.who == visible(who)]   # who is stored visible (F2)
     if not mine:
         others = ", ".join(f"{item.id} ({item.who})" for item in held)

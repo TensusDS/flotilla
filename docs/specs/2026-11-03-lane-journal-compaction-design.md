@@ -1,7 +1,7 @@
 # The lane journal is compacted (0.26.1) - design
 
 Status: approved by the person in chat on 2026-11-03 (snapshot + archive + a new journal, threshold 2 MB). Source:
-TODO "The lane journal is never compacted" (void-lanes-online and twosuns, 2026-11-01..02).
+TODO "The lane journal is never compacted" (gamma and alpha, 2026-11-01..02).
 
 ## Why
 

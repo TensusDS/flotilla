@@ -28,7 +28,7 @@ def pytest_sessionstart(session):
 
 
 def pytest_sessionfinish(session, exitstatus):
-    """twosuns feedback item 21: a test run rewrote the person's machine.toml. The state-directory refusal covers the
+    """alpha feedback item 21: a test run rewrote the person's machine.toml. The state-directory refusal covers the
     plugin's own door; this covers every other road (a shell hook, a child with a scrubbed environment)."""
     path, before = session.config.stash.get(_MACHINE, (None, None))
     if path is None:

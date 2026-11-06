@@ -198,7 +198,7 @@ def test_the_effort_question_knows_the_projects_own_posts(tmp_path):
 
 
 def test_with_code_detected_the_merge_question_offers_code_only_first():
-    """The person, 2026-10-27 (twosuns B1): code ships on a yes, the paths come from the project itself, so the one
+    """The person, 2026-10-27 (alpha B1): code ships on a yes, the paths come from the project itself, so the one
     question carries its own answer. Quick onboarding stays with the sender: it puts no question to the person."""
     det = detection(code_paths=["src/**", "!src/data/**"])
     question = next(q for q in qs.all_questions(det, {"flow": "direct"}) if q["id"] == "merge_auth")

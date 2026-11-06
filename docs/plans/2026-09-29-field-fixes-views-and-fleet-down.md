@@ -16,7 +16,7 @@ caller's own.
 
 **Tech Stack:** Python 3.11+ stdlib, git, pytest via `uv`.
 
-**Spec:** the field test `docs/field-tests/2026-09-27-snake-fleet.md` — findings F8, F9, F10, F13, F19, F20, F22,
+**Spec:** the field test the field-test report (not kept in the repository) — findings F8, F9, F10, F13, F19, F20, F22,
 F27 and the triage with the person of 2026-09-28, groups 5 and 6 ("live sessions of this project are the holders of this
 ledger's post rows, not every name matching a pattern"; "`flotilla fleet down`; a gone seat is one quiet line, not
 a mover alarm"); `docs/specs/2026-09-22-flotilla-design.md` sections 6.7, 6.9, 7.5 and 8.
@@ -269,16 +269,16 @@ def at(name, cwd, **kw):
     return dataclasses.replace(sess(name, **kw), cwd=cwd)
 
 
-ROOTS = [Path("/work/snake"), Path("/work/snake-main-1")]
+ROOTS = [Path("/work/epsilon"), Path("/work/epsilon-main-1")]
 
 
 def test_a_session_in_a_worktree_of_this_repo_is_of_this_project():
-    assert [s.name for s in project.members([at("main session 1", "/work/snake-main-1/src")], {}, ROOTS)] == \
+    assert [s.name for s in project.members([at("main session 1", "/work/epsilon-main-1/src")], {}, ROOTS)] == \
         ["main session 1"]
 
 
 def test_a_session_in_the_main_checkout_is_of_this_project():
-    assert project.members([at("orchestrator 1", "/work/snake")], {}, ROOTS)[0].name == "orchestrator 1"
+    assert project.members([at("orchestrator 1", "/work/epsilon")], {}, ROOTS)[0].name == "orchestrator 1"
 
 
 def test_a_session_of_another_repo_with_a_matching_name_is_not():
@@ -292,7 +292,7 @@ def test_an_owner_elsewhere_on_disk_is_of_this_project():
 
 
 def test_a_prefix_of_the_root_is_not_inside_it():
-    assert project.members([at("x", "/work/snake-origin")], {}, [Path("/work/snake")]) == []
+    assert project.members([at("x", "/work/epsilon-origin")], {}, [Path("/work/epsilon")]) == []
 
 
 def test_roots_lists_the_main_checkout_and_its_worktrees(tmp_path):
@@ -448,7 +448,7 @@ def members(sessions: list, rows: dict, roots: list[Path]) -> list:
 git add flotilla/ledger/project.py flotilla/ledger/core.py flotilla/watch/context.py flotilla/hooks.py flotilla/watch/ask.py flotilla/ledger/commands.py tests/test_ledger_project.py tests/test_hooks.py
 git commit -m "fix(watch): the fleet is this project's sessions, not every name on the machine
 
-The greeting listed other-project sessions to the snake orchestrator (F9), and a post-named move was pinned on another
+The greeting listed other-project sessions to the epsilon orchestrator (F9), and a post-named move was pinned on another
 project's judges (F20). A session is of this project when this ledger names it or it works in this repository's
 checkout or worktrees; the hooks, watch, the ask guard and the letters use that."
 ```
@@ -824,7 +824,7 @@ shows the fleet and asks first."
 
 **Files:**
 - Modify: `docs/specs/2026-09-22-decisions-log.md`, `docs/specs/2026-09-22-flotilla-design.md` (sections 6.7, 7.5,
-  8), `docs/field-tests/2026-09-27-snake-fleet.md`
+  8), the field-test report (not kept in the repository)
 
 - [ ] **Step 1: Decisions log** — entries 99–104 after entry 98, one per decision of this plan (Decisions 1–6), each
   ending `(the person's triage 2026-09-28)` for the person's parts and `(executor's decision, field fixes part 3, 2026-09-29)`

@@ -200,7 +200,7 @@ def test_accept_does_not_refuse_when_git_cannot_say(tmp_path):
 
 
 def test_the_reader_returns_its_own_accepted_verdict_before_the_queue(world):
-    """twosuns field report A4: a reviewer who found a fault in work it had accepted had no move; the orchestrator
+    """alpha field report A4: a reviewer who found a fault in work it had accepted had no move; the orchestrator
     had none either, and only the sender's `return` from the queue was left."""
     root, ledger = world
     row = handed(root, ledger)

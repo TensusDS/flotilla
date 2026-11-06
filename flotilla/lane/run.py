@@ -98,7 +98,7 @@ def _stop(process) -> None:
 
 def execute(command: list[str], *, cwd=None, popen=subprocess.Popen, out=None, ceiling: float | None = None) -> RunResult:
     """Run `command` in its own process group. Past `ceiling` seconds the group is stopped and the run has no verdict
-    (worldcore field test W21: one looping test held the machine's lane for 28 minutes)."""
+    (beta field test W21: one looping test held the machine's lane for 28 minutes)."""
     out = out if out is not None else sys.stdout   # chosen at call time, so a redirected stdout is honoured
     from flotilla.lane import acquire, freeze
     booking = os.environ.get(acquire.ENV, "")

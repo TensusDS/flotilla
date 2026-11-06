@@ -9,11 +9,11 @@ documentation of the status line input (`code.claude.com/docs/en/statusline`) an
 
 Today `flotilla spawn` raises the composition it is told (`-M 2 -r 1`, or the profile's `[fleet.default]`) and
 refuses when memory is short. It never says how many seats would serve this project on this machine with this much
-work, nor which posts. People raise too many (nine seats, five idle, one seat holding five rows - twosuns,
+work, nor which posts. People raise too many (nine seats, five idle, one seat holding five rows - alpha,
 2026-10-03) or too few, and on usage credits a large fleet spends money fast: background sessions use quota
 independently, "running ten agents in parallel uses quota roughly ten times as fast as running one" (agent-view).
 
-**The person's scenario.** Max opens a project and types `/flotilla:spawn`. Before anything is raised he sees:
+**The person's scenario.** The person opens a project and types `/flotilla:spawn`. Before anything is raised they see:
 
 ```
 recommended: orchestrator 1 (this session), main 3, minor 1, reviewer 2, sender 1, judge 1
@@ -43,7 +43,7 @@ as unknown, and the recommendation then rests on the others (never silently on a
 | Signal | Source | Note |
 |---|---|---|
 | free memory | `MemAvailable` (Linux); `vm_stat` + `hw.memsize` (macOS) | already read by the lane on Linux; macOS is new |
-| seat cost | `[fleet] seat_cost_mb`, default 800 MB (twosuns H49) | later: measured from live seats' RSS |
+| seat cost | `[fleet] seat_cost_mb`, default 800 MB (alpha H49) | later: measured from live seats' RSS |
 | full test run: time, peak memory | receipts already record each tier's seconds; **peak memory is new**: the lane records the run's maximum resident set (`getrusage(RUSAGE_CHILDREN).ru_maxrss` after the group exits, and on Linux the summed RSS of the group sampled each second, the larger kept) | a tier never measured is unknown, not zero |
 | lane capacity | `machine.toml` `lane_capacity` (default 1) | |
 | free disk, worktree size | `shutil.disk_usage` on the trees' parent; a worktree's size = the checkout's tracked bytes plus build artefacts, measured once on an existing seat tree | |
@@ -163,7 +163,7 @@ Each stage ships with tests first, injections for every rule, a review, and the 
   ledger), tested on fixtures that include the empty, the unknown and the adversarial case (a repository of one
   commit, a lock file in every commit, a bot that touches everything, a TODO with only done items).
 - The rule is tested as a table: inputs -> counts and binding cap.
-- Thresholds start at the research's values and are named constants; the field tests (twosuns, worldcore) give the
+- Thresholds start at the research's values and are named constants; the field tests (alpha, beta) give the
   first calibration: compare the recommendation with the fleet that actually ran and how it fared (idle seats,
   conflicts, return rates). The decisions log records each change of a threshold with its evidence.
 

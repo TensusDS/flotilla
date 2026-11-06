@@ -54,10 +54,10 @@ def test_waiters_are_served_in_arrival_order(lane):
 
 def test_a_dead_holder_does_not_block(lane):
     lanes, procs = lane
-    holder = lanes.enqueue("a", "", pid=1, mark="m")
+    holder = lanes.enqueue("a", "", pid=11, mark="m")   # 1 is init: no run's pid, folded away (0.30.1)
     lanes.grant(holder.id, slots=1)
-    procs.dead.add(1)
-    nxt = lanes.enqueue("b", "", pid=2, mark="m")
+    procs.dead.add(11)
+    nxt = lanes.enqueue("b", "", pid=12, mark="m")
     assert lanes.grant(nxt.id, slots=1).state == book.HELD
 
 
@@ -188,7 +188,7 @@ def _whole(tmp_path):
 
 
 def test_a_cached_book_folds_only_new_lines(tmp_path, monkeypatch):
-    """Twosuns item 14: each poll folded the whole journal again, so a waiter's cost grew with the file."""
+    """Alpha item 14: each poll folded the whole journal again, so a waiter's cost grew with the file."""
     import json
     lanes = book.Book(LocalLogStore(tmp_path), Procs())
     for n in range(3):
@@ -283,11 +283,11 @@ def _held_path(tmp_path, booking_id):
 
 
 def test_fair_admits_the_other_projects_single_waiter_at_the_next_release(tmp_path):
-    """Void-lanes-online, 2026-10-31: 7-second runs waited a median 42.8 min behind another project's receipts."""
+    """Gamma, 2026-10-31: 7-second runs waited a median 42.8 min behind another project's receipts."""
     lanes = _fair(tmp_path)
-    first = _wait(lanes, "twosuns main 1", "twosuns")
+    first = _wait(lanes, "alpha main 1", "alpha")
     assert lanes.grant(first.id, slots=1, share="fair") is not None
-    backlog = [_wait(lanes, f"twosuns main {n}", "twosuns") for n in range(2, 12)]
+    backlog = [_wait(lanes, f"alpha main {n}", "alpha") for n in range(2, 12)]
     single = _wait(lanes, "void main 7", "void")
     lanes.release(first.id)
     assert lanes.grant(backlog[0].id, slots=1, share="fair") is None
@@ -297,14 +297,14 @@ def test_fair_admits_the_other_projects_single_waiter_at_the_next_release(tmp_pa
 
 def test_fair_keeps_order_within_a_project(tmp_path):
     lanes = _fair(tmp_path)
-    a, b, c = (_wait(lanes, f"main {n}", "twosuns") for n in range(3))
+    a, b, c = (_wait(lanes, f"main {n}", "alpha") for n in range(3))
     assert lanes.grant(b.id, slots=1, share="fair") is None
     assert lanes.grant(a.id, slots=1, share="fair") is not None
 
 
 def test_fair_with_one_project_is_fifo(tmp_path):
     lanes = _fair(tmp_path)
-    order = [_wait(lanes, f"main {n}", "twosuns") for n in range(3)]
+    order = [_wait(lanes, f"main {n}", "alpha") for n in range(3)]
     for item in order:
         assert lanes.grant(item.id, slots=1, share="fair") is not None
         lanes.release(item.id)
@@ -312,23 +312,23 @@ def test_fair_with_one_project_is_fifo(tmp_path):
 
 def test_fair_counts_a_project_holding_a_slot_as_served_now(tmp_path):
     lanes = _fair(tmp_path)
-    long_run = _wait(lanes, "twosuns main 1", "twosuns")
+    long_run = _wait(lanes, "alpha main 1", "alpha")
     assert lanes.grant(long_run.id, slots=2, share="fair") is not None
     short = _wait(lanes, "void main 1", "void")
     assert lanes.grant(short.id, slots=2, share="fair") is not None
-    twosuns_next = _wait(lanes, "twosuns main 2", "twosuns")
+    alpha_next = _wait(lanes, "alpha main 2", "alpha")
     void_next = _wait(lanes, "void main 2", "void")
-    lanes.release(short.id)   # void was served after twosuns, but twosuns still holds a slot
-    assert lanes.grant(twosuns_next.id, slots=2, share="fair") is None
+    lanes.release(short.id)   # void was served after alpha, but alpha still holds a slot
+    assert lanes.grant(alpha_next.id, slots=2, share="fair") is None
     assert lanes.grant(void_next.id, slots=2, share="fair") is not None
 
 
 def test_a_rule_two_waiter_never_yields_to_an_older_one(tmp_path):
     lanes = _fair(tmp_path)
-    served = _wait(lanes, "twosuns main 1", "twosuns")
+    served = _wait(lanes, "alpha main 1", "alpha")
     lanes.grant(served.id, slots=1, share="fair")
     lanes.release(served.id)
-    mine = _wait(lanes, "twosuns main 2", "twosuns")
+    mine = _wait(lanes, "alpha main 2", "alpha")
     older = _wait(lanes, "void main 1", "void", rule=1)   # never served, so the fair choice, but it cannot know
     assert lanes.grant(mine.id, slots=1, share="fair") is not None
     assert _held_path(tmp_path, mine.id).startswith("fifo")
@@ -338,7 +338,7 @@ def test_a_rule_two_waiter_never_yields_to_an_older_one(tmp_path):
 def test_an_older_waiter_first_in_line_takes_the_slot_as_today(tmp_path):
     lanes = _fair(tmp_path)
     older = _wait(lanes, "void main 1", "void", rule=1)
-    newer = _wait(lanes, "twosuns main 1", "twosuns")
+    newer = _wait(lanes, "alpha main 1", "alpha")
     assert lanes.grant(newer.id, slots=1, share="fair") is None   # an older rule's waiter first in line goes first
     assert lanes.grant(older.id, slots=1) is not None             # it asks the old way
 
@@ -346,10 +346,10 @@ def test_an_older_waiter_first_in_line_takes_the_slot_as_today(tmp_path):
 def test_a_dead_waiter_is_never_the_fair_choice(tmp_path):
     procs = Procs()
     lanes = _fair(tmp_path, procs)
-    served = _wait(lanes, "twosuns main 1", "twosuns")
+    served = _wait(lanes, "alpha main 1", "alpha")
     lanes.grant(served.id, slots=1, share="fair")
     lanes.release(served.id)
-    mine = _wait(lanes, "twosuns main 2", "twosuns")
+    mine = _wait(lanes, "alpha main 2", "alpha")
     gone = lanes.enqueue("void main 1", "suite", pid=4242, mark="m", project="void")
     procs.dead.add(4242)
     assert lanes.grant(mine.id, slots=1, share="fair") is not None
@@ -359,7 +359,7 @@ def test_a_dead_waiter_is_never_the_fair_choice(tmp_path):
 def test_fair_never_grants_past_the_slots(tmp_path):
     seats = [_fair(tmp_path) for _ in range(4)]   # four processes on one journal
     waiting = [_wait(seats[n], f"{project} main {n}", project)
-               for n, project in enumerate(["twosuns", "void", "twosuns", "void"])]
+               for n, project in enumerate(["alpha", "void", "alpha", "void"])]
     for _ in range(3):
         for seat, item in zip(seats, waiting):
             seat.grant(item.id, slots=2, share="fair")

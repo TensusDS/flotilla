@@ -183,7 +183,7 @@ def test_the_orchestrators_watch_carries_the_collector_items(tmp_path):
 
 
 
-# Final review of the branch: Max's choice (a) - the background pass never removes media - and I1, M1.
+# Final review of the branch: the person's choice (a) - the background pass never removes media - and I1, M1.
 
 def test_the_daily_pass_never_removes_media_and_says_the_yes_waits_for_the_person(tmp_path):
     import json

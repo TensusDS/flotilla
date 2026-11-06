@@ -73,6 +73,7 @@ class Decision:
     start: bool
     freeze: tuple = ()    # ((victim id, MB to reclaim), ...)
     why: str = ""         # what it waits for, named (section 5); "" when it starts
+    about: str = ""       # FREE when free memory alone holds it back: the only lack a freeze can cure
 
 
 def priority(run: Run, immortal_s: float) -> float:
@@ -137,6 +138,12 @@ def _why_not(v: Run, mine: Run, machine: Machine) -> str:
         return f"{v.id} is being frozen already"
     if v.state != RUNNING:
         return ""
+    return victim_reason(v, mine, machine)
+
+
+def victim_reason(v: Run, mine: Run, machine: Machine) -> str:
+    """Why running `v` may not be frozen for waiting `mine` by the rules of section 2.8; "" when it may. The holder
+    asks it too, of an order it finds on its booking, before it obeys (security review of 0.30.0)."""
     if v.pinned:
         return f"{v.id} is pinned"
     if not v.freezable:
@@ -226,7 +233,7 @@ def decide(runs: list[Run], machine: Machine, mine: str, *, may_freeze: bool = T
             unfit_ahead.append(r)
     memory_known = machine.give_mb is not None and free is not None
     if not memory_known or me.state == FROZEN or not may_freeze or about != FREE:
-        return Decision(False, (), why)   # a frozen run comes back when it fits, never by an order (section 2.8)
+        return Decision(False, (), why, about)   # a frozen run comes back when it fits, never by an order (2.8)
     if not machine.freeze:
         return Decision(False, (), f"{why}; freezing is off")
     if me.holds:   # its orders are out and their memory not yet free: ordering more would freeze runs for nothing

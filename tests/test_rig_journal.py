@@ -33,14 +33,14 @@ def iso(moment):
 
 
 def test_a_session_opens_with_its_end_and_budget(tmp_path):
-    s = rig(tmp_path).open_session("max", "night frames", hours=3, budget=2.0)
-    assert (s.id, s.state, s.who, s.why, s.budget) == ("s1", j.OPEN, "max", "night frames", 2.0)
+    s = rig(tmp_path).open_session("person", "night frames", hours=3, budget=2.0)
+    assert (s.id, s.state, s.who, s.why, s.budget) == ("s1", j.OPEN, "person", "night frames", 2.0)
     assert s.until == iso(T0 + dt.timedelta(hours=3))
 
 
 def test_a_machine_is_written_with_its_label_and_lease_before_any_instance(tmp_path):
     r = rig(tmp_path)
-    r.open_session("max", "x", hours=1, budget=1.0)
+    r.open_session("person", "x", hours=1, budget=1.0)
     m = r.add_machine("s1", "vast", label_of)
     assert (m.id, m.state, m.label, m.instance) == ("m1", j.REQUESTED, "flotilla:0123456789ab:m1", "")
     assert m.lease_until == iso(T0 + j.LEASE)
@@ -48,7 +48,7 @@ def test_a_machine_is_written_with_its_label_and_lease_before_any_instance(tmp_p
 
 def test_a_machine_walks_its_states_and_refuses_a_jump(tmp_path):
     r = rig(tmp_path)
-    r.open_session("max", "x", hours=1, budget=1.0)
+    r.open_session("person", "x", hours=1, budget=1.0)
     r.add_machine("s1", "vast", label_of)
     r.move("m1", j.PROVISIONING, instance="54532850", gpu="RTX A5000", hourly=0.32, created=iso(T0))
     r.move("m1", j.READY)
@@ -64,7 +64,7 @@ def test_a_machine_walks_its_states_and_refuses_a_jump(tmp_path):
 
 def test_a_failed_machine_with_an_instance_must_drain_before_it_is_gone(tmp_path):
     r = rig(tmp_path)
-    r.open_session("max", "x", hours=1, budget=1.0)
+    r.open_session("person", "x", hours=1, budget=1.0)
     r.add_machine("s1", "vast", label_of)
     r.add_machine("s1", "vast", label_of)
     r.move("m1", j.FAILED, reason="no offer")
@@ -78,7 +78,7 @@ def test_a_failed_machine_with_an_instance_must_drain_before_it_is_gone(tmp_path
 def test_busy_carries_its_run_and_ready_clears_it_and_starts_the_idle_clock(tmp_path):
     clock = Clock()
     r = rig(tmp_path, clock)
-    r.open_session("max", "x", hours=1, budget=1.0)
+    r.open_session("person", "x", hours=1, budget=1.0)
     r.add_machine("s1", "vast", label_of)
     r.move("m1", j.PROVISIONING)
     r.move("m1", j.READY)
@@ -96,7 +96,7 @@ def test_busy_carries_its_run_and_ready_clears_it_and_starts_the_idle_clock(tmp_
 def test_a_move_whose_expectation_no_longer_holds_writes_nothing(tmp_path):
     clock = Clock()
     r = rig(tmp_path, clock)
-    r.open_session("max", "x", hours=1, budget=1.0)
+    r.open_session("person", "x", hours=1, budget=1.0)
     m = r.add_machine("s1", "vast", label_of)
     seen = m.lease_until
     clock.forward(minutes=10)
@@ -108,7 +108,7 @@ def test_a_move_whose_expectation_no_longer_holds_writes_nothing(tmp_path):
 
 def test_note_changes_fields_not_the_state(tmp_path):
     r = rig(tmp_path)
-    r.open_session("max", "x", hours=1, budget=1.0)
+    r.open_session("person", "x", hours=1, budget=1.0)
     r.add_machine("s1", "vast", label_of)
     r.note("m1", hourly=0.41)
     m = r.machines()["m1"]
@@ -118,7 +118,7 @@ def test_note_changes_fields_not_the_state(tmp_path):
 def test_renewing_moves_the_lease_and_never_revives_a_draining_stuck_or_gone_machine(tmp_path):
     clock = Clock()
     r = rig(tmp_path, clock)
-    r.open_session("max", "x", hours=1, budget=1.0)
+    r.open_session("person", "x", hours=1, budget=1.0)
     for _ in range(4):
         r.add_machine("s1", "vast", label_of)
     r.move("m2", j.DRAINING)
@@ -134,7 +134,7 @@ def test_renewing_moves_the_lease_and_never_revives_a_draining_stuck_or_gone_mac
 def test_spending_counts_whole_minutes_and_the_settling_margin_once_gone(tmp_path):
     clock = Clock()
     r = rig(tmp_path, clock)
-    r.open_session("max", "x", hours=3, budget=2.0)
+    r.open_session("person", "x", hours=3, budget=2.0)
     r.add_machine("s1", "vast", label_of)
     r.move("m1", j.PROVISIONING, instance="1", hourly=0.60, created=iso(T0))
     clock.forward(minutes=29, seconds=1)
@@ -149,14 +149,14 @@ def test_spending_counts_whole_minutes_and_the_settling_margin_once_gone(tmp_pat
 
 def test_a_machine_never_created_costs_nothing(tmp_path):
     r = rig(tmp_path)
-    r.open_session("max", "x", hours=1, budget=1.0)
+    r.open_session("person", "x", hours=1, budget=1.0)
     r.add_machine("s1", "vast", label_of)
     assert r.spent("s1") == 0.0 and r.rate("s1") == 0.0
 
 
 def test_a_hand_written_or_hostile_line_folds_as_unknown_never_a_crash(tmp_path):
     r = rig(tmp_path)
-    r.open_session("max", "x", hours=1, budget=1.0)
+    r.open_session("person", "x", hours=1, budget=1.0)
     path = tmp_path / "rig" / "rig.jsonl"
     with open(path, "a", encoding="utf-8") as handle:
         for event in ({"kind": "machine", "id": "m9", "state": "ready", "at": "yesterday"},
@@ -173,7 +173,7 @@ def test_a_hand_written_or_hostile_line_folds_as_unknown_never_a_crash(tmp_path)
 
 def test_ids_never_collide_with_a_hand_written_one(tmp_path):
     r = rig(tmp_path)
-    r.open_session("max", "x", hours=1, budget=1.0)
+    r.open_session("person", "x", hours=1, budget=1.0)
     path = tmp_path / "rig" / "rig.jsonl"
     with open(path, "a", encoding="utf-8") as handle:
         handle.write(json.dumps({"kind": "machine", "id": "m7", "state": "requested", "at": T0.isoformat()}) + "\n")
@@ -182,9 +182,9 @@ def test_ids_never_collide_with_a_hand_written_one(tmp_path):
 
 def test_a_request_is_recorded_with_its_kind_and_project_and_answered_by_kind(tmp_path):
     r = rig(tmp_path)
-    asked = r.ask("main session 3", "night frames", project="/work/twosuns")
-    image = r.ask("main session 3", "another image", kind="image", project="/work/twosuns", image="ghcr.io/me/x:1")
-    assert (asked.id, asked.kind, asked.state, asked.project) == ("r1", "machine", j.ASKED, "/work/twosuns")
+    asked = r.ask("main session 3", "night frames", project="/work/alpha")
+    image = r.ask("main session 3", "another image", kind="image", project="/work/alpha", image="ghcr.io/me/x:1")
+    assert (asked.id, asked.kind, asked.state, asked.project) == ("r1", "machine", j.ASKED, "/work/alpha")
     assert (image.kind, image.image) == ("image", "ghcr.io/me/x:1")
     assert [q.id for q in r.answer_requests("session s1 opened", kind="machine")] == ["r1"]
     assert r.requests()["r2"].state == j.ASKED
@@ -194,11 +194,11 @@ def test_a_request_is_recorded_with_its_kind_and_project_and_answered_by_kind(tm
 def test_a_machine_needs_an_open_unexpired_session_inside_the_transaction(tmp_path):
     clock = Clock()
     r = rig(tmp_path, clock)
-    r.open_session("max", "x", hours=1, budget=1.0)
+    r.open_session("person", "x", hours=1, budget=1.0)
     r.set_session("s1", j.CLOSING, reason="closed by the person")
     with pytest.raises(j.RigError, match="not open"):
         r.add_machine("s1", "vast", label_of)
-    r.open_session("max", "y", hours=1, budget=1.0)
+    r.open_session("person", "y", hours=1, budget=1.0)
     clock.forward(minutes=61)
     with pytest.raises(j.RigError, match="ended"):
         r.add_machine("s2", "vast", label_of)
@@ -206,7 +206,7 @@ def test_a_machine_needs_an_open_unexpired_session_inside_the_transaction(tmp_pa
 
 def test_the_machine_ceiling_holds_inside_the_transaction(tmp_path):
     r = rig(tmp_path)
-    r.open_session("max", "x", hours=1, budget=1.0)
+    r.open_session("person", "x", hours=1, budget=1.0)
     r.add_machine("s1", "vast", label_of, limit=1)
     with pytest.raises(j.RigError, match="ceiling"):
         r.add_machine("s1", "vast", label_of, limit=1)
@@ -217,7 +217,7 @@ def test_the_machine_ceiling_holds_inside_the_transaction(tmp_path):
 
 def test_a_machine_carries_its_address_and_when_it_was_requested(tmp_path):
     r = rig(tmp_path)
-    r.open_session("max", "x", hours=1, budget=1.0)
+    r.open_session("person", "x", hours=1, budget=1.0)
     machine = r.add_machine("s1", "vast", label_of)
     assert machine.requested == iso(T0)
     r.move("m1", j.PROVISIONING, instance="7")
@@ -242,7 +242,7 @@ def test_a_record_whose_id_flotilla_never_issues_is_skipped(tmp_path, kind, bad)
 def test_the_first_credit_reading_is_the_sessions_open_and_later_ones_only_now(tmp_path):
     clock = Clock()
     r = rig(tmp_path, clock)
-    r.open_session("max", "night frames", hours=3, budget=2.0)
+    r.open_session("person", "night frames", hours=3, budget=2.0)
     r.note_credit("s1", 41.2)
     clock.forward(minutes=5)
     s = r.note_credit("s1", 40.05)
@@ -252,20 +252,20 @@ def test_the_first_credit_reading_is_the_sessions_open_and_later_ones_only_now(t
 @pytest.mark.parametrize("bad", [float("nan"), float("inf"), 1e7, "41", True])
 def test_a_credit_that_is_no_amount_is_not_kept(tmp_path, bad):
     r = rig(tmp_path)
-    r.open_session("max", "x", hours=1, budget=1.0)
+    r.open_session("person", "x", hours=1, budget=1.0)
     s = r.note_credit("s1", bad)
     assert s.credit_open is None and s.credit_now is None
 
 
 def test_a_credit_may_be_below_zero(tmp_path):
     r = rig(tmp_path)
-    r.open_session("max", "x", hours=1, budget=1.0)
+    r.open_session("person", "x", hours=1, budget=1.0)
     assert r.note_credit("s1", -1.5).credit_now == -1.5
 
 
 def test_a_closed_sessions_credit_is_not_noted(tmp_path):
     r = rig(tmp_path)
-    r.open_session("max", "x", hours=1, budget=1.0)
+    r.open_session("person", "x", hours=1, budget=1.0)
     r.set_session("s1", j.CLOSING)
     r.set_session("s1", j.CLOSED)
     assert r.note_credit("s1", 41.2) is None and r.sessions()["s1"].credit_now is None
@@ -275,28 +275,28 @@ def test_a_credit_too_large_for_a_float_is_dropped_not_a_crash_of_the_fold(tmp_p
     """A journal line any process may write: an integer past a float's range must not stop the reaper (security
     review of 0.13.0)."""
     r = rig(tmp_path)
-    r.open_session("max", "x", hours=1, budget=1.0)
+    r.open_session("person", "x", hours=1, budget=1.0)
     r.note_credit("s1", 10 ** 400)
     assert r.sessions()["s1"].credit_now is None
 
 
 def test_a_closing_sessions_credit_keeps_it_closing(tmp_path):
     r = rig(tmp_path)
-    r.open_session("max", "x", hours=1, budget=1.0)
-    r.set_session("s1", j.CLOSING, "closed by max")
+    r.open_session("person", "x", hours=1, budget=1.0)
+    r.set_session("s1", j.CLOSING, "closed by person")
     s = r.note_credit("s1", 41.2)
-    assert (s.state, s.reason, s.credit_now) == (j.CLOSING, "closed by max", 41.2)
+    assert (s.state, s.reason, s.credit_now) == (j.CLOSING, "closed by person", 41.2)
 
 
 def test_a_reading_the_journal_would_drop_never_erases_a_good_one(tmp_path):
     r = rig(tmp_path)
-    r.open_session("max", "x", hours=1, budget=1.0)
+    r.open_session("person", "x", hours=1, budget=1.0)
     r.note_credit("s1", 41.2)
     r.note_credit("s1", 5e6)
     assert r.sessions()["s1"].credit_now == 41.2
 
 
-# -- a closed session's machine that is being destroyed no longer blocks the next one (twosuns item 4) -----------
+# -- a closed session's machine that is being destroyed no longer blocks the next one (alpha item 4) -----------
 
 def drained(r, attempts, state=j.DRAINING, close=True, destroyed=True):
     s1 = r.open_session("p", "x", hours=1, budget=1.0)

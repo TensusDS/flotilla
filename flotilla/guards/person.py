@@ -35,7 +35,7 @@ MOVES = ("accept", "adopt", "approve", "assign", "broke", "claim", "close", "fix
          "show", "take", "unbroke", "unhold", "urgent", "vouch", "wait", "walkable", "walked")
 
 #: Closes every refusal of a command flotilla cannot read: it is the guard working, and the way past it is plain
-#: (twosuns field report C4; the person, 2026-10-27: a refusal by design must not read as a defect).
+#: (alpha field report C4; the person, 2026-10-27: a refusal by design must not read as a defect).
 PLAINLY = ("This is a guard, not a fault, and there is nothing to report: write each flotilla command out in full, one "
            "per call - a loop over moves becomes separate calls.")
 

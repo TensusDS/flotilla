@@ -107,7 +107,7 @@ def test_switch_refuses_a_home_tree_with_uncommitted_work(tmp_path):
 
 
 def test_a_switch_held_up_by_untracked_output_names_it_and_the_way_out(tmp_path):
-    """twosuns field report C3: an untracked output folder a run left blocked the next switch, and the refusal named
+    """alpha field report C3: an untracked output folder a run left blocked the next switch, and the refusal named
     nothing; removing it ran into Claude Code's own rm guard."""
     root, ledger, home = home_world(tmp_path)
     (home / "walk-audio-out").mkdir()

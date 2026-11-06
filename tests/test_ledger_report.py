@@ -143,7 +143,7 @@ def test_an_accepted_row_whose_branch_is_only_on_origin_names_the_command(tmp_pa
 
 
 def test_with_code_paths_only_work_touching_code_carries_an_approve_line(tmp_path):
-    """twosuns field report B1: the brief lists for the person's yes only what needs it."""
+    """alpha field report B1: the brief lists for the person's yes only what needs it."""
     from test_ledger_delivery import CODE_ONLY, accepted_touching
     root = repo_with_origin(tmp_path)
     ledger = make_ledger(root, tmp_path / "state", profile=CODE_ONLY)

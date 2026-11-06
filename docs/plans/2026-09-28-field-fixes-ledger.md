@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Fix what stalled the snake fleet inside the ledger itself: the sender's land path in direct-push mode,
+**Goal:** Fix what stalled the epsilon fleet inside the ledger itself: the sender's land path in direct-push mode,
 the mover who could not record its own wait, a hand-over or a "finished" alarm over a branch with no commits of its
 own, a fix row that another row made unnecessary, and a judge who walks a part of the work as if it were the whole
 path.
@@ -16,7 +16,7 @@ judge and orchestrator say the new sequences.
 
 **Tech Stack:** Python 3.11+ stdlib, git, pytest via `uv`.
 
-**Spec:** the field test `docs/field-tests/2026-09-27-snake-fleet.md` (findings F14, F15, F18, F21, F24, F26 and the
+**Spec:** the field test the field-test report (not kept in the repository) (findings F14, F15, F18, F21, F24, F26 and the
 triage with the person of 2026-09-28: `land` accepts origin; the judge waits for rows that require the one it walks, the
 orchestrator may override); `docs/specs/2026-09-22-flotilla-design.md` sections 6.2–6.4, 7.4.
 
@@ -741,7 +741,7 @@ git commit -m "feat(ledger): the judge walks a path, not a part; the orchestrato
 
 **Files:**
 - Modify: `templates/posts/sender.md` (step 6, `template_version: 2`), `templates/posts/judge.md` (a bullet,
-  `template_version: 2`), `docs/specs/2026-09-22-decisions-log.md`, `docs/field-tests/2026-09-27-snake-fleet.md`
+  `template_version: 2`), `docs/specs/2026-09-22-decisions-log.md`, the field-test report (not kept in the repository)
   (a status line), `tests/test_skills.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -783,7 +783,7 @@ Expected: FAIL on the new test.
 section, each ending `(field test 2026-09-27; the person's triage 2026-09-28)` for 1 and 6 and `(executor's decision, field
 fixes part 1, 2026-09-28)` for the rest, before `## Open questions`, no second number.
 
-`docs/field-tests/2026-09-27-snake-fleet.md`: append a line under the triage: "Part 1 (the ledger) fixes F14, F15,
+the field-test report (not kept in the repository): append a line under the triage: "Part 1 (the ledger) fixes F14, F15,
 F18, F21, F24, F26 — plan `docs/plans/2026-09-28-field-fixes-ledger.md`."
 
 - [ ] **Step 3: Run the whole suite, three ways, and the checks**
@@ -803,6 +803,6 @@ template version that changed, update it.
 
 ```bash
 git add templates/posts/sender.md templates/posts/judge.md tests/test_skills.py \
-        docs/specs/2026-09-22-decisions-log.md docs/field-tests/2026-09-27-snake-fleet.md
+        docs/specs/2026-09-22-decisions-log.md the field-test report
 git commit -m "docs(fleet): the sender's direct-push sequence and the judge's path rule in the posts"
 ```

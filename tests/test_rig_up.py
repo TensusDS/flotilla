@@ -27,7 +27,7 @@ class Table:
     def __call__(self, argv, *, input=None, **kwargs):
         if argv == ["crontab", "-l"]:
             return subprocess.CompletedProcess(argv, 0 if self.text is not None else 1, self.text or "",
-                                               "" if self.text is not None else "no crontab for max")
+                                               "" if self.text is not None else "no crontab for person")
         self.text = input
         return subprocess.CompletedProcess(argv, 0, "", "")
 
@@ -253,15 +253,15 @@ def test_up_without_a_session_suggests_the_persons_hours_and_budget(world):
 def test_up_and_down_from_an_unshared_project_are_refused(world):
     """Project share design, section 4: `up` spends the session's budget and `down` stops its machine, so a project
     the session does not serve is refused both, before anything is rented."""
-    journal(world).open_session("the person", "night frames", hours=3, budget=2.0, projects=["twosuns-key"])
+    journal(world).open_session("the person", "night frames", hours=3, budget=2.0, projects=["alpha-key"])
     code, out = up(world, "--why", "frames")
-    assert code == 2 and "serves twosuns-key" in out and world["fake"].created == 0
+    assert code == 2 and "serves alpha-key" in out and world["fake"].created == 0
     assert any(r.kind == "share" for r in journal(world).requests().values())
     from contextlib import chdir
     out = io.StringIO()
     with redirect_stdout(out), chdir(world["root"]):
         code = cli.main(["rig", "down", "--as", "main session 3"])
-    assert code == 2 and "serves twosuns-key" in out.getvalue()
+    assert code == 2 and "serves alpha-key" in out.getvalue()
 
 
 def test_a_session_with_no_list_serves_every_project(world):

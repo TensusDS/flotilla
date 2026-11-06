@@ -207,7 +207,7 @@ def test_no_skill_pre_approves_a_command_that_acts_for_the_person():
 
 
 def test_spawn_with_no_arguments_offers_that_this_session_leads():
-    """Field test of 0.6.7 on twosuns, W1: in an onboarded project the recommended way to lead a fleet was offered only
+    """Field test of 0.6.7 on alpha, W1: in an onboarded project the recommended way to lead a fleet was offered only
     by onboarding; `/flotilla:spawn` raised a background orchestrator and never named `--lead`."""
     text = (ROOT / "skills" / "spawn" / "SKILL.md").read_text(encoding="utf-8")
     assert "AskUserQuestion" in text and "flotilla spawn --lead" in text and "flotilla spawn --fill" in text
@@ -215,7 +215,7 @@ def test_spawn_with_no_arguments_offers_that_this_session_leads():
 
 
 def test_spawn_turns_a_gap_into_a_question():
-    """Twosuns field test of 0.6.7, W3: a fleet nobody leads was raised with no word; spawn now prints `gap:` lines,
+    """Alpha field test of 0.6.7, W3: a fleet nobody leads was raised with no word; spawn now prints `gap:` lines,
     and the skill must put each to the person, offering this session to lead."""
     text = (ROOT / "skills" / "spawn" / "SKILL.md").read_text(encoding="utf-8")
     assert "gap:" in text and "nobody leads this fleet" in text and "nobody merges" in text
@@ -223,7 +223,7 @@ def test_spawn_turns_a_gap_into_a_question():
 
 
 def test_the_reviewer_runs_its_tiers_itself_not_through_a_reused_receipt():
-    """Twosuns field test of 0.6.7, W8, and the review of 0.6.9, I5: told to run the tiers through a receipt, the
+    """Alpha field test of 0.6.7, W8, and the review of 0.6.9, I5: told to run the tiers through a receipt, the
     reviewer would reuse the author's green - recorded with no runner, in the author's tree - and the one run that is
     not the author's would not happen. The reviewer runs the tiers itself, in the lane."""
     text = (ROOT / "templates" / "posts" / "reviewer.md").read_text(encoding="utf-8")
@@ -232,7 +232,7 @@ def test_the_reviewer_runs_its_tiers_itself_not_through_a_reused_receipt():
 
 
 def test_the_sender_pushes_in_the_form_flotilla_lets_past_the_classifier():
-    """Twosuns field test of 0.6.7, W9: the guard hook allows one exact push form; the post names it."""
+    """Alpha field test of 0.6.7, W9: the guard hook allows one exact push form; the post names it."""
     text = (ROOT / "templates" / "posts" / "sender.md").read_text(encoding="utf-8")
     assert "git -C <your tree> push origin HEAD:<trunk>" in text and "--merge\n   <that branch" not in text
 

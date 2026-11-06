@@ -141,7 +141,7 @@ def test_a_part_is_not_walked_while_the_row_building_on_it_is_not_shipped(tmp_pa
 
 
 def test_a_part_waiting_for_its_whole_is_a_wait_not_a_fault(tmp_path):
-    """The person, 2026-10-27, on twosuns field report A5: the part gate is the order working, so a judge must not
+    """The person, 2026-10-27, on alpha field report A5: the part gate is the order working, so a judge must not
     read it as a flotilla defect to report."""
     from flotilla.ledger.errors import NotYet
     root, ledger, part = part_and_whole(tmp_path)
@@ -334,7 +334,7 @@ def _deployed_from_file(tmp_path):
 
 
 def test_a_build_that_differs_from_the_deployed_only_in_the_fleets_rules_is_the_same_build(tmp_path):
-    """Twosuns field test of 0.6.7, W6: a profile commit moved trunk, and the judge's walk of the build before it was
+    """Alpha field test of 0.6.7, W6: a profile commit moved trunk, and the judge's walk of the build before it was
     refused - one rebuild and one walk spent on two lines of `.flotilla/project.toml`."""
     root, ledger, path = _deployed_from_file(tmp_path)
     walked_on = git(root, "rev-parse", "main")
@@ -378,7 +378,7 @@ def test_a_product_file_renamed_into_the_rules_is_not_rules_only(tmp_path):
 
 
 def test_a_walk_the_person_reverses_is_recorded_as_a_break(tmp_path):
-    """twosuns field report A4 and E: rows walked on a word that later proved wrong had no way back; `broke` from
+    """alpha field report A4 and E: rows walked on a word that later proved wrong had no way back; `broke` from
     `walked` takes the walk back into a broken shipped row and files its fix row, as from shipped."""
     root, ledger, row = world(tmp_path)
     judging.walked(ledger, actor(ledger, JUDGE), "feat/x", build="main", steps="opened the page", saw="it looked fine")

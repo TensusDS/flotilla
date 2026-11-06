@@ -37,7 +37,7 @@ def test_the_state_directory_is_private_to_its_user(tmp_path, monkeypatch):
 
 
 def test_a_test_that_names_no_state_directory_is_refused_the_real_one():
-    """twosuns feedback item 21: a test run rewrote the person's machine.toml to two lines. pytest marks every test
+    """alpha feedback item 21: a test run rewrote the person's machine.toml to two lines. pytest marks every test
     with PYTEST_CURRENT_TEST whatever conftest loads; without an override the real directory is refused, not used."""
     import pytest
     from flotilla.core.paths import RealStateInTest

@@ -22,8 +22,8 @@ between projects, ceilings, measurement.
 
 Sources:
 - the field test of two demo fleets on one lane (TODO, section "From the field test of two demo fleets on one lane",
-  and `/home/max/var/flotest-2026-11-06/observations.md`);
-- the research report on memory under concurrent runs, in `/home/max/var/lane-research/reports/` (its file name is
+  and `/home/user/var/demo-2026-11-06/observations.md`);
+- the research report on memory under concurrent runs, in `/home/user/var/lane-research/reports/` (its file name is
   Russian), with its notes;
 - the model of this design, `lane_sim/` in the brainstorm's scratch directory. Every number marked *(model)* below
   comes from it; it is a throwaway spike, not shipped.
@@ -35,8 +35,8 @@ text of its command, says it is short and small. Everything else is heavy and wa
 places.
 
 Measured against that:
-- **Most runs have no history to predict from.** In the lane journal, 40 % of twosuns' runs and 61 % of
-  void-lanes-online's ran a command (after normalisation) that never repeated three times. The lane met each of them
+- **Most runs have no history to predict from.** In the lane journal, 40 % of alpha' runs and 61 % of
+  gamma's ran a command (after normalisation) that never repeated three times. The lane met each of them
   with the fixed prior "4 cores, 2 GB".
 - **The field test (2026-11-06).** Two fleets on one lane at capacity 1, with 7 of 8 cores and 9 GB free all along:
   - 13 runs under a minute waited ~76 min in all for ~100 s of work;
@@ -373,7 +373,7 @@ priorities").
 - This design does not read it. Under it, the value 1 on this machine would have meant today's 201 minutes against
   159 *(model)*.
 - What it guarded against is covered by 2.4. It was set to 1 after two software-rendered smoke tiers at once drove
-  the load to 17-26 on 8 cores and turned five handovers red from load (twosuns, 2026-11-01). Under 2.4 two tiers of
+  the load to 17-26 on 8 cores and turned five handovers red from load (alpha, 2026-11-01). Under 2.4 two tiers of
   8 measured cores make 16, past 1.5 × 8 = 12, so the second waits.
 - The person's machine.toml keeps the key; flotilla never edits that file. `flotilla lane` and `flotilla doctor` say
   once that the key no longer has an effect.

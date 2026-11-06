@@ -444,7 +444,7 @@ def test_reconcile_stays_quiet_about_a_queued_row_not_on_origin(direct):
 
 def conflicting_branch_merged_with_trunk(root, name="feat/x"):
     """A branch and trunk change one file differently; the author merges trunk into the branch and resolves the
-    conflict by hand, the way the twosuns fleet did before handing over. Returns the hand-made merge commit."""
+    conflict by hand, the way the alpha fleet did before handing over. Returns the hand-made merge commit."""
     git(root, "checkout", "-q", "-b", name)
     commit(root, "the branch's side", "shared.txt", "branch\n")
     git(root, "checkout", "-q", "main")
@@ -493,7 +493,7 @@ def test_a_hand_resolved_merge_inside_the_read_range_lands(direct):
 
 def senders_own_resolution(root, ledger):
     """The sender merges an accepted branch into a trunk that moved, resolves the conflict itself and pushes:
-    the resolution is work nobody read (twosuns H21, b7513e3). Returns the pushed merge."""
+    the resolution is work nobody read (alpha H21, b7513e3). Returns the pushed merge."""
     git(root, "checkout", "-q", "-b", "feat/x")
     commit(root, "the branch's side", "shared.txt", "branch\n")
     git(root, "checkout", "-q", "main")
@@ -522,7 +522,7 @@ def test_the_senders_own_hand_resolved_merge_is_still_unread(direct):
 
 
 def pull(root):
-    """The person pulls the main checkout, as the twosuns sessions kept asking them to."""
+    """The person pulls the main checkout, as the alpha sessions kept asking them to."""
     git(root, "fetch", "-q", "origin")
     git(root, "merge", "-q", "--ff-only", "origin/main")
 
@@ -1094,7 +1094,7 @@ def accepted_touching(root, ledger, name, path):
 
 
 def test_with_code_paths_only_work_touching_code_waits_for_the_persons_yes(tmp_path):
-    """twosuns field report B1, the person's decision 2026-10-27: code ships on a yes, and the questions put to the
+    """alpha field report B1, the person's decision 2026-10-27: code ships on a yes, and the questions put to the
     person stay few - docs and data go on the sender's word."""
     root = repo_with_origin(tmp_path)
     ledger = make_ledger(root, tmp_path / "state", profile=CODE_ONLY)

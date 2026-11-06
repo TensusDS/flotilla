@@ -18,17 +18,17 @@ BASE = {
                "accept": "accepted", "release": "released", "offledger": "offledger"},
     "fixing": {"hand": "handed", "assign": "fixing", "recuse": "fixing", "release": "released",
                "offledger": "offledger"},
-    # the reader takes its own verdict back while nothing is queued yet (twosuns A4)
+    # the reader takes its own verdict back while nothing is queued yet (alpha A4)
     "accepted": {"queue": "queued", "moved": "handed", "return": "fixing", "fix": "fixing", "release": "released",
                  "offledger": "offledger"},
     "queued": {"land": "landed", "ship": "shipped", "return": "fixing", "release": "released",
                "offledger": "offledger"},
     "landed": {"ship": "shipped", "close": "closed", "release": "released", "offledger": "offledger"},
     "shipped": {"walked": "walked", "broke": "shipped", "unbroke": "shipped", "close": "closed"},
-    # a walk the person reverses is a break: the row is shipped and broken again, with its fix row (twosuns A4)
+    # a walk the person reverses is a break: the row is shipped and broken again, with its fix row (alpha A4)
     "walked": {"close": "closed", "broke": "shipped"},
 }
-#: The move that does what a refused one was reached for, named in the refusal (twosuns field report A4).
+#: The move that does what a refused one was reached for, named in the refusal (alpha field report A4).
 INSTEAD = {
     "close": ("claimed", "handed", "fixing", "accepted", "queued"),
     "hand": ("accepted",),

@@ -3,7 +3,7 @@
 Date: 2026-10-06. Status: revised after review (section 12), for the person's review. Agreed with the person section
 by section in the session of 2026-10-06; this document collects those sections. Probe behind it (2026-10-06, vast.ai): an RTX A5000 datacenter
 instance was up in about 2.5 minutes; WebGL in headless Chromium ran on the NVIDIA GPU with `--use-angle=vulkan` once
-`/usr/share/glvnd/egl_vendor.d/10_nvidia.json` existed; the twosuns night scene rendered in 14-18 s against about two
+`/usr/share/glvnd/egl_vendor.d/10_nvidia.json` existed; the alpha night scene rendered in 14-18 s against about two
 minutes on SwiftShader on the field machine; billing settled 1-2 minutes after the instance was destroyed.
 
 ## 1. What it is for
@@ -431,7 +431,7 @@ this machine's processes and census.
   - the person guard on `rig enable` off.
 - **One live check, by hand and by the person's yes**, before stage 2's release:
   - a real vast session of about 15 minutes, capped at 0.50 $;
-  - the twosuns scene run through `rig run`;
+  - the alpha scene run through `rig run`;
   - then our side "dies" (the session killed, the lease not renewed);
   - the reaper destroys the machine and the provider's list confirms it is gone;
   - the watchdog's self-destroy measured on a second machine with the heartbeat stopped;
@@ -452,7 +452,7 @@ this machine's processes and census.
      destroys it and the listing confirms; a second machine left to its watchdog; the 2FA question for create.
    - **2b (0.10.0) - runs:** `rig run` over ssh with `--put`/`--get`, several runs per machine with the floor of two
      and admission by the machine's live readings, each run measured; setup per run with shared download caches;
-     `lost`, renewing its lease and the heartbeat; live check 2 - the twosuns scene through `rig run`, at most 0.50 $.
+     `lost`, renewing its lease and the heartbeat; live check 2 - the alpha scene through `rig run`, at most 0.50 $.
    - **2c (0.11.0) - packing:** admission by estimates from the runs measured in 2b; longest first, short ones fill,
      no starvation (the person's decision, 2026-10-07). Done in 0.11.0 (section 7).
 
@@ -527,12 +527,12 @@ datacenter machines at 0.107 $/h. Credit 4 -> 3.95 $ as the person read it, roun
 
 ### Live check 2 (2026-10-08, the person's yes, at most 0.50 $)
 
-From the 0.10.0 branch, in a scratch clone of twosuns (its trunk, its origin removed), one session of 0.40 $, one
+From the 0.10.0 branch, in a scratch clone of alpha (its trunk, its origin removed), one session of 0.40 $, one
 Tesla P100-SXM2-16GB at 0.107 $/h, 24 CPUs, the v1.48 image. The local floor said at least 0.04 $.
 
 - **The machine was ready 40 s after create** (the image cached on the host); a cold `npm ci` took 3 s; vast's ssh
   banner goes to stderr, so the tree, the status and the artifacts stay clean.
-- **The twosuns scene renders on the GPU through `rig run`:** the WebGL context check on Vulkan (a copy of
+- **The alpha scene renders on the GPU through `rig run`:** the WebGL context check on Vulkan (a copy of
   `tools/gpu-checks/run.mjs` with `--use-angle=vulkan`) went green, its two frames came back with `--get`, and they
   show the scene. It needed Node 22 inside the run: v1.48's Node 20.18 is too old for vite 8, the image has no `xz`,
   and dependencies installed under Node 20 left rolldown without its binding. The default image is now v1.64.0-noble

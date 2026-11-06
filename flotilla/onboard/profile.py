@@ -87,7 +87,7 @@ def build_profile(det: dict, answers: dict) -> dict:
     signals = det.get("signals") or {}
     data: dict = {"schema": 1, "trunk": {"branch": det.get("trunk", "main")},
                   "flow": {"mode": FLOW_MODES.get(flow, "local")}}
-    if answers.get("merge_auth") == "code":   # a human, for the code paths detected (twosuns B1)
+    if answers.get("merge_auth") == "code":   # a human, for the code paths detected (alpha B1)
         data["flow"]["merge_authorized_by"] = "human"
         data["flow"]["approve_paths"] = list(det.get("code_paths") or [])
     elif "merge_auth" in answers:
@@ -109,7 +109,7 @@ def build_profile(det: dict, answers: dict) -> dict:
     if tiers:
         data["tests"] = {"tier": tiers}
         setup = (det.get("setup") or {}).get("command")
-        if setup:   # run in a seat's fresh tree before its tiers, whenever the lockfile changed (worldcore W24)
+        if setup:   # run in a seat's fresh tree before its tiers, whenever the lockfile changed (beta W24)
             data["tests"]["setup_command"] = setup
     data["ci"] = _ci(det, answers)
     data["review"] = {"depth": answers.get("review", "every")}
@@ -119,7 +119,7 @@ def build_profile(det: dict, answers: dict) -> dict:
         data["release"] = {"version_files": list((det.get("release") or {}).get("version_files") or []),
                            "tag": "v{version}", "annotated": True}
     from flotilla.fleet.project_name import clean
-    # the word every seat name starts with (`worldcore-orchestrator 1`): numbers then run per project (W11)
+    # the word every seat name starts with (`beta-orchestrator 1`): numbers then run per project (W11)
     data["fleet"] = {"name": clean(Path(det["root"]).name), "default": suggest_composition(answers),
                      "model": answers.get("model", "one")}
     effort = _effort(answers.get("effort", "default"), det)
@@ -177,7 +177,7 @@ def _effort(answer: str, det: dict) -> dict[str, str]:
 
 def plain_words(data: dict) -> list[str]:
     """What the profile means for the person, one line each - printed by `write` before the yes, so it reaches the
-    person through the command's own output whatever the session retells (worldcore field test W12)."""
+    person through the command's own output whatever the session retells (beta field test W12)."""
     flow = data.get("flow") or {}
     mode, who = flow.get("mode", "local"), flow.get("merge_authorized_by")
     depth = (data.get("review") or {}).get("depth", "every")
