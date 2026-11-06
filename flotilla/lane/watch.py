@@ -2,8 +2,9 @@
 to thaw through the queue (lane shared machine design, section 4.1).
 
 It wakes on journal writes, as a waiter does, and looks at least every few seconds. On an order it freezes its
-command and records it; while frozen it asks, as a waiter would, whether it may come back. A stop by signal held for
-nothing - its waiter never started, because the memory never showed free - is let go and never ordered again. Each
+command and records it; while frozen it asks, as a waiter would, whether it may come back. A freeze held for nothing -
+its waiter never started, because the memory never showed free or the waiter was never real - is let go and never
+ordered again, whether it was a scope or a stop by signal. Each
 look beats, so others can tell a hung wrapper from a live one. If the watch itself fails, it thaws its command
 first: a broken watch must never leave a command frozen.
 """
@@ -18,7 +19,7 @@ from collections.abc import Callable
 from flotilla.lane import admission, book, freeze
 
 LOOK_S = 5.0     # the longest a watch goes without a look
-LET_GO_S = 120.0   # a stop by signal held this long while its waiter still waits is let go (builder's number)
+LET_GO_S = 120.0   # a freeze held this long while its waiter still waits is let go (builder's number)
 
 
 class Watch:
@@ -58,7 +59,7 @@ class Watch:
         if item.frozen == "frozen":
             orderer = self.lanes.bookings().get(item.order_by)
             waits = orderer is not None and orderer.state == book.WAITING
-            if self._kind == freeze.SIGNAL and waits and self._frozen_since is not None and \
+            if waits and self._frozen_since is not None and \
                     self.clock() - self._frozen_since >= self.let_go_s:
                 self.lanes.thaw(self.booking_id, self.value_of(None), force=True, never_again=True)
                 self._thaw()

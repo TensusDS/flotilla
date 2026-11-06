@@ -19,9 +19,10 @@ Security and hygiene of a public repository.
   - A booking's pid must be a real process number, and `flotilla lane stop` signals only a pid with its start mark:
     a crafted `pid` of `-1` could otherwise have signalled every process of the user.
   - What this does not do: a line written as the same user can name any live process with its real start mark as a
-    waiter, and a run may be frozen for it within the lane's rules - and a scope frozen for a waiter that never
-    starts is not let go. The lane bounds what a crafted line can do; it cannot tell who wrote it. The journal is a
-    booking, not a lock.
+    waiter, and a run may be frozen for it within the lane's rules, for two minutes: any freeze, a scope's as well
+    as a stop by signal, is let go when its waiter still has not started by then, and that run is not frozen
+    again. The lane bounds what a crafted line can do; it cannot tell who wrote it. The journal is a booking, not a
+    lock.
 - **No project or client names, and no personal paths, in the repository.** Field-test reports are no longer kept
   here (they name the projects they ran on); tests, specs, plans, the changelog and code comments name their
   projects neutrally.

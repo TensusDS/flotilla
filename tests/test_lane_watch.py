@@ -417,3 +417,14 @@ def test_a_watch_whose_booking_ended_thaws_its_slot(lane):   # review of 0.30.1,
     assert w.step() == "froze"
     lanes.release(mine)
     assert w.step() == "thawed" and not s.frozen()
+
+
+def test_a_scope_freeze_is_let_go_when_its_waiter_never_starts(lane):   # review of ed148e3, 5: never frozen for good
+    lanes, mine, _waiter, _later, _root = lane
+    s = FakeSlot(freeze.SCOPE)
+    tick = {"now": 0.0}
+    w = watch.Watch(lanes, mine, s, lambda reading: value(available=300), clock=lambda: tick["now"], let_go_s=120,
+                    swap=lambda: (8000, 8000))
+    assert w.step() == "froze"
+    tick["now"] = 121.0   # its memory moved to swap two minutes ago, and the waiter still has not started
+    assert w.step() == "let go" and not s.frozen() and lanes.bookings()[mine].unanswered

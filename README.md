@@ -537,7 +537,7 @@ one, and never a receipt whose tier says `freeze = false` in `.flotilla/project.
 holds a lease). On Linux with a user systemd each run starts in a scope of its own; a freeze stops it and moves only
 the memory the waiter needs to swap, so the run comes back in seconds (about 13 s for each gigabyte moved). On macOS,
 and on Linux without a user systemd, a freeze is a stop by signal; the waiter starts only when the memory shows free,
-and a stop held two minutes for nothing is let go. A frozen run waits again keeping its first ask and its run time,
+and any freeze held two minutes for a waiter that still has not started is let go. A frozen run waits again keeping its first ask and its run time,
 its ceiling stops while it is frozen, and a red after a freeze says so. A freeze never leaves the machine's swap more
 than 80 % used. A frozen command never stays frozen for a wrapper that died or hung: the next grant thaws it.
 
