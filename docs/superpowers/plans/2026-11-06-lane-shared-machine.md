@@ -33,9 +33,24 @@ grant stays, whole, as the fallback while an older flotilla waits.
 - Every figure the journal holds is cleaned on fold like today's (`_clean`): wrong type or out of range folds as
   unknown, never a crash.
 - Builder's numbers, chosen here, each a constant with a comment saying it awaits the field test (spec 9):
-  reservation window `30 s`; default memory of a never-measured run `1024 MB`; heavy mark `0.2` of the memory the
-  lane can give; swap margin `256 MB`; reclaim margin `128 MB`; answer bound for a freeze order `20 s`; let-go bound
-  for a signal stop `120 s`.
+  reservation window `30 s`; heavy mark `0.2` of the memory the lane can give; reclaim margin `128 MB`; answer bound
+  for a freeze order `60 s`; let-go bound for a signal stop `120 s`; a watch's beat at most every `5 s`, stale past
+  `60 s`.
+- The person's rulings on the review of this plan (2026-11-06), not builder's numbers:
+  - **default memory of a never-measured run** = the 75th percentile of the measured peaks of each command's first
+    run in this machine's journal; `1024 MB` while fewer than 20 are measured (this server: 820 first runs, median
+    642 MB, 75th percentile 1340 MB);
+  - **the swap budget** (spec 4.3): a freeze leaves the machine's whole swap at most **80 %** used (below the 90 % at
+    which `systemd-oomd`, on by default on Ubuntu and Fedora, kills the group holding the most swap - our frozen
+    run). The person also ruled "ours stays within 90 % of (free swap + ours)"; that condition is implied by the
+    80 % one for every machine (total >= free + ours, so `take <= free - 0.2*total` gives
+    `take <= 0.9*free - 0.1*ours`), so the code carries the 80 % one alone and its comment says so;
+  - **a run let go after a signal stop is never frozen again**, like one that did not answer;
+  - **the holder's wrapper can fail, and the frozen command must not stay frozen**: the next grant thaws a dead
+    holder's frozen command; a watch that fails thaws its command and freezes no more; the command's own loop thaws
+    it when the watch thread is gone; a frozen booking whose watch has not beaten for 60 s is thawed by any grant
+    and never frozen again;
+  - the replay test of Task 4 replays each queue once and its file runs within 10 s.
 - Version 0.30.0 in `pyproject.toml`, `.claude-plugin/plugin.json`, `flotilla/__init__.py`, README's pinned example.
   Tag and release only with the person's ok.
 
@@ -45,8 +60,10 @@ grant stays, whole, as the fallback while an older flotilla waits.
    still run, unwrapped and freezable by signal, never red from the wrapper. Test in Task 5.
 2. **The waiter that ordered a freeze dies or leaves:** the frozen run must thaw through the queue, not stay frozen.
    Test in Task 6.
-3. **The holder is killed while its command is frozen:** the command must not stay frozen in swap for ever; stopping
-   a frozen command ends it, and `sweep` thaws a dead holder's unit. Tests in Tasks 5 and 7.
+3. **The holder is killed, or hangs, while its command is frozen** (SIGKILL, a crash, an exception in the watch, a
+   wrapper stopped whole): the command must not stay frozen in swap for ever. Stopping a frozen command ends it; the
+   next grant thaws a dead holder's command; a failed watch thaws its own; a silent watch is thawed by others.
+   Tests in Tasks 5, 6 and 7.
 4. **Memory cannot be read** (no MemAvailable, `vm_stat` failed): admit by the run cap and the heavy CPU bound only,
    freeze nothing, say so. Test in Task 6.
 5. **Records of an older flotilla in a new journal:** a held booking with no `started`, no `asked`, `rule` 3 - it is
@@ -204,7 +221,9 @@ Expected: PASS.
 WAITING, RUNNING, ORDERED, FROZEN = "waiting", "running", "ordered", "frozen"
 TYPES = {"push": 1.0, "handover": 0.7, "review": 0.5, "run": 0.3}
 WEIGHTS = (0.2, 0.3, 0.5); WAIT_FULL_S = 600.0; GRACE_S = 60.0; MARGIN = 0.0
-HEAVY_SHARE = 0.2; SWAP_MARGIN_MB = 256; RECLAIM_MARGIN_MB = 128
+HEAVY_SHARE = 0.2; RECLAIM_MARGIN_MB = 128
+SWAP_USED_CAP = 0.8      # the machine's swap at most 80 % used after a freeze: systemd-oomd kills at 90 %; it also
+                         # keeps ours within 90 % of (free + ours), the person's ruling, on any machine
 
 @dataclass(frozen=True)
 class Run:
@@ -228,6 +247,7 @@ class Machine:
     give_mb: int | None   # the memory the lane can give (spec 2.2); None: memory cannot be read
     free_mb: int | None   # free now, less the floor and the reservation for just-started runs
     swap_free_mb: int | None
+    swap_total_mb: int | None = None
     cpu_factor: float = 1.5
     light_reserve: float = 0.2
     immortal_s: float = 900.0
@@ -247,7 +267,8 @@ def decide(runs: list[Run], machine: Machine, mine: str, *, may_freeze: bool = T
 ```
 
 - [ ] **Step 1: Write the failing tests** - one per rule of spec 2 and anti-goal of spec 3. A helper
-  `run(id, state, mem, heavy=False, par=1, **kw)` and `SERVER = Machine(cpus=8, give_mb=9000, free_mb=..., swap_free_mb=8000)`.
+  `run(id, state, mem, heavy=False, par=1, **kw)` and `SERVER = Machine(cpus=8, give_mb=9000, free_mb=...,
+  swap_free_mb=8000, swap_total_mb=8000)`; `machine(free=..., swap=..., swap_total=..., **kw)` builds on it.
 
 ```python
 def test_priority_is_the_formula():
@@ -317,6 +338,15 @@ def test_no_swap_freezes_nothing():
     d = decide(runs, machine(free=0, swap=0), "b2")
     assert d.freeze == () and "swap cannot take 1128 MB" in d.why
 
+def test_the_machines_swap_stays_at_most_four_fifths_used():   # systemd-oomd kills at 90 %
+    runs = [run("y", RUNNING, 2000, ran_s=90, since_start_s=90), run("b2", WAITING, 1000, kind="push")]
+    # 10000 of 12000 used; 90 % of the free 2000 would allow 1800, but 10000 + 1128 is 93 % used
+    d = decide(runs, machine(free=0, swap=2000, swap_total=12000), "b2")
+    assert d.freeze == () and "swap cannot take 1128 MB" in d.why
+    # the edge itself: 9600 - 1128 = 8472 used of 12000 is 70.6 % before, 80.0 % after -> allowed; one MB less, not
+    assert decide(runs, machine(free=0, swap=3528, swap_total=12000), "b2").freeze != ()
+    assert decide(runs, machine(free=0, swap=3527, swap_total=12000), "b2").freeze == ()
+
 def test_a_frozen_run_thaws_ahead_of_a_later_run_of_its_purpose():
     runs = [run("f", FROZEN, 1500, ran_s=300, waited_s=900, order=1), run("n", WAITING, 1500, order=5)]
     m = machine(free=1600)
@@ -374,7 +404,9 @@ for r in queue:
 if mine did not fit and may_freeze and machine.freeze and memory is known
         and no r in unfit_ahead has victims (victims(r, ...) is empty for each):
     chosen = victims(mine, pool, free)    # lowest P first, until mine fits; () if all together do not make room
-    if chosen fits the swap (swap_free - SWAP_MARGIN_MB >= sum of reclaims): return Decision(False, chosen, "...")
+    take = sum of reclaims
+    if swap known and (swap_total - swap_free) + take <= SWAP_USED_CAP * swap_total:
+        return Decision(False, chosen, "...")   # else why = f"swap cannot take {take} MB"
 return Decision(False, (), why)
 ```
 
@@ -415,7 +447,10 @@ Expected: PASS.
 
 The generator is `make_jobs` of the brainstorm's model, copied verbatim (seeds must reproduce the model's queues):
 heavy 60-360 core-minutes on 4/6/8 cores, light 0.2-6 on 1/1/1/2, `MIXES["tight"] = ((2.0, 6.0), (0.2, 1.5))`
-GB, type `rng.randrange(4)` over `push, handover, review, run`. Machine: 8 cores, 9000 MB, swap 8000 MB. Step
+GB, type `rng.randrange(4)` over `push, handover, review, run`. Machine: 8 cores, 9000 MB, swap 8000 MB of 8000
+free at the start. Each of the 20 queues is replayed **once** per test session (a module-level cache or a
+module-scoped fixture both tests read), and the file runs within 10 s: it is flotilla's own suite, never part of a
+fleet's work, and the time is simulated - no command runs, nothing sleeps. Step
 0.25 min; each step every queued run (waiting or frozen) asks `decide` in queue order and its answer is applied at
 once (start; freeze the victims, their memory to swap); CPU is water-filled as in the model.
 
@@ -440,8 +475,9 @@ def test_the_anti_goals_hold_on_every_queue():
 
 - [ ] **Step 2: Run it**
 
-Run: `uv run --with pytest python -m pytest -p no:cacheprovider tests/test_lane_policy_model.py`
-Expected: FAIL first on the missing helper; then, once `tests/lane_replay.py` exists, PASS. A result outside the
+Run: `uv run --with pytest python -m pytest -p no:cacheprovider --durations=0 tests/test_lane_policy_model.py`
+Expected: FAIL first on the missing helper; then, once `tests/lane_replay.py` exists, PASS, the file's tests
+together under 10 s by `--durations`. A result outside the
 band is a finding about Task 3's policy (its class rules differ from the model's free backfill): find which rule
 moved it, and ledger a ruling with the number before widening any bound.
 
@@ -468,7 +504,8 @@ def backend(*, setting: bool = True, platform: str = sys.platform, which=shutil.
     # (kind, why): scope where systemd-run exists, the user manager's cgroup lists `memory`, `cgroup.freeze` exists
     # and `systemd-run --user --scope --quiet true` succeeds once (cached per process); else signal; OFF when the
     # setting is off. `why` names the reason for `flotilla lane` and doctor.
-def swap_free_mb(meminfo=Path("/proc/meminfo"), run=subprocess.run) -> int | None   # SwapFree; macOS `sysctl vm.swapusage`
+def swap_mb(meminfo=Path("/proc/meminfo"), run=subprocess.run) -> tuple[int, int] | None
+    # (free, total): SwapFree / SwapTotal; macOS `sysctl vm.swapusage` (free, total); None when unread
 
 class Slot:
     """The holder process's one running command - what a freeze order acts on."""
@@ -481,7 +518,10 @@ class Slot:
     def frozen(self) -> bool
     def frozen_seconds(self) -> float           # all frozen time in this process so far
     def wait_thawed(self, sleep=time.sleep) -> None   # a new command never starts while frozen
-def thaw_unit(unit: str, *, run=subprocess.run, root=Path("/sys/fs/cgroup")) -> bool   # for sweep
+    def guard(self) -> bool   # frozen, a watcher set and its thread no longer alive -> thaw(); True if it did
+    watcher: threading.Thread | None = None   # set by Watch.start()
+def thaw_unit(unit: str, *, run=subprocess.run, root=Path("/sys/fs/cgroup")) -> bool   # for others' grants and sweep
+def thaw_tree(pid: int, *, table=None) -> bool   # SIGCONT to pid's group and every process of its tree; for the same
 SLOT: Slot   # module global, created lazily by slot()
 def slot() -> Slot
 ```
@@ -574,7 +614,14 @@ Expected: PASS, and no `SKIPPED` line for the scope test.
 - Produces:
 
 ```python
-WINDOW_S = 30.0; DEFAULT_MB = 1024; ANSWER_S = 20.0
+WINDOW_S = 30.0; DEFAULT_MB = 1024; ANSWER_S = 60.0; BEAT_STALE_S = 60.0; FIRST_RUNS_NEEDED = 20
+
+def default_mb(records: Iterable[dict]) -> int
+    # the 75th percentile of peak_mb over each command's first measured run (one per broadest signature,
+    # `ladder[-1]`, in journal order); DEFAULT_MB while fewer than FIRST_RUNS_NEEDED; read once per grant
+def beat(root: Path, booking_id: str) -> None            # touch <root>/lane-beats/<booking_id>; OSError ignored
+def beat_age(root: Path, booking_id: str, *, now=time.time) -> float | None
+def forget_beat(root: Path, booking_id: str) -> None     # on release
 
 @dataclass(frozen=True)
 class Value:   # what a grant by value reads, built each poll from settings and the machine
@@ -586,7 +633,8 @@ class Value:   # what a grant by value reads, built each poll from settings and 
     freeze: str                                   # freeze.SCOPE / SIGNAL / OFF
     available_mb: Callable[[], int | None]
     floor_mb: int
-    swap_free_mb: Callable[[], int | None]
+    swap_mb: Callable[[], tuple[int, int] | None]   # (free, total), freeze.swap_mb
+    beat_age_s: Callable[[str], float | None]       # seconds since a booking's watch last beat; None: no beat file
     tree_mb: Callable[[int], int | None]          # a holder's process tree, now
     foreign: int = 0
 
@@ -600,20 +648,28 @@ def view(found: dict, hist, value: Value, *, now: dt.datetime, live, mine: str) 
   writes, for each victim, a `held` record `frozen="ordered"`, `order_by`, `ordered_at`, `reclaim_mb`, and returns
   None. `self.waits_for` = the decision's `why`. An order unanswered past `ANSWER_S` is lapsed in the same
   transaction: `held`, `frozen=""`, `unanswered=True`. A run seen heavy by its memory now gets `heavy=True` written.
+  **Every grant by value, in the same transaction, first rescues frozen commands:** a held `frozen="frozen"`
+  booking whose holder is not alive gets `freeze.thaw_unit(unit)` or `freeze.thaw_tree(group)` and is released
+  (`cut`, why "no process behind it"); one whose holder is alive but whose `beat_age_s` is None or over
+  `BEAT_STALE_S` gets the same thaw and `held`, `frozen=""`, `unanswered=True`. A thaw that fails is retried by the
+  next grant; it never blocks this one.
 - `Book.frozen(booking_id, *, freeze_kind, unit, group, held_mb) -> Booking`: `held`, `frozen="frozen"`,
   `frozen_at`, `ran_s` += now - `started`, `freezes` + 1.
-- `Book.thaw(booking_id, value, *, force=False) -> Booking | None`: decides for the frozen run as for a waiter;
-  on start (or `force`): `held`, `frozen=""`, `started` = now, `frozen_s` += now - `frozen_at`.
+- `Book.thaw(booking_id, value, *, force=False, never_again=False) -> Booking | None`: decides for the frozen run
+  as for a waiter; on start (or `force`): `held`, `frozen=""`, `started` = now, `frozen_s` += now - `frozen_at`,
+  and `unanswered=True` when `never_again`.
 - `Book.sweep`: a dead holder with `frozen` and `unit` gets `freeze.thaw_unit(unit)` before its release; with
   `group`, `os.killpg(group, SIGCONT)` (errors ignored).
 
 `view` maps each live booking: held with `frozen=""` -> RUNNING, `frozen="ordered"` -> ORDERED, `"frozen"` -> FROZEN,
 waiting -> WAITING. Memory: running = `max(tree_mb(pid), expected)` while `started` is within `WINDOW_S`, else
-`tree_mb(pid)`; waiting = history's peak (`estimate.for_booking(...).peak_mb`, any step) else `DEFAULT_MB`; frozen =
+`tree_mb(pid)`; waiting = history's peak (`estimate.for_booking(...).peak_mb`, any step) else `default_mb(...)`
+(the same figure is `expected` for a run started without history); frozen =
 `held_mb`. `give_mb = available - floor + Σ tree_mb(live holders)`; `free_mb = available - floor - Σ reservations`.
 `par` = `peak_cores`, else `cores`, else `cpus / 2`. Waited = now - (`asked` or `since`); ran = `ran_s` + (now -
 (`started` or `since`)) unless frozen. A booking taken by hand (no pid): heavy, `par = cpus`,
-`mem = (1 - light_reserve) * give`, pinned. A holder under a rule below 4: pinned, not freezable. `pinned` field:
+`mem = (1 - light_reserve) * give`, pinned. A holder under a rule below 4: pinned, not freezable. A booking with
+`unanswered`: not freezable. `swap_free_mb`, `swap_total_mb` from `value.swap_mb()`. `pinned` field:
 pinned and heavy. `fair` = the fair-share key of `fair_choice` when `share == "fair"`, else `()`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -645,6 +701,21 @@ def test_memory_unread_freezes_nothing(lane):   # review focus 4
 
 def test_a_booking_by_hand_is_heavy_with_the_full_cores(lane): ...
 def test_sweep_thaws_a_dead_holders_unit(lane, monkeypatch): ...   # review focus 3
+
+def test_the_next_grant_thaws_a_dead_holders_frozen_command(lane, monkeypatch):   # review focus 3: SIGKILL
+    ...  # frozen booking, holder pid dead, nobody runs status: a waiter's grant calls thaw_unit, releases it, cut
+
+def test_a_frozen_booking_whose_watch_went_silent_is_thawed_and_never_frozen_again(lane, monkeypatch):
+    ...  # holder alive, beat_age_s 61: grant thaws it, unanswered True; the next grant orders it no more
+
+def test_a_failed_thaw_does_not_block_the_grant(lane, monkeypatch): ...   # thaw_unit -> False: grant still decides
+
+def test_the_default_memory_is_the_75th_percentile_of_first_runs():
+    ...  # 20 commands, first-run peaks 100..2000 MB step 100, later runs of the same command 9000: default_mb == 1600
+    ...  # (sorted 100..2000, index int(0.75 * 20) = 15 -> 1600; the later 9000s count nowhere)
+
+def test_under_twenty_first_runs_the_default_is_1024():
+    assert default_mb([{"peak_mb": 5000, "ladder": [f"c{n}"]} for n in range(19)]) == 1024
 ```
 
 Each test builds a `Value` with fixed numbers and `tree_mb=lambda pid: {...}[pid]`; the book's `clock` is driven by
@@ -686,14 +757,18 @@ Expected: PASS (the existing grant tests pass no `value`, so they test the fallb
 
 `step`: reads its booking; `frozen == "ordered"` and `order_by` is this booking's waiter -> `slot.freeze(reclaim_mb)`
 then `lanes.frozen(...)`; `frozen == "frozen"` -> `lanes.thaw(id, value_of())`, and on a booking returned
-`slot.thaw()`; a `signal` freeze held past `let_go_s` while the ordering booking still waits -> `thaw(force=True)`
-and `slot.thaw()`. The loop wakes on journal stamps like `_nap`, and looks at least every 5 s.
+`slot.thaw()`; a `signal` freeze held past `let_go_s` while the ordering booking still waits ->
+`thaw(force=True, never_again=True)` and `slot.thaw()`. The loop wakes on journal stamps like `_nap`, looks at least
+every 5 s, and calls `admission.beat(root, id)` on every look. **Any exception out of `step`** ends the watch
+safely: `slot.thaw()`, a best-effort `held`, `frozen=""`, `unanswered=True` on its booking, then the thread exits -
+the run goes on unfreezable. `start()` sets `slot.watcher` to its thread; `stop()` clears it and `forget_beat`.
 
 `execute`: `argv = slot().contain(command, booking=os.environ.get(acquire.ENV, ""))` only under a booking;
 `slot().attach(process.pid)` after start, `detach()` after wait; the ceiling is a daemon thread checking every 0.5 s
-`monotonic() - began - (slot().frozen_seconds() - frozen_at_start) >= ceiling`; `Measurer(paused=...)` with the
-same difference. `run_tier`: the same `contain`/`attach`, `slot().wait_thawed()` before it starts, and
-`communicate(timeout=1.0)` in a loop whose budget is `timeout` plus the frozen seconds.
+`monotonic() - began - (slot().frozen_seconds() - frozen_at_start) >= ceiling`, and calling `slot().guard()` on each
+look (a dead watch never leaves the command frozen); `Measurer(paused=...)` with the same difference. `run_tier`:
+the same `contain`/`attach`, `slot().wait_thawed()` before it starts, and `communicate(timeout=1.0)` in a loop whose
+budget is `timeout` plus the frozen seconds, calling `slot().guard()` each turn.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -705,6 +780,14 @@ def test_the_watch_thaws_when_the_policy_lets_it(lane): ...          # step() ==
 
 def test_a_signal_stop_is_let_go_when_its_waiter_never_starts(lane):  # spec 4.2, macOS
     ...  # freeze_kind "signal", clock past let_go_s, ordering booking still waiting: step() == "let go"
+    ...  # and the booking has unanswered True: the waiter's next grant orders it no more (no stop-start loop)
+
+def test_a_watch_that_fails_thaws_its_command_and_freezes_no_more(lane):   # review focus 3
+    ...  # lanes.thaw raises inside step while frozen: the fake slot is thawed, the booking unanswered, thread ended
+
+def test_the_command_thaws_when_its_watch_thread_is_gone(): ...   # slot frozen, watcher dead: guard() thaws, True
+
+def test_the_watch_beats_on_every_look(lane, tmp_path): ...       # step(); beat_age(root, id) < 1
 
 def test_the_ceiling_does_not_count_frozen_time(tmp_path, monkeypatch):
     ...  # a fake slot reporting 10 s frozen; a 1.5 s command with ceiling 1.0 reaches its end, not the ceiling

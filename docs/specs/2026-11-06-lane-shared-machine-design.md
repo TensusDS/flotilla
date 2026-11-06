@@ -285,10 +285,24 @@ order lapses; the waiter waits; `flotilla lane` says which booking did not answe
 
 ### 4.3 The swap budget
 
-Freezing a run moves its memory to swap. A freeze is decided only when the free swap, less the memory of runs
-already frozen, holds the victims' memory with a margin. Otherwise the waiter waits.
-- On this machine: 12 GB of swap, about 8.5 GB free when measured.
+Freezing a run moves its memory to swap. Swap is not the lane's: sessions, browsers and the kernel page out into it
+under the same pressure that makes the lane freeze. A swap that runs out leaves the kernel nothing to page out to;
+it thrashes, then its OOM killer kills the process with the highest score, swap included - most likely the frozen
+run itself, the one freezing was meant to spare. Where `systemd-oomd` runs (on by default on Ubuntu since 22.04
+and on Fedora) it kills the group holding the most swap once the swap is 90 % used.
+
+The person's ruling (2026-11-06): a freeze is decided only when, after it, **the machine's whole swap is at most
+80 % used**. Otherwise the waiter waits. The person also asked that ours stay within 90 % of the rest (free swap
+plus ours); the 80 % rule implies it on every machine, so it needs no check of its own.
+- On this machine: 12 GB of swap, 3.4 GB of it used by others and 8.9 GB free when measured; the rule lets the
+  lane take about 6.4 GB.
 - A machine with no swap never freezes.
+
+**The holder's wrapper may die or hang while its command is frozen** (the person's ruling, 2026-11-06): the command
+must not stay frozen. The next grant thaws a dead holder's frozen command; a watch that fails thaws its own command
+and freezes no more; the command's own loop thaws it once the watch is gone; a frozen run whose watch has not
+beaten for a minute is thawed by any grant and never frozen again. A run let go after a signal stop (4.2) is never
+frozen again either.
 
 ### 4.4 What the lane measures in addition
 
@@ -403,10 +417,12 @@ priorities").
 ## 9. Open questions
 
 For the builder (measure, then choose):
-- the reservation window N for just-started runs (2.2) and the default memory of a never-measured run;
+- the reservation window N for just-started runs (2.2);
+- the default memory of a never-measured run - settled by the person (2026-11-06): the 75th percentile of the
+  peaks of each command's first run on this machine, 1 GB until 20 are measured; the field test checks it;
 - `heavy_memory`, the mark between light and heavy (2.3);
-- the swap margin (4.3);
-- how long a victim has to answer a freeze order (4.1);
+- how long a victim has to answer a freeze order (4.1) - 60 s, chosen with the person: the wrapper process
+  answers, not the session, and the bound covers waking (5 s) plus reclaim (about 2.5 s a gigabyte);
 - how often a frozen test fails on its own timeouts after the thaw.
 
 ## 10. What the model assumed
