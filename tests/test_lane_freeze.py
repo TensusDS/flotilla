@@ -274,3 +274,23 @@ def test_a_thaw_does_not_ask_systemd_again(tmp_path, monkeypatch):   # final rev
     before = len(asked)
     s.thaw()
     assert len(asked) == before
+
+
+
+def test_a_process_carries_its_booking_in_its_environment():   # security review, 0.30.1
+    import os
+    import sys
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"],
+                             env={**os.environ, "FLOTILLA_LANE_BOOKING": "b7"})
+    try:
+        import time
+        for _ in range(100):   # until it has exec'd: before that its environment is still its parent's
+            if b"sleep" in Path(f"/proc/{child.pid}/cmdline").read_bytes():
+                break
+            time.sleep(0.02)
+        assert freeze.carries(child.pid, "b7") is True
+        assert freeze.carries(child.pid, "b8") is False
+        assert freeze.carries(child.pid, "b") is False   # a prefix of the id is not the id
+    finally:
+        child.kill()
+        child.wait()

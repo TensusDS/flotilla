@@ -137,6 +137,12 @@ def _why_not(v: Run, mine: Run, machine: Machine) -> str:
         return f"{v.id} is being frozen already"
     if v.state != RUNNING:
         return ""
+    return victim_reason(v, mine, machine)
+
+
+def victim_reason(v: Run, mine: Run, machine: Machine) -> str:
+    """Why running `v` may not be frozen for waiting `mine` by the rules of section 2.8; "" when it may. The holder
+    asks it too, of an order it finds on its booking, before it obeys (security review of 0.30.0)."""
     if v.pinned:
         return f"{v.id} is pinned"
     if not v.freezable:

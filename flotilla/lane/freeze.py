@@ -186,6 +186,30 @@ def thaw_unit(unit: str, *, run=subprocess.run, root: Path = CGROUP_ROOT) -> boo
         return False
 
 
+BOOKING_ENV = "FLOTILLA_LANE_BOOKING"   # set by the lane for every booked command (acquire.ENV)
+
+
+def carries(pid: int, booking: str, *, proc_root: Path = Path("/proc"), run=subprocess.run) -> bool | None:
+    """Whether process `pid` runs under lane booking `booking`: its own environment says so, and the journal - which
+    any session writes - cannot (security review of 0.30.0). None when the environment cannot be read."""
+    wanted = f"{BOOKING_ENV}={booking}"
+    if proc_root.is_dir():
+        try:
+            return wanted in (proc_root / str(int(pid)) / "environ").read_bytes().decode("utf-8", "replace").split("\0")
+        except FileNotFoundError:
+            return False
+        except (OSError, ValueError):
+            return None
+    try:   # macOS: `ps -E` appends the environment to the command, for the user's own processes
+        done = run(["ps", "-wwE", "-p", str(int(pid)), "-o", "command="], capture_output=True, text=True, timeout=5,
+                   check=False)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    if done.returncode != 0:
+        return False
+    return wanted in (done.stdout or "").split()
+
+
 def thaw_tree(pid: int, *, table=None) -> bool:
     """Continue every process of `pid`'s tree and group after a stop by signal whose holder is gone or silent."""
     return _signal_tree(pid, signal.SIGCONT, table if table is not None else _table())

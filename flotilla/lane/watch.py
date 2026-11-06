@@ -41,6 +41,9 @@ class Watch:
         if item is None or item.state != book.HELD:
             return ""
         if item.frozen == "ordered" and not self.slot.frozen():
+            if not self._order_holds(item):
+                self.lanes.refuse(self.booking_id)
+                return "refused"
             found = self.slot.freeze(self._reclaim(item.reclaim_mb or 0))
             self._frozen_since, self._kind = self.clock(), found.get("freeze_kind", "")
             if self.lanes.frozen(self.booking_id, freeze_kind=found.get("freeze_kind", ""),
@@ -65,6 +68,26 @@ class Watch:
             self._thaw()
             return "thawed"
         return ""
+
+    def _order_holds(self, item) -> bool:
+        """Whether an order on this booking is one the policy would give: any session writes the journal, so the
+        holder obeys only a fresh order from a live waiter this run may be frozen for (security review of 0.30.0)."""
+        import datetime as dt
+        from flotilla.lane import estimate, policy
+        found = self.lanes.bookings()
+        waiter = found.get(item.order_by)
+        if waiter is None or waiter.state != book.WAITING or not self.lanes.live(waiter) or \
+                (waiter.rule or 0) < book.RULE:
+            return False
+        now = self.lanes._moment()
+        given = book._when(item.ordered_at)
+        if given is None or not dt.timedelta(0) <= now - given <= dt.timedelta(seconds=admission.ANSWER_S):
+            return False
+        runs, machine = admission.view(found, estimate.history(found, now=now), self.value_of(None), now=now,
+                                       live=self.lanes.live, mine=waiter.id)
+        by_id = {run.id: run for run in runs}
+        me, them = by_id.get(self.booking_id), by_id.get(waiter.id)
+        return me is not None and them is not None and not policy.victim_reason(me, them, machine)
 
     def _reclaim(self, asked: int) -> int:
         """What an order may move to swap: any session writes the journal, so the figure is held to what the swap

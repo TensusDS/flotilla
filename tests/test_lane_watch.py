@@ -341,3 +341,47 @@ def test_a_watch_thaws_when_its_frozen_record_is_refused(lane, monkeypatch):
     monkeypatch.setattr(lanes, "frozen", lambda *a, **kw: None)   # released meanwhile
     w = watch.Watch(lanes, mine, s, lambda reading: value(available=300))
     assert w.step() == "" and not s.frozen()
+
+
+
+def _order(lanes, mine, **fields):
+    with lanes.store.transaction(book.KEY) as tx:
+        tx.append({"at": lanes._now(), "booking": mine, "state": book.HELD, "frozen": "ordered", **fields})
+
+
+def test_an_order_from_no_waiting_run_is_refused(lane):   # security review, 0.30.1: a crafted order
+    lanes, mine, waiter, _later, _root = lane
+    lanes.leave(waiter)
+    s = FakeSlot()
+    w = watch.Watch(lanes, mine, s, lambda reading: value(available=300))
+    assert w.step() == "refused" and s.calls == [] and lanes.bookings()[mine].frozen == ""
+
+
+def test_an_order_naming_a_stranger_is_refused(lane):
+    lanes, mine, _waiter, _later, _root = lane
+    _order(lanes, mine, order_by="b999", ordered_at=lanes._now())
+    s = FakeSlot()
+    assert watch.Watch(lanes, mine, s, lambda reading: value(available=300)).step() == "refused" and s.calls == []
+
+
+def test_an_order_from_a_lower_waiter_is_refused(lane):
+    lanes, mine, _waiter, _later, _root = lane
+    low = lanes.enqueue("main session 3", "x", pid=13, mark="m", kind="run")
+    _order(lanes, mine, order_by=low.id, ordered_at=lanes._now())
+    s = FakeSlot()
+    assert watch.Watch(lanes, mine, s, lambda reading: value(available=300)).step() == "refused" and s.calls == []
+
+
+def test_an_order_to_an_immortal_run_is_refused(lane):
+    lanes, mine, waiter, later, _root = lane
+    later(900)   # it has run fifteen minutes since: immortal
+    _order(lanes, mine, order_by=waiter, ordered_at=lanes._now())   # a fresh order all the same
+    s = FakeSlot()
+    assert watch.Watch(lanes, mine, s, lambda reading: value(available=300)).step() == "refused" and s.calls == []
+
+
+def test_a_stale_order_is_refused(lane):
+    lanes, mine, _waiter, later, _root = lane
+    later(admission.ANSWER_S + 1)
+    s = FakeSlot()
+    assert watch.Watch(lanes, mine, s, lambda reading: value(available=300)).step() == "refused" and s.calls == []

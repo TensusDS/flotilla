@@ -189,6 +189,7 @@ def test_the_next_grant_thaws_a_dead_holders_frozen_command(lane, monkeypatch): 
     lanes.frozen(first.id, freeze_kind="signal", unit="", group=13, held_mb=100)   # its command's group, alive
     thawed = []
     monkeypatch.setattr(freeze, "thaw_tree", lambda pid, **kw: thawed.append(pid) or True)
+    monkeypatch.setattr(freeze, "carries", lambda pid, booking: booking == first.id)   # its environment says so
     procs.dead.add(11)   # the holder (the wrapper) died; its frozen command did not
     mine = lanes.enqueue("main session 2", "x", pid=12, mark="m")
     lanes.grant(mine.id, slots=1, value=value())
@@ -359,3 +360,29 @@ def test_a_reused_group_number_is_not_signalled(lane, monkeypatch):   # final re
     mine = lanes.enqueue("main session 2", "x", pid=12, mark="m")
     lanes.grant(mine.id, slots=1, value=value())
     assert calls == [] and lanes.bookings()[first.id].state == book.RELEASED
+
+
+
+def test_a_process_group_is_thawed_only_when_it_carries_the_booking(lane, monkeypatch):   # security review, 0.30.1
+    lanes, procs, later = lane
+    first = holder(lanes, later)
+    lanes.frozen(first.id, freeze_kind="signal", unit="", group=13, held_mb=100)
+    calls = []
+    monkeypatch.setattr(freeze, "thaw_tree", lambda pid, **kw: calls.append(pid) or True)
+    monkeypatch.setattr(freeze, "carries", lambda pid, booking: False)   # mark matches, but not the lane's process
+    procs.dead.add(11)
+    mine = lanes.enqueue("main session 2", "x", pid=12, mark="m")
+    lanes.grant(mine.id, slots=1, value=value())
+    assert calls == [] and lanes.bookings()[first.id].state == book.RELEASED
+
+
+def test_a_scope_of_another_booking_is_never_thawed_for_this_one(lane, monkeypatch):   # security review, 0.30.1
+    lanes, procs, later = lane
+    first = holder(lanes, later)
+    lanes.frozen(first.id, freeze_kind="scope", unit="flotilla-lane-b77-11-1.scope", group=11, held_mb=100)
+    calls = []
+    monkeypatch.setattr(freeze, "thaw_unit", lambda unit, **kw: calls.append(unit) or True)
+    procs.dead.add(11)
+    mine = lanes.enqueue("main session 2", "x", pid=12, mark="m")
+    lanes.grant(mine.id, slots=1, value=value())
+    assert calls == []
