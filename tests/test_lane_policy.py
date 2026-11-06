@@ -220,3 +220,13 @@ def test_a_lone_heavy_keeps_the_light_reserve_beside_light_runs():   # final rev
     d = decide(runs, machine(free=8500), "h")
     assert not d.start and "reserve 1800 MB for light runs" in d.why
     assert decide([run("h", WAITING, 8000, True, 4)], machine(free=8500), "h").start   # an empty machine: it goes
+
+
+
+def test_a_run_that_just_refused_this_waiter_is_no_candidate():   # review of ed148e3, 1: back-off
+    runs = [run("y", RUNNING, 2000, ran_s=90, since_start_s=90, refused_for="b2"),
+            run("b2", WAITING, 1000, kind="push")]
+    d = decide(runs, machine(free=0), "b2")
+    assert d.freeze == () and "y refused b2's order a moment ago" in d.why
+    runs[0] = run("y", RUNNING, 2000, ran_s=90, since_start_s=90, refused_for="b9")   # another waiter's refusal
+    assert decide(runs, machine(free=0), "b2").freeze != ()

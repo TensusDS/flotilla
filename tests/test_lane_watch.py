@@ -401,10 +401,13 @@ def test_an_order_from_a_waiter_with_no_process_is_refused(lane):   # review of 
     assert watch.Watch(lanes, mine, s, lambda reading: value(available=300)).step() == "refused" and s.calls == []
 
 
-def test_an_order_from_a_waiter_that_would_fit_is_refused(lane):   # review of 0.30.1, I1: memory is not short
+def test_a_true_order_is_obeyed_whatever_the_holders_own_reading_of_memory(lane):   # review of ed148e3, 1
+    # the holder reads the machine with its own project's floor, so its reading of the waiter's room can differ for
+    # good; judging the order by it refused true orders for ever while waiter and holder traded journal lines
     lanes, mine, _waiter, _later, _root = lane
     s = FakeSlot()
-    assert watch.Watch(lanes, mine, s, lambda reading: value(available=9000)).step() == "refused" and s.calls == []
+    w = watch.Watch(lanes, mine, s, lambda reading: value(available=9000), swap=lambda: (8000, 8000))
+    assert w.step() == "froze" and s.calls
 
 
 def test_a_watch_whose_booking_ended_thaws_its_slot(lane):   # review of 0.30.1, minor: a slot never stays frozen

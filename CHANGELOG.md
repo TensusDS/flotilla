@@ -11,14 +11,17 @@ Security and hygiene of a public repository.
   record could name a process or a scope that is not a lane run.
   - A frozen command is thawed from outside only when the process itself proves it is the booking's - its own
     environment carries `FLOTILLA_LANE_BOOKING` - or when the scope's name carries the booking. A process that
-    gives no word either way is kept, never dropped: `flotilla lane` shows it with the `kill -CONT` that resumes it.
-  - A holder freezes its command only for a fresh order from a waiter with a live process and its start mark, that
-    lacks memory alone, and that the lane's rules let it be frozen for (not immortal, past its first minute, lower in
-    priority). Any other order lapses.
+    gives no word either way is kept, never dropped: `flotilla lane` shows it with the command that resumes it
+    (`systemctl --user thaw` for a scope, `kill -CONT` for a stop by signal).
+  - A holder freezes its command only for a fresh order from a waiter with a live process and its start mark that
+    the lane's rules let it be frozen for (not immortal, past its first minute, lower in priority). Any other order
+    lapses, and the waiter does not order that run again until the answer bound is over.
   - A booking's pid must be a real process number, and `flotilla lane stop` signals only a pid with its start mark:
     a crafted `pid` of `-1` could otherwise have signalled every process of the user.
-  - What this bounds is what a crafted line can do; a process writing as the same user can still name a live run
-    of its own. The journal is a booking, not a lock.
+  - What this does not do: a line written as the same user can name any live process with its real start mark as a
+    waiter, and a run may be frozen for it within the lane's rules - and a scope frozen for a waiter that never
+    starts is not let go. The lane bounds what a crafted line can do; it cannot tell who wrote it. The journal is a
+    booking, not a lock.
 - **No project or client names, and no personal paths, in the repository.** Field-test reports are no longer kept
   here (they name the projects they ran on); tests, specs, plans, the changelog and code comments name their
   projects neutrally.

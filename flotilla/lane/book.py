@@ -44,14 +44,14 @@ FIELDS = ("who", "note", "pid", "mark", "run_for", "why", "command", "ladder", "
           "seconds", "peak_mb", "cores", "busy", "verdict", "ran", "cut", "inside", "path", "place",
           "kind", "asked", "started", "ran_s", "frozen", "order_by", "ordered_at", "reclaim_mb", "frozen_at",
           "held_mb", "frozen_s", "freezes", "heavy", "pinned", "unanswered", "freeze_kind", "unit", "group",
-          "peak_cores", "group_mark")
+          "peak_cores", "group_mark", "refused_by", "refused_at")
 MEASURED = ("seconds", "peak_mb", "cores", "busy", "verdict", "ran", "peak_cores")
 #: A freeze order's progress on a held booking: ordered by a waiter, then frozen by its holder; absent while it runs.
 FROZEN_STATES = ("ordered", "frozen")
 #: A run's purpose, the type part of its priority (lane shared machine, section 2.6); anything else is a plain run.
 KINDS = ("push", "handover", "review", "run")
 FREEZE_KINDS = ("scope", "signal")
-MOMENTS = ("asked", "started", "ordered_at", "frozen_at")
+MOMENTS = ("asked", "started", "ordered_at", "frozen_at", "refused_at")
 FLAGS = ("heavy", "pinned", "unanswered")
 #: A lane scope's name as the holder makes it: any session writes the journal, and a unit's name reaches systemctl,
 #: so anything else folds to nothing (final review of 0.30.0, I7).
@@ -102,7 +102,7 @@ def _clean(key, value):
         return value if _aware(value) else ""
     if key == "unit":
         return value if isinstance(value, str) and UNIT.fullmatch(value) else ""
-    if key in ("order_by", "group_mark"):
+    if key in ("order_by", "group_mark", "refused_by"):
         return visible(value[:80]) if isinstance(value, str) else ""
     if key in FLAGS:
         return value is True
@@ -185,6 +185,8 @@ class Booking:
     unit: str = ""                                   # its scope, for whoever thaws it when its holder is gone
     group: int | None = None                         # its command's process group, likewise
     group_mark: str = ""                             # that group leader's start mark: the same process, not a reused pid
+    refused_by: str = ""                             # the waiter whose order its holder last refused, and when: that
+    refused_at: str = ""                             # waiter does not order it again until the answer bound is over
     peak_cores: float | None = None                  # the busiest stretch of cores it used, measured
 
 
@@ -671,7 +673,7 @@ class Book:
                 return None
             if (order_by or ordered_at) and (item.order_by, item.ordered_at) != (order_by, ordered_at):
                 return None
-            return self._write(tx, booking_id, HELD, frozen="")
+            return self._write(tx, booking_id, HELD, frozen="", refused_by=item.order_by, refused_at=self._now())
 
     def unfreezable(self, booking_id: str) -> Booking | None:
         """Its holder can no longer obey orders (its watch failed): any order lapses, and it is never ordered again."""

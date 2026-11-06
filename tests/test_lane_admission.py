@@ -420,3 +420,22 @@ def test_refuse_cancels_only_the_order_it_read(lane):   # review of 0.30.1, mino
     assert lanes.refuse(first.id, order_by="b999", ordered_at=order.ordered_at) is None   # a newer order: kept
     assert lanes.bookings()[first.id].frozen == "ordered"
     assert lanes.refuse(first.id, order_by=order.order_by, ordered_at=order.ordered_at).frozen == ""
+
+
+
+def test_a_waiter_does_not_order_again_a_run_that_just_refused_it(lane):   # review of ed148e3, 1: back-off
+    lanes, _procs, later = lane
+    first = holder(lanes, later, tree={11: 5000}, after=61)   # just past its first minute: still well below a push
+    mine = lanes.enqueue("main session 2", "receipt", pid=12, mark="m", kind="push")
+    v = value(tree={11: 5000}, available=300)
+    lanes.grant(mine.id, slots=1, value=v)
+    order = lanes.bookings()[first.id]
+    assert order.frozen == "ordered"
+    lanes.refuse(first.id, order_by=order.order_by, ordered_at=order.ordered_at)
+    later(5)
+    lanes.grant(mine.id, slots=1, value=v)
+    assert lanes.bookings()[first.id].frozen == ""   # not ordered again at once
+    assert "refused" in lanes.waits_for
+    later(admission.ANSWER_S - 4)
+    lanes.grant(mine.id, slots=1, value=v)
+    assert lanes.bookings()[first.id].frozen == "ordered"   # the back-off is over

@@ -211,14 +211,21 @@ def carries(pid: int, booking: str, *, proc_root: Path = Path("/proc"), run=subp
         except (OSError, ValueError):
             return None
     else:
-        try:   # macOS: `ps -E` appends the environment to the command, for the user's own processes
-            done = run(["ps", "-wwE", "-p", str(int(pid)), "-o", "command="], capture_output=True, text=True,
+        # macOS: `ps -E` appends the environment to the command, for the user's own processes. The command's own
+        # words come first and may name a booking too, so only what follows them is read (review of ed148e3, 3)
+        try:
+            shown = run(["ps", "-wwE", "-p", str(int(pid)), "-o", "command="], capture_output=True, text=True,
+                        timeout=5, check=False)
+            bare = run(["ps", "-ww", "-p", str(int(pid)), "-o", "command="], capture_output=True, text=True,
                        timeout=5, check=False)
         except (OSError, subprocess.SubprocessError, ValueError):
             return None
-        if done.returncode != 0:
+        if shown.returncode != 0:
             return False
-        entries = (done.stdout or "").split()
+        full, command = (shown.stdout or "").strip(), (bare.stdout or "").strip()
+        if bare.returncode != 0 or not full.startswith(command):
+            return None
+        entries = full[len(command):].split()
     named = _booking_of(entries)
     if not named:
         return None

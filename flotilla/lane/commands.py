@@ -334,7 +334,9 @@ def value_of(run, item, machine, now: dt.datetime) -> str:
     if item.frozen == "frozen":
         since = book._when(item.frozen_at)
         text += f"; frozen since {_clock(since) if since else '?'} by {visible(item.order_by)}'s order"
-        if item.group:
+        if item.unit:
+            text += f" (if its command stays frozen: systemctl --user thaw {item.unit})"
+        elif item.group:
             text += f" (if its command stays stopped: kill -CONT -{item.group})"
     elif item.frozen == "ordered":
         text += f"; ordered frozen by {visible(item.order_by)}, not yet answered"

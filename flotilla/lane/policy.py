@@ -51,6 +51,7 @@ class Run:
     pinned: bool = False        # never a victim: by hand, a `freeze = false` tier, an older flotilla's
     freezable: bool = True      # its wrapper can obey an order
     holds: bool = False         # its freeze orders are out: the runs behind it leave it the memory it needs
+    refused_for: str = ""       # the waiter whose order it refused a moment ago: not that waiter's candidate yet
 
 
 @dataclass(frozen=True)
@@ -138,6 +139,8 @@ def _why_not(v: Run, mine: Run, machine: Machine) -> str:
         return f"{v.id} is being frozen already"
     if v.state != RUNNING:
         return ""
+    if v.refused_for and v.refused_for == mine.id:   # no order and refusal trading lines in the journal
+        return f"{v.id} refused {mine.id}'s order a moment ago"
     return victim_reason(v, mine, machine)
 
 

@@ -160,7 +160,8 @@ def view(found: dict, hist, value: Value, *, now: dt.datetime, live, mine: str, 
             waited_s=_seconds(now, item.asked or item.since), ran_s=ran, since_start_s=since_start,
             order=book._order(item), fair=(projects.get(item.project, 0), served.get(item.project, ""))
             if share == "fair" else (), pinned=pinned, freezable=freezable,
-            holds=item.state == book.WAITING and item.id in holding))
+            holds=item.state == book.WAITING and item.id in holding,
+            refused_for=item.refused_by if item.refused_by and _seconds(now, item.refused_at) < ANSWER_S else ""))
     swap = value.swap_mb()
     from flotilla.lane import freeze
     machine = policy.Machine(

@@ -323,15 +323,35 @@ def test_a_process_without_the_variable_or_with_another_booking():   # review of
             child.wait()
 
 
+def _ps_both(command, environment, code=0):
+    """`ps -ww` prints the command; `ps -wwE` prints the command, then the environment."""
+    def run(argv, **kw):
+        if "-wwE" in argv:
+            return done(code, f"{command} {environment}\n")
+        return done(code, f"{command}\n")
+    return run
+
+
 def _ps(out, code=0):
     return lambda argv, **kw: done(code, out)
 
 
 def test_carries_reads_ps_where_there_is_no_proc(tmp_path):   # review of 0.30.1, I3: the macOS branch
     gone = tmp_path / "no-proc"
-    line = "/bin/sh -c pytest PATH=/usr/bin FLOTILLA_LANE_BOOKING=b7 HOME=/home/user\n"
-    assert freeze.carries(42, "b7", proc_root=gone, run=_ps(line)) is True
-    assert freeze.carries(42, "b70", proc_root=gone, run=_ps(line)) is False   # another booking's, by exact token
-    assert freeze.carries(42, "b7", proc_root=gone, run=_ps("/bin/sh -c pytest PATH=/usr/bin\n")) is None
-    assert freeze.carries(42, "b7", proc_root=gone, run=_ps("/bin/sh -c pytest\n")) is None   # no environment shown
+    env = "PATH=/usr/bin FLOTILLA_LANE_BOOKING=b7 HOME=/home/user"
+    assert freeze.carries(42, "b7", proc_root=gone, run=_ps_both("/bin/sh -c pytest", env)) is True
+    assert freeze.carries(42, "b70", proc_root=gone, run=_ps_both("/bin/sh -c pytest", env)) is False
+    assert freeze.carries(42, "b7", proc_root=gone, run=_ps_both("/bin/sh -c pytest", "PATH=/usr/bin")) is None
+    assert freeze.carries(42, "b7", proc_root=gone, run=_ps_both("/bin/sh -c pytest", "")) is None   # none shown
     assert freeze.carries(42, "b7", proc_root=gone, run=_ps("", code=1)) is False   # no such process
+
+
+
+
+def test_a_booking_named_in_the_commands_own_words_is_not_its_environment(tmp_path):   # review of ed148e3, 3
+    gone = tmp_path / "no-proc"
+    command = 'bash -c FLOTILLA_LANE_BOOKING=b2 make'
+    run = _ps_both(command, "PATH=/usr/bin FLOTILLA_LANE_BOOKING=b1 HOME=/home/user")
+    assert freeze.carries(42, "b1", proc_root=gone, run=run) is True     # its environment, not its arguments
+    run = _ps_both(command, "PATH=/usr/bin HOME=/home/user")
+    assert freeze.carries(42, "b1", proc_root=gone, run=run) is None     # no word in the environment itself

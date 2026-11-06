@@ -77,7 +77,6 @@ class Watch:
         holder obeys only a fresh order from a live waiter this run may be frozen for (security review of 0.30.0)."""
         import datetime as dt
         from flotilla.lane import estimate, policy
-        import dataclasses
         found = self.lanes.bookings()
         waiter = found.get(item.order_by)
         # a waiter with a process and its start mark: one with neither reads as live for ever (review of 0.30.1, I1)
@@ -92,12 +91,10 @@ class Watch:
                                        live=self.lanes.live, mine=waiter.id)
         by_id = {run.id: run for run in runs}
         me, them = by_id.get(self.booking_id), by_id.get(waiter.id)
-        if me is None or them is None or policy.victim_reason(me, them, machine):
-            return False
-        # and memory alone holds the waiter back, this run counted as still running: what the policy freezes for
-        asked = [dataclasses.replace(run, holds=False) if run.id == waiter.id else run for run in runs]
-        decided = policy.decide(asked, machine, waiter.id, may_freeze=False)
-        return not decided.start and decided.about == policy.FREE
+        # by the rules alone, never by this holder's own reading of the waiter's room: each project has its own memory
+        # floor, a waiter may be a take by hand, and a reading that differs for good refused true orders for ever
+        # (review of ed148e3, 1)
+        return me is not None and them is not None and not policy.victim_reason(me, them, machine)
 
     def _reclaim(self, asked: int) -> int:
         """What an order may move to swap: any session writes the journal, so the figure is held to what the swap
