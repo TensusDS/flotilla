@@ -366,6 +366,26 @@ def light_verdict(found: dict, mine: Booking, room: Room, hist, live) -> str:
     return _light(found, mine, room, hist, live)[0]
 
 
+def _seconds_since(text: str, now: dt.datetime) -> float:
+    moment = _when(text)
+    return max(0.0, (now - moment).total_seconds()) if moment is not None else 0.0
+
+
+def _frozen_for(item: Booking, now: dt.datetime) -> float:
+    return round((item.frozen_s or 0.0) + _seconds_since(item.frozen_at, now), 2)
+
+
+def _thaw_command(item: Booking) -> bool:
+    """Thaw a frozen booking's command from outside its holder: its scope, else its process tree. False when that
+    failed, so whoever asked keeps the booking and tries again."""
+    from flotilla.lane import freeze
+    if item.unit:
+        return freeze.thaw_unit(item.unit)
+    if item.group:
+        return freeze.thaw_tree(item.group)
+    return True   # frozen with no command running: nothing to thaw but the record
+
+
 def fair_choice(found: dict, live, now: dt.datetime, skip=()) -> Booking | None:
     """The live waiter that gets the next slot under the fair share: among the projects with live waiters, the one
     holding the fewest live slots now, then the one whose last turn is the earliest (none first), then the one whose
@@ -478,13 +498,15 @@ class Book:
                                project=project, rule=RULE, inside=inside, **fields)
 
     def grant(self, booking_id: str, *, slots: int, by_hand: bool = False, share: str = "fifo",
-              skip=(), room: Room | None = None) -> Booking | None:
+              skip=(), room: Room | None = None, value=None) -> Booking | None:
         """Admit `booking_id` if its turn has come. `skip`: fair choices the caller saw not take a free slot for a
         while - held back by their own checks - and so passes over (final review of 0.25.0, I1).
 
-        With a `room`, a run its own measurements call light takes what the heavy runs leave, and only that; heavy
-        runs keep the count and the order, and neither counts nor waits behind a light one (lane light runs design).
-        Without one, the grant is the count alone, as before."""
+        With a `value` (admission.Value) and no waiter of an older flotilla, the grant goes by value: by the memory
+        free now and the priority of every run, and it may order a younger run frozen for this one (lane shared
+        machine design). Otherwise, with a `room`, a run its own measurements call light takes what the heavy runs
+        leave, and only that; heavy runs keep the count and the order (lane light runs design). Without either, the
+        grant is the count alone, as before."""
         self.passed_for = self.waits_for = ""
         fields = {"pid": None, "mark": ""} if by_hand else {}   # by hand: it holds as nobody's, until released
         with self.store.transaction(KEY) as tx:
@@ -492,6 +514,9 @@ class Book:
             mine = found.get(booking_id)
             if mine is None or mine.state != WAITING:
                 return None
+            from flotilla.lane import admission
+            if value is not None and admission.by_value(found, self.live):
+                return self._by_value(tx, booking_id, value, share, fields)
             lights: frozenset = frozenset()
             light_path = room is not None and (mine.rule or 0) >= RULE and not older_waiting(found, self.live,
                                                                                                booking_id)
@@ -516,6 +541,86 @@ class Book:
             if path is None:
                 return None
             return self._write(tx, booking_id, HELD, path=path, **fields)
+
+    def _moment(self) -> dt.datetime:
+        return self.clock() if self.clock else dt.datetime.now(dt.timezone.utc)
+
+    def _rescue(self, tx, found: dict, value) -> dict:
+        """Before deciding, in the same lock: a freeze order nobody answered lapses; a frozen command whose holder is
+        dead, or whose watch went silent, is thawed - a frozen command never stays frozen for a holder that cannot
+        thaw it (the person's ruling, 2026-11-06). A thaw that fails is tried again by the next grant."""
+        from flotilla.lane import admission
+        now = self._moment()
+        for item in [item for item in found.values() if item.state == HELD and item.frozen]:
+            if item.frozen == "ordered":
+                asked = _when(item.ordered_at)
+                if asked is None or (now - asked).total_seconds() > admission.ANSWER_S:
+                    self._write(tx, item.id, HELD, frozen="", unanswered=True)
+                continue
+            dead = item.pid is not None and not self.live(item)
+            age = None if dead else value.beat_age_s(item.id)
+            if not dead and age is not None and age <= admission.BEAT_STALE_S:
+                continue
+            if not _thaw_command(item):
+                continue
+            if dead:
+                self._write(tx, item.id, RELEASED, why="no process behind it", cut=True, frozen="")
+            else:
+                self._write(tx, item.id, HELD, frozen="", unanswered=True, started=self._now(),
+                            frozen_s=_frozen_for(item, now))
+        return self._found(tx)
+
+    def _by_value(self, tx, booking_id: str, value, share: str, fields: dict) -> Booking | None:
+        from flotilla.lane import admission, estimate, policy
+        found = self._rescue(tx, self._found(tx), value)
+        now = self._moment()
+        hist = estimate.history(found, now=now)
+        runs, machine = admission.view(found, hist, value, now=now, live=self.live, mine=booking_id, share=share)
+        by_id = {run.id: run for run in runs}
+        for run in runs:   # a run that grew past the mark is heavy for good (section 2.3)
+            if run.heavy and not found[run.id].heavy and run.state != policy.WAITING:
+                self._write(tx, run.id, HELD, heavy=True)
+        decision = policy.decide(runs, machine, booking_id)
+        self.waits_for = decision.why
+        if decision.start:
+            me = by_id[booking_id]
+            how = f"value: P {policy.priority(me, machine.immortal_s):.2f}, {'heavy' if me.heavy else 'light'}"
+            return self._write(tx, booking_id, HELD, path=how, started=self._now(), heavy=me.heavy, **fields)
+        for victim, reclaim in decision.freeze:
+            self._write(tx, victim, HELD, frozen="ordered", order_by=booking_id, ordered_at=self._now(),
+                        reclaim_mb=reclaim)
+        return None
+
+    def frozen(self, booking_id: str, *, freeze_kind: str, unit: str, group: int | None,
+               held_mb: int | None) -> Booking:
+        """Its holder obeyed: the command is frozen, and its run time so far is kept, frozen time left out."""
+        with self.store.transaction(KEY) as tx:
+            item = self._found(tx)[booking_id]
+            ran = (item.ran_s or 0.0) + _seconds_since(item.started or item.since, self._moment())
+            return self._write(tx, booking_id, HELD, frozen="frozen", frozen_at=self._now(), ran_s=round(ran, 2),
+                               freezes=item.freezes + 1, freeze_kind=freeze_kind, unit=unit,
+                               **({"group": group} if group else {}), **({"held_mb": held_mb} if held_mb else {}))
+
+    def thaw(self, booking_id: str, value, *, force: bool = False, never_again: bool = False) -> Booking | None:
+        """A frozen run asks to come back, as a waiter does: it thaws when the policy starts it (or `force`), and
+        keeps its first ask and its run time. None while it waits; `waits_for` says for what."""
+        from flotilla.lane import admission, estimate, policy
+        self.waits_for = ""
+        with self.store.transaction(KEY) as tx:
+            found = self._found(tx)
+            item = found.get(booking_id)
+            if item is None or item.state != HELD or item.frozen != "frozen":
+                return None
+            now = self._moment()
+            if not force:
+                runs, machine = admission.view(found, estimate.history(found, now=now), value, now=now,
+                                               live=self.live, mine=booking_id)
+                decision = policy.decide(runs, machine, booking_id, may_freeze=False)
+                self.waits_for = decision.why
+                if not decision.start:
+                    return None
+            return self._write(tx, booking_id, HELD, frozen="", started=self._now(),
+                               frozen_s=_frozen_for(item, now), **({"unanswered": True} if never_again else {}))
 
     def _path(self, found: dict, mine: Booking, share: str, skip=(), lights=frozenset()) -> str | None:
         """How `mine` is admitted now, or None while it waits its turn. First come, first served unless the share is
@@ -560,6 +665,8 @@ class Book:
                 if item.pid is None or self.live(item) or (gone is not None and not gone(item)):
                     continue
                 state = RELEASED if item.state == HELD else LEFT
+                if item.frozen == "frozen":
+                    _thaw_command(item)   # a dead holder's frozen command must not stay in swap for ever
                 cut = {"cut": True} if state == RELEASED else {}   # a run cut short measures nothing; never dropped
                 swept.append(self._write(tx, item.id, state, why="no process behind it", **cut))
         return swept
