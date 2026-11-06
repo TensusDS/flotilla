@@ -77,7 +77,12 @@ def _group_left(process) -> bool:
 def _stop(process) -> None:
     """SIGTERM to the group, then SIGKILL to whatever of it is left after 5 s. The leader's death is no sign the
     group is gone: a shell leader dies at once, while a member that holds SIGTERM - a test runner whose output went
-    to a file - computed on after the lane said stopped (2026-10-15)."""
+    to a file - computed on after the lane said stopped (2026-10-15). A frozen command is thawed first: a frozen
+    group holds its signals until it thaws, and would sit out the grace and the SIGKILL in swap."""
+    from flotilla.lane import freeze
+    held = freeze.SLOT
+    if held is not None and held.frozen():
+        held.thaw()
     _signal_group(process, signals.SIGTERM)
     end = time.monotonic() + 5
     try:
