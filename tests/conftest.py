@@ -1,4 +1,44 @@
+import hashlib
+import os
+from pathlib import Path
+
 import pytest
+
+
+def _real_machine_file() -> Path:
+    """The person's machine.toml, found as the plugin finds it with no override; read once, before any test runs."""
+    base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
+    return Path(base) / "flotilla" / "machine.toml"
+
+
+def _fingerprint(path: Path) -> str:
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except FileNotFoundError:
+        return "absent"
+    except OSError as err:
+        return f"unreadable: {err}"
+
+
+def pytest_sessionstart(session):
+    session.config.stash[_MACHINE] = (_real_machine_file(), _fingerprint(_real_machine_file()))
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """twosuns feedback item 21: a test run rewrote the person's machine.toml. The state-directory refusal covers the
+    plugin's own door; this covers every other road (a shell hook, a child with a scrubbed environment)."""
+    path, before = session.config.stash.get(_MACHINE, (None, None))
+    if path is None:
+        return
+    after = _fingerprint(path)
+    if after != before:
+        session.config.get_terminal_writer().line(
+            f"FAILED: this run changed the person's real {path} ({before[:12]} -> {after[:12]}); a test wrote outside "
+            f"its own state directory", red=True, bold=True)
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
+_MACHINE = pytest.StashKey[tuple]()
 
 
 @pytest.fixture(autouse=True)

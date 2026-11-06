@@ -11,12 +11,23 @@ from collections.abc import Mapping
 from pathlib import Path
 
 
+class RealStateInTest(RuntimeError):
+    """A test asked for the state directory without naming one of its own."""
+
+
 def state_dir(env: Mapping[str, str] = os.environ) -> Path:
     override = env.get("FLOTILLA_STATE_DIR")
     if override:
         return Path(override)
     base = env.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
-    return Path(base) / "flotilla"
+    real = Path(base) / "flotilla"
+    if env.get("PYTEST_CURRENT_TEST"):
+        # pytest sets this for every test whether or not tests/conftest.py loaded; a test file outside tests/ never
+        # gets the per-test directory, and one such run rewrote the person's machine.toml (twosuns feedback item 21).
+        raise RealStateInTest(f"a test asked for the state directory with FLOTILLA_STATE_DIR unset, which would be the "
+                              f"real one ({real}); set FLOTILLA_STATE_DIR to a temporary directory (tests/conftest.py "
+                              f"does this for every test under tests/)")
+    return real
 
 
 def ensure_private(path: Path) -> None:
