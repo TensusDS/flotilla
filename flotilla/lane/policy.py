@@ -73,6 +73,7 @@ class Decision:
     start: bool
     freeze: tuple = ()    # ((victim id, MB to reclaim), ...)
     why: str = ""         # what it waits for, named (section 5); "" when it starts
+    about: str = ""       # FREE when free memory alone holds it back: the only lack a freeze can cure
 
 
 def priority(run: Run, immortal_s: float) -> float:
@@ -232,7 +233,7 @@ def decide(runs: list[Run], machine: Machine, mine: str, *, may_freeze: bool = T
             unfit_ahead.append(r)
     memory_known = machine.give_mb is not None and free is not None
     if not memory_known or me.state == FROZEN or not may_freeze or about != FREE:
-        return Decision(False, (), why)   # a frozen run comes back when it fits, never by an order (section 2.8)
+        return Decision(False, (), why, about)   # a frozen run comes back when it fits, never by an order (2.8)
     if not machine.freeze:
         return Decision(False, (), f"{why}; freezing is off")
     if me.holds:   # its orders are out and their memory not yet free: ordering more would freeze runs for nothing

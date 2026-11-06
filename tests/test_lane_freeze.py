@@ -1,4 +1,6 @@
 import errno
+
+import pytest
 import signal
 import subprocess
 import threading
@@ -277,6 +279,7 @@ def test_a_thaw_does_not_ask_systemd_again(tmp_path, monkeypatch):   # final rev
 
 
 
+@pytest.mark.skipif(not Path("/proc/self/environ").exists(), reason="reads /proc")
 def test_a_process_carries_its_booking_in_its_environment():   # security review, 0.30.1
     import os
     import sys
@@ -294,3 +297,41 @@ def test_a_process_carries_its_booking_in_its_environment():   # security review
     finally:
         child.kill()
         child.wait()
+
+
+
+@pytest.mark.skipif(not Path("/proc/self/environ").exists(), reason="reads /proc")
+def test_a_process_without_the_variable_or_with_another_booking():   # review of 0.30.1, I2
+    import os
+    import sys
+    import time
+    bare = {key: value for key, value in os.environ.items() if key != "FLOTILLA_LANE_BOOKING"}
+    plain = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"], env=bare)
+    other = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"],
+                             env={**bare, "FLOTILLA_LANE_BOOKING": "b8"})
+    try:
+        for child in (plain, other):
+            for _ in range(100):
+                if b"sleep" in Path(f"/proc/{child.pid}/cmdline").read_bytes():
+                    break
+                time.sleep(0.02)
+        assert freeze.carries(plain.pid, "b7") is None    # no word either way: kept, never cleared as not ours
+        assert freeze.carries(other.pid, "b7") is False   # another booking's: positive proof it is not ours
+    finally:
+        for child in (plain, other):
+            child.kill()
+            child.wait()
+
+
+def _ps(out, code=0):
+    return lambda argv, **kw: done(code, out)
+
+
+def test_carries_reads_ps_where_there_is_no_proc(tmp_path):   # review of 0.30.1, I3: the macOS branch
+    gone = tmp_path / "no-proc"
+    line = "/bin/sh -c pytest PATH=/usr/bin FLOTILLA_LANE_BOOKING=b7 HOME=/home/user\n"
+    assert freeze.carries(42, "b7", proc_root=gone, run=_ps(line)) is True
+    assert freeze.carries(42, "b70", proc_root=gone, run=_ps(line)) is False   # another booking's, by exact token
+    assert freeze.carries(42, "b7", proc_root=gone, run=_ps("/bin/sh -c pytest PATH=/usr/bin\n")) is None
+    assert freeze.carries(42, "b7", proc_root=gone, run=_ps("/bin/sh -c pytest\n")) is None   # no environment shown
+    assert freeze.carries(42, "b7", proc_root=gone, run=_ps("", code=1)) is False   # no such process

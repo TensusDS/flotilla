@@ -386,3 +386,37 @@ def test_a_scope_of_another_booking_is_never_thawed_for_this_one(lane, monkeypat
     mine = lanes.enqueue("main session 2", "x", pid=12, mark="m")
     lanes.grant(mine.id, slots=1, value=value())
     assert calls == []
+
+
+
+def test_a_group_with_no_word_of_its_booking_is_kept_not_cleared(lane, monkeypatch):   # review of 0.30.1, I2
+    lanes, procs, later = lane
+    first = holder(lanes, later)
+    lanes.frozen(first.id, freeze_kind="signal", unit="", group=13, held_mb=100)
+    calls = []
+    monkeypatch.setattr(freeze, "thaw_tree", lambda pid, **kw: calls.append(pid) or True)
+    monkeypatch.setattr(freeze, "carries", lambda pid, booking: None)   # a re-exec cleared its environment
+    procs.dead.add(11)
+    mine = lanes.enqueue("main session 2", "x", pid=12, mark="m")
+    lanes.grant(mine.id, slots=1, value=value())
+    kept = lanes.bookings()[first.id]
+    assert calls == [] and kept.state == book.HELD and kept.frozen == "frozen"   # shown, never silently dropped
+
+
+def test_a_pid_that_is_no_process_number_folds_away():   # review of 0.30.1, I4: -1 would signal every process
+    for bad in (-1, 0, 1, True, "7", 2.5):
+        found = book.fold([{"at": "2026-11-06T10:00:00+00:00", "booking": "b1", "state": "held", "pid": bad}])["b1"]
+        assert found.pid is None, bad
+    assert book.fold([{"at": "2026-11-06T10:00:00+00:00", "booking": "b1", "state": "held", "pid": 4242}])["b1"].pid \
+        == 4242
+
+
+def test_refuse_cancels_only_the_order_it_read(lane):   # review of 0.30.1, minor
+    lanes, _procs, later = lane
+    first = holder(lanes, later, tree={11: 5000})
+    mine = lanes.enqueue("main session 2", "receipt", pid=12, mark="m", kind="push")
+    lanes.grant(mine.id, slots=1, value=value(tree={11: 5000}, available=300))
+    order = lanes.bookings()[first.id]
+    assert lanes.refuse(first.id, order_by="b999", ordered_at=order.ordered_at) is None   # a newer order: kept
+    assert lanes.bookings()[first.id].frozen == "ordered"
+    assert lanes.refuse(first.id, order_by=order.order_by, ordered_at=order.ordered_at).frozen == ""

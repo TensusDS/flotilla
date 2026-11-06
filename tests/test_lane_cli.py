@@ -735,3 +735,18 @@ def test_an_older_waiter_is_named_in_the_lane(tmp_path, monkeypatch):
                    "pid": None, "rule": 3})
     _code, out = run_cli("lane", "--root", str(root))
     assert "a seat of a flotilla before 0.30 waits: lane_capacity counts every run until it goes" in out
+
+
+
+def test_lane_stop_signals_no_pid_without_a_start_mark(tmp_path, monkeypatch):   # review of 0.30.1, I4
+    from flotilla.core.storage import LocalLogStore
+    from flotilla.lane import book, commands
+    root = onboarded(tmp_path, monkeypatch)
+    store = LocalLogStore(tmp_path / "state" / "lane")
+    with store.transaction(book.KEY) as tx:
+        tx.append({"at": "2026-11-06T10:00:00+00:00", "booking": "b1", "state": book.HELD, "who": "main session 1",
+                   "pid": 4242, "mark": "", "rule": 4})
+    sent = []
+    monkeypatch.setattr(commands.os, "kill", lambda pid, number: sent.append(pid))
+    code, out = run_cli("lane", "stop", "--root", str(root), "--as", "main session 1")
+    assert sent == [] and code == 2

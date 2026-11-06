@@ -39,10 +39,13 @@ class Watch:
             admission.beat(self.root, self.booking_id)
         item = self.lanes.bookings().get(self.booking_id)
         if item is None or item.state != book.HELD:
+            if self.slot.frozen():   # released while frozen: nothing may stay frozen for a booking that ended
+                self._thaw()
+                return "thawed"
             return ""
         if item.frozen == "ordered" and not self.slot.frozen():
             if not self._order_holds(item):
-                self.lanes.refuse(self.booking_id)
+                self.lanes.refuse(self.booking_id, order_by=item.order_by, ordered_at=item.ordered_at)
                 return "refused"
             found = self.slot.freeze(self._reclaim(item.reclaim_mb or 0))
             self._frozen_since, self._kind = self.clock(), found.get("freeze_kind", "")
@@ -74,10 +77,12 @@ class Watch:
         holder obeys only a fresh order from a live waiter this run may be frozen for (security review of 0.30.0)."""
         import datetime as dt
         from flotilla.lane import estimate, policy
+        import dataclasses
         found = self.lanes.bookings()
         waiter = found.get(item.order_by)
-        if waiter is None or waiter.state != book.WAITING or not self.lanes.live(waiter) or \
-                (waiter.rule or 0) < book.RULE:
+        # a waiter with a process and its start mark: one with neither reads as live for ever (review of 0.30.1, I1)
+        if waiter is None or waiter.state != book.WAITING or not waiter.pid or not waiter.mark or \
+                not self.lanes.live(waiter) or (waiter.rule or 0) < book.RULE:
             return False
         now = self.lanes._moment()
         given = book._when(item.ordered_at)
@@ -87,7 +92,12 @@ class Watch:
                                        live=self.lanes.live, mine=waiter.id)
         by_id = {run.id: run for run in runs}
         me, them = by_id.get(self.booking_id), by_id.get(waiter.id)
-        return me is not None and them is not None and not policy.victim_reason(me, them, machine)
+        if me is None or them is None or policy.victim_reason(me, them, machine):
+            return False
+        # and memory alone holds the waiter back, this run counted as still running: what the policy freezes for
+        asked = [dataclasses.replace(run, holds=False) if run.id == waiter.id else run for run in runs]
+        decided = policy.decide(asked, machine, waiter.id, may_freeze=False)
+        return not decided.start and decided.about == policy.FREE
 
     def _reclaim(self, asked: int) -> int:
         """What an order may move to swap: any session writes the journal, so the figure is held to what the swap

@@ -120,6 +120,8 @@ def _clean(key, value):
         return visible(value[:MAX_TEXT]) if isinstance(value, str) else ""   # cut first: visible walks every char
     if key == "inside":
         return visible(value[:40]) if isinstance(value, str) else ""
+    if key == "pid":   # a number another session's signal may reach: a real process's, never 0, 1, -1 or text
+        return value if isinstance(value, int) and not isinstance(value, bool) and value >= 2 else None
     if key == "rule":
         return value if isinstance(value, int) and not isinstance(value, bool) else None
     if key == "place":
@@ -659,12 +661,15 @@ class Book:
             return self._write(tx, booking_id, HELD, frozen="", started=self._now(),
                                frozen_s=_frozen_for(item, now), **({"unanswered": True} if never_again else {}))
 
-    def refuse(self, booking_id: str) -> Booking | None:
+    def refuse(self, booking_id: str, *, order_by: str = "", ordered_at: str = "") -> Booking | None:
         """An order its holder will not obey - from no live waiter, stale, or one the rules would not give: it lapses,
-        and the booking stays freezable by a true order."""
+        and the booking stays freezable by a true order. With `order_by`/`ordered_at`, only that very order lapses:
+        a newer one written meanwhile is left to be read."""
         with self.store.transaction(KEY) as tx:
             item = self._found(tx).get(booking_id)
             if item is None or item.state != HELD or item.frozen != "ordered":
+                return None
+            if (order_by or ordered_at) and (item.order_by, item.ordered_at) != (order_by, ordered_at):
                 return None
             return self._write(tx, booking_id, HELD, frozen="")
 

@@ -71,7 +71,7 @@ def lane(tmp_path):
 def test_the_watch_freezes_its_command_on_an_order(lane):
     lanes, mine, _waiter, _later, _root = lane
     s = FakeSlot()
-    w = watch.Watch(lanes, mine, s, lambda reading: value(available=300))
+    w = watch.Watch(lanes, mine, s, lambda reading: value(available=300), swap=lambda: (8000, 8000))
     assert w.step() == "froze"
     found = lanes.bookings()[mine]
     assert s.calls == [("freeze", found.reclaim_mb)] and found.frozen == "frozen" and found.unit == "flotilla-lane-b1-11-1.scope"
@@ -184,9 +184,10 @@ def test_a_tier_does_not_start_while_its_holder_is_frozen(monkeypatch, tmp_path)
     started = []
     real = subprocess.Popen
 
-    def popen(*a, **kw):
-        started.append(s.frozen())
-        return real(*a, **kw)
+    def popen(argv, *a, **kw):
+        if argv[:1] == ["/bin/sh"]:   # the tier itself, not a `ps` the memory sampler runs where there is no /proc
+            started.append(s.frozen())
+        return real(argv, *a, **kw)
     monkeypatch.setattr(firstrun.subprocess, "Popen", popen)
     threading.Timer(0.3, s.thaw).start()
     tier = firstrun.run_tier("unit", "true", tmp_path, timeout=30)
@@ -316,7 +317,9 @@ def test_a_tier_stopped_while_frozen_is_thawed_before_it_is_killed(monkeypatch, 
     monkeypatch.setattr(firstrun.os, "killpg", killpg)
     real_communicate = subprocess.Popen.communicate
 
-    def communicate(self, timeout=None):
+    def communicate(self, input=None, timeout=None):
+        if self.args[:1] != ["/bin/sh"]:   # a `ps` the sampler runs (macOS): left alone
+            return real_communicate(self, input, timeout=timeout)
         s.freeze(0)   # frozen meanwhile, then the session stops
         raise KeyboardInterrupt
     monkeypatch.setattr(subprocess.Popen, "communicate", communicate)
@@ -385,3 +388,29 @@ def test_a_stale_order_is_refused(lane):
     later(admission.ANSWER_S + 1)
     s = FakeSlot()
     assert watch.Watch(lanes, mine, s, lambda reading: value(available=300)).step() == "refused" and s.calls == []
+
+
+
+def test_an_order_from_a_waiter_with_no_process_is_refused(lane):   # review of 0.30.1, I1: a forged waiter
+    lanes, mine, _waiter, _later, _root = lane
+    with lanes.store.transaction(book.KEY) as tx:
+        tx.append({"at": lanes._now(), "booking": "b9999", "state": book.WAITING, "rule": 4, "kind": "push",
+                   "asked": "2026-11-06T09:00:00+00:00"})
+    _order(lanes, mine, order_by="b9999", ordered_at=lanes._now())
+    s = FakeSlot()
+    assert watch.Watch(lanes, mine, s, lambda reading: value(available=300)).step() == "refused" and s.calls == []
+
+
+def test_an_order_from_a_waiter_that_would_fit_is_refused(lane):   # review of 0.30.1, I1: memory is not short
+    lanes, mine, _waiter, _later, _root = lane
+    s = FakeSlot()
+    assert watch.Watch(lanes, mine, s, lambda reading: value(available=9000)).step() == "refused" and s.calls == []
+
+
+def test_a_watch_whose_booking_ended_thaws_its_slot(lane):   # review of 0.30.1, minor: a slot never stays frozen
+    lanes, mine, _waiter, _later, _root = lane
+    s = FakeSlot()
+    w = watch.Watch(lanes, mine, s, lambda reading: value(available=300), swap=lambda: (8000, 8000))
+    assert w.step() == "froze"
+    lanes.release(mine)
+    assert w.step() == "thawed" and not s.frozen()

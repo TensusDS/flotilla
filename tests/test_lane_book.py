@@ -54,10 +54,10 @@ def test_waiters_are_served_in_arrival_order(lane):
 
 def test_a_dead_holder_does_not_block(lane):
     lanes, procs = lane
-    holder = lanes.enqueue("a", "", pid=1, mark="m")
+    holder = lanes.enqueue("a", "", pid=11, mark="m")   # 1 is init: no run's pid, folded away (0.30.1)
     lanes.grant(holder.id, slots=1)
-    procs.dead.add(1)
-    nxt = lanes.enqueue("b", "", pid=2, mark="m")
+    procs.dead.add(11)
+    nxt = lanes.enqueue("b", "", pid=12, mark="m")
     assert lanes.grant(nxt.id, slots=1).state == book.HELD
 
 
