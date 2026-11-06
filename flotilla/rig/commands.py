@@ -332,7 +332,7 @@ def _open(state: Path, settings: rs.RigSettings, args) -> int:
     def opened():
         open_ = [s for s in rig.sessions().values() if s.state == j.OPEN]
         for ended in [s for s in open_ if s.until and _now() >= j._parse(s.until)]:
-            # past its end it is over, whether or not the reaper has passed yet (twosuns A8); the reaper drains it
+            # past its end it is over, whether or not the reaper has passed yet (alpha A8); the reaper drains it
             rig.set_session(ended.id, j.CLOSING, reason="session ended")
             open_.remove(ended)
         if open_:
@@ -630,7 +630,7 @@ def _down(state: Path, settings: rs.RigSettings, args) -> int:
 
 
 def _stop(state: Path, args) -> int:
-    """A seat stops its own run (field feedback from twosuns, 0.10.2): its `rig run` is signalled and ends the run on
+    """A seat stops its own run (field feedback from alpha, 0.10.2): its `rig run` is signalled and ends the run on
     the machine itself; when that process is gone, the run is stopped on the machine here, by its tag."""
     rig = _rig(state)
     run = rig.runs().get(args.run_id)

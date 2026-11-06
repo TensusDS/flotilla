@@ -7,8 +7,8 @@ stands instead of stages 2-3 of `2026-10-05-lane-resource-admission-design.md`, 
 every run. Those stages stay as the later option if the field needs more.
 
 Sources:
-- twosuns items 13 and 16;
-- void-lanes-online's lane report;
+- alpha items 13 and 16;
+- gamma's lane report;
 - TODO "The lane".
 
 ## 1. What goes wrong today
@@ -17,7 +17,7 @@ The lane admits by a count. `lane_capacity` runs hold it at a time, and every ot
 That fails both ways.
 
 **At capacity 1, short runs wait behind long ones.**
-- Five void-lanes-online runs of 21-38 s waited about 2.5 h behind 11-minute receipts (item 16, 11-02).
+- Five gamma runs of 21-38 s waited about 2.5 h behind 11-minute receipts (item 16, 11-02).
 - Runs under a minute waited a median 30.6 min for a median 6.8 s of work.
 - A seat that runs one test file to check a fix waits as long as a full receipt does.
 
@@ -89,7 +89,7 @@ A booking whose `--wait` ran out keeps its place when it is made again, under th
 - within 10 minutes of the expiry.
 
 Its place is the expired booking's place, carried in a new `place` field. Without this, a heavy run re-queues at the
-tail each time and can expire for ever (void-lanes-online: six bookings expired at 1800 s).
+tail each time and can expire for ever (gamma: six bookings expired at 1800 s).
 
 A flotilla before this one ignores `place` and sees the new booking at the tail. That is safe: it only makes the
 older waiter more patient.
@@ -120,7 +120,7 @@ The rule number becomes 3. Light admission needs:
 - the booking to wait under rule 3;
 - no live waiter under an older rule (2.4).
 
-A fleet still on 0.21 (the user-scope install twosuns runs) keeps the lane as it is today for as long as one of its
+A fleet still on 0.21 (the user-scope install alpha runs) keeps the lane as it is today for as long as one of its
 seats waits.
 
 ## 7. Out of this release

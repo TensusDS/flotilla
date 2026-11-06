@@ -111,7 +111,7 @@ def _unnamed_leads(ledger, mine) -> list[tuple[str, str]]:
 
 def _gaps(ledger, counts: dict) -> list[str]:
     """What the fleet would lack once `counts` rise beside this project's live sessions: someone to lead it, and -
-    where the profile has the sender merge - someone to merge (twosuns field test of 0.6.7, W3). A profile written
+    where the profile has the sender merge - someone to merge (alpha field test of 0.6.7, W3). A profile written
     before both were part of every composition raised seats that waited for work nobody routes, and nothing said so."""
     from flotilla.fleet import lead
     from flotilla.ledger import project
@@ -243,7 +243,7 @@ def _print_raised(raised) -> None:
 
 def _leaders(ledger, sessions, listed: set) -> list[str]:
     """The person's own session leading the fleet: it holds the orchestrator post without a seat row, so the rows do
-    not list it (worldcore field test W15)."""
+    not list it (beta field test W15)."""
     import datetime as dt
     from flotilla.fleet import lead
     from flotilla.ledger import project

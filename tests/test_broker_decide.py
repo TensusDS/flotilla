@@ -190,16 +190,16 @@ def test_an_allow_given_for_a_question_that_was_changed_on_disk_is_a_deny():
 
 
 def test_a_leading_session_not_yet_named_takes_the_question(tmp_path):
-    """Worldcore field test W13: `--fill` raised the seats before the person's next message gave the leading session
+    """Beta field test W13: `--fill` raised the seats before the person's next message gave the leading session
     its name, and every seat's first call was refused "no live orchestrator". A recorded lead of a live session of
     the project is the orchestrator for the broker, as it is for `--fill`."""
     from flotilla.core.storage import LocalLogStore
     from flotilla.fleet import lead
-    asker = sess("worldcore-main session 1")
-    leader = sess("worldcore-0c", kind="interactive", status="idle")
+    asker = sess("beta-main session 1")
+    leader = sess("beta-0c", kind="interactive", status="idle")
     ctx = context(tmp_path, me=asker, sessions=[asker, leader], profile=ASK)
     assert decide.decide(TOUCH, ctx)["behavior"] == "deny"                       # unnamed and unrecorded: nobody
-    lead.record(LocalLogStore(ctx.ledger.state_dir / "fleet"), leader.session_id, "worldcore-orchestrator 1", now="t")
+    lead.record(LocalLogStore(ctx.ledger.state_dir / "fleet"), leader.session_id, "beta-orchestrator 1", now="t")
     clock = Clock(on_sleep=answer_on_first_sleep(ctx, queue.ALLOW))
     assert decide.decide(TOUCH, ctx, clock=clock, sleep=clock.sleep, timer=clock) == {"behavior": "allow"}
 
@@ -212,13 +212,13 @@ def test_a_leading_session_not_yet_named_may_answer(tmp_path, monkeypatch):
     from flotilla.fleet import lead
     from watchkit import onboarded
     root = onboarded(tmp_path)
-    leader = sess("worldcore-0c", kind="interactive", status="idle")
+    leader = sess("beta-0c", kind="interactive", status="idle")
     monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
     monkeypatch.setattr("flotilla.core.census.read_census", lambda timeout=10: [leader])
     monkeypatch.setattr("flotilla.core.identity.find_calling_session", lambda sessions, parent_of: leader)
-    assert commands._caller(root) == ("worldcore-0c", "")
-    lead.record(LocalLogStore(tmp_path / "state" / "fleet"), leader.session_id, "worldcore-orchestrator 1", now="t")
-    assert commands._caller(root) == ("worldcore-0c", "orchestrator")
+    assert commands._caller(root) == ("beta-0c", "")
+    lead.record(LocalLogStore(tmp_path / "state" / "fleet"), leader.session_id, "beta-orchestrator 1", now="t")
+    assert commands._caller(root) == ("beta-0c", "orchestrator")
 
 
 from flotilla.hooks import CLI   # noqa: E402 - the plugin's own command line, by its real path
@@ -236,7 +236,7 @@ def opted(monkeypatch):
                                      f"{OWN} work hand feat/x", f"{OWN} brief", f"{OWN} watch --once", f"{OWN} lane",
                                      f"{OWN} work wait feat/x --on me --why 'a question'"])
 def test_flotillas_own_commands_are_not_put_to_the_person(tmp_path, command, opted):
-    """Worldcore field test W16: in ask mode three seats' first census put six questions to the person in a minute,
+    """Beta field test W16: in ask mode three seats' first census put six questions to the person in a minute,
     each about flotilla's own commands, whose every move flotilla checks itself. Those pass without a question."""
     payload = {"tool_name": "Bash", "tool_input": {"command": command}}
     assert decide.decide(payload, fleet(tmp_path, orchestrator=False)) == {"behavior": "allow"}
@@ -282,11 +282,11 @@ def test_a_lead_left_a_day_is_not_the_orchestrator_for_the_broker(tmp_path):
     import datetime as dt
     from flotilla.core.storage import LocalLogStore
     from flotilla.fleet import lead
-    asker = sess("worldcore-main session 1")
-    leader = sess("worldcore-0c", kind="interactive", status="idle")
+    asker = sess("beta-main session 1")
+    leader = sess("beta-0c", kind="interactive", status="idle")
     ctx = context(tmp_path, me=asker, sessions=[asker, leader], profile=ASK)
     old = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=25)).isoformat()
-    lead.record(LocalLogStore(ctx.ledger.state_dir / "fleet"), leader.session_id, "worldcore-orchestrator 1", now=old)
+    lead.record(LocalLogStore(ctx.ledger.state_dir / "fleet"), leader.session_id, "beta-orchestrator 1", now=old)
     clock = Clock()   # counted as the orchestrator, the question would wait; a fake clock makes that a time-out
     decision = decide.decide(TOUCH, ctx, clock=clock, sleep=clock.sleep, timer=clock)
     assert decision["behavior"] == "deny" and "no live orchestrator" in decision["message"]

@@ -35,7 +35,7 @@ def test_a_byte_identical_file_git_tracks_in_the_main_checkout_is_a_twin(tmp_pat
 
 
 def test_an_untracked_file_in_the_main_checkout_is_no_twin(tmp_path):
-    """void-lanes, 2026-11-05: an empty build marker's "last copy" was another plugin's empty log in the main
+    """gamma, 2026-11-05: an empty build marker's "last copy" was another plugin's empty log in the main
     checkout. A file git does not track there - another tool's log, cache or output - can go at any time."""
     root, ledger = world(tmp_path)
     put(root / ".remember" / "logs" / "hook-errors.log", b"some bytes")
@@ -47,7 +47,7 @@ def test_an_empty_file_has_no_twin(tmp_path):
     root, ledger = world(tmp_path)
     put(root / "pkg" / "__init__.py", b"")
     git(root, "add", "pkg/__init__.py")
-    mine = put(tmp_path / "app-main-1" / "out" / "VoidLane.Up2Date", b"")
+    mine = put(tmp_path / "app-main-1" / "out" / "Gamma.Up2Date", b"")
     assert finder(ledger).find(mine) is None
 
 

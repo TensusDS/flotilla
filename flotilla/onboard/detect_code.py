@@ -1,4 +1,4 @@
-"""The paths a person's yes is asked for, when they authorize code only (twosuns field report B1; the person,
+"""The paths a person's yes is asked for, when they authorize code only (alpha field report B1; the person,
 2026-10-27: asked in onboarding from the project and where its code lies, so the questions put to the person stay
 few).
 

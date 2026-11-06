@@ -115,7 +115,7 @@ LEFT_ALONE = [
     "bash -c 'for f in *.md; do grep -l approve \"$f\"; done'",
     "bash -c 'grep -rn approve flotilla/guards'",
     "python3 -c \"print('approve costs $5')\"",
-    "bash -c 'cd /home/max/workspace/flotilla-field && uv run pytest -q'",
+    "bash -c 'cd /home/user/workspace/flotilla-field && uv run pytest -q'",
     "sh -c 'ls ~/.config/flotilla'",
     "python3 -c \"print(open('.flotilla/project.toml').read())\"",
     "python3 - <<'EOF'\nimport re\nprint(re.findall('approve', open('flotilla/guards/person.py').read()))\nEOF",

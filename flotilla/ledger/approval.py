@@ -1,4 +1,4 @@
-"""Whose yes a piece of work needs on its way to trunk (twosuns field report B1, the person's decision 2026-10-27).
+"""Whose yes a piece of work needs on its way to trunk (alpha field report B1, the person's decision 2026-10-27).
 
 Where a person authorizes merges (`merge_authorized_by = "human"`), their yes is asked of every row - unless the
 profile names the paths it is for: `approve_paths` under [flow], gitignore-like patterns, `!` excluding. Then only

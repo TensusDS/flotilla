@@ -304,7 +304,7 @@ def test_doctor_is_quiet_about_current_newer_and_custom_posts(tmp_path):
     assert posts_finding(root, tmp_path).status == "ok"
 
 
-# A copy installed for the user loaded in place of the project's own (void-lanes-online on 0.23.1 ran 0.21.0,
+# A copy installed for the user loaded in place of the project's own (gamma on 0.23.1 ran 0.21.0,
 # 2026-10-29; the khrushchevka fleet on 0.13.0 ran 0.10.2, 2026-10-12): Claude Code does not document which copy
 # wins, so flotilla compares the copy that runs with the project's.
 
@@ -509,7 +509,7 @@ def test_a_copy_from_elsewhere_says_how_to_settle_it(tmp_path):
     assert "--plugin-dir" in copy_found(tmp_path, config, tmp_path / "checkout").fix
 
 
-# The marketplace's pin (void-lanes-online note, 2026-10-29): a project that names flotilla's marketplace without a
+# The marketplace's pin (gamma note, 2026-10-29): a project that names flotilla's marketplace without a
 # ref follows its default branch, and one marketplace per name serves the whole machine - measured 2026-10-29 with an
 # isolated CLAUDE_CONFIG_DIR: the last `claude plugin marketplace add` repoints it for every project, while each
 # project's settings keep their own ref.

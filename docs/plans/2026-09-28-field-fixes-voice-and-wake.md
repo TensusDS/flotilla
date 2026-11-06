@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Stop the two stalls the snake fleet hit outside the ledger: a background session that asks the person a
+**Goal:** Stop the two stalls the epsilon fleet hit outside the ledger: a background session that asks the person a
 question nobody can see (and hangs), and a move that passes to an idle session nobody wakes.
 
 **Architecture:** Five small changes. (1) Every ledger refusal printed by the command line ends with one fixed
@@ -16,7 +16,7 @@ talks to the person; a task routed by the orchestrator is a work order; a printe
 
 **Tech Stack:** Python 3.11+ stdlib, git, pytest via `uv`.
 
-**Spec:** the field test `docs/field-tests/2026-09-27-snake-fleet.md` — findings F12, F16, F17, F23 and the triage
+**Spec:** the field test `docs/field-tests/2026-09-27-epsilon-fleet.md` — findings F12, F16, F17, F23 and the triage
 with the person of 2026-09-28, groups 2 and 3; `docs/specs/2026-09-22-flotilla-design.md` sections 6.9 and 8.
 
 ## Decisions (the person's, 2026-09-28, and the executor's)
@@ -997,7 +997,7 @@ question, the sender's batch included, goes to the orchestrator, which alone tal
 
 **Files:**
 - Modify: `docs/specs/2026-09-22-decisions-log.md`, `docs/specs/2026-09-22-flotilla-design.md` (section 8's hook
-  table and section 6.9), `docs/field-tests/2026-09-27-snake-fleet.md`
+  table and section 6.9), `docs/field-tests/2026-09-27-epsilon-fleet.md`
 - Test: none of its own; `tools/check_no_cyrillic.py`
 
 - [ ] **Step 1: Decisions log.** Append entries 90–95 after entry 89, one per decision of this plan (Decisions 1–6
@@ -1051,16 +1051,16 @@ background session on Sonnet settles it. This task changes no code unless the pr
 
 **Files:** none in the repository; the result goes into the findings file as a measurement.
 
-- [ ] **Step 1: Point the probe project at this branch.** The snake project installs flotilla from the local
+- [ ] **Step 1: Point the probe project at this branch.** The epsilon project installs flotilla from the local
   marketplace clone. Update it to the branch head:
   `git -C /home/user/workspace/flotilla-market/plugins/flotilla fetch /home/user/workspace/flotilla feat/field-fixes-voice-and-wake && git -C /home/user/workspace/flotilla-market/plugins/flotilla checkout --detach FETCH_HEAD`
   (record the revision it stood on before, to restore it in Step 5).
 
-- [ ] **Step 2: Raise one background session holding the minor post in the snake project:**
+- [ ] **Step 2: Raise one background session holding the minor post in the epsilon project:**
 
 ```bash
-cd /home/user/workspace/snake && claude --bg -n "minor session 91" --model sonnet --permission-mode auto \
-  "Ask the person, with the AskUserQuestion tool, which colour the snake should be. Then report what happened."
+cd /home/user/workspace/epsilon && claude --bg -n "minor session 91" --model sonnet --permission-mode auto \
+  "Ask the person, with the AskUserQuestion tool, which colour the epsilon should be. Then report what happened."
 ```
 
 - [ ] **Step 3: Observe through the census, not the transcript.** Every 30 s for up to 3 minutes:
@@ -1071,7 +1071,7 @@ cd /home/user/workspace/snake && claude --bg -n "minor session 91" --model sonne
 
 - [ ] **Step 5: Restore** the marketplace clone to the revision recorded in Step 1.
 
-- [ ] **Step 6: Record the measurement** in `docs/field-tests/2026-09-27-snake-fleet.md` under the Part 2 line:
+- [ ] **Step 6: Record the measurement** in `docs/field-tests/2026-09-27-epsilon-fleet.md` under the Part 2 line:
   date, what was raised, the census samples, the verdict. If the session stood at `waiting`, the hook did not
   hold: say so, and stop the plan here for the person — the guard's premise (a PreToolUse hook on AskUserQuestion in a
   background session) is then false and needs another design.
@@ -1079,6 +1079,6 @@ cd /home/user/workspace/snake && claude --bg -n "minor session 91" --model sonne
 - [ ] **Step 7: Commit**
 
 ```bash
-git add docs/field-tests/2026-09-27-snake-fleet.md
+git add docs/field-tests/2026-09-27-epsilon-fleet.md
 git commit -m "docs(field-test): the ask guard measured in a live background session"
 ```

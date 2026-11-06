@@ -337,14 +337,14 @@ def test_one_run_alone_is_charged_its_minutes_and_the_rest_is_idle(tmp_path):
 def test_two_overlapping_runs_of_two_projects_split_the_minutes(tmp_path):
     """Project share design, section 4: each run records the machine's full price for its seconds, so two runs on one
     machine at once must split it, or the projects' sums pass what the session spent."""
-    r, s, shares, idle = _spend(tmp_path, [("twosuns", 0, 20, 0), ("void", 10, 30, 0)])
-    assert shares == {"twosuns": pytest.approx(0.15), "void": pytest.approx(0.15)} and idle == pytest.approx(0.0)
+    r, s, shares, idle = _spend(tmp_path, [("alpha", 0, 20, 0), ("void", 10, 30, 0)])
+    assert shares == {"alpha": pytest.approx(0.15), "void": pytest.approx(0.15)} and idle == pytest.approx(0.0)
     assert sum(shares.values()) + idle == pytest.approx(r.spent(s.id))
 
 
 def test_runs_on_two_machines_split_only_their_own_machine(tmp_path):
-    r, s, shares, idle = _spend(tmp_path, [("twosuns", 0, 30, 0), ("void", 0, 15, 1)], machines=2)
-    assert shares == {"twosuns": pytest.approx(0.30), "void": pytest.approx(0.15)} and idle == pytest.approx(0.15)
+    r, s, shares, idle = _spend(tmp_path, [("alpha", 0, 30, 0), ("void", 0, 15, 1)], machines=2)
+    assert shares == {"alpha": pytest.approx(0.30), "void": pytest.approx(0.15)} and idle == pytest.approx(0.15)
     assert sum(shares.values()) + idle == pytest.approx(r.spent(s.id))
 
 

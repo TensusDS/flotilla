@@ -512,7 +512,7 @@ def test_the_person_approves_through_the_cli(tmp_path, monkeypatch):
 
 
 def test_a_receipt_with_nothing_to_run_does_not_queue_for_the_lane(tmp_path, monkeypatch):
-    """The lane is the machine's one-at-a-time queue, and on the twosuns fleet the wait in it was most of the path to
+    """The lane is the machine's one-at-a-time queue, and on the alpha fleet the wait in it was most of the path to
     trunk. A receipt whose every tier is already green over the same files books nothing."""
     profile = {**PLAIN, "tests": {"tier": [{"name": "unit", "command": GREEN, "required_for": ["handover", "push"]}]}}
     root = onboarded(tmp_path, monkeypatch, profile)
@@ -531,7 +531,7 @@ def test_a_receipt_with_nothing_to_run_does_not_queue_for_the_lane(tmp_path, mon
 
 
 def test_a_red_receipt_prints_why(tmp_path, monkeypatch):
-    """Worldcore field test W23: `node: red` and nothing else."""
+    """Beta field test W23: `node: red` and nothing else."""
     import sys
     red = f"{sys.executable} -c \"import sys; print('sh: 1: vitest: not found'); sys.exit(127)\""
     profile = {**PLAIN, "tests": {"tier": [{"name": "unit", "command": red, "required_for": ["handover"]}]}}
@@ -543,7 +543,7 @@ def test_a_red_receipt_prints_why(tmp_path, monkeypatch):
 
 
 def test_broke_for_an_author_who_is_gone_hands_the_fix_to_the_orchestrator(tmp_path, monkeypatch):
-    """Twosuns field test of 0.6.7: `broke` filed a fix row for `main session 19` of a past fleet and told it to
+    """Alpha field test of 0.6.7: `broke` filed a fix row for `main session 19` of a past fleet and told it to
     take the row in its home tree - a letter to nobody. With its author gone it says so, names the live session of
     that post who could take it, and the adopt line the orchestrator runs."""
     root = onboarded(tmp_path, monkeypatch, DIRECT_PLAIN)
@@ -623,7 +623,7 @@ def _rows_by_branch(root):
 
 
 def test_repeated_requires_keep_every_row(tmp_path, monkeypatch):
-    """Twosuns, 2026-11-01, item 10: `--requires a b --requires c` kept only c, the last flag replacing the rest, so a
+    """Alpha, 2026-11-01, item 10: `--requires a b --requires c` kept only c, the last flag replacing the rest, so a
     row built on three dependencies was walked with one of them."""
     root = onboarded(tmp_path, monkeypatch, PLAIN)
     for branch in ("feat/a", "feat/b", "feat/c"):
@@ -670,7 +670,7 @@ def test_an_unchecked_drop_says_so_to_the_caller():
 
 
 def test_receipt_run_takes_the_tiers_the_branch_adds(tmp_path, monkeypatch):
-    """Void-lanes-online, 2026-11-01: a branch adding a tier was receipted green without it."""
+    """Gamma, 2026-11-01: a branch adding a tier was receipted green without it."""
     tier = {"name": "unit", "command": GREEN, "required_for": ["handover"]}
     root = onboarded(tmp_path, monkeypatch, {**PLAIN, "tests": {"tier": [tier]}})
     git(root, "checkout", "-q", "-b", "server/solution")

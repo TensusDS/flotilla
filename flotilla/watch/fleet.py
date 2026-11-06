@@ -44,7 +44,7 @@ def _census_word(session) -> str:
             return "idle"
         if session.state == "blocked":
             # a dialog that waits on a person reads `waiting` above, and a question in flotilla's queue keeps the
-            # ball from being called dropped at all; so with a status reported, blocked is idle (twosuns, 0.7.16).
+            # ball from being called dropped at all; so with a status reported, blocked is idle (alpha, 0.7.16).
             # With no status the census cannot tell the two apart (review of 0.7.17)
             if not session.status:
                 return "blocked: idle, or waiting on a permission prompt"
@@ -146,7 +146,7 @@ def _waits(row, rows: dict, live: set[str] | None = None) -> bool:
 
 def piled(rows: dict, profile: dict, live: set[str], post_of, claimers, census: set[str] | None = None) -> list[Item]:
     """Work piling up on one seat while a live seat of the same post has none: the fleet runs at that one seat's
-    speed (twosuns, 2026-10-03: three rows in fixing on one main session, another with nothing to move). Only work
+    speed (alpha, 2026-10-03: three rows in fixing on one main session, another with nothing to move). Only work
     in its author's hands counts - claimed, or returned for fixes - and nobody's work is taken from a live session
     (`adopt` refuses), so this only names the pile to the orchestrator."""
     own: dict[str, list] = {}
@@ -254,7 +254,7 @@ def collector_items(state_dir, repo_key: str, root, profile: dict, *, now: float
 
 def helpers(rows: dict, live: set[str]) -> list[Item]:
     """A helper that finished but still runs is to be retired; a helper whose parent has no live owner is an orphan
-    (field test twosuns, H8)."""
+    (field test alpha, H8)."""
     items = []
     for name in sorted(live):
         seats = [row for row in rows.values() if row.owner == name and row.helper_of]

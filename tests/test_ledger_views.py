@@ -216,7 +216,7 @@ def _post_of(name):
 
 
 def test_a_gone_mover_comes_with_who_can_take_the_move():
-    """Twosuns field test of 0.6.7 and the person's proposal: a fix row filed for a session of a past fleet was an
+    """Alpha field test of 0.6.7 and the person's proposal: a fix row filed for a session of a past fleet was an
     alarm the orchestrator had to work out each time - whose post, who is free, which move. The alarm now names the
     live sessions of that post, least loaded first, and the move that hands the work over."""
     table = rows(row("r1", branch="fix/thunder", owner="main session 19"),
@@ -251,8 +251,8 @@ def test_the_hint_quotes_a_branch_name_a_shell_would_read():
 
 
 def _strict(name):
-    return {"twosuns-main session 1": "main", "twosuns-review session 1": "reviewer",
-            "twosuns-review session 2": "reviewer"}.get(name, "")
+    return {"alpha-main session 1": "main", "alpha-review session 1": "reviewer",
+            "alpha-review session 2": "reviewer"}.get(name, "")
 
 
 def _former(name):
@@ -263,21 +263,21 @@ def test_the_hint_offers_only_this_projects_sessions(tmp_path):
     """Review of 0.6.9, I4: the former-name mapping was used for every live name, so `main session 3` - another
     project's, or an older fleet's - was offered first, and adopt would refuse it."""
     table = rows(row("r1", branch="fix/a", owner="main session 19"))
-    found = views.deviations(table, PR, {"main session 3", "twosuns-main session 1"}, post_of=_strict,
+    found = views.deviations(table, PR, {"main session 3", "alpha-main session 1"}, post_of=_strict,
                              former_of=_former)
     why = found[0]["why"]
-    assert "twosuns-main session 1" in why and "main session 3" not in why, why
+    assert "alpha-main session 1" in why and "main session 3" not in why, why
 
 
 def test_a_gone_readers_successors_are_ordered_by_what_they_read():
     """Review of 0.6.9, M7: readers own only their seat row, so counting owned rows ordered them by name."""
-    table = rows(row("r1", branch="feat/a", owner="twosuns-main session 1", state="handed", reader="review session 9"),
-                 row("r2", branch="feat/b", owner="twosuns-main session 1", state="handed",
-                     reader="twosuns-review session 1"))
-    live = {"twosuns-main session 1", "twosuns-review session 1", "twosuns-review session 2"}
+    table = rows(row("r1", branch="feat/a", owner="alpha-main session 1", state="handed", reader="review session 9"),
+                 row("r2", branch="feat/b", owner="alpha-main session 1", state="handed",
+                     reader="alpha-review session 1"))
+    live = {"alpha-main session 1", "alpha-review session 1", "alpha-review session 2"}
     found = [item for item in views.deviations(table, PR, live, post_of=_strict, former_of=_former)
              if item["branch"] == "feat/a"]
-    assert "--reader 'twosuns-review session 2'" in found[0]["why"], found[0]["why"]
+    assert "--reader 'alpha-review session 2'" in found[0]["why"], found[0]["why"]
 
 
 def test_a_wait_on_a_branch_is_over_only_once_that_branch_has_no_open_row():

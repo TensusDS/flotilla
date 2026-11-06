@@ -62,7 +62,7 @@ SETUPS = (("package-lock.json", "npm ci"), ("pnpm-lock.yaml", "pnpm install --fr
 
 
 def tree_setup(root: Path) -> dict | None:
-    """The command a seat's fresh tree runs before its tiers (worldcore field test W24), or None."""
+    """The command a seat's fresh tree runs before its tiers (beta field test W24), or None."""
     for lock, command in SETUPS:
         if (root / lock).is_file():
             return {"command": command, "source": lock}

@@ -104,7 +104,7 @@ def test_after_close_is_quiet_when_another_open_row_carries_the_moved_tip(world)
 
 
 def test_a_reader_closes_a_direct_commit_by_vouching_for_it_on_trunk(world):
-    """Twosuns field test of 0.6.7, W5: a profile commit straight to trunk was a finding no move closed - `vouch`
+    """Alpha field test of 0.6.7, W5: a profile commit straight to trunk was a finding no move closed - `vouch`
     and `offledger` both wanted an open row, `inbatch` sent the sender to `offledger`, and trunk never has a row. The
     reviewer's first try was right: a reader vouches for the commit on trunk, and that reading accounts it."""
     root, ledger = world
@@ -227,7 +227,7 @@ def test_a_queued_direct_row_whose_read_revision_is_on_origin_is_lands_not_vanis
 
 
 def test_with_code_paths_a_direct_commit_off_them_is_a_readers_to_settle(tmp_path):
-    """twosuns B1: only a commit touching [flow] approve_paths is the person's to settle; the rest a reader vouches."""
+    """alpha B1: only a commit touching [flow] approve_paths is the person's to settle; the rest a reader vouches."""
     root = repo_with_origin(tmp_path)
     profile = {**PROFILE, "flow": {"mode": "direct", "merge_authorized_by": "human", "approve_paths": ["src/**"]}}
     ledger = make_ledger(root, tmp_path / "state", profile=profile)

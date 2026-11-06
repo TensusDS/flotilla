@@ -114,7 +114,7 @@ def test_a_dry_run_plans_names_and_changes_nothing(tmp_path):
 
 
 def test_a_number_whose_tree_an_earlier_fleet_left_is_skipped(tmp_path):
-    """twosuns, 2026-10-03: spawn stopped on `twosuns-main-3`, a tree an older fleet left with no branch beside it -
+    """alpha, 2026-10-03: spawn stopped on `alpha-main-3`, a tree an older fleet left with no branch beside it -
     numbering stepped over branches (W11) but not over trees. A number whose tree is already there is skipped, the
     plan says why, and what was left is never touched."""
     fake = FakeClaude()

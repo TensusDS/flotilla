@@ -5,7 +5,7 @@ blob in the object store is pruned by git's own gc).
 
 In the main checkout and in an untouched tree a file counts only when git can give its bytes back: it is in the
 index and its bytes are its index blob. Anything else there - another tool's log or cache, an output, an edit over
-a tracked file, an intent-to-add entry - can go at any time, and its "last copy" with it (void-lanes, 2026-11-05:
+a tracked file, an intent-to-add entry - can go at any time, and its "last copy" with it (gamma, 2026-11-05:
 an empty build marker's twin was another plugin's empty log; the review of 0.29.1: an edit `git restore` takes). An
 empty file has no twin: any empty file matches it.
 

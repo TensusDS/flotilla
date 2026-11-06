@@ -407,7 +407,7 @@ def test_when_even_the_guards_rule_cannot_be_read_the_last_resort_decides(tmp_pa
 
 
 def test_the_orchestrator_is_told_what_is_new_and_the_rest_in_one_line(tmp_path):
-    """Twosuns orchestrator, 0.7.16: the prompt hook printed the same twenty 'waits on the person' every time one
+    """Alpha orchestrator, 0.7.16: the prompt hook printed the same twenty 'waits on the person' every time one
     line changed - a day of the same list, paid in context each turn. 0.26.0 keeps the list off and the count on:
     what waits on the person is one counted line on every prompt, and is no longer folded into 'standing' (the
     person inbox design); `flotilla inbox` lists them."""
@@ -438,7 +438,7 @@ def test_an_item_whose_wording_moves_is_not_news(tmp_path):
 
 
 def test_session_start_names_a_shadowed_copy_before_onboarding(tmp_path, monkeypatch):
-    """void-lanes-online, 2026-10-29: not onboarded yet, its project install 0.23.1, the session ran the user's
+    """gamma, 2026-10-29: not onboarded yet, its project install 0.23.1, the session ran the user's
     0.21.0, and nothing said so - the session-start hook says nothing outside an onboarded project."""
     from flotilla.core import claude_state
     from test_doctor import installs
@@ -551,7 +551,7 @@ def said(raw):
 
 
 def person_rows():
-    """The twosuns trace's shape: waits on the person recorded by sender, judge and main sessions, one hold until the
+    """The alpha trace's shape: waits on the person recorded by sender, judge and main sessions, one hold until the
     person, one row the orchestrator 'parked' in words."""
     def asked(n, post, state):
         history = [{"at": "2026-09-27T10:00:00+00:00", "move": "wait", "by": f"{post} session 1", "post": post}]
@@ -593,7 +593,7 @@ def orchestrator_prompt(tmp_path, found, minutes, me=None, prompt="anything that
 
 
 def test_person_waits_are_counted_on_every_prompt_and_never_folded(tmp_path):
-    """Twosuns, 2026-10-04..16: 144 rows waited on the person and the hook folded them into 'standing item(s), said
+    """Alpha, 2026-10-04..16: 144 rows waited on the person and the hook folded them into 'standing item(s), said
     before and unchanged' at the moment the person typed; 104 were never named again. On 0.25.0 this fails."""
     found = person_rows()
     for minutes in (5, 50, 51, 200):

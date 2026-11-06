@@ -188,7 +188,7 @@ def foreign_runs(table, patterns, exclude: set[int]) -> list | None:
 
     def under_a_tool(pid: int) -> bool:
         """A browser an MCP server opened lives as long as the session that uses it: a tool, not a run with an end
-        to wait for (twosuns, 2026-10-05)."""
+        to wait for (alpha, 2026-10-05)."""
         seen = set()
         while pid and pid not in seen:
             if _is_mcp_server(commands.get(pid, "")):

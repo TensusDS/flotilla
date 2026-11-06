@@ -37,7 +37,7 @@ def approved(row: Row) -> bool:
 
 def person_must_approve(ledger, row: Row, revision: str = "") -> bool:
     """Whether this row's work waits for the person's yes (`approval`): every row where the person authorizes every
-    merge, only work touching `approve_paths` where the profile names them (twosuns B1). What origin's trunk already
+    merge, only work touching `approve_paths` where the profile names them (alpha B1). What origin's trunk already
     holds is no part of undelivered work; a delivered row is judged by all it carried."""
     profile = ledger.profile
     if (profile.get("flow") or {}).get("merge_authorized_by") != "human":
@@ -152,7 +152,7 @@ def clean_merge(ledger, sha: str) -> bool | None:
 
 
 def _patch_ids(ledger, *log_args: str) -> list[str]:
-    # bytes, as in gitq.patch_fingerprint: a diff may carry bytes no codec reads (twosuns A1)
+    # bytes, as in gitq.patch_fingerprint: a diff may carry bytes no codec reads (alpha A1)
     log = ledger.run(["git", "-C", str(ledger.root), "log", "-p", "--no-merges", "--no-color", *log_args],
                      capture_output=True, check=False)
     if log.returncode != 0 or not log.stdout:

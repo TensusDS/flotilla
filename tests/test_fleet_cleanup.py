@@ -144,7 +144,7 @@ def test_the_sweep_leaves_a_tree_a_live_session_works_in(tmp_path):
     from watchkit import sess
     root, ledger = world(tmp_path)
     tree = seat(root, tmp_path)
-    someone = dataclasses.replace(sess("worldcore-main-1-x", kind="interactive"), cwd=str(tree))
+    someone = dataclasses.replace(sess("beta-main-1-x", kind="interactive"), cwd=str(tree))
     lines = cleanup.sweep(ledger, sessions=[someone], act=True)
     assert tree.exists() and any("alive" in line for line in lines)
 
@@ -276,7 +276,7 @@ def test_the_sweep_leaves_a_live_seats_tree_whose_session_works_from_the_main_ch
 
 
 def test_a_lock_flotilla_put_on_a_dead_seats_tree_does_not_hold_it(tmp_path):
-    """A fleet stopped by force left its trees locked `flotilla: <session>`; git refused the sweep (snake, 2026-10-02).
+    """A fleet stopped by force left its trees locked `flotilla: <session>`; git refused the sweep (epsilon, 2026-10-02).
     flotilla lifts its own lock when that session is not alive, and only then; another lock is not its to lift."""
     import dataclasses
     from watchkit import sess

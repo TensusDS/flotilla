@@ -1,4 +1,4 @@
-"""The person's own session leads the fleet without being asked to rename itself (worldcore field test W9 and the
+"""The person's own session leads the fleet without being asked to rename itself (beta field test W9 and the
 person's remark, 2026-10-01: "it asks to rename itself - that will read as a bug"). `/rename` is a command only the
 person can type, and it does not wake the session; a UserPromptSubmit hook can set the session's title instead
 (measured on Claude Code 2.1.287: the census then lists the session under that name)."""
@@ -15,11 +15,11 @@ from watchkit import context, onboarded as watch_onboarded, sess
 
 def test_a_lead_is_given_until_it_shows(tmp_path):
     store = LocalLogStore(tmp_path)
-    lead.record(store, "sid-1", "worldcore-orchestrator 1", now="t")
-    assert lead.pending(store) == {"sid-1": "worldcore-orchestrator 1"}
-    assert lead.due(store, "sid-1", current="app-3f") == "worldcore-orchestrator 1"
-    assert lead.due(store, "sid-1", current="app-3f") == "worldcore-orchestrator 1"
-    assert lead.due(store, "sid-1", current="worldcore-orchestrator 1") == "" and lead.pending(store) == {}
+    lead.record(store, "sid-1", "beta-orchestrator 1", now="t")
+    assert lead.pending(store) == {"sid-1": "beta-orchestrator 1"}
+    assert lead.due(store, "sid-1", current="app-3f") == "beta-orchestrator 1"
+    assert lead.due(store, "sid-1", current="app-3f") == "beta-orchestrator 1"
+    assert lead.due(store, "sid-1", current="beta-orchestrator 1") == "" and lead.pending(store) == {}
     assert lead.due(store, "sid-other", current="x") == ""
 
 
@@ -62,19 +62,19 @@ def _store(tmp_path):
 def test_the_session_is_named_until_the_census_shows_the_name(tmp_path, monkeypatch):
     """Review of 0.6.0, I4: the lead was marked given before Claude Code had applied it, and nothing read it back.
     Now the hook keeps naming the session until the census lists it under that name."""
-    lead.record(_store(tmp_path), "sid-me", "worldcore-orchestrator 1", now="t")
+    lead.record(_store(tmp_path), "sid-me", "beta-orchestrator 1", now="t")
     said = json.loads(_prompt(tmp_path, "sid-me", monkeypatch))["hookSpecificOutput"]
-    assert said["hookEventName"] == "UserPromptSubmit" and said["sessionTitle"] == "worldcore-orchestrator 1"
+    assert said["hookEventName"] == "UserPromptSubmit" and said["sessionTitle"] == "beta-orchestrator 1"
     assert "orchestrator" in said["additionalContext"]
     assert "flotilla spawn --fill" in said["additionalContext"]   # W14: the rest is raised once the name shows
     assert "sessionTitle" in _prompt(tmp_path, "sid-me", monkeypatch)                  # not applied yet: again
-    assert "sessionTitle" not in _prompt(tmp_path, "sid-me", monkeypatch, me="worldcore-orchestrator 1")
+    assert "sessionTitle" not in _prompt(tmp_path, "sid-me", monkeypatch, me="beta-orchestrator 1")
     assert lead.pending(_store(tmp_path)) == {}
 
 
 def test_the_lead_keeps_what_the_hook_had_to_say(tmp_path, monkeypatch):
     from watchkit import row, rows
-    lead.record(_store(tmp_path), "sid-me", "worldcore-orchestrator 1", now="t")
+    lead.record(_store(tmp_path), "sid-me", "beta-orchestrator 1", now="t")
     handed = rows(row(state="handed", reader="app-3f", tip="abc1234def"))
     said = json.loads(_prompt(tmp_path, "sid-me", monkeypatch, rows_=handed))["hookSpecificOutput"]
     assert "your move" in said["additionalContext"]
@@ -84,14 +84,14 @@ def test_a_lead_left_a_day_is_forgotten(tmp_path, monkeypatch):
     import datetime as dt
     from watchkit import NOW
     old = (NOW - dt.timedelta(hours=25)).isoformat()
-    lead.record(_store(tmp_path), "sid-me", "worldcore-orchestrator 1", now=old)
+    lead.record(_store(tmp_path), "sid-me", "beta-orchestrator 1", now=old)
     assert "sessionTitle" not in _prompt(tmp_path, "sid-me", monkeypatch, now=NOW)
 
 
 def test_another_sessions_prompt_takes_no_name(tmp_path, monkeypatch):
-    lead.record(_store(tmp_path), "sid-me", "worldcore-orchestrator 1", now="t")
+    lead.record(_store(tmp_path), "sid-me", "beta-orchestrator 1", now="t")
     assert "sessionTitle" not in _prompt(tmp_path, "sid-someone", monkeypatch)
-    assert lead.pending(_store(tmp_path)) == {"sid-me": "worldcore-orchestrator 1"}
+    assert lead.pending(_store(tmp_path)) == {"sid-me": "beta-orchestrator 1"}
 
 
 def _onboarded_with(tmp_path, monkeypatch, default):
@@ -138,7 +138,7 @@ def test_fill_does_not_count_a_lead_whose_session_is_gone(tmp_path, monkeypatch)
 
 
 def test_fleet_lists_the_leading_session(tmp_path, monkeypatch):
-    """Worldcore field test W15: `flotilla fleet` listed only spawned seats, so the orchestrator - the person's own
+    """Beta field test W15: `flotilla fleet` listed only spawned seats, so the orchestrator - the person's own
     session - concluded it was missing from the fleet and read flotilla's source to find out why."""
     root = _onboarded_with(tmp_path, monkeypatch, {"orchestrator": 1, "main": 1})
     unnamed = _a_session("app-3f", root)
@@ -158,14 +158,14 @@ def test_a_title_the_census_never_shows_turns_into_a_rename(tmp_path, monkeypatc
     """The hook's title is measured only on Claude Code 2.1.287. A version that ignores it would leave the session
     unnamed and silently stop counting as the orchestrator a day later; so after a few messages the session is told
     to ask the person for `/rename`, and the title keeps being offered meanwhile."""
-    lead.record(_store(tmp_path), "sid-me", "worldcore-orchestrator 1", now="t")
+    lead.record(_store(tmp_path), "sid-me", "beta-orchestrator 1", now="t")
     said = [json.loads(_prompt(tmp_path, "sid-me", monkeypatch))["hookSpecificOutput"]
             for _ in range(lead.ASK_AFTER + 1)]
-    assert all(s["sessionTitle"] == "worldcore-orchestrator 1" for s in said)
+    assert all(s["sessionTitle"] == "beta-orchestrator 1" for s in said)
     assert not any("/rename" in s["additionalContext"] for s in said[:lead.ASK_AFTER])
-    assert "/rename worldcore-orchestrator 1" in said[lead.ASK_AFTER]["additionalContext"]
-    assert "is to be `worldcore-orchestrator 1`" in said[lead.ASK_AFTER]["additionalContext"]   # 0.6.7 review, M7
-    assert "is now `worldcore-orchestrator 1`" in said[0]["additionalContext"]
+    assert "/rename beta-orchestrator 1" in said[lead.ASK_AFTER]["additionalContext"]
+    assert "is to be `beta-orchestrator 1`" in said[lead.ASK_AFTER]["additionalContext"]   # 0.6.7 review, M7
+    assert "is now `beta-orchestrator 1`" in said[0]["additionalContext"]
 
 
 def test_offers_are_counted_per_session(tmp_path):
@@ -183,17 +183,17 @@ def test_offers_are_counted_per_session(tmp_path):
 def test_a_session_the_census_cannot_see_is_not_asked_to_rename(tmp_path, monkeypatch):
     """Review of 0.6.7, I2: with the session missing from the census the hook cannot tell whether the name shows, so
     it must not claim it did not - nor count those messages towards the /rename request."""
-    lead.record(_store(tmp_path), "sid-me", "worldcore-orchestrator 1", now="t")
+    lead.record(_store(tmp_path), "sid-me", "beta-orchestrator 1", now="t")
     said = [_prompt(tmp_path, "sid-me", monkeypatch, me=None) for _ in range(lead.ASK_AFTER + 2)]
     assert not any("/rename" in out for out in said)
     assert lead.offered(_store(tmp_path), "sid-me") == 0
 
 
 def test_the_rename_request_stops_once_the_name_shows(tmp_path, monkeypatch):
-    lead.record(_store(tmp_path), "sid-me", "worldcore-orchestrator 1", now="t")
+    lead.record(_store(tmp_path), "sid-me", "beta-orchestrator 1", now="t")
     for _ in range(lead.ASK_AFTER + 1):
         _prompt(tmp_path, "sid-me", monkeypatch)
-    assert "/rename" not in _prompt(tmp_path, "sid-me", monkeypatch, me="worldcore-orchestrator 1")
+    assert "/rename" not in _prompt(tmp_path, "sid-me", monkeypatch, me="beta-orchestrator 1")
     assert lead.pending(_store(tmp_path)) == {}
-    lead.record(_store(tmp_path), "sid-me", "worldcore-orchestrator 2", now="t")   # a later lead counts afresh
+    lead.record(_store(tmp_path), "sid-me", "beta-orchestrator 2", now="t")   # a later lead counts afresh
     assert lead.offered(_store(tmp_path), "sid-me") == 0

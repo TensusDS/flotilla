@@ -1,14 +1,14 @@
 # The rig queue: runs that keep apart, a line that moves itself (design)
 
 Date: 2026-11-03. Sources:
-- twosuns feedback items 3, 4, 6 and 12 (`~/twosuns-keep/flotilla-feedback-2026-11-01.md`);
+- alpha feedback items 3, 4, 6 and 12 (`~/alpha-keep/flotilla-feedback-2026-11-01.md`);
 - TODO "The rig" (four items).
 
 The person's ruling (2026-11-03): option B, built in two parts. Part A comes first, and part B follows it.
 
 ## 1. What went wrong
 
-During twosuns rig sessions s73-s76, seats sent their heavy runs (frame captures, audio, benchmarks) to one rented
+During alpha rig sessions s73-s76, seats sent their heavy runs (frame captures, audio, benchmarks) to one rented
 machine.
 
 **Runs overlapped.** `rig run` packs runs. Two runs from different seats share a machine at once, and more share it
@@ -114,7 +114,7 @@ The orchestrator's watch gets one new item, from `rig/surface.items`:
 - **What it says:** `rig: machine m3 idle 4 min while j11, j12 wait - read flotilla rig for why`.
 - **Why it can appear at all:** flotilla starts a waiting run within 10 s of the machine freeing. So this item means
   something broke, for example a waiting process that stopped polling, or a machine that cannot be read. It is the
-  dropped ball twosuns asked to be told about.
+  dropped ball alpha asked to be told about.
 - **Key:** `rig:idle:<machine>`, so the item is counted once per machine.
 
 ### A5. Two small fixes
@@ -149,7 +149,7 @@ The `[rig] node` pin and counting a rig green for receipts keep their own design
 
 ## 4. Part B (0.28.0): a line you can stand in before you are ready
 
-Twosuns asked for more than A gives:
+Alpha asked for more than A gives:
 - a seat books early, while its checks still run, and keeps its place;
 - the orchestrator reorders;
 - flotilla tells a seat when its turn comes;

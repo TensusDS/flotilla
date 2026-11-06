@@ -1,6 +1,6 @@
 """Sessions in a seat's tree that are not the fleet's (H7).
 
-A plugin hook can start a headless `claude` in a seat's tree (in the twosuns run, `security-guidance` did, under the
+A plugin hook can start a headless `claude` in a seat's tree (in the alpha run, `security-guidance` did, under the
 name `<tree>-<n>`), and a person can open one there by hand. Such a session works where a seat works but holds no
 post: it is named for what it is and counted nowhere a seat is counted.
 """
@@ -13,7 +13,7 @@ def label(tree: str, started: str = "") -> str:
     if started:
         return (f"a headless session a plugin hook started ({started}) in {tree}: it reviews the change it was "
                 "started for and holds no post; not a fleet session")
-    # most are a seat's own subagents and forks (twosuns A9): said, so nobody reads them as a fault
+    # most are a seat's own subagents and forks (alpha A9): said, so nobody reads them as a fault
     return (f"not a fleet session (started in {tree}): most often a seat's subagent or fork, nothing to do; one "
             "opened there by hand is a second writer in the tree")
 
@@ -21,7 +21,7 @@ def label(tree: str, started: str = "") -> str:
 def started_by(session) -> str:
     """How a session was started, when Claude Code's registry says it was not by a person at a terminal: the
     entrypoint (`sdk-cli`, `sdk-py`, `sdk-ts`), or "" for the command line, an IDE, or when nothing can be read
-    (worldcore field test W6). Asked of the registry entry Claude Code keeps for each running session,
+    (beta field test W6). Asked of the registry entry Claude Code keeps for each running session,
     `<config>/sessions/<pid>.json` (measured on 2.1.288: `cli` at a terminal, `sdk-cli` for `claude -p`) - never of
     the session's transcript, which holds the conversation (Software Directory Policy: no reading chat history)."""
     if not session.pid or not session.session_id:

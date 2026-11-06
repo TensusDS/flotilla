@@ -1,4 +1,4 @@
-# Field Fixes, Part 6 (Track B): What the Twosuns Fleet Found in the Views and the Judge — Implementation Plan
+# Field Fixes, Part 6 (Track B): What the Alpha Fleet Found in the Views and the Judge — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -14,7 +14,7 @@ noise. The judge and main post templates say what the field test showed they nee
 
 **Tech Stack:** Python 3.11+ stdlib, git, pytest via `uv`.
 
-**Spec:** the field test `docs/field-tests/2026-09-29-twosuns-fleet.md` — findings H4, H5, H16, H17, H25b, H26a,
+**Spec:** the field test `docs/field-tests/2026-09-29-alpha-fleet.md` — findings H4, H5, H16, H17, H25b, H26a,
 H26b, H27, H30, H32a, H32b, H38, H39, H42; `docs/specs/2026-09-22-flotilla-design.md` sections 6.2, 6.7, 6.9, 7.3.
 Read each finding in the field-test file before its task: the finding is the spec's evidence, with times and
 quotes.
@@ -23,8 +23,8 @@ quotes.
 
 1. **`broke` on a part is legal** (H38). The part gate ("walk a path, not a part") exists so a part is not
    *accepted* as the whole; a defect seen on a part is a defect whatever ships later. `walked` keeps the gate.
-2. **A fix branch drops the broken branch's type prefix** (H26a): `feat/stage-2-two-suns` → `fix/stage-2-two-suns`,
-   not `fix/feat/stage-2-two-suns`. A branch with no `/` gets `fix/<branch>` as before.
+2. **A fix branch drops the broken branch's type prefix** (H26a): `feat/stage-2-alpha` → `fix/stage-2-alpha`,
+   not `fix/feat/stage-2-alpha`. A branch with no `/` gets `fix/<branch>` as before.
 3. **The judge may take a `broke` back** with `flotilla work unbroke <branch> --why "<why>"` (H27): legal on a
    shipped, broken row with no open fix row; it clears `broken`, keeps the history, and the row is the judge's to
    walk again. An open fix row must be released first — the move says so.

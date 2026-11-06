@@ -128,7 +128,7 @@ def test_a_run_is_known_by_its_program_not_by_a_word_in_its_arguments():
 
 
 def test_a_browser_an_mcp_server_opened_is_a_tool_not_a_run():
-    """Twosuns, 2026-10-05: a session's Playwright MCP server keeps a headless browser for as long as the session
+    """Alpha, 2026-10-05: a session's Playwright MCP server keeps a headless browser for as long as the session
     lives; counted as a run, it holds the lane while young or busy, though it has no end to wait for. Anything under
     an MCP server is a session's tool; a test run's own browser still counts. A Claude session started with
     `--strict-mcp-config` is not an MCP server: the runs under it still count."""
@@ -408,7 +408,7 @@ def test_the_floor_of_a_limited_cgroup_is_a_quarter_of_its_limit(monkeypatch):
 
 
 def test_a_queue_command_printing_bytes_no_codec_reads_still_answers(tmp_path):
-    """Run for real: the CI queue command's own output may hold bytes that are not UTF-8 (twosuns A1, same class)."""
+    """Run for real: the CI queue command's own output may hold bytes that are not UTF-8 (alpha A1, same class)."""
     import sys
     script = "import sys; sys.stdout.buffer.write(bytes(range(0x80, 0x100)) + b'\\n'); sys.exit(1)"
     profile = {"ci": {"provider": "command", "runs_on": "this-machine",

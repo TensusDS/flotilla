@@ -31,7 +31,7 @@ def _same_series(record: dict, post) -> bool:
 def next_names(post, count: int, *, taken: set[str], store, reserve: bool, now: str = "", occupied=None,
                skipped: list | None = None) -> list[str]:
     """`occupied(name)` says why a name's seat cannot be made here (its tree is already on disk), or ""; such a
-    number is stepped over and noted in `skipped` - never reused for a seat, never touched (twosuns, 2026-10-03)."""
+    number is stepped over and noted in `skipped` - never reused for a seat, never touched (alpha, 2026-10-03)."""
     with store.transaction(KEY) as tx:
         issued = [record.get("n", 0) for record in tx.read().records if _same_series(record, post)]
         known = [number_of(post, name) or 0 for name in taken]

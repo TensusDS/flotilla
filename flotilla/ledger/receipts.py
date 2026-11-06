@@ -54,7 +54,7 @@ def _tiers_at(root, rev: str, run) -> tuple[list[dict] | None, str]:
 
 
 def with_branch_tiers(root, rev: str, profile: dict, run=subprocess.run) -> tuple[dict, str, list[str]]:
-    """Trunk's profile with the tiers the revision's own profile adds (void-lanes-online, 2026-11-01): a branch that
+    """Trunk's profile with the tiers the revision's own profile adds (gamma, 2026-11-01): a branch that
     brings a test tier is receipted with it. Trunk's tiers keep trunk's commands, so a branch can add a tier but never
     weaken or drop one. "Adds" is counted against the profile the branch was cut from, so a tier trunk renamed or
     dropped since is trunk's change, not the branch's. Returns the profile, why the revision's profile could not be
@@ -151,7 +151,7 @@ def _setup_path(state: Path, repo_key: str, tree: Path) -> Path:
 def set_up(tree: Path, *, state: Path, repo_key: str, profile: dict, timeout: float, force: bool = False,
            report: dict | None = None) -> str:
     """Run the profile's tree setup in `tree` when its lockfiles changed since the last one there, or it never ran
-    (worldcore field test W24: a sender's fresh tree had no node_modules, and its push receipt read as red tests).
+    (beta field test W24: a sender's fresh tree had no node_modules, and its push receipt read as red tests).
     Returns what was done; a failed setup refuses the receipt, naming it."""
     command = ((profile.get("tests") or {}).get("setup_command") or "").strip()
     if not command:
@@ -213,7 +213,7 @@ def run_receipt(tree: Path, *, state: Path, repo_key: str, purpose: str, profile
             continue
         r = run_tier(tier["name"], tier["command"], Path(tree), timeout=timeout)
         result = _tier_result(r)
-        if r.status != "green":   # why it is not green travels with it (worldcore field test W23)
+        if r.status != "green":   # why it is not green travels with it (beta field test W23)
             result.update({"exit": r.exit, "tail": r.tail})
             if prepared.startswith("skipped"):   # a tree whose dependencies went missing reads as red tests
                 result["summary"] = (f"{result['summary']} ({prepared}; `flotilla receipt run --setup` runs it "

@@ -1,7 +1,7 @@
 """Background processes a retired seat left in its tree (field test H50).
 
 A session that starts a dev server or a browser detached (`nohup ... &`, `setsid`) leaves it running after the
-session stops: the process is re-parented to pid 1 and holds memory until someone finds it. In the twosuns run 27
+session stops: the process is re-parented to pid 1 and holds memory until someone finds it. In the alpha run 27
 `vite` servers of finished sessions were alive at once. Retire looks for them by two facts procfs gives: the
 process's working directory is inside the seat's tree, and its parent is pid 1 — an orphan, not something a live
 shell or session still owns. Each such orphan is stopped with everything under it, unless its subtree holds a
@@ -14,7 +14,7 @@ is still the one found: its start time is read again just before the signal, so 
 
 A session also works outside its tree: a background session has a job directory of its own under the Claude Code
 configuration directory, `jobs/<its id>/`, and a session that copied trunk there to run a dev server leaves the
-server's working directory in it (seen in twosuns: a `vite` in `jobs/cd30b6e8/tmp/trunk`). That directory is looked
+server's working directory in it (seen in alpha: a `vite` in `jobs/cd30b6e8/tmp/trunk`). That directory is looked
 at the same way, by the session's id; where it does not exist nothing is assumed about it.
 
 Linux only: where there is no procfs the leftovers are not looked for, and the caller says so.

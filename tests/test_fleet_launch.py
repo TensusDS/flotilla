@@ -115,7 +115,7 @@ def post_names():
 
 @pytest.mark.parametrize("post_name", post_names())
 def test_every_seat_is_told_to_hand_the_person_a_refusal_and_a_safe_proposal(tmp_path, post_name):
-    """A refusal only the person can resolve came back as "it was refused" (twosuns update to 0.7.1); what replaces
+    """A refusal only the person can resolve came back as "it was refused" (alpha update to 0.7.1); what replaces
     it is the refusal's text and a proposal the person can run - never one that skips a check, disables a guard or
     widens a permission, and never an approve (review of 0.7.12)."""
     from types import SimpleNamespace

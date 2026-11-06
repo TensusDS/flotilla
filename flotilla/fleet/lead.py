@@ -1,4 +1,4 @@
-"""The person's own session leading the fleet (decision 191, worldcore field test W9).
+"""The person's own session leading the fleet (decision 191, beta field test W9).
 
 Only a person renames an interactive session, and `/rename` does not wake it, so asking for one read as a bug. A
 UserPromptSubmit hook may set the session's title, and the census then lists the session under it (measured on

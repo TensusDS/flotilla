@@ -47,7 +47,7 @@ def test_the_repository_is_its_own_marketplace():
 
 def test_the_readme_says_how_to_install():
     text = (ROOT / "README.md").read_text(encoding="utf-8")
-    # W1 (worldcore field test): without --scope project the marketplace lands in the person's own settings, and
+    # W1 (beta field test): without --scope project the marketplace lands in the person's own settings, and
     # the project's .claude/settings.json gets no marketplace entry - the claim below would be false.
     assert "claude plugin marketplace add TensusDS/flotilla#stable --scope project" in text   # the channel (0.29.0)
     assert "claude plugin install flotilla@flotilla --scope project" in text

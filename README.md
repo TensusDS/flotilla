@@ -28,8 +28,8 @@ described in a prompt: nobody accepts their own work, and nothing reaches trunk 
 Short reference of every command and skill: [USER_MANUAL.md](USER_MANUAL.md).
 
 **Status:** pre-1.0. It has run three field fleets on real projects, the largest about a dozen sessions over two
-days; their findings are in `docs/field-tests/`, and each fix landed with a test that failed first. Interfaces may
-still change between minor versions.
+days; each finding became a fix that landed with a test that failed first (the reports name the projects they ran
+on, so they are not kept here). Interfaces may still change between minor versions.
 
 ## Requirements
 
@@ -71,10 +71,10 @@ fleet.
 **Pin a release** instead, to choose when you move: name a tag on the first line (the tags are listed in
 [CHANGELOG.md](CHANGELOG.md)):
 
-    claude plugin marketplace add TensusDS/flotilla#v0.30.0 --scope project
+    claude plugin marketplace add TensusDS/flotilla#v0.30.1 --scope project
     claude plugin install flotilla@flotilla --scope project
 
-That writes `"ref": "v0.30.0"` into the project's settings and installs that release; `claude plugin update` stays on
+That writes `"ref": "v0.30.1"` into the project's settings and installs that release; `claude plugin update` stays on
 it. A machine keeps one marketplace of a name for all its projects, so give the projects on one machine the same
 channel or pin; `/flotilla:doctor` names a pin the machine does not follow. And a tag can be moved on GitHub, so a pin
 chooses when you move, not who can change what the tag names.
@@ -233,10 +233,10 @@ sessions. Add `--dry-run` to see the names, trees, commands and the plugins each
 raising anything.
 
 Each session is a background Claude Code session (`claude --bg`), named by the project and its post
-(`worldcore-main session 3`, `worldcore-review session 1`), with its own worktree beside the repository
+(`beta-main session 3`, `beta-review session 1`), with its own worktree beside the repository
 (`<repo>-main-3`). Numbers run per project. Session names are addresses on the whole machine - messages between
 sessions are delivered by name - so the project word (`[fleet] name`, set at onboarding from the directory) is unique
-on the machine: a second project that wants a word already taken gets `worldcore-2`, and flotilla says so. Plugins that bring MCP servers are turned
+on the machine: a second project that wants a word already taken gets `beta-2`, and flotilla says so. Plugins that bring MCP servers are turned
 off for a seat unless its post declares them, so a reviewer does not carry a browser it never uses; MCP servers you
 configured outside plugins still start in every seat. `flotilla spawn` refuses to raise seats when free
 memory would fall below `fleet.memory_floor_mb` (2000 MB by default), counting about 800 MB per seat it is about to
@@ -794,8 +794,7 @@ So nothing comes as a surprise:
 
 ## Known limitations
 
-What flotilla does not do yet, or does only partly. Each one was met in a field test; the test reports are in
-`docs/field-tests/`.
+What flotilla does not do yet, or does only partly. Each one was met in a field test.
 
 - **No Windows.** Linux and macOS only; see [Requirements](#requirements) for what macOS skips.
 - **One lane per machine, shared by every project's fleet.** Runs share it by memory and priority (see

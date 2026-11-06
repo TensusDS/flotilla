@@ -83,7 +83,7 @@ def _counting(tmp_path):
 
 
 def test_the_same_files_are_not_tested_twice(tmp_path):
-    """The slowdown measured on the twosuns fleet (2026-10-02): the path from hand to trunk grew tenfold, almost all of
+    """The slowdown measured on the alpha fleet (2026-10-02): the path from hand to trunk grew tenfold, almost all of
     it in the machine's one-at-a-time lane. A sender's merge commit often carries exactly the files the author's tip
     did; a green tier over the same files and the same command is that tier's answer, whoever asks."""
     root = repo_with_origin(tmp_path)
@@ -118,7 +118,7 @@ def test_other_files_or_another_command_run_again(tmp_path):
 
 
 def test_a_red_tier_is_never_reused_and_says_why(tmp_path):
-    """Worldcore field test W23: a red push receipt said `node: red` and nothing else; the sender looked for a log that
+    """Beta field test W23: a red push receipt said `node: red` and nothing else; the sender looked for a log that
     did not exist. A red tier carries its exit code and the last lines it printed."""
     root = repo_with_origin(tmp_path)
     red = f"{sys.executable} -c \"import sys; print('sh: 1: vitest: not found'); sys.exit(127)\""
@@ -266,7 +266,7 @@ def test_a_seat_tree_is_not_set_up_again_for_its_own_commits(tmp_path):
 
 
 def test_the_first_green_receipt_measures_a_tier_this_machine_never_measured(tmp_path):
-    """Twosuns field test of 0.6.7, W2: only `onboard write` recorded tier times, so `onboard check` said "never run
+    """Alpha field test of 0.6.7, W2: only `onboard write` recorded tier times, so `onboard check` said "never run
     green on this machine" with no way out but importing flotilla's internals - and the lane's ceiling had no time to
     derive from. A green tier a receipt ran records its time once; a measurement already there is kept."""
     from flotilla.onboard.firstrun import TierRun, load_measurements, save_measurements
@@ -393,7 +393,7 @@ def _with_server(command=GREEN, unit=GREEN):
 
 
 def test_a_tier_only_the_branch_adds_runs_in_its_receipt(tmp_path):
-    """Void-lanes-online, 2026-11-01: `server/solution` added a `server` tier; both receipts ran only trunk's tiers,
+    """Gamma, 2026-11-01: `server/solution` added a `server` tier; both receipts ran only trunk's tiers,
     said nothing, and were green - the server tests ran because two sessions ran them by hand."""
     root = repo_with_origin(tmp_path)
     _branch_profile(root, _with_server())

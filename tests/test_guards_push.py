@@ -248,7 +248,7 @@ def test_an_override_record_keeps_no_token(tmp_path):
     """The override log stored the command text whole, so `GH_TOKEN=...` or a token in a remote URL sat in a state
     file (security review F23)."""
     overrides.record_override(tmp_path / "state", "k", "push_receipt", "hotfix",
-                              ["GH_TOKEN=ghp_secret123 git push https://max:tok456@github.com/a/b main"])
+                              ["GH_TOKEN=ghp_secret123 git push https://person:tok456@github.com/a/b main"])
     stored = json.dumps(overrides.recorded(tmp_path / "state", "k"))
     assert "ghp_secret123" not in stored and "tok456" not in stored
     assert "GH_TOKEN=<redacted>" in stored and "https://<redacted>@github.com/a/b" in stored

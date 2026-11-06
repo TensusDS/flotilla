@@ -41,7 +41,7 @@ def all_questions(det: dict, answers: dict) -> list[dict]:
         ]))
     if flow in ("pr-sender", "direct"):
         code = det.get("code_paths") or []
-        # the person's decision 2026-10-27 (twosuns B1): code ships on a yes, and the paths come from the project
+        # the person's decision 2026-10-27 (alpha B1): code ships on a yes, and the paths come from the project
         free = [pattern[1:] for pattern in code if pattern.startswith("!")]
         shown = ", ".join(free[:5]) + (f" and {len(free) - 5} more" if len(free) > 5 else "")
         out.append(_q("merge_auth", "Merge auth", "Who authorizes a merge into trunk?", [

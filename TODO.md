@@ -10,7 +10,7 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 
 ## From the field test of two demo fleets on one lane (2026-11-06, 0.29.3)
 
-Two four-seat fleets (flotest-a, flotest-b), five small rows each, one lane (`lane_capacity = 1`, `lane_share =
+Two four-seat fleets (demo-a, demo-b), five small rows each, one lane (`lane_capacity = 1`, `lane_share =
 "fair"`, 8 cores, 15 GB), watched for 9 h with the lane journal, a sampler and the orchestrators asked every 20 min.
 Both backlogs landed (b in ~1 h 20 min, a in ~1 h 45 min); no stalls, no orphaned rows, no wrong waits; load stayed
 below 4.4 of 8, 9 GB free, the fleets' own processes 4-17 % CPU. Whole test, 83 bookings: 13 short runs waited ~76 min
@@ -50,7 +50,7 @@ for them first.
   `flotilla lane` says why a waiter with a light-looking estimate is not light. *(closed in 0.30.0: light and heavy
   are memory, and `flotilla lane` prints each run's memory and its reason to wait - flotilla/lane/commands.py
   `value_of`)*
-- **Push receipts queue behind the reviewer's own runs** (flotest-a sender): ~10 min of queueing per push plus the
+- **Push receipts queue behind the reviewer's own runs** (demo-a sender): ~10 min of queueing per push plus the
   200 s slow tier, ~15 min a push. Asked by the seat: a push receipt ranks before a reviewer's checks in the queue.
   Weigh against the items above - with heaviness by resources most of this queue goes away. *(closed in 0.30.0: a
   push receipt's type is 1.0 against a reviewer's 0.5 in the priority - flotilla/lane/policy.py `TYPES`)*
@@ -61,20 +61,20 @@ for them first.
 **The person's road.**
 
 - **A collector pass the classifier refuses has no road to the person.** With `skip_classifier_for_checked = false`
-  (the default), auto mode refuses the orchestrator's `fleet clean --daily` ("Irreversible Deletion"). flotest-b
-  recorded a wait on its reserved row, which reached the inbox; flotest-a wrote "run it with `!`" three times in its
+  (the default), auto mode refuses the orchestrator's `fleet clean --daily` ("Irreversible Deletion"). demo-b
+  recorded a wait on its reserved row, which reached the inbox; demo-a wrote "run it with `!`" three times in its
   own transcript and recorded nothing, so its inbox said "nothing waits on you" while 10 `send/` branches and a dead
   tree waited. Whether the person hears depends on the seat's choice. Asked: the inbox lists a due pass the
   orchestrator could not run, or the arrangement routes the pass to the person from the start when the opt-in is off.
   *(checked 2026-11-06 on 0.29.3: still B - flotilla/gc/due.py:15, flotilla/watch/fleet.py:246, flotilla/watch/inbox.py)*
-- **A standing item is re-announced after every ship.** flotest-b's collector wait was re-raised and relayed by the
+- **A standing item is re-announced after every ship.** demo-b's collector wait was re-raised and relayed by the
   sender after each of five ships, and every hook line repeated "2 standing item(s), said before and unchanged" for
   3 h. Once the item is with the person it is said once. *(checked 2026-11-06 on 0.29.3: P - flotilla/hooks.py:275)*
-- **`flotilla inbox` cuts an item mid-word** ("by flotest-b-orchestrator 2...") and does not say how to answer it;
+- **`flotilla inbox` cuts an item mid-word** ("by demo-b-orchestrator 2...") and does not say how to answer it;
   `inbox --help` names no answering command; the full text is only in `work show`. *(checked 2026-11-06 on 0.29.3: P
   - flotilla/watch/inbox.py)*
 - **No ledger place for a reviewer's side-notes** ("noted, not returned": kelvin below absolute zero, `parse("1e999
-  km")` -> inf). Four such notes in flotest-b lived only in letters; a decision pending on the person has no row.
+  km")` -> inf). Four such notes in demo-b lived only in letters; a decision pending on the person has no row.
   *(open, design)*
 
 **The ledger.**
@@ -87,7 +87,7 @@ for them first.
   row should count as satisfied, or the refusal should say "closed - name it by id". Both fleets, both flags.
   *(checked 2026-11-06 on 0.29.3: still B - flotilla/ledger/core.py:225)*
 - **The reviewer's lane runs are not recorded**: the skill tells the reviewer to `git switch --detach <tip>`, then
-  `lane run --for <branch>` notes "the tree is on no branch" and records nothing - flotest-b, every row. flotest-a's
+  `lane run --for <branch>` notes "the tree is on no branch" and records nothing - demo-b, every row. demo-a's
   reviewer was recorded (it stayed on the branch). The skill and the lane disagree. *(checked 2026-11-06 on 0.29.3:
   still B - skills/flotilla/SKILL.md:36, flotilla/lane/commands.py:353)*
 - **No overlap warning at claim**: parallel rows all appended to one test file; two conflicted, found by the reviewer
@@ -112,29 +112,29 @@ for them first.
   or rebase trunk); it stalled a row for a day. *(checked 2026-11-06 on 0.29.3: P - flotilla/ledger/commands.py:59,
   94)*
 - **The trunk merge reads "Merge branch 'feat/kelvin' into fleet/sender-2"** when the sender merges in its home tree
-  and pushes `HEAD:main`; flotest-a's sender wrote "into main". Pass `-m "Merge branch '<row>' into <trunk>"`.
+  and pushes `HEAD:main`; demo-a's sender wrote "into main". Pass `-m "Merge branch '<row>' into <trunk>"`.
   *(checked 2026-11-06 on 0.29.3: P - flotilla/ledger/delivery.py)*
 
-## From twosuns' field notes, second part (2026-11-02..04, on 0.24-0.26) and the demo onboarding (2026-11-05, 0.29.2)
+## From alpha' field notes, second part (2026-11-02..04, on 0.24-0.26) and the demo onboarding (2026-11-05, 0.29.2)
 
-- **A superseded shipped row has no honest end** (twosuns item 19). Shipped rows whose content a later row replaced
+- **A superseded shipped row has no honest end** (alpha item 19). Shipped rows whose content a later row replaced
   can leave only by `walked` (untrue) or `broke` (files a fix row nobody wants); `release` and `close` are refused from
-  shipped. twosuns parked r252, r245, r253, r270 with a hold until the person. Asked: a "superseded by <row|commit>"
+  shipped. alpha parked r252, r245, r253, r270 with a hold until the person. Asked: a "superseded by <row|commit>"
   end from shipped, the person's or the orchestrator's move, with why. *(checked 2026-11-06 on 0.29.2: open, design -
   flotilla/ledger/transitions.py, "shipped")*
-- **`work adopt` leaves the old tree held by the adopter** (twosuns item 22). The row keeps its old tree path, so
+- **`work adopt` leaves the old tree held by the adopter** (alpha item 22). The row keeps its old tree path, so
   `fleet clean` reports "<seat> is alive and works in it" and the collector never archives it: ~35 trees, ~8 GB on
-  twosuns. Asked: adopt re-points the row to the adopter's home tree, or marks the old tree orphaned. Narrowed live
+  alpha. Asked: adopt re-points the row to the adopter's home tree, or marks the old tree orphaned. Narrowed live
   (demo field test, 0.29.3): once the adopted row closes, `fleet clean` marks the old tree "would remove", so it is
-  held only while the row is open - twosuns' 35 trees were rows still open. *(checked 2026-11-06 on 0.29.3: still B,
+  held only while the row is open - alpha' 35 trees were rows still open. *(checked 2026-11-06 on 0.29.3: still B,
   narrowed - flotilla/ledger/steering.py, adopt keeps `row.tree`)*
-- **`rig --put/--get` only inside the tree collides with a receipt in the same tree** (twosuns item 20). A rig kit
+- **`rig --put/--get` only inside the tree collides with a receipt in the same tree** (alpha item 20). A rig kit
   must be staged in the seat's tree; a queued receipt refuses any untracked file there, so the seat stops its receipt
   to run the kit. Asked: put/get from a seat-private directory outside the tree, or a kit directory the receipt
   ignores. *(checked 2026-11-06 on 0.29.2: still B - flotilla/rig/transfer.py:71, 145)*
-- **A receipt tier that runs on the rig** (twosuns item 18; the same wish as item 15.5 above): one named tier (a GPU
+- **A receipt tier that runs on the rig** (alpha item 18; the same wish as item 15.5 above): one named tier (a GPU
   smoke) run on a rented machine, its verdict carried back and trusted like a local tier. *(open, design)*
-- **`rig run` could name the machine's image beside the profile's** (twosuns item 17, a wish): "machine mN on image
+- **`rig run` could name the machine's image beside the profile's** (alpha item 17, a wish): "machine mN on image
   X, the project profile names Y", for a run that meets a warm machine raised by another project. *(open, P)*
 - **The publish refusal of a project with no profile could name `/flotilla:organize`** (demo onboarding). *(checked
   2026-11-06 on 0.29.2: P)*
@@ -169,7 +169,7 @@ for them first.
   work` passes, and `heredoc_check` itself skips a quoted delimiter (corrected 2026-11-04 by the review of 0.28.0;
   first seen while building 0.26.2). A body is code only when the command it feeds is an interpreter. *(checked 2026-11-03 on 0.26.2: still P - flotilla/guards/person.py, heredoc_check)*
 - **The person guard refuses `python3 -c "..."` that names a flotilla path** as "a variable or a substitution" (seen
-  by the twosuns orchestrator and while building 0.26.0 on heredocs naming the CLI). *(checked 2026-11-03 on 0.26.0:
+  by the alpha orchestrator and while building 0.26.0 on heredocs naming the CLI). *(checked 2026-11-03 on 0.26.0:
   still P - flotilla/guards/person.py:303)*
 - Deferred from the 0.26.0 reviews (P): an inbox row's age resets on unrelated moves (`inbox.py`, `since` is the
   row's last move); putting a row off loses its first-shown time (the key changes); a wait on a reserved row is listed
@@ -178,10 +178,10 @@ for them first.
   `guards/files.py`; the wakeup prompt shape is not measured (CronCreate and `/loop` firings were, on 2.1.317).
   *(checked 2026-11-04 on 0.28.0: still P)*
 
-## From void-lanes-online's field notes (2026-11-03..05, on 0.26.0)
+## From gamma's field notes (2026-11-03..05, on 0.26.0)
 
 - **The collector names an unrelated file as the last copy of an empty one.** `fleet down` printed "the last copy of
-  clients/core/.../VoidLane.BCD1E3CF.Up2Date is now in .../.remember/logs/hook-errors.log": an empty file matched
+  clients/core/.../Gamma.BCD1E3CF.Up2Date is now in .../.remember/logs/hook-errors.log": an empty file matched
   another plugin's empty log in the main checkout. Nothing was moved there; the wording says it was. The rule behind
   it trusts any file of the main checkout as a twin, untracked and ignored ones of other tools included, which can
   be rewritten or removed at any time (flotilla/gc/twins.py `find`). Planned for 0.29.1.
@@ -240,13 +240,13 @@ for them first.
   nothing"**, and its SIGTERM races the command's start. It guards the 120 s hang only.
   *(open: tests/test_rig_run.py)*
 
-## From two field fleets, twosuns and void-lanes-online (2026-10-31..11-01, reported on 0.21.0 and 0.23.2)
+## From two field fleets, alpha and gamma (2026-10-31..11-01, reported on 0.21.0 and 0.23.2)
 
 Order, the person's call (2026-11-01): the lane's fixes first (0.24.1), then the lane's modes (0.25.0), then the
 rig queue (0.26.0).
 
-Sources: the twosuns orchestrator's feedback (`twosuns-keep/flotilla-feedback-2026-11-01.md`, sixteen items; 13-16
-added 2026-11-02 and checked that day on 0.24.1) and the void-lanes-online orchestrator's lane report (lane
+Sources: the alpha orchestrator's feedback (`alpha-keep/flotilla-feedback-2026-11-01.md`, sixteen items; 13-16
+added 2026-11-02 and checked that day on 0.24.1) and the gamma orchestrator's lane report (lane
 journal figures: runs under 60 s waited a median 30.6 min for a median 6.8 s run). Checked against main at a50daae
 (0.24.0 code) where a file is named.
 
@@ -262,7 +262,7 @@ journal figures: runs under 60 s waited a median 30.6 min for a median 6.8 s run
   timeouts in five receipts on 10-31). The person's call (2026-11-01): the guard keeps warning, and such a run is
   counted as the seat's own booking - it takes a place in the lane, attributed to the seat, instead of being an
   anonymous foreign run. *(open, design: flotilla/lane, the Bash guard)*
-- **Heavy tiers starve each other at a capacity above 1** (twosuns item 13: two receipts' software-rendered smoke
+- **Heavy tiers starve each other at a capacity above 1** (alpha item 13: two receipts' software-rendered smoke
   tiers at once, load 17-26 on 8 cores; five handovers blocked on 11-01 by smoke reds from load, not code, and the
   only remedy was capacity 1, which slows every light run). Asked: a tier's cost - declared (`cores`, `exclusive`) or
   measured (CPU-seconds per wall-second, which the lane records already) - and admission by the sum of costs against
@@ -272,8 +272,8 @@ journal figures: runs under 60 s waited a median 30.6 min for a median 6.8 s run
   capacity 1: light runs fill what one heavy run leaves, so capacity 2 is no longer needed for short runs to move.
   Left: the declared cost and the starved verdict, if capacity above 1 comes back. *(open, design: lane spec
   stages 2-3, flotilla/lane/run.py)*
-- **The orchestrator cannot reorder the lane, and a waiter cannot see when it will start** (twosuns item 16, 11-02
-  02:52: 21 waiters at capacity 1, five void-lanes-online runs of 21-38 s behind about 2.5 h of 11-min receipts;
+- **The orchestrator cannot reorder the lane, and a waiter cannot see when it will start** (alpha item 16, 11-02
+  02:52: 21 waiters at capacity 1, five gamma runs of 21-38 s behind about 2.5 h of 11-min receipts;
   letting them pass meant re-booking eight waiters at the back). Asked besides mode 1 and seniority above: `lane bump
   <booking> --why`, recorded, limited to the orchestrators of the projects sharing the lane; each waiter's expected
   start from the estimates ahead of it, in `flotilla lane` and before booking. 0.28.0 gives heavy waiters their
@@ -283,7 +283,7 @@ journal figures: runs under 60 s waited a median 30.6 min for a median 6.8 s run
   affected-tests tier for hand and review, the full tier only for the push receipt). *(open, design)*
 
 **The ledger**
-- **Hand notes a stack on an unaccepted row but does not say it is not required** (twosuns item 10,
+- **Hand notes a stack on an unaccepted row but does not say it is not required** (alpha item 10,
   r956: 75 such commits, its dependency lost to a replaced `--requires`). 0.24.1 keeps every `--requires`, shows them
   and adds `work requires --add`; the warning at hand is still to do - `_stacked_on` already names such rows, so the
   hand's line could say "builds on `<branch>`, not required: `work requires <branch> --add <it>`".
@@ -293,7 +293,7 @@ journal figures: runs under 60 s waited a median 30.6 min for a median 6.8 s run
   With only untracked dirt, detach the dead tree's HEAD (the files stay), or print the one-line command.
   *(open: flotilla/ledger/steering.py:47)*
 
-**Receipts, guards and the profile** (void-lanes-online, the lane report's later sections, 2026-11-01..02)
+**Receipts, guards and the profile** (gamma, the lane report's later sections, 2026-11-01..02)
 - **`flotilla onboard check` does not print `[rig]` problems.** `disk_gb = "thirty"`, `max_run_seconds = -5` and an
   unknown key gave no output and exit 0; `rig/profile.read` keeps `problems` for such values and nothing shows them
   there. *(checked 2026-11-02 on 0.24.1: still P - flotilla/onboard/check.py:10, flotilla/rig/profile.py)*
@@ -304,7 +304,7 @@ journal figures: runs under 60 s waited a median 30.6 min for a median 6.8 s run
   still B - flotilla/ledger/outside.py:55)*
 
 **The rig**
-- **Part B of the rig queue: a seat books before it is ready, and is told its turn** (twosuns item 12; part A in
+- **Part B of the rig queue: a seat books before it is ready, and is told its turn** (alpha item 12; part A in
   0.27.0 gave exclusive runs, a `rig run` that stands in line for the session and says its place and start, the line
   on `flotilla rig` and the "idle while runs wait" item; part B is designed in `docs/specs/2026-11-03-rig-queue-design.md`
   section 4, planned after A is seen in the field). The person, 2026-11-01: a seat that cannot see the queue sits
@@ -316,7 +316,7 @@ journal figures: runs under 60 s waited a median 30.6 min for a median 6.8 s run
   its place; a run that does not fit the session's end told before it starts; the unserved queue carried to the
   next session; `watch` naming "rig idle with N waiting"; actual minutes recorded against estimates.
   *(open, designed: part B)*
-- **A deep local lane does not point at an open rig session, and a rig session is not shared by design** (twosuns
+- **A deep local lane does not point at an open rig session, and a rig session is not shared by design** (alpha
   item 15.1-3, 11-01 23:19-23:30: ~20 local waiters, about 2 h, while rig session s79 was paid for and mostly idle;
   once allowed, CPU probes finished there in seconds - 40 s against 1 h+ in the queue). Asked: when a lane run would
   wait more than N minutes by the lane's estimates and a rig session is open, say so with the rig command for the same
@@ -324,7 +324,7 @@ journal figures: runs under 60 s waited a median 30.6 min for a median 6.8 s run
   may run beside another `--cpu` run; `--exclusive` for frames, audio, benches), the rig queue above with a capacity
   per class; the owner's exclusive runs first. 0.25.0 built the session's projects, the refusal and spend per
   project. *(open, design: flotilla/rig/run.py, the rig queue)*
-- **A rig run does not use the toolchain the receipts use** (twosuns item 15.4). The default image
+- **A rig run does not use the toolchain the receipts use** (alpha item 15.4). The default image
   (`mcr.microsoft.com/playwright:v1.64.0-noble`) carries node 24; the project's receipts run on node 22.22.1, node 24
   changed one of its pins, so a CPU result on the rig can differ from the local receipt over the same revision.
   Asked: the profile pins the runtime a rig run uses (`[rig] node = "22.22.1"`). Today the only ways are a custom
@@ -333,7 +333,7 @@ journal figures: runs under 60 s waited a median 30.6 min for a median 6.8 s run
   printed with the run's verdict, and a run that says so when the version it met is not the one pinned.
   *(checked 2026-11-02 on 0.24.1: [rig] has image, gpu, disk_gb, setup_command, max_run_seconds, get_types and no
   runtime - flotilla/rig/profile.py, flotilla/rig/settings.py:35)*
-- **A tier proven green on the rig does not count for a handover receipt** (twosuns item 15.5). Asked, as
+- **A tier proven green on the rig does not count for a handover receipt** (alpha item 15.5). Asked, as
   an option: a tier green on the rig over the same files and the same pinned runtime counts for the handover
   receipt; the push receipt stays local and full. Receipts already reuse a green over the same files
   (`receipts._green_over`, keyed by `gitq.files_of`), but only greens run on this machine. Needs the runtime pin
@@ -355,7 +355,7 @@ journal figures: runs under 60 s waited a median 30.6 min for a median 6.8 s run
   Nothing crashes. `claude plugin marketplace add` writes none of these shapes, so each needs a hand-edited setting
   or a dev checkout. *(checked 2026-10-31 on 0.23.3: still P - flotilla/core/claude_state.py:181, :229)*
 
-## From watching the twosuns fleet on 0.20.0 (2026-10-20)
+## From watching the alpha fleet on 0.20.0 (2026-10-20)
 
 - **Garbage collection, stage 2: the archive and the person's word.** Design sections 6 (rules 2 to 5: a twin
   elsewhere by sha256, identical copies across removed trees, unique ignored data to the archive, global excludes
@@ -371,14 +371,14 @@ journal figures: runs under 60 s waited a median 30.6 min for a median 6.8 s run
 - **A held dead seat on a machine without /proc is asked, not judged.** On macOS `leftovers.working_in` returns
   None, so every dead seat there becomes a retire-or-keep question; reading each process's cwd with `lsof -d cwd`
   would let it be retired or assessed as on Linux. *(open: flotilla/fleet/leftovers.py, flotilla/gc/dead.py)*
-- **A user install of flotilla loads in place of a project's own.** void-lanes-online installed 0.23.1 for the
+- **A user install of flotilla loads in place of a project's own.** gamma installed 0.23.1 for the
   project and its session ran the user's 0.21.0 (2026-10-29); the khrushchevka fleet installed 0.13.0 and ran the
   user's 0.10.2 (2026-10-12), unnoticed. Claude Code documents precedence for `enabledPlugins` only, not for which
   of two installs of one id loads; both cases fit both "user wins" and "the first matching record in
   installed_plugins.json wins", and telling them apart means reordering the records on a live machine. Since
   0.23.2 `doctor` and the session start name a mismatch and `rig` names the cost of its advice; the cause stays
   Claude Code's. Only the copy that runs can say so: a user install older than 0.23.2 is silent, so on this
-  machine nothing is said until the user install (0.21.0, which twosuns runs) is brought up. Idea: ask Claude Code
+  machine nothing is said until the user install (0.21.0, which alpha runs) is brought up. Idea: ask Claude Code
   (a `/feedback` report) which copy should load. *(checked 2026-10-29 on 0.23.2: B, detected not prevented -
   flotilla/core/claude_state.py:75)*
 - **`flotilla gc restore` trusts the archive's records.** The archive is a folder beside the project that any
@@ -419,19 +419,19 @@ journal figures: runs under 60 s waited a median 30.6 min for a median 6.8 s run
   `jq`), or judge such a body only for `flotilla` words. *(seen 2026-10-20 on 0.20.0: P - flotilla/guards/run.py:34,
   flotilla/guards/person.py:176)*
 - **The person guard takes a path argument named `flotilla` for flotilla itself.** `find
-  /home/max/.local/state/flotilla -name '*snake*'` was refused with the same "variable or a substitution" text.
+  /home/user/.local/state/flotilla -name '*epsilon*'` was refused with the same "variable or a substitution" text.
   `_reads` treats any word whose basename is `flotilla` as a flotilla run, so the path argument counts. Its first
-  non-option word after it, the quoted `'*snake*'`, is then read as the command, and `_opaque` refuses it as a glob.
-  The same line with `-name snake`, or with `cd` into the directory and `find .`, passes. Any path to the plugin
+  non-option word after it, the quoted `'*epsilon*'`, is then read as the command, and `_opaque` refuses it as a glob.
+  The same line with `-name epsilon`, or with `cd` into the directory and `find .`, passes. Any path to the plugin
   repo or its state dir followed by a glob is caught alike. Idea: only the program word of a segment (or the word
   after `-m`, `uv run`, `exec`) runs flotilla; an argument does not. A brace after such a path is refused too
   (`git -C <repo>/flotilla rev-parse 'v0.20.0^{commit}'`: "holds what bash expands"), and so is a heredoc script
-  whose body names `flotilla work wait` beside braces (2026-10-27, fixing the twosuns field report). *(seen
+  whose body names `flotilla work wait` beside braces (2026-10-27, fixing the alpha field report). *(seen
   2026-10-20 on 0.20.0: P - flotilla/guards/person.py:35, flotilla/guards/person.py:152)*
-- **`flotilla status` in twosuns did not finish in 60 s.** `watch --once` takes 3.6 s and `fleet` takes 1.1 s on the
+- **`flotilla status` in alpha did not finish in 60 s.** `watch --once` takes 3.6 s and `fleet` takes 1.1 s on the
   same ledger: 9259 lines, 5.5 MB. Not yet established where the time goes. *(seen 2026-10-20 on 0.20.0: measure)*
 
-## From the twosuns field report (2026-10-24..27, 0.20.0)
+## From the alpha field report (2026-10-24..27, 0.20.0)
 
 - **Accept races a moving trunk; files rebuilt from others make it worse** (A6). r379 bounced three times: clean when
   read, conflicting by the time the tiers finished, because almost every research row adds to `src/data/credits.ts`
@@ -440,7 +440,7 @@ journal figures: runs under 60 s waited a median 30.6 min for a median 6.8 s run
   rebuilt files with their command, accept checks mergeability without them and land rebuilds them after the merge;
   or accept binds to the read sha and the trunk merge becomes a reviewed vouch. *(seen 2026-10-26 on 0.20.0: open,
   design - flotilla/ledger/reading.py)*
-- **A pipeline inside a lane run reads green over a red test** (twosuns memory `lane-green-pipeline`). `flotilla lane
+- **A pipeline inside a lane run reads green over a red test** (alpha memory `lane-green-pipeline`). `flotilla lane
   run -- sh -c 'npx vitest ... | tail -40'` recorded green: the exit is tail's, inside a shell flotilla does not read.
   The skill says so; the run does not. Idea: warn when a lane command is `sh -c` / `bash -c` whose script ends in a
   pipe without `pipefail`. *(seen 2026-10-01 on 0.7.x: P - flotilla/lane/run.py)*
@@ -557,7 +557,7 @@ Each is a limitation README states today, judged fixable in principle; none is p
   GitHub (`gh api repos/<o>/<r>/rules/branches/<trunk>` or branch protection) whether trunk is protected, and warn when
   it is not, naming the setting. *(checked 2026-10-04 on 0.7.12: open, design)*
 
-## From watching the twosuns fleet on 0.7.1 (2026-10-03, night; corrected 2026-10-04)
+## From watching the alpha fleet on 0.7.1 (2026-10-03, night; corrected 2026-10-04)
 
 - **The way in is too heavy for a first try.** Posts, seats, lane, receipts, a ledger of ten states, 13 skills and a
   540-line README stand between a newcomer and "one session writes, another reviews". A light mode - author and reviewer
@@ -573,14 +573,14 @@ Each is a limitation README states today, judged fixable in principle; none is p
 - Onboarding a repository whose only workflows are symlinks now records no CI and reads no job ids from them; it matters
   only if GitHub Actions runs a symlinked workflow, which nobody measured. *(checked 2026-10-04 on 0.7.9: measure)*
 
-## From the twosuns orchestrator's notes and the review of 0.7.17 (2026-10-06)
+## From the alpha orchestrator's notes and the review of 0.7.17 (2026-10-06)
 
 - Trial merge at accept: conflicts between groups of changes surface only at release; `git merge-tree` against trunk
   and the other accepted rows at `accept` would show them at once. *(open, design)*
 - `moved` after `accept` needs the reader's `--agreed-by`; a pure rebase (same patch ids) could pass without it.
   *(open, design)*
 - The letter after `assign` is sent by hand and forgotten; a hook could require it in the same turn. *(open, design)*
-- A guard against `git reset --hard` / force-push on a branch with an accepted revision (twosuns: a seat reset its
+- A guard against `git reset --hard` / force-push on a branch with an accepted revision (alpha: a seat reset its
   branch and undid the reviewer's edits). *(open, design)*
 - `adopt --from` moves only rows the gone session owned; rows it was reading wait for `assign --reader` one by one.
   *(checked 2026-10-06 on 0.7.17: still [P] - ledger/steering.py adopt_from)*
@@ -663,7 +663,7 @@ Each is a limitation README states today, judged fixable in principle; none is p
   waiting. A clock that steps back keeps a seat row "fresh" past the 600 s launch window. *(checked 2026-10-04 on
   0.7.11: still [P] - lane/machine.py _queue, fleet/spawn.py LAUNCH_WINDOW)*
 
-## From the twosuns update to 0.7.1 (2026-10-03)
+## From the alpha update to 0.7.1 (2026-10-03)
 
 
 ## From the broker final review (2026-09-27)
@@ -796,14 +796,14 @@ Each is a limitation README states today, judged fixable in principle; none is p
 ## Done
 
 - A test that asks `state_dir()` in pytest's own process is refused the real directory, wherever its file lives
-  (twosuns item 21: the rig tests' `world` wrote `machine.toml` as `rig`, `rig_provider`; the same road wrote the live
+  (alpha item 21: the rig tests' `world` wrote `machine.toml` as `rig`, `rig_provider`; the same road wrote the live
   rig journal), and re-measuring the machine keeps every key it does not measure (`lane_share` was lost) (0.29.3).
-- Waiting lane processes burn ~20 % CPU each (twosuns items 14, 14b): found closed, a waiter measured at 0.5 % CPU
+- Waiting lane processes burn ~20 % CPU each (alpha items 14, 14b): found closed, a waiter measured at 0.5 % CPU
   over 60 s on 0.29.2, on a fresh journal (2026-11-05).
 
 - The review of 0.28.0 against everything found since 0.24.0: a light run never waits on an empty lane; woken waiters reuse their last look at the machine; `rig share`/`unshare` are the person's moves to the guard; an unshared project's waiting rig run leaves the line; a script's or module's arguments are not asked about (the reading fails closed); a second Ctrl-C during a rig cleanup is held off; a heavy waiter is told only what it waits for (0.28.1).
 
-- The lane: light runs (measured <= 60 s, <= 2 cores) take what one heavy run leaves and no place; an expired wait keeps its place; a waiter is handed the lane within a second; `flotilla lane` shows the budget and heavy runs' expected starts (0.28.0; twosuns items 13 and 16).
+- The lane: light runs (measured <= 60 s, <= 2 cores) take what one heavy run leaves and no place; an expired wait keeps its place; a waiter is handed the lane within a second; `flotilla lane` shows the budget and heavy runs' expected starts (0.28.0; alpha items 13 and 16).
 
 - The rig queue, part A: exclusive runs, a rig run that stands in line for its session and says its place and start, the line on `flotilla rig`, a watch item when a machine idles while runs wait, a stopped run that brings back its `--get`, a closed session's machine destroyed no longer blocking the ceiling (0.27.0).
 
@@ -815,9 +815,9 @@ Each is a limitation README states today, judged fixable in principle; none is p
   newer one); a rig session serves the projects the person shares it with, refuses the others before anything is
   spent, and shows each project's spend; a stopped rig run's verdict no longer lost to a signal as its renewer starts.
 - 0.24.2: a waiting lane run folds only the journal lines appended since its last poll, and `visible` passes printable
-  ASCII as it is (twosuns item 14); a receipt runs and requires the tiers its revision's own profile adds; a tree
-  profile that does not parse leaves the guards on trunk's rules (void-lanes-online).
-- 0.24.1: field fixes from twosuns and void-lanes-online - a lane capacity change reaches queued waiters; `flotilla
+  ASCII as it is (alpha item 14); a receipt runs and requires the tiers its revision's own profile adds; a tree
+  profile that does not parse leaves the guards on trunk's rules (gamma).
+- 0.24.1: field fixes from alpha and gamma - a lane capacity change reaches queued waiters; `flotilla
   lane` names the foreign runs holding slots, each waiter's reason, and sweeps dead bookings when shown; every
   `--requires` kept and shown; `work requires --add/--drop` on the record; a wait on a short name finds the live
   session.

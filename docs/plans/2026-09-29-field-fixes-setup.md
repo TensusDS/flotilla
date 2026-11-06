@@ -17,7 +17,7 @@ numbering continues from. Every hook records when it last ran, and `flotilla gua
 
 **Tech Stack:** Python 3.11+ stdlib, git, pytest via `uv`.
 
-**Spec:** the field test `docs/field-tests/2026-09-27-snake-fleet.md` — findings F1–F7 and F11 and the triage with
+**Spec:** the field test `docs/field-tests/2026-09-27-epsilon-fleet.md` — findings F1–F7 and F11 and the triage with
 The person of 2026-09-28, group 7 ("Setup"); `docs/specs/2026-09-22-flotilla-design.md` sections 5 (onboarding), 7.2
 (spawn) and 8 (hooks).
 
@@ -431,7 +431,7 @@ In the profile builder:
 git add flotilla/onboard/questions.py flotilla/onboard/profile.py tests
 git commit -m "feat(onboard): every project is asked about the judge; a console project's build is trunk on origin
 
-The judge question appeared only with a deployment, so the snake CLI had no judge until written by hand (F4)."
+The judge question appeared only with a deployment, so the epsilon CLI had no judge until written by hand (F4)."
 ```
 
 ---
@@ -498,7 +498,7 @@ def model_for(profile: dict, post) -> str:
 git add flotilla/onboard/questions.py flotilla/fleet/launch.py tests
 git commit -m "feat(onboard): the fleet's model is one answer, not six post files
 
-Running the snake fleet on Sonnet meant editing model: in every post (F5); fleet.model now names a model every
+Running the epsilon fleet on Sonnet meant editing model: in every post (F5); fleet.model now names a model every
 post without its own runs on."
 ```
 
@@ -563,7 +563,7 @@ a typed command `_tier_name(value, taken)` in place of `custom-{n}`.
 git add flotilla/onboard/profile.py tests/test_onboard_profile.py
 git commit -m "feat(onboard): a typed tier is named after its command
 
-Every receipt and refusal printed custom-1 for the snake's pytest tier (F6)."
+Every receipt and refusal printed custom-1 for the epsilon's pytest tier (F6)."
 ```
 
 ---
@@ -632,7 +632,7 @@ def numbered_after(post, *, taken: set[str], live: set[str], store) -> str:
 git add flotilla/fleet/names.py flotilla/fleet/commands.py tests/test_fleet_names.py
 git commit -m "feat(fleet): spawn --dry-run says where each post's numbering continues from
 
-The snake's minor was number 38 because other-project sessions held the lower numbers, which read as a bug (F7)."
+The epsilon's minor was number 38 because other-project sessions held the lower numbers, which read as a bug (F7)."
 ```
 
 ---
@@ -761,7 +761,7 @@ confirm they ran (F11)."
 ### Task 8: The record — decisions, spec, findings
 
 **Files:** `docs/specs/2026-09-22-decisions-log.md`, `docs/specs/2026-09-22-flotilla-design.md`,
-`docs/field-tests/2026-09-27-snake-fleet.md`
+`docs/field-tests/2026-09-27-epsilon-fleet.md`
 
 - [ ] **Step 1:** Decisions 107–113 after the last entry, one per decision of this plan, each ending with its
   source (`(the person's triage 2026-09-28)` / `(executor's decision, field fixes part 4, 2026-09-29)`).

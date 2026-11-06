@@ -75,7 +75,7 @@ from flotilla.onboard.detect_tests import tree_setup  # noqa: E402
                                            ("yarn.lock", "yarn install --frozen-lockfile"),
                                            ("poetry.lock", "poetry install")])
 def test_a_lockfile_names_how_a_fresh_tree_gets_its_dependencies(tmp_path, lock, command):
-    """Worldcore field test W24: every seat found its tree without node_modules; the sender did not, and its push
+    """Beta field test W24: every seat found its tree without node_modules; the sender did not, and its push
     receipt went red with `npm test` having nothing to run with."""
     (tmp_path / lock).write_text("{}", encoding="utf-8")
     assert tree_setup(tmp_path)["command"] == command

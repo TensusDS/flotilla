@@ -220,7 +220,7 @@ def save_measurements(state: Path, repo_key: str, runs: list[TierRun]) -> Path:
 
 
 def measure_once(state: Path, repo_key: str, times: dict[str, float]) -> None:
-    """Record a tier's green time where this machine has none yet (twosuns field test of 0.6.7, W2): a receipt is
+    """Record a tier's green time where this machine has none yet (alpha field test of 0.6.7, W2): a receipt is
     the first green run a machine sees after the one onboarding made elsewhere, and a measurement already there -
     onboarding's - stands. A side effect: a failed write measures nothing and never costs the receipt it rides on
     (review of 0.6.8, I1)."""

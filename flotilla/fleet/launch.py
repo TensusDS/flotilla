@@ -122,7 +122,7 @@ def system_prompt(seat: Seat, post, *, main: Path) -> str:
             "given here: never infer them from the work. " + REFUSAL + "\n\n" + post.body.strip())
 
 
-#: Every seat, every post (twosuns update to 0.7.1: the person had to ask what to run). One text, so the posts
+#: Every seat, every post (alpha update to 0.7.1: the person had to ask what to run). One text, so the posts
 #: cannot drift apart on it.
 REFUSAL = ("When a call is refused to you and only the person can allow it - auto mode's classifier or a permission "
            "rule - send the orchestrator (a helper: the session that raised it; the orchestrator: the person) the "

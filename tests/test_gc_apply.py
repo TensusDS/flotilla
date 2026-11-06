@@ -171,7 +171,7 @@ def test_archive_and_remove_records_twins_and_last_copies(tmp_path):
     git(root, "push", "-q", "origin", "HEAD:main")
     (root / "out").mkdir()
     (root / "out" / "kept.bin").write_bytes(b"in the checkout")
-    git(root, "add", "-f", "out/kept.bin")   # only a copy git tracks in the checkout counts (void-lanes, 2026-11-05)
+    git(root, "add", "-f", "out/kept.bin")   # only a copy git tracks in the checkout counts (gamma, 2026-11-05)
     first = tmp_path / "app-main-1"
     git(root, "worktree", "add", "-q", "-b", "fleet/main-1", str(first))
     (first / "out").mkdir()

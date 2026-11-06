@@ -12,7 +12,7 @@ run in parallel by another session; do not edit those files.
 
 **Tech Stack:** Python 3.11+ stdlib, git, pytest via `uv`.
 
-**Spec:** the field test `docs/field-tests/2026-09-29-twosuns-fleet.md` — T2, H19, H22, H41, H44, and part 6's
+**Spec:** the field test `docs/field-tests/2026-09-29-alpha-fleet.md` — T2, H19, H22, H41, H44, and part 6's
 deferred minors (listed in Task 6); `docs/specs/2026-09-22-flotilla-design.md` sections 6.4 and 9 (the lane).
 Read each finding before its task.
 

@@ -19,4 +19,4 @@ class NotYet(MoveRefused):
 
 class OrderWait(NotYet):
     """A wait the fleet's rules intend - work waiting on other work - not a fault anywhere: the session is told so,
-    so it does not report it as a flotilla defect (the person, 2026-10-27, on twosuns field report A5)."""
+    so it does not report it as a flotilla defect (the person, 2026-10-27, on alpha field report A5)."""

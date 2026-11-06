@@ -168,7 +168,7 @@ def test_the_default_ceiling_follows_what_the_tiers_were_measured_at(tmp_path, m
 
 
 def test_lane_stop_stops_the_holders_own_run(tmp_path, monkeypatch):
-    """Worldcore field test W22: to free the lane a seat ran `pkill -f` and killed itself first. Flotilla recorded
+    """Beta field test W22: to free the lane a seat ran `pkill -f` and killed itself first. Flotilla recorded
     the run's pid; `lane stop` uses it."""
     import os
     import subprocess
@@ -208,7 +208,7 @@ def test_lane_stop_does_not_take_another_sessions_word(tmp_path, monkeypatch):
 
 
 def test_lane_status_is_the_bare_lane(tmp_path, monkeypatch):
-    """Twosuns field test of 0.6.7, W7: a judge waiting for the lane guessed `flotilla lane status` and met argparse's
+    """Alpha field test of 0.6.7, W7: a judge waiting for the lane guessed `flotilla lane status` and met argparse's
     "invalid choice"; the status is the bare `flotilla lane`."""
     root = onboarded(tmp_path, monkeypatch)
     code, out = run_cli("lane", "status", "--root", str(root))
@@ -385,7 +385,7 @@ def _lane_with(monkeypatch, reading, cwds):
 
 
 def test_foreign_runs_are_named_where_the_slots_are(tmp_path, monkeypatch):
-    """Void-lanes-online, 2026-11-01: two unbooked suites held both slots, and `flotilla lane` said `held: nobody`
+    """Gamma, 2026-11-01: two unbooked suites held both slots, and `flotilla lane` said `held: nobody`
     while a waiter waited - the reader saw nothing in the way. A foreign run is shown where the slots are."""
     from flotilla.lane.machine import Answer, Reading
     from flotilla.lane.procs import Proc
@@ -501,19 +501,19 @@ def _queue(tmp_path, *people):
 def test_the_lane_shows_its_mode_and_each_projects_waiting(tmp_path, monkeypatch):
     root = onboarded(tmp_path, monkeypatch)
     _machine(tmp_path, lane_share="fair")
-    _queue(tmp_path, ("twosuns main 1", "twosuns"), ("twosuns main 2", "twosuns"), ("void main 1", "void"))
+    _queue(tmp_path, ("alpha main 1", "alpha"), ("alpha main 2", "alpha"), ("void main 1", "void"))
     code, out = run_cli("lane", "--root", str(root))
     assert code == 0 and "share: fair (machine.toml lane_share)" in out, out
-    assert "project twosuns: 2 waiting, holds 0, last turn not in 24 h" in out
+    assert "project alpha: 2 waiting, holds 0, last turn not in 24 h" in out
     assert "project void: 1 waiting, holds 0, last turn not in 24 h" in out
 
 
 def test_a_waiter_says_which_project_goes_first(tmp_path, monkeypatch):
     root = onboarded(tmp_path, monkeypatch)
     _machine(tmp_path, lane_share="fair")
-    _queue(tmp_path, ("twosuns main 1", "twosuns"), ("void main 1", "void"), ("twosuns main 2", "twosuns"))
+    _queue(tmp_path, ("alpha main 1", "alpha"), ("void main 1", "void"), ("alpha main 2", "alpha"))
     _, out = run_cli("lane", "--root", str(root))
-    [line] = [line for line in out.splitlines() if "twosuns main 2" in line]
+    [line] = [line for line in out.splitlines() if "alpha main 2" in line]
     assert "waits because:" in line and "P 0." in line, line   # 0.30: the fair share breaks ties of priority
 
 
@@ -527,9 +527,9 @@ def test_a_share_not_understood_reads_as_fifo_and_says_so(tmp_path, monkeypatch)
 def test_a_project_name_is_shown_as_data(tmp_path, monkeypatch):
     root = onboarded(tmp_path, monkeypatch)
     _machine(tmp_path, lane_share="fair")
-    _queue(tmp_path, ("main 1", "evil\x1b[2J\nproject twosuns: 0 waiting"))
+    _queue(tmp_path, ("main 1", "evil\x1b[2J\nproject alpha: 0 waiting"))
     _, out = run_cli("lane", "--root", str(root))
-    assert "\x1b" not in out and "\\x1b[2J\\nproject twosuns" in out, out
+    assert "\x1b" not in out and "\\x1b[2J\\nproject alpha" in out, out
 
 
 

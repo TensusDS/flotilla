@@ -1,20 +1,20 @@
 # Projects sharing one machine: a fair lane and a shared rig session - design
 
 Status: proposed for 0.25.0. Asked by the person on 2026-11-01 and 2026-11-02, from two field fleets that share one
-machine (twosuns and void-lanes-online), and decided with them on 2026-11-02: the lane's `fair` mode first, `slots`
-later; void-lanes-online moves to 0.25 when it ships, twosuns stays on its install for now.
+machine (alpha and gamma), and decided with them on 2026-11-02: the lane's `fair` mode first, `slots`
+later; gamma moves to 0.25 when it ships, alpha stays on its install for now.
 
 ## 1. What it is for
 
 One machine, two projects, one lane. At `lane_capacity = 1` the lane is strict first come, first served across
 every project, so a project with a deep backlog holds every other project's work behind it. Measured on 2026-10-31
-(16:00-23:40 UTC): void-lanes-online made 26 bookings with a median run of 7.1 s and waited a median 42.8 min for
+(16:00-23:40 UTC): gamma made 26 bookings with a median run of 7.1 s and waited a median 42.8 min for
 each; its work used 3 minutes of lane time in 7.5 hours, and a handover green at commit time waited about 45 minutes
-for its receipt. twosuns made 117 bookings in the same hours.
+for its receipt. alpha made 117 bookings in the same hours.
 
 The rig has the same shape one level up. A rig session is opened by the person for one project's request, and today
 any project's run takes it: on 2026-11-01 (23:19-23:30) the person agreed to share session s79 with
-void-lanes-online, and the two orchestrators agreed slots between themselves by letters, with one ceiling and one
+gamma, and the two orchestrators agreed slots between themselves by letters, with one ceiling and one
 budget and no record of which project spent what.
 
 The person's words: one project's fleet should not wait on another's at all, even when both have only long runs.
@@ -73,12 +73,12 @@ slot from standing empty:
 
 So older seats keep their order among themselves and take a slot whenever they are first in line, and newer seats
 take their project's turn without ever leaving a slot to a waiter that cannot take it. On a machine where every
-waiting seat is older, nothing changes. This is why void-lanes-online moves to 0.25: the protection reaches only the
+waiting seat is older, nothing changes. This is why gamma moves to 0.25: the protection reaches only the
 seats that run it.
 
 **What is recorded and shown.** Each `held` event records the path it took: `fifo`, or `fair` with the project that
 was served least recently and when. `flotilla lane` prints the mode, then for each project with waiters its waiting
-count and last service, and each waiter's reason in fair terms ("project X was served 3 min ago; `twosuns` goes
+count and last service, and each waiter's reason in fair terms ("project X was served 3 min ago; `alpha` goes
 first: served 40 min ago").
 
 **Version gating against the old reader.** A flotilla before 0.25 reading a journal with `rule = 2` bookings and
@@ -99,7 +99,7 @@ if known, plus the one named, and says plainly when the opener's project is not 
 
 **A run from another project.** The list gates `rig run`, `rig up` (it spends the session's budget) and `rig down`
 (it stops the session's machine) alike *(builder's call, 2026-11-02)*. Each is refused before anything is spent:
-"session s79 serves twosuns; the person adds this project with `! flotilla rig share <key>`", and a request is
+"session s79 serves alpha; the person adds this project with `! flotilla rig share <key>`", and a request is
 recorded for the orchestrator, as a run with no session records one today. A run already going when a project is
 unshared finishes.
 

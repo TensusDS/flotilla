@@ -40,7 +40,7 @@ def adopt(ledger: Ledger, actor: Actor, branch: str, *, to: str) -> Row:
             raise MoveRefused(f"{heir} holds no post that owns this work")
         trail = f"{row.owner} <- {row.adopted_from}" if row.adopted_from else row.owner
         evidence = {"from": row.owner}
-        if row.tree:   # the gone owner's clean tree lets go of the branch, so the heir can switch to it (twosuns A7)
+        if row.tree:   # the gone owner's clean tree lets go of the branch, so the heir can switch to it (alpha A7)
             held = ledger.run(["git", "-C", row.tree, "symbolic-ref", "--quiet", "--short", "HEAD"],
                               capture_output=True, text=True, check=False).stdout.strip()
             # only while it still holds this branch: by now it may be on another, perhaps a later seat's (review, M2)
@@ -58,7 +58,7 @@ def _live_or_empty(ledger: Ledger) -> set[str]:
 
 
 def adopt_from(ledger: Ledger, actor: Actor, gone: str, *, to: str) -> tuple[list[Row], list[tuple[str, str]]]:
-    """Every open row a gone session owns, to one live heir, in one move each (twosuns, 0.7.16: five sessions
+    """Every open row a gone session owns, to one live heir, in one move each (alpha, 0.7.16: five sessions
     stopped in one night and their rows were handed over one command at a time). Post seats stay: a seat is the
     post held, raised again by `flotilla spawn --fill`, not work to adopt."""
     gone = gone.strip()
@@ -92,7 +92,7 @@ def hold(ledger: Ledger, actor: Actor, branch: str, *, until: str, why: str) -> 
             raise MoveRefused(f"`{branch}` is queued as a pull request, which GitHub can merge whatever the ledger "
                               "says; hold an accepted branch before it is queued, or close its PR")
         # a wait on the person may be put off in any state: a judge's check on a shipped row, a question on a
-        # claimed one (60 of the twosuns trace's 144 waits); it stays in the person's queue as put off (0.26.0)
+        # claimed one (60 of the alpha trace's 144 waits); it stays in the person's queue as put off (0.26.0)
         put_off = until == THE_PERSON and row.state != "reserved" and row.waiting_on.strip().lower() == THE_PERSON
         if row.state not in HOLDABLE and not put_off:
             raise MoveRefused(f"a hold keeps work out of the reading queue, or out of the batch to ship; `{branch}` "
@@ -214,7 +214,7 @@ def _reaches(rows: dict, start: str, goal: str) -> list[str]:
 
 
 def requires(ledger: Ledger, actor: Actor, branch: str, *, add=(), drop=(), why: str) -> Row:
-    """Add or drop what a row builds on, on the record (twosuns item 11): the owner, or a post that may. A drop is
+    """Add or drop what a row builds on, on the record (alpha item 11): the owner, or a post that may. A drop is
     refused while the row's tip carries commits of the dropped row that trunk does not, so a link is only lifted
     when the work no longer needs it."""
     if not why.strip():

@@ -578,8 +578,8 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
 121. **`broke` on a part is legal** (H38): the part gate ("walk a path, not a part") exists so a part is not
    accepted as the whole; a defect seen on a part is a defect whatever ships later. `walked` keeps the gate.
    (planner's decision, field fixes part 6 track B, 2026-09-30)
-122. **A fix branch drops the broken branch's type prefix** (H26a): `feat/stage-2-two-suns` becomes
-   `fix/stage-2-two-suns`, not `fix/feat/stage-2-two-suns`; a branch with no `/` gets `fix/<branch>` as before, and a
+122. **A fix branch drops the broken branch's type prefix** (H26a): `feat/stage-2-alpha` becomes
+   `fix/stage-2-alpha`, not `fix/feat/stage-2-alpha`; a branch with no `/` gets `fix/<branch>` as before, and a
    name already taken by a row is numbered. (planner's decision, field fixes part 6 track B, 2026-09-30)
 123. **The judge may take a `broke` back** with `flotilla work unbroke <branch> --why "<why>"` (H27): legal on a
    shipped, broken row with no open fix row; it clears `broken`, keeps the history, and the row is the judge's to
@@ -725,7 +725,7 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    a version or help question and `playwright install`; `lane.memory_floor_mb`, `fleet.memory_floor_mb` and the
    new `fleet.seat_cost_mb` fall back to their defaults and say so when they are not whole numbers; spawn's memory
    floor counts every seat it is about to raise at `fleet.seat_cost_mb` (default 800, a seat with its servers in
-   the twosuns run) rather than free memory once; `check_version` without git prints a message.
+   the alpha run) rather than free memory once; `check_version` without git prints a message.
    (planner's decision, field fixes part 8 track B, 2026-10-01)
 159. **A fleet session may raise a helper for a piece of its own work** (`flotilla helper raise --for <branch>
    --task`): the owner of an open row in `claimed` or `fixing`; at most `fleet.helpers_per_seat` (default 2) live
@@ -811,7 +811,7 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
 175. **Only a reader's own vouch accounts batch work** (security review 2026-10-01, F1; field test H21): `inbatch`
    records a change born in the batch and names who is asked to read it, and that is all - the sender's word that
    a reviewer read it accounts nothing. The commit counts as read once the reader vouches for it with their own
-   move (`vouch` now finds an inbatch row by its label and leaves it as it was). In twosuns the auto-mode
+   move (`vouch` now finds an inbatch row by its label and leaves it as it was). In alpha the auto-mode
    classifier refused `inbatch --read-by` as a bypass on 2026-10-01: it was right. (planner's decision, security
    fixes group 3, 2026-10-01)
 176. **A change is recognised by a fingerprint that keeps whitespace** (F15): `git patch-id --verbatim` replaces
@@ -933,7 +933,7 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    its prompt: that runs inside the orchestrator's background session and is refused. (planner's decision, security
    fixes, 2026-10-01)
 
-190. **Quick onboarding: the recommended answers, one yes, published by onboarding itself** (worldcore field test,
+190. **Quick onboarding: the recommended answers, one yes, published by onboarding itself** (beta field test,
    the person's request, 2026-10-01: "the settings stay for those who want to tune; the rest just onboard"). The
    onboard skill asks first: quick or custom. Quick (`flotilla onboard quick`) records the recommended answer to every
    question that applies - what detection found (trunk, test commands, GitHub CI), and otherwise every branch
@@ -967,12 +967,12 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    cannot see (the shell ceiling: `sh -c`, `$( )`, a script) still meets only the permission prompt, and a `!` typed in
    a background orchestrator's prompt is still refused by the person check. (planner's decision, 2026-10-01)
 
-193. **A sed range from the top to a pattern is not a line-number edit** (worldcore field test W4): `0,/re/` (GNU) and
+193. **A sed range from the top to a pattern is not a line-number edit** (beta field test W4): `0,/re/` (GNU) and
    `1,/re/` run from the top of the file to the first match; line 1 is the top whatever was edited before, and the end
    is found by its text, so neither goes stale. Any other counted start (`3,/re/`) is still refused. (planner's
    decision, 2026-10-01)
 
-194. **The install line declares the marketplace in the project** (worldcore field test W1): `claude plugin marketplace
+194. **The install line declares the marketplace in the project** (beta field test W1): `claude plugin marketplace
    add` writes to the person's own settings by default, so the project's `.claude/settings.json` enabled a plugin
    from a marketplace nobody else knew, and the README's "commits a marketplace entry" was false. The README now adds
    the marketplace with `--scope project`, which writes `extraKnownMarketplaces` beside `enabledPlugins` (measured
@@ -993,12 +993,12 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    through the skill, and a refused tool call would leave the skill unable to finish it. (planner's decision,
    2026-10-01)
 
-196. **Seat names carry the project, and numbers run per project** (worldcore field test W10, W11; the person's
-   request, 2026-10-01: "worldcore-orchestrator 1, 2, 3"). The machine-wide names journal made worldcore's first
-   orchestrator `orchestrator 5` and sent its orchestrator into twosuns' sessions to understand a name and a refusal.
+196. **Seat names carry the project, and numbers run per project** (beta field test W10, W11; the person's
+   request, 2026-10-01: "beta-orchestrator 1, 2, 3"). The machine-wide names journal made beta's first
+   orchestrator `orchestrator 5` and sent its orchestrator into alpha' sessions to understand a name and a refusal.
    Session names stay machine-wide addresses - messages are delivered by name - so the project gets a word of its
    own: `[fleet] name` in the profile (onboarding writes the directory's name), prefixed to every post's pattern when
-   the rules are read (`worldcore-` + `orchestrator {n}`). A machine-wide journal records which project (by its
+   the rules are read (`beta-` + `orchestrator {n}`). A machine-wide journal records which project (by its
    repository key) holds which word; a second project that wants a taken word gets `-2`, `-3` and is told so -
    readable rather than a hash (the person's question). The names journal records each name's pattern, so each
    project counts from 1; records from before keep the unprefixed, machine-wide series. Numbering steps over seat
@@ -1006,7 +1006,7 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    fleet is not renamed under it. Spawn's one-copy check counts only this project's live sessions and names only
    them (W10). (planner's decision, 2026-10-01)
 
-197. **The leading session is named by the prompt hook, not by the person** (worldcore field test W9, the person's
+197. **The leading session is named by the prompt hook, not by the person** (beta field test W9, the person's
    remark: asking the session to rename itself "will read as a bug"). `/rename` is the person's command and does not
    wake the session; a UserPromptSubmit hook may return `sessionTitle`, and the census then lists the session under
    it (measured on Claude Code 2.1.287 in a throwaway session). `flotilla spawn --lead` records "this session leads,
@@ -1033,7 +1033,7 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    so two checkouts of one origin, each with a live sender, are not refused at spawn - a rare shape, left open and not
    measured. (planner's decision, 2026-10-01)
 
-199. **Auto mode is quick onboarding's answer; flotilla's own commands never wait on the person** (worldcore field test
+199. **Auto mode is quick onboarding's answer; flotilla's own commands never wait on the person** (beta field test
    W12-W16; the person's decision, 2026-10-02: "we work inside Claude Code's infrastructure anyway, and they made auto
    mode the default"). With `ask`, three seats' first census put six questions to the person in a minute, each about
    flotilla's own read commands. Quick now answers `permissions = auto` and lists it first as the recommended option;
@@ -1065,17 +1065,17 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    stays on spawn only and does not see a model the person launched Claude Code with; a corrupt leads store fails
    `flotilla fleet` loudly rather than hiding it. (planner's decision, 2026-10-02)
 
-201. **A test tier is not run twice over the same files** (the slowdown measured on the twosuns fleet, 2026-10-02:
+201. **A test tier is not run twice over the same files** (the slowdown measured on the alpha fleet, 2026-10-02:
    `docs/field-tests/2026-10-02-fleet-slowdown.md`). A tier's answer depends on the files it tests and its command,
    not on the commit that carries them: a green run is kept per file tree and tier command, and a receipt over a
    commit with the same files - a sender's merge that changes no file - reuses it, without queueing for the lane when
    nothing is left to run. A red tier always runs again. A red, killed or timed-out tier carries its exit code and its
-   last lines in the receipt, and `receipt run` prints them (worldcore W23). Ruling: what a tree has outside git (its
+   last lines in the receipt, and `receipt run` prints them (beta W23). Ruling: what a tree has outside git (its
    installed dependencies) is not part of the files; a tier green over the author's tree counts for the sender's
    identical files, which is the point - and the setup of decision 203 keeps such trees alike. (planner's decision,
    2026-10-02)
 
-202. **A run in the lane has a ceiling, and its holder can stop it** (worldcore W21, W22). A command in the lane runs in
+202. **A run in the lane has a ceiling, and its holder can stop it** (beta W21, W22). A command in the lane runs in
    its own process group; past its ceiling the whole group is stopped and the run is recorded as killed. The ceiling
    is the profile's `[lane] max_run_seconds`, else ten times the slowest tier measured on this machine and never under
    ten minutes, else half an hour; `--max` names one for a single run; receipts use it as their tier timeout.
@@ -1083,7 +1083,7 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    own command line - and the stopped run says so. A process that has ended but is not yet reaped no longer reads as
    a live run. `lane` shows how long each run has held it. (planner's decision, 2026-10-02)
 
-203. **A fresh tree is set up before its first receipt** (worldcore W24). Onboarding detects how a checkout gets its
+203. **A fresh tree is set up before its first receipt** (beta W24). Onboarding detects how a checkout gets its
    dependencies from its lockfile - `npm ci`, `pnpm install --frozen-lockfile`, `yarn install --frozen-lockfile`,
    `poetry install`; `uv run` syncs itself - and writes it as `tests.setup_command`, shown among the profile's shell
    commands before the person's yes. A receipt with something to run sets the tree up first, inside the lane, when its
@@ -1154,7 +1154,7 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    decision, 2026-10-02)
 
 209. **The sweep lifts flotilla's own lock of a dead seat's tree, and no other lock** (cleaning this machine,
-   2026-10-02: a snake fleet stopped by force left five trees locked `flotilla: <session>`, and git refused to remove
+   2026-10-02: a epsilon fleet stopped by force left five trees locked `flotilla: <session>`, and git refused to remove
    them). Spawn locks a seat's tree with that reason; when the named session is not in the census and the tree is
    surely done with, the sweep unlocks it and removes it. A lock naming a live session, or any lock flotilla did not
    write, keeps the tree and is named. (planner's decision, 2026-10-02)
@@ -1179,7 +1179,7 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    onboarding's check before raising the fleet, so the turn ends on "Tell me what to build". (planner's decision,
    2026-10-02)
 
-212. **A fleet nobody leads is a question put to the person, in the command and in the skill** (twosuns field test
+212. **A fleet nobody leads is a question put to the person, in the command and in the skill** (alpha field test
    of 0.6.7, W1 and W3; the person: "it should offer to become the orchestrator itself, or to raise one - I know what
    to do, a new user may not"). A person who stood a fleet down and opens a fresh session to raise a new one met a
    profile from 0.3 whose default had no orchestrator; `/flotilla:spawn` raised `main, review, judge`, which waited
@@ -1194,7 +1194,7 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    skill asks "who leads" only after `flotilla fleet` shows nobody does (review of 0.6.8, I2). The lead path raises
    the composition the person named, not the default (I3). (planner's decision, 2026-10-02)
 
-213. **The first green receipt measures a tier this machine never measured** (twosuns field test of 0.6.7, W2). Tier
+213. **The first green receipt measures a tier this machine never measured** (alpha field test of 0.6.7, W2). Tier
    times were written only by `onboard write`, so a machine other than the one that onboarded - or a profile kept
    through a re-onboarding - had none: `onboard check` reported a finding with no command to clear it, and the
    lane's receipt ceiling fell back to half an hour. A tier a receipt actually ran green (not reused) records its
@@ -1202,7 +1202,7 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    Measuring is a side effect: written whole through a staged file, and an unreadable file or a failed write
    measures nothing rather than costing the receipt (review of 0.6.8, I1). (planner's decision, 2026-10-02)
 
-214. **A reader closes a direct commit on trunk by vouching for it there** (twosuns field test of 0.6.7, W5). A
+214. **A reader closes a direct commit on trunk by vouching for it there** (alpha field test of 0.6.7, W5). A
    profile commit straight to trunk was a `direct_commit` finding no move closed: `vouch` and `offledger` wanted an
    open row, `inbatch` sent the sender to `offledger`, and trunk never has a row - ten messages and three sessions'
    turns over two lines. Exempting `.flotilla/` was rejected: the profile and the posts are what every session
@@ -1216,12 +1216,12 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    `branch` = trunk and move `vouch` (M1): a project event script must not treat that branch as feature work.
    (planner's decision, 2026-10-03)
 
-215. **The fleet's rules are not the product the judge walks** (twosuns field test of 0.6.7, W6). `walked` accepts a
+215. **The fleet's rules are not the product the judge walks** (alpha field test of 0.6.7, W6). `walked` accepts a
    build that differs from the deployed revision only in `.flotilla/`, and its evidence says so; a difference
    anywhere else is refused as before; the diff runs with `--no-renames`, so a product file moved into `.flotilla/`
    is a product change (review of 0.6.9, I2). (planner's decision, 2026-10-03)
 
-216. **A gone session's move comes with who can take it** (twosuns field test of 0.6.7; the person's proposal: "if it
+216. **A gone session's move comes with who can take it** (alpha field test of 0.6.7; the person's proposal: "if it
    is closed, tell the orchestrator, and a free session of this fleet - or a new one - adopts the work"). The
    `mover_gone` alarm, the note a move prints when its letter has no live recipient, and `broke`'s own line now name
    the live sessions of the gone session's post, least loaded first, and the `adopt` (or `assign --reader`) line,
@@ -1232,10 +1232,10 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    sessions only (I4), a gone reader's are ordered by what they read (M7), and the printed line is shell-quoted
    (M8). (planner's decision, 2026-10-03)
 
-217. **`flotilla lane status` is the bare `flotilla lane`** (twosuns field test of 0.6.7, W7). (planner's decision,
+217. **`flotilla lane status` is the bare `flotilla lane`** (alpha field test of 0.6.7, W7). (planner's decision,
    2026-10-03)
 
-218. **The reviewer runs its tiers itself; W8's reuse is rejected** (twosuns field test of 0.6.7, W8; review of
+218. **The reviewer runs its tiers itself; W8's reuse is rejected** (alpha field test of 0.6.7, W8; review of
    0.6.9, I5). W8 had the reviewer run its tiers through a receipt so the author's green over the same files would
    be reused. A cached green records no runner, was made in the author's tree by the author, and sits in the shared
    state directory: reusing it would mean no run of the tests that is not the author's. The reviewer runs the tiers
@@ -1243,7 +1243,7 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    still reuses the author's cached green (decision 201) - a cached green should name its runner, and a push
    receipt should reuse a green the reader made, not the author's. (planner's decision, 2026-10-03)
 
-219. **flotilla's guard hook lets past auto mode's classifier exactly what flotilla's own checks pass** (twosuns
+219. **flotilla's guard hook lets past auto mode's classifier exactly what flotilla's own checks pass** (alpha
    field test of 0.6.7, W9-W11). In auto mode Claude Code's classifier judged flotilla's commands by the
    conversation around them: it refused the sender's push of reviewed work as "Merge Without Review", then `work
    land` - a ledger record - the same way, and after one refusal it grew suspicious of read-only calls too; a
@@ -1284,7 +1284,7 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    ledger does not hold unique. (planner's decision,
    2026-10-03; the person chose the exact-command allow over a prose classifier rule)
 
-220. **`reconcile` names `land` without a placeholder** (twosuns field test of 0.6.7, W11): `land` finds the merge
+220. **`reconcile` names `land` without a placeholder** (alpha field test of 0.6.7, W11): `land` finds the merge
    that carries a row itself, and "--merge <the commit>" made the sender ask. (planner's decision, 2026-10-03)
 
 221. **What the scan of 0.6.10 found is closed where it enters** (Claude Security scan of 0.6.10 at `0227f05`,
@@ -1364,7 +1364,7 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    read is refused with no override. Booking names compare as stored. (planner's decision, 2026-10-03)
 
 224. **A wait whose object is gone stops silencing the watch; work piled on one seat is named** (Claude Code
-   session, 2026-10-04; from watching the twosuns fleet on 0.7.1). A recorded wait makes the watch skip its row in
+   session, 2026-10-04; from watching the alpha fleet on 0.7.1). A recorded wait makes the watch skip its row in
    the dropped-ball check, and nothing asked whether what it waited on was still there - holds had that check
    (`hold_lifted`), waits did not. `views.wait_over` asks it: a branch with rows and none open lifts the wait, a
    session the ledger knows and the census does not list is gone; the person, the lane, free text, a name no row
@@ -1436,7 +1436,7 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    (planner's decision, 2026-10-04)
 
 229. **A refusal the person can lift reaches them as a session's proposal** (Claude Code session, 2026-10-04; from
-   the twosuns update to 0.7.1, where the classifier refused a settings edit and the person had to ask what to run).
+   the alpha update to 0.7.1, where the classifier refused a settings edit and the person had to ask what to run).
    Every seat - in the one text all posts share, `launch.REFUSAL` - sends the orchestrator the refusal's text
    verbatim and a proposal: what the person could run, ready to paste with `!`, or the exact edit, and the command
    that checks it worked; it records the wait on the person. The first version had the orchestrator relay that
@@ -1493,7 +1493,7 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
 
 233. **Rented machines are guarded before any is rented** (Claude Code session, 2026-10-06; design
    `docs/specs/2026-10-06-rig-design.md`, stage 1). A probe on vast.ai showed a GPU box up in 2.5 minutes and the
-   twosuns scene in 14-18 s against two minutes on the field machine. Money must not depend on a session that may
+   alpha scene in 14-18 s against two minutes on the field machine. Money must not depend on a session that may
    die, so the first release carries only what stops spending. Two read-only reviews of the first draft reshaped it:
    the `vastai` CLI retries with the person's account key and exits 0 after an API error, so vast is reached over
    REST; cron named a versioned plugin path a cron-run reap kept pinning, so cron runs a launcher in the state
@@ -1533,7 +1533,7 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    of the person's (an agent forwarded to a stranger's host); `--get` never writes where code runs; a run's tag is
    random so stopping one never ends a neighbour; a broken connection asks the machine before freeing it; the
    guard reads a rig line with bash's quoting, after a toggle-style reading let an apostrophe hide `$(..)`, and
-   refuses substitutions in heredoc bodies. Live check 2 (2026-10-08, about 0.05 $) rendered the twosuns scene on a
+   refuses substitutions in heredoc bodies. Live check 2 (2026-10-08, about 0.05 $) rendered the alpha scene on a
    P100 through `rig run`, ran two runs side by side, stopped a render at its ceiling with nothing left on the box,
    and found two things fixed before release: a client killed outright was recorded as the command's exit, and the
    default image's Node was too old for vite 8 (now v1.64.0-noble, Node 24, at the person's word).
@@ -1593,7 +1593,7 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    apart from theirs.
 
 237. **A stale offer is passed over; nothing rented frees the ceiling; a run waits for an offer** (Claude Code
-   session with the person, 2026-10-14; field report from twosuns on 0.10.2). `raise_machine` took `offers[0]` and
+   session with the person, 2026-10-14; field report from alpha on 0.10.2). `raise_machine` took `offers[0]` and
    created it once; vast's search still listed an ask it no longer rented (400, "error 404/3603: no_such_ask ...
    is not available"), so two runs a minute apart failed on the same id. Now up to five offers are tried, within
    the same ceilings, and only on that answer: the vast adapter raises `OfferGone` for a 400/404/410 naming
@@ -1778,12 +1778,12 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    when a plan takes them, not one by one as they arrive.
 
 246. **A wait the rules intend says it is no fault; the person's yes is asked only of code** (the person,
-   2026-10-27, on the twosuns field report of 2026-10-24..27). Seats reported refusals by design as flotilla defects,
+   2026-10-27, on the alpha field report of 2026-10-24..27). Seats reported refusals by design as flotilla defects,
    because every refusal ended with "a refusal that names no way forward is a flotilla defect". Work waiting on other
    work is now an `OrderWait`, printed as `not yet` with a line saying nothing is wrong; guards that cannot read a
    command, and a rig `--get` of a type that never comes back, say they are the guard or the project's setting; the
    skill lists what is not a fault, Claude Code's own behaviour included. And the person's rule "code ships on a yes"
-   was held by no mechanism: the twosuns profile let the sender merge everything. `[flow] approve_paths` narrows
+   was held by no mechanism: the alpha profile let the sender merge everything. `[flow] approve_paths` narrows
    `merge_authorized_by = "human"` to work touching those paths, judged by every commit of the work (not the net
    diff) and by what landing changes on trunk, per vouched commit, with the fleet's rules and what runs whatever its
    type (CI, hooks, manifests, build files) always the person's; onboarding proposes `**` less what it finds
@@ -1793,7 +1793,7 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
 
 247. **A tree and its branch are two decisions; the orchestrator cleans as its last step** (the person, 2026-10-21
    and 2026-10-27; gc design `docs/specs/2026-10-21-gc-design.md`, stage 1). Decision 206's one test made a tree
-   wait for its branch to land, so 70 of twosuns' 90 trees stayed though a branch held every commit in them. A tree
+   wait for its branch to land, so 70 of alpha' 90 trees stayed though a branch held every commit in them. A tree
    now goes when it holds nothing that exists nowhere else: clean, nothing in use, its HEAD reached by a ref that
    survives the pass - any ref, the person's `refs/attic/*` included - and its ignored files regenerable, a directory
    judged by what is in it. A branch goes when it has landed: origin's trunk as origin answers, the local trunk in
@@ -1818,7 +1818,7 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    outside a tree's own directory: the archive's records are files any session can edit. A guard refuses sessions
    removing fleet trees, fleet branches, parked refs or the archive by hand (decision 245's ceiling stands). The
    report keeps space freed apart from space moved.
-249. **A copy counts only where git can give it back** (the person, 2026-11-05; void-lanes field note, 0.29.1). A
+249. **A copy counts only where git can give it back** (the person, 2026-11-05; gamma field note, 0.29.1). A
    seat's empty build marker was removed on a "last copy" that was another plugin's empty log in the main checkout,
    and the report said the file "is now in" that log. In the main checkout and in a tree the pass leaves, a twin is
    now a file git tracks whose bytes are its index blob; a declared store, the archive and a reachable blob count as

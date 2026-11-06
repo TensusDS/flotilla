@@ -9,12 +9,12 @@ def at(name, cwd, **kw):
     return dataclasses.replace(sess(name, **kw), cwd=cwd)
 
 
-ROOTS = [Path("/work/snake"), Path("/work/snake-main-1")]
+ROOTS = [Path("/work/epsilon"), Path("/work/epsilon-main-1")]
 
 
 def checkouts(tmp_path):
     """A main checkout and a worktree on disk: membership reads where `.git` is."""
-    main, tree = tmp_path / "snake", tmp_path / "snake-main-1"
+    main, tree = tmp_path / "epsilon", tmp_path / "epsilon-main-1"
     (main / ".git").mkdir(parents=True)
     tree.mkdir()
     (tree / ".git").write_text("gitdir: elsewhere\n", encoding="utf-8")   # a worktree's .git is a file
@@ -43,7 +43,7 @@ def test_an_owner_elsewhere_on_disk_is_of_this_project():
 
 
 def test_a_prefix_of_the_root_is_not_inside_it():
-    assert project.members([at("x", "/work/snake-origin")], {}, [Path("/work/snake")]) == []
+    assert project.members([at("x", "/work/epsilon-origin")], {}, [Path("/work/epsilon")]) == []
 
 
 def test_roots_lists_the_main_checkout_and_its_worktrees(tmp_path):

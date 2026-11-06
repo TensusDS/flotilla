@@ -4,7 +4,7 @@
 install makes it again. The name list is applied to the entry itself (review of the cleanup, I1: `deploy/build/
 prod.env` passed for its parent). Entries are read in git's `matching` mode, so a directory shows as the entry a
 pattern matched; one whose name is not in the list is judged by what is in it - regenerable when every file in it
-is (twosuns: `tools/crystal3d/` held only `__pycache__`, and the folded name read as somebody's data). A directory
+is (alpha: `tools/crystal3d/` held only `__pycache__`, and the folded name read as somebody's data). A directory
 named for what a manifest installs is regenerable when that manifest sits beside it. Claude Code's runtime state
 under `.claude/` is regenerable, except `settings.local.json`, which holds permissions a person granted - unless it
 is byte-identical to the main checkout's. The project's `[gc] regenerable` adds names.

@@ -43,7 +43,7 @@ KEEP_REVISIONS = 5
 READ = None        # None: the READINGS script over ssh
 CEILING = None     # None: the profile's max_run_seconds
 KEY_PATH = None    # None: the rig's own key
-GET_ON_STOP = 120.0    # what a stopped run spends bringing back its --get paths (twosuns item 3)
+GET_ON_STOP = 120.0    # what a stopped run spends bringing back its --get paths (alpha item 3)
 DEFAULT_WAIT = 900.0   # a session with no recorded end: the wait before the rig queue
 BACKSTOP = 30      # the machine's own limit runs this much longer than ours: only a backstop for a dead field side
 _NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -155,7 +155,7 @@ def _status(text: str) -> dict:
 
 def _comes_back(asked, types) -> None:
     """A `--get` naming a file whose type never comes back is refused before a machine is rented: it would stay on the
-    machine and be lost with it (twosuns A8). A directory - no suffix, or a trailing slash - is unpacked by type."""
+    machine and be lost with it (alpha A8). A directory - no suffix, or a trailing slash - is unpacked by type."""
     for text in asked:
         suffix = PurePosixPath(text).suffix.lower().lstrip(".")
         if text.endswith("/") or not suffix or suffix in types:

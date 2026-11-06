@@ -229,7 +229,7 @@ def _origin_trunk(root: Path, trunk: str, run):
 
 
 def _senders_push(command: str, cwd, root, session_id: str, run) -> str:
-    """The sender's push of accounted work, rewritten so it pushes exactly what was checked, or "" (twosuns field test
+    """The sender's push of accounted work, rewritten so it pushes exactly what was checked, or "" (alpha field test
     of 0.6.7, W9; three reviews of 0.6.10). The typed command is exactly `git -C <absolute tree> push origin
     HEAD:<trunk>`; the project's flow is direct with the receipt guard on; the tree is a checkout of the project's
     repository and the home of an open row owned by the caller, whose post may land; the repository's own config

@@ -311,7 +311,7 @@ def _holds(item, expect) -> bool:
 def _counts(machine, sessions) -> bool:
     """Whether a machine counts against the machine ceiling: every live one, except a machine draining from a session
     that is no longer open whose destroy the service took - it is going, and it must not keep the next session's
-    first run waiting a reaper pass (twosuns item 4). For that pass two machines may be billed, one of them already
+    first run waiting a reaper pass (alpha item 4). For that pass two machines may be billed, one of them already
     told to die. An attempt the service refused, or one never sent for want of the machine key, frees nothing (the
     review of 0.27.0: `attempts` counts tries, not destroys); STUCK always counts."""
     if machine.state not in LIVE:

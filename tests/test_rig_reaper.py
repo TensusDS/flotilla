@@ -39,7 +39,7 @@ def world(tmp_path, monkeypatch):
 
 
 def session(rig, hours=3, budget=2.0):
-    return rig.open_session("max", "night frames", hours=hours, budget=budget)
+    return rig.open_session("person", "night frames", hours=hours, budget=budget)
 
 
 def running(rig, fake, instance="101", hourly=0.30):
@@ -516,7 +516,7 @@ def test_the_credit_line_never_reads_as_trouble(world):
     assert out.notes and not out.lines and not out.failed
 
 
-# -- a destroy the service took is recorded; only that frees the ceiling for the next session (twosuns item 4) ------
+# -- a destroy the service took is recorded; only that frees the ceiling for the next session (alpha item 4) ------
 
 def test_a_destroy_the_service_took_is_recorded_once(world):
     rig, clock, fake, providers = world

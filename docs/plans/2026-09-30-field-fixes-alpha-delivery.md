@@ -13,7 +13,7 @@ worktree and does not touch these files; the only shared file is `transitions.py
 
 **Tech Stack:** Python 3.11+ stdlib, git, pytest via `uv`.
 
-**Spec:** `docs/field-tests/2026-09-29-twosuns-fleet.md` — H20, H21, H24, H26c, H28, H29, H33, H35, H37, H43;
+**Spec:** `docs/field-tests/2026-09-29-alpha-fleet.md` — H20, H21, H24, H26c, H28, H29, H33, H35, H37, H43;
 `docs/specs/2026-09-22-flotilla-design.md` sections 6.2, 6.3.
 
 ## Decisions (the planner's, 2026-09-30; the person approved fixing the findings)
@@ -67,7 +67,7 @@ track A, 2026-09-30").
 ### Task 1: a read merge is read (H20)
 Files: `flotilla/ledger/batch.py`; tests `tests/test_ledger_batch.py`, `tests/test_ledger_delivery.py`.
 - [ ] Test: a branch that merges trunk with a hand-resolved conflict, then is accepted over its tip, lands in
-  direct mode with no refusal (the exact twosuns shape: merge commit = the verdict revision; and merge commit
+  direct mode with no refusal (the exact alpha shape: merge commit = the verdict revision; and merge commit
   inside the range with a commit after it).
 - [ ] Test: the same branch, moved after the verdict to a new conflicting merge → refused, naming the new merge.
 - [ ] Implement: in `Accounting.account`, before `if merge:`, return the `self.read` answer when `full` is in it.

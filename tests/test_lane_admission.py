@@ -155,7 +155,7 @@ def test_memory_unread_freezes_nothing(lane):   # review focus 4
 
 def test_a_booking_by_hand_is_heavy_with_the_full_cores(lane):
     lanes, _procs, _later = lane
-    raw(lanes, booking="b7", state=book.HELD, who="max", pid=None, mark="", rule=4)
+    raw(lanes, booking="b7", state=book.HELD, who="person", pid=None, mark="", rule=4)
     runs, machine = admission.view(lanes.bookings(), {}, value(), now=T0, live=lanes.live, mine="")
     found = next(r for r in runs if r.id == "b7")
     assert found.heavy and found.pinned and found.par == 8 and found.mem_mb == round(0.8 * machine.give_mb)
@@ -244,7 +244,7 @@ def test_under_twenty_first_runs_the_default_is_1024():
 
 def test_a_take_by_hand_keeps_its_promised_memory_from_later_runs(lane):
     lanes, _procs, _later = lane
-    raw(lanes, booking="b7", state=book.HELD, who="max", pid=None, mark="", rule=4)
+    raw(lanes, booking="b7", state=book.HELD, who="person", pid=None, mark="", rule=4)
     runs, machine = admission.view(lanes.bookings(), {}, value(available=9000), now=T0, live=lanes.live, mine="")
     # its real use is seen as foreign memory (spec 4.6): free memory is what is free; the heavy room is what it takes
     assert machine.free_mb == 9000 and next(r for r in runs if r.id == "b7").mem_mb == 7200
@@ -252,7 +252,7 @@ def test_a_take_by_hand_keeps_its_promised_memory_from_later_runs(lane):
 
 def test_a_waiting_take_by_hand_is_heavy_with_the_full_cores(lane):
     lanes, _procs, _later = lane
-    mine = lanes.enqueue("max", "by hand", pid=12, mark="m")
+    mine = lanes.enqueue("person", "by hand", pid=12, mark="m")
     runs, _m = admission.view(lanes.bookings(), {}, value(), now=T0, live=lanes.live, mine=mine.id, by_hand=mine.id)
     found = next(r for r in runs if r.id == mine.id)
     assert found.heavy and found.par == 8 and found.pinned

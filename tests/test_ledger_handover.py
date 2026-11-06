@@ -186,16 +186,16 @@ def _census(*names):
 
 
 def test_a_short_name_resolves_to_the_one_live_session(tmp_path):
-    """Twosuns, 2026-11-01, item 5: a wait on "orchestrator 4" was recorded word for word while the live session was
-    "twosuns-orchestrator 4", so the watch could never tell it was over."""
+    """Alpha, 2026-11-01, item 5: a wait on "orchestrator 4" was recorded word for word while the live session was
+    "alpha-orchestrator 4", so the watch could never tell it was over."""
     root = repo_with_origin(tmp_path)
-    ledger = make_ledger(root, tmp_path / "state", census=_census("main session 1", "twosuns-orchestrator 4"))
+    ledger = make_ledger(root, tmp_path / "state", census=_census("main session 1", "alpha-orchestrator 4"))
     claimed(root, ledger)
     row = handover.wait(ledger, actor(ledger, "main session 1"), "feat/x", on="orchestrator 4", why="its call")
-    assert row.waiting_on == "twosuns-orchestrator 4"
+    assert row.waiting_on == "alpha-orchestrator 4"
     assert row.history[-1]["evidence"]["resolved_from"] == "orchestrator 4"
     from flotilla.ledger.commands import _waited
-    assert _waited(row, "orchestrator 4")[1] == 'waits on twosuns-orchestrator 4 (resolved from "orchestrator 4")'
+    assert _waited(row, "orchestrator 4")[1] == 'waits on alpha-orchestrator 4 (resolved from "orchestrator 4")'
 
 
 def test_a_gone_session_with_no_live_match_is_refused(tmp_path):
@@ -259,7 +259,7 @@ def test_a_refused_wait_shows_session_names_as_data(tmp_path):
 
 
 def test_the_person_is_a_wait_target_after_the_person_has_moved_on_the_ledger(world):
-    """void-lanes, 2026-11-04: an approve or a take-in records "the person" as a mover, and a wait on the person -
+    """gamma, 2026-11-04: an approve or a take-in records "the person" as a mover, and a wait on the person -
     the form the flotilla skill prescribes - was refused as a wait on a session that is not alive."""
     from types import SimpleNamespace
     root, ledger = world

@@ -24,7 +24,7 @@ def state_dir(env: Mapping[str, str] = os.environ) -> Path:
     real = Path(base) / "flotilla"
     if env.get("PYTEST_CURRENT_TEST") and "_pytest" in sys.modules:
         # pytest sets this for every test whether or not tests/conftest.py loaded; a test file outside tests/ never
-        # gets the per-test directory, and one such run rewrote the person's machine.toml (twosuns feedback item 21).
+        # gets the per-test directory, and one such run rewrote the person's machine.toml (alpha feedback item 21).
         # Only a test in this very process: a child inherits the marker, and a hook or git hook started from another
         # project's test run is not a test of flotilla (review of 0.29.3).
         raise RealStateInTest(f"running under a pytest test (PYTEST_CURRENT_TEST is set) with FLOTILLA_STATE_DIR "

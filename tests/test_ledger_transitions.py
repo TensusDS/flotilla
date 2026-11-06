@@ -78,7 +78,7 @@ def test_landed_work_can_still_be_released_or_found_offledger():
 
 
 def test_a_refused_close_before_shipping_names_release():
-    """twosuns field report A4: `close` on a debug row that will never ship was refused with no word of `release`."""
+    """alpha field report A4: `close` on a debug row that will never ship was refused with no word of `release`."""
     with pytest.raises(MoveRefused, match=r"work that will not ship ends with `flotilla work release"):
         next_state("claimed", "close", {})
 

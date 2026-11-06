@@ -108,7 +108,7 @@ def test_a_submodule_pointer_move_is_a_change_whatever_gitmodules_says(tmp_path)
 
 
 def _commit_bytes(root, name, data):
-    """A file git diffs as text (no NUL in its first 8000 bytes) whose bytes are not UTF-8: a float16 table (twosuns
+    """A file git diffs as text (no NUL in its first 8000 bytes) whose bytes are not UTF-8: a float16 table (alpha
     field report A1, 2026-10-26)."""
     (root / name).write_bytes(data)
     git(root, "add", name)

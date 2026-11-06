@@ -17,7 +17,7 @@ class FakeCrontab:
             raise FileNotFoundError("crontab")
         if argv == ["crontab", "-l"]:
             if self.text is None:
-                return subprocess.CompletedProcess(argv, 1, "", "no crontab for max\n")
+                return subprocess.CompletedProcess(argv, 1, "", "no crontab for person\n")
             return subprocess.CompletedProcess(argv, 0, self.text, "")
         if argv == ["crontab", "-"]:
             self.text = input
@@ -29,13 +29,13 @@ class FakeCrontab:
 def line(tmp_path, state="state"):
     root = tmp_path / state
     return cron.reaper_line(launcher=root / "rig" / "reaper.py", python="/usr/bin/python3", state=root,
-                            env={"PATH": "/usr/bin:/home/max/.local/bin"}), root
+                            env={"PATH": "/usr/bin:/home/user/.local/bin"}), root
 
 
 def test_the_line_runs_the_launcher_every_five_minutes(tmp_path):
     text, state = line(tmp_path)
     assert text.startswith("*/5 * * * * ") and text.endswith(cron.tag(state))
-    assert "PATH=/usr/bin:/home/max/.local/bin" in text and str(state / "rig" / "reap.log") in text
+    assert "PATH=/usr/bin:/home/user/.local/bin" in text and str(state / "rig" / "reap.log") in text
     assert f"FLOTILLA_STATE_DIR={state}" in text
     assert cron.launcher_of(text) == str(state / "rig" / "reaper.py") and cron.python_of(text) == "/usr/bin/python3"
 
@@ -65,7 +65,7 @@ def test_a_changed_line_replaces_its_own(tmp_path):
 
 
 def test_other_lines_survive_install_and_removal(tmp_path):
-    theirs = "# my jobs\nMAILTO=\"\"\n17 3 * * * /home/max/backup.sh\n@reboot echo hi"
+    theirs = "# my jobs\nMAILTO=\"\"\n17 3 * * * /home/user/backup.sh\n@reboot echo hi"
     table = FakeCrontab(theirs)
     text, state = line(tmp_path)
     cron.ensure(text, state, run=table)
@@ -123,7 +123,7 @@ def test_the_interpreter_is_lasting_and_new_enough(tmp_path):
     pick = lambda **kw: cron.interpreter(state, exists=lambda p: p in versions, version_of=versions.get, **kw)
     assert pick(which=lambda n: None) == "/opt/py/bin/python3"
     (state / "machine.toml").write_text(render_toml({"python3": {"ok": True,
-                                                                 "path": "/home/max/.cache/uv/env/bin/python3"}}))
+                                                                 "path": "/home/user/.cache/uv/env/bin/python3"}}))
     assert pick(which=lambda n: "/usr/local/bin/python3") == "/usr/local/bin/python3"   # 3.9 is skipped
     with pytest.raises(cron.CronError, match="3.11"):
         pick(which=lambda n: None)
@@ -158,7 +158,7 @@ def test_a_crontab_with_bytes_that_are_not_utf8_is_read_and_kept(tmp_path):
 
 
 def test_a_carriage_return_in_the_persons_line_is_kept(tmp_path):
-    table = FakeCrontab("17 3 * * * /home/max/backup.sh\r\n")
+    table = FakeCrontab("17 3 * * * /home/user/backup.sh\r\n")
     text, state = line(tmp_path)
     cron.ensure(text, state, run=table)
-    assert table.text.startswith("17 3 * * * /home/max/backup.sh\r\n")
+    assert table.text.startswith("17 3 * * * /home/user/backup.sh\r\n")

@@ -15,8 +15,8 @@ checkout no longer leaks into seats. Track A (helper sessions) runs in parallel 
 
 **Tech Stack:** Python 3.11+ stdlib, git, pytest via `uv`, the `claude` CLI.
 
-**Spec:** `docs/field-tests/2026-09-29-twosuns-fleet.md` — H49 (MCP memory), H7 (a `<tree>-<n>` session in a seat
-tree: in the twosuns run it was the `security-guidance` plugin's hook starting a headless `claude`), and part 7's
+**Spec:** `docs/field-tests/2026-09-29-alpha-fleet.md` — H49 (MCP memory), H7 (a `<tree>-<n>` session in a seat
+tree: in the alpha run it was the `security-guidance` plugin's hook starting a headless `claude`), and part 7's
 deferred minors (Task 5).
 
 ## Decisions (the planner's, 2026-10-01)

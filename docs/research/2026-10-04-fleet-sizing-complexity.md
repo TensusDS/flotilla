@@ -3,7 +3,7 @@
 > Researched 2026-10-04 by a delegated research session; re-checked in the session that commissioned it:
 > Nagappan & Ball 2005's 89.0% (relative churn discriminating fault-prone binaries, Windows Server 2003) was
 > confirmed against the paper's record; the `git log` timing was re-measured on this repository (477 commits,
-> 90 days: `--name-only` 0.31 s, `--numstat` 0.72 s - the same direction as the ai-os measurement below). Items the
+> 90 days: `--name-only` 0.31 s, `--numstat` 0.72 s - the same direction as the measurement below). Items the
 > report itself marks unverified stay so. Every threshold in section 5 is a heuristic until flotilla's own conflict
 > and return rates calibrate it.
 
@@ -65,7 +65,7 @@ Date: 2026-10-04. Scope: what the literature and tools say, and what flotilla (P
 | Change entropy | yes | yes | — |
 | Ownership / truck factor | yes | yes — `git log --format=%aN --name-only` | Truck-Factor (aserg-ufmg) [22] |
 
-**Measured cost on one repository.** I ran this on the `ai-os` umbrella repository with git 2.53 on this machine, over the last 90 days (4,198 non-merge commits, 1,173 tracked files):
+**Measured cost on one repository.** I ran this on a large documentation repository with git 2.53 on this machine, over the last 90 days (4,198 non-merge commits, 1,173 tracked files):
 - `git log --since=90.days --no-merges --no-renames --name-only` took **0.12 s**;
 - the same command with `--numstat` took **6.5 s**, because numstat has to diff blobs.
 
@@ -112,7 +112,7 @@ Window: last 90 days, falling back to the last 500 commits if 90 days hold fewer
 | S1 | **Code volume** | `git ls-tree -r -l HEAD` → sum the blob sizes of text files after the §6 exclusions; LOC ≈ bytes/40, or read the files when there are fewer than 2×10^4 | worktree disk cost; context, not fleet size | heuristic |
 | S2 | **Independent areas K** | `git log --since=90.days --no-merges --no-renames --name-only --format=%x00%H%x09%aE`. Pairs with ≥ 3 shared commits and degree ≥ 30% are edges. Union-find gives components. Collapse to directory depth 2. **K_eff = exp(Shannon entropy of commits per component)** | **max parallel authors = min(K_eff, …)** | coupling → coordination [32]; overlap → conflicts [29][30]; entropy form is a heuristic after [13] |
 | S3 | **Hotspot concentration** | Per file: commits in the window × indentation complexity (sum of `(len(line) − len(line.lstrip())) / indent_unit` over non-blank lines, tabs expanded to 4). H = the top 5% of files' share of total hotspot score | **reviewer weight**: H > 0.5 → +1 reviewer, or a deeper (stronger-model) review | hotspot evidence [15][16][11][12]; threshold is a heuristic |
-| S4 | **Verification cost** | Measured tier duration T and peak memory M (flotilla already has both); free memory F; per-session memory S, measured from running sessions | concurrent full runs R = floor((F − n·S) / M). Lane throughput ≈ 3600/T verifications per hour. **Cap authors so that the expected handovers per hour ≤ R·3600/T** | queueing arithmetic, not literature; memory contention is a measured local precedent (two full `curve-no` suites do not fit on one 16 GB machine) |
+| S4 | **Verification cost** | Measured tier duration T and peak memory M (flotilla already has both); free memory F; per-session memory S, measured from running sessions | concurrent full runs R = floor((F − n·S) / M). Lane throughput ≈ 3600/T verifications per hour. **Cap authors so that the expected handovers per hour ≤ R·3600/T** | queueing arithmetic, not literature; memory contention is a measured local precedent (two full `client-repo` suites do not fit on one 16 GB machine) |
 | S5 | **Disk** | Worktree size W = S1 bytes + build-artefact size, measured once; free disk D | authors + reviewers ≤ floor(0.5·D / W) | heuristic |
 | S6 | **Backlog demand** | Open items B, split by size label (main/minor) | authors ≤ B; main posts ≤ number of substantial items | trivial |
 | S7 | **Review load** | Mean files per change and mean review duration from flotilla's ledger | reviewers = ceil(authors × handovers per author-hour × review hours) | review cost grows with files [39]; coverage matters [41] |

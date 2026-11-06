@@ -53,7 +53,7 @@ def test_exit_code_separates_drift_from_unknown():
 
 
 def test_a_default_composition_without_an_orchestrator_or_a_needed_sender():
-    """Twosuns field test of 0.6.7, W3: a profile written on 0.3 had `main, review, judge` as its default, and
+    """Alpha field test of 0.6.7, W3: a profile written on 0.3 had `main, review, judge` as its default, and
     `/flotilla:spawn` raised a fleet nobody led. Onboarding now always composes both; an older profile is named."""
     old = {**PROFILE, "flow": {"merge_authorized_by": "sender"}, "fleet": {"default": {"main": 1, "review": 1}}}
     found = check_drift(old, detection(), {"unit": 1})

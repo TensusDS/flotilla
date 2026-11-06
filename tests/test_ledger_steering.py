@@ -91,7 +91,7 @@ def test_the_census_switch_makes_liveness_unknown(world, monkeypatch):
 
 
 def test_an_accepted_row_can_be_held_out_of_the_batch(world):
-    """Twosuns orchestrator, 0.7.16: clouds, thunder and the sound's air were accepted and their release deliberately
+    """Alpha orchestrator, 0.7.16: clouds, thunder and the sound's air were accepted and their release deliberately
     put off, but `hold` refused accepted rows, so every brief offered them and the person's yes had to list rows by
     name. A held accepted row stays out of the batch and its sender moves refuse it until it is unheld."""
     from flotilla.ledger import delivery, report
@@ -107,7 +107,7 @@ def test_an_accepted_row_can_be_held_out_of_the_batch(world):
 
 
 def test_adopt_from_hands_every_row_of_a_gone_session_at_once(world):
-    """Twosuns, 0.7.16: five sessions stopped in one night, and their rows could be handed over one command each."""
+    """Alpha, 0.7.16: five sessions stopped in one night, and their rows could be handed over one command each."""
     root, ledger = world
     drive(root, ledger, to="claimed")
     drive(root, ledger, "feat/y", to="claimed")
@@ -159,7 +159,7 @@ def _seat_tree_holding(root, tmp_path, name="feat/held"):
 
 
 def test_adopt_frees_the_branch_a_gone_owners_clean_tree_held(world, tmp_path):
-    """twosuns field report A7: after adopt, the heir's `tree switch` failed - the branch was still checked out in
+    """alpha field report A7: after adopt, the heir's `tree switch` failed - the branch was still checked out in
     the gone seat's tree, and the orchestrator detached three trees by hand."""
     from flotilla.ledger import core
     from ledgerkit import git
@@ -210,7 +210,7 @@ def _requires_world(root, ledger, *, built_on: bool):
 
 
 def test_a_stale_requirement_is_dropped_on_the_record(world):
-    """Twosuns, 2026-11-01, item 11: r955 required a row its tip never carried, nothing could lift it, and the way out
+    """Alpha, 2026-11-01, item 11: r955 required a row its tip never carried, nothing could lift it, and the way out
     was a re-cut - a new review and new lane time. The drop is a recorded move instead."""
     root, ledger = world
     before = _requires_world(root, ledger, built_on=False)

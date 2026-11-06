@@ -28,7 +28,7 @@ on every prompt and the person's line as the hook's `systemMessage` when due. Th
 - Hold semantics for batching and the reading queue do not change.
 - Seat templates do not change; the orchestrator's template moves (template_version 23 -> 24).
 - `UserPromptSubmit` output stays under 10,000 characters (`render.py`).
-- Plugin version 0.26.0 (pyproject, `.claude-plugin/plugin.json`, CHANGELOG); the real twosuns data stays out of the
+- Plugin version 0.26.0 (pyproject, `.claude-plugin/plugin.json`, CHANGELOG); the real alpha data stays out of the
   repository.
 
 ## Review Focus

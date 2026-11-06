@@ -192,7 +192,7 @@ def test_claude_running_the_persons_approval_is_refused(tmp_path, monkeypatch, c
     f"{CLI_PATH} work show feat/{{a,b}}",
 ])
 def test_a_command_flotilla_cannot_read_is_refused_as_a_guard_not_a_fault(tmp_path, monkeypatch, command):
-    """twosuns field report C4: a harmless read-only loop costs a retry each time; the person, 2026-10-27: a refusal
+    """alpha field report C4: a harmless read-only loop costs a retry each time; the person, 2026-10-27: a refusal
     by design must not read to a session as a defect, so it says what it is and how to write the command."""
     answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
     reason = answer["permissionDecisionReason"]
@@ -246,7 +246,7 @@ OPTED = '\n[permissions]\nskip_classifier_for_checked = true\n'
 
 @pytest.mark.parametrize("command", [f"{CLI} work land feat/x", f"{CLI} status", f"{CLI} work reconcile"])
 def test_flotillas_own_commands_pass_the_classifier(tmp_path, monkeypatch, command):
-    """Twosuns field test of 0.6.7, W11: in auto mode Claude Code's classifier refused `work land` - a ledger record -
+    """Alpha field test of 0.6.7, W11: in auto mode Claude Code's classifier refused `work land` - a ledger record -
     as "Merge Without Review". The guard hook allows exactly what the broker's own-command check passes (decisions
     199, 200); a hook's allow passes the classifier (measured on Claude Code 2.1.288)."""
     assert _allowed(ask(onboarded(tmp_path, extra=OPTED), command, monkeypatch, tmp_path))
@@ -917,7 +917,7 @@ BROKEN = "schema = 1\n[guards\nrevert = "
 
 
 def test_a_tree_profile_that_does_not_parse_leaves_the_guards_on(tmp_path, monkeypatch):
-    """Void-lanes-online, 2026-11-02: with a TOML error in the tree's profile the guards said the revert and
+    """Gamma, 2026-11-02: with a TOML error in the tree's profile the guards said the revert and
     line-number guards did not run, and the session went on with them off. Trunk's rules still stand."""
     root = onboarded(tmp_path)
     (root / "f.txt").write_text("work\n", encoding="utf-8")

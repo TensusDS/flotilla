@@ -214,7 +214,7 @@ def fix_arrived(rows: dict[str, Row], row: Row, profile: dict) -> bool:
 
 
 def handover_hint(row: Row, mover: str, rows: dict[str, Row], live: set[str], post_of, former_of=None) -> str:
-    """Who can take a gone session's move, and the move that hands it over (twosuns field test of 0.6.7 and the
+    """Who can take a gone session's move, and the move that hands it over (alpha field test of 0.6.7 and the
     person's proposal): the live sessions of the same post, least loaded first, and the adopt or assign line - the
     orchestrator chooses; flotilla only spares it the working out."""
     if not post_of:

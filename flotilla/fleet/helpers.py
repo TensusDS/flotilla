@@ -1,4 +1,4 @@
-"""Helper sessions: a fleet session raises one for a piece of its own work (field test twosuns, H8).
+"""Helper sessions: a fleet session raises one for a piece of its own work (field test alpha, H8).
 
 A helper is a seat of the `helper` post: its tree is cut from the tip of the branch it helps, its seat row names the
 parent row (`helper_of`), and it leaves by `done`, which records its tip and a summary and releases the seat. It
