@@ -123,7 +123,9 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
                         return Grant(granted, reading, "")
             why = in_the_way(lanes, reading, slots, mine.id, share=mode)
             light = getattr(lanes, "waits_for", "")
-            if light and not outright and not unknown:   # a light run waits for room beside the heavy ones, or a place
+            if light and not outright and not unknown and worth is not None:   # by value: the policy's reason
+                why = f"waits because: {light}; {why}"
+            elif light and not outright and not unknown:   # a light run waits for room beside the heavy ones
                 why = f"{why}; as a light run beside them: {light}"
             lasting = [answer for answer in unknown if answer.lasting]
             remaining = deadline - clock()

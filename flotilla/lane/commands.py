@@ -305,6 +305,42 @@ def _ordinal(number: int) -> str:
     return f"{number}{suffix}"
 
 
+def _gb(mb) -> str:
+    return "?" if mb is None else f"{mb / 1024:.1f}"
+
+
+def _clock(moment: dt.datetime) -> str:
+    return moment.astimezone().strftime("%H:%M")
+
+
+def value_of(run, item, machine, now: dt.datetime) -> str:
+    """A run's place by value, as `flotilla lane` prints it (lane shared machine design, section 5)."""
+    from flotilla.lane import policy
+    type_part, wait_part, run_part = policy.WEIGHTS
+    parts = (type_part * policy.TYPES.get(run.kind, policy.TYPES["run"]),
+             wait_part * min(1.0, run.waited_s / policy.WAIT_FULL_S),
+             run_part * min(1.0, run.ran_s / machine.immortal_s if machine.immortal_s else 1.0))
+    text = f"P {sum(parts):.2f} (type {parts[0]:.2f}, wait {parts[1]:.2f}, run {parts[2]:.2f})"
+    size = "heavy" if run.heavy else "light"
+    if run.state == policy.WAITING:
+        text += f"; {size} (needs {_gb(run.mem_mb)} GB)"
+    else:
+        text += f"; {size} (memory now {_gb(run.mem_mb)} GB)"
+    if run.pinned:
+        text += "; never frozen"
+    elif run.state in (policy.RUNNING, policy.ORDERED):
+        left = machine.immortal_s - run.ran_s
+        text += "; immortal" if left <= 0 else f"; immortal from {_clock(now + dt.timedelta(seconds=left))}"
+    if item.frozen == "frozen":
+        since = book._when(item.frozen_at)
+        text += f"; frozen since {_clock(since) if since else '?'} by {visible(item.order_by)}'s order"
+    elif item.frozen == "ordered":
+        text += f"; ordered frozen by {visible(item.order_by)}, not yet answered"
+    if item.unanswered:
+        text += f"; {item.id} did not answer a freeze order"
+    return text
+
+
 def _status(args) -> int:
     table = ProcessTable.for_machine()
     lanes = _lanes(table)
@@ -319,14 +355,17 @@ def _status(args) -> int:
     if swept:
         print(f"swept {len(swept)} booking(s) whose process is gone: " + ", ".join(visible(item.id) for item in swept))
     slots, mode = capacity(), share()
-    print(f"capacity: {slots} heavy run(s) at a time (machine.toml lane_capacity); light runs take no place")
-    print(_share_line())
     found = lanes.bookings()   # read once: each waiter's reason would read the whole journal again
     held, waiting = lanes.holders(found), lanes.waiters(found)
     reading = _reader(lanes, table, profile, top, problem)()
     now = dt.datetime.now(dt.timezone.utc)
     hist = estimate.history(found, now=now)
     room = room_for(profile)(reading)
+    counted = book.older_waiting(found, lanes.live)   # an older flotilla waits: every run is counted, none is light
+    if not counted:
+        return _status_by_value(lanes, found, held, waiting, reading, now, hist, profile, mode)
+    print(f"capacity: {slots} heavy run(s) at a time (machine.toml lane_capacity); light runs take no place")
+    print(_share_line())
     used, total, reserved = book.budget(found, room, hist, lanes.live)
     free = room.memory_left()
     memory = "memory cannot be read" if free is None else f"{max(free - reserved, 0)} MB of memory left after the " \
@@ -353,12 +392,11 @@ def _status(args) -> int:
             print(f"project {visible(project) or '(none)'}: {count} waiting, holds {holds}, "
                   f"last turn {served.get(project) or 'not in 24 h'}")
     print("waiting:" if waiting else "waiting: nobody")
-    counted = book.older_waiting(found, lanes.live)   # an older flotilla waits: every run is counted, none is light
     starts = book.heavy_starts(found, hist, slots=slots - len(reading.computing), now=now, live=lanes.live,
                                ceiling=ceiling_for(args.root, profile), cpus=room.cpus, counted=counted)
     order = {item_id: place for place, item_id in enumerate(starts, start=1)}
     if counted:
-        print("  (a seat of a flotilla before 0.28 waits: every run is counted against lane_capacity until it goes)")
+        print("  a seat of a flotilla before 0.30 waits: lane_capacity counts every run until it goes")
     for item in waiting:
         gone = "" if lanes.live(item) else "; its process is gone - `flotilla lane sweep`"
         if not counted and book.is_light(item, hist, room.cpus):
@@ -372,6 +410,70 @@ def _status(args) -> int:
                          if when is not None else "no place for a heavy run now"))
         print(f"  {item.id} {kind} {item.who} ({item.note or 'no note'}) since {item.since}{gone}; "
               f"{describe_estimate(item, hist)}; waits because: {why}")
+    _machine_answers(table, reading)
+    return 0
+
+
+def _status_by_value(lanes, found, held, waiting, reading, now, hist, profile, mode) -> int:
+    """`flotilla lane` while every waiter goes by value: what the machine gives, each run's priority, and why each
+    waiter waits (lane shared machine design, section 5)."""
+    from flotilla.lane import admission, freeze, policy
+    value = value_for(profile)(reading)
+    runs, m = admission.view(found, hist, value, now=now, live=lanes.live, mine="", share=mode)
+    by_id = {run.id: run for run in runs}
+    kind, why = freeze.backend(setting=freeze_on())
+    swap = value.swap_mb()
+    print(f"machine: {m.cpus} cores shared by the kernel; memory the lane can give {_gb(m.give_mb)} GB, "
+          f"{_gb(m.free_mb)} GB free now; swap {_gb(swap[0]) if swap else '?'} GB free; "
+          f"freezing: {kind or 'off'} ({why})")
+    heavies = [run for run in runs if run.heavy and run.state in (policy.RUNNING, policy.ORDERED)]
+    room = None if m.give_mb is None else (1 - m.light_reserve) * m.give_mb
+    print(f"heavy runs: {sum(run.par for run in heavies):g} of {m.cpu_factor * m.cpus:g} cores in use "
+          f"(lane_cpu_factor {m.cpu_factor:g}), {_gb(sum(run.mem_mb for run in heavies))} of {_gb(room)} GB "
+          f"(light reserve {round(m.light_reserve * 100)} %); at most {m.max_runs} runs at once")
+    if "lane_capacity" in _machine():
+        print(f"lane_capacity = {visible(repr(_machine()['lane_capacity']))} in machine.toml no longer has an effect "
+              "(0.30); runs share the machine by memory and priority")
+    print(_share_line())
+    print("held:" if held or reading.computing else "held: nobody")
+    live_held = [item for item in held if lanes.live(item)]
+    for item in held:
+        state = "alive" if lanes.live(item) else "its process is gone - `flotilla lane sweep`"
+        by = f"pid {item.pid}" if item.pid else "taken by hand - `flotilla lane release`"
+        target = f", for {item.run_for}" if item.run_for else ""
+        size = ("heavy" if by_id[item.id].heavy else "light") if item.id in by_id else "heavy"
+        worth = f"; {value_of(by_id[item.id], item, m, now)}" if item.id in by_id else ""
+        print(f"  {item.id} {size} {item.who} ({item.note or 'no note'}) since {item.since}"
+              f"{_for_how_long(item.since)}{target}; {by}; {state}; {describe_estimate(item, hist)}{worth}")
+    for proc in reading.computing:
+        print("  " + _foreign(lanes.procs, proc, " (foreign: its memory is simply not free)"))
+    if mode == "fair":
+        served = book.last_served(found, now)
+        for project in sorted({item.project for item in waiting if lanes.live(item)}):
+            count = sum(1 for item in waiting if item.project == project and lanes.live(item))
+            holds = sum(1 for item in live_held if item.project == project)
+            print(f"project {visible(project) or '(none)'}: {count} waiting, holds {holds}, "
+                  f"last turn {served.get(project) or 'not in 24 h'}")
+    print("waiting:" if waiting else "waiting: nobody")
+    holding = "; ".join(f"{item.who} ({item.note or 'no note'}) since {item.since}" for item in live_held)
+    for item in waiting:
+        gone = "" if lanes.live(item) else "; its process is gone - `flotilla lane sweep`"
+        if item.id in by_id:
+            decided = policy.decide(runs, m, item.id, may_freeze=False)
+            because = "next to start" if decided.start else decided.why
+            if holding and not decided.start:
+                because += f"; held by {holding}"
+            size = "heavy" if by_id[item.id].heavy else "light"
+            print(f"  {item.id} {size} {item.who} ({item.note or 'no note'}) since {item.since}{gone}; "
+                  f"{describe_estimate(item, hist)}; {value_of(by_id[item.id], item, m, now)}; "
+                  f"waits because: {because}")
+        else:
+            print(f"  {item.id} {item.who} ({item.note or 'no note'}) since {item.since}{gone}")
+    _machine_answers(lanes.procs, reading)
+    return 0
+
+
+def _machine_answers(table, reading) -> None:
     print("machine:")
     for answer in reading.answers:
         flag = {True: "busy", False: "ok", None: "unknown"}[answer.blocks]
@@ -380,7 +482,6 @@ def _status(args) -> int:
         print("  " + _foreign(table, proc, ", computing"))
     for proc in reading.idle:
         print("  " + _foreign(table, proc, ", idle"))
-    return 0
 
 
 def _take(args) -> int:

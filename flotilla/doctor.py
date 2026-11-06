@@ -44,7 +44,7 @@ def collect(*, cwd: Path, env=os.environ, run=subprocess.run, which=shutil.which
             read=None, os_name: str = sys.platform,
             python=tuple(sys.version_info[:3]), timeout: float = 30, setup: bool = True,
             home: Path | None = None, read_rows=None, running: Path | None = None,
-            started_in: Path | None = None) -> list[Finding]:
+            started_in: Path | None = None, swap=None) -> list[Finding]:
     """`timeout` bounds each external call; a hook passes a short one so its findings are printed
     before Claude Code kills it. `started_in` is where the session started, which names the project's install of
     flotilla (by default `cwd`)."""
@@ -116,6 +116,8 @@ def collect(*, cwd: Path, env=os.environ, run=subprocess.run, which=shutil.which
         findings.append(Finding("ok", "state", f"{state} (delete it to erase the fleet's history)"))
     except OSError as err:
         findings.append(Finding("fail", "state", f"{state} is not writable: {err}"))
+
+    findings.append(_lane(env, swap))
 
     from flotilla.core import claude_state
     copy = claude_state.copy_in_use(started_in or cwd, running=running, env=env, home=home)   # the user's can shadow
@@ -276,6 +278,30 @@ def _posts(root: Path) -> list[Finding]:
                                      "made with",
                     f"compare {TEMPLATE_DIR}/<post>.md with .flotilla/posts/<post>.md, take the new text keeping "
                     "your own edits, then `flotilla onboard publish`")]
+
+
+def _lane(env, swap=None) -> Finding:
+    """How the lane shares this machine, and what in machine.toml no longer does what it did (lane shared machine
+    design, sections 4.2, 4.3 and 6)."""
+    from flotilla.lane import freeze
+    from flotilla.onboard.machine import read_machine
+    try:
+        settings = read_machine(paths.state_dir(env)) or {}
+    except (OSError, ValueError):
+        settings = {}
+    parts, status, fix = [], "info", ""
+    if "lane_capacity" in settings:
+        parts.append("lane_capacity no longer has an effect (0.30): runs share the machine by memory and priority")
+    if settings.get("lane_freeze", True) is False:
+        status, fix = "warn", ("recommended on: a younger run is frozen, never killed, to let a higher one in "
+                               "(remove lane_freeze = false from machine.toml)")
+        parts.append("freezing off (machine.toml lane_freeze = false)")
+    found = (swap or freeze.swap_mb)()
+    if found is not None and found[1] == 0:
+        parts.append("no swap - nothing can be frozen")
+    if not parts:
+        return Finding("ok", "lane", "runs share the machine by memory and priority; a younger run may be frozen")
+    return Finding(status, "lane", "; ".join(parts), fix)
 
 
 def render(findings: list[Finding], quiet: bool) -> list[str]:
