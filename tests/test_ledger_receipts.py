@@ -480,3 +480,18 @@ def test_a_tiers_peak_cores_reaches_the_lanes_journal():
     found = measured_of({"tiers": [{"name": "unit", "status": "green", "seconds": 30.0, "elapsed": 30.0,
                                     "peak_mb": 400, "cores": 1.0, "busy": 0.3, "peak_cores": 5.5}]})
     assert found["peak_cores"] == 5.5 and found["ran"][0]["peak_cores"] == 5.5
+
+
+def test_a_receipt_tier_carries_its_frozen_time():
+    from flotilla.ledger.receipts import _tier_result
+    from flotilla.onboard.firstrun import TierRun
+    found = _tier_result(TierRun("unit", "red", None, "2 failed", "", 1, frozen_s=120.0))
+    assert found["frozen_s"] == 120.0
+
+
+def test_a_receipt_tier_red_after_a_freeze_says_so():
+    from flotilla.ledger.receipts import tier_line
+    assert tier_line({"name": "unit", "status": "red", "summary": "2 failed", "frozen_s": 120.0}) == \
+        "red       unit: 2 failed (red after a freeze of 2 min)"
+    assert tier_line({"name": "unit", "status": "green", "summary": "ok", "frozen_s": 120.0}) == \
+        "green     unit: ok"

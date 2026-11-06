@@ -248,7 +248,17 @@ def run_receipt(tree: Path, *, state: Path, repo_key: str, purpose: str, profile
 def _tier_result(r) -> dict:
     return {"name": r.name, "status": r.status, "summary": r.summary or "", "seconds": r.seconds,
             "elapsed": r.elapsed, "peak_mb": r.peak_mb, "cores": r.cores, "busy": r.busy,
-            "peak_cores": getattr(r, "peak_cores", None)}
+            "peak_cores": getattr(r, "peak_cores", None), "frozen_s": getattr(r, "frozen_s", 0.0) or 0.0}
+
+
+def tier_line(tier: dict) -> str:
+    """A tier as a receipt prints it. A red after a freeze says so: a tier that times itself may have failed on the
+    frozen minutes, not on the code (lane shared machine design, section 5)."""
+    line = f"{tier['status']:<9} {tier['name']}: {tier['summary']}"
+    frozen = tier.get("frozen_s") or 0.0
+    if tier["status"] == "red" and frozen > 0:
+        line += f" (red after a freeze of {max(1, round(frozen / 60))} min)"
+    return line
 
 
 def measured_of(result: dict) -> dict:

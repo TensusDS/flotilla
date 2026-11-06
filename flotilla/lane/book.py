@@ -516,7 +516,7 @@ class Book:
                 return None
             from flotilla.lane import admission
             if value is not None and admission.by_value(found, self.live):
-                return self._by_value(tx, booking_id, value, share, fields)
+                return self._by_value(tx, booking_id, value, share, fields, by_hand)
             lights: frozenset = frozenset()
             light_path = room is not None and (mine.rule or 0) >= RULE and not older_waiting(found, self.live,
                                                                                                booking_id)
@@ -570,12 +570,14 @@ class Book:
                             frozen_s=_frozen_for(item, now))
         return self._found(tx)
 
-    def _by_value(self, tx, booking_id: str, value, share: str, fields: dict) -> Booking | None:
+    def _by_value(self, tx, booking_id: str, value, share: str, fields: dict,
+                  by_hand: bool = False) -> Booking | None:
         from flotilla.lane import admission, estimate, policy
         found = self._rescue(tx, self._found(tx), value)
         now = self._moment()
         hist = estimate.history(found, now=now)
-        runs, machine = admission.view(found, hist, value, now=now, live=self.live, mine=booking_id, share=share)
+        runs, machine = admission.view(found, hist, value, now=now, live=self.live, mine=booking_id, share=share,
+                                       by_hand=booking_id if by_hand else "")
         by_id = {run.id: run for run in runs}
         for run in runs:   # a run that grew past the mark is heavy for good (section 2.3)
             if run.heavy and not found[run.id].heavy and run.state != policy.WAITING:

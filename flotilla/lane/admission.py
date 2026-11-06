@@ -110,9 +110,10 @@ def _own(item, hist, cpus: int):
     return None if "prior" in found.source else found
 
 
-def view(found: dict, hist, value: Value, *, now: dt.datetime, live, mine: str,
-         share: str = "fifo") -> tuple[list[policy.Run], policy.Machine]:
-    """The live bookings as the policy's runs, and the machine as it is now."""
+def view(found: dict, hist, value: Value, *, now: dt.datetime, live, mine: str, share: str = "fifo",
+         by_hand: str = "") -> tuple[list[policy.Run], policy.Machine]:
+    """The live bookings as the policy's runs, and the machine as it is now. `by_hand`: a waiter taking the lane by
+    hand - it waits as its process, and is admitted as the heavy run it announces (section 4.6)."""
     fallback = default_mb(found)
     available = value.available_mb()
     held = [item for item in found.values() if item.state == book.HELD and live(item)]
@@ -142,14 +143,18 @@ def view(found: dict, hist, value: Value, *, now: dt.datetime, live, mine: str,
             state = policy.ORDERED if item.frozen == "ordered" else policy.RUNNING
             tree = trees.get(item.id)
             mem = tree if tree is not None else expected
-            if since_start < WINDOW_S:
+            if since_start < WINDOW_S and item.pid is not None:   # by hand: its whole promise is kept below
                 reserved += max(0, expected - (tree or 0))
                 mem = max(mem, expected)
             ran = before + since_start
         heavy = policy.is_heavy(mem, give, was=item.heavy)
-        if item.state == book.HELD and item.pid is None:   # taken by hand: the whole machine, never frozen
+        if (item.state == book.HELD and item.pid is None) or item.id == by_hand:
+            # taken by hand: the heavy room and every core, never frozen; held, its memory is promised and not yet
+            # seen, so it is kept from the runs that come after it - only the light reserve stays theirs
             heavy, par, pinned = True, value.cpus, True
             mem = round((1 - value.light_reserve) * give) if give is not None else expected
+            if item.state == book.HELD:
+                reserved += mem
         if older:
             pinned = True
         runs.append(policy.Run(

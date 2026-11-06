@@ -62,6 +62,86 @@ def cpu_factor() -> float:
     return float(value) if ok else CPU_FACTOR
 
 
+LIGHT_RESERVE, LIGHT_RESERVE_BOUNDS = 0.2, (0.0, 0.5)
+IMMORTAL_MINUTES, IMMORTAL_BOUNDS = 15, (1, 240)
+MAX_RUNS, MAX_RUNS_BOUNDS = 10, (1, 64)
+
+
+def _number(key: str, default, bounds, *, whole: bool = False):
+    """machine.toml `key`, the default when unset, out of bounds, the wrong type or unreadable."""
+    value = _machine().get(key, default)
+    kinds = (int,) if whole else (int, float)
+    ok = isinstance(value, kinds) and not isinstance(value, bool) and bounds[0] <= value <= bounds[1]
+    return value if ok else default
+
+
+def light_reserve() -> float:
+    """machine.toml `lane_light_reserve`: the share of the memory the lane can give kept for light runs (section 2.4)."""
+    return float(_number("lane_light_reserve", LIGHT_RESERVE, LIGHT_RESERVE_BOUNDS))
+
+
+def immortal_minutes() -> float:
+    """machine.toml `lane_immortal_minutes`: the run time after which a run is never frozen (section 2.8)."""
+    return _number("lane_immortal_minutes", IMMORTAL_MINUTES, IMMORTAL_BOUNDS)
+
+
+def freeze_on() -> bool:
+    """machine.toml `lane_freeze`: on unless it is the boolean false (section 4.2); anything else keeps it on."""
+    return _machine().get("lane_freeze", True) is not False
+
+
+def max_runs() -> int:
+    """machine.toml `lane_max_runs`: runs at once at most, whatever memory allows (section 2.4)."""
+    return _number("lane_max_runs", MAX_RUNS, MAX_RUNS_BOUNDS, whole=True)
+
+
+#: A receipt's purpose that is also a run's type; any other run is a reviewer's or a plain one (section 2.5).
+RECEIPT_KINDS = ("push", "handover")
+REVIEWER_POST = "reviewer"
+
+
+def kind_of(purpose: str, who: str, root) -> str:
+    """A run's purpose, for its priority: a push or handover receipt by its purpose; a run of a session holding the
+    reviewer post is a reviewer's; anything else is a plain run. A post that cannot be read makes a plain run."""
+    if purpose in RECEIPT_KINDS:
+        return purpose
+    try:
+        from flotilla.ledger.commands import fleet_name
+        from flotilla.posts import load_posts, post_for_session
+        profile, top, _problem = _profile(root)
+        post = post_for_session(load_posts(top, project=fleet_name(top, profile)), who)
+    except Exception:  # noqa: BLE001 - a post unread is a plain run, never a refused one
+        return "run"
+    return "review" if post is not None and post.name == REVIEWER_POST else "run"
+
+
+def pinned_for(profile: dict, purpose: str, will_run) -> bool:
+    """A receipt is never frozen when a tier it runs says `freeze = false` (section 4.6): a test that times itself
+    against a clock, or holds a lease, would fail for the freeze, not for the code."""
+    from flotilla.ledger.receipts import tiers_for
+    names = set(will_run or ())
+    return any(tier.get("freeze") is False for tier in tiers_for(profile, purpose) if tier.get("name") in names)
+
+
+def value_for(profile: dict):
+    """What a grant by value reads, built from each poll's reading: settings read once here, memory and swap read
+    when the grant decides, inside the journal's lock."""
+    from flotilla.core import resources
+    from flotilla.lane import admission, freeze, peak
+    cpus, floor = machine.cpus(), machine.memory_floor_mb(profile)
+    kind = freeze.backend(setting=freeze_on())[0]
+    reserve, immortal, cap, factor = light_reserve(), immortal_minutes() * 60.0, max_runs(), cpu_factor()
+    root = paths.state_dir() / "lane"
+
+    def make(reading=None):
+        return admission.Value(cpus=cpus, cpu_factor=factor, light_reserve=reserve, immortal_s=immortal,
+                               max_runs=cap, freeze=kind, available_mb=resources.available_mb, floor_mb=floor,
+                               swap_mb=freeze.swap_mb, tree_mb=peak.tree_rss_mb,
+                               beat_age_s=lambda booking: admission.beat_age(root, booking),
+                               foreign=len(reading.computing) if reading is not None else 0)
+    return make
+
+
 def room_for(profile: dict):
     """What a light run may take, built from each poll's reading: this machine's cores, the factor, the memory
     available less the profile's floor (read when the grant decides, inside the lock), the foreign runs computing."""
@@ -181,9 +261,12 @@ def booked(root, *, note: str, wait: float, run_for: str = "", as_name=None, com
     elif command:
         text = shlex.join(command)
         ladder = signature.ladder(list(command), tree=str(Path(root).resolve()), project=project)
-    with acq.held(lanes, _reader(lanes, table, profile, top, problem), who=_who(as_name), note=note,
+    who = _who(as_name)
+    with acq.held(lanes, _reader(lanes, table, profile, top, problem), who=who, note=note,
                   capacity=capacity, share=share, wait=wait, table=table, run_for=run_for, say=print, command=text,
-                  ladder=ladder, will_run=list(will_run or []), project=project, room=room_for(profile)) as grant:
+                  ladder=ladder, will_run=list(will_run or []), project=project, room=room_for(profile),
+                  value=value_for(profile), kind=kind_of(purpose, who, root),
+                  pinned=pinned_for(profile, purpose, will_run)) as grant:
         yield grant
 
 
@@ -308,7 +391,8 @@ def _take(args) -> int:
     pid = os.getpid()
     grant = acq.acquire(lanes, _reader(lanes, table, profile, top, problem), who=_who(args.as_name), note=args.note,
                         capacity=capacity, share=share, wait=args.wait, pid=pid, mark=table.start_mark(pid) or "",
-                        by_hand=True, say=print, project=_project(args.root), room=room_for(profile))
+                        by_hand=True, say=print, project=_project(args.root), room=room_for(profile),
+                        value=value_for(profile))
     if grant.booking is None:
         print(f"refused: {grant.why}")
         return 2

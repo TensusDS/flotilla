@@ -20,6 +20,13 @@ def run_cli(*args):
     return code, out.getvalue()
 
 
+def one_run_at_a_time(tmp_path):
+    """machine.toml `lane_max_runs = 1`: the lane admits by memory, so a refusal by number needs the cap (0.30)."""
+    state = tmp_path / "state"
+    state.mkdir(exist_ok=True)
+    (state / "machine.toml").write_text("lane_max_runs = 1\n", encoding="utf-8")
+
+
 def onboarded(tmp_path, monkeypatch, profile=PROFILE):
     monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
     monkeypatch.setenv("FLOTILLA_NO_CENSUS", "1")
@@ -71,6 +78,7 @@ def test_a_killed_run_exits_non_zero_and_says_so(tmp_path, monkeypatch):
 
 def test_a_run_waits_its_turn_and_is_refused_when_the_wait_runs_out(tmp_path, monkeypatch):
     root = onboarded(tmp_path, monkeypatch)
+    one_run_at_a_time(tmp_path)   # beside a take by hand a light run would start in the light reserve
     run_cli("lane", "take", "--note", "hands off", "--root", str(root), "--as", "main session 1")
     code, out = run_cli("lane", "run", "--wait", "0", "--tree", str(root), "--as", "review session 1", "--",
                         sys.executable, "-c", "print('never')")
@@ -86,6 +94,7 @@ def test_a_run_needs_a_command(tmp_path, monkeypatch):
 def test_a_receipt_takes_the_lane(tmp_path, monkeypatch):
     tier = {"name": "unit", "command": f"{sys.executable} -c \"print('1 passed')\"", "required_for": ["handover"]}
     root = onboarded(tmp_path, monkeypatch, {**PROFILE, "tests": {"tier": [tier]}})   # something to run: it queues
+    one_run_at_a_time(tmp_path)
     run_cli("lane", "take", "--note", "hands off", "--root", str(root), "--as", "main session 1")
     code, out = run_cli("receipt", "run", "--purpose", "handover", "--tree", str(root), "--lane-wait", "0")
     assert code == 2 and "held by main session 1 (hands off)" in out
@@ -620,3 +629,57 @@ def test_the_room_counts_the_cores_this_process_may_use(tmp_path, monkeypatch):
     _machine(tmp_path)
     monkeypatch.setattr(os_module, "sched_getaffinity", lambda pid: {0, 1, 2}, raising=False)
     assert lane_commands.room_for({})(Reading([], [], [])).cpus == 3
+
+
+def test_settings_fall_back_to_their_defaults(monkeypatch):
+    from flotilla.lane import commands
+    for bad in ({"lane_light_reserve": 2}, {"lane_light_reserve": True}, {"lane_max_runs": 0},
+                {"lane_immortal_minutes": "15"}, {"lane_max_runs": 65}, {}):
+        monkeypatch.setattr(commands, "_machine", lambda bad=bad: bad)
+        assert (commands.light_reserve(), commands.max_runs(), commands.immortal_minutes()) == (0.2, 10, 15)
+    monkeypatch.setattr(commands, "_machine", lambda: {"lane_light_reserve": 0.3, "lane_max_runs": 4,
+                                                       "lane_immortal_minutes": 30})
+    assert (commands.light_reserve(), commands.max_runs(), commands.immortal_minutes()) == (0.3, 4, 30)
+
+
+def test_lane_freeze_false_turns_freezing_off(monkeypatch):
+    from flotilla.lane import commands
+    for setting, on in (({"lane_freeze": False}, False), ({"lane_freeze": "false"}, True), ({}, True),
+                        ({"lane_freeze": True}, True)):
+        monkeypatch.setattr(commands, "_machine", lambda setting=setting: setting)
+        assert commands.freeze_on() is on
+
+
+def test_a_push_or_handover_receipt_books_by_its_purpose(tmp_path):
+    from flotilla.lane import commands
+    assert commands.kind_of("push", "main session 1", tmp_path) == "push"
+    assert commands.kind_of("handover", "main session 1", tmp_path) == "handover"
+    assert commands.kind_of("", "main session 1", tmp_path) == "run"
+
+
+def test_a_reviewer_session_books_as_review(tmp_path, monkeypatch):
+    from flotilla.lane import commands
+    root = onboarded(tmp_path, monkeypatch)
+    assert commands.kind_of("", "review session 3", root) == "review"
+    assert commands.kind_of("", "main session 3", root) == "run"
+
+
+def test_a_freeze_false_tier_pins_the_receipts_booking(tmp_path, monkeypatch):
+    from flotilla.lane import commands
+    tiers = [{"name": "unit", "command": "true", "required_for": ["handover"]},
+             {"name": "e2e", "command": "true", "required_for": ["handover"], "freeze": False}]
+    profile = {**PROFILE, "tests": {"tier": tiers}}
+    assert commands.pinned_for(profile, "handover", ["unit", "e2e"])
+    assert not commands.pinned_for(profile, "handover", ["unit"])
+
+
+def test_a_lane_run_books_by_value_with_its_purpose(tmp_path, monkeypatch):
+    from flotilla.core.storage import LocalLogStore
+    from flotilla.lane import book
+    root = onboarded(tmp_path, monkeypatch)
+    code, _out = run_cli("lane", "run", "--tree", str(root), "--as", "review session 2", "--", sys.executable, "-c",
+                         "pass")
+    assert code == 0
+    found = book.Book(LocalLogStore(tmp_path / "state" / "lane"), None).bookings()
+    item = max(found.values(), key=lambda item: book.number(item.id) or 0)
+    assert item.kind == "review" and item.path.startswith("value") and item.asked
