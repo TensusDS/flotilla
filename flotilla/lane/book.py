@@ -28,7 +28,10 @@ HELD, RELEASED, WAITING, EXPIRED, LEFT = "held", "released", "waiting", "expired
 #: Rule 2 (0.25) knows the fair share across projects: a waiter under it may be passed by, or pass, for its project.
 #: Rule 3 (0.28) knows light runs: a light holder takes no place, so a waiter under an older rule - which would count
 #: it as one, and could wait for ever behind a stream of them - turns light admission off while it waits.
-RULE = 3
+#: Rule 4 (0.30) knows value: it admits by the memory free now, orders by purpose, wait and run time, and freezes a
+#: younger run for a higher one. A waiter under an older rule turns the lane back to the count while it waits; a
+#: frozen booking stays a held record, so an older flotilla still sees it holding (lane shared machine, section 7).
+RULE = 4
 #: What a foreign computing run (unbooked) is taken to use of the light budget, and a holder whose peak was never
 #: measured of its memory: the fixed prior (lane light runs design, section 2).
 FOREIGN_CORES, UNKNOWN_PEAK_MB = 4.0, 2048
@@ -37,20 +40,34 @@ SHARES = ("fifo", "fair")
 #: How far back a project's last turn counts for the fair share (project share design, section 3).
 SERVED_WINDOW = dt.timedelta(hours=24)
 FIELDS = ("who", "note", "pid", "mark", "run_for", "why", "command", "ladder", "will_run", "project", "rule",
-          "seconds", "peak_mb", "cores", "busy", "verdict", "ran", "cut", "inside", "path", "place")
-MEASURED = ("seconds", "peak_mb", "cores", "busy", "verdict", "ran")
+          "seconds", "peak_mb", "cores", "busy", "verdict", "ran", "cut", "inside", "path", "place",
+          "kind", "asked", "started", "ran_s", "frozen", "order_by", "ordered_at", "reclaim_mb", "frozen_at",
+          "held_mb", "frozen_s", "freezes", "heavy", "pinned", "unanswered", "freeze_kind", "unit", "group",
+          "peak_cores")
+MEASURED = ("seconds", "peak_mb", "cores", "busy", "verdict", "ran", "peak_cores")
+#: A freeze order's progress on a held booking: ordered by a waiter, then frozen by its holder; absent while it runs.
+FROZEN_STATES = ("ordered", "frozen")
+#: A run's purpose, the type part of its priority (lane shared machine, section 2.6); anything else is a plain run.
+KINDS = ("push", "handover", "review", "run")
+FREEZE_KINDS = ("scope", "signal")
+MOMENTS = ("asked", "started", "ordered_at", "frozen_at")
+FLAGS = ("heavy", "pinned", "unanswered")
 LISTS = ("ladder", "will_run")
 MAX_TEXT = 2048   # a command and each of its signatures: every session folds the whole journal, so text is bounded
 #: Every session writes the journal and any may be steered: a measured figure of the wrong type or out of range
 #: folds as unknown, never as a crash of `flotilla lane` for all of them (review of stage 1).
 BOUNDS = {"seconds": (0.0, 7 * 86400.0), "peak_mb": (0.0, 1e7), "cores": (0.0, 1024.0), "busy": (0.0, 1.0)}
+#: The booking's own figures beside the measured ones a tier also carries (a tier's are BOUNDS alone).
+FIGURES = {**BOUNDS, "ran_s": BOUNDS["seconds"], "frozen_s": BOUNDS["seconds"], "reclaim_mb": BOUNDS["peak_mb"],
+           "held_mb": BOUNDS["peak_mb"], "peak_cores": BOUNDS["cores"]}
+WHOLE = ("peak_mb", "reclaim_mb", "held_mb")
 
 
 def _figure(key, value):
-    low, high = BOUNDS[key]
+    low, high = FIGURES[key]
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not low <= value <= high:
         return None   # NaN fails both comparisons; infinities fail the bound
-    return int(value) if key == "peak_mb" else value
+    return int(value) if key in WHOLE else value
 
 
 def _tier(value) -> dict | None:
@@ -67,8 +84,24 @@ def _tier(value) -> dict | None:
 
 def _clean(key, value):
     """A field as the journal may hold it, or its empty form."""
-    if key in BOUNDS:
+    if key in FIGURES:
         return _figure(key, value)
+    if key == "frozen":
+        return value if value in FROZEN_STATES else ""
+    if key == "kind":
+        return value if value in KINDS else "run"
+    if key == "freeze_kind":
+        return value if value in FREEZE_KINDS else ""
+    if key in MOMENTS:
+        return value if _aware(value) else ""
+    if key in ("order_by", "unit"):
+        return visible(value[:80]) if isinstance(value, str) else ""
+    if key in FLAGS:
+        return value is True
+    if key == "freezes":
+        return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+    if key == "group":
+        return value if isinstance(value, int) and not isinstance(value, bool) and value >= 2 else None
     if key in LISTS:
         return [visible(v[:MAX_TEXT]) for v in value if isinstance(v, str)] if isinstance(value, list) else []
     if key == "ran":
@@ -123,6 +156,25 @@ class Booking:
     inside: str = ""                                 # a run inside this booking, recorded beside it, never booked
     path: str = ""                                   # how it was admitted: fifo, or fair and for which project
     place: int | None = None                         # the place it stands in: an expired booking's, made again
+    kind: str = ""                                   # its purpose: push, handover, review or run (rule 4)
+    asked: str = ""                                  # when it first asked; `since` moves with every record
+    started: str = ""                                # when it last started or thawed
+    ran_s: float | None = None                       # run time before its last start, frozen time left out
+    frozen: str = ""                                 # "", "ordered" (a waiter asked) or "frozen" (its holder obeyed)
+    order_by: str = ""                               # the waiter whose order froze it
+    ordered_at: str = ""
+    reclaim_mb: int | None = None                    # what the order asks to move to swap
+    frozen_at: str = ""
+    held_mb: int | None = None                       # what it held when frozen
+    frozen_s: float | None = None                    # all its frozen time
+    freezes: int = 0
+    heavy: bool = False                              # heavy once, heavy for good (section 2.3)
+    pinned: bool = False                             # never frozen: by hand, a `freeze = false` tier
+    unanswered: bool = False                         # an order lapsed, or it was let go: never ordered again
+    freeze_kind: str = ""                            # how its holder froze it: scope or signal
+    unit: str = ""                                   # its scope, for whoever thaws it when its holder is gone
+    group: int | None = None                         # its command's process group, likewise
+    peak_cores: float | None = None                  # the busiest stretch of cores it used, measured
 
 
 def number(name) -> int | None:
@@ -399,15 +451,18 @@ class Book:
             print(f"flotilla: the lane journal could not be compacted, and stays as it was: {err}", file=sys.stderr)
 
     def enqueue(self, who: str, note: str, *, pid: int | None = None, mark: str = "", run_for: str = "",
-                command: str = "", ladder=(), will_run=(), project: str = "") -> Booking:
+                command: str = "", ladder=(), will_run=(), project: str = "", kind: str = "",
+                pinned: bool = False) -> Booking:
         with self.store.transaction(KEY) as tx:
             found = self._found(tx)
             moment = self.clock() if self.clock else dt.datetime.now(dt.timezone.utc)
             place = inherited(found, who, [step[:MAX_TEXT] for step in ladder], moment)
+            extra = {**({"place": place} if place else {}), **({"kind": kind} if kind else {}),
+                     **({"pinned": True} if pinned else {})}
             return self._write(tx, _next_id(found), WAITING, who=who, note=note, pid=pid, mark=mark,
                                run_for=run_for, command=command[:MAX_TEXT],
                                ladder=[step[:MAX_TEXT] for step in ladder], will_run=list(will_run),
-                               project=project, rule=RULE, **({"place": place} if place else {}))
+                               project=project, rule=RULE, asked=moment.isoformat(timespec="seconds"), **extra)
 
     def record(self, inside: str, *, who: str, note: str, command: str = "", ladder=(), will_run=(),
                project: str = "", measured: dict | None = None) -> Booking:

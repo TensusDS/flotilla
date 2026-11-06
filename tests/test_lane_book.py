@@ -663,3 +663,48 @@ def test_a_light_run_the_room_refuses_still_waits_when_the_place_is_taken(lane):
     room = book.Room(cpus=8, factor=1.5, memory_left=lambda: None)
     assert lanes.grant(booked(lanes, RECEIPT, 1).id, slots=1, room=room)
     assert lanes.grant(booked(lanes, FILE, 2).id, slots=1, room=room) is None
+
+
+def test_a_new_booking_is_rule_4_and_records_when_it_first_asked(lane):
+    lanes, _ = lane
+    item = lanes.enqueue("main session 1", "suite", pid=1, mark="m", kind="push")
+    assert item.rule == 4 and item.kind == "push" and book._when(item.asked) is not None
+
+
+def test_asked_survives_the_held_record_that_resets_since(lane):
+    lanes, _ = lane
+    item = lanes.enqueue("a", "", pid=1, mark="m")
+    held = lanes.grant(item.id, slots=1)
+    assert held.state == book.HELD and held.asked == item.asked
+
+
+def test_freeze_fields_fold_cleaned():
+    found = book.fold([{"at": "2026-11-06T10:00:00+00:00", "booking": "b1", "state": "held", "frozen": "nonsense",
+                        "ran_s": -5, "reclaim_mb": "x", "freezes": True, "heavy": "yes", "kind": "boss",
+                        "order_by": "b2\x1b[2J", "peak_cores": 9999, "group": -1, "asked": "yesterday",
+                        "freeze_kind": "kill", "pinned": 1, "unanswered": "true", "held_mb": -1,
+                        "frozen_s": float("nan"), "unit": "u\x1b[2J"}])["b1"]
+    assert (found.frozen, found.ran_s, found.reclaim_mb, found.freezes, found.heavy, found.kind) == \
+        ("", None, None, 0, False, "run")
+    assert "\x1b" not in found.order_by and found.peak_cores is None and found.group is None
+    assert (found.asked, found.freeze_kind, found.pinned, found.unanswered, found.held_mb, found.frozen_s) == \
+        ("", "", False, False, None, None)
+    assert "\x1b" not in found.unit
+
+
+def test_freeze_fields_fold_as_written():
+    found = book.fold([{"at": "2026-11-06T10:00:00+00:00", "booking": "b1", "state": "held", "frozen": "frozen",
+                        "ran_s": 300.5, "reclaim_mb": 1128, "freezes": 2, "heavy": True, "kind": "review",
+                        "order_by": "b2", "peak_cores": 6.5, "group": 4242, "freeze_kind": "scope",
+                        "unit": "flotilla-lane-b1-9-1", "held_mb": 2048, "frozen_s": 40.0,
+                        "started": "2026-11-06T09:55:00+00:00", "unanswered": True, "pinned": True}])["b1"]
+    assert (found.frozen, found.ran_s, found.reclaim_mb, found.freezes, found.heavy, found.kind, found.order_by,
+            found.peak_cores, found.group, found.freeze_kind, found.unit, found.held_mb, found.frozen_s,
+            found.started, found.unanswered, found.pinned) == \
+        ("frozen", 300.5, 1128, 2, True, "review", "b2", 6.5, 4242, "scope", "flotilla-lane-b1-9-1", 2048, 40.0,
+         "2026-11-06T09:55:00+00:00", True, True)
+
+
+def test_a_frozen_booking_is_still_a_holder_to_an_older_fold():
+    found = book.fold([{"at": "2026-11-06T10:00:00+00:00", "booking": "b1", "state": "held", "frozen": "frozen"}])
+    assert [item.id for item in book.Book.holders(None, found)] == ["b1"]
