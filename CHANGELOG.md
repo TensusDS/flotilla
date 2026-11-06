@@ -11,8 +11,10 @@ Security and hygiene of a public repository.
   record could name a process or a scope that is not a lane run.
   - A frozen command is thawed from outside only when the process itself proves it is the booking's - its own
     environment carries `FLOTILLA_LANE_BOOKING` - or when the scope's name carries the booking. A process that
-    gives no word either way is kept, never dropped: `flotilla lane` shows it with the command that resumes it
-    (`systemctl --user thaw` for a scope, `kill -CONT` for a stop by signal).
+    gives no word either way (its environment cleared or unreadable) is continued when it is the very process that
+    was frozen, by its start mark, and still stands stopped; while even that cannot be read it is kept, never
+    dropped, and `flotilla lane` shows the command that resumes it (`systemctl --user thaw` for a scope,
+    `kill -CONT` for a stop by signal).
   - A holder freezes its command only for a fresh order from a waiter with a live process and its start mark that
     the lane's rules let it be frozen for (not immortal, past its first minute, lower in priority). Any other order
     lapses, and the waiter does not order that run again until the answer bound is over.

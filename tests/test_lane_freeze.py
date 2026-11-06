@@ -355,3 +355,19 @@ def test_a_booking_named_in_the_commands_own_words_is_not_its_environment(tmp_pa
     assert freeze.carries(42, "b1", proc_root=gone, run=run) is True     # its environment, not its arguments
     run = _ps_both(command, "PATH=/usr/bin HOME=/home/user")
     assert freeze.carries(42, "b1", proc_root=gone, run=run) is None     # no word in the environment itself
+
+
+
+def test_stopped_reads_the_process_state(tmp_path):
+    proc = tmp_path / "proc"
+    for pid, state in ((10, "T"), (11, "S"), (12, "Z"), (13, "t")):
+        (proc / str(pid)).mkdir(parents=True)
+        (proc / str(pid) / "stat").write_text(f"{pid} (sh -c x) {state} 1 {pid} 0")
+    assert [freeze.stopped(pid, proc_root=proc) for pid in (10, 11, 12, 13, 99)] == [True, False, True, True, False]
+
+
+def test_stopped_asks_ps_where_there_is_no_proc(tmp_path):
+    gone = tmp_path / "no-proc"
+    assert freeze.stopped(42, proc_root=gone, run=lambda argv, **kw: done(0, "T+\n")) is True
+    assert freeze.stopped(42, proc_root=gone, run=lambda argv, **kw: done(0, "S\n")) is False
+    assert freeze.stopped(42, proc_root=gone, run=lambda argv, **kw: done(1, "")) is False   # gone

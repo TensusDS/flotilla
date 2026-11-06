@@ -58,6 +58,11 @@ for them first.
   it so). Say "0 of 12 cores in use". *(closed in 0.30.0: the line is gone; the lane says "heavy runs: 0 of 12 cores
   in use" - flotilla/lane/commands.py `_status_by_value`)*
 
+- **A stop by signal whose group leader is gone leaves the rest of its group stopped.** When a dead holder's frozen
+  command group has lost its leader, the lane reads it as gone and clears the booking, but other members of the group
+  may still stand stopped; `killpg(group, SIGCONT)` would reach them. Found by the review of 0.30.1's fixes.
+  *(open: flotilla/lane/book.py `_thaw_command`)*
+
 **The person's road.**
 
 - **A collector pass the classifier refuses has no road to the person.** With `skip_classifier_for_checked = false`

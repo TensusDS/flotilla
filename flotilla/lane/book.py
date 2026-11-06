@@ -406,10 +406,17 @@ def _thaw_command(item: Booking, procs=None) -> bool:
         if getattr(procs, "start_mark", lambda pid: None)(item.group) != item.group_mark:
             return True     # another process has its number now
         theirs = freeze.carries(item.group, item.id)   # proof from the process itself, not from the journal
+        if theirs is False:
+            return True     # names another booking: nothing of the lane's to thaw
         if theirs is None:
-            return False    # cannot be read now: kept, and asked again
-        if not theirs:
-            return True     # not a run of this booking: nothing of the lane's to thaw
+            # no word of its booking (a re-exec cleared it, another user's, a zombie): the same process as the one
+            # frozen, by its start mark, and still stopped, is continued all the same - a lane command must never
+            # stay stopped, and a wrong SIGCONT only resumes a stopped process (the person's ruling, 2026-11-06)
+            halted = freeze.stopped(item.group)
+            if halted is None:
+                return False    # cannot be read now: kept, and asked again
+            if not halted:
+                return True     # it runs: nothing stopped there to continue
         return freeze.thaw_tree(item.group)
     return True   # frozen with no command running: nothing to thaw but the record
 

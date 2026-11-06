@@ -396,6 +396,7 @@ def test_a_group_with_no_word_of_its_booking_is_kept_not_cleared(lane, monkeypat
     calls = []
     monkeypatch.setattr(freeze, "thaw_tree", lambda pid, **kw: calls.append(pid) or True)
     monkeypatch.setattr(freeze, "carries", lambda pid, booking: None)   # a re-exec cleared its environment
+    monkeypatch.setattr(freeze, "stopped", lambda pid: None)            # and its state cannot be read either
     procs.dead.add(11)
     mine = lanes.enqueue("main session 2", "x", pid=12, mark="m")
     lanes.grant(mine.id, slots=1, value=value())
@@ -439,3 +440,29 @@ def test_a_waiter_does_not_order_again_a_run_that_just_refused_it(lane):   # rev
     later(admission.ANSWER_S - 4)
     lanes.grant(mine.id, slots=1, value=v)
     assert lanes.bookings()[first.id].frozen == "ordered"   # the back-off is over
+
+
+
+def _silent(lanes, procs, later, monkeypatch, state):
+    first = holder(lanes, later)
+    lanes.frozen(first.id, freeze_kind="signal", unit="", group=13, held_mb=100)
+    calls = []
+    monkeypatch.setattr(freeze, "thaw_tree", lambda pid, **kw: calls.append(pid) or True)
+    monkeypatch.setattr(freeze, "carries", lambda pid, booking: None)   # no word of its booking
+    monkeypatch.setattr(freeze, "stopped", lambda pid: state)
+    procs.dead.add(11)
+    mine = lanes.enqueue("main session 2", "x", pid=12, mark="m")
+    lanes.grant(mine.id, slots=1, value=value())
+    return first, calls
+
+
+def test_a_silent_process_still_stopped_is_continued(lane, monkeypatch):   # the person's ruling, 2026-11-06
+    lanes, procs, later = lane
+    first, calls = _silent(lanes, procs, later, monkeypatch, True)
+    assert calls == [13] and lanes.bookings()[first.id].state == book.RELEASED
+
+
+def test_a_silent_process_that_runs_is_left_alone(lane, monkeypatch):
+    lanes, procs, later = lane
+    first, calls = _silent(lanes, procs, later, monkeypatch, False)
+    assert calls == [] and lanes.bookings()[first.id].state == book.RELEASED   # nothing of the lane's stopped there

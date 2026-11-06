@@ -232,6 +232,27 @@ def carries(pid: int, booking: str, *, proc_root: Path = Path("/proc"), run=subp
     return named == booking
 
 
+def stopped(pid: int, *, proc_root: Path = Path("/proc"), run=subprocess.run) -> bool | None:
+    """Whether process `pid` stands stopped (T, t) - or ended a zombie whose group may still hold stopped members.
+    False when it runs or is gone; None when its state cannot be read."""
+    if proc_root.is_dir():
+        try:
+            stat = (proc_root / str(int(pid)) / "stat").read_text(encoding="utf-8", errors="replace")
+        except FileNotFoundError:
+            return False
+        except (OSError, ValueError):
+            return None
+        fields = stat[stat.rfind(")") + 2:].split()
+        return bool(fields) and fields[0] in ("T", "t", "Z")
+    try:
+        done = run(["ps", "-o", "stat=", "-p", str(int(pid))], capture_output=True, text=True, timeout=5, check=False)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    if done.returncode != 0:
+        return False
+    return (done.stdout or "").strip()[:1] in ("T", "Z")
+
+
 def thaw_tree(pid: int, *, table=None) -> bool:
     """Continue every process of `pid`'s tree and group after a stop by signal whose holder is gone or silent."""
     return _signal_tree(pid, signal.SIGCONT, table if table is not None else _table())
