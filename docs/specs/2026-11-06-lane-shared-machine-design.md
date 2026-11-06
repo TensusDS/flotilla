@@ -23,7 +23,8 @@ between projects, ceilings, measurement.
 Sources:
 - the field test of two demo fleets on one lane (TODO, section "From the field test of two demo fleets on one lane",
   and `/home/max/var/flotest-2026-11-06/observations.md`);
-- the research report `/home/max/var/lane-research/reports/Память при параллельных прогонах.md`, with its notes;
+- the research report on memory under concurrent runs, in `/home/max/var/lane-research/reports/` (its file name is
+  Russian), with its notes;
 - the model of this design, `lane_sim/` in the brainstorm's scratch directory. Every number marked *(model)* below
   comes from it; it is a throwaway spike, not shipped.
 

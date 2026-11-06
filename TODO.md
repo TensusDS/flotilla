@@ -26,33 +26,37 @@ for them first.
   stood free; the slow tier runs about three times a row (handover receipt, reviewer, push receipt). Heavy waits of
   150-798 s each, all of the heavy waiting in the test. The demo's slow tier is a sleep; a network-bound or e2e suite
   looks the same. Asked: a long run that is measured small (cores and memory within the light bounds) takes what the
-  heavy runs leave, as a light run does, and only a run that needs the machine takes the slot. *(checked 2026-11-06 on
-  0.29.3: still B - flotilla/lane/estimate.py:140-167 `LIGHT_SECONDS`, `light`)*
+  heavy runs leave, as a light run does, and only a run that needs the machine takes the slot. *(closed in 0.30.0:
+  heavy is a fifth of the memory the lane can give, never a duration - flotilla/lane/policy.py `is_heavy`)*
 - **A receipt tier's measurement does not teach `lane run` of the same command.** A tier's sample is kept only under
   `tier:<project>:<name>`; a `lane run` ladder is `exact/norm/prog/project`, so the same `pytest tests/unit -q`,
   measured 0.28 s / 0.78 cores in a receipt four minutes earlier, waited as a 4-core prior run. 7 first runs waited
   161-377 s each (~24 min) for 0.0-0.3 s of running, until each command had its own history. Asked: a tier's sample
-  is also filed under its command's `exact`/`norm` signatures. *(checked 2026-11-06 on 0.29.3: still B -
-  flotilla/lane/estimate.py:53-71 `history`, flotilla/lane/signature.py:186-200)*
+  is also filed under its command's `exact`/`norm` signatures. *(cost gone in 0.30.0: a command never measured is
+  admitted by the memory free now at this machine's first-run percentile, not as a 4-core prior; the cross-filing
+  itself is still not done - flotilla/lane/estimate.py `history`)*
 - **A command with a new path is never measured, so always heavy.** The review skill's injected-regression script has
   a per-row path (`.../jobs/<id>/tmp/mutants-r12.sh`); each waited behind the receipts as a "project prior" run: 5
   scripts, ~40 min of waiting for ~55 s of running. Asked: the path normalised in the signature (as hashes and numbers
   already are), or an unmeasured run that is short on probation - started beside the holder and stopped back into the
-  queue if it outgrows the bounds. *(checked 2026-11-06 on 0.29.3: still B - flotilla/lane/signature.py `_normalise`,
-  flotilla/lane/estimate.py `PRIOR`)*
+  queue if it outgrows the bounds. *(closed in 0.30.0: an unmeasured run is admitted by free memory at the first-run
+  percentile, and is frozen rather than queued if a higher run needs its room - flotilla/lane/admission.py
+  `default_mb`)*
 - **A narrowed variant of a measured light command is heavy.** `pytest tests/unit -q -k long_punctuated` waited 596 s
   as heavy while `flotilla lane` printed its estimate as "0 s, 1.02 cores (10 runs (prog match))". A `prog:` match is
   never light on purpose (a full suite with a new flag must not ride on single-file runs, final review of 0.28.0), but
   the cheap direction - a `-k` filter or one test file of a command measured light - pays as the risky one. Asked: a
   variant that only narrows (adds `-k`, a test path, `-x`) of an `exact`/`norm` command measured light is light; and
-  `flotilla lane` says why a waiter with a light-looking estimate is not light. *(checked 2026-11-06 on 0.29.3: still B
-  - flotilla/lane/estimate.py:152-163 `OWN_STEPS`, `_own`)*
+  `flotilla lane` says why a waiter with a light-looking estimate is not light. *(closed in 0.30.0: light and heavy
+  are memory, and `flotilla lane` prints each run's memory and its reason to wait - flotilla/lane/commands.py
+  `value_of`)*
 - **Push receipts queue behind the reviewer's own runs** (flotest-a sender): ~10 min of queueing per push plus the
   200 s slow tier, ~15 min a push. Asked by the seat: a push receipt ranks before a reviewer's checks in the queue.
-  Weigh against the items above - with heaviness by resources most of this queue goes away. *(open, design -
-  flotilla/lane/book.py `fair_choice`)*
+  Weigh against the items above - with heaviness by resources most of this queue goes away. *(closed in 0.30.0: a
+  push receipt's type is 1.0 against a reviewer's 0.5 in the priority - flotilla/lane/policy.py `TYPES`)*
 - **`budget for light runs: 0 of 12 cores` reads as "none left"**; it means none in use (the test's watcher misread
-  it so). Say "0 of 12 cores in use". *(checked 2026-11-06 on 0.29.3: P - flotilla/lane/commands.py:241)*
+  it so). Say "0 of 12 cores in use". *(closed in 0.30.0: the line is gone; the lane says "heavy runs: 0 of 12 cores
+  in use" - flotilla/lane/commands.py `_status_by_value`)*
 
 **The person's road.**
 
