@@ -3,6 +3,19 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.29.3 - 2026-11-06
+
+Two ways the person's `machine.toml` lost what they had set.
+
+- **Measuring the machine again keeps every key it does not measure.** `flotilla onboard machine` rewrote the file
+  keeping only a fixed list of the person's keys; `lane_share` and `lane_cpu_factor`, added later, were not on it, so
+  a re-measure silently put a shared lane back to first come, first served. What the measurement writes is now named,
+  and everything else stays; a fact the measurement can no longer know is dropped rather than kept stale.
+- **A test never writes the real state directory.** A test run rewrote the person's `machine.toml` to two lines (twosuns
+  field notes, item 21): a test file outside `tests/` does not load the suite's conftest, so the rig tests' world
+  wrote into the real directory. The state directory is now refused to any test that names none of its own, wherever
+  the test file lives, and the suite fails a run that changed the real `machine.toml` by any other road.
+
 ## 0.29.2 - 2026-11-05
 
 0.29.1's code, with its test of a file name that is not UTF-8 skipped where the filesystem refuses such a name

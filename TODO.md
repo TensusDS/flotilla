@@ -8,6 +8,32 @@ something through, B a bug a user meets, P polish, tests or docs), or `open, des
 run). A later triage re-checks only items whose named files changed since that version. An item that is done -
 fixed by a release, or found fixed - leaves its section for **Done** at the bottom, one line with the version.
 
+## From twosuns' field notes, second part (2026-11-02..04, on 0.24-0.26) and the demo onboarding (2026-11-05, 0.29.2)
+
+- **A superseded shipped row has no honest end** (twosuns item 19). Shipped rows whose content a later row replaced
+  can leave only by `walked` (untrue) or `broke` (files a fix row nobody wants); `release` and `close` are refused from
+  shipped. twosuns parked r252, r245, r253, r270 with a hold until the person. Asked: a "superseded by <row|commit>"
+  end from shipped, the person's or the orchestrator's move, with why. *(checked 2026-11-06 on 0.29.2: open, design -
+  flotilla/ledger/transitions.py, "shipped")*
+- **`work adopt` leaves the old tree held by the adopter** (twosuns item 22). The row keeps its old tree path, so
+  `fleet clean` reports "<seat> is alive and works in it" and the collector never archives it: ~35 trees, ~8 GB on
+  twosuns. Asked: adopt re-points the row to the adopter's home tree, or marks the old tree orphaned. *(checked
+  2026-11-06 on 0.29.2: still B - flotilla/ledger/steering.py, adopt keeps `row.tree`)*
+- **`rig --put/--get` only inside the tree collides with a receipt in the same tree** (twosuns item 20). A rig kit
+  must be staged in the seat's tree; a queued receipt refuses any untracked file there, so the seat stops its receipt
+  to run the kit. Asked: put/get from a seat-private directory outside the tree, or a kit directory the receipt
+  ignores. *(checked 2026-11-06 on 0.29.2: still B - flotilla/rig/transfer.py:71, 145)*
+- **A receipt tier that runs on the rig** (twosuns item 18; the same wish as item 15.5 above): one named tier (a GPU
+  smoke) run on a rented machine, its verdict carried back and trusted like a local tier. *(open, design)*
+- **`rig run` could name the machine's image beside the profile's** (twosuns item 17, a wish): "machine mN on image
+  X, the project profile names Y", for a run that meets a warm machine raised by another project. *(open, P)*
+- **The publish refusal of a project with no profile could name `/flotilla:organize`** (demo onboarding). *(checked
+  2026-11-06 on 0.29.2: P)*
+- **A tier that writes an untracked file blocks publish and receipts** (demo onboarding: `uv run` wrote `uv.lock`);
+  the way out was `.git/info/exclude`, found by hand. *(checked 2026-11-06 on 0.29.2: B, measure)*
+- **Tier names from detection repeat a command word** ("pytest", "pytest-2") when two tiers run pytest (demo
+  onboarding). *(checked 2026-11-06 on 0.29.2: P - flotilla/onboard/detect)*
+
 ## From the person-inbox build and its reviews (2026-11-03, 0.26.0)
 
 - **The wrapped check of the person's moves reads text, and its gaps are logged, not chased** (decision 245, the
@@ -93,11 +119,6 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
 - **`test_a_run_stopped_before_its_command_fetches_nothing` cannot tell "fetch skipped" from "fetch found
   nothing"**, and its SIGTERM races the command's start. It guards the 120 s hang only.
   *(open: tests/test_rig_run.py)*
-- **A rig test run from a file outside `tests/` writes the live rig journal.** The reviewer ran a scratch test with
-  `--rootdir=tests` from its scratchpad; `tests/conftest.py` did not load, the state-dir fixture never redirected,
-  and the `world` fixture wrote session `s85` and request `r8` into `~/.local/state/flotilla/rig/rig.jsonl` (the
-  reaper closed `s85` at the next pass; `r8` names a project no orchestrator has). Idea: the rig test worlds refuse
-  to start when the state dir is the real one. *(open: tests/test_rig_up.py `world`)*
 
 ## From two field fleets, twosuns and void-lanes-online (2026-10-31..11-01, reported on 0.21.0 and 0.23.2)
 
@@ -653,6 +674,12 @@ Each is a limitation README states today, judged fixable in principle; none is p
 - The onboard skill does not state that background isolation stays on. *(checked 2026-10-04 on 0.7.8: still [P])*
 
 ## Done
+
+- A test never writes the real state directory, wherever its file lives (twosuns item 21: the rig tests' `world`
+  wrote `machine.toml` as `rig`, `rig_provider`; the same road wrote the live rig journal), and re-measuring the
+  machine keeps every key it does not measure (`lane_share` was lost) (0.29.3).
+- Waiting lane processes burn ~20 % CPU each (twosuns items 14, 14b): found closed, a waiter measured at 0.5 % CPU
+  over 60 s on 0.29.2, on a fresh journal (2026-11-05).
 
 - The review of 0.28.0 against everything found since 0.24.0: a light run never waits on an empty lane; woken waiters reuse their last look at the machine; `rig share`/`unshare` are the person's moves to the guard; an unshared project's waiting rig run leaves the line; a script's or module's arguments are not asked about (the reading fails closed); a second Ctrl-C during a rig cleanup is held off; a heavy waiter is told only what it waits for (0.28.1).
 
