@@ -57,6 +57,13 @@ class Watch:
                 return ""
             return "froze"
         if item.frozen == "frozen":
+            held_for = self.clock() - self._frozen_since if self._frozen_since is not None else 0.0
+            if held_for >= self.value_of(None).freeze_ceiling_s:
+                # no freeze outlasts its ceiling, whatever holds its room - a waiter that turned into a take by hand,
+                # a forged one, or a queue that never gives the room back (the person's ruling, 2026-11-06)
+                self.lanes.thaw(self.booking_id, self.value_of(None), force=True, never_again=True)
+                self._thaw()
+                return "let go"
             orderer = self.lanes.bookings().get(item.order_by)
             waits = orderer is not None and orderer.state == book.WAITING
             if waits and self._frozen_since is not None and \

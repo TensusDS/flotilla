@@ -2,6 +2,7 @@ import io
 """The holder's watch: it freezes its command on an order, thaws it through the queue, lets a signal stop go, never
 leaves its command frozen when it fails, and beats while it lives (lane shared machine design, 4.1-4.3)."""
 
+import dataclasses
 import datetime as dt
 import os
 import signal
@@ -462,3 +463,21 @@ def test_the_let_go_does_not_force_a_thaw_beside_a_waiter_that_started(lane, mon
     monkeypatch.setattr(lanes, "thaw", thaw)
     tick["now"] = 121.0
     assert w.step() != "let go" and s.frozen()   # back through the queue, not forced in beside the run it froze for
+
+
+
+def test_no_freeze_outlasts_its_ceiling_whoever_holds_its_room(lane):   # the person's ruling, 2026-11-06
+    # its waiter turned into a take by hand right after ordering (as a forged one can): the let-go never fires, the
+    # queue never gives the room back - the ceiling thaws it all the same, and it is never frozen again
+    lanes, mine, waiter, _later, _root = lane
+    s = FakeSlot()
+    tick = {"now": 0.0}
+    ceiling = lambda reading: dataclasses.replace(value(available=300), freeze_ceiling_s=600.0)  # noqa: E731
+    w = watch.Watch(lanes, mine, s, ceiling, clock=lambda: tick["now"], let_go_s=120, swap=lambda: (8000, 8000))
+    assert w.step() == "froze"
+    with lanes.store.transaction(book.KEY) as tx:
+        tx.append({"at": lanes._now(), "booking": waiter, "state": book.HELD, "pid": None, "mark": ""})
+    tick["now"] = 300.0
+    assert w.step() == "" and s.frozen()   # not yet: within the ceiling, and its waiter no longer waits
+    tick["now"] = 601.0
+    assert w.step() == "let go" and not s.frozen() and lanes.bookings()[mine].unanswered

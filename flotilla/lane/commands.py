@@ -90,6 +90,15 @@ def freeze_on() -> bool:
     return _machine().get("lane_freeze", True) is not False
 
 
+FREEZE_CEILING_MINUTES, FREEZE_CEILING_BOUNDS = 10, (2, 240)
+
+
+def freeze_ceiling_minutes() -> float:
+    """machine.toml `lane_freeze_ceiling_minutes`: the longest one freeze lasts, whatever holds its room; then the run
+    is thawed and never frozen again (the person's ruling, 2026-11-06: a frozen command never stays frozen)."""
+    return _number("lane_freeze_ceiling_minutes", FREEZE_CEILING_MINUTES, FREEZE_CEILING_BOUNDS)
+
+
 def max_runs() -> int:
     """machine.toml `lane_max_runs`: runs at once at most, whatever memory allows (section 2.4)."""
     return _number("lane_max_runs", MAX_RUNS, MAX_RUNS_BOUNDS, whole=True)
@@ -131,6 +140,7 @@ def value_for(profile: dict):
     cpus, floor = machine.cpus(), machine.memory_floor_mb(profile)
     kind = freeze.backend(setting=freeze_on())[0]
     reserve, immortal, cap, factor = light_reserve(), immortal_minutes() * 60.0, max_runs(), cpu_factor()
+    ceiling = freeze_ceiling_minutes() * 60.0
     root = paths.state_dir() / "lane"
 
     def make(reading=None):
@@ -138,7 +148,8 @@ def value_for(profile: dict):
                                max_runs=cap, freeze=kind, available_mb=resources.available_mb, floor_mb=floor,
                                swap_mb=freeze.swap_mb, tree_mb=peak.tree_rss_mb,
                                beat_age_s=lambda booking: admission.beat_age(root, booking),
-                               foreign=len(reading.computing) if reading is not None else 0)
+                               foreign=len(reading.computing) if reading is not None else 0,
+                               freeze_ceiling_s=ceiling)
     return make
 
 

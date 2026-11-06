@@ -364,6 +364,7 @@ the field test).
 | `lane_immortal_minutes` | 15 | run time after which a run is never frozen |
 | `lane_freeze` | on (Linux: freeze and reclaim; macOS and Linux without a user systemd: stop by signal) | off: admission and order only |
 | `lane_max_runs` | 10 | runs holding the lane at once |
+| `lane_freeze_ceiling_minutes` | 10 | the longest one freeze lasts, whatever holds its room (the person's ruling, 2026-11-06, after a forged waiter was shown able to hold a freeze for ever) |
 
 The weights, the type values, the 10-minute wait saturation, the 1-minute grace and the margin are constants in code,
 not settings. Exposing them would invite tuning by hand of numbers whose effect only a model or a field test shows.

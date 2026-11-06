@@ -142,3 +142,9 @@ def test_new_lane_keys_survive_a_machine_toml_rewrite(tmp_path):
     write_machine(tmp_path, {"cpu_count": 8})
     found = read_machine(tmp_path)
     assert {key: found.get(key) for key in keys} == keys
+
+
+
+def test_the_freeze_ceiling_is_the_persons_key():
+    from flotilla.onboard.machine import PERSON_KEYS
+    assert "lane_freeze_ceiling_minutes" in PERSON_KEYS

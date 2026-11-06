@@ -47,6 +47,7 @@ class Value:
     tree_mb: Callable[[int], int | None]            # a holder's process tree, now
     beat_age_s: Callable[[str], float | None]       # seconds since a booking's watch last beat; None: no beat file
     foreign: int = 0
+    freeze_ceiling_s: float = 600.0                 # no freeze outlasts this, whatever holds its room
 
 
 def default_mb(found: dict) -> int:

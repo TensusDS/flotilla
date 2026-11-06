@@ -776,3 +776,15 @@ def test_a_frozen_scopes_hint_writes_the_freeze_file_itself():   # review of the
     scoped = book.Booking(id="b4", frozen="frozen", order_by="b14", group=4242, unit="flotilla-lane-b4-9-1.scope")
     line = commands.value_of(frozen, scoped, machine, now)
     assert "cgroup.freeze" in line and "flotilla-lane-b4-9-1.scope" in line
+
+
+
+def test_the_freeze_ceiling_is_a_setting(monkeypatch):   # the person's ruling, 2026-11-06
+    from flotilla.lane import commands
+    for bad in ({"lane_freeze_ceiling_minutes": 1}, {"lane_freeze_ceiling_minutes": 241},
+                {"lane_freeze_ceiling_minutes": True}, {"lane_freeze_ceiling_minutes": "10"}, {}):
+        monkeypatch.setattr(commands, "_machine", lambda bad=bad: bad)
+        assert commands.freeze_ceiling_minutes() == 10
+    monkeypatch.setattr(commands, "_machine", lambda: {"lane_freeze_ceiling_minutes": 30})
+    assert commands.freeze_ceiling_minutes() == 30
+    assert commands.value_for({})(None).freeze_ceiling_s == 1800.0
