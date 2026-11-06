@@ -94,4 +94,20 @@ def test_a_run_that_changes_the_real_machine_file_fails(tmp_path):
                            "--rootdir", str(scratch), str(scratch / "test_writer.py")], cwd=scratch, env=env,
                           capture_output=True, text=True, timeout=120)
     assert "1 passed" in done.stdout, done.stdout + done.stderr
-    assert done.returncode == 1 and "changed the person's real" in done.stdout, done.stdout + done.stderr
+    assert done.returncode == 1 and "changed during this run" in done.stderr, done.stdout + done.stderr
+
+
+def test_a_child_that_inherits_the_test_marker_is_not_refused(tmp_path):
+    """Review of 0.29.3: pytest leaves PYTEST_CURRENT_TEST in the environment of every child. A flotilla hook or git
+    hook started from another project's test run is not a test of flotilla; refusing there broke hooks in projects
+    that never set flotilla up. The refusal is for a test running in this very process."""
+    import os
+    import subprocess
+    import sys
+    repo = Path(__file__).resolve().parents[1]
+    env = {key: value for key, value in os.environ.items() if key not in ("FLOTILLA_STATE_DIR", "XDG_STATE_HOME")}
+    env.update(HOME=str(tmp_path / "home"), PYTHONPATH=str(repo), PYTEST_CURRENT_TEST="tests/test_x.py::test_y (call)")
+    done = subprocess.run([sys.executable, "-c", "from flotilla.core.paths import state_dir; print(state_dir())"],
+                          env=env, capture_output=True, text=True, timeout=60)
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.strip() == str(tmp_path / "home" / ".local" / "state" / "flotilla")

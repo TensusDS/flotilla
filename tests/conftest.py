@@ -6,7 +6,10 @@ import pytest
 
 
 def _real_machine_file() -> Path:
-    """The person's machine.toml, found as the plugin finds it with no override; read once, before any test runs."""
+    """The person's machine.toml, found as the plugin finds it; read once, before any test sets its own directory."""
+    override = os.environ.get("FLOTILLA_STATE_DIR")
+    if override:
+        return Path(override) / "machine.toml"
     base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
     return Path(base) / "flotilla" / "machine.toml"
 
@@ -32,10 +35,11 @@ def pytest_sessionfinish(session, exitstatus):
         return
     after = _fingerprint(path)
     if after != before:
-        session.config.get_terminal_writer().line(
-            f"FAILED: this run changed the person's real {path} ({before[:12]} -> {after[:12]}); a test wrote outside "
-            f"its own state directory", red=True, bold=True)
-        session.exitstatus = pytest.ExitCode.TESTS_FAILED
+        import sys
+        print(f"\nFAILED: the person's real {path} changed during this run ({before[:12]} -> {after[:12]}): a test "
+              f"wrote outside its own state directory, or something else on this machine wrote it", file=sys.stderr)
+        if session.exitstatus in (pytest.ExitCode.OK, pytest.ExitCode.NO_TESTS_COLLECTED):
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
 
 
 _MACHINE = pytest.StashKey[tuple]()

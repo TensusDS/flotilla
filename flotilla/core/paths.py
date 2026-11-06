@@ -7,6 +7,7 @@ Never `${CLAUDE_PLUGIN_DATA}`: Claude Code deletes that directory when the plugi
 from __future__ import annotations
 
 import os
+import sys
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -21,12 +22,14 @@ def state_dir(env: Mapping[str, str] = os.environ) -> Path:
         return Path(override)
     base = env.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
     real = Path(base) / "flotilla"
-    if env.get("PYTEST_CURRENT_TEST"):
+    if env.get("PYTEST_CURRENT_TEST") and "_pytest" in sys.modules:
         # pytest sets this for every test whether or not tests/conftest.py loaded; a test file outside tests/ never
         # gets the per-test directory, and one such run rewrote the person's machine.toml (twosuns feedback item 21).
-        raise RealStateInTest(f"a test asked for the state directory with FLOTILLA_STATE_DIR unset, which would be the "
-                              f"real one ({real}); set FLOTILLA_STATE_DIR to a temporary directory (tests/conftest.py "
-                              f"does this for every test under tests/)")
+        # Only a test in this very process: a child inherits the marker, and a hook or git hook started from another
+        # project's test run is not a test of flotilla (review of 0.29.3).
+        raise RealStateInTest(f"running under a pytest test (PYTEST_CURRENT_TEST is set) with FLOTILLA_STATE_DIR "
+                              f"unset, which would be the real state directory {real}; set FLOTILLA_STATE_DIR to a "
+                              f"temporary directory")
     return real
 
 

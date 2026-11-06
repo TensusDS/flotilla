@@ -118,9 +118,16 @@ def test_measuring_again_keeps_every_key_it_does_not_measure(tmp_path):
     assert "cpu_count" not in data    # a fact the measurement no longer knows is dropped, never kept stale
 
 
-def test_every_key_the_measurement_writes_is_named_as_measured():
+def test_every_key_the_measurement_writes_is_named_as_measured(tmp_path):
     """The keep rule rests on knowing which keys are measured: one the measurement writes but the list misses would be
     kept stale whenever the next measurement could not know it."""
-    data = machine.measure_machine()
+    import subprocess
+    proc = tmp_path / "proc"
+    proc.mkdir()
+    (proc / "meminfo").write_text("MemTotal: 1024 kB\n", encoding="utf-8")
+
+    def run(args, **kwargs):
+        return subprocess.CompletedProcess(args, 0, stdout="/usr/bin/python3\n3.12.1\n", stderr="")
+    data = machine.measure_machine(proc_root=proc, which=lambda name: "/usr/bin/" + name, run=run)
     data.update(cpu_count=1, memory_bytes=1)
     assert set(data) <= set(machine.MEASURED_KEYS)

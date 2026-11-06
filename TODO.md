@@ -31,6 +31,17 @@ fixed by a release, or found fixed - leaves its section for **Done** at the bott
   2026-11-06 on 0.29.2: P)*
 - **A tier that writes an untracked file blocks publish and receipts** (demo onboarding: `uv run` wrote `uv.lock`);
   the way out was `.git/info/exclude`, found by hand. *(checked 2026-11-06 on 0.29.2: B, measure)*
+- **A torn `machine.toml` is still rewritten from nothing by `onboard machine`**, losing `lane_share` and every
+  `rig_*` key, while `rig enable` names that command as the repair (review of 0.29.3). Refuse as `set_person_keys`
+  does, or keep a copy and say so. *(checked 2026-11-06 on 0.29.3: still B - flotilla/onboard/machine.py
+  write_machine, flotilla/rig/commands.py `_enable`)*
+- **A kept `machine.toml` value the TOML writer cannot write** (a date, a nested array) makes `onboard machine` and
+  `set_person_keys` end in a traceback; the file is left intact (review of 0.29.3). *(checked 2026-11-06 on 0.29.3:
+  P - flotilla/onboard/tomlw.py)*
+- **What the state-directory refusal does not see** (review of 0.29.3): a flotilla child started from a test (it
+  inherits the marker and is let through, by design), a write by a direct path, and a person whose real directory is
+  `FLOTILLA_STATE_DIR`. The suite's tripwire covers only `machine.toml` and only runs that load tests/conftest.py.
+  *(checked 2026-11-06 on 0.29.3: S, within design - flotilla/core/paths.py, tests/conftest.py)*
 - **Tier names from detection repeat a command word** ("pytest", "pytest-2") when two tiers run pytest (demo
   onboarding). *(checked 2026-11-06 on 0.29.2: P - flotilla/onboard/detect)*
 
@@ -675,9 +686,9 @@ Each is a limitation README states today, judged fixable in principle; none is p
 
 ## Done
 
-- A test never writes the real state directory, wherever its file lives (twosuns item 21: the rig tests' `world`
-  wrote `machine.toml` as `rig`, `rig_provider`; the same road wrote the live rig journal), and re-measuring the
-  machine keeps every key it does not measure (`lane_share` was lost) (0.29.3).
+- A test that asks `state_dir()` in pytest's own process is refused the real directory, wherever its file lives
+  (twosuns item 21: the rig tests' `world` wrote `machine.toml` as `rig`, `rig_provider`; the same road wrote the live
+  rig journal), and re-measuring the machine keeps every key it does not measure (`lane_share` was lost) (0.29.3).
 - Waiting lane processes burn ~20 % CPU each (twosuns items 14, 14b): found closed, a waiter measured at 0.5 % CPU
   over 60 s on 0.29.2, on a fresh journal (2026-11-05).
 

@@ -86,9 +86,9 @@ def measure_machine(*, os_name: str = sys.platform, proc_root: Path = Path("/pro
     return data
 
 
-#: Keys `measure_machine` writes. Measuring again replaces these and keeps every other key: a fact it can no longer
-#: know is dropped rather than kept stale, and a key the person added, listed below or not, is never lost (`lane_share`
-#: was, 2026-11-05).
+#: Keys `measure_machine` writes. Measuring again replaces these and keeps every other key it can read: a fact it can
+#: no longer know is dropped rather than kept stale, and a key the person added, listed below or not, stays
+#: (`lane_share` was lost, 2026-11-05). A torn file is still rewritten from nothing (TODO).
 MEASURED_KEYS = ("schema", "measured_at", "os", "parent_pid_source", "timeout_command", "has_flock", "gh", "python3",
                  "cpu_count", "memory_bytes")
 #: Keys the person sets by command (`set_person_keys`); the rig's switch and ceilings are the person's too (rig

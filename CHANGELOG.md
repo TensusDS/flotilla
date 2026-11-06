@@ -10,11 +10,13 @@ Two ways the person's `machine.toml` lost what they had set.
 - **Measuring the machine again keeps every key it does not measure.** `flotilla onboard machine` rewrote the file
   keeping only a fixed list of the person's keys; `lane_share` and `lane_cpu_factor`, added later, were not on it, so
   a re-measure silently put a shared lane back to first come, first served. What the measurement writes is now named,
-  and everything else stays; a fact the measurement can no longer know is dropped rather than kept stale.
+  and everything else in a readable file stays; a fact the measurement can no longer know is dropped rather than kept
+  stale.
 - **A test never writes the real state directory.** A test run rewrote the person's `machine.toml` to two lines (twosuns
   field notes, item 21): a test file outside `tests/` does not load the suite's conftest, so the rig tests' world
   wrote into the real directory. The state directory is now refused to any test that names none of its own, wherever
-  the test file lives, and the suite fails a run that changed the real `machine.toml` by any other road.
+  the test file lives (a process the test starts inherits pytest's marker and is not refused), and flotilla's own
+  suite fails a run during which the real `machine.toml` changed.
 
 ## 0.29.2 - 2026-11-05
 
