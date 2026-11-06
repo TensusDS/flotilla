@@ -13,6 +13,7 @@ The person's rulings, from one brainstorm on 2026-11-06 (each is his, not a buil
 - 20 % of the memory is kept for light runs.
 
 - `lane_capacity` is retired: every run works by parallel running with priorities.
+- On macOS freezing is on and recommended: a stop by signal, back with a raised priority.
 
 It stands instead of the light-run rule of `2026-11-04-lane-light-runs-design.md` (section 2: light = measured
 ≤ 60 s and ≤ 2 cores) and of the heavy count `lane_capacity` as the lane's main gate. Everything else of the lane
@@ -252,16 +253,35 @@ order lapses; the waiter waits; `flotilla lane` says which booking did not answe
 - **Linux with a user systemd** (the user manager has the memory controller delegated; checked on this machine):
   - the wrapper starts its command in a transient scope of its own (`systemd-run --user --scope`, with equal
     `CPUWeight`);
-  - freezing writes the scope's `cgroup.freeze`, then asks `memory.reclaim` for the run's memory, so it moves to
-    swap;
+  - freezing writes the scope's `cgroup.freeze`, then asks `memory.reclaim` for **what the waiter needs plus a
+    margin, not the run's whole memory**;
   - thawing writes `cgroup.freeze` back.
-  - Measured here by the research: a 204 MB job frozen and reclaimed went to 4 MB resident and 211 MB in swap, and
-    resumed normally. The time a gigabyte takes to go out and come back is not measured (section 9).
-- **Linux without a user systemd, and macOS:**
-  - **no freezing.** `SIGSTOP` on the group stops its CPU but frees no memory until the system's own pressure moves
-    it, so the waiter would gain nothing it can count on;
-  - the rest of the design stands: admission by free memory, the priority order, the reserve, the caps;
-  - `flotilla lane` says that freezing is off and why.
+  - Measured on this machine (2026-11-06, kernel 7.0, as the unprivileged user; probe in the brainstorm's scratch,
+    `freeze_probe/`), on a 1 GB process in a transient user scope that keeps touching its memory:
+
+    | step | time |
+    |---|---|
+    | freeze | 0.02 s; nothing printed while frozen |
+    | `memory.reclaim` of 1.2 GB | 2.2-2.6 s; 1029 MB resident became 2 MB, 1027 MB in swap. The write ends in `EAGAIN` when it reclaimed less than asked, which is not an error |
+    | thaw | at once |
+    | its memory back from swap | ~13 s for the first full pass over 1 GB, then 0.05 s a pass as before |
+
+  - So a freeze costs about **15 s per gigabyte**, nearly all of it on the way back: the kernel brings pages in one
+    fault at a time. That is why only the needed amount is reclaimed. Freezing a 4 GB run for a 0.5 GB light one
+    then costs seconds, not a minute on the thaw.
+  - Earlier the research measured the same on 204 MB (4 MB resident, 211 MB in swap after reclaim).
+- **macOS** (the person's ruling, 2026-11-06: freezing is recommended there too):
+  - freezing is **on by default**, and it is a stop: `SIGSTOP` to the run's process group; thawing is `SIGCONT`;
+  - the stopped run comes back with its raised priority exactly as on Linux (2.8);
+  - the difference is memory. A stopped process gives nothing back by itself; macOS compresses or pages it out under
+    its own pressure, when it chooses. So the waiter is admitted only when the memory **shows** free, never on the
+    stop alone. If it never shows free, the waiter waits as it would without freezing, and the stopped run is let
+    go again after a bound (left to the builder) rather than held for nothing;
+  - `lane_freeze = false` turns it off; `flotilla doctor` recommends keeping it on.
+- **Linux without a user systemd** (no scope to put the run in): the same stop by signal as on macOS, with the same
+  rule that only memory shown free admits the waiter.
+- Where freezing is off, the rest of the design stands: admission by free memory, the priority order, the reserve,
+  the caps. `flotilla lane` says that freezing is off and why.
 
 ### 4.3 The swap budget
 
@@ -327,7 +347,7 @@ the field test).
 | `lane_cpu_factor` | 1.5 | heavy runs' combined parallelism, times the cores |
 | `lane_light_reserve` | 0.2 | the memory heavy runs leave to light ones |
 | `lane_immortal_minutes` | 15 | run time after which a run is never frozen |
-| `lane_freeze` | on where 4.2 allows | off: admission and order only |
+| `lane_freeze` | on (Linux: freeze and reclaim; macOS and Linux without a user systemd: stop by signal) | off: admission and order only |
 | `lane_max_runs` | 10 | runs holding the lane at once |
 
 The weights, the type values, the 10-minute wait saturation, the 1-minute grace and the margin are constants in code,
@@ -382,16 +402,11 @@ priorities").
 
 ## 9. Open questions
 
-For the person:
-1. **Freezing off where it frees no memory** (macOS, no user systemd). That is this design's proposal; the
-   alternative is `SIGSTOP` for CPU only.
-
 For the builder (measure, then choose):
 - the reservation window N for just-started runs (2.2) and the default memory of a never-measured run;
 - `heavy_memory`, the mark between light and heavy (2.3);
 - the swap margin (4.3);
 - how long a victim has to answer a freeze order (4.1);
-- how long a gigabyte takes to go to swap and come back (not measured by anyone);
 - how often a frozen test fails on its own timeouts after the thaw.
 
 ## 10. What the model assumed
