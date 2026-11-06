@@ -23,8 +23,9 @@ LET_GO_S = 120.0   # a stop by signal held this long while its waiter still wait
 
 class Watch:
     def __init__(self, lanes, booking_id: str, slot, value_of: Callable, *, clock=time.monotonic,
-                 sleep=time.sleep, let_go_s: float = LET_GO_S, root=None):
+                 sleep=time.sleep, let_go_s: float = LET_GO_S, root=None, swap=None):
         self.lanes, self.booking_id, self.slot, self.value_of = lanes, booking_id, slot, value_of
+        self.swap = swap or freeze.swap_mb
         self.clock, self.sleep, self.let_go_s = clock, sleep, let_go_s
         self.root = root if root is not None else getattr(lanes.store, "root", None)
         self.thread = threading.Thread(target=self._loop, daemon=True, name=f"lane watch {booking_id}")
@@ -40,10 +41,13 @@ class Watch:
         if item is None or item.state != book.HELD:
             return ""
         if item.frozen == "ordered" and not self.slot.frozen():
-            found = self.slot.freeze(item.reclaim_mb or 0)
+            found = self.slot.freeze(self._reclaim(item.reclaim_mb or 0))
             self._frozen_since, self._kind = self.clock(), found.get("freeze_kind", "")
-            self.lanes.frozen(self.booking_id, freeze_kind=found.get("freeze_kind", ""), unit=found.get("unit", ""),
-                              group=found.get("group"), held_mb=found.get("held_mb"))
+            if self.lanes.frozen(self.booking_id, freeze_kind=found.get("freeze_kind", ""),
+                                 unit=found.get("unit", ""), group=found.get("group"),
+                                 held_mb=found.get("held_mb")) is None:
+                self._thaw()   # the booking no longer holds: nothing may stay frozen for it
+                return ""
             return "froze"
         if item.frozen == "frozen":
             orderer = self.lanes.bookings().get(item.order_by)
@@ -62,8 +66,20 @@ class Watch:
             return "thawed"
         return ""
 
+    def _reclaim(self, asked: int) -> int:
+        """What an order may move to swap: any session writes the journal, so the figure is held to what the swap
+        can take within the 80 % the policy keeps (final review of 0.30.0, I7)."""
+        from flotilla.lane import policy
+        found = self.swap()
+        if found is None or not found[1]:
+            return 0
+        free, total = found
+        room = int(policy.SWAP_USED_CAP * total - (total - free))
+        return max(0, min(int(asked), room))
+
     def _thaw(self) -> None:
-        self.slot.thaw()
+        if self.slot.thaw() is False:
+            return   # still frozen: the next look tries again, since the record says thawed
         self._frozen_since, self._kind = None, ""
 
     def _loop(self) -> None:

@@ -98,7 +98,10 @@ def run_tier(name: str, command: str, cwd: Path, *, timeout: float) -> TierRun:
                        elapsed=round(time.monotonic() - started, 2), frozen_s=round(frozen_since(), 2))
     except BaseException:
         # stopped (`flotilla lane stop`, the session ending): the tier's whole group goes with it, never left
-        # computing unbooked (review of 0.6.2, I3)
+        # computing unbooked (review of 0.6.2, I3); a frozen tier is thawed first, so what lives outside its group
+        # is not left frozen for ever (final review of 0.30.0, I6)
+        if held is not None and held.frozen():
+            held.thaw()
         try:
             os.killpg(proc.pid, signal.SIGKILL)
         except (ProcessLookupError, PermissionError):

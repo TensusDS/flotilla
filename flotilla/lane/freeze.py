@@ -97,7 +97,8 @@ def backend(*, setting: bool = True, platform: str = sys.platform, which=shutil.
 
 
 #: What systemd-run says when it could not make the scope - it then exits without running the command at all.
-SCOPE_REFUSED = re.compile(r"^Failed to (start transient scope unit|connect to|create bus connection)")
+SCOPE_REFUSED = re.compile(r"^Failed to (start transient scope unit|connect to bus|connect to user scope bus"
+                           r"|create bus connection)\b")   # systemd-run's own words, never a command's
 
 
 def scope_refused(first_line: str) -> bool:
@@ -206,6 +207,7 @@ class Slot:
         self._frozen_at: float | None = None
         self._frozen_total = 0.0
         self._how = ""            # how the freeze in force was made: scope or signal
+        self._cgroup: Path | None = None   # the frozen scope's cgroup, kept: a thaw asks systemd nothing
         self.freezes = 0          # how many times it was frozen in this process
 
     def contain(self, argv: list[str], *, booking: str) -> list[str]:
@@ -244,7 +246,7 @@ class Slot:
                 cgroup = _cgroup_of(self.unit, self.run, self.root) if self.unit and self.kind == SCOPE else None
                 if cgroup is not None:
                     self._freeze_scope(cgroup, reclaim_mb)
-                    how, unit = SCOPE, self.unit
+                    how, unit, self._cgroup = SCOPE, self.unit, cgroup
                 else:   # no scope, or its scope is gone: the stop still holds the command
                     _signal_tree(self.pid, signal.SIGSTOP, self.table())
                     how = SIGNAL
@@ -271,22 +273,25 @@ class Slot:
             except OSError:   # EAGAIN: it reclaimed less than asked, and that much stays out; any other refusal
                 pass          # leaves the run frozen and resident - the waiter then waits for memory to show free
 
-    def thaw(self) -> None:
+    def thaw(self) -> bool:
+        """Thaw the command. False, and still frozen, when the scope would not take the write: the caller tries
+        again - a slot never says thawed over a command that is still frozen (final review of 0.30.0, I4)."""
         with self._lock:
             if self.pid is not None:
                 if self._how == SCOPE:
-                    cgroup = _cgroup_of(self.unit, self.run, self.root)
-                    if cgroup is not None:
+                    cgroup = self._cgroup or _cgroup_of(self.unit, self.run, self.root)
+                    if cgroup is not None and (cgroup / "cgroup.freeze").exists():
                         try:
                             (cgroup / "cgroup.freeze").write_text("0", encoding="utf-8")
                         except OSError:
-                            pass
+                            return False
                 elif self._how == SIGNAL:
                     _signal_tree(self.pid, signal.SIGCONT, self.table())
             if self._frozen_at is not None:
                 self._frozen_total += max(0.0, self.clock() - self._frozen_at)
                 self._frozen_at = None
-            self._how = ""
+            self._how, self._cgroup = "", None
+            return True
 
     def frozen(self) -> bool:
         return self._frozen_at is not None

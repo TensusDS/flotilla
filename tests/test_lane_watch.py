@@ -4,6 +4,7 @@ leaves its command frozen when it fails, and beats while it lives (lane shared m
 
 import datetime as dt
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -274,3 +275,69 @@ def test_a_command_that_fails_on_its_own_is_not_run_twice(monkeypatch, tmp_path)
     tier = firstrun.run_tier("unit", f"echo x >> {marks}; echo 'Failed to start transient scope unit' >&2; exit 1",
                              tmp_path, timeout=30)
     assert tier.status == "red" and marks.read_text().count("x") == 1   # no scope was asked for: nothing to retry
+
+
+
+class MadeScope(freeze.Slot):
+    """A slot whose scope is made fine: the command runs as asked, under a unit name."""
+
+    def __init__(self):
+        super().__init__(freeze.SCOPE)
+
+    def contain(self, argv, *, booking):
+        self.unit = "flotilla-lane-b1-1-1.scope"
+        return list(argv)
+
+
+def test_a_command_saying_failed_to_connect_is_not_run_twice(monkeypatch, tmp_path):   # final review I3
+    s = MadeScope()
+    monkeypatch.setattr(freeze, "slot", lambda: s)
+    monkeypatch.setenv(acquire.ENV, "b1")
+    marks = tmp_path / "marks"
+    tier = firstrun.run_tier("db", f"echo x >> {marks}; echo 'Failed to connect to the database' >&2; exit 1",
+                             tmp_path, timeout=30)
+    assert tier.status == "red" and marks.read_text().count("x") == 1
+    result = run.execute(["/bin/sh", "-c", f"echo y >> {marks}; echo 'Failed to connect to the database'; exit 1"],
+                         out=io.StringIO())
+    assert result.verdict == "red" and marks.read_text().count("y") == 1
+
+
+def test_a_tier_stopped_while_frozen_is_thawed_before_it_is_killed(monkeypatch, tmp_path):   # final review I6
+    s = freeze.Slot(freeze.SIGNAL)
+    monkeypatch.setattr(freeze, "slot", lambda: s)
+    monkeypatch.setenv(acquire.ENV, "b1")
+    order = []
+    real_kill = firstrun.os.killpg
+
+    def killpg(pid, number):
+        if number == signal.SIGKILL:   # the stop itself, not the freeze's own SIGSTOP
+            order.append(("kill", s.frozen()))
+        real_kill(pid, number)
+    monkeypatch.setattr(firstrun.os, "killpg", killpg)
+    real_communicate = subprocess.Popen.communicate
+
+    def communicate(self, timeout=None):
+        s.freeze(0)   # frozen meanwhile, then the session stops
+        raise KeyboardInterrupt
+    monkeypatch.setattr(subprocess.Popen, "communicate", communicate)
+    with pytest.raises(KeyboardInterrupt):
+        firstrun.run_tier("slow", "sleep 30", tmp_path, timeout=60)
+    monkeypatch.setattr(subprocess.Popen, "communicate", real_communicate)
+    assert order == [("kill", False)]
+
+
+def test_an_order_is_clamped_to_the_swap_budget(lane):   # final review I7: the holder trusts no figure blindly
+    lanes, mine, _waiter, _later, _root = lane
+    with lanes.store.transaction(book.KEY) as tx:
+        tx.append({"at": lanes._now(), "booking": mine, "state": book.HELD, "reclaim_mb": 9_000_000})
+    s = FakeSlot()
+    w = watch.Watch(lanes, mine, s, lambda reading: value(available=300), swap=lambda: (8000, 8000))
+    assert w.step() == "froze" and s.calls == [("freeze", 6400)]   # 80 % of 8000, none used
+
+
+def test_a_watch_thaws_when_its_frozen_record_is_refused(lane, monkeypatch):
+    lanes, mine, _waiter, _later, _root = lane
+    s = FakeSlot()
+    monkeypatch.setattr(lanes, "frozen", lambda *a, **kw: None)   # released meanwhile
+    w = watch.Watch(lanes, mine, s, lambda reading: value(available=300))
+    assert w.step() == "" and not s.frozen()

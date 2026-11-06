@@ -232,3 +232,45 @@ def test_scope_names_never_repeat_within_a_process(tmp_path):
     first = freeze.Slot(freeze.SCOPE, proc_self=cg).contain(["true"], booking="b1")[5]
     second = freeze.Slot(freeze.SCOPE, proc_self=cg).contain(["true"], booking="b1")[5]
     assert first != second   # a scope systemd has not collected yet would refuse a second start under its name
+
+
+
+def _scope(tmp_path, monkeypatch):
+    root = fake_cgroup(tmp_path)
+    scope = root / "user.slice/flotilla-lane-b1-9-1.scope"
+    real_write = Path.write_text
+
+    def write(self, text, *a, **kw):
+        if self.name == "cgroup.freeze" and getattr(write, "broken", False):
+            raise OSError("cannot write")
+        return real_write(self, text, *a, **kw)
+    monkeypatch.setattr(Path, "write_text", write)
+    asked = []
+
+    def systemctl(argv, **kw):
+        asked.append(argv)
+        return fake_systemctl(argv, **kw)
+    return root, scope, write, asked, systemctl
+
+
+def test_a_thaw_that_fails_keeps_the_slot_frozen(tmp_path, monkeypatch):   # final review I4
+    root, scope, write, _asked, systemctl = _scope(tmp_path, monkeypatch)
+    s = freeze.Slot(freeze.SCOPE, root=root, run=systemctl, tree_mb=lambda pid: 100)
+    s.contain(["pytest"], booking="b1")
+    s.attach(4242)
+    s.freeze(0)
+    write.broken = True
+    assert s.thaw() is False and s.frozen()
+    write.broken = False
+    assert s.thaw() is True and not s.frozen() and (scope / "cgroup.freeze").read_text().strip() == "0"
+
+
+def test_a_thaw_does_not_ask_systemd_again(tmp_path, monkeypatch):   # final review I4: under the pressure it froze for
+    root, _scope_dir, _write, asked, systemctl = _scope(tmp_path, monkeypatch)
+    s = freeze.Slot(freeze.SCOPE, root=root, run=systemctl, tree_mb=lambda pid: 100)
+    s.contain(["pytest"], booking="b1")
+    s.attach(4242)
+    s.freeze(0)
+    before = len(asked)
+    s.thaw()
+    assert len(asked) == before
