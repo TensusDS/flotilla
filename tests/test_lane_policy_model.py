@@ -27,3 +27,4 @@ def test_the_anti_goals_hold_on_every_queue():
     for seed, spread in CASES:
         r = _replayed(seed, spread)
         assert r["heavy_by_heavy"] == 0 and r["immortal_frozen"] == 0 and r["max_freezes_one"] <= 2, (seed, spread)
+        assert r["ordered_again"] == 0, (seed, spread)   # a waiter with orders out orders nothing more

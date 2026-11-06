@@ -60,6 +60,7 @@ class Machine:
     free_mb: int | None   # free now, less the floor and the reservation for just-started runs
     swap_free_mb: int | None
     swap_total_mb: int | None = None
+    swap_pending_mb: int = 0   # ordered to swap and not yet moved: the orders no victim has answered yet
     cpu_factor: float = 1.5
     light_reserve: float = 0.2
     immortal_s: float = 900.0
@@ -109,10 +110,15 @@ def _fits(r: Run, pool: list[Run], free: int | None, machine: Machine) -> tuple[
     if len(pool) >= machine.max_runs:
         return f"runs at once: {len(pool)} of {machine.max_runs}", BOUND
     known = machine.give_mb is not None and free is not None
-    heavies = [p for p in pool if p.heavy]
-    if r.heavy and heavies:   # the bounds hold beside other heavy runs (section 2.4)
-        used, limit = sum(p.par for p in heavies), machine.cpu_factor * machine.cpus
+    limit = machine.cpu_factor * machine.cpus
+    if not known:   # no heavy runs to tell by memory: the bound on cores holds for every run (focus 4, final review)
+        used = sum(p.par for p in pool)
         if used + r.par > limit:
+            return f"cores: {used:g} of {limit:g}", BOUND
+    heavies = [p for p in pool if p.heavy]
+    if r.heavy:   # beside any run: only an empty machine lets one heavy run past them (sections 2.2, 2.4)
+        used = sum(p.par for p in heavies)
+        if heavies and used + r.par > limit:
             return f"heavy runs' cores: {used:g} of {limit:g}", BOUND
         if known:
             room = (1 - machine.light_reserve) * machine.give_mb - sum(p.mem_mb for p in heavies)
@@ -169,7 +175,7 @@ def _victims(mine: Run, pool: list[Run], free: int, machine: Machine) -> tuple[t
 def _swap_takes(take: int, machine: Machine) -> bool:
     if machine.swap_free_mb is None or not machine.swap_total_mb:
         return False
-    used = machine.swap_total_mb - machine.swap_free_mb
+    used = machine.swap_total_mb - machine.swap_free_mb + machine.swap_pending_mb
     return used + take <= SWAP_USED_CAP * machine.swap_total_mb
 
 
@@ -223,6 +229,8 @@ def decide(runs: list[Run], machine: Machine, mine: str, *, may_freeze: bool = T
         return Decision(False, (), why)   # a frozen run comes back when it fits, never by an order (section 2.8)
     if not machine.freeze:
         return Decision(False, (), f"{why}; freezing is off")
+    if me.holds:   # its orders are out and their memory not yet free: ordering more would freeze runs for nothing
+        return Decision(False, (), f"{why}; waits for its freeze to free the memory")
     if any(_victims(r, pool, room(r), machine)[0] for r in unfit_ahead if r.state == WAITING):
         return Decision(False, (), why)   # a higher waiter that does not fit makes its room first
     chosen, reasons = _victims(me, pool, room(me), machine)

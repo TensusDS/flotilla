@@ -4,8 +4,9 @@ The model decided by its own simplified rules; this replay keeps its queues and 
 the CPU water-filling are copied verbatim so the seeds reproduce the model's queues - and lets the policy decide
 each step instead. Time is simulated in steps of 15 seconds; nothing runs and nothing sleeps.
 
-A freeze acts as the real one does: the victim's command stops, and the memory the order asks for moves to swap
-while the rest stays resident; the victim comes back as a waiter needing that moved memory again.
+A freeze acts as the real one does: the order is answered one step later (the victim runs on meanwhile, as its
+wrapper wakes and reclaims), then its command stops, and the memory the order asks for moves to swap while the rest
+stays resident; the victim comes back as a waiter needing that moved memory again.
 """
 
 from __future__ import annotations
@@ -41,6 +42,7 @@ class Job:
     frozen_by: list = field(default_factory=list)
     swapped: int = 0   # MB of it in swap while frozen (the replay's own field)
     frozen_for: int | None = None   # the waiter whose order froze it, until that waiter starts (likewise)
+    ordered_mb: int = 0   # what an order not yet answered asks it to move to swap
 
 
 MIXES = {   # (heavy GB range, light GB range)
@@ -81,12 +83,13 @@ def _mb(job: Job) -> int:
     return round(job.mem * 1000)
 
 
-STATES = {"waiting": policy.WAITING, "running": policy.RUNNING, "frozen": policy.FROZEN}
+STATES = {"waiting": policy.WAITING, "running": policy.RUNNING, "ordered": policy.ORDERED,
+          "frozen": policy.FROZEN}
 
 
 def _view(jobs: list[Job], now: float, order: dict[int, int]) -> tuple[list[policy.Run], policy.Machine]:
     runs = []
-    holding = {j.frozen_for for j in jobs if j.state == "frozen" and j.frozen_for is not None}
+    holding = {j.frozen_for for j in jobs if j.state in ("ordered", "frozen") and j.frozen_for is not None}
     for j in jobs:
         if j.state not in STATES:
             continue
@@ -95,11 +98,13 @@ def _view(jobs: list[Job], now: float, order: dict[int, int]) -> tuple[list[poli
             kind=KINDS[j.type], waited_s=(now - j.arrival) * 60, ran_s=j.run_time * 60,
             since_start_s=j.since_start * 60, order=order[j.id],
             holds=j.id in holding and j.state != "running"))
-    resident = sum(_mb(j) for j in jobs if j.state == "running") + \
+    resident = sum(_mb(j) for j in jobs if j.state in ("running", "ordered")) + \
         sum(_mb(j) - j.swapped for j in jobs if j.state == "frozen")
     swapped = sum(j.swapped for j in jobs if j.state == "frozen")
+    pending = sum(j.ordered_mb for j in jobs if j.state == "ordered")
     machine = policy.Machine(cpus=CORES, give_mb=RAM_MB, free_mb=RAM_MB - resident, swap_free_mb=SWAP_MB - swapped,
-                             swap_total_mb=SWAP_MB, cpu_factor=1.5, light_reserve=0.2, immortal_s=900.0,
+                             swap_total_mb=SWAP_MB, swap_pending_mb=pending, cpu_factor=1.5, light_reserve=0.2,
+                             immortal_s=900.0,
                              max_runs=10, freeze=True)
     return runs, machine
 
@@ -108,7 +113,7 @@ def replay(seed: int, spread: float, mix: str = "tight") -> dict:
     jobs = make_jobs(seed, spread, mix=mix)
     by_id = {j.id: j for j in jobs}
     order = {j.id: n for n, j in enumerate(sorted(jobs, key=lambda j: (j.arrival, j.id)))}
-    heavy_by_heavy = immortal_frozen = 0
+    heavy_by_heavy = immortal_frozen = ordered_again = 0
     now = 0.0
     while now < LIMIT:
         for j in jobs:
@@ -116,6 +121,9 @@ def replay(seed: int, spread: float, mix: str = "tight") -> dict:
                 j.state = "waiting"
         if all(j.state == "done" for j in jobs):
             break
+        for j in jobs:   # last step's orders are answered now
+            if j.state == "ordered":
+                j.state, j.swapped, j.ordered_mb = "frozen", min(_mb(j), j.ordered_mb), 0
         runs, machine = _view(jobs, now, order)
         line = sorted((r for r in runs if r.state in (policy.WAITING, policy.FROZEN)),
                       key=lambda r: (-policy.priority(r, machine.immortal_s), r.order))
@@ -130,14 +138,16 @@ def replay(seed: int, spread: float, mix: str = "tight") -> dict:
                     if other.frozen_for == job.id:
                         other.frozen_for = None   # it started: what it held for itself is in use now
                 continue
+            if decision.freeze and any(j.frozen_for == job.id for j in jobs if j.state in ("ordered", "frozen")):
+                ordered_again += 1   # it ordered while its own orders were still out
             for victim_id, reclaim_mb in decision.freeze:
                 victim = by_id[int(victim_id)]
                 heavy_by_heavy += victim.heavy and job.heavy
                 immortal_frozen += victim.run_time * 60 >= machine.immortal_s
-                victim.state, victim.freezes = "frozen", victim.freezes + 1
-                victim.swapped, victim.frozen_for = min(_mb(victim), reclaim_mb), job.id
+                victim.state, victim.freezes = "ordered", victim.freezes + 1
+                victim.ordered_mb, victim.frozen_for = reclaim_mb, job.id
                 victim.frozen_by.append("heavy" if job.heavy else "light")
-        running = [j for j in jobs if j.state == "running"]
+        running = [j for j in jobs if j.state in ("running", "ordered")]
         for j in jobs:
             if j.state == "frozen":
                 j.frozen_time += DT
@@ -160,5 +170,6 @@ def replay(seed: int, spread: float, mix: str = "tight") -> dict:
         "max_freezes_one": max(j.freezes for j in jobs),
         "heavy_by_heavy": heavy_by_heavy,
         "immortal_frozen": immortal_frozen,
+        "ordered_again": ordered_again,
         "unfinished": unfinished,
     }

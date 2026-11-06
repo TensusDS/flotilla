@@ -190,3 +190,33 @@ def test_a_heavy_held_by_its_cpu_bound_orders_no_freeze():
             run("y", RUNNING, 3000, ran_s=90, since_start_s=90), run("b2", WAITING, 4000, True, 8, kind="push")]
     d = decide(runs, machine(free=2000), "b2")
     assert d.freeze == () and "heavy runs' cores: 8 of 12" in d.why
+
+
+def test_a_waiter_with_orders_out_orders_nothing_more():   # final review C1
+    # b3 ordered y frozen a second ago; y has not answered, so the memory is not free yet - b3 waits for it and
+    # does not freeze z too
+    runs = [run("y", ORDERED, 1500, ran_s=90, since_start_s=90), run("z", RUNNING, 1500, ran_s=90, since_start_s=90),
+            run("b3", WAITING, 1000, kind="push", waited_s=300, holds=True)]
+    d = decide(runs, machine(free=200), "b3")
+    assert d.freeze == () and not d.start and "waits for its freeze" in d.why
+
+
+def test_orders_not_yet_answered_count_against_the_swap():
+    runs = [run("y", RUNNING, 2000, ran_s=90, since_start_s=90), run("b2", WAITING, 1000, kind="push")]
+    # 8000 swap, all free, but 6000 MB already ordered elsewhere and not yet moved: 6000 + 1128 > 6400
+    d = decide(runs, Machine(cpus=8, give_mb=9000, free_mb=0, swap_free_mb=8000, swap_total_mb=8000,
+                             swap_pending_mb=6000), "b2")
+    assert d.freeze == () and "swap cannot take 1128 MB" in d.why
+
+
+def test_memory_unknown_still_bounds_the_cores():   # final review I1
+    runs = [run(f"r{n}", RUNNING, 10, par=4) for n in range(3)] + [run("b", WAITING, 10, par=4)]
+    d = decide(runs, Machine(cpus=8, give_mb=None, free_mb=None, swap_free_mb=8000), "b")
+    assert not d.start and "cores: 12 of 12" in d.why
+
+
+def test_a_lone_heavy_keeps_the_light_reserve_beside_light_runs():   # final review I2, spec 2.4
+    runs = [run("l", RUNNING, 500), run("h", WAITING, 8000, True, 4)]
+    d = decide(runs, machine(free=8500), "h")
+    assert not d.start and "reserve 1800 MB for light runs" in d.why
+    assert decide([run("h", WAITING, 8000, True, 4)], machine(free=8500), "h").start   # an empty machine: it goes
