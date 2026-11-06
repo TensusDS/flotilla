@@ -50,6 +50,7 @@ class Run:
     fair: tuple = ()            # tie-break key between equal priorities (fair share), smaller first
     pinned: bool = False        # never a victim: by hand, a `freeze = false` tier, an older flotilla's
     freezable: bool = True      # its wrapper can obey an order
+    holds: bool = False         # its freeze orders are out: the runs behind it leave it the memory it needs
 
 
 @dataclass(frozen=True)
@@ -108,8 +109,6 @@ def _fits(r: Run, pool: list[Run], free: int | None, machine: Machine) -> tuple[
     if len(pool) >= machine.max_runs:
         return f"runs at once: {len(pool)} of {machine.max_runs}", BOUND
     known = machine.give_mb is not None and free is not None
-    if known and r.mem_mb > free:
-        return _memory_why(r.mem_mb, free, machine), FREE
     heavies = [p for p in pool if p.heavy]
     if r.heavy and heavies:   # the bounds hold beside other heavy runs (section 2.4)
         used, limit = sum(p.par for p in heavies), machine.cpu_factor * machine.cpus
@@ -119,6 +118,10 @@ def _fits(r: Run, pool: list[Run], free: int | None, machine: Machine) -> tuple[
             room = (1 - machine.light_reserve) * machine.give_mb - sum(p.mem_mb for p in heavies)
             if r.mem_mb > room:
                 return _memory_why(r.mem_mb, min(free, int(room)), machine), BOUND
+    # free memory last: FREE then means nothing but memory stands in the way, so a freeze would let the run in -
+    # never a freeze for a run a bound would still hold back
+    if known and r.mem_mb > free:
+        return _memory_why(r.mem_mb, free, machine), FREE
     return "", ""
 
 
@@ -185,13 +188,20 @@ def decide(runs: list[Run], machine: Machine, mine: str, *, may_freeze: bool = T
                    key=lambda r: (-priority(r, machine.immortal_s), r.fair, r.order))
     pool = [r for r in runs if r.state in (RUNNING, ORDERED)]
     free = machine.free_mb
+    # a waiter whose orders are out holds what it needs against the runs behind it: a run passing it would take the
+    # room the freeze made, and the waiter would order again, freezing run after run for nothing (found replaying the
+    # model's queues: one run frozen four times by the same heavy waiter that never started)
+    kept = 0
     blocker, why, about, unfit_ahead = None, "", "", []
+
+    def room(r: Run) -> int | None:
+        return None if free is None else free - kept
     for r in queue:
         if r.heavy and blocker is not None:
             if r.id == mine:
                 return Decision(False, (), f"behind heavy {blocker}")
             continue
-        failed, kind = _fits(r, pool, free, machine)
+        failed, kind = _fits(r, pool, room(r), machine)
         if not failed:
             pool.append(r)
             if free is not None:
@@ -204,6 +214,8 @@ def decide(runs: list[Run], machine: Machine, mine: str, *, may_freeze: bool = T
         if r.id == mine:
             why, about = failed, kind
             break
+        if r.holds:
+            kept += r.mem_mb
         if kind == FREE:
             unfit_ahead.append(r)
     memory_known = machine.give_mb is not None and free is not None
@@ -211,9 +223,9 @@ def decide(runs: list[Run], machine: Machine, mine: str, *, may_freeze: bool = T
         return Decision(False, (), why)   # a frozen run comes back when it fits, never by an order (section 2.8)
     if not machine.freeze:
         return Decision(False, (), f"{why}; freezing is off")
-    if any(_victims(r, pool, free, machine)[0] for r in unfit_ahead if r.state == WAITING):
+    if any(_victims(r, pool, room(r), machine)[0] for r in unfit_ahead if r.state == WAITING):
         return Decision(False, (), why)   # a higher waiter that does not fit makes its room first
-    chosen, reasons = _victims(me, pool, free, machine)
+    chosen, reasons = _victims(me, pool, room(me), machine)
     if not chosen:
         return Decision(False, (), f"{why}; no candidate to freeze: {', '.join(reasons)}" if reasons else why)
     take = sum(mb for _id, mb in chosen)

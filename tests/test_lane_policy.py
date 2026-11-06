@@ -165,3 +165,28 @@ def test_the_heavy_memory_bound_is_not_cured_by_freezing():
             run("y", RUNNING, 1000, ran_s=90, since_start_s=90), run("b2", WAITING, 3500, True, 2, kind="push")]
     d = decide(runs, machine(free=4000), "b2")
     assert d.freeze == () and "reserve 1800 MB for light runs" in d.why and "freeze" not in d.why
+
+
+def test_a_waiter_whose_orders_are_out_holds_its_memory_against_the_runs_behind_it():
+    # h froze y for itself: what is free is h's until h starts - a light run behind h does not take it, and y does
+    # not thaw into it; a run ahead of h is not held back
+    runs = [run("a", WAITING, 1000, kind="push", waited_s=600, order=0),
+            run("y", FROZEN, 1128, ran_s=120, waited_s=200, order=1),
+            run("h", WAITING, 5000, True, 4, kind="push", waited_s=600, order=2, holds=True),
+            run("l", WAITING, 1000, order=3), run("o", RUNNING, 3000, ran_s=300, since_start_s=300)]
+    m = machine(free=2500)
+    assert decide(runs, m, "a").start
+    assert not decide(runs, m, "l").start and not decide(runs, m, "y").start
+    assert decide(runs, machine(free=6100), "h").start
+    without = [r if r.id != "h" else run("h", WAITING, 5000, True, 4, kind="push", waited_s=600, order=2)
+               for r in runs]
+    assert decide(without, m, "y").start   # no order out: the frozen run thaws into the room, passing the heavy
+
+
+def test_a_heavy_held_by_its_cpu_bound_orders_no_freeze():
+    # memory is short AND the heavies' cores are full: freezing the light y would free memory the heavy still could
+    # not use (the replay of the model's queues froze one run four times this way)
+    runs = [run("h", RUNNING, 3000, True, 8, ran_s=900, since_start_s=900),
+            run("y", RUNNING, 3000, ran_s=90, since_start_s=90), run("b2", WAITING, 4000, True, 8, kind="push")]
+    d = decide(runs, machine(free=2000), "b2")
+    assert d.freeze == () and "heavy runs' cores: 8 of 12" in d.why
