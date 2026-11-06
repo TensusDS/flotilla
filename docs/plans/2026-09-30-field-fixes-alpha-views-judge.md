@@ -14,7 +14,7 @@ noise. The judge and main post templates say what the field test showed they nee
 
 **Tech Stack:** Python 3.11+ stdlib, git, pytest via `uv`.
 
-**Spec:** the field test `docs/field-tests/2026-09-29-alpha-fleet.md` — findings H4, H5, H16, H17, H25b, H26a,
+**Spec:** the field test the field-test report (not kept in the repository) — findings H4, H5, H16, H17, H25b, H26a,
 H26b, H27, H30, H32a, H32b, H38, H39, H42; `docs/specs/2026-09-22-flotilla-design.md` sections 6.2, 6.7, 6.9, 7.3.
 Read each finding in the field-test file before its task: the finding is the spec's evidence, with times and
 quotes.

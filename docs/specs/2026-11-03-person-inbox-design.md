@@ -1,7 +1,7 @@
 # What waits on the person reaches the person (0.26.0) - design
 
 Status: draft for the person's approval. Source: the field trace
-`docs/field-tests/2026-11-03-alpha-person-relay.md`.
+the field-test report (not kept in the repository).
 
 ## Why
 

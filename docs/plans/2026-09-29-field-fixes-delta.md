@@ -15,7 +15,7 @@ dependency, put a change of the request to the person, name each branch's own me
 
 **Tech Stack:** Python 3.11+ stdlib, git, pytest via `uv`.
 
-**Spec:** the field test `docs/field-tests/2026-09-29-delta-fleet.md` — findings G1, G3, G5, G6, G7, G9, G10,
+**Spec:** the field test the field-test report (not kept in the repository) — findings G1, G3, G5, G6, G7, G9, G10,
 G11, G12 and setup note S7; `docs/specs/2026-09-22-flotilla-design.md` sections 6.3, 7.4, 7.5.
 
 ## Decisions (the executor's, 2026-09-29; the person approved fixing the findings)
@@ -332,6 +332,6 @@ entry that points at this repository, so everyone who opens the project and trus
   each ending `(executor's decision, field fixes part 5, 2026-09-29)`.
 - [ ] Design spec: section 6.3 (`released` evidence) — a settled fix counts as the settling row's delivery for the
   broken row; section 7.5 (retire) — a session the census lists is running, whatever its state.
-- [ ] Findings file `docs/field-tests/2026-09-29-delta-fleet.md`, after the Outcome: "Part 5 fixes G1, G3, G5,
+- [ ] Findings file the field-test report (not kept in the repository), after the Outcome: "Part 5 fixes G1, G3, G5,
   G6, G7, G9, G10, G11, G12 and S7 — plan `docs/plans/2026-09-29-field-fixes-delta.md`."
 - [ ] `python3 tools/check_no_cyrillic.py`; commit `docs(specs): decisions 116-119 from the 2048 field test`.

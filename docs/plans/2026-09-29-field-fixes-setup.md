@@ -17,7 +17,7 @@ numbering continues from. Every hook records when it last ran, and `flotilla gua
 
 **Tech Stack:** Python 3.11+ stdlib, git, pytest via `uv`.
 
-**Spec:** the field test `docs/field-tests/2026-09-27-epsilon-fleet.md` — findings F1–F7 and F11 and the triage with
+**Spec:** the field test the field-test report (not kept in the repository) — findings F1–F7 and F11 and the triage with
 The person of 2026-09-28, group 7 ("Setup"); `docs/specs/2026-09-22-flotilla-design.md` sections 5 (onboarding), 7.2
 (spawn) and 8 (hooks).
 
@@ -761,7 +761,7 @@ confirm they ran (F11)."
 ### Task 8: The record — decisions, spec, findings
 
 **Files:** `docs/specs/2026-09-22-decisions-log.md`, `docs/specs/2026-09-22-flotilla-design.md`,
-`docs/field-tests/2026-09-27-epsilon-fleet.md`
+the field-test report (not kept in the repository)
 
 - [ ] **Step 1:** Decisions 107–113 after the last entry, one per decision of this plan, each ending with its
   source (`(the person's triage 2026-09-28)` / `(executor's decision, field fixes part 4, 2026-09-29)`).

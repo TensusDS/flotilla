@@ -7,12 +7,18 @@ each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2
 
 Security and hygiene of a public repository.
 
-- **The lane trusts no journal record to name a process.** Any session writes the lane's journal, so a record could
-  name a process or a scope that is not a lane run. A frozen command is now thawed from outside only when the
-  process itself proves it is the booking's - its own environment carries `FLOTILLA_LANE_BOOKING` - or when the
-  scope's name carries the booking; and a holder freezes its command only for a fresh order from a live waiter it
-  may be frozen for by the lane's rules (not immortal, past its first minute, lower in priority). Any other order
-  lapses.
+- **A journal record no longer names a process on its own word.** Any session writes the lane's journal, so a
+  record could name a process or a scope that is not a lane run.
+  - A frozen command is thawed from outside only when the process itself proves it is the booking's - its own
+    environment carries `FLOTILLA_LANE_BOOKING` - or when the scope's name carries the booking. A process that
+    gives no word either way is kept, never dropped: `flotilla lane` shows it with the `kill -CONT` that resumes it.
+  - A holder freezes its command only for a fresh order from a waiter with a live process and its start mark, that
+    lacks memory alone, and that the lane's rules let it be frozen for (not immortal, past its first minute, lower in
+    priority). Any other order lapses.
+  - A booking's pid must be a real process number, and `flotilla lane stop` signals only a pid with its start mark:
+    a crafted `pid` of `-1` could otherwise have signalled every process of the user.
+  - What this bounds is what a crafted line can do; a process writing as the same user can still name a live run
+    of its own. The journal is a booking, not a lock.
 - **No project or client names, and no personal paths, in the repository.** Field-test reports are no longer kept
   here (they name the projects they ran on); tests, specs, plans, the changelog and code comments name their
   projects neutrally.

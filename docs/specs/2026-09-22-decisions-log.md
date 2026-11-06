@@ -1066,7 +1066,7 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    `flotilla fleet` loudly rather than hiding it. (planner's decision, 2026-10-02)
 
 201. **A test tier is not run twice over the same files** (the slowdown measured on the alpha fleet, 2026-10-02:
-   `docs/field-tests/2026-10-02-fleet-slowdown.md`). A tier's answer depends on the files it tests and its command,
+   the field-test report (not kept in the repository)). A tier's answer depends on the files it tests and its command,
    not on the commit that carries them: a green run is kept per file tree and tier command, and a receipt over a
    commit with the same files - a sender's merge that changes no file - reuses it, without queueing for the lane when
    nothing is left to run. A red tier always runs again. A red, killed or timed-out tier carries its exit code and its

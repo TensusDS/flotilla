@@ -16,7 +16,7 @@ caller's own.
 
 **Tech Stack:** Python 3.11+ stdlib, git, pytest via `uv`.
 
-**Spec:** the field test `docs/field-tests/2026-09-27-epsilon-fleet.md` — findings F8, F9, F10, F13, F19, F20, F22,
+**Spec:** the field test the field-test report (not kept in the repository) — findings F8, F9, F10, F13, F19, F20, F22,
 F27 and the triage with the person of 2026-09-28, groups 5 and 6 ("live sessions of this project are the holders of this
 ledger's post rows, not every name matching a pattern"; "`flotilla fleet down`; a gone seat is one quiet line, not
 a mover alarm"); `docs/specs/2026-09-22-flotilla-design.md` sections 6.7, 6.9, 7.5 and 8.
@@ -824,7 +824,7 @@ shows the fleet and asks first."
 
 **Files:**
 - Modify: `docs/specs/2026-09-22-decisions-log.md`, `docs/specs/2026-09-22-flotilla-design.md` (sections 6.7, 7.5,
-  8), `docs/field-tests/2026-09-27-epsilon-fleet.md`
+  8), the field-test report (not kept in the repository)
 
 - [ ] **Step 1: Decisions log** — entries 99–104 after entry 98, one per decision of this plan (Decisions 1–6), each
   ending `(the person's triage 2026-09-28)` for the person's parts and `(executor's decision, field fixes part 3, 2026-09-29)`

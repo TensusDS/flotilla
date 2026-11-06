@@ -13,7 +13,7 @@ worktree and does not touch these files; the only shared file is `transitions.py
 
 **Tech Stack:** Python 3.11+ stdlib, git, pytest via `uv`.
 
-**Spec:** `docs/field-tests/2026-09-29-alpha-fleet.md` — H20, H21, H24, H26c, H28, H29, H33, H35, H37, H43;
+**Spec:** the field-test report (not kept in the repository) — H20, H21, H24, H26c, H28, H29, H33, H35, H37, H43;
 `docs/specs/2026-09-22-flotilla-design.md` sections 6.2, 6.3.
 
 ## Decisions (the planner's, 2026-09-30; the person approved fixing the findings)

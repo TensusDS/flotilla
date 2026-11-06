@@ -16,7 +16,7 @@ talks to the person; a task routed by the orchestrator is a work order; a printe
 
 **Tech Stack:** Python 3.11+ stdlib, git, pytest via `uv`.
 
-**Spec:** the field test `docs/field-tests/2026-09-27-epsilon-fleet.md` — findings F12, F16, F17, F23 and the triage
+**Spec:** the field test the field-test report (not kept in the repository) — findings F12, F16, F17, F23 and the triage
 with the person of 2026-09-28, groups 2 and 3; `docs/specs/2026-09-22-flotilla-design.md` sections 6.9 and 8.
 
 ## Decisions (the person's, 2026-09-28, and the executor's)
@@ -997,7 +997,7 @@ question, the sender's batch included, goes to the orchestrator, which alone tal
 
 **Files:**
 - Modify: `docs/specs/2026-09-22-decisions-log.md`, `docs/specs/2026-09-22-flotilla-design.md` (section 8's hook
-  table and section 6.9), `docs/field-tests/2026-09-27-epsilon-fleet.md`
+  table and section 6.9), the field-test report (not kept in the repository)
 - Test: none of its own; `tools/check_no_cyrillic.py`
 
 - [ ] **Step 1: Decisions log.** Append entries 90–95 after entry 89, one per decision of this plan (Decisions 1–6
@@ -1071,7 +1071,7 @@ cd /home/user/workspace/epsilon && claude --bg -n "minor session 91" --model son
 
 - [ ] **Step 5: Restore** the marketplace clone to the revision recorded in Step 1.
 
-- [ ] **Step 6: Record the measurement** in `docs/field-tests/2026-09-27-epsilon-fleet.md` under the Part 2 line:
+- [ ] **Step 6: Record the measurement** in the field-test report (not kept in the repository) under the Part 2 line:
   date, what was raised, the census samples, the verdict. If the session stood at `waiting`, the hook did not
   hold: say so, and stop the plan here for the person — the guard's premise (a PreToolUse hook on AskUserQuestion in a
   background session) is then false and needs another design.
@@ -1079,6 +1079,6 @@ cd /home/user/workspace/epsilon && claude --bg -n "minor session 91" --model son
 - [ ] **Step 7: Commit**
 
 ```bash
-git add docs/field-tests/2026-09-27-epsilon-fleet.md
+git add the field-test report
 git commit -m "docs(field-test): the ask guard measured in a live background session"
 ```

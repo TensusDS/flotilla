@@ -14,7 +14,7 @@ functions.
 
 **Tech Stack:** Python 3.11+ stdlib, git, pytest via `uv`.
 
-**Spec:** `docs/field-tests/2026-09-29-alpha-fleet.md` — H9, H12, H36, H45, H46, H47, H48 (and G12);
+**Spec:** the field-test report (not kept in the repository) — H9, H12, H36, H45, H46, H47, H48 (and G12);
 `docs/specs/2026-09-22-flotilla-design.md` sections 7.4–7.5 (seats, spawn, retire).
 
 ## Decisions (the planner's, 2026-09-30)

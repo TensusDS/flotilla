@@ -106,7 +106,7 @@ def world(tmp_path, sessions, fleet_name="beta"):
 
 
 def test_another_projects_sender_does_not_hold_this_ones(tmp_path):
-    """W10: alpha' live `sender 9` refused beta's sender: a sender's one-copy resources are its project's."""
+    """W10: alpha's live `sender 9` refused beta's sender: a sender's one-copy resources are its project's."""
     elsewhere = tmp_path / "alpha"
     elsewhere.mkdir()
     root, ledger, store, fake = world(tmp_path, [at("sender 9", elsewhere)])
@@ -142,7 +142,7 @@ def test_onboarding_names_the_fleet_after_the_project(tmp_path):
     assert profile["fleet"]["name"] == "beta"
 
 
-@pytest.mark.parametrize("live_name, fleet_name", [("sender 9", "beta"), ("beta-sender 1", "wc")])
+@pytest.mark.parametrize("live_name, fleet_name", [("sender 9", "beta"), ("beta-sender 1", "bt")])
 def test_a_fleet_name_arriving_under_a_live_fleet_is_refused(tmp_path, live_name, fleet_name):
     """Review of 0.6.0, I1: a live seat named before the fleet name (or under another one) matches no post, so the
     one-copy check counted no sender and raised a second one."""
