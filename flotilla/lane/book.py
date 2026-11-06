@@ -622,6 +622,14 @@ class Book:
             return self._write(tx, booking_id, HELD, frozen="", started=self._now(),
                                frozen_s=_frozen_for(item, now), **({"unanswered": True} if never_again else {}))
 
+    def unfreezable(self, booking_id: str) -> Booking | None:
+        """Its holder can no longer obey orders (its watch failed): any order lapses, and it is never ordered again."""
+        with self.store.transaction(KEY) as tx:
+            item = self._found(tx).get(booking_id)
+            if item is None or item.state != HELD:
+                return None
+            return self._write(tx, booking_id, HELD, frozen="", unanswered=True)
+
     def _path(self, found: dict, mine: Booking, share: str, skip=(), lights=frozenset()) -> str | None:
         """How `mine` is admitted now, or None while it waits its turn. First come, first served unless the share is
         fair and `mine` waits under rule 2; then it goes when it is the fair choice, and also first come, first served

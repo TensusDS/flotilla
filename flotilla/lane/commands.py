@@ -33,6 +33,16 @@ def _machine() -> dict:
         return {}
 
 
+def verdict_line(result) -> str:
+    """What `lane run` says at its end. A red after a freeze says so: a test that times itself may have failed on
+    the frozen minutes, not on the code (lane shared machine design, section 5)."""
+    line = f"lane run: {result.verdict} - {result.summary}"
+    frozen = getattr(result, "frozen_s", 0.0) or 0.0
+    if result.verdict == "red" and frozen > 0:
+        line += f" (red after a freeze of {max(1, round(frozen / 60))} min)"
+    return line
+
+
 def capacity() -> int:
     """machine.toml `lane_capacity`, 1 when unset, malformed or unreadable: a torn file never stops a run."""
     value = _machine().get("lane_capacity", 1)
@@ -401,7 +411,7 @@ def _run(args) -> int:
         result = runner.RunResult(stop.code if isinstance(stop.code, int) else 143, "killed",
                                   "stopped by a signal (`flotilla lane stop`, or the session ending) - no verdict",
                                   15)
-    print(f"lane run: {result.verdict} - {result.summary}")
+    print(verdict_line(result))
     if args.for_:
         _record(args, result, where, started)
     return result.exit

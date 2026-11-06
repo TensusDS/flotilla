@@ -188,6 +188,7 @@ class Slot:
         self._frozen_at: float | None = None
         self._frozen_total = 0.0
         self._how = ""            # how the freeze in force was made: scope or signal
+        self.freezes = 0          # how many times it was frozen in this process
 
     def contain(self, argv: list[str], *, booking: str) -> list[str]:
         """The command to start: in a scope of its own where this machine makes scopes, else as it is. A command
@@ -227,6 +228,7 @@ class Slot:
             self._how = how
             if self._frozen_at is None:
                 self._frozen_at = self.clock()
+                self.freezes += 1
             return {"freeze_kind": how or (SIGNAL if self.kind != SCOPE else SCOPE), "unit": unit,
                     "group": self.pid, "held_mb": held or 0}
 
