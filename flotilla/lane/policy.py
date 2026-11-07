@@ -33,6 +33,16 @@ RECLAIM_MARGIN_MB = 128
 #: It also keeps ours within 90 % of (free swap + ours), the person's other ruling, on any machine: total swap is at
 #: least free plus ours, so `take <= free - 0.2 * total` gives `take <= 0.9 * free - 0.1 * ours`.
 SWAP_USED_CAP = 0.8
+#: Why a freeze was ordered (lane daemon design, 4.3): for a waiter's start, for a machine over its floor, for a run
+#: churning at its ceiling with no room to give it.
+WAITER, OVER, PRESSED_CAUSE = "waiter", "over", "pressed"
+#: Within this much of the lowest priority, the run that grew most over the last minute is the victim (the person's
+#: ruling, 2026-11-07): booking order says nothing about which one hurt the machine.
+TIE_P = 0.05
+#: No ceiling, and no squeeze, below this; and a ceiling's headroom is at least this or a tenth of it. Builder's
+#: numbers, from the bench of 2026-11-07; await the field test (lane daemon design, section 7).
+MIN_CEILING_MB = 256
+SLACK_SHARE = 0.10
 
 
 @dataclass(frozen=True)
@@ -52,6 +62,20 @@ class Run:
     freezable: bool = True      # its wrapper can obey an order
     holds: bool = False         # its freeze orders are out: the runs behind it leave it the memory it needs
     refused_for: str = ""       # whose order it refused a moment ago: no waiter's candidate until the bound is over
+    # what the lane daemon reads of a run's group and keeps between its ticks (lane daemon design, 4.3)
+    ceiling_mb: int | None = None   # its soft ceiling (memory.high); None: none
+    scoped: bool = False            # its group was found: a ceiling can be set and read
+    at_ceiling: bool = False        # the kernel throttled it at its ceiling since the last tick
+    pressure: float | None = None   # its group's memory pressure, "some avg10", percent
+    pressed_s: float = 0.0          # how long it has stalled at its ceiling at or above the pressed mark
+    grew_mb: int = 0                # its growth over the last minute
+    peak_mb: int = 0                # the most it has held
+    squeezed: bool = False          # its ceiling was lowered under its use for an overload
+    cause: str = ""                 # its order's or its freeze's cause: WAITER, OVER, PRESSED_CAUSE
+    frozen_s: float = 0.0           # how long the freeze in force has lasted
+    held_freezes: int = 0           # its freezes for an overload or a pressure
+    reclaimed_mb: int = 0           # what its freeze moved to swap, to fault back on a thaw
+    rule: int = 5                   # its booking's rule: the daemon starts only rule 5 and later
 
 
 @dataclass(frozen=True)
@@ -67,6 +91,9 @@ class Machine:
     immortal_s: float = 900.0
     max_runs: int = 10
     freeze: bool = True
+    available_mb: int | None = None   # MemAvailable now (the daemon's reading)
+    floor_mb: int = 0                 # the largest floor among the projects with a live booking
+    over_s: float = 0.0               # how long MemAvailable has stood below the floor
 
 
 @dataclass(frozen=True)
@@ -93,6 +120,54 @@ def is_heavy(mem_mb: int, give_mb: int | None, was: bool = False) -> bool:
     if was:
         return True
     return give_mb is not None and mem_mb >= HEAVY_SHARE * give_mb
+
+
+def slack(mb: int) -> int:
+    """A ceiling's headroom: what a run may grow before the kernel holds it."""
+    return max(MIN_CEILING_MB, round(SLACK_SHARE * mb))
+
+
+def start_ceiling(estimate_mb: int) -> int:
+    """The ceiling a run starts under: its estimate, at least 256 MB, and the slack (lane daemon design, 4.3 b)."""
+    base = max(int(estimate_mb), MIN_CEILING_MB)
+    return base + slack(base)
+
+
+def room(runs: list[Run], machine: Machine) -> int | None:
+    """What is left once every ceiling's unused headroom is counted as promised: MemAvailable, less the floor, the
+    reservation for just-started runs, and each capped run's ceiling over its use. None when memory is unknown."""
+    if machine.available_mb is None or machine.free_mb is None:
+        return None
+    reserved = max(0, machine.available_mb - machine.floor_mb - machine.free_mb)
+    promised = sum(max(0, r.ceiling_mb - r.mem_mb) for r in runs
+                   if r.state in (RUNNING, ORDERED) and r.ceiling_mb is not None)
+    return machine.available_mb - machine.floor_mb - promised - reserved
+
+
+def daemon_reason(v: Run, machine: Machine) -> str:
+    """Why `v` may not be squeezed or frozen for an overload or a pressure; "" when it may. The first-minute grace
+    does not hold here (the person's ruling 5, 2026-11-07): the run that just ballooned is usually the newest."""
+    if v.state != RUNNING:
+        return f"{v.id} is not running"
+    if v.pinned:
+        return f"{v.id} is pinned"
+    if not v.freezable:
+        return f"{v.id} cannot be frozen"
+    if immortal(v, machine.immortal_s):
+        return f"{v.id} is immortal"
+    if v.refused_for:
+        return f"{v.id} refused an order a moment ago"
+    return ""
+
+
+def victim(candidates: list[Run], immortal_s: float) -> Run | None:
+    """The lowest priority first; within TIE_P of it, the run that grew most over the last minute; then the lowest
+    priority, then the newest."""
+    if not candidates:
+        return None
+    lowest = min(priority(r, immortal_s) for r in candidates)
+    near = [r for r in candidates if priority(r, immortal_s) <= lowest + TIE_P]
+    return min(near, key=lambda r: (-r.grew_mb, priority(r, immortal_s), -r.order))
 
 
 def _memory_why(need: int, free: int, machine: Machine) -> str:

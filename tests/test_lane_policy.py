@@ -244,3 +244,49 @@ def test_the_holders_check_leaves_heaviness_to_the_waiter():   # review of the f
                                                                                     kind="push", waited_s=600)
     assert "heavy" in victim_reason(me, them, machine(free=0))
     assert victim_reason(me, them, machine(free=0), by_rules_only=True) == ""
+
+
+# --- the daemon's inputs (lane daemon design, 2026-11-07) ---
+
+from flotilla.lane import policy   # noqa: E402
+
+IMM = 1000.0
+
+
+def aged(id, p, grew=0, **kw):
+    """A running run whose priority is `p` with immortality at 1000 s: type part 0.06, run part 0.0005 per second."""
+    return run(id, RUNNING, 1000, ran_s=(p - 0.06) / 0.0005, since_start_s=600, grew_mb=grew, **kw)
+
+
+def test_start_ceiling():
+    assert (policy.start_ceiling(100), policy.start_ceiling(0), policy.start_ceiling(4000)) == (512, 512, 4400)
+    assert (policy.slack(100), policy.slack(4000)) == (256, 400)
+
+
+def test_room_counts_unused_ceiling_as_promised():
+    m = Machine(cpus=8, give_mb=9000, free_mb=7500, swap_free_mb=8000, available_mb=10000, floor_mb=2000)
+    runs = [run("a", RUNNING, 1000, ceiling_mb=3000), run("b", RUNNING, 500), run("w", WAITING, 9000,
+                                                                                    ceiling_mb=99999)]
+    assert policy.room(runs, m) == 10000 - 2000 - 2000 - 500
+    assert policy.room(runs, Machine(cpus=8, give_mb=None, free_mb=None, swap_free_mb=None)) is None
+
+
+def test_victim_is_the_lowest_priority():
+    assert policy.victim([aged("a", 0.30), aged("b", 0.20)], IMM).id == "b"
+    assert policy.victim([], IMM) is None
+
+
+def test_victim_tie_break_by_growth():   # the person's ruling, 2026-11-07
+    assert policy.victim([aged("low", 0.20, 100), aged("near", 0.24, 3000), aged("far", 0.40, 9000)], IMM).id == "near"
+    assert policy.victim([aged("low", 0.20, 100), aged("near", 0.26, 3000), aged("far", 0.40, 9000)], IMM).id == "low"
+
+
+def test_daemon_reason_ignores_the_grace():   # ruling 5
+    m = machine(free=0, immortal_s=IMM)
+    young = run("y", RUNNING, 1000, ran_s=10, since_start_s=10)
+    assert policy.daemon_reason(young, m) == ""
+    assert "pinned" in policy.daemon_reason(run("y", RUNNING, 1000, pinned=True), m)
+    assert "immortal" in policy.daemon_reason(run("y", RUNNING, 1000, ran_s=IMM), m)
+    assert policy.daemon_reason(run("y", RUNNING, 1000, refused_for="x"), m)
+    assert policy.daemon_reason(run("y", FROZEN, 1000), m)
+    assert policy.daemon_reason(run("y", RUNNING, 1000, freezable=False), m)
