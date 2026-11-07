@@ -177,7 +177,8 @@ class _Tick:
             return
         # with the swap near its budget a run held at its ceiling cannot wait PRESSED_S: each second it is held pushes
         # more of it out (found replaying 2026-11-07: three held runs took the swap to 88 %, oomd kills at 90)
-        full = _swap_room(self.m) <= HELD_SWAP_RESERVE_MB
+        full = bool(self.m.swap_total_mb) and self.m.swap_free_mb is not None and \
+            _swap_room(self.m) <= HELD_SWAP_RESERVE_MB   # no swap: nothing is pushed out to it (third review, 3)
         pressed = [r for r in self.runs if r.state == RUNNING and self.ceiling[r.id] is not None
                    and (r.pressed_s >= PRESSED_S or (full and r.at_ceiling)) and not policy.daemon_reason(r, self.m)]
         if not pressed:

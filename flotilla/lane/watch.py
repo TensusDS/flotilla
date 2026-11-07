@@ -40,9 +40,9 @@ class Watch:
         self._stop = threading.Event()
         self._frozen_since: float | None = None
         self._kind = ""
-        self._daemon_gone_since: float | None = None
         self._lifted = False
         self._thawed_at = None   # this wrapper's own record of its last thaw: no journal line moves it (R5)
+        self._began = self.clock()   # made as the run is admitted: its own count of run time, for immortality
 
     def step(self) -> str:
         """One look: "froze", "thawed", "let go" or ""."""
@@ -115,11 +115,10 @@ class Watch:
         lifts its own scope's ceiling - and only its own (final review I1). A daemon that comes back sets one again."""
         from flotilla.lane import daemon
         if daemon.alive(self.root, self.lanes.procs) is not None:
-            self._daemon_gone_since, self._lifted = None, False
+            self._lifted = False
             return
-        if self._daemon_gone_since is None:
-            self._daemon_gone_since = self.clock()
-        if self._lifted or self.clock() - self._daemon_gone_since < daemon.STALE_S:
+        # `alive` already waited out the stale bound; waiting more lets a look blocked on a wedged journal come first
+        if self._lifted:
             return
         unit = getattr(self.slot, "unit", "")
         path = self.groups.cgroup_of(unit, self.booking_id) if unit else None
@@ -174,24 +173,14 @@ class Watch:
             value = self.value_of(None)
             runs, machine = admission.view(found, estimate.history(found, now=now), value, now=now,
                                            live=self.lanes.live, mine="")
-            by_id = {run.id: run for run in runs}
-            me = by_id.get(self.booking_id)
-            if me is None or me.pinned or policy.immortal(me, machine.immortal_s):
+            me = next((run for run in runs if run.id == self.booking_id), None)
+            # immortal by the journal or by this wrapper's own count of its run time - which no line can make young
+            # again. Who is the right victim the wrapper does not judge: a second copy of the daemon's choice, fed
+            # from the journal, drifted from it and could be fed (the person's ruling, 2026-11-07: an honest bound)
+            if me is None or me.pinned or policy.immortal(me, machine.immortal_s) or \
+                    self._own_ran() >= machine.immortal_s:
                 return False
-            mine = policy.priority(me, machine.immortal_s)
-            if item.order_cause == "pressed":
-                # this run is the pressed one, or ranks below it: never a run above it (fix review R4)
-                pressed = by_id.get(item.order_by)
-                if item.order_by != self.booking_id and (
-                        pressed is None or not mine < policy.priority(pressed, machine.immortal_s)):
-                    return False
-                return self._pressed_now(found, item)
-            if not self._over_now(found, value):
-                return False
-            # the lowest in priority (within the tie band), or this run's own group pressed under its squeeze (R4)
-            others = [run for run in runs if run.id != self.booking_id and not policy.daemon_reason(run, machine)]
-            lowest = min((policy.priority(run, machine.immortal_s) for run in others), default=mine)
-            return mine <= lowest + policy.TIE_P or self._group_pressed(found.get(self.booking_id))
+            return self._over_now(found, value) if item.order_cause == "over" else self._pressed_now(found, item)
         if item.order_cause != "waiter":
             return False
         waiter = found.get(item.order_by)
@@ -208,6 +197,11 @@ class Watch:
         # (review of ed148e3, 1)
         return me is not None and them is not None and not policy.victim_reason(me, them, machine,
                                                                                  by_rules_only=True)
+
+    def _own_ran(self) -> float:
+        """This run's time since it was admitted, its frozen time left out, by this process's own clock."""
+        frozen = self.slot.frozen_seconds() if hasattr(self.slot, "frozen_seconds") else 0.0
+        return max(0.0, self.clock() - self._began - frozen)
 
     def _over_now(self, found, value) -> bool:
         """The machine reads near or below the floor: this run's own project's, or the most cautious one the live
@@ -263,10 +257,11 @@ class Watch:
         return max(0, min(int(asked), room))
 
     def _thaw(self) -> None:
+        began = self.lanes._moment().replace(microsecond=0)   # before: a thaw may take seconds (third review, 4)
         if self.slot.thaw() is False:
             return   # still frozen: the next look tries again, since the record says thawed
         self._frozen_since, self._kind = None, ""
-        self._thawed_at = self.lanes._moment().replace(microsecond=0)
+        self._thawed_at = began
 
     def _loop(self) -> None:
         while not self._stop.is_set():

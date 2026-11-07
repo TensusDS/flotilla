@@ -659,3 +659,38 @@ def test_the_loop_reads_settings_and_floor_each_tick(tmp_path, monkeypatch):   #
     monkeypatch.setattr(daemon, "lift", lambda *a, **kw: 0)
     daemon.serve(tmp_path, ticks=1, newest=newest_is(__version__, REPO), sleep=lambda s: None)
     assert made["value_of"] == "settings each tick" and callable(made["default_floor"])
+
+
+
+@pytest.mark.skipif(not Path("/proc").is_dir(), reason="no /proc here")
+def test_a_process_holding_the_lock_is_still_not_the_daemon_by_its_words(tmp_path):   # third review, 6
+    """A group leader that holds the lock and carries `lane daemon run` among its words - a test runner's `-k` - is
+    not the daemon: only `<python> <copy>/bin/flotilla lane daemon run` is."""
+    script = ("import fcntl, os, sys, time; fd = os.open(sys.argv[1], os.O_RDWR | os.O_CREAT, 0o600); "
+              "fcntl.flock(fd, fcntl.LOCK_EX); time.sleep(30)")
+    holder = subprocess.Popen([sys.executable, "-c", script, str(tmp_path / daemon.LOCK), "-k", "lane", "daemon",
+                               "run"], start_new_session=True)
+    try:
+        assert wait_for(lambda: daemon.lock_held(tmp_path), 10)
+        assert daemon._holds_open(holder.pid, tmp_path) is True
+        beat = daemon.Heartbeat(pid=holder.pid, mark="m", copy="", release="0", protocol=1, tick=0.0, beat=0.0,
+                                why={}, groups={}, over={})
+        assert daemon._provably_daemon(beat, tmp_path) is False
+    finally:
+        holder.kill()
+        holder.wait()
+
+
+@pytest.mark.skipif(not Path("/proc").is_dir(), reason="no /proc here")
+def test_holding_the_lock_open_is_read_from_the_processes_own_descriptors(tmp_path):   # third review, 6
+    held = Held(tmp_path)
+    try:
+        assert daemon._holds_open(os.getpid(), tmp_path) is True
+        other = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+        try:
+            assert daemon._holds_open(other.pid, tmp_path) is False
+        finally:
+            other.kill()
+            other.wait()
+    finally:
+        held.release()

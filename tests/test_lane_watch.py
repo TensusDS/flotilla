@@ -913,11 +913,9 @@ def test_a_watch_lifts_its_own_ceiling_when_the_daemon_is_gone(lane):   # final 
     own = Ceilings()
     w = watch.Watch(lanes, run_id, s, lambda reading: value(available=300), clock=lambda: tick["now"], groups_io=own)
     w.step()
+    assert own.writes == []                          # the daemon lives: its ceiling stays
     lanes.daemon_double.gone()
-    w.step()
-    assert own.writes == []                          # gone a moment: it may be starting again
-    tick["now"] = daemon.STALE_S + 1
-    w.step()
+    w.step()                                         # gone: no further wait - a wedged journal may block the next look
     w.step()
     assert own.writes == [(Path("/own"), None)]      # once, and only its own scope
 
@@ -934,7 +932,7 @@ def test_a_pressure_order_for_the_swap_reserve_is_obeyed(lane):   # fix review R
     order(lanes, run_id, "pressed", waiter=run_id)
     full = watch.Watch(lanes, run_id, FakeSlot(), lambda reading: value(available=300),
                        groups_io=Pressures(17.0, refault_s=0, events_s=50), sleep=lambda s: None,
-                       swap=lambda: (1500, 8000))   # 6500 of 8000 used: 100 MB left of the 80 % budget
+                       swap=lambda: (1500, 8000))   # 6500 of 8000 used: 100 MB past the 80 % budget
     assert full.step() == "froze"
     order(lanes, run_id, "pressed", waiter=run_id)
     roomy = watch.Watch(lanes, run_id, FakeSlot(), lambda reading: value(available=300),
@@ -943,31 +941,28 @@ def test_a_pressure_order_for_the_swap_reserve_is_obeyed(lane):   # fix review R
     assert roomy.step() == "refused"
 
 
-def test_a_pressure_order_never_freezes_a_run_above_the_pressed_one(lane):   # fix review R4
+def test_an_overload_order_to_the_next_victim_is_obeyed(lane):   # third review, 1: tick orders it so
+    """The daemon squeezed the lowest run first; the machine is still over with the swap spent, so it orders the next
+    one frozen. The wrapper must not refuse it for a lower run that is already held under its squeeze."""
     lanes, _mine, _waiter, later, _root = lane
-    pressed = young(lanes, later)   # the younger of the two: lower in priority
-    later(200)
-    high = young(lanes, later)
-    with lanes.store.transaction(book.KEY) as tx:
-        tx.append({"at": lanes._now(), "booking": pressed, "state": book.HELD,
-                   "unit": f"flotilla-lane-{pressed}-11-1.scope"})
-        tx.append({"at": lanes._now(), "booking": high, "state": book.HELD, "started": "2026-11-06T09:57:00+00:00"})
-    order(lanes, high, "pressed", waiter=pressed)
-    w = watch.Watch(lanes, high, FakeSlot(), lambda reading: value(available=300),
-                    groups_io=Pressures(9.5, refault_s=45, events_s=100), sleep=lambda s: None)
-    assert w.step() == "refused"
-
-
-def test_an_overload_order_never_freezes_a_run_above_the_lowest(lane):   # fix review R4
-    lanes, _mine, _waiter, later, _root = lane
-    low = young(lanes, later)
     high = young(lanes, later)
     with lanes.store.transaction(book.KEY) as tx:
         tx.append({"at": lanes._now(), "booking": high, "state": book.HELD, "started": "2026-11-06T09:57:00+00:00"})
+    young(lanes, later)   # the lower one, squeezed already
     order(lanes, high, "over")
-    w = watch.Watch(lanes, high, FakeSlot(), lambda reading: value(available=300),
-                    groups_io=Pressures(1.0), sleep=lambda s: None)
-    assert w.step() == "refused"   # `low` ranks lower and could be frozen first
+    assert watch.Watch(lanes, high, FakeSlot(), lambda reading: value(available=300)).step() == "froze"
+
+
+def test_immortality_is_the_wrappers_own_count_not_the_journals(lane):   # third review, 2
+    lanes, _mine, _waiter, later, _root = lane
+    run_id = young(lanes, later)
+    tick = {"now": 0.0}
+    w = watch.Watch(lanes, run_id, FakeSlot(), lambda reading: value(available=300), clock=lambda: tick["now"])
+    tick["now"] = 1000.0   # it has run past the immortality mark of 900 s by its own clock
+    with lanes.store.transaction(book.KEY) as tx:   # a line making it look new
+        tx.append({"at": lanes._now(), "booking": run_id, "state": book.HELD, "started": lanes._now(), "ran_s": 0})
+    order(lanes, run_id, "over")
+    assert w.step() == "refused"
 
 
 def test_a_replay_is_refused_by_the_wrappers_own_record_of_its_thaw(lane):   # fix review R5
@@ -988,3 +983,23 @@ def test_a_replay_is_refused_by_the_wrappers_own_record_of_its_thaw(lane):   # f
                    "order_pid": old.order_pid, "order_mark": old.order_mark, "ordered_at": old.ordered_at,
                    "reclaim_mb": old.reclaim_mb, "order_sig": old.order_sig})
     assert w.step() == "refused"
+
+
+
+def test_a_thaw_is_recorded_from_the_moment_it_began(lane):   # third review, 4
+    """A thaw that takes seconds (systemctl under load): an order the daemon gives meanwhile is a true one."""
+    lanes, _mine, _waiter, later, _root = lane
+    run_id = young(lanes, later)
+    order(lanes, run_id, "over")
+    w = watch.Watch(lanes, run_id, None, lambda reading: value(available=300))
+
+    class SlowThaw(FakeSlot):
+        def thaw(self):
+            order(lanes, run_id, "over")   # given while the thaw was under way, which takes 5 s
+            later(5)
+            return super().thaw()
+    w.slot = SlowThaw()
+    assert w.step() == "froze"
+    daemon_thaws(lanes, run_id)
+    assert w.step() == "thawed"
+    assert w.step() == "froze"

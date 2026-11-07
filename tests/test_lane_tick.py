@@ -227,3 +227,10 @@ def test_an_untouchable_run_is_no_longer_squeezed_and_holds_no_start():   # fina
     old = run("i", RUNNING, 3000, ran_s=IMM, ceiling_mb=2000, squeezed=True, scoped=True)
     a = tick([old, run("w", WAITING, 100)], machine(2000 + 100))
     assert ("i", None) in a.ceilings and "i" in a.restored and [s[0] for s in a.starts] == ["w"]
+
+
+
+def test_no_swap_is_no_swap_reserve():   # third review, 3: nothing is pushed to a swap that is not there
+    held = aged("h", 0.3, 512, ceiling_mb=512, at_ceiling=True, pressed_s=2, scoped=True)
+    assert tick([held], machine(2000, swap_free=0, swap_total=0)).orders == ()
+    assert tick([held], machine(2000, swap_free=None, swap_total=None)).orders == ()

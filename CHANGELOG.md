@@ -25,7 +25,9 @@ of swap used.
   machine for itself before it obeys one: an overload order only while memory reads near the floor, a pressure
   order only while the run it names is held at its ceiling and reads its own pages back from swap. What the seal
   does not do: the key is the user's own file, so it stops a writer of the journal alone, not a session that reads
-  the user's files; against that, the wrapper's own readings are the line.
+  the user's files. Against such a session the lane promises only what the wrapper reads for itself: a run
+  immortal by its own clock is never frozen, an order holds only while the machine's own readings agree, and
+  at worst a mortal run is frozen once, for at most the freeze ceiling - never killed.
 - **No daemon, a careful lane:** when none can be started, a run already going goes on, a frozen one thaws by its
   own guards, and a new run starts only into an empty lane. `FLOTILLA_LANE_DAEMON=off` chooses that on purpose.
 - `flotilla lane` begins with the daemon's line and shows each run's ceiling and memory pressure; `flotilla doctor`

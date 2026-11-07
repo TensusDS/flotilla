@@ -249,16 +249,20 @@ rules, so the check changes:
   line written by anyone else is refused, as a forged waiter is today (security review of the first build). The
   seal covers the reclaim too, and an order given before the run's last start or thaw is refused. Its bound, said
   plainly: the key is this user's file, so the seal stops a writer of the journal alone - an older flotilla, a client
-  gone wrong - and not a session that reads the user's files. Against that, the wrapper's own checks below are the
-  line, and they read nothing from the journal unclamped;
-- the wrapper checks that a daemon's own order names the right victim: a pressure order only this run, the pressed
-  one, or a run below it in priority; an overload order only the lowest in priority (within 4.4's band), or a run
-  whose own group reads pressed under its squeeze. And it reads the machine for itself before it obeys one: an overload order only while
-  `MemAvailable` reads below the most cautious live floor plus 512 MB; a pressure order names the pressed run, and
-  holds only while that run's group, looked at for a second by the wrapper itself, is held at its ceiling and reads
-  its pages back at `REFAULT_MB_S` or more - the daemon's own rule;
-- the wrapper still refuses, by itself, to be frozen when it is immortal, pinned, or let go - the anti-goals do not
-  rest on the daemon's word;
+  gone wrong - and not a session that reads the user's files;
+- **the bound against a session that reads the key** (the person's ruling, 2026-11-07: an honest bound). Such a
+  session could freeze a run by signal without the lane at all. What the lane guarantees against it rests only on
+  what the wrapper reads for itself, never on the journal: it is never frozen when immortal by its own count of run
+  time since it was admitted (frozen time left out), or pinned (a pinned run has no watch at all), or let go in this
+  process; an overload order holds only while `MemAvailable`, read by the wrapper, is below the floor plus 512 MB
+  (a floor a booking names counts up to a quarter of the machine); a pressure order names the pressed run, and holds
+  only while that run's group, looked at for a second by the wrapper itself, is held at its ceiling and reads its
+  pages back at `REFAULT_MB_S` or more - or is held at its ceiling while the swap, read by the wrapper, is within
+  the 2 GB reserve of its budget, where the daemon freezes at once; and an order given before this wrapper's own
+  last thaw is a replay. So at worst a forger freezes a mortal run once, for at most the freeze ceiling (10 min),
+  while the machine's own readings agree; nothing is ever killed. **Who** is the right victim the wrapper does not
+  judge: a second copy of the daemon's choice, fed from the journal, drifted from the daemon's (it refused true
+  orders) and could be fed (two reviews, 2026-11-07);
 - a waiter's order (2.7) is written by the daemon too, so it passes the same check; the waiter it names is checked
   as today.
 
@@ -320,15 +324,20 @@ frozen at once (the replay of section 8 took the swap to 88 % without it, 81.5 %
 
 ## 10. Open, for the person
 
-The person approved this design and confirmed 4.4's tie-break by growth (2026-11-07). Builder's changes made since,
-which await the person:
+The person approved this design and confirmed 4.4's tie-break by growth (2026-11-07). The person's rulings on the
+builder's changes since (2026-11-07):
 
-- pressed is decided by pages read back from swap (`REFAULT_MB_S`), not by pressure (sections 3, 4.3 c, 7);
-- the replay of section 8 holds the swap under 85 %, not the 80 % budget: what held runs push between a look and
-  their freeze is theirs (81.5 % on the field record); the daemon's own moves keep to 80 %;
-- `FLOTILLA_LANE_DAEMON=off`, which the test suite needs, is also documented as the person's switch to the careful
-  lane (no daemon: a new run only into an empty lane);
-- after the two reviews: the heartbeat thread and the 60 s bound on ticks; a wrapper lifting its own ceiling; a
+- pressed is decided by pages read back from swap (`REFAULT_MB_S`), not by pressure (sections 3, 4.3 c, 7): accepted;
+- the replay of section 8 holds the swap under 85 %, not the 80 % budget - what held runs push between a look and
+  their freeze is theirs (81.5 % on the field record); the daemon's own moves keep to 80 %: accepted;
+- `FLOTILLA_LANE_DAEMON=off`, which the test suite needs, stays documented as the person's switch to the careful
+  lane (no daemon: a new run only into an empty lane): accepted;
+- against a session that reads the daemon's key, an honest bound rather than a second copy of the daemon's choice
+  in the wrapper (4.8): chosen.
+
+Builder's changes that await the person:
+
+- after the reviews: the heartbeat thread and the 60 s bound on ticks; a wrapper lifting its own ceiling; a
   restarted daemon adopting each group's ceiling and forgetting which runs were squeezed; a daemon on SIGTERM
   leaving its ceilings to its successor (section 4.7); a booking's floor believed up to a quarter of the machine
-  (4.3); a wrapper checking that a daemon's order names the right victim by priority (4.8).
+  (4.3); a wrapper counting its own run time for immortality (4.8).
