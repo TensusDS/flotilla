@@ -15,6 +15,7 @@ import dataclasses
 import fcntl
 import hmac
 import json
+import math
 import os
 import re
 import secrets
@@ -38,8 +39,10 @@ TICK_S, IDLE_S, STALE_S, TERM_WAIT_S, START_WAIT_S = 2.0, 600.0, 10.0, 5.0, 10.0
 #: its run because one tick was slow. A daemon whose ticks have stopped for STUCK_S - longer than any call a tick
 #: makes (systemctl answers within 10 s) - is stuck, and replaced (final review I3).
 BEAT_S, STUCK_S = 2.0, 60.0
-#: How far ahead of this clock a heartbeat may stand and still count: two clocks of one machine, read a moment apart.
-FUTURE_S = 2.0
+#: How far ahead of the reader's clock a heartbeat may stand and still count. Writer and reader share one wall clock,
+#: so a live beat stands ahead only when that clock steps back (an NTP step, a resumed VM): as far as the stale bound,
+#: which also bounds what one forged write can hold (sixth review, 1).
+FUTURE_S = STALE_S
 LOCK, BEAT, LOG, KEY = "daemon.lock", "daemon.json", "daemon.log", "daemon.key"
 seal = book.seal
 LOG_CAP = 1_000_000
@@ -103,8 +106,8 @@ def heartbeat(root: Path) -> Heartbeat | None:
     for key, kind in types.items():
         if not isinstance(data.get(key), kind) or isinstance(data.get(key), bool):
             return None
-    if data["pid"] < 2:
-        return None
+    if data["pid"] < 2 or not all(math.isfinite(data[key]) for key in ("tick", "beat")):
+        return None   # NaN or infinity: read as present for ever by any comparison (sixth review, 2)
     return Heartbeat(**{key: data[key] for key in types})
 
 
@@ -130,10 +133,16 @@ def lock_held(root: Path) -> bool:
 def alive(root: Path, procs, *, now=time.time) -> Heartbeat | None:
     """The daemon that runs now: its heartbeat names a live process with its start mark, the lock is held, and it
     beat within STALE_S. None otherwise."""
+    beat = _living(root, procs)
+    return beat if beat is not None and -FUTURE_S <= now() - beat.beat <= STALE_S else None
+
+
+def _living(root: Path, procs) -> Heartbeat | None:
+    """The heartbeat of a process that lives with its start mark and holds the lock - how recent its beat is aside."""
     beat = heartbeat(root)
     if beat is None or not beat.mark or not lock_held(root) or not procs.alive(beat.pid, beat.mark):
         return None
-    return beat if now() - beat.beat <= STALE_S else None
+    return beat
 
 
 def key(root: Path) -> bytes | None:
@@ -169,8 +178,9 @@ def _new_key(root: Path) -> bytes:
 
 
 def gone(root: Path, *, now=time.time) -> bool:
-    """Whether the daemon is gone for a wrapper: no heartbeat, or none for STALE_S. A lock let go with a beat a
-    second old is a handover - its successor adopts the ceilings as they stand - not an absence (fourth review, 1)."""
+    """Whether the daemon is gone for a wrapper: no heartbeat, none for STALE_S, or one dated more than FUTURE_S
+    ahead. A lock let go with a beat a second old is a handover - its successor adopts the ceilings as they stand -
+    not an absence (fourth review, 1)."""
     beat = heartbeat(root)
     if beat is None:
         return True
@@ -381,19 +391,19 @@ def ensure(root: Path, procs, *, newest=newest_copy, spawn=None, now=time.time, 
     release, where = newest()
     line = f"started the lane daemon ({release})"
     if lock_held(root):
-        beat = alive(root, procs, now=lambda: 0.0)   # the process and the lock; the tick is judged below
+        beat = _living(root, procs)   # the process and the lock; its beat and tick are judged below
         for _ in range(int(START_WAIT_S / 0.1)):
             if beat is not None:
                 break
             sleep(0.1)   # a daemon just starting holds the lock before its first heartbeat
-            beat = alive(root, procs, now=lambda: 0.0)
+            beat = _living(root, procs)
         if beat is None:
             return _fallback(root, lanes, "its lock is held by a process that does not answer")
         if beat.protocol not in KNOWN:
             return (f"{FALLBACK}the lane daemon speaks protocol {beat.protocol}, this copy {PROTOCOL}: restart this "
                     "session")
         silent, age = now() - beat.beat, now() - beat.tick
-        if silent > STALE_S or age > STUCK_S:
+        if silent > STALE_S or age > STUCK_S or age < -FUTURE_S:   # a tick dated ahead says nothing (sixth review)
             if _stop(beat, root, sleep) is False:
                 return _fallback(root, lanes, "its lock is held by a process that is not provably the lane daemon")
             line = (f"replaced a stuck lane daemon (no heartbeat for {int(silent)} s)" if silent > STALE_S

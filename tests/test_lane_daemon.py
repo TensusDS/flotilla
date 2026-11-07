@@ -700,9 +700,42 @@ def test_holding_the_lock_open_is_read_from_the_processes_own_descriptors(tmp_pa
 def test_a_beat_from_the_future_is_no_beat(tmp_path):   # fifth review, 3: one write must not keep a dead daemon alive
     write_beat(tmp_path, beat=time.time() + 1e6)
     assert daemon.gone(tmp_path)
-    write_beat(tmp_path, beat=time.time() + 1)   # a clock a second apart: still a beat
+    write_beat(tmp_path, beat=time.time() + 5)   # a wall clock stepped back 5 s: still a beat (sixth review, 1)
     assert not daemon.gone(tmp_path)
+    write_beat(tmp_path, beat=time.time() + daemon.STALE_S + 5)
+    assert daemon.gone(tmp_path)
     write_beat(tmp_path, beat=time.time() - 1)
     assert not daemon.gone(tmp_path)
     write_beat(tmp_path, beat=time.time() - daemon.STALE_S - 1)
     assert daemon.gone(tmp_path)
+
+
+
+def test_a_heartbeat_that_is_no_number_is_no_heartbeat(tmp_path):   # sixth review, 2
+    for bad in (float("nan"), float("inf"), float("-inf")):
+        write_beat(tmp_path, tick=bad, beat=time.time())
+        assert daemon.heartbeat(tmp_path) is None
+        write_beat(tmp_path, beat=bad)
+        assert daemon.heartbeat(tmp_path) is None and daemon.gone(tmp_path)
+
+
+def test_alive_takes_no_beat_from_the_future(tmp_path):   # sixth review, 2: the same check in every door
+    write_beat(tmp_path, beat=time.time() + 1e6)
+    held = Held(tmp_path)
+    try:
+        assert daemon.alive(tmp_path, Procs()) is None
+    finally:
+        held.release()
+
+
+def test_ensure_replaces_a_daemon_whose_tick_is_dated_ahead(tmp_path, monkeypatch):   # sixth review, 2
+    write_beat(tmp_path, tick=time.time() + 1e6, beat=time.time())
+    held = Held(tmp_path)
+    monkeypatch.setattr(daemon, "_stop", lambda beat, root, sleep: held.release())
+    spawn = Spawned(tmp_path, Procs())
+    try:
+        line = daemon.ensure(tmp_path, Procs(), newest=newest_is(__version__, REPO), spawn=spawn, sleep=lambda s: None)
+        assert line.startswith("replaced a stuck lane daemon")
+    finally:
+        if spawn.held is not None:
+            spawn.held.release()

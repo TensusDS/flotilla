@@ -230,8 +230,9 @@ and thaws by itself when the daemon or the watch is gone.
   the same way. `flotilla doctor` reports the daemon's release beside the installs.
 - **Ceilings outlive a dead daemon** (they are files of the scope): a client that finds the daemon dead and cannot
   raise it lifts the ceilings it can see before taking the fallback, and a wrapper lifts its own scope's ceiling
-  once the daemon is gone - no heartbeat for 10 s, so a handover, whose last beat is a second old, is not an
-  absence; the same test thaws a run the daemon froze. A daemon that exits on SIGTERM - replaced, or the machine going down -
+  once the daemon is gone - no heartbeat for 10 s, or one dated more than 10 s ahead of the clock, so a
+  handover, whose last beat is a second old, is not an absence; the same test thaws a run the daemon froze. A
+  heartbeat whose times are no numbers (NaN, infinity) is no heartbeat. A daemon that exits on SIGTERM - replaced, or the machine going down -
   does not lift: its successor adopts each group's ceiling as it stands *(builder's call)*.
 - **What a daemon keeps, and what a restart forgets** *(builder's call, after the final review)*: the ceilings it
   writes are its own decisions, kept in memory - never a value a journal line names, since any session writes the
@@ -295,7 +296,8 @@ Builder's numbers, each awaits the field test; none is a person's setting until 
 about 0.5), `PRESSED` 5 % (pressure a wrapper needs to see in the pressed run's group; hot 9.5-19, cold 0.2-1.9 once
 filled), `PRESSED_S` 10 s, `OVER_S` 10 s, slack max(256 MB, 10 %), a swap reserve of 2 GB below which a held run is
 frozen at once (the replay of section 8 took the swap to 88 % without it, 81.5 % with it), tick 2 s, idle exit
-10 min, heartbeat stale 10 s, no tick for 60 s is stuck.
+10 min, heartbeat stale 10 s (and as far ahead of the clock, which steps back now and then), no tick for 60 s is
+stuck.
 `lane_freeze` = off now means: ceilings still, no freezing (overload ends at squeeze).
 
 ## 8. How it is tested
@@ -344,11 +346,13 @@ Builder's changes that await the person:
   restarted daemon adopting each group's ceiling and forgetting which runs were squeezed; a daemon on SIGTERM
   leaving its ceilings to its successor (section 4.7); a booking's floor believed up to a quarter of the machine
   (4.3); a wrapper counting its own run time for immortality (4.8);
-- the daemon is gone for a wrapper only when its heartbeat is missing, older than 10 s, or dated ahead of the clock -
+- the daemon is gone for a wrapper only when its heartbeat is missing, older than 10 s, or dated more than 10 s
+  ahead of the clock -
   not when its lock is briefly free in a handover (4.7). Under load a replacement can still take more than 10 s, and
   wrappers then lift and thaw; the successor holds the runs again at their use plus the slack;
 - **open: a cap on freezes.** Each freeze lasts at most the freeze ceiling (10 min), but their number is not capped:
   the daemon may freeze a run again after a thaw, and so may a session that reads the key, for as long as the
   machine's readings agree - frozen time does not count towards immortality, so such a run can be held frozen most
-  of the time. A cap on the time a booking may stand frozen in all (say 10 min) would bound both; it would also stop
+  of the time (each freeze ending before the ceiling, `lane_freeze_ceiling_minutes`, 10 by default: one that
+  reaches it lets the run go for good in that process). A cap on the time a booking may stand frozen in all (say 10 min) would bound both; it would also stop
   the daemon from freezing that run again once spent. The person's to decide.
