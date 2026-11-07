@@ -21,6 +21,7 @@ import signal
 import stat
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -32,6 +33,10 @@ PROTOCOL = 1
 KNOWN = frozenset({1})
 #: Builder's numbers (lane daemon design, section 7); they await the field test.
 TICK_S, IDLE_S, STALE_S, TERM_WAIT_S, START_WAIT_S = 2.0, 600.0, 10.0, 5.0, 10.0
+#: The heartbeat is written by a thread of its own every BEAT_S: it says the process lives, so a wrapper never thaws
+#: its run because one tick was slow. A daemon whose ticks have stopped for STUCK_S - longer than any call a tick
+#: makes (systemctl answers within 10 s) - is stuck, and replaced (final review I3).
+BEAT_S, STUCK_S = 2.0, 60.0
 LOCK, BEAT, LOG, KEY = "daemon.lock", "daemon.json", "daemon.log", "daemon.key"
 seal = book.seal
 LOG_CAP = 1_000_000
@@ -49,7 +54,8 @@ class Heartbeat:
     copy: str
     release: str
     protocol: int
-    tick: float
+    tick: float        # wall clock of its last finished tick
+    beat: float        # wall clock of its last heartbeat: the process lives
     why: dict
     groups: dict
     over: dict
@@ -64,7 +70,7 @@ def heartbeat(root: Path) -> Heartbeat | None:
     if not isinstance(data, dict):
         return None
     types = {"pid": int, "mark": str, "copy": str, "release": str, "protocol": int, "tick": (int, float),
-             "why": dict, "groups": dict, "over": dict}
+             "beat": (int, float), "why": dict, "groups": dict, "over": dict}
     for key, kind in types.items():
         if not isinstance(data.get(key), kind) or isinstance(data.get(key), bool):
             return None
@@ -94,11 +100,11 @@ def lock_held(root: Path) -> bool:
 
 def alive(root: Path, procs, *, now=time.time) -> Heartbeat | None:
     """The daemon that runs now: its heartbeat names a live process with its start mark, the lock is held, and it
-    ticked within STALE_S. None otherwise."""
+    beat within STALE_S. None otherwise."""
     beat = heartbeat(root)
     if beat is None or not beat.mark or not lock_held(root) or not procs.alive(beat.pid, beat.mark):
         return None
-    return beat if now() - beat.tick <= STALE_S else None
+    return beat if now() - beat.beat <= STALE_S else None
 
 
 def key(root: Path) -> bytes | None:
@@ -198,15 +204,70 @@ def _spawn(where: Path, root: Path, handover: bool = False) -> None:
                          cwd=str(root), start_new_session=True)
 
 
-def _stop(beat: Heartbeat, root: Path, sleep) -> None:
-    """TERM to the daemon's process group, KILL after TERM_WAIT_S, until its lock is free."""
+def _lock_holder(root: Path) -> int | None:
+    """The process that holds the daemon's lock, as the kernel lists it (`/proc/locks`); None when nobody does or it
+    cannot be read."""
+    try:
+        info = os.stat(Path(root) / LOCK)
+        lines = Path("/proc/locks").read_text(encoding="ascii", errors="replace").splitlines()
+    except OSError:
+        return None
+    wanted = f"{os.major(info.st_dev):02x}:{os.minor(info.st_dev):02x}:{info.st_ino}"
+    for line in lines:
+        parts = line.split()
+        if "FLOCK" in parts and wanted in parts:
+            at = parts.index(wanted)
+            if at > 0 and parts[at - 1].isdigit():
+                return int(parts[at - 1])
+    return None
+
+
+def _command(pid: int) -> list[str]:
+    try:
+        return [part.decode("utf-8", "replace") for part in
+                Path(f"/proc/{int(pid)}/cmdline").read_bytes().split(b"\0") if part]
+    except OSError:
+        pass
+    try:
+        done = subprocess.run(["ps", "-ww", "-o", "command=", "-p", str(int(pid))], capture_output=True, text=True,
+                              timeout=5, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return (done.stdout or "").split()
+
+
+def _provably_daemon(beat: Heartbeat, root: Path) -> bool:
+    """Whether the process a heartbeat names is the lane daemon: it holds the lock (where the kernel lists locks),
+    leads its own process group, and runs `lane daemon run`. A heartbeat is a file any session can write, and the
+    signal that follows reaches a whole process group (final review I2)."""
+    if Path("/proc/locks").exists() and _lock_holder(root) != beat.pid:
+        return False
+    try:
+        if os.getpgid(beat.pid) != beat.pid:
+            return False
+    except OSError:
+        return False
+    words = _command(beat.pid)
+    return any(words[i:i + 3] == ["lane", "daemon", "run"] for i in range(len(words)))
+
+
+def _signal_group(pid: int, number: int) -> None:
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(pid, number)
+
+
+def _stop(beat: Heartbeat, root: Path, sleep) -> bool:
+    """TERM to the daemon's process group, KILL after TERM_WAIT_S, until its lock is free. False, and no signal, when
+    the process is not provably the daemon."""
+    if not _provably_daemon(beat, root):
+        return False
     for number, wait in ((signal.SIGTERM, TERM_WAIT_S), (signal.SIGKILL, 2.0)):
-        with contextlib.suppress(ProcessLookupError, PermissionError):
-            os.killpg(beat.pid, number)
+        _signal_group(beat.pid, number)
         for _ in range(int(wait / 0.1)):
             if not lock_held(root):
-                return
+                return True
             sleep(0.1)
+    return not lock_held(root)
 
 
 def ensure(root: Path, procs, *, newest=newest_copy, spawn=None, now=time.time, sleep=time.sleep,
@@ -232,12 +293,15 @@ def ensure(root: Path, procs, *, newest=newest_copy, spawn=None, now=time.time, 
         if beat.protocol not in KNOWN:
             return (f"{FALLBACK}the lane daemon speaks protocol {beat.protocol}, this copy {PROTOCOL}: restart this "
                     "session")
-        age = now() - beat.tick
-        if age > STALE_S:
-            _stop(beat, root, sleep)
-            line = f"replaced a stuck lane daemon (no tick for {int(age)} s)"
+        silent, age = now() - beat.beat, now() - beat.tick
+        if silent > STALE_S or age > STUCK_S:
+            if _stop(beat, root, sleep) is False:
+                return _fallback(root, lanes, "its lock is held by a process that is not provably the lane daemon")
+            line = (f"replaced a stuck lane daemon (no heartbeat for {int(silent)} s)" if silent > STALE_S
+                    else f"replaced a stuck lane daemon (no tick for {int(age)} s)")
         elif _version(release) > _version(beat.release):
-            _stop(beat, root, sleep)
+            if _stop(beat, root, sleep) is False:
+                return _fallback(root, lanes, "its lock is held by a process that is not provably the lane daemon")
             line = f"replaced the lane daemon {beat.release} with {release}"
         else:
             return ""
@@ -259,9 +323,9 @@ def _fallback(root: Path, lanes, why: str) -> str:
     return FALLBACK + why
 
 
-def _write_beat(root: Path, pid: int, mark: str, picture: dict) -> None:
+def _write_beat(root: Path, pid: int, mark: str, picture: dict, tick: float) -> None:
     data = {"pid": pid, "mark": mark, "copy": str(claude_state.running_root()), "release": __version__,
-            "protocol": PROTOCOL, "tick": time.time(), "why": picture.get("why", {}),
+            "protocol": PROTOCOL, "tick": tick, "beat": time.time(), "why": picture.get("why", {}),
             "groups": picture.get("groups", {}), "over": picture.get("over", {})}
     tmp = Path(root) / f".{BEAT}.{pid}"
     tmp.write_text(json.dumps(data), encoding="utf-8")
@@ -275,7 +339,7 @@ def _busy(lanes) -> bool:
 
 def serve(root: Path, *, handover: bool = False, idle_s: float = IDLE_S, ticks: int | None = None,
           clock=time.monotonic, sleep=time.sleep, newest=newest_copy, lanes=None, value_of=None, procs=None,
-          groups_io=groups) -> int:
+          groups_io=groups, make_scheduler=None) -> int:
     """`flotilla lane daemon run`: hold the lock and tick until idle, replaced, or stopped."""
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
@@ -293,12 +357,13 @@ def serve(root: Path, *, handover: bool = False, idle_s: float = IDLE_S, ticks: 
                     return 0
                 time.sleep(0.1)
         return _loop(root, idle_s=idle_s, ticks=ticks, clock=clock, sleep=sleep, newest=newest, lanes=lanes,
-                     value_of=value_of, procs=procs, groups_io=groups_io)
+                     value_of=value_of, procs=procs, groups_io=groups_io, make_scheduler=make_scheduler)
     finally:
         os.close(fd)
 
 
-def _loop(root: Path, *, idle_s, ticks, clock, sleep, newest, lanes, value_of, procs, groups_io) -> int:
+def _loop(root: Path, *, idle_s, ticks, clock, sleep, newest, lanes, value_of, procs, groups_io,
+          make_scheduler=None) -> int:
     from flotilla.core.storage import LocalLogStore
     from flotilla.lane import commands, machine
     from flotilla.lane.procs import ProcessTable
@@ -308,16 +373,45 @@ def _loop(root: Path, *, idle_s, ticks, clock, sleep, newest, lanes, value_of, p
     value_of = value_of or commands.value_for({})
     pid = os.getpid()
     mark = procs.start_mark(pid) or ""
-    sched = Scheduler(lanes, value_of, signer=(pid, mark, _new_key(root)), groups_io=groups_io, clock=clock,
-                      default_floor=machine.memory_floor_mb({}))
+    key = _new_key(root)
+    sched = (make_scheduler() if make_scheduler is not None else
+             Scheduler(lanes, value_of, signer=(pid, mark, key), groups_io=groups_io, clock=clock,
+                       default_floor=machine.memory_floor_mb({})))
+    state = {"picture": {}, "tick": time.time()}
+    guard, stop = threading.Lock(), threading.Event()
+
+    def beat_now():
+        with guard:
+            _write_beat(root, pid, mark, state["picture"], state["tick"])
+
+    def beater():
+        while not stop.wait(BEAT_S):
+            try:
+                beat_now()
+            except OSError:
+                pass
+    beat_now()
+    threading.Thread(target=beater, daemon=True, name="lane daemon heartbeat").start()
+    try:
+        return _ticks(root, idle_s=idle_s, ticks=ticks, clock=clock, sleep=sleep, newest=newest, lanes=lanes,
+                      groups_io=groups_io, sched=sched, state=state, guard=guard, beat_now=beat_now)
+    finally:
+        stop.set()
+
+
+def _ticks(root: Path, *, idle_s, ticks, clock, sleep, newest, lanes, groups_io, sched, state, guard,
+           beat_now) -> int:
 
     def leave(number, _frame):
         raise SystemExit(0)
-    signal.signal(signal.SIGTERM, leave)
-    idle_since, errors, done, picture = None, 0, 0, {}
+    if threading.current_thread() is threading.main_thread():   # a signal handler is set from the main thread only
+        signal.signal(signal.SIGTERM, leave)
+    idle_since, errors, done = None, 0, 0
     while True:
         try:
             _actions, picture = sched.step()
+            with guard:
+                state["picture"], state["tick"] = picture, time.time()
             errors = 0
         except Exception as err:  # noqa: BLE001 - one bad tick is written down; three in a row end the daemon
             errors += 1
@@ -325,7 +419,7 @@ def _loop(root: Path, *, idle_s, ticks, clock, sleep, newest, lanes, value_of, p
             if errors >= ERRORS_IN_A_ROW:
                 lift(root, lanes, groups_io)
                 return 1
-        _write_beat(root, pid, mark, picture)
+        beat_now()
         if _busy(lanes):
             idle_since = None
         else:

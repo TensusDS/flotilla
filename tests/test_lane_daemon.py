@@ -25,6 +25,17 @@ def daemon_on(monkeypatch):
     monkeypatch.delenv(daemon.OFF_ENV, raising=False)
 
 
+@pytest.fixture(autouse=True)
+def no_signal_leaves_a_test(monkeypatch):
+    """These tests name made-up pids (4242): no signal may reach a real process of that number."""
+    sent = []
+
+    def refused(pid, number):
+        sent.append((pid, number))
+    monkeypatch.setattr(daemon, "_signal_group", refused)
+    return sent
+
+
 class Procs:
     def __init__(self, dead=()):
         self.dead = set(dead)
@@ -36,10 +47,12 @@ class Procs:
         return "m"
 
 
-def write_beat(root, *, pid=4242, mark="m9", release=__version__, protocol=daemon.PROTOCOL, tick=None, **kw):
+def write_beat(root, *, pid=4242, mark="m9", release=__version__, protocol=daemon.PROTOCOL, tick=None, beat=None,
+               **kw):
     root.mkdir(parents=True, exist_ok=True)
+    tick = time.time() if tick is None else tick
     data = {"pid": pid, "mark": mark, "copy": str(REPO), "release": release, "protocol": protocol,
-            "tick": time.time() if tick is None else tick, "why": {}, "groups": {}, "over": {}, **kw}
+            "tick": tick, "beat": tick if beat is None else beat, "why": {}, "groups": {}, "over": {}, **kw}
     (root / daemon.BEAT).write_text(json.dumps(data))
 
 
@@ -177,7 +190,7 @@ def test_ensure_starts_when_nothing_runs(tmp_path, monkeypatch):
 
 
 def test_ensure_replaces_a_stuck_daemon(tmp_path, monkeypatch):
-    write_beat(tmp_path, tick=time.time() - 30)
+    write_beat(tmp_path, tick=time.time() - daemon.STUCK_S - 5, beat=time.time())   # it beats; its ticks stopped
     held = Held(tmp_path)
     stopped = []
 
@@ -371,3 +384,84 @@ def test_the_daemon_can_be_switched_off(tmp_path, monkeypatch):
     spawn = Spawned(tmp_path, Procs())
     assert daemon.ensure(tmp_path, Procs(), spawn=spawn) == f"{daemon.FALLBACK}{daemon.OFF_ENV}=off"
     assert spawn.calls == []
+
+
+
+def test_alive_reads_the_beat_not_the_tick(tmp_path):   # final review I3: a long tick is not a dead daemon
+    write_beat(tmp_path, tick=time.time() - 30, beat=time.time())
+    held = Held(tmp_path)
+    try:
+        assert daemon.alive(tmp_path, Procs()) is not None
+        write_beat(tmp_path, tick=time.time(), beat=time.time() - daemon.STALE_S - 1)
+        assert daemon.alive(tmp_path, Procs()) is None
+    finally:
+        held.release()
+
+
+def test_ensure_leaves_a_daemon_inside_a_long_tick(tmp_path):
+    write_beat(tmp_path, tick=time.time() - 30, beat=time.time())   # one slow systemctl, under load
+    held = Held(tmp_path)
+    try:
+        assert daemon.ensure(tmp_path, Procs(), newest=newest_is(__version__, REPO), spawn=Spawned(tmp_path, Procs()),
+                             sleep=lambda s: None) == ""
+    finally:
+        held.release()
+
+
+def test_the_daemon_beats_while_a_tick_takes_long(tmp_path, monkeypatch):
+    import threading
+    release = threading.Event()
+
+    class Slow:
+        def step(self):
+            release.wait(6)
+            return None, {}
+    monkeypatch.setattr(daemon, "lift", lambda *a, **kw: 0)
+    done = threading.Thread(target=daemon.serve, args=(tmp_path,), daemon=True,
+                            kwargs={"ticks": 1, "newest": newest_is(__version__, REPO), "make_scheduler": lambda: Slow()})
+    done.start()
+    time.sleep(daemon.BEAT_S + 1.5)
+    beat = daemon.heartbeat(tmp_path)
+    release.set()
+    done.join(10)
+    assert beat is not None and time.time() - beat.beat < daemon.BEAT_S + 1 and beat.pid == os.getpid()
+
+
+
+def test_stop_never_signals_a_process_it_cannot_prove_is_the_daemon(tmp_path, no_signal_leaves_a_test):
+    """Final review I2: a daemon.json may name any process. The lock holder here is this test process, whose command
+    is no `lane daemon run`; and 4242 holds no lock at all."""
+    write_beat(tmp_path, pid=4242, tick=time.time() - daemon.STUCK_S - 5)
+    held = Held(tmp_path)
+    try:
+        line = daemon.ensure(tmp_path, Procs(), newest=newest_is(__version__, REPO), spawn=Spawned(tmp_path, Procs()),
+                             sleep=lambda s: None)
+        assert no_signal_leaves_a_test == [] and line.startswith(daemon.FALLBACK)
+        write_beat(tmp_path, pid=os.getpid(), tick=time.time() - daemon.STUCK_S - 5)   # the holder, not a daemon
+        line = daemon.ensure(tmp_path, Procs(), newest=newest_is(__version__, REPO), spawn=Spawned(tmp_path, Procs()),
+                             sleep=lambda s: None)
+        assert no_signal_leaves_a_test == [] and line.startswith(daemon.FALLBACK)
+    finally:
+        held.release()
+
+
+@pytest.mark.skipif(not Path("/proc/locks").exists(), reason="no /proc/locks here")
+def test_the_lock_holder_is_read_from_the_kernel(tmp_path):
+    held = Held(tmp_path)
+    try:
+        assert daemon._lock_holder(tmp_path) == os.getpid()
+    finally:
+        held.release()
+    assert daemon._lock_holder(tmp_path) is None
+
+
+def test_a_real_daemon_is_provably_the_daemon(tmp_path):
+    proc = start(tmp_path)
+    try:
+        assert wait_for(lambda: daemon.heartbeat(lane_root(tmp_path)) is not None)
+        beat = daemon.heartbeat(lane_root(tmp_path))
+        assert daemon._provably_daemon(beat, lane_root(tmp_path))
+        fake = daemon.Heartbeat(**{**beat.__dict__, "pid": os.getpid()})
+        assert not daemon._provably_daemon(fake, lane_root(tmp_path))
+    finally:
+        stop_all(proc)

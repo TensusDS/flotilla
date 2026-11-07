@@ -818,7 +818,7 @@ class LiveDaemon:
         pid = os.getpid()
         (root / daemon.BEAT).write_text(json.dumps({
             "pid": pid, "mark": ProcessTable.for_machine().start_mark(pid), "copy": "", "release": release,
-            "protocol": daemon.PROTOCOL, "tick": time.time() - 3, "why": {}, "groups": groups or {},
+            "protocol": daemon.PROTOCOL, "tick": time.time() - 3, "beat": time.time(), "why": {}, "groups": groups or {},
             "over": over or {}}))
         self.fd = os.open(root / daemon.LOCK, os.O_RDWR | os.O_CREAT, 0o600)
         fcntl.flock(self.fd, fcntl.LOCK_EX)

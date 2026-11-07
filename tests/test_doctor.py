@@ -814,7 +814,7 @@ def test_doctor_reports_the_lane_daemon(tmp_path):
     root = tmp_path / "state" / "lane"
     root.mkdir(parents=True)
     (root / daemon.BEAT).write_text(json.dumps({"pid": 4242, "mark": "m", "copy": "", "release": "0.31.0",
-                                                "protocol": daemon.PROTOCOL, "tick": time.time(), "why": {},
+                                                "protocol": daemon.PROTOCOL, "tick": time.time(), "beat": time.time(), "why": {},
                                                 "groups": {}, "over": {}}))
     fd = os.open(root / daemon.LOCK, os.O_RDWR | os.O_CREAT, 0o600)
     fcntl.flock(fd, fcntl.LOCK_EX)

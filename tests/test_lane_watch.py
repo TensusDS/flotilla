@@ -70,7 +70,7 @@ class Daemon:
         self.root = root
         (root / daemon.BEAT).write_text(json.dumps({
             "pid": DAEMON[0], "mark": DAEMON[1], "copy": "", "release": "0.31.0", "protocol": daemon.PROTOCOL,
-            "tick": time.time(), "why": {}, "groups": {}, "over": {}}))
+            "tick": time.time(), "beat": time.time(), "why": {}, "groups": {}, "over": {}}))
         (root / daemon.KEY).write_bytes(KEY)
         os.chmod(root / daemon.KEY, 0o600)
         self.fd = os.open(root / daemon.LOCK, os.O_RDWR | os.O_CREAT, 0o600)
