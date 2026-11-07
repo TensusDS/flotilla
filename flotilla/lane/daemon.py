@@ -62,11 +62,37 @@ class Heartbeat:
     over: dict
 
 
+def _read_regular(path: Path, limit: int = 1_000_000) -> bytes | None:
+    """A regular file's bytes, never through a link and never blocking on a FIFO someone left in its place (fix
+    review R7); None otherwise."""
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0))
+    except OSError:
+        return None
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid():
+            return None
+        chunks, size = [], 0
+        while size <= limit:
+            chunk = os.read(fd, 65536)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            size += len(chunk)
+        return b"".join(chunks) if size <= limit else None
+    except OSError:
+        return None
+    finally:
+        os.close(fd)
+
+
 def heartbeat(root: Path) -> Heartbeat | None:
     """The daemon's last word, or None when there is none or it does not read as one."""
+    raw = _read_regular(Path(root) / BEAT)
     try:
-        data = json.loads((Path(root) / BEAT).read_text(encoding="utf-8"))
-    except (OSError, ValueError, RecursionError):
+        data = json.loads(raw.decode("utf-8")) if raw is not None else None
+    except (ValueError, RecursionError, UnicodeDecodeError):
         return None
     if not isinstance(data, dict):
         return None
@@ -113,7 +139,7 @@ def key(root: Path) -> bytes | None:
     otherwise."""
     path = Path(root) / KEY
     try:
-        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0))
     except OSError:
         return None
     try:
@@ -216,13 +242,19 @@ def _spawn(where: Path, root: Path, handover: bool = False) -> None:
                 f"--unit=flotilla-daemon-{os.getpid()}-{time.time_ns()}.scope", "--", *argv]
     env = {key: value for key, value in os.environ.items() if key != acquire.ENV}
     Path(root).mkdir(parents=True, exist_ok=True)
-    fd = os.open(Path(root) / LOG, os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
-    try:   # never through a link (final review M7)
+    fd = os.open(Path(root) / LOG, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NONBLOCK
+                 | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    try:   # never through a link (final review M7), never a FIFO left in its place (fix review R7)
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError(f"{Path(root) / LOG} is not a regular file")
         if os.fstat(fd).st_size > LOG_CAP:
             os.ftruncate(fd, 0)
         launcher = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=fd, stderr=subprocess.STDOUT, env=env,
                                     cwd=str(root), start_new_session=True)
-        launcher.wait(timeout=15)
+        try:
+            launcher.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            pass   # a machine under load starts it slowly: the launcher finishes on its own (fix review R3)
     finally:
         os.close(fd)
 
@@ -259,19 +291,50 @@ def _command(pid: int) -> list[str]:
     return (done.stdout or "").split()
 
 
+def _holds_open(pid: int, root: Path) -> bool | None:
+    """Whether process `pid` has the lock file open, by its own descriptors (Linux); None where they cannot be read.
+    The kernel's lock list names a device that a stat may not (btrfs, overlayfs): a descriptor does not (R6)."""
+    try:
+        info = os.stat(Path(root) / LOCK)
+        fds = list(Path(f"/proc/{int(pid)}/fd").iterdir())
+    except OSError:
+        return None
+    for fd in fds:
+        try:
+            found = os.stat(fd)
+        except OSError:
+            continue
+        if (found.st_dev, found.st_ino) == (info.st_dev, info.st_ino):
+            return True
+    return False
+
+
+def _is_daemon_command(words: list[str]) -> bool:
+    """`<python> <copy>/bin/flotilla lane daemon run`, as the launcher starts it - not those words anywhere in a
+    command, which a test runner's `-k "lane daemon run"` would match (fix review R6)."""
+    return len(words) >= 5 and Path(words[1]).name == "flotilla" and Path(words[1]).parent.name == "bin" \
+        and words[2:5] == ["lane", "daemon", "run"]
+
+
 def _provably_daemon(beat: Heartbeat, root: Path) -> bool:
-    """Whether the process a heartbeat names is the lane daemon: it holds the lock (where the kernel lists locks),
-    leads its own process group, and runs `lane daemon run`. A heartbeat is a file any session can write, and the
-    signal that follows reaches a whole process group (final review I2)."""
-    if Path("/proc/locks").exists() and _lock_holder(root) != beat.pid:
+    """Whether the process a heartbeat names is the lane daemon: it holds the lock - by its own descriptors, and by the
+    kernel's lock list where that names a holder - leads its own process group, and runs the daemon's command. A
+    heartbeat is a file any session can write, and the signal that follows reaches a whole process group (final
+    review I2, fix review R6)."""
+    if not lock_held(root):
         return False
+    if Path("/proc").is_dir():
+        if _holds_open(beat.pid, root) is not True:
+            return False
+        holder = _lock_holder(root)
+        if holder is not None and holder != beat.pid:
+            return False
     try:
         if os.getpgid(beat.pid) != beat.pid:
             return False
     except OSError:
         return False
-    words = _command(beat.pid)
-    return any(words[i:i + 3] == ["lane", "daemon", "run"] for i in range(len(words)))
+    return _is_daemon_command(_command(beat.pid))
 
 
 def _signal_group(pid: int, number: int) -> None:
@@ -330,7 +393,7 @@ def ensure(root: Path, procs, *, newest=newest_copy, spawn=None, now=time.time, 
             return ""
     try:
         spawn(where, root)
-    except OSError as err:
+    except (OSError, subprocess.SubprocessError) as err:   # any way a start fails is a fallback (fix review R3)
         return _fallback(root, lanes, f"it could not be started: {err}")
     for _ in range(int(START_WAIT_S / 0.1)):
         if alive(root, procs, now=now) is not None:
@@ -413,7 +476,7 @@ def _loop(root: Path, *, idle_s, ticks, clock, sleep, newest, lanes, value_of, p
     key = _new_key(root)
     sched = (make_scheduler() if make_scheduler is not None else
              Scheduler(lanes, value_of, signer=(pid, mark, key), groups_io=groups_io, clock=clock,
-                       default_floor=machine.memory_floor_mb({})))
+                       default_floor=lambda: machine.memory_floor_mb({})))   # read each tick (fix review R12)
     state = {"picture": {}, "tick": time.time()}
     guard, stop = threading.Lock(), threading.Event()
 
@@ -423,17 +486,21 @@ def _loop(root: Path, *, idle_s, ticks, clock, sleep, newest, lanes, value_of, p
 
     def beater():
         while not stop.wait(BEAT_S):
+            if time.time() - state["tick"] > STUCK_S:
+                continue   # its ticks stopped - wedged on the journal's lock, say: no reader may take it as live (R1)
             try:
                 beat_now()
             except OSError:
                 pass
     beat_now()
-    threading.Thread(target=beater, daemon=True, name="lane daemon heartbeat").start()
+    thread = threading.Thread(target=beater, daemon=True, name="lane daemon heartbeat")
+    thread.start()
     try:
         return _ticks(root, idle_s=idle_s, ticks=ticks, clock=clock, sleep=sleep, newest=newest, lanes=lanes,
                       groups_io=groups_io, sched=sched, state=state, guard=guard, beat_now=beat_now)
     finally:
         stop.set()
+        thread.join(BEAT_S + 2)   # no beat lands after the lock is let go to a successor (fix review R8)
 
 
 def _ticks(root: Path, *, idle_s, ticks, clock, sleep, newest, lanes, groups_io, sched, state, guard,
@@ -466,8 +533,11 @@ def _ticks(root: Path, *, idle_s, ticks, clock, sleep, newest, lanes, groups_io,
                 return 0
         release, where = newest()
         if _version(release) > _version(__version__):
-            _spawn(where, root, handover=True)   # it waits for this lock, and keeps the ceilings the journal holds
-            return 0
+            try:
+                _spawn(where, root, handover=True)   # it waits for this lock and adopts the ceilings the groups hold
+                return 0
+            except (OSError, subprocess.SubprocessError) as err:   # this daemon goes on (fix review R3)
+                print(f"{time.strftime('%Y-%m-%dT%H:%M:%S')} handover to {release} failed: {err!r}", flush=True)
         done += 1
         if ticks is not None and done >= ticks:
             return 0

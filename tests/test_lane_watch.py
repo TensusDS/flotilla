@@ -781,8 +781,8 @@ class Pressures:
 
 def test_a_pressure_order_needs_its_run_to_read_pressed(lane):   # security review of c0b73f9
     lanes, _mine, _waiter, later, _root = lane
-    run_id = young(lanes, later)
     pressed = young(lanes, later)
+    run_id = young(lanes, later)   # the younger: it ranks below the pressed run (fix review R4)
     with lanes.store.transaction(book.KEY) as tx:
         tx.append({"at": lanes._now(), "booking": pressed, "state": book.HELD,
                    "unit": f"flotilla-lane-{pressed}-11-1.scope"})
@@ -920,3 +920,71 @@ def test_a_watch_lifts_its_own_ceiling_when_the_daemon_is_gone(lane):   # final 
     w.step()
     w.step()
     assert own.writes == [(Path("/own"), None)]      # once, and only its own scope
+
+
+
+def test_a_pressure_order_for_the_swap_reserve_is_obeyed(lane):   # fix review R2
+    """The daemon freezes a run held at its ceiling at once when the swap is near its budget, whether or not it reads
+    pages back: the wrapper obeys that, by its own reading of the swap."""
+    lanes, _mine, _waiter, later, _root = lane
+    run_id = young(lanes, later)
+    with lanes.store.transaction(book.KEY) as tx:
+        tx.append({"at": lanes._now(), "booking": run_id, "state": book.HELD,
+                   "unit": f"flotilla-lane-{run_id}-11-1.scope"})
+    order(lanes, run_id, "pressed", waiter=run_id)
+    full = watch.Watch(lanes, run_id, FakeSlot(), lambda reading: value(available=300),
+                       groups_io=Pressures(17.0, refault_s=0, events_s=50), sleep=lambda s: None,
+                       swap=lambda: (1500, 8000))   # 6500 of 8000 used: 100 MB left of the 80 % budget
+    assert full.step() == "froze"
+    order(lanes, run_id, "pressed", waiter=run_id)
+    roomy = watch.Watch(lanes, run_id, FakeSlot(), lambda reading: value(available=300),
+                        groups_io=Pressures(17.0, refault_s=0, events_s=50), sleep=lambda s: None,
+                        swap=lambda: (8000, 8000))
+    assert roomy.step() == "refused"
+
+
+def test_a_pressure_order_never_freezes_a_run_above_the_pressed_one(lane):   # fix review R4
+    lanes, _mine, _waiter, later, _root = lane
+    pressed = young(lanes, later)   # the younger of the two: lower in priority
+    later(200)
+    high = young(lanes, later)
+    with lanes.store.transaction(book.KEY) as tx:
+        tx.append({"at": lanes._now(), "booking": pressed, "state": book.HELD,
+                   "unit": f"flotilla-lane-{pressed}-11-1.scope"})
+        tx.append({"at": lanes._now(), "booking": high, "state": book.HELD, "started": "2026-11-06T09:57:00+00:00"})
+    order(lanes, high, "pressed", waiter=pressed)
+    w = watch.Watch(lanes, high, FakeSlot(), lambda reading: value(available=300),
+                    groups_io=Pressures(9.5, refault_s=45, events_s=100), sleep=lambda s: None)
+    assert w.step() == "refused"
+
+
+def test_an_overload_order_never_freezes_a_run_above_the_lowest(lane):   # fix review R4
+    lanes, _mine, _waiter, later, _root = lane
+    low = young(lanes, later)
+    high = young(lanes, later)
+    with lanes.store.transaction(book.KEY) as tx:
+        tx.append({"at": lanes._now(), "booking": high, "state": book.HELD, "started": "2026-11-06T09:57:00+00:00"})
+    order(lanes, high, "over")
+    w = watch.Watch(lanes, high, FakeSlot(), lambda reading: value(available=300),
+                    groups_io=Pressures(1.0), sleep=lambda s: None)
+    assert w.step() == "refused"   # `low` ranks lower and could be frozen first
+
+
+def test_a_replay_is_refused_by_the_wrappers_own_record_of_its_thaw(lane):   # fix review R5
+    lanes, _mine, _waiter, later, _root = lane
+    run_id = young(lanes, later)
+    order(lanes, run_id, "over")
+    old = lanes.bookings()[run_id]
+    s = FakeSlot()
+    w = watch.Watch(lanes, run_id, s, lambda reading: value(available=300))
+    assert w.step() == "froze"
+    later(31)
+    daemon_thaws(lanes, run_id)
+    assert w.step() == "thawed"
+    back = (book._when(old.ordered_at) - dt.timedelta(seconds=1)).isoformat(timespec="seconds")   # not immortal
+    with lanes.store.transaction(book.KEY) as tx:   # the old order again, and `started` written back before it
+        tx.append({"at": lanes._now(), "booking": run_id, "state": book.HELD, "frozen": "ordered",
+                   "started": back, "order_by": old.order_by, "order_cause": old.order_cause,
+                   "order_pid": old.order_pid, "order_mark": old.order_mark, "ordered_at": old.ordered_at,
+                   "reclaim_mb": old.reclaim_mb, "order_sig": old.order_sig})
+    assert w.step() == "refused"

@@ -210,9 +210,16 @@ and thaws by itself when the daemon or the watch is gone.
 
 ### 4.7 Lifecycle and versions
 
-- **Raised by** `flotilla lane daemon ensure`: start it when the lock is free, or when the heartbeat is older than
-  10 s (a stuck daemon: signal its process group TERM, then KILL after 5 s, then start). Orchestrators run it at
-  start and on each pass (post text); every lane client runs it before asking (ruling 2).
+- **Raised by** `flotilla lane daemon ensure`: start it when the lock is free, or when it is stuck - no heartbeat
+  for 10 s, or no finished tick for 60 s *(builder's call, after the final review)*: signal its process group TERM,
+  then KILL after 5 s, then start. The heartbeat is written by a thread of its own every 2 s, so one slow tick
+  (a `systemctl` under load answers within 10 s) is not read as a dead daemon; the thread stops beating once ticks
+  have stopped for 60 s, so a loop wedged on the journal's lock is not read as a live one. A signal goes only to a
+  process proven to be the daemon: it holds the lock by its own descriptors (and by the kernel's lock list where
+  that names a holder), leads its own process group, and runs `<copy>/bin/flotilla lane daemon run`. The daemon is
+  started through a launcher that forks it into a session of its own and exits, so it is nobody's child.
+  Orchestrators run `ensure` at start and on each pass (post text); every lane client runs it before asking
+  (ruling 2).
 - **Leaves** after 10 minutes with no booking, held or waiting, and lifts every ceiling it set on the way out (sets
   `max`), so no run outlives its scheduler under a cap.
 - **Versions** (ruling 4): the daemon records its release and protocol version. A client from a newer copy that finds
@@ -222,7 +229,14 @@ and thaws by itself when the daemon or the watch is gone.
   running daemon is noticed by the daemon itself at its next tick (the copy path's release changed): it hands over
   the same way. `flotilla doctor` reports the daemon's release beside the installs.
 - **Ceilings outlive a dead daemon** (they are files of the scope): a client that finds the daemon dead and cannot
-  raise it lifts the ceilings it can see before taking the fallback.
+  raise it lifts the ceilings it can see before taking the fallback, and a wrapper lifts its own scope's ceiling
+  once the daemon has been gone for 10 s. A daemon that exits on SIGTERM - replaced, or the machine going down -
+  does not lift: its successor adopts each group's ceiling as it stands *(builder's call)*.
+- **What a daemon keeps, and what a restart forgets** *(builder's call, after the final review)*: the ceilings it
+  writes are its own decisions, kept in memory - never a value a journal line names, since any session writes the
+  journal. A restarted daemon adopts each scope's `memory.high` as it finds it, and holds a scoped run with none at
+  its use plus the slack. It does not know which runs were squeezed: adopting that flag from the journal would let
+  one line hold back every start, so a squeezed run recovers through the growth rule instead.
 
 ### 4.8 Which orders a wrapper obeys *(builder's call, security)*
 
@@ -237,7 +251,9 @@ rules, so the check changes:
   plainly: the key is this user's file, so the seal stops a writer of the journal alone - an older flotilla, a client
   gone wrong - and not a session that reads the user's files. Against that, the wrapper's own checks below are the
   line, and they read nothing from the journal unclamped;
-- the wrapper reads the machine for itself before it obeys a daemon's own order: an overload order only while
+- the wrapper checks that a daemon's own order names the right victim: a pressure order only this run, the pressed
+  one, or a run below it in priority; an overload order only the lowest in priority (within 4.4's band), or a run
+  whose own group reads pressed under its squeeze. And it reads the machine for itself before it obeys one: an overload order only while
   `MemAvailable` reads below the most cautious live floor plus 512 MB; a pressure order names the pressed run, and
   holds only while that run's group, looked at for a second by the wrapper itself, is held at its ceiling and reads
   its pages back at `REFAULT_MB_S` or more - the daemon's own rule;
@@ -272,7 +288,7 @@ Builder's numbers, each awaits the field test; none is a person's setting until 
 about 0.5), `PRESSED` 5 % (pressure a wrapper needs to see in the pressed run's group; hot 9.5-19, cold 0.2-1.9 once
 filled), `PRESSED_S` 10 s, `OVER_S` 10 s, slack max(256 MB, 10 %), a swap reserve of 2 GB below which a held run is
 frozen at once (the replay of section 8 took the swap to 88 % without it, 81.5 % with it), tick 2 s, idle exit
-10 min, heartbeat stale 10 s.
+10 min, heartbeat stale 10 s, no tick for 60 s is stuck.
 `lane_freeze` = off now means: ceilings still, no freezing (overload ends at squeeze).
 
 ## 8. How it is tested
@@ -311,4 +327,8 @@ which await the person:
 - the replay of section 8 holds the swap under 85 %, not the 80 % budget: what held runs push between a look and
   their freeze is theirs (81.5 % on the field record); the daemon's own moves keep to 80 %;
 - `FLOTILLA_LANE_DAEMON=off`, which the test suite needs, is also documented as the person's switch to the careful
-  lane (no daemon: a new run only into an empty lane).
+  lane (no daemon: a new run only into an empty lane);
+- after the two reviews: the heartbeat thread and the 60 s bound on ticks; a wrapper lifting its own ceiling; a
+  restarted daemon adopting each group's ceiling and forgetting which runs were squeezed; a daemon on SIGTERM
+  leaving its ceilings to its successor (section 4.7); a booking's floor believed up to a quarter of the machine
+  (4.3); a wrapper checking that a daemon's order names the right victim by priority (4.8).

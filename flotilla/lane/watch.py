@@ -42,6 +42,7 @@ class Watch:
         self._kind = ""
         self._daemon_gone_since: float | None = None
         self._lifted = False
+        self._thawed_at = None   # this wrapper's own record of its last thaw: no journal line moves it (R5)
 
     def step(self) -> str:
         """One look: "froze", "thawed", "let go" or ""."""
@@ -166,15 +167,31 @@ class Watch:
         began = book._when(item.started)
         if began is not None and given < began:   # given before its last start or thaw: an order replayed (I4)
             return False
+        if self._thawed_at is not None and given < self._thawed_at:   # by this wrapper's own record, not the journal's
+            return False
         found = self.lanes.bookings()
         if item.order_cause in ("over", "pressed"):
             value = self.value_of(None)
             runs, machine = admission.view(found, estimate.history(found, now=now), value, now=now,
                                            live=self.lanes.live, mine="")
-            me = next((run for run in runs if run.id == self.booking_id), None)
+            by_id = {run.id: run for run in runs}
+            me = by_id.get(self.booking_id)
             if me is None or me.pinned or policy.immortal(me, machine.immortal_s):
                 return False
-            return self._over_now(found, value) if item.order_cause == "over" else self._pressed_now(found, item)
+            mine = policy.priority(me, machine.immortal_s)
+            if item.order_cause == "pressed":
+                # this run is the pressed one, or ranks below it: never a run above it (fix review R4)
+                pressed = by_id.get(item.order_by)
+                if item.order_by != self.booking_id and (
+                        pressed is None or not mine < policy.priority(pressed, machine.immortal_s)):
+                    return False
+                return self._pressed_now(found, item)
+            if not self._over_now(found, value):
+                return False
+            # the lowest in priority (within the tie band), or this run's own group pressed under its squeeze (R4)
+            others = [run for run in runs if run.id != self.booking_id and not policy.daemon_reason(run, machine)]
+            lowest = min((policy.priority(run, machine.immortal_s) for run in others), default=mine)
+            return mine <= lowest + policy.TIE_P or self._group_pressed(found.get(self.booking_id))
         if item.order_cause != "waiter":
             return False
         waiter = found.get(item.order_by)
@@ -205,11 +222,15 @@ class Watch:
 
     def _pressed_now(self, found, item) -> bool:
         """The run the order is for - named in it - is held, and its own group reads pressed by the daemon's own
-        rule: held at its ceiling and reading its pages back from swap, over a second of this wrapper's own looking.
-        Pressure alone is weaker than that rule: a cold run pushing its pages out reads as much (second background
-        review)."""
-        from flotilla.lane import tick
-        pressed = found.get(item.order_by)
+        rule (second background review; fix review R2)."""
+        return self._group_pressed(found.get(item.order_by))
+
+    def _group_pressed(self, pressed) -> bool:
+        """A held run's group, looked at for a second by this wrapper itself, reads pressed by the daemon's own rule:
+        held at its ceiling and reading its pages back from swap - or held at its ceiling while the swap is within
+        its reserve of the budget, where the daemon freezes at once (fix review R2). Pressure alone is weaker than
+        that rule: a cold run pushing its pages out reads as much."""
+        from flotilla.lane import policy, tick
         if pressed is None or pressed.state != book.HELD or not pressed.unit or not self.lanes.live(pressed):
             return False
         path = self.groups.cgroup_of(pressed.unit, pressed.id)
@@ -220,8 +241,15 @@ class Watch:
         self.sleep(PARITY_S)
         second = self.groups.read(path)
         spent = max(PARITY_S, self.clock() - began)
-        return second is not None and second.high_events > first.high_events and \
-            (second.refault_mb - first.refault_mb) / spent >= tick.REFAULT_MB_S
+        if second is None or second.high_events <= first.high_events:
+            return False
+        if (second.refault_mb - first.refault_mb) / spent >= tick.REFAULT_MB_S:
+            return True
+        swap = self.swap()
+        if swap is None or not swap[1]:
+            return False
+        free, total = swap
+        return policy.SWAP_USED_CAP * total - (total - free) <= tick.HELD_SWAP_RESERVE_MB
 
     def _reclaim(self, asked: int) -> int:
         """What an order may move to swap: any session writes the journal, so the figure is held to what the swap
@@ -238,6 +266,7 @@ class Watch:
         if self.slot.thaw() is False:
             return   # still frozen: the next look tries again, since the record says thawed
         self._frozen_since, self._kind = None, ""
+        self._thawed_at = self.lanes._moment().replace(microsecond=0)
 
     def _loop(self) -> None:
         while not self._stop.is_set():

@@ -122,14 +122,16 @@ def is_heavy(mem_mb: int, give_mb: int | None, was: bool = False) -> bool:
     return give_mb is not None and mem_mb >= HEAVY_SHARE * give_mb
 
 
-#: A floor a booking names is believed only up to a quarter of the machine (and never below the default floor): any
-#: session writes the journal, and one floor out of reason would read the whole machine as over (final review C2).
+#: A floor a booking names is believed only up to a quarter of the machine - a cap that is itself never under the
+#: default floor of 1500 MB - and never below zero: any session writes the journal, and one floor out of reason would
+#: read the whole machine as over (final review C2). Within the cap a booking may still raise the floor: the lane
+#: then starts less and squeezes sooner, never more (fix review R9).
 FLOOR_SHARE_MAX, FLOOR_DEFAULT_MB, FLOOR_UNKNOWN_CAP_MB = 0.25, 1500, 4096
 
 
 def clamp_floor(mb: int, total_mb: int | None) -> int:
     cap = max(FLOOR_DEFAULT_MB, int(total_mb * FLOOR_SHARE_MAX)) if total_mb else FLOOR_UNKNOWN_CAP_MB
-    return min(int(mb), cap)
+    return max(0, min(int(mb), cap))
 
 
 def slack(mb: int) -> int:

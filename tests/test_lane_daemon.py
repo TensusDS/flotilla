@@ -560,3 +560,102 @@ def test_the_daemon_reads_the_machine_settings_each_tick(monkeypatch):   # final
     read(None)
     read(None)
     assert len(calls) == 2
+
+
+
+def test_a_wedged_tick_loop_stops_the_heartbeat(tmp_path, monkeypatch):   # fix review R1
+    """A tick stuck on the journal's lock must not read as a live daemon: the beat stops once ticks have stopped for
+    STUCK_S, so a wrapper thaws and lifts, as every reader of `alive` agrees with ensure."""
+    import threading
+    release = threading.Event()
+
+    class Wedged:
+        def step(self):
+            release.wait(8)
+            return None, {}
+    monkeypatch.setattr(daemon, "STUCK_S", 1.0)
+    monkeypatch.setattr(daemon, "lift", lambda *a, **kw: 0)
+    done = threading.Thread(target=daemon.serve, args=(tmp_path,), daemon=True,
+                            kwargs={"ticks": 1, "newest": newest_is(__version__, REPO),
+                                    "make_scheduler": lambda: Wedged()})
+    done.start()
+    time.sleep(daemon.BEAT_S * 2 + 0.5)
+    beat = daemon.heartbeat(tmp_path)
+    release.set()
+    done.join(10)
+    assert beat is not None and time.time() - beat.beat > daemon.BEAT_S
+
+
+def test_a_slow_launcher_is_no_crash(tmp_path, monkeypatch):   # fix review R3
+    import subprocess as sp
+
+    class Slow:
+        def __init__(self, argv, **kw):
+            pass
+
+        def wait(self, timeout=None):
+            raise sp.TimeoutExpired("launcher", timeout)
+    monkeypatch.setattr(daemon.subprocess, "Popen", Slow)
+    ORIGINAL_SPAWN(REPO, tmp_path)   # returns: the launcher finishes on its own
+
+
+def test_ensure_takes_the_fallback_when_a_start_fails_any_way(tmp_path):   # fix review R3
+    import subprocess as sp
+
+    def broken(where, root, handover=False):
+        raise sp.SubprocessError("no user bus")
+    line = daemon.ensure(tmp_path, Procs(), newest=newest_is(__version__, REPO), spawn=broken, sleep=lambda s: None)
+    assert line.startswith(daemon.FALLBACK + "it could not be started")
+
+
+def test_only_the_daemons_own_command_is_the_daemon(monkeypatch):   # fix review R6
+    words = {1: [sys.executable, "/x/bin/flotilla", "lane", "daemon", "run"],
+             2: [sys.executable, "-m", "pytest", "-k", "lane", "daemon", "run"],
+             3: ["sh", "-c", "echo lane daemon run"]}
+    assert daemon._is_daemon_command(words[1])
+    assert not daemon._is_daemon_command(words[2]) and not daemon._is_daemon_command(words[3])
+
+
+def test_a_fifo_in_the_state_directory_hangs_nothing(tmp_path):   # fix review R7
+    import os as _os
+    for name in (daemon.BEAT, daemon.KEY, daemon.LOG):
+        _os.mkfifo(tmp_path / name)
+    began = time.monotonic()
+    assert daemon.heartbeat(tmp_path) is None and daemon.key(tmp_path) is None
+    with pytest.raises(OSError):
+        ORIGINAL_SPAWN(REPO, tmp_path)
+    assert time.monotonic() - began < 2
+
+
+def test_the_heartbeat_thread_is_done_before_the_lock_is_let_go(tmp_path, monkeypatch):   # fix review R8
+    order = []
+    real = daemon._write_beat
+
+    def slow_beat(*a, **kw):
+        time.sleep(0.3)
+        real(*a, **kw)
+        order.append("beat")
+    monkeypatch.setattr(daemon, "_write_beat", slow_beat)
+    monkeypatch.setattr(daemon, "lift", lambda *a, **kw: 0)
+    monkeypatch.setattr(daemon, "BEAT_S", 0.05)
+    daemon.serve(tmp_path, ticks=2, newest=newest_is(__version__, REPO), sleep=lambda s: time.sleep(0.01))
+    order.append("returned")
+    time.sleep(0.6)
+    assert order[-1] == "returned"   # no beat lands after serve let the lock go
+
+
+def test_the_loop_reads_settings_and_floor_each_tick(tmp_path, monkeypatch):   # fix review R12
+    from flotilla.lane import scheduler
+    made = {}
+
+    class Capture:
+        def __init__(self, lanes, value_of, **kw):
+            made.update(value_of=value_of, default_floor=kw["default_floor"])
+
+        def step(self):
+            return None, {}
+    monkeypatch.setattr(scheduler, "Scheduler", Capture)
+    monkeypatch.setattr(daemon, "_settings_now", lambda: "settings each tick")
+    monkeypatch.setattr(daemon, "lift", lambda *a, **kw: 0)
+    daemon.serve(tmp_path, ticks=1, newest=newest_is(__version__, REPO), sleep=lambda s: None)
+    assert made["value_of"] == "settings each tick" and callable(made["default_floor"])

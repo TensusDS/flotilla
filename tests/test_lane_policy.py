@@ -298,3 +298,8 @@ def test_a_floor_is_believed_up_to_a_quarter_of_the_machine():   # final review 
     assert policy.clamp_floor(1000, 15603) == 1000
     assert policy.clamp_floor(1500, 4000) == 1500        # never under the default floor
     assert policy.clamp_floor(9_000_000, None) == 4096
+
+
+
+def test_a_negative_floor_is_no_floor():   # fix review R9
+    assert policy.clamp_floor(-5000, 15603) == 0
