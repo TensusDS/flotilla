@@ -166,6 +166,13 @@ def _new_key(root: Path) -> bytes:
     return found
 
 
+def gone(root: Path, *, now=time.time) -> bool:
+    """Whether the daemon is gone for a wrapper: no heartbeat, or none for STALE_S. A lock let go with a beat a
+    second old is a handover - its successor adopts the ceilings as they stand - not an absence (fourth review, 1)."""
+    beat = heartbeat(root)
+    return beat is None or now() - beat.beat > STALE_S
+
+
 def signed(root: Path, procs, item) -> bool:
     """Whether the order a booking carries is the live daemon's: its pid and start mark, and its seal over everything
     the order says. Any session writes the journal, and only the daemon decides (lane daemon design, 4.8)."""

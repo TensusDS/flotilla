@@ -40,9 +40,11 @@ class Watch:
         self._stop = threading.Event()
         self._frozen_since: float | None = None
         self._kind = ""
-        self._lifted = False
+        self._lifted_unit = ""   # the scope whose ceiling this wrapper lifted, with the daemon gone
         self._thawed_at = None   # this wrapper's own record of its last thaw: no journal line moves it (R5)
         self._began = self.clock()   # made as the run is admitted: its own count of run time, for immortality
+        # the slot is the process's: frozen time of an earlier booking is not this run's (fourth review, 5)
+        self._frozen_base = slot.frozen_seconds() if hasattr(slot, "frozen_seconds") else 0.0
 
     def step(self) -> str:
         """One look: "froze", "thawed", "let go" or ""."""
@@ -111,26 +113,27 @@ class Watch:
         return ""
 
     def _lift_when_the_daemon_is_gone(self) -> None:
-        """No run outlives its scheduler under a cap: once the daemon has been gone for its stale bound, the wrapper
-        lifts its own scope's ceiling - and only its own (final review I1). A daemon that comes back sets one again."""
+        """No run outlives its scheduler under a cap: once the daemon is gone - no heartbeat for its stale bound, judged
+        in this one look, since the next may block on a wedged journal - the wrapper lifts its own scope's ceiling, and
+        only its own (final review I1). A handover is not an absence: the successor adopts the ceiling as it stands
+        (fourth review, 1). A new scope of the same booking is lifted too (fourth review, 6)."""
         from flotilla.lane import daemon
-        if daemon.alive(self.root, self.lanes.procs) is not None:
-            self._lifted = False
-            return
-        # `alive` already waited out the stale bound; waiting more lets a look blocked on a wedged journal come first
-        if self._lifted:
+        if not daemon.gone(self.root):
+            self._lifted_unit = ""
             return
         unit = getattr(self.slot, "unit", "")
-        path = self.groups.cgroup_of(unit, self.booking_id) if unit else None
+        if not unit or unit == self._lifted_unit:
+            return
+        path = self.groups.cgroup_of(unit, self.booking_id)
         if path is not None and self.groups.set_high(path, None):
-            self._lifted = True
+            self._lifted_unit = unit
 
     def _frozen_by_daemon(self, item) -> str:
         """Frozen by the daemon's order: the daemon thaws it (the record turns thawed, read above). The watch thaws by
         itself only when the daemon is gone - a dead daemon is a gone watcher (lane daemon design, section 6) - or a
         waiter's order outlasts the let-go bound; the freeze ceiling is guarded above, whatever the cause."""
         from flotilla.lane import daemon
-        if self.root is not None and daemon.alive(self.root, self.lanes.procs) is None:
+        if self.root is not None and daemon.gone(self.root):   # not a handover (fourth review, 1)
             if self.lanes.thaw(self.booking_id, self.value_of(None), force=True) is not None:
                 self._thaw()
                 return "thawed"
@@ -168,6 +171,8 @@ class Watch:
             return False
         if self._thawed_at is not None and given < self._thawed_at:   # by this wrapper's own record, not the journal's
             return False
+        if self._own_ran() >= self.value_of(None).immortal_s:   # whatever the cause (fourth review, 2)
+            return False
         found = self.lanes.bookings()
         if item.order_cause in ("over", "pressed"):
             value = self.value_of(None)
@@ -177,8 +182,7 @@ class Watch:
             # immortal by the journal or by this wrapper's own count of its run time - which no line can make young
             # again. Who is the right victim the wrapper does not judge: a second copy of the daemon's choice, fed
             # from the journal, drifted from it and could be fed (the person's ruling, 2026-11-07: an honest bound)
-            if me is None or me.pinned or policy.immortal(me, machine.immortal_s) or \
-                    self._own_ran() >= machine.immortal_s:
+            if me is None or me.pinned or policy.immortal(me, machine.immortal_s):
                 return False
             return self._over_now(found, value) if item.order_cause == "over" else self._pressed_now(found, item)
         if item.order_cause != "waiter":
@@ -200,7 +204,7 @@ class Watch:
 
     def _own_ran(self) -> float:
         """This run's time since it was admitted, its frozen time left out, by this process's own clock."""
-        frozen = self.slot.frozen_seconds() if hasattr(self.slot, "frozen_seconds") else 0.0
+        frozen = self.slot.frozen_seconds() - self._frozen_base if hasattr(self.slot, "frozen_seconds") else 0.0
         return max(0.0, self.clock() - self._began - frozen)
 
     def _over_now(self, found, value) -> bool:

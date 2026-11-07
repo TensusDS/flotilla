@@ -81,6 +81,16 @@ class Daemon:
             os.close(self.fd)
             self.fd = None
 
+    def silent(self):
+        """Gone for good: its lock let go and its last beat older than the stale bound - not a handover."""
+        import json
+        import time
+        from flotilla.lane import daemon
+        self.gone()
+        data = json.loads((self.root / daemon.BEAT).read_text())
+        data["beat"] = data["tick"] = time.time() - daemon.STALE_S - 1
+        (self.root / daemon.BEAT).write_text(json.dumps(data))
+
 
 def sign(lanes, booking, cause="waiter", by=DAEMON, key=KEY):
     """The daemon's signature and seal on the order a booking carries now."""
@@ -851,7 +861,7 @@ def test_a_frozen_run_thaws_when_the_daemon_dies(lane):   # review focus 2
     s = FakeSlot()
     w = watch.Watch(lanes, mine, s, lambda reading: value(available=300))
     assert w.step() == "froze"
-    lanes.daemon_double.gone()
+    lanes.daemon_double.silent()
     assert w.step() == "thawed" and not s.frozen() and lanes.bookings()[mine].frozen == ""
 
 
@@ -914,10 +924,16 @@ def test_a_watch_lifts_its_own_ceiling_when_the_daemon_is_gone(lane):   # final 
     w = watch.Watch(lanes, run_id, s, lambda reading: value(available=300), clock=lambda: tick["now"], groups_io=own)
     w.step()
     assert own.writes == []                          # the daemon lives: its ceiling stays
-    lanes.daemon_double.gone()
-    w.step()                                         # gone: no further wait - a wedged journal may block the next look
+    lanes.daemon_double.gone()                       # its lock let go, its last beat fresh: a handover (fourth review)
+    w.step()
+    assert own.writes == []
+    lanes.daemon_double.silent()                     # no beat for the stale bound: gone, judged in one look
+    w.step()
     w.step()
     assert own.writes == [(Path("/own"), None)]      # once, and only its own scope
+    s.unit = f"flotilla-lane-{run_id}-11-2.scope"    # the receipt's next tier, in a scope of its own
+    w.step()
+    assert own.writes == [(Path("/own"), None), (Path("/own"), None)]   # its ceiling lifted too (fourth review, 6)
 
 
 
@@ -1003,3 +1019,47 @@ def test_a_thaw_is_recorded_from_the_moment_it_began(lane):   # third review, 4
     daemon_thaws(lanes, run_id)
     assert w.step() == "thawed"
     assert w.step() == "froze"
+
+
+
+def test_a_handover_neither_thaws_nor_lifts(lane):   # fourth review, 1: the lock is free for a second or two
+    lanes, mine, _waiter, _later, _root = lane
+    s = FakeSlot()
+    own = Ceilings()
+    w = watch.Watch(lanes, mine, s, lambda reading: value(available=300), groups_io=own)
+    assert w.step() == "froze"
+    lanes.daemon_double.gone()   # the old daemon let its lock go; its last beat is a second old
+    assert w.step() == "" and s.frozen() and own.writes == []
+
+
+def test_a_waiters_order_never_freezes_a_run_immortal_by_its_own_count(lane):   # fourth review, 2
+    lanes, mine, _waiter, _later, _root = lane
+    tick = {"now": 0.0}
+    w = watch.Watch(lanes, mine, FakeSlot(), lambda reading: value(available=300), clock=lambda: tick["now"])
+    tick["now"] = 5000.0   # the journal says ~120 s; its own clock says far past the 900 s mark
+    assert w.step() == "refused"
+
+
+def test_the_own_count_leaves_this_bookings_frozen_time_out(lane):   # fourth review, 4 and 5
+    lanes, _mine, _waiter, later, _root = lane
+    run_id = young(lanes, later)
+    tick = {"now": 0.0}
+    s = FakeSlot()
+    s.seconds = 300.0   # frozen time of an earlier booking of this process: not this run's
+    w = watch.Watch(lanes, run_id, s, lambda reading: value(available=300), clock=lambda: tick["now"])
+    tick["now"] = 1000.0
+    s.seconds = 300.0 + 600.0   # this run stood frozen 600 s: it has run 400 s, mortal
+    order(lanes, run_id, "over")
+    assert w.step() == "froze"
+
+
+def test_an_earlier_bookings_frozen_time_does_not_make_a_run_young(lane):   # fourth review, 5
+    lanes, _mine, _waiter, later, _root = lane
+    run_id = young(lanes, later)
+    tick = {"now": 0.0}
+    s = FakeSlot()
+    s.seconds = 300.0   # the slot is the process's: an earlier booking stood frozen 300 s
+    w = watch.Watch(lanes, run_id, s, lambda reading: value(available=300), clock=lambda: tick["now"])
+    tick["now"] = 1000.0   # this run has run 1000 s, never frozen: immortal
+    order(lanes, run_id, "over")
+    assert w.step() == "refused"

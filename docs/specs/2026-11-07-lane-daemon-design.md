@@ -230,7 +230,8 @@ and thaws by itself when the daemon or the watch is gone.
   the same way. `flotilla doctor` reports the daemon's release beside the installs.
 - **Ceilings outlive a dead daemon** (they are files of the scope): a client that finds the daemon dead and cannot
   raise it lifts the ceilings it can see before taking the fallback, and a wrapper lifts its own scope's ceiling
-  once the daemon has been gone for 10 s. A daemon that exits on SIGTERM - replaced, or the machine going down -
+  once the daemon is gone - no heartbeat for 10 s, so a handover, whose last beat is a second old, is not an
+  absence; the same test thaws a run the daemon froze. A daemon that exits on SIGTERM - replaced, or the machine going down -
   does not lift: its successor adopts each group's ceiling as it stands *(builder's call)*.
 - **What a daemon keeps, and what a restart forgets** *(builder's call, after the final review)*: the ceilings it
   writes are its own decisions, kept in memory - never a value a journal line names, since any session writes the
@@ -259,8 +260,10 @@ rules, so the check changes:
   only while that run's group, looked at for a second by the wrapper itself, is held at its ceiling and reads its
   pages back at `REFAULT_MB_S` or more - or is held at its ceiling while the swap, read by the wrapper, is within
   the 2 GB reserve of its budget, where the daemon freezes at once; and an order given before this wrapper's own
-  last thaw is a replay. So at worst a forger freezes a mortal run once, for at most the freeze ceiling (10 min),
-  while the machine's own readings agree; nothing is ever killed. **Who** is the right victim the wrapper does not
+  last thaw is a replay. So a forger can freeze a mortal run - whatever the order's cause - only while the machine's
+  own readings agree, each freeze for at most the freeze ceiling (10 min), and again after a thaw while they still
+  agree; never an immortal or pinned run, and nothing is ever killed. The number of freezes is not capped: the daemon
+  itself freezes a run more than once (4.3 e). **Who** is the right victim the wrapper does not
   judge: a second copy of the daemon's choice, fed from the journal, drifted from the daemon's (it refused true
   orders) and could be fed (two reviews, 2026-11-07);
 - a waiter's order (2.7) is written by the daemon too, so it passes the same check; the waiter it names is checked
