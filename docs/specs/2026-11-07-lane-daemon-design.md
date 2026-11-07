@@ -46,7 +46,7 @@ is the wrong tool.
    below, 4.4).
 7. **When the swap cannot take a frozen run's memory, it is frozen anyway**, without reclaim: it stops growing, its
    memory stays in RAM.
-8. **When everything over the line is immortal, pinned or frozen no more**, nothing is squeezed or frozen, nothing new starts, and
+8. **When everything over the line is immortal or pinned**, nothing is squeezed or frozen, nothing new starts, and
    `flotilla lane` says "the machine is over by N MB and nothing can be frozen".
 9. **Memory is held by a soft ceiling per run, watched per group by the daemon; freezing is the second line.**
    Measured before the ruling (section 3).
@@ -141,9 +141,14 @@ its grace included). A started run gets a ceiling at once (b).
   gone. There is no reason to throttle while the machine has room - this is what lets a mispredicted run grow
   (256 MB to 4 GB in four ticks) and still be held the moment the room ends;
 - the ceiling never moves otherwise: it is not reset to `used + slack` each tick, so a run cannot creep;
-- an **immortal** or **pinned** run (`lane take`), and one that can be frozen no more - its freeze total spent, let
-  go, an order unanswered - has no ceiling (`max`): a ceiling below what it would use is a hidden freeze, and
-  nothing freezes it (review of the freeze total, 2026-11-07).
+- an **immortal** or **pinned** run (`lane take`) has no ceiling (`max`): a ceiling below what it would use is a
+  hidden freeze, and nothing freezes it;
+- a run that can be **frozen no more** - its freeze total or a freeze's ceiling reached, let go, an order
+  unanswered, its watch stopped or failed - keeps a ceiling that grows with it while there is room, and is never
+  squeezed: a squeeze it is under when it becomes so ends at once, back to its use and the slack, over the floor or
+  not. Pressed without room (c), it is the run lower ones are frozen for, never a victim; with none lower, it waits
+  at its ceiling *(the person's ruling, 2026-11-07, over lifting its ceiling: a low run then grew unheld and the
+  overload squeezed higher runs in its place)*. Over the floor (ruling 8) it counts with the immortal and pinned.
 
 **c. Pressed without room** *(builder's call)*. A run at its ceiling, with no room to give, reading its own pages
 back from swap at `REFAULT_MB_S` or more for `PRESSED_S` (it is hot: it churns swap and does no work - the bench's
@@ -350,8 +355,9 @@ builder's changes since (2026-11-07):
   and marks it never to be ordered again, so the daemon stops choosing it and a session that reads the key can no
   longer hold a run frozen most of the time. The slot's own guard, for a watch that sticks, holds no more than the
   rest of the total.
-  A run that can be frozen no more has no ceiling either (4.3 b): held under its use with nothing to freeze it,
-  it would churn at the ceiling for good (review of the cap).
+- a run that can be frozen no more keeps a ceiling that grows with it, is never squeezed, and is the run lower ones
+  are frozen for when it is pressed (4.3 b, c): chosen over lifting its ceiling, which let a low run grow unheld
+  and made higher ones pay in the overload. Ruling 8's "immortal or pinned" covers it too: the status says so.
 
 Builder's changes that await the person:
 

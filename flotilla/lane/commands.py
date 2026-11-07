@@ -380,7 +380,8 @@ def value_of(run, item, machine, now: dt.datetime) -> str:
     elif item.frozen == "ordered":
         text += f"; ordered frozen by {visible(item.order_by)}, not yet answered"
     if item.unanswered:
-        text += f"; {item.id} is never frozen again (a freeze order went unanswered, or its freezes reached their bound)"
+        text += (f"; {item.id} is never frozen again (an order went unanswered, its watch stopped, or its freezes "
+                 "reached their bound)")
     return text
 
 

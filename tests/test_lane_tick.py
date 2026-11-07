@@ -69,12 +69,38 @@ def test_immortal_and_pinned_runs_lose_their_ceiling():
     assert c["old"] is None and c["pin"] is None and "free" not in c
 
 
-def test_a_run_that_can_no_longer_be_frozen_loses_its_ceiling():   # review of f9cc273, I1
-    # its freeze total spent (or let go): a ceiling under its use would be a freeze with no end, and nothing freezes it
+# A run that can be frozen no more - its freeze total spent, let go, an order unanswered, its watch stopped - keeps a
+# ceiling that grows with it, is never squeezed under its use, and is the run lower ones are frozen for (the person's
+# ruling, 2026-11-07, after the review of f9cc273: lifting its ceiling let a low run grow unheld and made higher pay)
+
+def test_a_run_frozen_no_more_gets_back_from_a_squeeze_at_once():
     spent = aged("spent", 0.2, 3000, ceiling_mb=2500, squeezed=True, freezable=False, scoped=True)
+    a = tick([spent], machine(1500, over_s=OVER_S + 2))   # even over the floor: a squeeze it cannot leave never ends
+    assert ceilings(a) == {"spent": 3300} and "spent" in a.restored and a.orders == ()
+
+
+def test_a_run_frozen_no_more_keeps_a_ceiling_that_grows():
     bare = aged("bare", 0.2, 900, freezable=False, scoped=True)
-    a = tick([spent, bare], machine(1500, over_s=OVER_S + 2))
-    assert ceilings(a) == {"spent": None} and "spent" in a.restored and a.orders == ()
+    assert ceilings(tick([bare], machine(10000))) == {"bare": 1156}   # held at its use and the slack, not lifted
+    held = aged("held", 0.2, 512, ceiling_mb=512, at_ceiling=True, freezable=False, scoped=True)
+    assert ceilings(tick([held], machine(2000 + 10000))) == {"held": 1024}
+
+
+def test_a_run_frozen_no_more_is_never_squeezed_and_others_pay_only_if_lower():
+    spent = aged("spent", 0.5, 6000, ceiling_mb=6300, freezable=False, scoped=True)
+    low = aged("low", 0.1, 1500, ceiling_mb=1756, scoped=True)
+    a = tick([spent, low], machine(1500, over_s=OVER_S + 2))
+    assert a.squeezed == ("low",) and "spent" not in ceilings(a)
+
+
+def test_a_pressed_run_frozen_no_more_has_lower_runs_frozen_for_it_never_itself():
+    def pressed():
+        return aged("p", 0.4, 2000, ceiling_mb=2000, at_ceiling=True, pressure=80.0, pressed_s=PRESSED_S + 2,
+                    freezable=False, scoped=True)
+    a = tick([pressed(), aged("l", 0.2, 1500, scoped=True)], machine(2000))
+    assert [(o[0], o[2], o[3]) for o in a.orders] == [("l", "pressed", "p")]
+    assert tick([pressed()], machine(2000)).orders == ()                                  # nobody lower: it waits
+    assert tick([pressed(), aged("h", 0.6, 1500, scoped=True)], machine(2000)).orders == ()   # never a higher one
 
 
 def test_pressed_without_room_freezes_the_lowest():

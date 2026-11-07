@@ -95,16 +95,23 @@ class _Tick:
         self.orders.append((r.id, max(0, int(reclaim)), cause, waiter))
         return True
 
-    # 1. a run that became immortal, is pinned, or can be frozen no more - its freeze total spent, let go, an order
-    #    unanswered - is never held by a ceiling: a ceiling under what it would use is a hidden freeze, and nothing
-    #    freezes it (review of f9cc273, I1)
+    # 1. a run that became immortal, or is pinned, is never held by a ceiling: a ceiling under what it would use is a
+    #    hidden freeze, and nothing freezes it. A run that can be frozen no more - its freeze total spent, let go, an
+    #    order unanswered, its watch stopped - keeps a ceiling that grows with it, but a squeeze it cannot leave ends
+    #    at once: back to its use and the slack, over the floor or not (the person's ruling, 2026-11-07)
     def lift(self) -> None:
         for r in self.runs:
-            if r.state == WAITING or not self._unbound(r):
+            if r.state == WAITING:
                 continue
-            if self.ceiling[r.id] is not None:
-                self.set_ceiling(r, None)
-            if r.squeezed:   # no longer squeezed: it holds no start back (final review M1)
+            if self._unbound(r):
+                if self.ceiling[r.id] is not None:
+                    self.set_ceiling(r, None)
+                if r.squeezed:   # no longer squeezed: it holds no start back (final review M1)
+                    self.restored.append(r.id)
+            elif not r.freezable and r.squeezed and r.state == RUNNING:
+                target = r.mem_mb + policy.slack(r.mem_mb)
+                if self.ceiling[r.id] is not None and self.ceiling[r.id] < target:
+                    self.set_ceiling(r, target)
                 self.restored.append(r.id)
 
     # 1b. a run in a scope with no ceiling - a daemon before this one lifted it, or never set one - is held at its use
@@ -115,8 +122,8 @@ class _Tick:
                 self.set_ceiling(r, r.mem_mb + policy.slack(r.mem_mb))
 
     def _unbound(self, r: Run) -> bool:
-        """Whether no ceiling may hold `r`: nothing would freeze it at that ceiling."""
-        return r.pinned or not r.freezable or policy.immortal(r, self.m.immortal_s)
+        """Whether no ceiling may hold `r`: it is never squeezed, frozen, or had others frozen for it."""
+        return r.pinned or policy.immortal(r, self.m.immortal_s)
 
     def over(self) -> bool:
         return self.known and self.m.available_mb < self.m.floor_mb
@@ -183,14 +190,18 @@ class _Tick:
         # more of it out (found replaying 2026-11-07: three held runs took the swap to 88 %, oomd kills at 90)
         full = bool(self.m.swap_total_mb) and self.m.swap_free_mb is not None and \
             _swap_room(self.m) <= HELD_SWAP_RESERVE_MB   # no swap: nothing is pushed out to it (third review, 3)
+        # a run frozen no more still churns at its ceiling: lower runs are frozen for it, never it (the person's ruling)
         pressed = [r for r in self.runs if r.state == RUNNING and self.ceiling[r.id] is not None
-                   and (r.pressed_s >= PRESSED_S or (full and r.at_ceiling)) and not policy.daemon_reason(r, self.m)]
+                   and (r.pressed_s >= PRESSED_S or (full and r.at_ceiling))
+                   and not policy.daemon_reason(dataclasses.replace(r, freezable=True), self.m)]
         if not pressed:
             return
         p = max(pressed, key=lambda r: self.p[r.id])
         lower = [r for r in self.runs if r.id != p.id and self.p[r.id] < self.p[p.id]
                  and not policy.daemon_reason(r, self.m)]
-        v = policy.victim([p, *lower], self.m.immortal_s)
+        v = policy.victim([p, *lower] if p.freezable else lower, self.m.immortal_s)
+        if v is None:
+            return
         reclaim = 0 if v.id == p.id else min(v.mem_mb, self.ceiling[p.id], _swap_room(self.m))
         self.order(v, reclaim, policy.PRESSED_CAUSE, p.id)   # the wrapper checks that this run reads pressed
 

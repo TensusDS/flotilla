@@ -721,8 +721,8 @@ def test_a_run_reads_its_priority_and_a_frozen_one_says_by_whose_order():
     assert "frozen since " in commands.value_of(frozen, item, machine, now)
     assert "by b14's order" in commands.value_of(frozen, item, machine, now)
     lapsed = book.Booking(id="b9", unanswered=True)
-    assert "b9 is never frozen again (a freeze order went unanswered, or its freezes reached their bound)" in \
-        commands.value_of(run, lapsed, machine, now)
+    assert "b9 is never frozen again (an order went unanswered, its watch stopped, or its freezes reached their " \
+        "bound)" in commands.value_of(run, lapsed, machine, now)
 
 
 def test_an_older_waiter_is_named_in_the_lane(tmp_path, monkeypatch):
