@@ -317,6 +317,12 @@ def _lane_daemon(env, procs=None, newest=None) -> Finding:
     except Exception as err:  # noqa: BLE001 - a check that could not ask says so; it never reports ok by default
         return Finding("warn", "lane daemon", f"could not be asked: {err}")
     if beat is None:
+        last = daemon.heartbeat(root)
+        if last is not None and daemon.lock_held(root):   # final review M5: held, and silent
+            import time
+            return Finding("warn", "lane daemon", f"stuck: its lock is held, no heartbeat for "
+                                                  f"{max(0, round(time.time() - last.beat))} s",
+                           "`flotilla lane daemon ensure` replaces it (any lane client does the same)")
         return Finding("ok", "lane daemon", "not running; the next lane client starts it")
     if daemon._version(release) > daemon._version(beat.release):
         return Finding("warn", "lane daemon", f"running {beat.release}, older than {release} installed",

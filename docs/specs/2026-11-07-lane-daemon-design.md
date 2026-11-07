@@ -304,4 +304,11 @@ frozen at once (the replay of section 8 took the swap to 88 % without it, 81.5 %
 
 ## 10. Open, for the person
 
-Nothing: the person approved this design and confirmed 4.4's tie-break by growth (2026-11-07).
+The person approved this design and confirmed 4.4's tie-break by growth (2026-11-07). Builder's changes made since,
+which await the person:
+
+- pressed is decided by pages read back from swap (`REFAULT_MB_S`), not by pressure (sections 3, 4.3 c, 7);
+- the replay of section 8 holds the swap under 85 %, not the 80 % budget: what held runs push between a look and
+  their freeze is theirs (81.5 % on the field record); the daemon's own moves keep to 80 %;
+- `FLOTILLA_LANE_DAEMON=off`, which the test suite needs, is also documented as the person's switch to the careful
+  lane (no daemon: a new run only into an empty lane).

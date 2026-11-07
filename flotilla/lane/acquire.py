@@ -173,7 +173,10 @@ def _daemon_why(lanes, booking: str) -> str:
         said = json.loads((Path(root) / "daemon.json").read_text(encoding="utf-8")).get("why", {}).get(booking)
     except (OSError, ValueError, TypeError, AttributeError):
         said = None
-    return said if isinstance(said, str) and said else "the lane daemon has not looked at this run yet"
+    if not isinstance(said, str) or not said:
+        return "the lane daemon has not looked at this run yet"
+    from flotilla.core.text import visible
+    return visible(said[:300])   # a file any session can write, said into every waiting session (final review M3)
 
 
 def _nap(lanes, poll: float, remaining: float, *, clock, sleep, stamp=None) -> None:

@@ -99,9 +99,12 @@ class _Tick:
     #    hidden freeze, and nothing freezes it
     def lift(self) -> None:
         for r in self.runs:
-            if r.state != WAITING and self.ceiling[r.id] is not None and \
-                    (r.pinned or policy.immortal(r, self.m.immortal_s)):
+            if r.state == WAITING or not (r.pinned or policy.immortal(r, self.m.immortal_s)):
+                continue
+            if self.ceiling[r.id] is not None:
                 self.set_ceiling(r, None)
+            if r.squeezed:   # no longer squeezed: it holds no start back (final review M1)
+                self.restored.append(r.id)
 
     # 1b. a run in a scope with no ceiling - a daemon before this one lifted it, or never set one - is held at its use
     #     and the slack: every run the daemon can hold lives under a ceiling it decided
@@ -120,7 +123,8 @@ class _Tick:
         if self.over():
             return False
         hold = False
-        for r in sorted((r for r in self.runs if r.squeezed and r.state == RUNNING), key=lambda r: -self.p[r.id]):
+        for r in sorted((r for r in self.runs if r.squeezed and r.state == RUNNING and r.id not in self.restored),
+                        key=lambda r: -self.p[r.id]):
             hold = True
             target = r.mem_mb + policy.slack(r.mem_mb)
             need = _promised(target, r.mem_mb) - _promised(self.ceiling[r.id], r.mem_mb)

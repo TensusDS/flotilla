@@ -826,3 +826,26 @@ def test_doctor_reports_the_lane_daemon(tmp_path):
         assert "flotilla lane daemon ensure" in found.fix
     finally:
         os.close(fd)
+
+
+
+def test_doctor_names_a_stuck_daemon(tmp_path):   # final review M5
+    import fcntl
+    import json
+    import os
+    import time
+    from flotilla.lane import daemon
+    env = {"FLOTILLA_STATE_DIR": str(tmp_path / "state"), "CLAUDE_CONFIG_DIR": str(tmp_path / "claude")}
+    root = tmp_path / "state" / "lane"
+    root.mkdir(parents=True)
+    old = time.time() - 120
+    (root / daemon.BEAT).write_text(json.dumps({"pid": 4242, "mark": "m", "copy": "", "release": "0.31.0",
+                                                "protocol": daemon.PROTOCOL, "tick": old, "beat": old, "why": {},
+                                                "groups": {}, "over": {}}))
+    fd = os.open(root / daemon.LOCK, os.O_RDWR | os.O_CREAT, 0o600)
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    try:
+        found = doctor._lane_daemon(env, procs=AllAlive(), newest=lambda: ("0.31.0", tmp_path))
+        assert found.status == "warn" and "stuck" in found.detail
+    finally:
+        os.close(fd)

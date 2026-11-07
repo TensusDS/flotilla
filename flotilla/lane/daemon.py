@@ -16,6 +16,7 @@ import fcntl
 import hmac
 import json
 import os
+import re
 import secrets
 import signal
 import stat
@@ -162,13 +163,24 @@ def newest_copy(*, running: Path | None = None, installs=claude_state.installs) 
         found.append((_version(__version__), __version__, running))
     for _name, item in installs():
         where = Path(str(item.get("installPath") or ""))
-        release = str(item.get("version") or "")
-        if item.get("installPath") and claude_state._version(release) and (where / "bin" / "flotilla").is_file():
+        release = _copy_release(where) if item.get("installPath") else ""   # the copy's own word, not its record (M6)
+        if release and claude_state._version(release) and (where / "bin" / "flotilla").is_file():
             found.append((_version(release), release, where))
     if not found:
         return __version__, running
     best = max(found, key=lambda entry: entry[0])
     return best[1], best[2]
+
+
+def _copy_release(where: Path) -> str:
+    """The release a copy carries in its own code: a record that names a higher one than the code would make a
+    daemon hand over to itself for ever (final review M6)."""
+    try:
+        text = (Path(where) / "flotilla" / "__init__.py").read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    found = re.search(r'^__version__\s*=\s*"([^"]+)"', text, re.M)
+    return found.group(1) if found else ""
 
 
 def lift(root: Path, lanes, groups_io=groups) -> int:
@@ -184,25 +196,35 @@ def lift(root: Path, lanes, groups_io=groups) -> int:
     return lifted
 
 
+#: What starts the daemon: a launcher that forks it into a session of its own and exits at once, so the daemon is
+#: nobody's child - a stop by signal to the tree of the run whose client raised it does not reach it (final review M8).
+DETACH = ("import os, sys\n"
+          "if os.fork() == 0:\n"
+          "    os.setsid()\n"
+          "    os.execv(sys.argv[1], sys.argv[1:])\n")
+
+
 def _spawn(where: Path, root: Path, handover: bool = False) -> None:
     """Start the daemon from copy `where`, detached: its own session, no terminal, output to `daemon.log`. Where this
     machine makes scopes, in a scope of its own - a client inside a lane run's scope would otherwise put the daemon
     in it, and freezing that run would freeze the daemon. Never under a booking: it holds none."""
     from flotilla.lane import acquire, freeze
-    argv = [sys.executable, str(Path(where) / "bin" / "flotilla"), "lane", "daemon", "run",
-            *(["--handover"] if handover else [])]
+    argv = [sys.executable, "-c", DETACH, sys.executable, str(Path(where) / "bin" / "flotilla"), "lane", "daemon",
+            "run", *(["--handover"] if handover else [])]
     if freeze.backend(setting=True)[0] == freeze.SCOPE:
         argv = ["systemd-run", "--user", "--scope", "--quiet", "--collect",
                 f"--unit=flotilla-daemon-{os.getpid()}-{time.time_ns()}.scope", "--", *argv]
     env = {key: value for key, value in os.environ.items() if key != acquire.ENV}
     Path(root).mkdir(parents=True, exist_ok=True)
-    log = Path(root) / LOG
-    with contextlib.suppress(OSError):
-        if log.stat().st_size > LOG_CAP:
-            log.write_text("", encoding="utf-8")
-    with open(log, "a", encoding="utf-8") as out:
-        subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT, env=env,
-                         cwd=str(root), start_new_session=True)
+    fd = os.open(Path(root) / LOG, os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    try:   # never through a link (final review M7)
+        if os.fstat(fd).st_size > LOG_CAP:
+            os.ftruncate(fd, 0)
+        launcher = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=fd, stderr=subprocess.STDOUT, env=env,
+                                    cwd=str(root), start_new_session=True)
+        launcher.wait(timeout=15)
+    finally:
+        os.close(fd)
 
 
 def _lock_holder(root: Path) -> int | None:
@@ -329,9 +351,21 @@ def _write_beat(root: Path, pid: int, mark: str, picture: dict, tick: float) -> 
             "protocol": PROTOCOL, "tick": tick, "beat": time.time(), "why": picture.get("why", {}),
             "groups": picture.get("groups", {}), "over": picture.get("over", {})}
     tmp = Path(root) / f".{BEAT}.{pid}"
-    tmp.write_text(json.dumps(data), encoding="utf-8")
-    os.chmod(tmp, 0o600)
+    with contextlib.suppress(FileNotFoundError):
+        tmp.unlink()   # a link left here is removed, never written through (final review M7)
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    try:
+        os.write(fd, json.dumps(data).encode("utf-8"))
+    finally:
+        os.close(fd)
     os.replace(tmp, Path(root) / BEAT)
+
+
+def _settings_now():
+    """The machine's lane settings, read again each tick: a `lane_freeze` changed in machine.toml holds from the next
+    tick, not from the daemon's next start (final review M10)."""
+    from flotilla.lane import commands
+    return lambda reading=None: commands.value_for({})(reading)
 
 
 def _busy(lanes) -> bool:
@@ -346,12 +380,14 @@ def serve(root: Path, *, handover: bool = False, idle_s: float = IDLE_S, ticks: 
     root.mkdir(parents=True, exist_ok=True)
     fd = os.open(root / LOCK, os.O_RDWR | os.O_CREAT, 0o600)
     try:
-        for attempt in range(int(STALE_S / 0.1) if handover else 1):
+        # a client may be probing the lock this very instant: a start gives it half a second (final review M2)
+        attempts = int(STALE_S / 0.1) if handover else 5
+        for attempt in range(attempts):
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
             except OSError:
-                if attempt + 1 >= (int(STALE_S / 0.1) if handover else 1):
+                if attempt + 1 >= attempts:
                     beat = heartbeat(root)
                     print(f"the lane daemon already runs: pid {beat.pid} ({beat.release})" if beat is not None
                           else "the lane daemon already runs")
@@ -371,7 +407,7 @@ def _loop(root: Path, *, idle_s, ticks, clock, sleep, newest, lanes, value_of, p
     from flotilla.lane.scheduler import Scheduler
     procs = procs or ProcessTable.for_machine()
     lanes = lanes or book.Book(LocalLogStore(root), procs)
-    value_of = value_of or commands.value_for({})
+    value_of = value_of or _settings_now()
     pid = os.getpid()
     mark = procs.start_mark(pid) or ""
     key = _new_key(root)

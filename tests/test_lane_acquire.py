@@ -429,3 +429,17 @@ def test_take_by_hand_waits_as_a_by_hand_booking(lanes):
         admit(lanes, next(iter(lanes.waiters())).id)
     grant = by_daemon(lanes, clock=clock, sleep=sleep, by_hand=True)
     assert grant.booking.by_hand and grant.booking.pid is None
+
+
+
+def test_the_daemons_why_is_cleaned_before_it_is_said(lanes, tmp_path):   # final review M3
+    said, clock = [], Clock()
+
+    def sleep(seconds):
+        clock.sleep(seconds)
+        mine = next(iter(lanes.waiters()), None)
+        if mine is not None:
+            (tmp_path / "daemon.json").write_text(json.dumps({"why": {mine.id: "\x1b[2J\x1b]0;owned\x07" + "x" * 900}}))
+    by_daemon(lanes, wait=20.0, clock=clock, sleep=sleep, said=said)
+    spoken = [line for line in said if "x" * 50 in line]
+    assert spoken and all("\x1b" not in line and "\x07" not in line and len(line) < 400 for line in spoken)

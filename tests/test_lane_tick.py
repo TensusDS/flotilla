@@ -220,3 +220,10 @@ def test_a_scoped_run_without_a_ceiling_gets_one_at_its_use():   # final review 
     assert ceilings(tick([bare], machine(10000))) == {"b": 1000 + policy.slack(1000)}
     assert tick([aged("u", 0.3, 1000)], machine(10000)).ceilings == ()                      # no scope: nothing to hold
     assert tick([run("i", RUNNING, 1000, ran_s=IMM, scoped=True)], machine(10000)).ceilings == ()   # immortal
+
+
+
+def test_an_untouchable_run_is_no_longer_squeezed_and_holds_no_start():   # final review M1
+    old = run("i", RUNNING, 3000, ran_s=IMM, ceiling_mb=2000, squeezed=True, scoped=True)
+    a = tick([old, run("w", WAITING, 100)], machine(2000 + 100))
+    assert ("i", None) in a.ceilings and "i" in a.restored and [s[0] for s in a.starts] == ["w"]

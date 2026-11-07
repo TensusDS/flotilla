@@ -54,6 +54,14 @@ def cgroup_of(unit: str, booking: str, *, run=subprocess.run, root: Path = freez
     return path
 
 
+def _page() -> int:
+    """The kernel's page size: 4 KiB on most machines, 16 or 64 KiB on some (final review M4)."""
+    try:
+        return int(os.sysconf("SC_PAGE_SIZE")) or 4096
+    except (ValueError, OSError, AttributeError):
+        return 4096
+
+
 def _mb(text: str) -> int | None:
     text = text.strip()
     return None if text == "max" else int(text) // (1024 * 1024)
@@ -86,7 +94,7 @@ def read(path: Path) -> Reading | None:
         for line in (path / "memory.stat").read_text(encoding="utf-8").splitlines():
             name, _, number = line.partition(" ")
             if name == "workingset_refault_anon":
-                refault = int(number) * 4096 // (1024 * 1024)
+                refault = int(number) * _page() // (1024 * 1024)
     except (OSError, ValueError):
         refault = 0
     return Reading(current, high, hits, pressure, refault)

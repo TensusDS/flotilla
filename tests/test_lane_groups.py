@@ -124,3 +124,16 @@ def test_a_real_scope_takes_a_ceiling():
         subprocess.run(["systemctl", "--user", "stop", unit], capture_output=True, check=False)
         child.kill()
         child.wait()
+
+
+
+def test_refaults_count_in_the_kernels_own_page_size(tmp_path, monkeypatch):   # final review M4
+    group = tmp_path / "g"
+    group.mkdir()
+    for name, text in (("memory.current", "1048576"), ("memory.high", "max"), ("memory.events", "high 0"),
+                       ("memory.stat", "workingset_refault_anon 25600")):
+        (group / name).write_text(text)
+    import os
+    real = os.sysconf
+    monkeypatch.setattr(os, "sysconf", lambda name: 65536 if name == "SC_PAGE_SIZE" else real(name))
+    assert groups.read(group).refault_mb == 1600

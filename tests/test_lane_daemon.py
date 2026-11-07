@@ -148,20 +148,24 @@ def test_signed_needs_the_daemons_seal(tmp_path):   # security review of c0b73f9
         held.release()
 
 
-def copy(tmp_path, name, with_bin=True):
+def copy(tmp_path, name, with_bin=True, version=None):
     root = tmp_path / name
     (root / "bin").mkdir(parents=True)
     if with_bin:
         (root / "bin" / "flotilla").write_text("#!/usr/bin/env python3\n")
+    if version:
+        (root / "flotilla").mkdir()
+        (root / "flotilla" / "__init__.py").write_text(f'__version__ = "{version}"\n')
     return root
 
 
 def test_newest_copy_picks_the_highest_usable_release(tmp_path):
-    old, broken, running = copy(tmp_path, "old"), copy(tmp_path, "broken", with_bin=False), copy(tmp_path, "run")
+    old, running = copy(tmp_path, "old", version="0.30.1"), copy(tmp_path, "run")
+    broken = copy(tmp_path, "broken", with_bin=False, version="9.9.9")
     installs = lambda: [("flotilla@x", {"installPath": str(old), "version": "0.30.1"}),   # noqa: E731
                         ("flotilla@x", {"installPath": str(broken), "version": "9.9.9"})]
     assert daemon.newest_copy(running=running, installs=installs) == (__version__, running)
-    newer = copy(tmp_path, "newer")
+    newer = copy(tmp_path, "newer", version="99.0.0")
     installs2 = lambda: [*installs(), ("flotilla@y", {"installPath": str(newer), "version": "99.0.0"})]  # noqa: E731
     assert daemon.newest_copy(running=running, installs=installs2) == ("99.0.0", newer)
 
@@ -485,3 +489,74 @@ def test_ensure_lifts_ceilings_on_every_fallback(tmp_path, monkeypatch):   # fin
     monkeypatch.setenv(daemon.OFF_ENV, "off")
     daemon.ensure(tmp_path, Procs(), lanes=object())
     assert lifted == [tmp_path, tmp_path]
+
+
+
+ORIGINAL_SPAWN = daemon._spawn   # taken at import, before the suite's double replaces it
+
+
+def test_a_lock_taken_an_instant_late_is_still_taken(tmp_path, monkeypatch):   # final review M2
+    real, tries = daemon.fcntl.flock, []
+
+    def busy_once(fd, how):
+        tries.append(how)
+        if len(tries) == 1 and how & daemon.fcntl.LOCK_NB:
+            raise BlockingIOError("a client probing this very instant")
+        return real(fd, how)
+    monkeypatch.setattr(daemon.fcntl, "flock", busy_once)
+    monkeypatch.setattr(daemon, "lift", lambda *a, **kw: 0)
+    code = daemon.serve(tmp_path, ticks=1, newest=newest_is(__version__, REPO), sleep=lambda s: None)
+    assert code == 0 and daemon.heartbeat(tmp_path).pid == os.getpid()
+
+
+def test_newest_copy_trusts_the_copy_not_its_record(tmp_path):   # final review M6
+    lying = copy(tmp_path, "lying")
+    (lying / "flotilla").mkdir()
+    (lying / "flotilla" / "__init__.py").write_text('__version__ = "0.30.1"\n')
+    running = copy(tmp_path, "run")
+    installs = lambda: [("flotilla@x", {"installPath": str(lying), "version": "99.0.0"})]   # noqa: E731
+    assert daemon.newest_copy(running=running, installs=installs) == (__version__, running)
+
+
+def test_the_heartbeat_follows_no_link(tmp_path):   # final review M7
+    victim = tmp_path / "victim"
+    victim.write_text("keep")
+    (tmp_path / f".{daemon.BEAT}.{os.getpid()}").symlink_to(victim)
+    daemon._write_beat(tmp_path, os.getpid(), "m", {}, time.time())
+    assert victim.read_text() == "keep" and daemon.heartbeat(tmp_path).pid == os.getpid()
+
+
+def test_the_log_follows_no_link(tmp_path, monkeypatch):   # final review M7
+    victim = tmp_path / "victim"
+    victim.write_text("keep")
+    (tmp_path / daemon.LOG).symlink_to(victim)
+    monkeypatch.setattr(daemon.subprocess, "Popen", lambda *a, **kw: pytest.fail("nothing starts"))
+    with pytest.raises(OSError):
+        ORIGINAL_SPAWN(REPO, tmp_path)
+    assert victim.read_text() == "keep"
+
+
+def test_the_daemon_is_started_detached_from_its_caller(tmp_path, monkeypatch):   # final review M8
+    started = []
+
+    class Done:
+        def __init__(self, argv, **kw):
+            started.append(argv)
+
+        def wait(self, timeout=None):
+            return 0
+    monkeypatch.setattr(daemon.subprocess, "Popen", Done)
+    ORIGINAL_SPAWN(REPO, tmp_path)
+    argv = started[0]
+    at = argv.index("-c")   # a launcher that starts the daemon and exits: the daemon is nobody's child
+    assert argv[at - 1] == sys.executable and argv[-3:] == ["lane", "daemon", "run"] and "setsid" in argv[at + 1]
+
+
+def test_the_daemon_reads_the_machine_settings_each_tick(monkeypatch):   # final review M10
+    from flotilla.lane import commands
+    calls = []
+    monkeypatch.setattr(commands, "value_for", lambda profile: calls.append(profile) or (lambda reading=None: "v"))
+    read = daemon._settings_now()
+    read(None)
+    read(None)
+    assert len(calls) == 2
