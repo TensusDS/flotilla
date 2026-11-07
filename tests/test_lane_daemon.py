@@ -712,7 +712,7 @@ def test_a_beat_from_the_future_is_no_beat(tmp_path):   # fifth review, 3: one w
 
 
 def test_a_heartbeat_that_is_no_number_is_no_heartbeat(tmp_path):   # sixth review, 2
-    for bad in (float("nan"), float("inf"), float("-inf")):
+    for bad in (float("nan"), float("inf"), float("-inf"), 10 ** 400):   # seventh review, 1: an int past float
         write_beat(tmp_path, tick=bad, beat=time.time())
         assert daemon.heartbeat(tmp_path) is None
         write_beat(tmp_path, beat=bad)
@@ -729,13 +729,46 @@ def test_alive_takes_no_beat_from_the_future(tmp_path):   # sixth review, 2: the
 
 
 def test_ensure_replaces_a_daemon_whose_tick_is_dated_ahead(tmp_path, monkeypatch):   # sixth review, 2
-    write_beat(tmp_path, tick=time.time() + 1e6, beat=time.time())
+    write_beat(tmp_path, tick=time.time() + daemon.STUCK_S + 30, beat=time.time())
     held = Held(tmp_path)
     monkeypatch.setattr(daemon, "_stop", lambda beat, root, sleep: held.release())
     spawn = Spawned(tmp_path, Procs())
     try:
         line = daemon.ensure(tmp_path, Procs(), newest=newest_is(__version__, REPO), spawn=spawn, sleep=lambda s: None)
         assert line.startswith("replaced a stuck lane daemon")
+    finally:
+        if spawn.held is not None:
+            spawn.held.release()
+
+
+
+def test_a_pid_out_of_reason_is_no_heartbeat(tmp_path):   # seventh review: os calls reject a pid past the machine's
+    write_beat(tmp_path, pid=10 ** 400)
+    assert daemon.heartbeat(tmp_path) is None
+    write_beat(tmp_path, pid=2 ** 40)
+    assert daemon.heartbeat(tmp_path) is None
+
+
+def test_a_wall_clock_stepped_back_is_no_stuck_daemon(tmp_path):   # seventh review, 2
+    write_beat(tmp_path, tick=time.time() + 15, beat=time.time())   # the beat on the new clock, the tick on the old
+    held = Held(tmp_path)
+    try:
+        assert daemon.ensure(tmp_path, Procs(), newest=newest_is(__version__, REPO), spawn=Spawned(tmp_path, Procs()),
+                             sleep=lambda s: None) == ""
+    finally:
+        held.release()
+
+
+def test_ensure_replaces_a_live_process_that_stopped_beating(tmp_path, monkeypatch):   # seventh review, 3
+    """A daemon whose ticks wedged stops beating (R1); ensure judges the process and the lock apart from the time,
+    so it replaces it rather than waiting for a heartbeat that never comes."""
+    write_beat(tmp_path, beat=time.time() - daemon.STALE_S - 1, tick=time.time() - daemon.STUCK_S - 1)
+    held = Held(tmp_path)
+    monkeypatch.setattr(daemon, "_stop", lambda beat, root, sleep: held.release())
+    spawn = Spawned(tmp_path, Procs())
+    try:
+        line = daemon.ensure(tmp_path, Procs(), newest=newest_is(__version__, REPO), spawn=spawn, sleep=lambda s: None)
+        assert line.startswith("replaced a stuck lane daemon (no heartbeat for")
     finally:
         if spawn.held is not None:
             spawn.held.release()

@@ -211,7 +211,8 @@ and thaws by itself when the daemon or the watch is gone.
 ### 4.7 Lifecycle and versions
 
 - **Raised by** `flotilla lane daemon ensure`: start it when the lock is free, or when it is stuck - no heartbeat
-  for 10 s, or no finished tick for 60 s *(builder's call, after the final review)*: signal its process group TERM,
+  for 10 s, or no finished tick for 60 s, or a last tick dated more than 60 s ahead of the clock *(builder's call,
+  after the final review)*: signal its process group TERM,
   then KILL after 5 s, then start. The heartbeat is written by a thread of its own every 2 s, so one slow tick
   (a `systemctl` under load answers within 10 s) is not read as a dead daemon; the thread stops beating once ticks
   have stopped for 60 s, so a loop wedged on the journal's lock is not read as a live one. A signal goes only to a
@@ -296,8 +297,8 @@ Builder's numbers, each awaits the field test; none is a person's setting until 
 about 0.5), `PRESSED` 5 % (pressure a wrapper needs to see in the pressed run's group; hot 9.5-19, cold 0.2-1.9 once
 filled), `PRESSED_S` 10 s, `OVER_S` 10 s, slack max(256 MB, 10 %), a swap reserve of 2 GB below which a held run is
 frozen at once (the replay of section 8 took the swap to 88 % without it, 81.5 % with it), tick 2 s, idle exit
-10 min, heartbeat stale 10 s (and as far ahead of the clock, which steps back now and then), no tick for 60 s is
-stuck.
+10 min, heartbeat stale 10 s (and as far ahead of the clock, which steps back now and then), no tick for 60 s - or
+a tick dated more than 60 s ahead - is stuck.
 `lane_freeze` = off now means: ceilings still, no freezing (overload ends at squeeze).
 
 ## 8. How it is tested
@@ -346,8 +347,9 @@ Builder's changes that await the person:
   restarted daemon adopting each group's ceiling and forgetting which runs were squeezed; a daemon on SIGTERM
   leaving its ceilings to its successor (section 4.7); a booking's floor believed up to a quarter of the machine
   (4.3); a wrapper counting its own run time for immortality (4.8);
-- the daemon is gone for a wrapper only when its heartbeat is missing, older than 10 s, or dated more than 10 s
-  ahead of the clock -
+- the daemon is gone for a wrapper only when its heartbeat is missing, not a number, older than 10 s, or dated
+  more than 10 s ahead of the clock (a wall clock stepping back is the honest case of a beat ahead; `ensure` alone
+  reads the beat one way and the tick both ways, so for one beat after such a step the two may disagree) -
   not when its lock is briefly free in a handover (4.7). Under load a replacement can still take more than 10 s, and
   wrappers then lift and thaw; the successor holds the runs again at their use plus the slack;
 - **open: a cap on freezes.** Each freeze lasts at most the freeze ceiling (10 min), but their number is not capped:

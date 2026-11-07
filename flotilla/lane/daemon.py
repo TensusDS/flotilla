@@ -43,6 +43,8 @@ BEAT_S, STUCK_S = 2.0, 60.0
 #: so a live beat stands ahead only when that clock steps back (an NTP step, a resumed VM): as far as the stale bound,
 #: which also bounds what one forged write can hold (sixth review, 1).
 FUTURE_S = STALE_S
+#: No process number past this: Linux's highest pid_max is 2**22, macOS's 99999; os calls raise on more (seventh review).
+PID_MAX = 2 ** 22
 LOCK, BEAT, LOG, KEY = "daemon.lock", "daemon.json", "daemon.log", "daemon.key"
 seal = book.seal
 LOG_CAP = 1_000_000
@@ -106,8 +108,12 @@ def heartbeat(root: Path) -> Heartbeat | None:
     for key, kind in types.items():
         if not isinstance(data.get(key), kind) or isinstance(data.get(key), bool):
             return None
-    if data["pid"] < 2 or not all(math.isfinite(data[key]) for key in ("tick", "beat")):
-        return None   # NaN or infinity: read as present for ever by any comparison (sixth review, 2)
+    try:
+        finite = all(math.isfinite(float(data[key])) for key in ("tick", "beat"))
+    except (OverflowError, ValueError):   # an int too large for a float (seventh review, 1)
+        finite = False
+    if not 2 <= data["pid"] <= PID_MAX or not finite:
+        return None   # NaN, infinity or out of range: read as present for ever, or raising, by any comparison (sixth review)
     return Heartbeat(**{key: data[key] for key in types})
 
 
@@ -403,11 +409,14 @@ def ensure(root: Path, procs, *, newest=newest_copy, spawn=None, now=time.time, 
             return (f"{FALLBACK}the lane daemon speaks protocol {beat.protocol}, this copy {PROTOCOL}: restart this "
                     "session")
         silent, age = now() - beat.beat, now() - beat.tick
-        if silent > STALE_S or age > STUCK_S or age < -FUTURE_S:   # a tick dated ahead says nothing (sixth review)
+        # a tick dated ahead by more than a tick's own bound is no tick (sixth review); a step of the wall clock back
+        # leaves the last tick ahead until the next one, so the bound is the stuck one, not the beat's (seventh)
+        if silent > STALE_S or age > STUCK_S or age < -STUCK_S:
             if _stop(beat, root, sleep) is False:
                 return _fallback(root, lanes, "its lock is held by a process that is not provably the lane daemon")
             line = (f"replaced a stuck lane daemon (no heartbeat for {int(silent)} s)" if silent > STALE_S
-                    else f"replaced a stuck lane daemon (no tick for {int(age)} s)")
+                    else f"replaced a stuck lane daemon (no tick for {int(age)} s)" if age > 0
+                    else f"replaced a stuck lane daemon (its last tick dated {int(-age)} s ahead)")
         elif _version(release) > _version(beat.release):
             if _stop(beat, root, sleep) is False:
                 return _fallback(root, lanes, "its lock is held by a process that is not provably the lane daemon")
