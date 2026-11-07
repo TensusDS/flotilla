@@ -28,8 +28,8 @@ Security and hygiene of a public repository.
   - What this does not do: a line written as the same user can name any live process with its real start mark as a
     waiter, and a run may be frozen for it within the lane's rules - for two minutes, and at most for the ceiling.
     A run that was let go is not frozen again by its own process, whatever a later line says; the ceiling is kept
-    by the frozen command's own loop, with no journal, and a watch stuck on the journal's lock for 15 s is read as
-    gone, so not even a held lock keeps it frozen for long. A crafted
+    by the frozen command's own loop, with no journal, and a watch inside one journal call for 15 s - a held lock -
+    is read as gone, its run thawed and not frozen again in that booking; the freeze itself never counts. A crafted
     line can also have a session continue any stopped process of the user whose environment names no other
     booking, by giving its pid and start mark, which are not secret. The lane bounds what a crafted line can do; it
     cannot tell who wrote it. The journal is a booking, not a lock.

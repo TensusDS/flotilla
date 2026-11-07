@@ -416,7 +416,7 @@ def test_a_watch_that_makes_no_progress_is_treated_as_gone():   # review of d4c2
     s = freeze.Slot(freeze.SIGNAL, clock=lambda: tick["now"])
     s.ceiling_s = 600.0
     s.freeze(0)
-    s.watch_seen = 0.0
+    s.journal_since = 0.0   # the watch entered a journal call, and has not come out
     stuck = threading.Event()
     watcher = threading.Thread(target=stuck.wait)
     watcher.start()
@@ -451,3 +451,36 @@ def test_a_detached_scope_is_still_thawed(tmp_path):   # review of d4c28c5, mino
     (scope / "cgroup.freeze").write_text("1")
     s.detach()   # the leader was killed while frozen; the rest of its scope still stands frozen
     assert s.thaw() and (scope / "cgroup.freeze").read_text().strip() == "0"
+
+
+
+def test_a_long_freeze_is_never_read_as_a_stuck_watch():   # review of 9d9d244, I1
+    # the freeze itself - systemctl, the kernel's freeze, gigabytes of reclaim - can take longer than the stuck bound;
+    # only time spent inside a journal call counts
+    tick = {"now": 0.0}
+    s = freeze.Slot(freeze.SIGNAL, clock=lambda: tick["now"])
+    s.ceiling_s = 600.0
+    s.freeze(0)
+    alive = threading.Event()
+    watcher = threading.Thread(target=alive.wait)
+    watcher.start()
+    s.watcher = watcher
+    try:
+        tick["now"] = freeze.WATCH_STALE_S + 30   # a long freeze, the watch not in the journal
+        assert not s.guard() and s.frozen() and not s.done_freezing
+    finally:
+        alive.set()
+
+
+def test_a_freeze_that_fails_is_not_counted(tmp_path, monkeypatch):   # review of 9d9d244, minor 3
+    root = fake_cgroup(tmp_path)
+    s = freeze.Slot(freeze.SCOPE, root=root, run=fake_systemctl, tree_mb=lambda pid: 100)
+    s.contain(["pytest"], booking="b1")
+    s.attach(4242)
+
+    def broken(self, cgroup, mb):
+        raise OSError("cannot write cgroup.freeze")
+    monkeypatch.setattr(freeze.Slot, "_freeze_scope", broken)
+    with pytest.raises(OSError):
+        s.freeze(512)
+    assert s.freezes == 0 and not s.frozen()   # nothing froze: neither counted nor left saying frozen

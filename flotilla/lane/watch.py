@@ -44,7 +44,8 @@ class Watch:
                 self._thaw()
                 return "thawed"
             return ""
-        if getattr(self.slot, "done_freezing", False) and not self.slot.frozen() and item.frozen:
+        if getattr(self.slot, "done_freezing", False) and not self.slot.frozen() and \
+                (item.frozen or not item.unanswered):
             # the command's own loop thawed it by itself - at the ceiling, or with this watch stuck: the record must
             # not go on saying frozen while the run computes, or every session would count its room as free
             # (review of d4c28c5; security review)
@@ -67,7 +68,9 @@ class Watch:
             if not self._order_holds(item):
                 self.lanes.refuse(self.booking_id, order_by=item.order_by, ordered_at=item.ordered_at)
                 return "refused"
+            self._mark(None)   # the freeze itself - systemctl, the kernel, the reclaim - is no journal call
             found = self.slot.freeze(self._reclaim(item.reclaim_mb or 0))
+            self._mark(self._now())
             self._frozen_since, self._kind = self.clock(), found.get("freeze_kind", "")
             if self.lanes.frozen(self.booking_id, freeze_kind=found.get("freeze_kind", ""),
                                  unit=found.get("unit", ""), group=found.get("group"),
@@ -141,12 +144,28 @@ class Watch:
     def _loop(self) -> None:
         while not self._stop.is_set():
             try:
-                self.step()
+                self._look()
             except Exception as err:  # noqa: BLE001 - a broken watch thaws its command and freezes no more
                 self._fail(err)
                 return
-            self.slot.watch_seen = getattr(self.slot, "clock", time.monotonic)()   # a look finished: not stuck
             self._wait()
+
+    def _now(self) -> float:
+        return getattr(self.slot, "clock", time.monotonic)()
+
+    def _mark(self, since: float | None) -> None:
+        """Say whether this watch is inside a journal call now, and since when: the slot reads a watch inside one
+        too long as stuck (review of 9d9d244)."""
+        if hasattr(self.slot, "journal_since"):
+            self.slot.journal_since = since
+
+    def _look(self) -> str:
+        """One step, marked as a journal call but for the freeze inside it."""
+        self._mark(self._now())
+        try:
+            return self.step()
+        finally:
+            self._mark(None)
 
     def _wait(self) -> None:
         """Until the journal changes, LOOK_S at most, a second at a time; at once when stopped."""
@@ -170,7 +189,7 @@ class Watch:
 
     def start(self) -> None:
         self.slot.done_freezing = False   # a new booking is a new run: an earlier let-go was another run's
-        self.slot.watch_seen = getattr(self.slot, "clock", time.monotonic)()
+        self._mark(None)
         self.slot.watcher = self.thread
         try:
             self.slot.ceiling_s = self.value_of(None).freeze_ceiling_s
@@ -182,7 +201,8 @@ class Watch:
         self._stop.set()
         if self.thread.is_alive():
             self.thread.join(timeout=LOOK_S + 2)
-        self.slot.watcher, self.slot.watch_seen = None, None
+        self.slot.watcher = None
+        self._mark(None)
         if self.root is not None:
             admission.forget_beat(self.root, self.booking_id)
 

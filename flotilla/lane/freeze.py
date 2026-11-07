@@ -31,8 +31,9 @@ UNIT_PREFIX = "flotilla-lane-"
 CGROUP_ROOT = Path("/sys/fs/cgroup")
 PROC_SELF = Path("/proc/self/cgroup")
 FROZEN_WAIT_S = 5.0   # how long a freeze waits for the kernel to say the scope is frozen
-#: A watch that has not finished a look for this long while its command is frozen is read as stuck - on the journal's
-#: lock, held maybe by a process inside that very command - and the command is thawed (review of d4c28c5).
+#: A watch inside one journal call this long while its command is frozen is read as stuck - on the journal's lock,
+#: held maybe by a process inside that very command - and the command is thawed (reviews of d4c28c5 and 9d9d244).
+#: Only journal calls count: the freeze itself, its reclaim and systemctl never do.
 WATCH_STALE_S = 15.0
 _probed: dict[tuple, tuple[str, str]] = {}
 _scopes = itertools.count(1)   # per process, not per slot: a scope not yet collected keeps its name a while
@@ -276,7 +277,7 @@ class Slot:
     watcher: threading.Thread | None = None   # set by Watch.start(): the thread that obeys orders
     ceiling_s: float | None = None            # set by Watch.start(): no freeze in force outlasts it
     done_freezing = False                     # let go or past its ceiling: this process freezes this command no more
-    watch_seen: float | None = None           # when the watch last finished a look, by this slot's clock
+    journal_since: float | None = None        # when the watch entered the journal call it is in, by this clock
 
     def __init__(self, kind: str, *, run=subprocess.run, root: Path = CGROUP_ROOT, clock=time.monotonic,
                  proc_self: Path = PROC_SELF, table=None, tree_mb=None):
@@ -325,18 +326,25 @@ class Slot:
         with self._lock:
             held = self.tree_mb(self.pid) if self.pid is not None else 0
             how, unit = "", ""
-            if self._frozen_at is None:   # the ceiling counts from here, before the scope freezes and reclaims
+            began = self._frozen_at is None
+            if began:   # the ceiling counts from here, before the scope freezes and reclaims
                 self._frozen_at = self.clock()
-                self.freezes += 1
             self._frozen_pid = self.pid
-            if self.pid is not None:
-                cgroup = _cgroup_of(self.unit, self.run, self.root) if self.unit and self.kind == SCOPE else None
-                if cgroup is not None:
-                    self._freeze_scope(cgroup, reclaim_mb)
-                    how, unit, self._cgroup = SCOPE, self.unit, cgroup
-                else:   # no scope, or its scope is gone: the stop still holds the command
-                    _signal_tree(self.pid, signal.SIGSTOP, self.table())
-                    how = SIGNAL
+            try:
+                if self.pid is not None:
+                    cgroup = _cgroup_of(self.unit, self.run, self.root) if self.unit and self.kind == SCOPE else None
+                    if cgroup is not None:
+                        self._freeze_scope(cgroup, reclaim_mb)
+                        how, unit, self._cgroup = SCOPE, self.unit, cgroup
+                    else:   # no scope, or its scope is gone: the stop still holds the command
+                        _signal_tree(self.pid, signal.SIGSTOP, self.table())
+                        how = SIGNAL
+            except BaseException:
+                if began:   # nothing froze: the slot neither says frozen nor counts it (review of 9d9d244)
+                    self._frozen_at, self._frozen_pid = None, None
+                raise
+            if began:
+                self.freezes += 1
             self._how = how
             return {"freeze_kind": how or (SIGNAL if self.kind != SCOPE else SCOPE), "unit": unit,
                     "group": self.pid, "held_mb": held or 0}
@@ -408,8 +416,8 @@ class Slot:
         watcher = self.watcher
         if self.frozen() and watcher is not None and not watcher.is_alive():
             return self.thaw()
-        seen = self.watch_seen
-        if self.frozen() and watcher is not None and seen is not None and self.clock() - seen > WATCH_STALE_S:
+        since = self.journal_since
+        if self.frozen() and watcher is not None and since is not None and self.clock() - since > WATCH_STALE_S:
             self.done_freezing = True   # a watch stuck that long cannot be trusted to thaw it: never again
             return self.thaw()
         if self.frozen() and self.ceiling_s is not None and self.frozen_for() >= self.ceiling_s:

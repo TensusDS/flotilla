@@ -560,3 +560,31 @@ def test_a_new_watch_on_the_same_slot_may_freeze_again(lane):   # review of d4c2
         assert s.done_freezing is False
     finally:
         w.stop()
+
+
+
+def test_the_watch_marks_its_journal_calls_and_not_its_freeze(lane):   # review of 9d9d244, I1
+    lanes, mine, _waiter, _later, _root = lane
+    marks = []
+
+    class Marked(FakeSlot):
+        journal_since = None
+
+        def freeze(self, reclaim_mb):
+            marks.append(self.journal_since)   # inside the freeze: not in a journal call
+            return super().freeze(reclaim_mb)
+    s = Marked()
+    w = watch.Watch(lanes, mine, s, lambda reading: value(available=300), swap=lambda: (8000, 8000))
+    w._look()
+    assert marks == [None] and s.journal_since is None and s.frozen()
+
+
+def test_a_record_thawed_through_the_queue_after_a_let_go_is_marked_once(lane):   # review of 9d9d244, minor 1
+    lanes, mine, _waiter, _later, _root = lane
+    s = FakeSlot()
+    s.done_freezing = True   # the slot thawed by itself; the queue then thawed the record without the mark
+    w = watch.Watch(lanes, mine, s, lambda reading: value(available=300), swap=lambda: (8000, 8000))
+    lanes.refuse(mine)   # the record: no order, no mark
+    assert not lanes.bookings()[mine].unanswered
+    assert w.step() == "let go" and lanes.bookings()[mine].unanswered
+    assert w.step() == ""   # once
