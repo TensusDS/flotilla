@@ -205,3 +205,10 @@ def test_the_victim_is_chosen_by_priority_not_weight():   # the person's ruling 
     a = tick([heavy_old, light_new], machine(1500, over_s=OVER_S + 2))
     assert a.squeezed == ("new",)
     assert policy.priority(light_new, IMM) < policy.priority(heavy_old, IMM)
+
+
+def test_a_held_run_is_frozen_at_once_when_the_swap_is_at_its_budget():   # found replaying 2026-11-07
+    held = aged("h", 0.3, 512, ceiling_mb=512, at_ceiling=True, pressure=90.0, pressed_s=2, scoped=True)
+    a = tick([held], machine(2000, swap_free=3500))   # 1500 MB left of the budget: under the reserve
+    assert a.orders == (("h", 0, "pressed", "h"),)
+    assert tick([held], machine(2000, swap_free=5000)).orders == ()   # 3000 MB to spare: it waits PRESSED_S

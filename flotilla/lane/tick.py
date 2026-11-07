@@ -28,6 +28,10 @@ OVER_S = 10.0
 #: A run frozen for an overload or a pressure stands frozen at least this long: thawed sooner it would only fault its
 #: pages back and be frozen again. Builder's number.
 THAW_AFTER_S = 30.0
+#: Below this much swap left in the budget, a run held at its ceiling with no room is frozen at once instead of
+#: after PRESSED_S: every second it is held pushes more of it out. Replaying 2026-11-07, three runs admitted on light
+#: estimates took the swap to 88 % while they waited; with this reserve, to 81.5 %. Builder's number.
+HELD_SWAP_RESERVE_MB = 2048
 
 
 @dataclass(frozen=True)
@@ -153,8 +157,11 @@ class _Tick:
             return
         if self.space >= policy.MIN_CEILING_MB:
             return
+        # with the swap near its budget a run held at its ceiling cannot wait PRESSED_S: each second it is held pushes
+        # more of it out (found replaying 2026-11-07: three held runs took the swap to 88 %, oomd kills at 90)
+        full = _swap_room(self.m) <= HELD_SWAP_RESERVE_MB
         pressed = [r for r in self.runs if r.state == RUNNING and self.ceiling[r.id] is not None
-                   and r.pressed_s >= PRESSED_S and not policy.daemon_reason(r, self.m)]
+                   and (r.pressed_s >= PRESSED_S or (full and r.at_ceiling)) and not policy.daemon_reason(r, self.m)]
         if not pressed:
             return
         p = max(pressed, key=lambda r: self.p[r.id])
