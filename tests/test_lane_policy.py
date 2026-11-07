@@ -290,3 +290,11 @@ def test_daemon_reason_ignores_the_grace():   # ruling 5
     assert policy.daemon_reason(run("y", RUNNING, 1000, refused_for="x"), m)
     assert policy.daemon_reason(run("y", FROZEN, 1000), m)
     assert policy.daemon_reason(run("y", RUNNING, 1000, freezable=False), m)
+
+
+
+def test_a_floor_is_believed_up_to_a_quarter_of_the_machine():   # final review C2: any session writes floor_mb
+    assert policy.clamp_floor(9_000_000, 15603) == 3900
+    assert policy.clamp_floor(1000, 15603) == 1000
+    assert policy.clamp_floor(1500, 4000) == 1500        # never under the default floor
+    assert policy.clamp_floor(9_000_000, None) == 4096

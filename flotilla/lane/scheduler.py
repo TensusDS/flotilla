@@ -69,6 +69,12 @@ class History:
             del self._runs[booking]
 
 
+def _total_mb() -> int | None:
+    from flotilla.lane import machine
+    found = machine._memtotal()
+    return found // 1024 if found else None
+
+
 def _seconds_since(text: str, now: dt.datetime) -> float:
     moment = book._when(text)
     return max(0.0, (now - moment).total_seconds()) if moment is not None else 0.0
@@ -76,9 +82,10 @@ def _seconds_since(text: str, now: dt.datetime) -> float:
 
 class Scheduler:
     def __init__(self, lanes, value_of, *, signer: tuple, groups_io=groups, clock=time.monotonic,
-                 default_floor: int):
+                 default_floor: int, total_mb=None):
         self.lanes, self.value_of, self.signer, self.groups = lanes, value_of, signer, groups_io
         self.clock, self.default_floor = clock, default_floor
+        self.total_mb = total_mb or _total_mb
         self.history = History()
         self._paths: dict[tuple[str, str], object] = {}
         self.last_machine: policy.Machine | None = None
@@ -105,8 +112,8 @@ class Scheduler:
         now, moment = self.clock(), lanes._moment()
         live = {item.id: item for item in found.values() if item.state in (book.HELD, book.WAITING)
                 and lanes.live(item)}
-        floor = max((item.floor_mb for item in live.values() if item.floor_mb is not None),
-                    default=self.default_floor)
+        floor = policy.clamp_floor(max((item.floor_mb for item in live.values() if item.floor_mb is not None),
+                                       default=self.default_floor), self.total_mb())
         available = value.available_mb()
         value = dataclasses.replace(value, available_mb=lambda: available, floor_mb=floor)
         runs, machine = admission.view(found, estimate.history(found, now=moment), value, now=moment,

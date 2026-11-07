@@ -58,7 +58,8 @@ def value_of(available=10000):
 def lane(tmp_path):
     lanes = book.Book(LocalLogStore(tmp_path), Procs())
     clock, fake, values = Clock(), FakeGroups(), value_of()
-    sched = scheduler.Scheduler(lanes, values, signer=(4242, "m9"), groups_io=fake, clock=clock, default_floor=2000)
+    sched = scheduler.Scheduler(lanes, values, signer=(4242, "m9"), groups_io=fake, clock=clock, default_floor=2000,
+                                total_mb=lambda: 15603)
     return lanes, sched, clock, fake, values
 
 
@@ -195,3 +196,16 @@ def test_slot_reports_its_scope(tmp_path):
     slot.on_scope = seen.append
     slot.contain(["true"], booking="b1")
     assert seen == [slot.unit] and slot.unit.startswith("flotilla-lane-b1-")
+
+
+
+def test_a_floor_out_of_reason_does_not_make_the_machine_over(lane):   # final review C2
+    lanes, sched, clock, fake, values = lane
+    victim = lanes.enqueue("v", "", pid=11, mark="m")
+    raw(lanes, booking=victim.id, state=book.HELD, started=lanes._now())
+    lanes.enqueue("w", "", pid=12, mark="m", floor_mb=9_000_000)
+    values.box["available"] = 9000
+    sched.step()
+    clock.t = 12.0
+    sched.step()
+    assert sched.last_machine.floor_mb == 3900 and lanes.bookings()[victim.id].frozen == ""

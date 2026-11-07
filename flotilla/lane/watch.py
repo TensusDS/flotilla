@@ -169,11 +169,15 @@ class Watch:
                                                                                  by_rules_only=True)
 
     def _over_now(self, found, value) -> bool:
-        """The machine reads near or below the most cautious floor of the live bookings, as the daemon's is."""
+        """The machine reads near or below the floor: this run's own project's, or the most cautious one the live
+        bookings name as the daemon believes it - up to a quarter of the machine (final review C2)."""
+        from flotilla.lane import machine, policy
         available = value.available_mb()
         floors = [item.floor_mb for item in found.values() if item.floor_mb is not None and self.lanes.live(item)
                   and item.state in (book.HELD, book.WAITING)]
-        return available is not None and available < max([value.floor_mb, *floors]) + OVER_MARGIN_MB
+        total = machine._memtotal()
+        named = policy.clamp_floor(max(floors), total // 1024 if total else None) if floors else 0
+        return available is not None and available < max(value.floor_mb, named) + OVER_MARGIN_MB
 
     def _pressed_now(self, found, item) -> bool:
         """The run the order is for - named in it - is held, and its own group reads pressed."""

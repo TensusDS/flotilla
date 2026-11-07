@@ -122,6 +122,16 @@ def is_heavy(mem_mb: int, give_mb: int | None, was: bool = False) -> bool:
     return give_mb is not None and mem_mb >= HEAVY_SHARE * give_mb
 
 
+#: A floor a booking names is believed only up to a quarter of the machine (and never below the default floor): any
+#: session writes the journal, and one floor out of reason would read the whole machine as over (final review C2).
+FLOOR_SHARE_MAX, FLOOR_DEFAULT_MB, FLOOR_UNKNOWN_CAP_MB = 0.25, 1500, 4096
+
+
+def clamp_floor(mb: int, total_mb: int | None) -> int:
+    cap = max(FLOOR_DEFAULT_MB, int(total_mb * FLOOR_SHARE_MAX)) if total_mb else FLOOR_UNKNOWN_CAP_MB
+    return min(int(mb), cap)
+
+
 def slack(mb: int) -> int:
     """A ceiling's headroom: what a run may grow before the kernel holds it."""
     return max(MIN_CEILING_MB, round(SLACK_SHARE * mb))

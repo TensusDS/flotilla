@@ -842,3 +842,15 @@ def test_a_frozen_run_thaws_when_the_daemon_dies(lane):   # review focus 2
     assert w.step() == "froze"
     lanes.daemon_double.gone()
     assert w.step() == "thawed" and not s.frozen() and lanes.bookings()[mine].frozen == ""
+
+
+
+def test_an_overload_order_is_judged_against_a_floor_in_reason(lane, monkeypatch):   # final review C2
+    from flotilla.lane import machine
+    monkeypatch.setattr(machine, "_memtotal", lambda: 15603 * 1024)
+    lanes, _mine, _waiter, later, _root = lane
+    run_id = young(lanes, later)
+    lanes.enqueue("main session 9", "huge floor", pid=13, mark="m", floor_mb=9_000_000)
+    order(lanes, run_id, "over")
+    s = FakeSlot()
+    assert watch.Watch(lanes, run_id, s, lambda reading: value(available=9000)).step() == "refused"
