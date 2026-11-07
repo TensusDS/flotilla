@@ -55,6 +55,46 @@ def value(available=9000, tree=5000):
                            beat_age_s=lambda booking: 0.0)
 
 
+DAEMON = (4242, "m9")
+
+
+class Daemon:
+    """The lane daemon as a wrapper sees it: its heartbeat, and its lock held (lane daemon design, 4.8)."""
+
+    def __init__(self, root):
+        import fcntl
+        import json
+        import time
+        from flotilla.lane import daemon
+        self.root = root
+        (root / daemon.BEAT).write_text(json.dumps({
+            "pid": DAEMON[0], "mark": DAEMON[1], "copy": "", "release": "0.31.0", "protocol": daemon.PROTOCOL,
+            "tick": time.time(), "why": {}, "groups": {}, "over": {}}))
+        self.fd = os.open(root / daemon.LOCK, os.O_RDWR | os.O_CREAT, 0o600)
+        fcntl.flock(self.fd, fcntl.LOCK_EX)
+
+    def gone(self):
+        if self.fd is not None:
+            os.close(self.fd)
+            self.fd = None
+
+
+def sign(lanes, booking, cause="waiter", by=DAEMON):
+    """The daemon's signature on the order a booking carries now."""
+    item = lanes.bookings()[booking]
+    with lanes.store.transaction(book.KEY) as tx:
+        tx.append({"at": lanes._now(), "booking": booking, "state": item.state, "order_cause": cause,
+                   "order_pid": by[0], "order_mark": by[1]})
+
+
+def order(lanes, booking, cause, by=DAEMON, waiter=""):
+    """An order as the daemon writes it (Book.apply)."""
+    with lanes.store.transaction(book.KEY) as tx:
+        tx.append({"at": lanes._now(), "booking": booking, "state": book.HELD, "frozen": "ordered",
+                   "order_by": waiter, "order_cause": cause, "order_pid": by[0], "order_mark": by[1],
+                   "ordered_at": lanes._now(), "reclaim_mb": 700})
+
+
 @pytest.fixture()
 def lane(tmp_path):
     moment = {"at": T0}
@@ -68,7 +108,16 @@ def lane(tmp_path):
     waiter = lanes.enqueue("main session 2", "receipt", pid=12, mark="m", kind="push")
     assert lanes.grant(waiter.id, slots=1, value=value(available=300)) is None   # orders first frozen
     assert lanes.bookings()[first.id].frozen == "ordered"
-    return lanes, first.id, waiter.id, later, tmp_path
+    sign(lanes, first.id)
+    lanes.daemon_double = alive = Daemon(tmp_path)
+    yield lanes, first.id, waiter.id, later, tmp_path
+    alive.gone()
+
+
+def daemon_thaws(lanes, booking):
+    """The daemon's thaw, as Book.apply writes it."""
+    with lanes.store.transaction(book.KEY) as tx:
+        tx.append({"at": lanes._now(), "booking": booking, "state": book.HELD, "frozen": "", "started": lanes._now()})
 
 
 def test_the_watch_freezes_its_command_on_an_order(lane):
@@ -80,15 +129,15 @@ def test_the_watch_freezes_its_command_on_an_order(lane):
     assert s.calls == [("freeze", found.reclaim_mb)] and found.frozen == "frozen" and found.unit == "flotilla-lane-b1-11-1.scope"
 
 
-def test_the_watch_thaws_when_the_policy_lets_it(lane):
+def test_the_watch_thaws_when_the_daemon_lets_it(lane):   # rule 5: the daemon thaws, not the watch
     lanes, mine, waiter, later, _root = lane
     s = FakeSlot()
     w = watch.Watch(lanes, mine, s, lambda reading: value(available=300))
     w.step()
-    assert w.step() == ""   # its room is still short
+    assert w.step() == ""   # the daemon has not thawed it
     lanes.leave(waiter)
     later(10)
-    w.value_of = lambda reading: value(available=3000)
+    daemon_thaws(lanes, mine)
     assert w.step() == "thawed" and s.calls[-1] == ("thaw",) and lanes.bookings()[mine].frozen == ""
 
 
@@ -114,10 +163,11 @@ def test_a_watch_that_fails_thaws_its_command_and_freezes_no_more(lane, monkeypa
 
     def broken(*a, **kw):
         raise RuntimeError("journal unreadable")
-    monkeypatch.setattr(lanes, "thaw", broken)
+    monkeypatch.setattr(lanes, "bookings", broken)
     w.start()
     w.join(timeout=5)
     assert not w.alive() and not s.frozen()
+    monkeypatch.undo()
     found = lanes.bookings()[mine]
     assert found.unanswered and found.frozen == ""
 
@@ -635,3 +685,106 @@ def test_a_mark_from_before_the_freeze_never_counts():   # review of 059a5a9, M1
         assert not s.guard() and s.frozen()
     finally:
         alive.set()
+
+
+# --- rule 5: a wrapper obeys only the live daemon (lane daemon design, 4.8) ---
+
+def unsigned(lanes, booking):
+    with lanes.store.transaction(book.KEY) as tx:
+        tx.append({"at": lanes._now(), "booking": booking, "state": book.HELD, "order_cause": "",
+                   "order_pid": None, "order_mark": ""})
+
+
+def test_an_unsigned_order_is_refused(lane):   # review focus 1
+    lanes, mine, _waiter, _later, _root = lane
+    unsigned(lanes, mine)
+    s = FakeSlot()
+    assert watch.Watch(lanes, mine, s, lambda reading: value(available=300)).step() == "refused"
+    assert s.calls == [] and lanes.bookings()[mine].frozen == ""
+
+
+def test_an_order_from_a_dead_daemon_is_refused(lane):
+    lanes, mine, _waiter, _later, _root = lane
+    sign(lanes, mine, by=(4243, "m9"))   # not the pid the lock holder's heartbeat names
+    s = FakeSlot()
+    assert watch.Watch(lanes, mine, s, lambda reading: value(available=300)).step() == "refused"
+    assert s.calls == []
+
+
+def test_an_order_signed_while_no_daemon_holds_the_lock_is_refused(lane, tmp_path):
+    lanes, mine, _waiter, _later, _root = lane
+    s = FakeSlot()
+    w = watch.Watch(lanes, mine, s, lambda reading: value(available=300))
+    lanes.daemon_double.gone()   # its heartbeat stays; its lock is free
+    assert w.step() == "refused" and s.calls == []
+
+
+def test_a_0_30_waiters_order_is_refused(lane):
+    lanes, mine, waiter, _later, _root = lane
+    unsigned(lanes, mine)   # a rule-4 waiter writes an order with no signature
+    with lanes.store.transaction(book.KEY) as tx:
+        tx.append({"at": lanes._now(), "booking": waiter, "state": book.WAITING, "rule": 4})
+    s = FakeSlot()
+    assert watch.Watch(lanes, mine, s, lambda reading: value(available=300)).step() == "refused"
+
+
+def young(lanes, later):
+    item = lanes.enqueue("main session 3", "suite", pid=11, mark="m")
+    with lanes.store.transaction(book.KEY) as tx:
+        tx.append({"at": lanes._now(), "booking": item.id, "state": book.HELD, "started": lanes._now(),
+                   "path": "value: P 0.06, light"})
+    later(10)
+    return item.id
+
+
+def test_an_overload_order_freezes_a_young_run(lane):   # the person's ruling 5
+    lanes, _mine, _waiter, later, _root = lane
+    run_id = young(lanes, later)
+    order(lanes, run_id, "over")
+    s = FakeSlot()
+    assert watch.Watch(lanes, run_id, s, lambda reading: value(available=300)).step() == "froze"
+
+
+def test_an_overload_order_never_freezes_an_immortal_or_pinned_run(lane):
+    lanes, _mine, _waiter, later, _root = lane
+    run_id = young(lanes, later)
+    with lanes.store.transaction(book.KEY) as tx:
+        tx.append({"at": lanes._now(), "booking": run_id, "state": book.HELD, "pinned": True})
+    order(lanes, run_id, "over")
+    assert watch.Watch(lanes, run_id, FakeSlot(), lambda reading: value(available=300)).step() == "refused"
+    old = young(lanes, later)
+    later(1000)   # past the immortality mark of 900 s
+    order(lanes, old, "pressed")
+    assert watch.Watch(lanes, old, FakeSlot(), lambda reading: value(available=300)).step() == "refused"
+
+
+def test_a_waiter_order_still_honours_the_grace(lane):
+    lanes, _mine, waiter, later, _root = lane
+    run_id = young(lanes, later)
+    order(lanes, run_id, "waiter", waiter=waiter)
+    assert watch.Watch(lanes, run_id, FakeSlot(), lambda reading: value(available=300)).step() == "refused"
+
+
+def test_a_daemon_frozen_run_waits_for_the_daemons_thaw(lane, monkeypatch):
+    lanes, mine, waiter, later, _root = lane
+    s = FakeSlot()
+    w = watch.Watch(lanes, mine, s, lambda reading: value(available=300))
+    assert w.step() == "froze"
+    asked = []
+    real = lanes.thaw
+    monkeypatch.setattr(lanes, "thaw", lambda *a, **kw: asked.append(kw) or real(*a, **kw))
+    lanes.leave(waiter)
+    later(10)
+    w.value_of = lambda reading: value(available=30000)
+    assert w.step() == "" and s.frozen() and asked == []
+    daemon_thaws(lanes, mine)
+    assert w.step() == "thawed" and not s.frozen()
+
+
+def test_a_frozen_run_thaws_when_the_daemon_dies(lane):   # review focus 2
+    lanes, mine, _waiter, _later, root = lane
+    s = FakeSlot()
+    w = watch.Watch(lanes, mine, s, lambda reading: value(available=300))
+    assert w.step() == "froze"
+    lanes.daemon_double.gone()
+    assert w.step() == "thawed" and not s.frozen() and lanes.bookings()[mine].frozen == ""

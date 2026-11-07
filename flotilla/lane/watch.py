@@ -78,6 +78,8 @@ class Watch:
                 self._thaw()   # the booking no longer holds: nothing may stay frozen for it
                 return ""
             return "froze"
+        if item.frozen == "frozen" and item.order_cause:
+            return self._frozen_by_daemon(item)
         if item.frozen == "frozen":
             orderer = self.lanes.bookings().get(item.order_by)
             waits = orderer is not None and orderer.state == book.WAITING
@@ -97,23 +99,56 @@ class Watch:
             return "thawed"
         return ""
 
+    def _frozen_by_daemon(self, item) -> str:
+        """Frozen by the daemon's order: the daemon thaws it (the record turns thawed, read above). The watch thaws by
+        itself only when the daemon is gone - a dead daemon is a gone watcher (lane daemon design, section 6) - or a
+        waiter's order outlasts the let-go bound; the freeze ceiling is guarded above, whatever the cause."""
+        from flotilla.lane import daemon
+        if self.root is not None and daemon.alive(self.root, self.lanes.procs) is None:
+            if self.lanes.thaw(self.booking_id, self.value_of(None), force=True) is not None:
+                self._thaw()
+                return "thawed"
+            return ""
+        if item.order_cause == "waiter" and self._frozen_since is not None and \
+                self.clock() - self._frozen_since >= self.let_go_s:
+            orderer = self.lanes.bookings().get(item.order_by)
+            if orderer is not None and orderer.state == book.WAITING and \
+                    self.lanes.thaw(self.booking_id, self.value_of(None), force=True, never_again=True,
+                                    while_waits=item.order_by) is not None:
+                self.slot.done_freezing = True
+                self._thaw()
+                return "let go"
+        return ""
+
     def _order_holds(self, item) -> bool:
-        """Whether an order on this booking is one the policy would give: any session writes the journal, so the
-        holder obeys only a fresh order from a live waiter this run may be frozen for (security review of 0.30.0).
-        A run let go is never frozen again in this process, whatever a journal line says (review of f32d91c)."""
+        """Whether to obey an order on this booking. Any session writes the journal, so only an order the live lane
+        daemon signed counts - its pid and start mark, matched against its heartbeat and the lock it holds now - and
+        it must be fresh. A waiter's order then names a live waiter this run may be frozen for by the rules, its
+        first minute included; an overload's or a pressure's needs no waiter (the person's ruling 5), but never
+        freezes an immortal or pinned run whatever the daemon says. A run let go is never frozen again in this
+        process, whatever a journal line says (review of f32d91c; lane daemon design, 4.8)."""
         import datetime as dt
         if getattr(self.slot, "done_freezing", False):
             return False
-        from flotilla.lane import estimate, policy
-        found = self.lanes.bookings()
-        waiter = found.get(item.order_by)
-        # a waiter with a process and its start mark: one with neither reads as live for ever (review of 0.30.1, I1)
-        if waiter is None or waiter.state != book.WAITING or not waiter.pid or not waiter.mark or \
-                not self.lanes.live(waiter) or (waiter.rule or 0) < book.RULE:
+        from flotilla.lane import daemon, estimate, policy
+        if self.root is None or not daemon.signed(self.root, self.lanes.procs, item.order_pid, item.order_mark):
             return False
         now = self.lanes._moment()
         given = book._when(item.ordered_at)
         if given is None or not dt.timedelta(0) <= now - given <= dt.timedelta(seconds=admission.ANSWER_S):
+            return False
+        found = self.lanes.bookings()
+        if item.order_cause in ("over", "pressed"):
+            runs, machine = admission.view(found, estimate.history(found, now=now), self.value_of(None), now=now,
+                                           live=self.lanes.live, mine="")
+            me = next((run for run in runs if run.id == self.booking_id), None)
+            return me is not None and not me.pinned and not policy.immortal(me, machine.immortal_s)
+        if item.order_cause != "waiter":
+            return False
+        waiter = found.get(item.order_by)
+        # a waiter with a process and its start mark: one with neither reads as live for ever (review of 0.30.1, I1)
+        if waiter is None or waiter.state != book.WAITING or not waiter.pid or not waiter.mark or \
+                not self.lanes.live(waiter) or (waiter.rule or 0) < book.RULE:
             return False
         runs, machine = admission.view(found, estimate.history(found, now=now), self.value_of(None), now=now,
                                        live=self.lanes.live, mine=waiter.id)
