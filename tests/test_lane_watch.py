@@ -588,3 +588,50 @@ def test_a_record_thawed_through_the_queue_after_a_let_go_is_marked_once(lane): 
     assert not lanes.bookings()[mine].unanswered
     assert w.step() == "let go" and lanes.bookings()[mine].unanswered
     assert w.step() == ""   # once
+
+
+
+def test_a_watch_blocked_in_the_journal_after_its_freeze_is_read_as_stuck(lane, monkeypatch):   # review of 059a5a9
+    # the freeze has just been made, and the record write blocks on the journal's lock - held, say, by a process
+    # inside the frozen command: the watch must be marked as inside a journal call, so the slot thaws in 15 s
+    lanes, mine, _waiter, _later, _root = lane
+    tick = {"now": 100.0}
+    s = freeze.Slot(freeze.SIGNAL, clock=lambda: tick["now"])
+    s.ceiling_s = 600.0
+    blocked, release = threading.Event(), threading.Event()
+    real = lanes.frozen
+
+    def held_lock(*a, **kw):
+        blocked.set()
+        release.wait(5)
+        return real(*a, **kw)
+    monkeypatch.setattr(lanes, "frozen", held_lock)
+    w = watch.Watch(lanes, mine, s, lambda reading: value(available=300), swap=lambda: (8000, 8000))
+    looking = threading.Thread(target=w._look)
+    s.watcher = looking
+    looking.start()
+    try:
+        assert blocked.wait(5)
+        assert s.frozen() and s.journal_since == 100.0   # marked, and marked after the freeze began
+        tick["now"] = 100.0 + freeze.WATCH_STALE_S + 1
+        assert s.guard() and not s.frozen() and s.done_freezing
+    finally:
+        release.set()
+        looking.join(5)
+
+
+def test_a_mark_from_before_the_freeze_never_counts():   # review of 059a5a9, M1
+    tick = {"now": 0.0}
+    s = freeze.Slot(freeze.SIGNAL, clock=lambda: tick["now"])
+    s.ceiling_s = 600.0
+    s.journal_since = 0.0   # a slow look before the freeze left its mark
+    tick["now"] = 20.0
+    s.freeze(0)             # the freeze in force began after it
+    alive = threading.Event()
+    watcher = threading.Thread(target=alive.wait)
+    watcher.start()
+    s.watcher = watcher
+    try:
+        assert not s.guard() and s.frozen()
+    finally:
+        alive.set()

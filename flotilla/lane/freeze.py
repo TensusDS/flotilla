@@ -416,8 +416,10 @@ class Slot:
         watcher = self.watcher
         if self.frozen() and watcher is not None and not watcher.is_alive():
             return self.thaw()
-        since = self.journal_since
-        if self.frozen() and watcher is not None and since is not None and self.clock() - since > WATCH_STALE_S:
+        since, began = self.journal_since, self._frozen_at
+        # a mark from before the freeze in force is a look that ended before it: never read as stuck on it
+        if began is not None and watcher is not None and since is not None and since >= began and \
+                self.clock() - since > WATCH_STALE_S:
             self.done_freezing = True   # a watch stuck that long cannot be trusted to thaw it: never again
             return self.thaw()
         if self.frozen() and self.ceiling_s is not None and self.frozen_for() >= self.ceiling_s:
