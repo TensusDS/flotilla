@@ -549,7 +549,7 @@ than 80 % used. A frozen command never stays frozen for a wrapper that died or h
 | `lane_freeze` | on | `false`: admission and order only, nothing is frozen; `flotilla doctor` recommends keeping it on |
 | `lane_max_runs` | 10 | runs holding the lane at once (1-64) |
 | `lane_freeze_ceiling_minutes` | 10 | the longest one freeze lasts, whatever holds its room (2-240); then the run is thawed - it may run beside the run that took its room, so memory may overcommit - and its own process freezes it no more |
-| `lane_freeze_total_minutes` | 10 | the longest a booking stands frozen in all, over every freeze and whoever ordered it - the lane daemon or a forged order (2-240); then it is thawed and never frozen again |
+| `lane_freeze_total_minutes` | 10 | the longest a booking stands frozen in all, over every freeze and whoever ordered it - the lane daemon or a forged order (2-240); then it is thawed and never frozen again, and holds no ceiling - it may run beside the run that took its room, so memory may overcommit |
 
 `lane_capacity` no longer has an effect; `flotilla lane` and `flotilla doctor` say so while it is set. While a seat
 of a flotilla before 0.30 waits, the lane counts every run against `lane_capacity` as before, until it goes. A

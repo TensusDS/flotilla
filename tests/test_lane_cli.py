@@ -721,7 +721,8 @@ def test_a_run_reads_its_priority_and_a_frozen_one_says_by_whose_order():
     assert "frozen since " in commands.value_of(frozen, item, machine, now)
     assert "by b14's order" in commands.value_of(frozen, item, machine, now)
     lapsed = book.Booking(id="b9", unanswered=True)
-    assert "b9 did not answer a freeze order" in commands.value_of(run, lapsed, machine, now)
+    assert "b9 is never frozen again (a freeze order went unanswered, or its freezes reached their bound)" in \
+        commands.value_of(run, lapsed, machine, now)
 
 
 def test_an_older_waiter_is_named_in_the_lane(tmp_path, monkeypatch):
@@ -878,7 +879,7 @@ def test_status_prints_over_and_nothing_to_take(tmp_path, monkeypatch):
     try:
         _code, out = run_cli("lane", "--root", str(root))
         assert "machine: over its floor by 700 MB for 14 s" in out
-        assert "nothing can be frozen: every run over the line is immortal or pinned" in out
+        assert "nothing can be frozen: every run over the line is immortal, pinned or frozen no more" in out
     finally:
         live.gone()
 

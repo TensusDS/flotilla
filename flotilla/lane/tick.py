@@ -95,11 +95,12 @@ class _Tick:
         self.orders.append((r.id, max(0, int(reclaim)), cause, waiter))
         return True
 
-    # 1. a run that became immortal, or is pinned, is never held by a ceiling: a ceiling under what it would use is a
-    #    hidden freeze, and nothing freezes it
+    # 1. a run that became immortal, is pinned, or can be frozen no more - its freeze total spent, let go, an order
+    #    unanswered - is never held by a ceiling: a ceiling under what it would use is a hidden freeze, and nothing
+    #    freezes it (review of f9cc273, I1)
     def lift(self) -> None:
         for r in self.runs:
-            if r.state == WAITING or not (r.pinned or policy.immortal(r, self.m.immortal_s)):
+            if r.state == WAITING or not self._unbound(r):
                 continue
             if self.ceiling[r.id] is not None:
                 self.set_ceiling(r, None)
@@ -110,9 +111,12 @@ class _Tick:
     #     and the slack: every run the daemon can hold lives under a ceiling it decided
     def cap(self) -> None:
         for r in self.runs:
-            if r.state == RUNNING and r.scoped and self.ceiling[r.id] is None and not r.pinned \
-                    and not policy.immortal(r, self.m.immortal_s):
+            if r.state == RUNNING and r.scoped and self.ceiling[r.id] is None and not self._unbound(r):
                 self.set_ceiling(r, r.mem_mb + policy.slack(r.mem_mb))
+
+    def _unbound(self, r: Run) -> bool:
+        """Whether no ceiling may hold `r`: nothing would freeze it at that ceiling."""
+        return r.pinned or not r.freezable or policy.immortal(r, self.m.immortal_s)
 
     def over(self) -> bool:
         return self.known and self.m.available_mb < self.m.floor_mb
@@ -284,7 +288,7 @@ def tick(runs: list[Run], machine: Machine) -> Actions:
         for r in runs:
             if r.state in (WAITING, FROZEN):
                 t.why[r.id] = (f"the machine is over its floor by {t.over_mb} MB and nothing can be frozen: every run "
-                               "over the line is immortal or pinned")
+                               "over the line is immortal, pinned or frozen no more")
     elif not over and not hold:
         t.start()
     else:

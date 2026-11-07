@@ -380,7 +380,7 @@ def value_of(run, item, machine, now: dt.datetime) -> str:
     elif item.frozen == "ordered":
         text += f"; ordered frozen by {visible(item.order_by)}, not yet answered"
     if item.unanswered:
-        text += f"; {item.id} did not answer a freeze order"
+        text += f"; {item.id} is never frozen again (a freeze order went unanswered, or its freezes reached their bound)"
     return text
 
 
@@ -518,7 +518,7 @@ def _status_by_value(lanes, found, held, waiting, reading, now, hist, profile, m
     if isinstance(over.get("mb"), (int, float)):
         print(f"machine: over its floor by {round(over['mb'])} MB for {round(over.get('s') or 0)} s")
         if over.get("nothing"):
-            print("nothing can be frozen: every run over the line is immortal or pinned")
+            print("nothing can be frozen: every run over the line is immortal, pinned or frozen no more")
     if "lane_capacity" in _machine():
         print(f"lane_capacity = {visible(repr(_machine()['lane_capacity']))} in machine.toml no longer has an effect "
               "(0.30); runs share the machine by memory and priority")

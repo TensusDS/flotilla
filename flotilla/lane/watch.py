@@ -66,13 +66,13 @@ class Watch:
             if self.lanes.thaw(self.booking_id, self.value_of(None), force=True, never_again=True) is None:
                 self.lanes.unfreezable(self.booking_id)
             return "let go"
+        limits = self.value_of(None)
         if self.slot.frozen() and self._frozen_since is not None and \
-                (self.clock() - self._frozen_since >= self.value_of(None).freeze_ceiling_s or
-                 self._frozen_in_all() >= self.value_of(None).freeze_total_s):
+                (self.clock() - self._frozen_since >= limits.freeze_ceiling_s or
+                 self._frozen_in_all() >= limits.freeze_total_s):
             # no freeze outlasts its ceiling, and no booking stands frozen longer in all than its total, whoever
             # ordered each freeze (the person's ruling, 2026-11-07); whatever holds its room and whatever the record
-            # says now - a waiter
-            # that turned into a take by hand, a forged one, a line that turned the record back to "ordered", or a
+            # says now - a waiter that turned into a take by hand, a forged one, a line that turned the record back to "ordered", or a
             # queue that never gives the room back (the person's ruling, 2026-11-06). Thawed first, the journal
             # after: its lock may be held by a process inside this very command (review of f32d91c)
             self.slot.done_freezing = True

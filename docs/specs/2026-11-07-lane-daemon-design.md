@@ -46,7 +46,7 @@ is the wrong tool.
    below, 4.4).
 7. **When the swap cannot take a frozen run's memory, it is frozen anyway**, without reclaim: it stops growing, its
    memory stays in RAM.
-8. **When everything over the line is immortal or pinned**, nothing is squeezed or frozen, nothing new starts, and
+8. **When everything over the line is immortal, pinned or frozen no more**, nothing is squeezed or frozen, nothing new starts, and
    `flotilla lane` says "the machine is over by N MB and nothing can be frozen".
 9. **Memory is held by a soft ceiling per run, watched per group by the daemon; freezing is the second line.**
    Measured before the ruling (section 3).
@@ -141,8 +141,9 @@ its grace included). A started run gets a ceiling at once (b).
   gone. There is no reason to throttle while the machine has room - this is what lets a mispredicted run grow
   (256 MB to 4 GB in four ticks) and still be held the moment the room ends;
 - the ceiling never moves otherwise: it is not reset to `used + slack` each tick, so a run cannot creep;
-- an **immortal** or **pinned** run (`lane take`) has no ceiling (`max`): a ceiling below what it would use is a
-  hidden freeze, and nothing freezes it.
+- an **immortal** or **pinned** run (`lane take`), and one that can be frozen no more - its freeze total spent, let
+  go, an order unanswered - has no ceiling (`max`): a ceiling below what it would use is a hidden freeze, and
+  nothing freezes it (review of the freeze total, 2026-11-07).
 
 **c. Pressed without room** *(builder's call)*. A run at its ceiling, with no room to give, reading its own pages
 back from swap at `REFAULT_MB_S` or more for `PRESSED_S` (it is hot: it churns swap and does no work - the bench's
@@ -297,10 +298,11 @@ Builder's numbers, each awaits the field test; none is a person's setting until 
 `REFAULT_MB_S` 10 MB/s (pages read back that make a held run pressed; the bench: hot 43-49, cold 0, a real suite
 about 0.5), `PRESSED` 5 % (pressure a wrapper needs to see in the pressed run's group; hot 9.5-19, cold 0.2-1.9 once
 filled), `PRESSED_S` 10 s, `OVER_S` 10 s, slack max(256 MB, 10 %), a swap reserve of 2 GB below which a held run is
-frozen at once (the replay of section 8 took the swap to 88 % without it, 81.5 % with it), a booking frozen
-10 min in all at most (`lane_freeze_total_minutes`, 2-240), tick 2 s, idle exit
+frozen at once (the replay of section 8 took the swap to 88 % without it, 81.5 % with it), tick 2 s, idle exit
 10 min, heartbeat stale 10 s (and as far ahead of the clock, which steps back now and then), no tick for 60 s - or
 a tick dated more than 60 s ahead - is stuck.
+The person's setting: `lane_freeze_total_minutes` in `machine.toml` (10 by default, 2-240), the longest a booking
+stands frozen in all (section 10).
 `lane_freeze` = off now means: ceilings still, no freezing (overload ends at squeeze).
 
 ## 8. How it is tested
@@ -341,7 +343,15 @@ builder's changes since (2026-11-07):
 - `FLOTILLA_LANE_DAEMON=off`, which the test suite needs, stays documented as the person's switch to the careful
   lane (no daemon: a new run only into an empty lane): accepted;
 - against a session that reads the daemon's key, an honest bound rather than a second copy of the daemon's choice
-  in the wrapper (4.8): chosen.
+  in the wrapper (4.8): chosen;
+- a cap on frozen time, ruled: a booking stands frozen 10 min in all at most,
+  over every freeze and whoever ordered it (`lane_freeze_total_minutes` in `machine.toml`, 10 by default, 2-240).
+  The wrapper counts it on its own slot, leaving out an earlier booking's frozen time; at the cap it thaws the run
+  and marks it never to be ordered again, so the daemon stops choosing it and a session that reads the key can no
+  longer hold a run frozen most of the time. The slot's own guard, for a watch that sticks, holds no more than the
+  rest of the total.
+  A run that can be frozen no more has no ceiling either (4.3 b): held under its use with nothing to freeze it,
+  it would churn at the ceiling for good (review of the cap).
 
 Builder's changes that await the person:
 
@@ -354,9 +364,3 @@ Builder's changes that await the person:
   reads the beat one way and the tick both ways, so for one beat after such a step the two may disagree) -
   not when its lock is briefly free in a handover (4.7). Under load a replacement can still take more than 10 s, and
   wrappers then lift and thaw; the successor holds the runs again at their use plus the slack;
-- **a cap on frozen time** *(the person's ruling, 2026-11-07)*: a booking stands frozen 10 min in all at most,
-  over every freeze and whoever ordered it (`lane_freeze_total_minutes` in `machine.toml`, 10 by default, 2-240).
-  The wrapper counts it on its own slot, leaving out an earlier booking's frozen time; at the cap it thaws the run
-  and marks it never to be ordered again, so the daemon stops choosing it and a session that reads the key can no
-  longer hold a run frozen most of the time. The slot's own guard, for a watch that sticks, holds no more than the
-  rest of the total.

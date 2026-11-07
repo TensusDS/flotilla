@@ -69,6 +69,14 @@ def test_immortal_and_pinned_runs_lose_their_ceiling():
     assert c["old"] is None and c["pin"] is None and "free" not in c
 
 
+def test_a_run_that_can_no_longer_be_frozen_loses_its_ceiling():   # review of f9cc273, I1
+    # its freeze total spent (or let go): a ceiling under its use would be a freeze with no end, and nothing freezes it
+    spent = aged("spent", 0.2, 3000, ceiling_mb=2500, squeezed=True, freezable=False, scoped=True)
+    bare = aged("bare", 0.2, 900, freezable=False, scoped=True)
+    a = tick([spent, bare], machine(1500, over_s=OVER_S + 2))
+    assert ceilings(a) == {"spent": None} and "spent" in a.restored and a.orders == ()
+
+
 def test_pressed_without_room_freezes_the_lowest():
     pressed = aged("p", 0.4, 2000, ceiling_mb=2000, at_ceiling=True, pressure=80.0, pressed_s=PRESSED_S + 2,
                    scoped=True)
