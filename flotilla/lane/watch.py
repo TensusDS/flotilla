@@ -40,11 +40,14 @@ class Watch:
         self._stop = threading.Event()
         self._frozen_since: float | None = None
         self._kind = ""
+        self._daemon_gone_since: float | None = None
+        self._lifted = False
 
     def step(self) -> str:
         """One look: "froze", "thawed", "let go" or ""."""
         if self.root is not None:
             admission.beat(self.root, self.booking_id)
+            self._lift_when_the_daemon_is_gone()
         item = self.lanes.bookings().get(self.booking_id)
         if item is None or item.state != book.HELD:
             if self.slot.frozen():   # released while frozen: nothing may stay frozen for a booking that ended
@@ -105,6 +108,22 @@ class Watch:
             self._thaw()
             return "thawed"
         return ""
+
+    def _lift_when_the_daemon_is_gone(self) -> None:
+        """No run outlives its scheduler under a cap: once the daemon has been gone for its stale bound, the wrapper
+        lifts its own scope's ceiling - and only its own (final review I1). A daemon that comes back sets one again."""
+        from flotilla.lane import daemon
+        if daemon.alive(self.root, self.lanes.procs) is not None:
+            self._daemon_gone_since, self._lifted = None, False
+            return
+        if self._daemon_gone_since is None:
+            self._daemon_gone_since = self.clock()
+        if self._lifted or self.clock() - self._daemon_gone_since < daemon.STALE_S:
+            return
+        unit = getattr(self.slot, "unit", "")
+        path = self.groups.cgroup_of(unit, self.booking_id) if unit else None
+        if path is not None and self.groups.set_high(path, None):
+            self._lifted = True
 
     def _frozen_by_daemon(self, item) -> str:
         """Frozen by the daemon's order: the daemon thaws it (the record turns thawed, read above). The watch thaws by

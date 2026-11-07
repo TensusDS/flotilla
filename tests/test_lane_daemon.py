@@ -469,3 +469,19 @@ def test_a_real_daemon_is_provably_the_daemon(tmp_path):
         assert not daemon._provably_daemon(fake, lane_root(tmp_path))
     finally:
         stop_all(proc)
+
+
+
+def test_ensure_lifts_ceilings_on_every_fallback(tmp_path, monkeypatch):   # final review I1
+    lifted = []
+    monkeypatch.setattr(daemon, "lift", lambda root, lanes, groups_io=None: lifted.append(root) or 0)
+    held = Held(tmp_path)   # a lock held by a process that never beats
+    try:
+        line = daemon.ensure(tmp_path, Procs(), newest=newest_is(__version__, REPO), spawn=Spawned(tmp_path, Procs()),
+                             sleep=lambda s: None, lanes=object())
+        assert line.startswith(daemon.FALLBACK) and lifted == [tmp_path]
+    finally:
+        held.release()
+    monkeypatch.setenv(daemon.OFF_ENV, "off")
+    daemon.ensure(tmp_path, Procs(), lanes=object())
+    assert lifted == [tmp_path, tmp_path]

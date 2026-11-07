@@ -277,7 +277,7 @@ def ensure(root: Path, procs, *, newest=newest_copy, spawn=None, now=time.time, 
     FALLBACK when no daemon can be had - the caller then takes the fallback (lane daemon design, section 6)."""
     spawn = spawn or _spawn   # looked up now, not when this was defined
     if env.get(OFF_ENV, "").strip().lower() == "off":
-        return f"{FALLBACK}{OFF_ENV}=off"
+        return _fallback(root, lanes, f"{OFF_ENV}=off")
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
     release, where = newest()
@@ -290,7 +290,7 @@ def ensure(root: Path, procs, *, newest=newest_copy, spawn=None, now=time.time, 
             sleep(0.1)   # a daemon just starting holds the lock before its first heartbeat
             beat = alive(root, procs, now=lambda: 0.0)
         if beat is None:
-            return f"{FALLBACK}its lock is held by a process that does not answer"
+            return _fallback(root, lanes, "its lock is held by a process that does not answer")
         if beat.protocol not in KNOWN:
             return (f"{FALLBACK}the lane daemon speaks protocol {beat.protocol}, this copy {PROTOCOL}: restart this "
                     "session")

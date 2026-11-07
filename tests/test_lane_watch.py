@@ -881,3 +881,42 @@ def test_an_order_replayed_after_a_thaw_is_refused(lane):   # final review I4: a
                    "order_mark": old.order_mark, "ordered_at": old.ordered_at, "reclaim_mb": old.reclaim_mb,
                    "order_sig": old.order_sig})
     assert watch.Watch(lanes, run_id, FakeSlot(), lambda reading: value(available=300)).step() == "refused"
+
+
+
+class Ceilings:
+    """A run's own scope, as its wrapper finds it, recording what is written to its ceiling."""
+
+    def __init__(self):
+        self.writes = []
+
+    def cgroup_of(self, unit, booking):
+        from pathlib import Path
+        return Path("/own") if unit else None
+
+    def read(self, path):
+        return None
+
+    def set_high(self, path, mb):
+        self.writes.append((path, mb))
+        return True
+
+
+def test_a_watch_lifts_its_own_ceiling_when_the_daemon_is_gone(lane):   # final review I1
+    from pathlib import Path
+    from flotilla.lane import daemon
+    lanes, _mine, _waiter, later, _root = lane
+    run_id = young(lanes, later)
+    s = FakeSlot()
+    s.unit = f"flotilla-lane-{run_id}-11-1.scope"
+    tick = {"now": 0.0}
+    own = Ceilings()
+    w = watch.Watch(lanes, run_id, s, lambda reading: value(available=300), clock=lambda: tick["now"], groups_io=own)
+    w.step()
+    lanes.daemon_double.gone()
+    w.step()
+    assert own.writes == []                          # gone a moment: it may be starting again
+    tick["now"] = daemon.STALE_S + 1
+    w.step()
+    w.step()
+    assert own.writes == [(Path("/own"), None)]      # once, and only its own scope
