@@ -793,6 +793,13 @@ class Book:
                     ({"squeezed": False} if booking_id in restored else {})
                 self._write(tx, booking_id, HELD, ceiling_mb=mb, **flag)
                 done.append(booking_id)
+            written = {booking_id for booking_id, _mb in actions.ceilings}
+            for booking_id in restored - written:   # back from a squeeze at the ceiling it has: the flag goes alone
+                item = found.get(booking_id)
+                if item is None or item.state != HELD or not item.squeezed:
+                    continue
+                self._write(tx, booking_id, HELD, squeezed=False)
+                done.append(booking_id)
             for booking_id, reclaim, cause, waiter in actions.orders:
                 item = found.get(booking_id)
                 if item is None or item.state != HELD or item.frozen or item.unanswered:

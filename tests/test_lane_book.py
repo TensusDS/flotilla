@@ -817,6 +817,17 @@ def test_apply_starts_orders_thaws_and_ceilings_in_one_transaction(lane):
     assert (lanes.bookings()[capped.id].ceiling_mb, lanes.bookings()[capped.id].squeezed) == (None, False)
 
 
+def test_apply_clears_a_squeeze_whose_ceiling_stays(lane):   # review of 39dfdf7, minor 1
+    # a run back from a squeeze at a ceiling it already has above its use: no ceiling to write, the flag goes all the same
+    lanes, _ = lane
+    run = held(lanes, "s", pid=25)
+    lanes.apply(actions(ceilings=((run.id, 2500),), squeezed=(run.id,)), (4242, "m9"))
+    done = lanes.apply(actions(restored=(run.id,)), (4242, "m9"))
+    assert done == [run.id] and lanes.bookings()[run.id].squeezed is False
+    assert lanes.bookings()[run.id].ceiling_mb == 2500
+    assert lanes.apply(actions(restored=(run.id,)), (4242, "m9")) == []   # nothing to clear: nothing written
+
+
 def test_apply_skips_what_no_longer_applies(lane):
     lanes, _ = lane
     gone = lanes.enqueue("g", "", pid=31, mark="m")

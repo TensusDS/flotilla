@@ -196,11 +196,14 @@ class _Tick:
                    and not policy.daemon_reason(dataclasses.replace(r, freezable=True), self.m)]
         if not pressed:
             return
-        p = max(pressed, key=lambda r: self.p[r.id])
-        lower = [r for r in self.runs if r.id != p.id and self.p[r.id] < self.p[p.id]
-                 and not policy.daemon_reason(r, self.m)]
-        v = policy.victim([p, *lower] if p.freezable else lower, self.m.immortal_s)
-        if v is None:
+        # the highest that has a victim: a run frozen no more with none lower must not keep a tied one from its relief
+        for p in sorted(pressed, key=lambda r: -self.p[r.id]):
+            lower = [r for r in self.runs if r.id != p.id and self.p[r.id] < self.p[p.id]
+                     and not policy.daemon_reason(r, self.m)]
+            v = policy.victim([p, *lower] if p.freezable else lower, self.m.immortal_s)
+            if v is not None:
+                break
+        else:
             return
         reclaim = 0 if v.id == p.id else min(v.mem_mb, self.ceiling[p.id], _swap_room(self.m))
         self.order(v, reclaim, policy.PRESSED_CAUSE, p.id)   # the wrapper checks that this run reads pressed

@@ -86,11 +86,11 @@ def test_a_run_frozen_no_more_keeps_a_ceiling_that_grows():
     assert ceilings(tick([held], machine(2000 + 10000))) == {"held": 1024}
 
 
-def test_a_run_frozen_no_more_is_never_squeezed_and_others_pay_only_if_lower():
-    spent = aged("spent", 0.5, 6000, ceiling_mb=6300, freezable=False, scoped=True)
-    low = aged("low", 0.1, 1500, ceiling_mb=1756, scoped=True)
-    a = tick([spent, low], machine(1500, over_s=OVER_S + 2))
-    assert a.squeezed == ("low",) and "spent" not in ceilings(a)
+def test_a_run_frozen_no_more_is_never_squeezed_even_when_it_is_the_lowest():   # review of 39dfdf7, minor 2
+    spent = aged("spent", 0.1, 6000, ceiling_mb=6300, freezable=False, scoped=True)
+    high = aged("high", 0.5, 1500, ceiling_mb=1756, scoped=True)
+    a = tick([spent, high], machine(1500, over_s=OVER_S + 2))
+    assert a.squeezed == ("high",) and "spent" not in ceilings(a)
 
 
 def test_a_pressed_run_frozen_no_more_has_lower_runs_frozen_for_it_never_itself():
@@ -101,6 +101,14 @@ def test_a_pressed_run_frozen_no_more_has_lower_runs_frozen_for_it_never_itself(
     assert [(o[0], o[2], o[3]) for o in a.orders] == [("l", "pressed", "p")]
     assert tick([pressed()], machine(2000)).orders == ()                                  # nobody lower: it waits
     assert tick([pressed(), aged("h", 0.6, 1500, scoped=True)], machine(2000)).orders == ()   # never a higher one
+
+
+def test_a_tie_with_a_run_frozen_no_more_leaves_the_other_pressed_run_its_relief():   # review of 39dfdf7, minor 3
+    def pressed(id, **kw):
+        return aged(id, 0.4, 2000, ceiling_mb=2000, at_ceiling=True, pressure=80.0, pressed_s=PRESSED_S + 2,
+                    scoped=True, **kw)
+    a = tick([pressed("u", freezable=False), pressed("f")], machine(2000))
+    assert a.orders == (("f", 0, "pressed", "f"),)
 
 
 def test_pressed_without_room_freezes_the_lowest():
