@@ -1049,7 +1049,7 @@ def test_the_own_count_leaves_this_bookings_frozen_time_out(lane):   # fourth re
     s.seconds = 300.0   # frozen time of an earlier booking of this process: not this run's
     w = watch.Watch(lanes, run_id, s, lambda reading: value(available=300), clock=lambda: tick["now"])
     tick["now"] = 1000.0
-    s.seconds = 300.0 + 600.0   # this run stood frozen 600 s: it has run 400 s, mortal
+    s.seconds = 300.0 + 550.0   # this run stood frozen 550 s, within its total: it has run 450 s, mortal
     order(lanes, run_id, "over")
     assert w.step() == "froze"
 
@@ -1064,3 +1064,42 @@ def test_an_earlier_bookings_frozen_time_does_not_make_a_run_young(lane):   # fo
     tick["now"] = 1000.0   # this run has run 1000 s, never frozen: immortal
     order(lanes, run_id, "over")
     assert w.step() == "refused"
+
+
+
+def capped(reading=None):   # the person's ruling, 2026-11-07: a booking stands frozen 10 min in all, at most
+    # the ceiling set apart from the total, so a check that reads one for the other is seen
+    return dataclasses.replace(value(available=300), freeze_ceiling_s=900.0, freeze_total_s=600.0)
+
+
+def test_a_booking_stands_frozen_no_longer_than_its_total_in_all(lane):   # the person's ruling, 2026-11-07
+    # an earlier freeze of this booking took 400 s; the next one, well within the ceiling, is let go at the total
+    lanes, mine, _waiter, _later, _root = lane
+    s = FakeSlot()
+    tick = {"now": 0.0}
+    w = watch.Watch(lanes, mine, s, capped, clock=lambda: tick["now"], let_go_s=10 ** 6, swap=lambda: (8000, 8000))
+    s.seconds = 400.0
+    assert w.step() == "froze"
+    assert s.ceiling_s == 200.0   # the slot's own guard, for a watch that sticks, holds the rest of the total
+    tick["now"], s.seconds = 150.0, 550.0
+    assert w.step() == "" and s.frozen()
+    tick["now"], s.seconds = 201.0, 601.0
+    assert w.step() == "let go" and not s.frozen() and s.done_freezing
+    assert lanes.bookings()[mine].unanswered   # the daemon orders it no more: it is no longer freezable
+
+
+def test_an_order_on_a_booking_whose_total_is_spent_is_never_obeyed(lane):   # the person's ruling, 2026-11-07
+    lanes, mine, _waiter, _later, _root = lane
+    s = FakeSlot()
+    w = watch.Watch(lanes, mine, s, capped, clock=lambda: 0.0, let_go_s=10 ** 6, swap=lambda: (8000, 8000))
+    s.seconds = 600.0
+    assert w.step() == "refused" and not s.frozen() and s.done_freezing
+    assert lanes.bookings()[mine].unanswered and lanes.bookings()[mine].frozen == ""
+
+
+def test_the_total_leaves_an_earlier_bookings_frozen_time_out(lane):   # the slot is the process's
+    lanes, mine, _waiter, _later, _root = lane
+    s = FakeSlot()
+    s.seconds = 900.0   # frozen in an earlier booking of this process: not this one's
+    w = watch.Watch(lanes, mine, s, capped, clock=lambda: 0.0, let_go_s=10 ** 6, swap=lambda: (8000, 8000))
+    assert w.step() == "froze" and s.ceiling_s == 600.0

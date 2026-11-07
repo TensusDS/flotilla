@@ -67,8 +67,11 @@ class Watch:
                 self.lanes.unfreezable(self.booking_id)
             return "let go"
         if self.slot.frozen() and self._frozen_since is not None and \
-                self.clock() - self._frozen_since >= self.value_of(None).freeze_ceiling_s:
-            # no freeze outlasts its ceiling, whatever holds its room and whatever the record says now - a waiter
+                (self.clock() - self._frozen_since >= self.value_of(None).freeze_ceiling_s or
+                 self._frozen_in_all() >= self.value_of(None).freeze_total_s):
+            # no freeze outlasts its ceiling, and no booking stands frozen longer in all than its total, whoever
+            # ordered each freeze (the person's ruling, 2026-11-07); whatever holds its room and whatever the record
+            # says now - a waiter
             # that turned into a take by hand, a forged one, a line that turned the record back to "ordered", or a
             # queue that never gives the room back (the person's ruling, 2026-11-06). Thawed first, the journal
             # after: its lock may be held by a process inside this very command (review of f32d91c)
@@ -78,9 +81,17 @@ class Watch:
                 self.lanes.unfreezable(self.booking_id)   # the record did not say frozen: it is never ordered again
             return "let go"
         if item.frozen == "ordered" and not self.slot.frozen():
+            if self._frozen_in_all() >= self.value_of(None).freeze_total_s:
+                # its total spent: this order lapses, and no other is ever given (the person's ruling, 2026-11-07)
+                self.slot.done_freezing = True
+                self.lanes.unfreezable(self.booking_id)
+                return "refused"
             if not self._order_holds(item):
                 self.lanes.refuse(self.booking_id, order_by=item.order_by, ordered_at=item.ordered_at)
                 return "refused"
+            limits = self.value_of(None)
+            # the slot's own guard, for a watch that sticks, holds no more than the rest of the total
+            self.slot.ceiling_s = min(limits.freeze_ceiling_s, limits.freeze_total_s - self._frozen_in_all())
             self._mark(None)   # the freeze itself - systemctl, the kernel, the reclaim - is no journal call
             found = self.slot.freeze(self._reclaim(item.reclaim_mb or 0))
             self._mark(self._now())
@@ -205,8 +216,11 @@ class Watch:
 
     def _own_ran(self) -> float:
         """This run's time since it was admitted, its frozen time left out, by this process's own clock."""
-        frozen = self.slot.frozen_seconds() - self._frozen_base if hasattr(self.slot, "frozen_seconds") else 0.0
-        return max(0.0, self.clock() - self._began - frozen)
+        return max(0.0, self.clock() - self._began - self._frozen_in_all())
+
+    def _frozen_in_all(self) -> float:
+        """How long this booking has stood frozen, every freeze of it counted and an earlier booking's left out."""
+        return self.slot.frozen_seconds() - self._frozen_base if hasattr(self.slot, "frozen_seconds") else 0.0
 
     def _over_now(self, found, value) -> bool:
         """The machine reads near or below the floor: this run's own project's, or the most cautious one the live
@@ -320,7 +334,8 @@ class Watch:
         self._mark(None)
         self.slot.watcher = self.thread
         try:
-            self.slot.ceiling_s = self.value_of(None).freeze_ceiling_s
+            limits = self.value_of(None)
+            self.slot.ceiling_s = min(limits.freeze_ceiling_s, limits.freeze_total_s)
         except Exception:  # noqa: BLE001 - an unreadable setting keeps the default the slot was given
             pass
         self.thread.start()

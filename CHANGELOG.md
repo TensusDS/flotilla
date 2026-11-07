@@ -28,6 +28,9 @@ of swap used.
   the user's files. Against such a session the lane promises only what the wrapper reads for itself: a run
   immortal by its own clock is never frozen, an order holds only while the machine's own readings agree, each
   freeze lasts at most the freeze ceiling, and nothing is killed.
+- **A booking stands frozen 10 minutes in all at most**, over every freeze and whoever ordered it - the daemon or a
+  forged order: `lane_freeze_total_minutes` in `machine.toml` (10 by default, 2-240). Then the run is thawed and
+  never frozen again.
 - **No daemon, a careful lane:** when none can be started, a run already going goes on, a frozen one thaws by its
   own guards, and a new run starts only into an empty lane. `FLOTILLA_LANE_DAEMON=off` chooses that on purpose.
 - `flotilla lane` begins with the daemon's line and shows each run's ceiling and memory pressure; `flotilla doctor`

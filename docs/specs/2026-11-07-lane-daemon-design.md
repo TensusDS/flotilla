@@ -264,8 +264,9 @@ rules, so the check changes:
   the 2 GB reserve of its budget, where the daemon freezes at once; and an order given before this wrapper's own
   last thaw is a replay. So a forger can freeze a mortal run - whatever the order's cause - only while the machine's
   own readings agree, each freeze for at most the freeze ceiling (10 min), and again after a thaw while they still
-  agree; never an immortal or pinned run, and nothing is ever killed. The number of freezes is not capped: the daemon
-  itself freezes a run more than once (4.3 e). **Who** is the right victim the wrapper does not
+  agree; never an immortal or pinned run, and nothing is ever killed. However many freezes, a booking stands frozen
+  10 min in all at most (`lane_freeze_total_minutes`, the person's ruling, 2026-11-07), counted by the wrapper
+  itself; then it is thawed and never frozen again, so the cap bounds the daemon and a forger alike. **Who** is the right victim the wrapper does not
   judge: a second copy of the daemon's choice, fed from the journal, drifted from the daemon's (it refused true
   orders) and could be fed (two reviews, 2026-11-07);
 - a waiter's order (2.7) is written by the daemon too, so it passes the same check; the waiter it names is checked
@@ -296,7 +297,8 @@ Builder's numbers, each awaits the field test; none is a person's setting until 
 `REFAULT_MB_S` 10 MB/s (pages read back that make a held run pressed; the bench: hot 43-49, cold 0, a real suite
 about 0.5), `PRESSED` 5 % (pressure a wrapper needs to see in the pressed run's group; hot 9.5-19, cold 0.2-1.9 once
 filled), `PRESSED_S` 10 s, `OVER_S` 10 s, slack max(256 MB, 10 %), a swap reserve of 2 GB below which a held run is
-frozen at once (the replay of section 8 took the swap to 88 % without it, 81.5 % with it), tick 2 s, idle exit
+frozen at once (the replay of section 8 took the swap to 88 % without it, 81.5 % with it), a booking frozen
+10 min in all at most (`lane_freeze_total_minutes`, 2-240), tick 2 s, idle exit
 10 min, heartbeat stale 10 s (and as far ahead of the clock, which steps back now and then), no tick for 60 s - or
 a tick dated more than 60 s ahead - is stuck.
 `lane_freeze` = off now means: ceilings still, no freezing (overload ends at squeeze).
@@ -352,9 +354,9 @@ Builder's changes that await the person:
   reads the beat one way and the tick both ways, so for one beat after such a step the two may disagree) -
   not when its lock is briefly free in a handover (4.7). Under load a replacement can still take more than 10 s, and
   wrappers then lift and thaw; the successor holds the runs again at their use plus the slack;
-- **open: a cap on freezes.** Each freeze lasts at most the freeze ceiling (10 min), but their number is not capped:
-  the daemon may freeze a run again after a thaw, and so may a session that reads the key, for as long as the
-  machine's readings agree - frozen time does not count towards immortality, so such a run can be held frozen most
-  of the time (each freeze ending before the ceiling, `lane_freeze_ceiling_minutes`, 10 by default: one that
-  reaches it lets the run go for good in that process). A cap on the time a booking may stand frozen in all (say 10 min) would bound both; it would also stop
-  the daemon from freezing that run again once spent. The person's to decide.
+- **a cap on frozen time** *(the person's ruling, 2026-11-07)*: a booking stands frozen 10 min in all at most,
+  over every freeze and whoever ordered it (`lane_freeze_total_minutes` in `machine.toml`, 10 by default, 2-240).
+  The wrapper counts it on its own slot, leaving out an earlier booking's frozen time; at the cap it thaws the run
+  and marks it never to be ordered again, so the daemon stops choosing it and a session that reads the key can no
+  longer hold a run frozen most of the time. The slot's own guard, for a watch that sticks, holds no more than the
+  rest of the total.

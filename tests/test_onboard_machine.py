@@ -148,3 +148,9 @@ def test_new_lane_keys_survive_a_machine_toml_rewrite(tmp_path):
 def test_the_freeze_ceiling_is_the_persons_key():
     from flotilla.onboard.machine import PERSON_KEYS
     assert "lane_freeze_ceiling_minutes" in PERSON_KEYS
+
+
+
+def test_the_freeze_total_is_the_persons_key():   # the person's ruling, 2026-11-07
+    from flotilla.onboard.machine import PERSON_KEYS
+    assert "lane_freeze_total_minutes" in PERSON_KEYS

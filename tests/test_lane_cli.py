@@ -889,3 +889,15 @@ def test_status_names_an_older_booking(tmp_path, monkeypatch):
     _code, out = run_cli("lane", "--root", str(root))
     line = next(line for line in out.splitlines() if line.strip().startswith("b41"))
     assert "(an older flotilla: decides for itself)" in line, out
+
+
+
+def test_the_freeze_total_is_a_setting(monkeypatch):   # the person's ruling, 2026-11-07
+    from flotilla.lane import commands
+    for bad in ({"lane_freeze_total_minutes": 1}, {"lane_freeze_total_minutes": 241},
+                {"lane_freeze_total_minutes": True}, {"lane_freeze_total_minutes": "10"}, {}):
+        monkeypatch.setattr(commands, "_machine", lambda bad=bad: bad)
+        assert commands.freeze_total_minutes() == 10
+    monkeypatch.setattr(commands, "_machine", lambda: {"lane_freeze_total_minutes": 30})
+    assert commands.freeze_total_minutes() == 30
+    assert commands.value_for({})(None).freeze_total_s == 1800.0

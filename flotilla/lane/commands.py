@@ -99,6 +99,16 @@ def freeze_ceiling_minutes() -> float:
     return _number("lane_freeze_ceiling_minutes", FREEZE_CEILING_MINUTES, FREEZE_CEILING_BOUNDS)
 
 
+FREEZE_TOTAL_MINUTES, FREEZE_TOTAL_BOUNDS = 10, (2, 240)
+
+
+def freeze_total_minutes() -> float:
+    """machine.toml `lane_freeze_total_minutes`: the longest a booking stands frozen in all, over every freeze and
+    whoever ordered it - the daemon or a line forged in the journal; then the run is thawed and never frozen again
+    (the person's ruling, 2026-11-07)."""
+    return _number("lane_freeze_total_minutes", FREEZE_TOTAL_MINUTES, FREEZE_TOTAL_BOUNDS)
+
+
 def max_runs() -> int:
     """machine.toml `lane_max_runs`: runs at once at most, whatever memory allows (section 2.4)."""
     return _number("lane_max_runs", MAX_RUNS, MAX_RUNS_BOUNDS, whole=True)
@@ -140,7 +150,7 @@ def value_for(profile: dict):
     cpus, floor = machine.cpus(), machine.memory_floor_mb(profile)
     kind = freeze.backend(setting=freeze_on())[0]
     reserve, immortal, cap, factor = light_reserve(), immortal_minutes() * 60.0, max_runs(), cpu_factor()
-    ceiling = freeze_ceiling_minutes() * 60.0
+    ceiling, total = freeze_ceiling_minutes() * 60.0, freeze_total_minutes() * 60.0
     root = paths.state_dir() / "lane"
 
     def make(reading=None):
@@ -149,7 +159,7 @@ def value_for(profile: dict):
                                swap_mb=freeze.swap_mb, tree_mb=peak.tree_rss_mb,
                                beat_age_s=lambda booking: admission.beat_age(root, booking),
                                foreign=len(reading.computing) if reading is not None else 0,
-                               freeze_ceiling_s=ceiling)
+                               freeze_ceiling_s=ceiling, freeze_total_s=total)
     return make
 
 

@@ -96,7 +96,8 @@ MEASURED_KEYS = ("schema", "measured_at", "os", "parent_pid_source", "timeout_co
 PERSON_KEYS = ("lane_capacity", "max_seats", "rig", "rig_provider", "rig_max_machines", "rig_max_hourly",
                "rig_max_hours", "rig_images", "rig_default_hours", "rig_default_budget", "attention",
                "attention_every", "lane_cpu_factor", "lane_share", "lane_light_reserve", "lane_immortal_minutes",
-               "lane_freeze", "lane_max_runs", "lane_freeze_ceiling_minutes")
+               "lane_freeze", "lane_max_runs", "lane_freeze_ceiling_minutes",
+               "lane_freeze_total_minutes")
 #: Written when absent, so the person finds the switch where they will look: off, with no provider.
 RIG_DEFAULTS = {"rig": "off", "rig_provider": ""}
 
