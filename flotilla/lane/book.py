@@ -209,7 +209,8 @@ def fold(records, into: dict[str, Booking] | None = None) -> dict[str, Booking]:
     booking in it: one already handed out stays as it was read."""
     found: dict[str, Booking] = dict(into or {})
     for event in records:
-        if not isinstance(event, dict) or not isinstance(event.get("booking"), str) or not _aware(event.get("at")):
+        if not isinstance(event, dict) or not isinstance(event.get("booking"), str) or not _aware(event.get("at")) \
+                or not isinstance(event.get("state"), str):
             continue   # a line nobody could have written through flotilla: skipped, never fatal
         seen = found.get(event["booking"])
         item = copy.copy(seen) if seen is not None else Booking(id=event["booking"])

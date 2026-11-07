@@ -22,10 +22,12 @@ Security and hygiene of a public repository.
   - A booking's pid must be a real process number, and `flotilla lane stop` signals only a pid with its start mark:
     a crafted `pid` of `-1` could otherwise have signalled every process of the user.
   - No freeze outlasts its ceiling, `lane_freeze_ceiling_minutes` in `machine.toml` (10 by default, 2-240):
-    then the run is thawed whatever holds its room, and never frozen again. And any freeze, a scope's as well as a
+    then the run is thawed whatever holds its room - it may then run beside the run that took its room, so memory
+    may overcommit - and is not frozen again. And any freeze, a scope's as well as a
     stop by signal, is let go after two minutes when its waiter still has not started.
   - What this does not do: a line written as the same user can name any live process with its real start mark as a
-    waiter, and a run may be frozen for it within the lane's rules - for two minutes, and at most for the ceiling. A crafted line can also have a session continue any stopped process of the user whose environment names no
+    waiter, and a run may be frozen for it within the lane's rules - for two minutes, and at most for the ceiling.
+    "Not frozen again" is a mark in the journal, which a crafted line can lift; every single freeze still ends. A crafted line can also have a session continue any stopped process of the user whose environment names no
     other booking, by giving its pid and start mark, which are not secret. The lane bounds what a crafted line can
     do; it cannot tell who wrote it. The journal is a booking, not a
     lock.

@@ -364,7 +364,7 @@ def test_stopped_reads_the_process_state(tmp_path):
         (proc / str(pid)).mkdir(parents=True)
         (proc / str(pid) / "stat").write_text(f"{pid} (sh -c x) {state} 1 {pid} 0")
         (proc / str(pid) / "statm").write_text("100 10 0 0 0 0 0")
-    assert [freeze.stopped(pid, proc_root=proc) for pid in (10, 11, 12, 13, 99)] == [True, False, True, False, False]
+    assert [freeze.stopped(pid, proc_root=proc) for pid in (10, 11, 12, 13, 99)] == [True, False, True, True, False]
 
 
 def test_stopped_asks_ps_where_there_is_no_proc(tmp_path):
@@ -375,12 +375,13 @@ def test_stopped_asks_ps_where_there_is_no_proc(tmp_path):
 
 
 
-def test_stopped_reads_the_members_too_and_not_a_trace_stop(tmp_path):   # minor 4 and 6
+
+
+def test_stopped_asks_the_named_leader_only(tmp_path):   # review: a running ancestor's stopped descendants are not ours
     proc = tmp_path / "proc"
-    for pid, state, ppid, pgrp in ((10, "S", 1, 10), (11, "T", 10, 10), (20, "t", 1, 20), (30, "S", 1, 30)):
+    for pid, state, ppid, pgrp in ((10, "S", 1, 10), (11, "T", 10, 11)):
         (proc / str(pid)).mkdir(parents=True)
         (proc / str(pid) / "stat").write_text(f"{pid} (sh -c x) {state} {ppid} {pgrp} 0")
         (proc / str(pid) / "statm").write_text("100 10 0 0 0 0 0")
-    assert freeze.stopped(10, proc_root=proc) is True    # its leader runs, a member is still stopped
-    assert freeze.stopped(20, proc_root=proc) is False   # a debugger's stop: not the lane's
-    assert freeze.stopped(30, proc_root=proc) is False
+    assert freeze.stopped(10, proc_root=proc) is False   # it runs: what is stopped below it is another matter
+    assert freeze.stopped(11, proc_root=proc) is True

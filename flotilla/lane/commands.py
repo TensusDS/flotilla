@@ -345,7 +345,8 @@ def value_of(run, item, machine, now: dt.datetime) -> str:
     if item.frozen == "frozen":
         since = book._when(item.frozen_at)
         text += f"; frozen since {_clock(since) if since else '?'} by {visible(item.order_by)}'s order"
-        if item.unit:   # the freeze file itself: systemd's own thaw may not see a freeze it did not make
+        if item.unit.startswith(f"flotilla-lane-{item.id}-"):   # this booking's scope, and the freeze file itself:
+            # systemd's own thaw may not see a freeze it did not make
             text += (f" (if its command stays frozen: echo 0 > \"/sys/fs/cgroup$(systemctl --user show -p "
                      f"ControlGroup --value {item.unit})/cgroup.freeze\")")
         elif item.group:

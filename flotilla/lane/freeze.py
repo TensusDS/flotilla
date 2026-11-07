@@ -244,17 +244,15 @@ def _state(proc_root: Path, pid: int) -> str | None:
 
 
 def stopped(pid: int, *, proc_root: Path = Path("/proc"), run=subprocess.run) -> bool | None:
-    """Whether process group `pid` - its leader or any member or descendant - stands stopped by a signal (T), or its
-    leader ended a zombie whose group may still hold stopped members. A debugger's trace stop (t) is not the lane's.
-    False when nothing of it is stopped or it is gone; None when its leader's state cannot be read."""
+    """Whether process `pid` - the leader a frozen record names - stands stopped (T, or t when a stopped process is
+    also traced), or ended a zombie whose group may still hold stopped members. Only the named leader is asked: what
+    stands stopped under a running process is not proven the lane's (review of the 0.30.1 follow-up). False when it
+    runs or is gone; None when its state cannot be read."""
     if proc_root.is_dir():
         leader = _state(proc_root, pid)
         if leader is None:
             return None
-        if leader in ("T", "Z"):
-            return True
-        table = peak._proc_table(proc_root, peak._page_kb())
-        return any(_state(proc_root, member) == "T" for member in peak._members(table, int(pid)) if member != pid)
+        return leader in ("T", "t", "Z")
     try:
         done = run(["ps", "-o", "stat=", "-p", str(int(pid))], capture_output=True, text=True, timeout=5, check=False)
     except (OSError, subprocess.SubprocessError, ValueError):

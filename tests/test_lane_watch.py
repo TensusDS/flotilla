@@ -481,3 +481,18 @@ def test_no_freeze_outlasts_its_ceiling_whoever_holds_its_room(lane):   # the pe
     assert w.step() == "" and s.frozen()   # not yet: within the ceiling, and its waiter no longer waits
     tick["now"] = 601.0
     assert w.step() == "let go" and not s.frozen() and lanes.bookings()[mine].unanswered
+
+
+
+def test_the_ceiling_holds_when_a_crafted_line_turns_the_record_back_to_ordered(lane):   # review, I1
+    lanes, mine, waiter, _later, _root = lane
+    s = FakeSlot()
+    tick = {"now": 0.0}
+    ceiling = lambda reading: dataclasses.replace(value(available=300), freeze_ceiling_s=600.0)  # noqa: E731
+    w = watch.Watch(lanes, mine, s, ceiling, clock=lambda: tick["now"], let_go_s=120, swap=lambda: (8000, 8000))
+    assert w.step() == "froze"
+    tick["now"] = 601.0
+    _order(lanes, mine, order_by=waiter, ordered_at=lanes._now())   # a crafted line: the record says "ordered" again
+    assert w.step() == "let go" and not s.frozen()
+    assert lanes.bookings()[mine].unanswered   # and it does not freeze for that order once thawed
+    assert w.step() != "froze" and not s.frozen()

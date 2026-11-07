@@ -788,3 +788,14 @@ def test_the_freeze_ceiling_is_a_setting(monkeypatch):   # the person's ruling, 
     monkeypatch.setattr(commands, "_machine", lambda: {"lane_freeze_ceiling_minutes": 30})
     assert commands.freeze_ceiling_minutes() == 30
     assert commands.value_for({})(None).freeze_ceiling_s == 1800.0
+
+
+
+def test_a_hint_never_names_another_bookings_scope():   # review, minor 5
+    import datetime as dt
+    from flotilla.lane import book, commands, policy
+    now = dt.datetime(2026, 11, 6, 10, 30, tzinfo=dt.timezone.utc)
+    machine = policy.Machine(cpus=8, give_mb=9000, free_mb=3000, swap_free_mb=8000, swap_total_mb=8000)
+    frozen = policy.Run("b4", policy.FROZEN, 900, False, 1, ran_s=120)
+    theirs = book.Booking(id="b4", frozen="frozen", order_by="b14", unit="flotilla-lane-b9-9-1.scope")
+    assert "flotilla-lane-b9" not in commands.value_of(frozen, theirs, machine, now)

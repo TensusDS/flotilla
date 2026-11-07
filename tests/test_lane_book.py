@@ -708,3 +708,11 @@ def test_freeze_fields_fold_as_written():
 def test_a_frozen_booking_is_still_a_holder_to_an_older_fold():
     found = book.fold([{"at": "2026-11-06T10:00:00+00:00", "booking": "b1", "state": "held", "frozen": "frozen"}])
     assert [item.id for item in book.Book.holders(None, found)] == ["b1"]
+
+
+
+def test_a_line_with_no_state_is_skipped_not_fatal():   # review: one crafted line must not stop every grant
+    found = book.fold([{"at": "2026-11-06T10:00:00+00:00", "booking": "b1"},
+                       {"at": "2026-11-06T10:00:01+00:00", "booking": "b1", "state": 7},
+                       {"at": "2026-11-06T10:00:02+00:00", "booking": "b2", "state": "held"}])
+    assert list(found) == ["b2"]
