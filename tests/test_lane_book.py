@@ -665,10 +665,10 @@ def test_a_light_run_the_room_refuses_still_waits_when_the_place_is_taken(lane):
     assert lanes.grant(booked(lanes, FILE, 2).id, slots=1, room=room) is None
 
 
-def test_a_new_booking_is_rule_4_and_records_when_it_first_asked(lane):
+def test_a_new_booking_is_rule_5_and_records_when_it_first_asked(lane):
     lanes, _ = lane
     item = lanes.enqueue("main session 1", "suite", pid=1, mark="m", kind="push")
-    assert item.rule == 4 and item.kind == "push" and book._when(item.asked) is not None
+    assert item.rule == 5 and item.kind == "push" and book._when(item.asked) is not None
 
 
 def test_asked_survives_the_held_record_that_resets_since(lane):
@@ -716,3 +716,152 @@ def test_a_line_with_no_state_is_skipped_not_fatal():   # review: one crafted li
                        {"at": "2026-11-06T10:00:01+00:00", "booking": "b1", "state": 7},
                        {"at": "2026-11-06T10:00:02+00:00", "booking": "b2", "state": "held"}])
     assert list(found) == ["b2"]
+
+
+# --- rule 5: the lane daemon (lane daemon design, 2026-11-07) ---
+
+from types import SimpleNamespace   # noqa: E402
+
+
+def raw(lanes, **record):
+    with lanes.store.transaction(book.KEY) as tx:
+        tx.append({"at": lanes._now(), **record})
+
+
+def actions(**kw):
+    base = dict(starts=(), ceilings=(), squeezed=(), restored=(), orders=(), thaws=(), why=(), over_mb=0)
+    return SimpleNamespace(**{**base, **kw})
+
+
+def held(lanes, who="a", pid=11, **kw):
+    item = lanes.enqueue(who, "", pid=pid, mark="m", **kw)
+    raw(lanes, booking=item.id, state=book.HELD, started=lanes._now())
+    return lanes.bookings()[item.id]
+
+
+def test_rule_five_fields_fold_clean(lane):
+    lanes, _ = lane
+    raw(lanes, booking="b50", state=book.HELD, who="x", order_cause="nuke", order_pid=True, order_mark=5,
+        ceiling_mb=-5, held_freezes=-1, squeezed="yes", held_back="w" * 3000, by_hand="yes", floor_mb="big")
+    item = lanes.bookings()["b50"]
+    assert (item.order_cause, item.order_pid, item.order_mark, item.ceiling_mb, item.held_freezes, item.squeezed,
+            len(item.held_back), item.by_hand, item.floor_mb) == ("", None, "", None, 0, False, 200, False, None)
+    raw(lanes, booking="b51", state=book.HELD, who="x", order_pid=1, ceiling_mb=1e12)
+    assert (lanes.bookings()["b51"].order_pid, lanes.bookings()["b51"].ceiling_mb) == (None, None)
+    raw(lanes, booking="b52", state=book.HELD, who="x", order_cause="over", order_pid=4242, order_mark="m9",
+        ceiling_mb=1536, held_freezes=2, squeezed=True, held_back="ci", by_hand=True, floor_mb=2000)
+    item = lanes.bookings()["b52"]
+    assert (item.order_cause, item.order_pid, item.order_mark, item.ceiling_mb, item.held_freezes, item.squeezed,
+            item.held_back, item.by_hand, item.floor_mb) == ("over", 4242, "m9", 1536, 2, True, "ci", True, 2000)
+
+
+def test_a_0_30_record_folds_as_before(lane):
+    lanes, _ = lane
+    raw(lanes, booking="b60", state=book.HELD, who="old", pid=60, mark="m", rule=4, frozen="frozen",
+        order_by="b61")
+    item = lanes.bookings()["b60"]
+    assert item.rule == 4 and item.frozen == "frozen" and item.order_by == "b61"
+    assert (item.order_cause, item.order_pid, item.ceiling_mb, item.squeezed, item.held_freezes) == \
+        ("", None, None, False, 0)
+
+
+def test_enqueue_records_the_floor_and_by_hand(lane):
+    lanes, _ = lane
+    item = lanes.enqueue("a", "", pid=11, mark="m", floor_mb=2000, by_hand=True)
+    assert (item.floor_mb, item.by_hand, item.rule) == (2000, True, 5)
+
+
+def test_scoped_writes_the_unit_of_a_held_booking_only(lane):
+    lanes, _ = lane
+    item = held(lanes)
+    unit = f"flotilla-lane-{item.id}-11-1.scope"
+    assert lanes.scoped(item.id, unit).unit == unit
+    assert lanes.scoped(item.id, "../../etc") is None and lanes.bookings()[item.id].unit == unit
+    lanes.release(item.id)
+    assert lanes.scoped(item.id, unit) is None
+
+
+def test_hold_back_writes_only_a_change(lane, tmp_path):
+    lanes, _ = lane
+    item = lanes.enqueue("a", "", pid=11, mark="m")
+    size = (tmp_path / "lane.jsonl").stat().st_size
+    lanes.hold_back(item.id, "ci: a run on this machine")
+    once = (tmp_path / "lane.jsonl").stat().st_size
+    lanes.hold_back(item.id, "ci: a run on this machine")
+    assert once > size and (tmp_path / "lane.jsonl").stat().st_size == once
+    assert lanes.bookings()[item.id].held_back == "ci: a run on this machine"
+    lanes.hold_back(item.id, "")
+    assert lanes.bookings()[item.id].held_back == ""
+
+
+def test_apply_starts_orders_thaws_and_ceilings_in_one_transaction(lane):
+    lanes, _ = lane
+    waiter = lanes.enqueue("w", "", pid=21, mark="m")
+    victim = held(lanes, "v", pid=22)
+    frozen = held(lanes, "f", pid=23)
+    raw(lanes, booking=frozen.id, state=book.HELD, frozen="frozen", frozen_at=lanes._now())
+    capped = held(lanes, "c", pid=24)
+    done = lanes.apply(actions(starts=((waiter.id, True, 0.42),), orders=((victim.id, 700, "over", ""),),
+                               thaws=(frozen.id,), ceilings=((capped.id, 1536),), squeezed=(capped.id,)),
+                       (4242, "m9"))
+    assert sorted(done) == sorted([waiter.id, victim.id, frozen.id, capped.id])
+    found = lanes.bookings()
+    w = found[waiter.id]
+    assert (w.state, w.path, w.heavy, bool(w.started), w.pid) == (book.HELD, "value: P 0.42, heavy", True, True, 21)
+    v = found[victim.id]
+    assert (v.frozen, v.order_by, v.order_cause, v.order_pid, v.order_mark, v.reclaim_mb, bool(v.ordered_at)) == \
+        ("ordered", "", "over", 4242, "m9", 700, True)
+    assert found[frozen.id].frozen == "" and found[frozen.id].frozen_s is not None
+    assert (found[capped.id].ceiling_mb, found[capped.id].squeezed) == (1536, True)
+    lanes.apply(actions(ceilings=((capped.id, None),), restored=(capped.id,)), (4242, "m9"))
+    assert (lanes.bookings()[capped.id].ceiling_mb, lanes.bookings()[capped.id].squeezed) == (None, False)
+
+
+def test_apply_skips_what_no_longer_applies(lane):
+    lanes, _ = lane
+    gone = lanes.enqueue("g", "", pid=31, mark="m")
+    lanes.leave(gone.id)
+    frozen = held(lanes, "f", pid=32)
+    raw(lanes, booking=frozen.id, state=book.HELD, frozen="frozen", frozen_at=lanes._now())
+    raw(lanes, booking="b99", state=book.WAITING, who="old", pid=33, mark="m", rule=4)
+    gated = lanes.enqueue("h", "", pid=34, mark="m")
+    lanes.hold_back(gated.id, "ci")
+    done = lanes.apply(actions(starts=((gone.id, False, 0.1), ("b99", False, 0.1), (gated.id, False, 0.1)),
+                               orders=((frozen.id, 0, "over", ""),)), (4242, "m9"))
+    assert done == []
+    found = lanes.bookings()
+    assert found[gone.id].state == book.LEFT and found["b99"].state == book.WAITING
+    assert found[gated.id].state == book.WAITING and found[frozen.id].frozen == "frozen"
+
+
+def test_apply_admits_by_hand_as_nobodys(lane):
+    lanes, _ = lane
+    item = lanes.enqueue("person", "", pid=41, mark="m", by_hand=True)
+    lanes.apply(actions(starts=((item.id, True, 0.3),)), (4242, "m9"))
+    found = lanes.bookings()[item.id]
+    assert (found.state, found.pid, found.mark) == (book.HELD, None, "")
+
+
+def test_fallback_admits_only_into_an_empty_lane(lane):
+    lanes, _ = lane
+    holder = held(lanes, "h", pid=51)
+    first = lanes.enqueue("a", "", pid=52, mark="m")
+    second = lanes.enqueue("b", "", pid=53, mark="m")
+    assert lanes.grant(first.id, slots=5, fallback=True) is None
+    lanes.release(holder.id)
+    assert lanes.grant(second.id, slots=5, fallback=True) is None
+    got = lanes.grant(first.id, slots=5, fallback=True)
+    assert got.state == book.HELD and got.path == "fallback: empty lane"
+    assert lanes.grant(second.id, slots=5, fallback=True) is None
+
+
+def test_frozen_counts_daemon_freezes(lane):
+    lanes, _ = lane
+    over = held(lanes, "o", pid=61)
+    raw(lanes, booking=over.id, state=book.HELD, frozen="ordered", order_cause="over", ordered_at=lanes._now())
+    item = lanes.frozen(over.id, freeze_kind="scope", unit="", group=None, held_mb=100)
+    assert (item.held_freezes, item.freezes) == (1, 1)
+    waits = held(lanes, "w", pid=62)
+    raw(lanes, booking=waits.id, state=book.HELD, frozen="ordered", order_cause="waiter", ordered_at=lanes._now())
+    item = lanes.frozen(waits.id, freeze_kind="scope", unit="", group=None, held_mb=100)
+    assert (item.held_freezes, item.freezes) == (0, 1)
