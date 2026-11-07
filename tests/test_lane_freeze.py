@@ -406,3 +406,48 @@ def test_the_slot_keeps_its_own_ceiling_without_the_journal():   # review of f32
         assert s.guard() and not s.frozen() and s.done_freezing
     finally:
         alive.set()
+
+
+
+def test_a_watch_that_makes_no_progress_is_treated_as_gone():   # review of d4c28c5, minor 1
+    # the watch is alive but stuck - on the journal's lock, held maybe by a process inside this very command: the
+    # slot does not wait for the ceiling
+    tick = {"now": 0.0}
+    s = freeze.Slot(freeze.SIGNAL, clock=lambda: tick["now"])
+    s.ceiling_s = 600.0
+    s.freeze(0)
+    s.watch_seen = 0.0
+    stuck = threading.Event()
+    watcher = threading.Thread(target=stuck.wait)
+    watcher.start()
+    s.watcher = watcher
+    try:
+        tick["now"] = 10.0
+        assert not s.guard() and s.frozen()
+        tick["now"] = freeze.WATCH_STALE_S + 1
+        assert s.guard() and not s.frozen() and s.done_freezing
+    finally:
+        stuck.set()
+
+
+def test_the_ceiling_counts_from_before_the_reclaim(tmp_path, monkeypatch):   # review of d4c28c5, minor 4
+    root = fake_cgroup(tmp_path)
+    s = freeze.Slot(freeze.SCOPE, root=root, run=fake_systemctl, tree_mb=lambda pid: 100)
+    s.contain(["pytest"], booking="b1")
+    s.attach(4242)
+    seen = []
+    monkeypatch.setattr(freeze.Slot, "_freeze_scope", lambda self, cgroup, mb: seen.append(self.frozen()))
+    s.freeze(512)
+    assert seen == [True]   # already frozen, by the slot's clock, while the scope froze and reclaimed
+
+
+def test_a_detached_scope_is_still_thawed(tmp_path):   # review of d4c28c5, minor 5
+    root = fake_cgroup(tmp_path)
+    scope = root / "user.slice/flotilla-lane-b1-9-1.scope"
+    s = freeze.Slot(freeze.SCOPE, root=root, run=fake_systemctl, tree_mb=lambda pid: 100)
+    s.contain(["pytest"], booking="b1")
+    s.attach(4242)
+    s.freeze(0)
+    (scope / "cgroup.freeze").write_text("1")
+    s.detach()   # the leader was killed while frozen; the rest of its scope still stands frozen
+    assert s.thaw() and (scope / "cgroup.freeze").read_text().strip() == "0"

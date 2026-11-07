@@ -44,6 +44,14 @@ class Watch:
                 self._thaw()
                 return "thawed"
             return ""
+        if getattr(self.slot, "done_freezing", False) and not self.slot.frozen() and item.frozen:
+            # the command's own loop thawed it by itself - at the ceiling, or with this watch stuck: the record must
+            # not go on saying frozen while the run computes, or every session would count its room as free
+            # (review of d4c28c5; security review)
+            self._frozen_since, self._kind = None, ""
+            if self.lanes.thaw(self.booking_id, self.value_of(None), force=True, never_again=True) is None:
+                self.lanes.unfreezable(self.booking_id)
+            return "let go"
         if self.slot.frozen() and self._frozen_since is not None and \
                 self.clock() - self._frozen_since >= self.value_of(None).freeze_ceiling_s:
             # no freeze outlasts its ceiling, whatever holds its room and whatever the record says now - a waiter
@@ -137,6 +145,7 @@ class Watch:
             except Exception as err:  # noqa: BLE001 - a broken watch thaws its command and freezes no more
                 self._fail(err)
                 return
+            self.slot.watch_seen = getattr(self.slot, "clock", time.monotonic)()   # a look finished: not stuck
             self._wait()
 
     def _wait(self) -> None:
@@ -160,6 +169,8 @@ class Watch:
                   file=sys.stderr)
 
     def start(self) -> None:
+        self.slot.done_freezing = False   # a new booking is a new run: an earlier let-go was another run's
+        self.slot.watch_seen = getattr(self.slot, "clock", time.monotonic)()
         self.slot.watcher = self.thread
         try:
             self.slot.ceiling_s = self.value_of(None).freeze_ceiling_s
@@ -171,7 +182,7 @@ class Watch:
         self._stop.set()
         if self.thread.is_alive():
             self.thread.join(timeout=LOOK_S + 2)
-        self.slot.watcher = None
+        self.slot.watcher, self.slot.watch_seen = None, None
         if self.root is not None:
             admission.forget_beat(self.root, self.booking_id)
 

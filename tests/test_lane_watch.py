@@ -531,4 +531,32 @@ def test_a_run_let_go_is_never_frozen_again_whatever_the_journal_says(lane):   #
     long_ago = (lanes.clock() - dt.timedelta(seconds=70)).isoformat(timespec="seconds")
     # crafted: the mark lifted, the first minute and the run time set to pass the rules, and a fresh order
     _order(lanes, mine, order_by=waiter, ordered_at=lanes._now(), unanswered=False, started=long_ago, ran_s=10)
-    assert w.step() == "refused" and not s.frozen()
+    assert w.step() in ("refused", "let go") and not s.frozen()   # the order lapses either way
+    assert w.step() != "froze" and [call for call in s.calls if call[0] == "freeze"] == [("freeze", 852)]
+
+
+
+def test_the_journal_follows_a_ceiling_the_slot_kept_by_itself(lane):   # review of d4c28c5, I1; security finding
+    # the command's own loop reached the ceiling first and thawed with no journal: the record must not go on saying
+    # "frozen" while the run computes - other sessions would count its room as free
+    lanes, mine, _waiter, _later, _root = lane
+    s = FakeSlot()
+    w = watch.Watch(lanes, mine, s, lambda reading: value(available=300), swap=lambda: (8000, 8000))
+    assert w.step() == "froze"
+    s.done_freezing = True   # what Slot.guard does at the ceiling
+    s.thaw()
+    assert w.step() == "let go"
+    found = lanes.bookings()[mine]
+    assert found.frozen == "" and found.unanswered
+
+
+def test_a_new_watch_on_the_same_slot_may_freeze_again(lane):   # review of d4c28c5, minor 2
+    lanes, mine, _waiter, _later, _root = lane
+    s = FakeSlot()
+    s.done_freezing = True   # a booking before this one, in the same process, was let go
+    w = watch.Watch(lanes, mine, s, lambda reading: value(available=300), swap=lambda: (8000, 8000))
+    w.start()
+    try:
+        assert s.done_freezing is False
+    finally:
+        w.stop()
