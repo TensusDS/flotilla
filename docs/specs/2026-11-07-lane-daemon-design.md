@@ -171,9 +171,9 @@ newest run is almost always lowest - its run-time term is near 0 - so the victim
 grew; on 2026-11-07 at 01:56 it would have been km-to-miles (P 0.18, 3.5 GB), and its 3.5 GB alone covered the
 deficit of about 1 GB.
 
-*Builder's call, to confirm with the person:* within 0.05 of P, the run that grew most over the last minute goes
-first. Without it, two young runs of near-equal P are told apart by booking order, which says nothing about which
-one hurt the machine.
+The person's ruling (2026-11-07): within 0.05 of P, the run that grew most over the last minute goes first.
+Without it, two young runs of near-equal P are told apart by booking order, which says nothing about which one hurt
+the machine.
 
 ### 4.5 Waiters
 
@@ -278,4 +278,4 @@ and sets it between them), `PRESSED_S` 10 s, `OVER_S` 10 s, slack max(256 MB, 10
 
 ## 10. Open, for the person
 
-- 4.4's tie-break by growth (builder's call above).
+Nothing: the person approved this design and confirmed 4.4's tie-break by growth (2026-11-07).
