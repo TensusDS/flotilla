@@ -792,3 +792,37 @@ def test_freezing_off_is_a_warning_with_the_reason_to_keep_it(tmp_path):
 def test_no_swap_means_nothing_can_be_frozen(tmp_path):
     found = collect(tmp_path, swap=lambda: (0, 0))
     assert "no swap - nothing can be frozen" in found["lane"].detail
+
+
+
+# --- the lane daemon (lane daemon design, 4.7) ---
+
+class AllAlive:
+    def alive(self, pid, mark):
+        return True
+
+
+def test_doctor_reports_the_lane_daemon(tmp_path):
+    import fcntl
+    import json
+    import os
+    import time
+    from flotilla.lane import daemon
+    env = {"FLOTILLA_STATE_DIR": str(tmp_path / "state"), "CLAUDE_CONFIG_DIR": str(tmp_path / "claude")}
+    found = doctor._lane_daemon(env, procs=AllAlive(), newest=lambda: ("0.31.0", tmp_path))
+    assert found.status == "ok" and "not running; the next lane client starts it" in found.detail
+    root = tmp_path / "state" / "lane"
+    root.mkdir(parents=True)
+    (root / daemon.BEAT).write_text(json.dumps({"pid": 4242, "mark": "m", "copy": "", "release": "0.31.0",
+                                                "protocol": daemon.PROTOCOL, "tick": time.time(), "why": {},
+                                                "groups": {}, "over": {}}))
+    fd = os.open(root / daemon.LOCK, os.O_RDWR | os.O_CREAT, 0o600)
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    try:
+        found = doctor._lane_daemon(env, procs=AllAlive(), newest=lambda: ("0.31.0", tmp_path))
+        assert found.status == "ok" and found.detail == "running 0.31.0, pid 4242"
+        found = doctor._lane_daemon(env, procs=AllAlive(), newest=lambda: ("0.32.0", tmp_path))
+        assert found.status == "warn" and "0.31.0, older than 0.32.0 installed" in found.detail
+        assert "flotilla lane daemon ensure" in found.fix
+    finally:
+        os.close(fd)

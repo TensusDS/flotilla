@@ -374,10 +374,50 @@ def value_of(run, item, machine, now: dt.datetime) -> str:
     return text
 
 
+def daemon_line(lanes):
+    """The first line of `flotilla lane`: whether the lane daemon runs, and the heartbeat when it does (lane daemon
+    design, 4.9)."""
+    from flotilla.lane import daemon
+    root = paths.state_dir() / "lane"
+    beat = daemon.alive(root, lanes.procs)
+    if beat is not None:
+        return (f"lane daemon: running, pid {beat.pid}, {visible(beat.release)}, last tick "
+                f"{max(0, round(time.time() - beat.tick))} s ago"), beat
+    if os.environ.get(daemon.OFF_ENV, "").strip().lower() == "off":
+        why = f"{daemon.OFF_ENV}=off"
+    else:
+        last = daemon.heartbeat(root)
+        why = (f"no tick for {max(0, round(time.time() - last.tick))} s" if last is not None and daemon.lock_held(root)
+               else "the next lane client starts it")
+    return f"lane daemon: not running - {why}; a new run starts only into an empty lane", None
+
+
+def _groups_text(beat, item) -> str:
+    """A held run's ceiling and pressure as the daemon last read them."""
+    seen = beat.groups.get(item.id) if beat is not None and isinstance(beat.groups, dict) else None
+    if not isinstance(seen, dict):
+        return ""
+    ceiling, pressure = seen.get("ceiling_mb"), seen.get("pressure")
+    parts = [f"ceiling {_gb(ceiling)} GB" if isinstance(ceiling, (int, float)) else "no ceiling"]
+    if isinstance(pressure, (int, float)):
+        parts.append(f"pressure {round(pressure)} %")
+    if seen.get("squeezed") is True:
+        parts.append("squeezed")
+    if seen.get("pressed") is True:
+        parts.append("pressed")
+    return "; " + ", ".join(parts)
+
+
+def _older(item) -> str:
+    return " (an older flotilla: decides for itself)" if (item.rule or 0) < book.RULE else ""
+
+
 def _status(args) -> int:
     table = ProcessTable.for_machine()
     lanes = _lanes(table)
     profile, top, problem = _profile(args.root)
+    line, beat = daemon_line(lanes)
+    print(line)
     # a dead booking blocks nobody since grant skips it, but it misleads whoever reads this; only a process that does
     # not exist is swept here - one failed look (a `ps` that did not answer) must not release a live holder for good
     try:
@@ -396,7 +436,7 @@ def _status(args) -> int:
     room = room_for(profile)(reading)
     counted = book.older_waiting(found, lanes.live)   # an older flotilla waits: every run is counted, none is light
     if not counted:
-        return _status_by_value(lanes, found, held, waiting, reading, now, hist, profile, mode)
+        return _status_by_value(lanes, found, held, waiting, reading, now, hist, profile, mode, beat)
     print(f"capacity: {slots} heavy run(s) at a time (machine.toml lane_capacity); light runs take no place")
     print(_share_line())
     used, total, reserved = book.budget(found, room, hist, lanes.live)
@@ -447,7 +487,7 @@ def _status(args) -> int:
     return 0
 
 
-def _status_by_value(lanes, found, held, waiting, reading, now, hist, profile, mode) -> int:
+def _status_by_value(lanes, found, held, waiting, reading, now, hist, profile, mode, beat=None) -> int:
     """`flotilla lane` while every waiter goes by value: what the machine gives, each run's priority, and why each
     waiter waits (lane shared machine design, section 5)."""
     from flotilla.lane import admission, freeze, policy
@@ -464,6 +504,11 @@ def _status_by_value(lanes, found, held, waiting, reading, now, hist, profile, m
     print(f"heavy runs: {sum(run.par for run in heavies):g} of {m.cpu_factor * m.cpus:g} cores in use "
           f"(lane_cpu_factor {m.cpu_factor:g}), {_gb(sum(run.mem_mb for run in heavies))} of {_gb(room)} GB "
           f"(light reserve {round(m.light_reserve * 100)} %); at most {m.max_runs} runs at once")
+    over = beat.over if beat is not None and isinstance(beat.over, dict) else {}
+    if isinstance(over.get("mb"), (int, float)):
+        print(f"machine: over its floor by {round(over['mb'])} MB for {round(over.get('s') or 0)} s")
+        if over.get("nothing"):
+            print("nothing can be frozen: every run over the line is immortal or pinned")
     if "lane_capacity" in _machine():
         print(f"lane_capacity = {visible(repr(_machine()['lane_capacity']))} in machine.toml no longer has an effect "
               "(0.30); runs share the machine by memory and priority")
@@ -477,7 +522,8 @@ def _status_by_value(lanes, found, held, waiting, reading, now, hist, profile, m
         size = ("heavy" if by_id[item.id].heavy else "light") if item.id in by_id else "heavy"
         worth = f"; {value_of(by_id[item.id], item, m, now)}" if item.id in by_id else ""
         print(f"  {item.id} {size} {item.who} ({item.note or 'no note'}) since {item.since}"
-              f"{_for_how_long(item.since)}{target}; {by}; {state}; {describe_estimate(item, hist)}{worth}")
+              f"{_for_how_long(item.since)}{target}; {by}; {state}; {describe_estimate(item, hist)}{worth}"
+              f"{_groups_text(beat, item)}{_older(item)}")
     for proc in reading.computing:
         print("  " + _foreign(lanes.procs, proc, " (foreign: its memory is simply not free)"))
     if mode == "fair":

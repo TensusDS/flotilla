@@ -3,6 +3,34 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.31.0 - unreleased
+
+The lane gets one scheduler per machine. A field test of 0.30 admitted five heavy runs on light estimates and froze
+nothing, because only a waiter could order a freeze, and nobody waited: the machine fell to 0.5 GB free with 10 GB
+of swap used.
+
+- **One lane daemon per machine decides every start, ceiling, freeze and thaw**, from the whole lane at once, every
+  two seconds. Sessions only ask and wait. Any lane client - a `lane run`, a receipt, `lane take`, an orchestrator
+  at its start - raises it when it is absent, stuck or older than the newest copy installed; it leaves after ten
+  minutes with no booking. `flotilla lane daemon ensure` does the same by hand.
+- **A run's memory is held by a soft ceiling** (`memory.high` of its scope) that starts at its estimate and grows -
+  up to doubling every two seconds - while the machine has room. A run predicted wrong grows into the room there
+  is, and is held the moment the room ends. The ceiling never kills: the kernel moves the run's cold pages to swap.
+- **When the machine goes below its memory floor, or a run stalls at its ceiling with no room to give it**, the
+  run of lowest priority - among near-equal ones, the one that grew most in the last minute - is squeezed (its
+  ceiling lowered under its use) and then frozen, never killed. The first-minute grace does not protect from this;
+  immortal and pinned runs are never touched, and when only they are over the line, `flotilla lane` says so and
+  nothing new starts. The swap budget of 0.30 (80 % used at most) limits every move that pushes pages out.
+- **A wrapper obeys only the live daemon's order**, sealed with a key the daemon makes for itself, and reads the
+  machine for itself before it obeys one: an overload order only while memory reads near the floor, a pressure
+  order only while the run it names reads pressed.
+- **No daemon, a careful lane:** when none can be started, a run already going goes on, a frozen one thaws by its
+  own guards, and a new run starts only into an empty lane. `FLOTILLA_LANE_DAEMON=off` chooses that on purpose.
+- `flotilla lane` begins with the daemon's line and shows each run's ceiling and memory pressure; `flotilla doctor`
+  reports the daemon and its release. The orchestrator post (template 28) raises the daemon at its start.
+- Bookings are rule 5. A booking of 0.30 or older still decides for itself while it waits; the daemon counts its
+  memory and never admits it, and a rule-5 wrapper obeys no order such a client writes.
+
 ## 0.30.1 - 2026-11-06
 
 Security and hygiene of a public repository.

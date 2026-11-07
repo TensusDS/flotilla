@@ -119,6 +119,7 @@ not asked about again.
     flotilla lane                         who holds the machine
     flotilla lane run --for <branch> [--max SECONDS] -- <command>
     flotilla lane stop                    stop your own run in the lane
+    flotilla lane daemon ensure           start the lane's scheduler when it is absent (any lane client does)
     flotilla guard status                 guards on, hooks installed
     flotilla permit next | list | answer <id> allow|session --mark <mark> | answer <id> deny --why "<why>"
 
@@ -184,6 +185,8 @@ not asked about again.
 | a seat waits on `tree switch` | another worktree still has that branch checked out | `git -C <old tree> switch --detach` in the old tree (if it is clean), or retire its session |
 | `spawn` refuses: memory | free memory would fall below `fleet.memory_floor_mb` | retire idle seats, or `--anyway` if you know better |
 | a test run waits a long time | the lane is held, or memory is low | `/flotilla:lane` names the holder and what it waits for |
+| `lane daemon: not running` | the lane's scheduler could not be started, or `FLOTILLA_LANE_DAEMON=off` | a new run starts only into an empty lane until it runs; `flotilla lane daemon ensure` says why it does not start, and its log is `daemon.log` in the lane's state directory |
+| a run's line says `squeezed` or it stands frozen | the machine was below its memory floor, or the run stalled at its memory ceiling with no room to give it | it goes on when there is room; nothing is killed. `/flotilla:lane` shows its ceiling and pressure |
 | a run in the lane says "stopped at the ceiling" | it ran past ten times the slowest measured tier (at least 10 min), or past `--max` | a hang: find it; a long run: `--max <seconds>` or `[lane] max_run_seconds` in the profile |
 | a receipt refuses: "the tree setup ... failed" | the profile's `tests.setup_command` (e.g. `npm ci`) failed in that tree | read the lines it prints; fix the dependency or the network, then run the receipt again |
 | a run looks green but did not finish | it was killed (often out of memory) and the wrapper returned 0 | read the tail of its output for the passed count; use `flotilla lane run` |

@@ -431,7 +431,7 @@ def test_showing_the_lane_sweeps_dead_bookings(tmp_path, monkeypatch):
     dead = book.Book(LocalLogStore(tmp_path / "state" / "lane"), ProcessTable.for_machine()).enqueue(
         "main session 2", "waiting", pid=ended.pid, mark="gone")
     _, out = run_cli("lane", "--root", str(root))
-    assert out.splitlines()[0] == f"swept 1 booking(s) whose process is gone: {dead.id}", out
+    assert out.splitlines()[1] == f"swept 1 booking(s) whose process is gone: {dead.id}", out   # after the daemon
     assert "waiting: nobody" in out
 
 
@@ -799,3 +799,93 @@ def test_a_hint_never_names_another_bookings_scope():   # review, minor 5
     frozen = policy.Run("b4", policy.FROZEN, 900, False, 1, ran_s=120)
     theirs = book.Booking(id="b4", frozen="frozen", order_by="b14", unit="flotilla-lane-b9-9-1.scope")
     assert "flotilla-lane-b9" not in commands.value_of(frozen, theirs, machine, now)
+
+
+
+# --- the lane daemon, as `flotilla lane` shows it (lane daemon design, 4.9) ---
+
+class LiveDaemon:
+    """This test process posing as the lane daemon: its heartbeat, its lock held."""
+
+    def __init__(self, root, groups=None, over=None, release="0.31.0"):
+        import fcntl
+        import json
+        import os
+        import time
+        from flotilla.lane import daemon
+        from flotilla.lane.procs import ProcessTable
+        root.mkdir(parents=True, exist_ok=True)
+        pid = os.getpid()
+        (root / daemon.BEAT).write_text(json.dumps({
+            "pid": pid, "mark": ProcessTable.for_machine().start_mark(pid), "copy": "", "release": release,
+            "protocol": daemon.PROTOCOL, "tick": time.time() - 3, "why": {}, "groups": groups or {},
+            "over": over or {}}))
+        self.fd = os.open(root / daemon.LOCK, os.O_RDWR | os.O_CREAT, 0o600)
+        fcntl.flock(self.fd, fcntl.LOCK_EX)
+
+    def gone(self):
+        import os
+        os.close(self.fd)
+
+
+def held_here(tmp_path, booking="b40", **fields):
+    import os
+    from flotilla.core.storage import LocalLogStore
+    from flotilla.lane import book
+    from flotilla.lane.procs import ProcessTable
+    lanes = book.Book(LocalLogStore(tmp_path / "state" / "lane"), ProcessTable.for_machine())
+    pid = os.getpid()
+    with lanes.store.transaction(book.KEY) as tx:
+        tx.append({"at": lanes._now(), "booking": booking, "state": book.HELD, "who": "main session 1",
+                   "note": "suite", "pid": pid, "mark": ProcessTable.for_machine().start_mark(pid), "rule": 5,
+                   "started": lanes._now(), "path": "value: P 0.10, light", **fields})
+
+
+def test_status_names_the_daemon(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    code, out = run_cli("lane", "--root", str(root))
+    assert code == 0 and out.splitlines()[0].startswith("lane daemon: not running - FLOTILLA_LANE_DAEMON=off; "
+                                                        "a new run starts only into an empty lane"), out
+    monkeypatch.delenv("FLOTILLA_LANE_DAEMON")
+    live = LiveDaemon(tmp_path / "state" / "lane")
+    try:
+        code, out = run_cli("lane", "--root", str(root))
+        first = out.splitlines()[0]
+        assert first.startswith("lane daemon: running, pid ") and ", 0.31.0, last tick " in first, out
+    finally:
+        live.gone()
+
+
+def test_status_prints_ceiling_and_pressure(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    monkeypatch.delenv("FLOTILLA_LANE_DAEMON")
+    held_here(tmp_path)
+    live = LiveDaemon(tmp_path / "state" / "lane", groups={"b40": {"ceiling_mb": 1229, "current_mb": 1100,
+                                                                    "pressure": 3.2, "squeezed": True,
+                                                                    "pressed": False}})
+    try:
+        _code, out = run_cli("lane", "--root", str(root))
+        line = next(line for line in out.splitlines() if line.strip().startswith("b40"))
+        assert "ceiling 1.2 GB, pressure 3 %, squeezed" in line, out
+    finally:
+        live.gone()
+
+
+def test_status_prints_over_and_nothing_to_take(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    monkeypatch.delenv("FLOTILLA_LANE_DAEMON")
+    live = LiveDaemon(tmp_path / "state" / "lane", over={"mb": 700, "s": 14.0, "nothing": 700})
+    try:
+        _code, out = run_cli("lane", "--root", str(root))
+        assert "machine: over its floor by 700 MB for 14 s" in out
+        assert "nothing can be frozen: every run over the line is immortal or pinned" in out
+    finally:
+        live.gone()
+
+
+def test_status_names_an_older_booking(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    held_here(tmp_path, booking="b41", rule=4)
+    _code, out = run_cli("lane", "--root", str(root))
+    line = next(line for line in out.splitlines() if line.strip().startswith("b41"))
+    assert "(an older flotilla: decides for itself)" in line, out

@@ -118,6 +118,7 @@ def collect(*, cwd: Path, env=os.environ, run=subprocess.run, which=shutil.which
         findings.append(Finding("fail", "state", f"{state} is not writable: {err}"))
 
     findings.append(_lane(env, swap))
+    findings.append(_lane_daemon(env))
 
     from flotilla.core import claude_state
     copy = claude_state.copy_in_use(started_in or cwd, running=running, env=env, home=home)   # the user's can shadow
@@ -302,6 +303,25 @@ def _lane(env, swap=None) -> Finding:
     if not parts:
         return Finding("ok", "lane", "runs share the machine by memory and priority; a younger run may be frozen")
     return Finding(status, "lane", "; ".join(parts), fix)
+
+
+def _lane_daemon(env, procs=None, newest=None) -> Finding:
+    """Whether the lane daemon runs, and on which release beside the newest installed (lane daemon design, 4.7)."""
+    from flotilla.core import claude_state
+    from flotilla.lane import daemon
+    from flotilla.lane.procs import ProcessTable
+    root = paths.state_dir(env) / "lane"
+    try:
+        beat = daemon.alive(root, procs or ProcessTable.for_machine())
+        release, _where = (newest or (lambda: daemon.newest_copy(installs=lambda: claude_state.installs(env))))()
+    except Exception as err:  # noqa: BLE001 - a check that could not ask says so; it never reports ok by default
+        return Finding("warn", "lane daemon", f"could not be asked: {err}")
+    if beat is None:
+        return Finding("ok", "lane daemon", "not running; the next lane client starts it")
+    if daemon._version(release) > daemon._version(beat.release):
+        return Finding("warn", "lane daemon", f"running {beat.release}, older than {release} installed",
+                       "`flotilla lane daemon ensure` replaces it (any lane client does the same)")
+    return Finding("ok", "lane daemon", f"running {beat.release}, pid {beat.pid}")
 
 
 def render(findings: list[Finding], quiet: bool) -> list[str]:
