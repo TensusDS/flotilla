@@ -29,13 +29,19 @@ class History:
 
     def run(self, now: float, booking: str, reading: groups.Reading | None, ceiling: int | None) -> dict:
         seen = self._runs.setdefault(booking, {"events": None, "pressed_since": None, "samples": collections.deque(),
-                                                "peak": 0})
+                                                "peak": 0, "refault": None, "at": None})
         if reading is None:
             seen["pressed_since"] = None
             return {"at_ceiling": False, "pressure": None, "pressed_s": 0.0, "grew_mb": 0, "peak_mb": seen["peak"]}
         at = seen["events"] is not None and reading.high_events > seen["events"]
         seen["events"] = reading.high_events
-        pressed = at and ceiling is not None and reading.pressure is not None and reading.pressure >= tick.PRESSED
+        # pressed is hot: held at its ceiling and reading its own pages back from swap. Pressure alone does not tell
+        # it from a cold run pushing pages out (the bench of 2026-11-07: hot 13-19 %, cold up to 17 % while it fills)
+        rate = 0.0
+        if seen["refault"] is not None and seen["at"] is not None and now > seen["at"]:
+            rate = max(0, reading.refault_mb - seen["refault"]) / (now - seen["at"])
+        seen["refault"], seen["at"] = reading.refault_mb, now
+        pressed = at and ceiling is not None and rate >= tick.REFAULT_MB_S
         if not pressed:
             seen["pressed_since"] = None
         elif seen["pressed_since"] is None:

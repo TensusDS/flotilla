@@ -18,9 +18,15 @@ from dataclasses import dataclass
 from flotilla.lane import policy
 from flotilla.lane.policy import FROZEN, ORDERED, RUNNING, WAITING, Machine, Run
 
-#: Pressure ("some avg10", percent) at or above which a run held at its ceiling is pressed: it stalls on memory
-#: instead of working. Builder's number until the bench re-run measures the hot and cold profiles (plan, Task 11).
-PRESSED = 50.0
+#: A run held at its ceiling that reads its own pages back from swap at this rate (MB a second) is pressed: it is
+#: hot, and it stalls instead of working. Measured on the bench of 2026-11-07 under a 1 GB ceiling, past the fill: a
+#: hot run 43-49 MB/s at 0.3 % of its rate, a cold one 0, and a real suite under half its peak about 0.5. Builder's
+#: number between them; awaits the field test.
+REFAULT_MB_S = 10.0
+#: Memory pressure ("some avg10", percent) a run's own group reads while it is hot: the wrapper's check of a pressure
+#: order, and what `flotilla lane` shows. On the same bench a hot run read 9.5-19 %, a cold one 0.2-1.9 once filled.
+#: Pressure alone does not decide: while a cold run pushes pages out it reads up to 17 %. Builder's number.
+PRESSED = 5.0
 #: How long a run must stay pressed, and the machine below its floor, before the daemon acts. Builder's numbers;
 #: await the field test (lane daemon design, section 7).
 PRESSED_S = 10.0

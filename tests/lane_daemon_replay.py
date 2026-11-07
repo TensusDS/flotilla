@@ -49,6 +49,7 @@ class Sim:
     squeezed: bool = False
     heavy: bool = False
     events: int = 0
+    refault: int = 0               # MB read back from swap, all told: a hot run held below its demand, ~45 MB/s
     resident: int = 0
     swapped: int = 0
     frozen_at: float = 0.0
@@ -111,6 +112,8 @@ def run(record_in: dict, decide=tick.tick) -> Record:
                 s.swapped = want - s.resident
                 if want > (s.ceiling if s.ceiling is not None else want):
                     s.events += 1
+                if s.hot and s.swapped > 0:
+                    s.refault += int(45 * TICK_S)   # the bench: 43-49 MB/s
         available = m["total_mb"] - m["outside_mb"] - sum(s.resident for s in sims if s.state in
                                                           (RUNNING, ORDERED, FROZEN))
         swap_used = _swap_used(sims, m)
@@ -131,7 +134,7 @@ def run(record_in: dict, decide=tick.tick) -> Record:
                 continue
             from flotilla.lane import groups
             reading = groups.Reading(s.resident, s.ceiling, s.events,
-                                     90.0 if s.hot and s.swapped > 0 and s.state != FROZEN else 2.0)
+                                     15.0 if s.hot and s.swapped > 0 and s.state != FROZEN else 1.0, s.refault)
             seen = history.run(now, s.id, reading if s.state != WAITING else None, s.ceiling)
             mem = s.estimate_mb if s.state == WAITING else s.resident
             s.heavy = policy.is_heavy(mem, give, was=s.heavy) if s.state != WAITING else s.heavy

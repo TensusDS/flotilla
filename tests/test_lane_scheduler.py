@@ -67,17 +67,23 @@ def raw(lanes, **record):
         tx.append({"at": lanes._now(), **record})
 
 
-def reading(mb, events=0, pressure=1.0, high=None):
-    return groups.Reading(mb, high, events, pressure)
+def reading(mb, events=0, pressure=1.0, high=None, refault=0):
+    return groups.Reading(mb, high, events, pressure, refault)
 
 
-def test_history_pressed_time_counts_only_while_at_the_ceiling_and_pressed():
+def test_history_pressed_time_counts_only_while_at_the_ceiling_and_refaulting():
+    """Pressed is hot: held at its ceiling and reading its own pages back from swap. The bench of 2026-11-07 under a
+    1 GB ceiling: a hot run 43-49 MB/s, a cold one 0; pressure alone overlapped (hot 13-19 %, cold up to 17 %)."""
     h = scheduler.History()
     for step in range(7):
-        got = h.run(step * 2.0, "b1", reading(1000, events=step, pressure=80.0), 1000)
+        got = h.run(step * 2.0, "b1", reading(1000, events=step, refault=step * 30), 1000)   # 15 MB/s
     assert got["pressed_s"] == 10.0 and got["at_ceiling"]
-    assert h.run(14.0, "b1", reading(1000, events=7, pressure=10.0), 1000)["pressed_s"] == 0.0
-    assert h.run(16.0, "b1", reading(1000, events=7, pressure=80.0), 1000)["pressed_s"] == 0.0   # not held there
+    assert h.run(14.0, "b1", reading(1000, events=7, refault=180 + 4), 1000)["pressed_s"] == 0.0   # 2 MB/s: cold
+    assert h.run(16.0, "b1", reading(1000, events=7, refault=300), 1000)["pressed_s"] == 0.0   # not held there
+    cold = scheduler.History()
+    for step in range(7):
+        got = cold.run(step * 2.0, "b2", reading(1000, events=step, pressure=80.0), 1000)   # pushing out, no refault
+    assert got["pressed_s"] == 0.0
 
 
 def test_history_growth_over_a_minute():

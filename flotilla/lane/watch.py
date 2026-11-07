@@ -183,8 +183,7 @@ class Watch:
             return False
         path = self.groups.cgroup_of(pressed.unit, pressed.id)
         reading = self.groups.read(path) if path is not None else None
-        # avg10 decays over the seconds between the daemon's look and this one: half the mark still says pressed
-        return reading is not None and reading.pressure is not None and reading.pressure >= tick.PRESSED / 2
+        return reading is not None and reading.pressure is not None and reading.pressure >= tick.PRESSED
 
     def _reclaim(self, asked: int) -> int:
         """What an order may move to swap: any session writes the journal, so the figure is held to what the swap

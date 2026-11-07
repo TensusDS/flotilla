@@ -73,11 +73,23 @@ against the same profile with no ceiling. Raw: `/home/user/var/demo-2026-11-07/b
 - On a cold run a ceiling is nearly free: it never stops, and the machine gets 2 GB back.
 - On a hot run a ceiling is the worst choice: it stands still and churns 8 GB of swap a minute. A freeze stands
   still quietly and pays 15-20 s of faults after the thaw.
-- The kernel tells the two apart per group: `memory.pressure` (PSI) is the share of time the group's tasks stall on
-  memory. A cold run under its ceiling stalls little; a hot one stalls nearly all the time.
+- The kernel tells the two apart per group - but not by pressure, as this design first assumed. Re-run with the
+  group read every second (2026-11-07), past the fill, under a 1 GB ceiling:
 
-Hence the shape: a ceiling for every run, the daemon reads each group's pressure, and a run that stalls at its
-ceiling with no room to give it is frozen instead.
+  | profile | pressure "some avg10" p10 / p50 / p90 | its own pages read back from swap | `memory.events` high a second |
+  |---|---|---|---|
+  | hot | 9.5-13.1 / 10.8-14.5 / 18.6-19.2 % | 43-49 MB/s | 90-109 |
+  | cold | 0.2 / 1.9 / 16.9-17.4 % | 0 | 0 |
+
+  A cold run pushing its pages out reads as much pressure as a hot one churning, so no pressure mark sits between
+  them. What a hot run does and a cold one never does is read its own pages back: `memory.stat`
+  `workingset_refault_anon`. *(Builder's change after the bench; the person has not ruled on it yet.)*
+- A real suite (this plugin's own lane tests, 737 of them, peak 227 MB) under a ceiling of half its peak: 95.2 s
+  against 87.7 s without (8.5 % slower), pressure 0.1 % (p50), 50 MB read back in all. The cold assumption holds for
+  it; a suite that holds gigabytes is not measured yet.
+
+Hence the shape: a ceiling for every run, the daemon reads each group, and a run held at its ceiling that reads its
+own pages back, with no room to give it, is frozen instead.
 
 ## 4. The daemon
 
@@ -132,8 +144,9 @@ its grace included). A started run gets a ceiling at once (b).
 - an **immortal** or **pinned** run (`lane take`) has no ceiling (`max`): a ceiling below what it would use is a
   hidden freeze, and nothing freezes it.
 
-**c. Pressed without room** *(builder's call)*. A run at its ceiling, with no room to give and pressure "some avg10"
-at or above `PRESSED` for `PRESSED_S` (it is hot: it churns swap and does no work - the bench's worst case), counts
+**c. Pressed without room** *(builder's call)*. A run at its ceiling, with no room to give, reading its own pages
+back from swap at `REFAULT_MB_S` or more for `PRESSED_S` (it is hot: it churns swap and does no work - the bench's
+worst case; section 3), counts
 as a **waiter for memory** with its own P. Among it and the controllable runs of lower P, the **lowest** is frozen
 (4.4's order): the pressed run itself when it is the lowest, else a lower run that gives it room. This holds whether
 or not the machine is over its floor: a ceiling keeps `MemAvailable` up by pushing pages out, so a churning run may
@@ -217,7 +230,12 @@ Any session can write the journal, so today a wrapper obeys an order only when i
 allow (`watch._order_holds`). An overload or pressure order has no waiter, and rulings 5 and 6 lift two of those
 rules, so the check changes:
 - the order must carry the **daemon's pid and start mark**, and they must match `daemon.json` and the process that
-  holds `daemon.lock` now - a line written by anyone else is refused, as a forged waiter is today;
+  holds `daemon.lock` now - and, since a pid and a mark are public, a **seal**: HMAC-SHA256 over everything the
+  order says, with a key the daemon makes when it takes the lock (`daemon.key`, this user's only, never a link). A
+  line written by anyone else is refused, as a forged waiter is today (security review of the first build);
+- the wrapper reads the machine for itself before it obeys a daemon's own order: an overload order only while
+  `MemAvailable` reads below the most cautious live floor plus 512 MB; a pressure order names the pressed run, and
+  holds only while that run's group reads pressure at `PRESSED` or more;
 - the wrapper still refuses, by itself, to be frozen when it is immortal, pinned, or let go - the anti-goals do not
   rest on the daemon's word;
 - a waiter's order (2.7) is written by the daemon too, so it passes the same check; the waiter it names is checked
@@ -245,8 +263,11 @@ The client says why (`lane daemon not running: <reason>`), lifts ceilings it can
 ## 7. Settings
 
 Builder's numbers, each awaits the field test; none is a person's setting until the test says it should be:
-`PRESSED` (pressure "some avg10" that makes a run pressed; the bench re-run reads the hot and cold profiles' values
-and sets it between them), `PRESSED_S` 10 s, `OVER_S` 10 s, slack max(256 MB, 10 %), tick 2 s, idle exit 10 min, heartbeat stale 10 s.
+`REFAULT_MB_S` 10 MB/s (pages read back that make a held run pressed; the bench: hot 43-49, cold 0, a real suite
+about 0.5), `PRESSED` 5 % (pressure a wrapper needs to see in the pressed run's group; hot 9.5-19, cold 0.2-1.9 once
+filled), `PRESSED_S` 10 s, `OVER_S` 10 s, slack max(256 MB, 10 %), a swap reserve of 2 GB below which a held run is
+frozen at once (the replay of section 8 took the swap to 88 % without it, 81.5 % with it), tick 2 s, idle exit
+10 min, heartbeat stale 10 s.
 `lane_freeze` = off now means: ceilings still, no freezing (overload ends at squeeze).
 
 ## 8. How it is tested

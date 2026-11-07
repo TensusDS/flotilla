@@ -21,6 +21,7 @@ class Reading:
     high_mb: int | None        # None: "max"
     high_events: int           # memory.events "high": how often the kernel held it at its ceiling
     pressure: float | None     # memory.pressure "some avg10", percent; None when the file is absent
+    refault_mb: int = 0        # memory.stat workingset_refault_anon: its own pages read back from swap, all told
 
 
 def cgroup_of(unit: str, booking: str, *, run=subprocess.run, root: Path = freeze.CGROUP_ROOT,
@@ -59,7 +60,8 @@ def _mb(text: str) -> int | None:
 
 
 def read(path: Path) -> Reading | None:
-    """The group's memory now, its ceiling, how often it was held there, its pressure; None when it is gone."""
+    """The group's memory now, its ceiling, how often it was held there, its pressure, and how much of its own memory
+    it has read back from swap; None when it is gone."""
     try:
         current = int((path / "memory.current").read_text(encoding="utf-8").strip()) // (1024 * 1024)
         high = _mb((path / "memory.high").read_text(encoding="utf-8"))
@@ -79,7 +81,15 @@ def read(path: Path) -> Reading | None:
         hits = int(events.get("high", 0))
     except ValueError:
         hits = 0
-    return Reading(current, high, hits, pressure)
+    refault = 0
+    try:
+        for line in (path / "memory.stat").read_text(encoding="utf-8").splitlines():
+            name, _, number = line.partition(" ")
+            if name == "workingset_refault_anon":
+                refault = int(number) * 4096 // (1024 * 1024)
+    except (OSError, ValueError):
+        refault = 0
+    return Reading(current, high, hits, pressure, refault)
 
 
 def set_high(path: Path, mb: int | None) -> bool:

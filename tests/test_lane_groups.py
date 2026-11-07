@@ -79,10 +79,12 @@ def test_read_parses_the_four_files(tmp_path):
     (group / "memory.events").write_text("low 0\nhigh 7\nmax 0\noom 0\noom_kill 0\n")
     (group / "memory.pressure").write_text("some avg10=42.50 avg60=10.00 avg300=1.00 total=123\n"
                                            "full avg10=40.00 avg60=9.00 avg300=1.00 total=100\n")
-    assert groups.read(group) == groups.Reading(1024, None, 7, 42.5)
+    assert groups.read(group) == groups.Reading(1024, None, 7, 42.5, 0)   # no memory.stat: no refault counted
+    (group / "memory.stat").write_text("anon 1000\nworkingset_refault_anon 25600\nworkingset_refault_file 9\n")
+    assert groups.read(group).refault_mb == 100   # 25600 pages of 4 KB
     (group / "memory.high").write_text("314572800\n")
     (group / "memory.pressure").unlink()
-    assert groups.read(group) == groups.Reading(1024, 300, 7, None)
+    assert groups.read(group) == groups.Reading(1024, 300, 7, None, 100)
     assert groups.read(tmp_path / "gone") is None
 
 

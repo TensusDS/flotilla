@@ -773,7 +773,7 @@ class Pressures:
 
     def read(self, path):
         from flotilla.lane import groups
-        return groups.Reading(2000, 2000, 9, self.pressure)
+        return groups.Reading(2000, 2000, 9, self.pressure, 0)
 
 
 def test_a_pressure_order_needs_its_run_to_read_pressed(lane):   # security review of c0b73f9
@@ -784,10 +784,10 @@ def test_a_pressure_order_needs_its_run_to_read_pressed(lane):   # security revi
         tx.append({"at": lanes._now(), "booking": pressed, "state": book.HELD,
                    "unit": f"flotilla-lane-{pressed}-11-1.scope"})
     order(lanes, run_id, "pressed", waiter=pressed)
-    calm = watch.Watch(lanes, run_id, FakeSlot(), lambda reading: value(available=300), groups_io=Pressures(3.0))
+    calm = watch.Watch(lanes, run_id, FakeSlot(), lambda reading: value(available=300), groups_io=Pressures(2.0))
     assert calm.step() == "refused"
     order(lanes, run_id, "pressed", waiter=pressed)
-    hot = watch.Watch(lanes, run_id, FakeSlot(), lambda reading: value(available=300), groups_io=Pressures(90.0))
+    hot = watch.Watch(lanes, run_id, FakeSlot(), lambda reading: value(available=300), groups_io=Pressures(9.5))
     assert hot.step() == "froze"
 
 
