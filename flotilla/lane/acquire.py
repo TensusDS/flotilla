@@ -83,12 +83,17 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
             pid: int | None = None, mark: str = "", run_for: str = "", by_hand: bool = False, poll: float = POLL,
             clock=time.monotonic, sleep=time.sleep, say=None, command: str = "", ladder=(), will_run=(),
             project: str = "", room: Callable | None = None, jitter=lambda: random.uniform(0.0, 1.0),
-            value: Callable | None = None, kind: str = "", pinned: bool = False) -> Grant:
+            value: Callable | None = None, kind: str = "", pinned: bool = False,
+            scheduler: Callable[[], str] | None = None, floor_mb: int | None = None) -> Grant:
     """`room(reading)`: what a light run may take on this poll (lane light runs design); None, the count alone.
     `value(reading)`: what a grant by value reads on this poll (lane shared machine design); with it, the run is
-    admitted by memory and priority while no waiter of an older flotilla is live."""
+    admitted by memory and priority while no waiter of an older flotilla is live.
+    `scheduler()`: raises the lane daemon when it is absent (`daemon.ensure`); "" when one runs - the waiter then only
+    asks and waits for the daemon's admit, telling it while its own gates hold it back - else the reason, and the
+    run starts only into an empty lane (lane daemon design, 4.5 and 6)."""
     mine = lanes.enqueue(who, note, pid=pid, mark=mark, run_for=run_for, command=command, ladder=ladder,
-                         will_run=will_run, project=project, kind=kind, pinned=pinned)
+                         will_run=will_run, project=project, kind=kind, pinned=pinned, floor_mb=floor_mb,
+                         by_hand=by_hand)
     deadline = clock() + max(wait, 0)
     said = ""
     seen: dict[str, float] = {}   # each fair choice this waiter was refused for, and since when
@@ -109,7 +114,22 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
             unknown = [answer for answer in reading.answers if answer.blocks is None]
             space = room(reading) if room is not None else None
             worth = value(reading) if value is not None else None
-            if not outright and not unknown:
+            answer = scheduler() if scheduler is not None and value is not None else None
+            gates = "; ".join(f"{a.question}: {a.text}" for a in [*outright, *unknown])
+            if answer == "":   # the daemon decides: ask, and wait for its admit
+                lanes.hold_back(mine.id, gates)
+                item = lanes.bookings().get(mine.id)
+                if item is not None and item.state == book.HELD:
+                    return Grant(item, reading, "")
+                why = gates or f"waits because: {_daemon_why(lanes, mine.id)}"
+            elif answer is not None:   # no daemon: only into an empty lane
+                if not outright and not unknown:
+                    granted = lanes.grant(mine.id, slots=slots, by_hand=by_hand, fallback=True)
+                    if granted is not None:
+                        return Grant(granted, reading, "")
+                why = f"{answer}; a new run starts only into an empty lane: " + in_the_way(
+                    lanes, reading, slots, mine.id, share=mode)
+            if answer is None and not outright and not unknown:
                 granted = lanes.grant(mine.id, slots=slots - len(reading.computing), by_hand=by_hand,
                                      share=mode, skip=frozenset(skip), room=space, value=worth)
                 if granted is not None:
@@ -121,12 +141,13 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
                                           share=mode, skip=frozenset(skip), room=space, value=worth)
                     if granted is not None:
                         return Grant(granted, reading, "")
-            why = in_the_way(lanes, reading, slots, mine.id, share=mode)
-            light = getattr(lanes, "waits_for", "")
-            if light and not outright and not unknown and worth is not None:   # by value: the policy's reason
-                why = f"waits because: {light}; {why}"
-            elif light and not outright and not unknown:   # a light run waits for room beside the heavy ones
-                why = f"{why}; as a light run beside them: {light}"
+            if answer is None:
+                why = in_the_way(lanes, reading, slots, mine.id, share=mode)
+                light = getattr(lanes, "waits_for", "")
+                if light and not outright and not unknown and worth is not None:   # by value: the policy's reason
+                    why = f"waits because: {light}; {why}"
+                elif light and not outright and not unknown:   # a light run waits for room beside the heavy ones
+                    why = f"{why}; as a light run beside them: {light}"
             lasting = [answer for answer in unknown if answer.lasting]
             remaining = deadline - clock()
             if lasting or remaining <= 0:
@@ -141,6 +162,18 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
     except BaseException:
         lanes.leave(mine.id)
         raise
+
+
+def _daemon_why(lanes, booking: str) -> str:
+    """What the daemon said of this waiter at its last tick (`daemon.json`)."""
+    import json
+    from pathlib import Path
+    root = getattr(lanes.store, "root", None)
+    try:
+        said = json.loads((Path(root) / "daemon.json").read_text(encoding="utf-8")).get("why", {}).get(booking)
+    except (OSError, ValueError, TypeError, AttributeError):
+        said = None
+    return said if isinstance(said, str) and said else "the lane daemon has not looked at this run yet"
 
 
 def _nap(lanes, poll: float, remaining: float, *, clock, sleep, stamp=None) -> None:
@@ -159,7 +192,8 @@ def held(lanes, read_machine, *, who: str, note: str, capacity: int | Callable[[
          share: str | Callable[[], str] = "fifo",
          run_for: str = "", poll: float = POLL, clock=time.monotonic, sleep=time.sleep, say=None, command: str = "",
          ladder=(), will_run=(), project: str = "", room: Callable | None = None, value: Callable | None = None,
-         kind: str = "", pinned: bool = False):
+         kind: str = "", pinned: bool = False, scheduler: Callable[[], str] | None = None,
+         floor_mb: int | None = None):
     outer = lanes.bookings().get(os.environ.get(ENV, ""))
     if outer is not None and outer.state == "held" and lanes.live(outer) and \
             (outer.pid is None or outer.pid in set(table.ancestors(os.getpid()))):
@@ -177,7 +211,7 @@ def held(lanes, read_machine, *, who: str, note: str, capacity: int | Callable[[
     grant = acquire(lanes, read_machine, who=who, note=note, capacity=capacity, wait=wait, share=share, pid=pid,
                     mark=table.start_mark(pid) or "", run_for=run_for, poll=poll, clock=clock, sleep=sleep, say=say,
                     command=command, ladder=ladder, will_run=will_run, project=project, room=room, value=value,
-                    kind=kind, pinned=pinned)
+                    kind=kind, pinned=pinned, scheduler=scheduler, floor_mb=floor_mb)
     if grant.booking is None:
         raise LaneRefused(grant.why)
     previous = os.environ.get(ENV)

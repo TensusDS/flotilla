@@ -33,6 +33,9 @@ LOCK, BEAT, LOG = "daemon.lock", "daemon.json", "daemon.log"
 LOG_CAP = 1_000_000
 ERRORS_IN_A_ROW = 3
 FALLBACK = "lane daemon not running: "
+#: `FLOTILLA_LANE_DAEMON=off` keeps clients from raising the daemon: they take the fallback, a new run only into an
+#: empty lane. The test suite sets it, since a test's client would leave a real process behind.
+OFF_ENV = "FLOTILLA_LANE_DAEMON"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -164,10 +167,13 @@ def _stop(beat: Heartbeat, root: Path, sleep) -> None:
             sleep(0.1)
 
 
-def ensure(root: Path, procs, *, newest=newest_copy, spawn=_spawn, now=time.time, sleep=time.sleep,
-           lanes=None) -> str:
+def ensure(root: Path, procs, *, newest=newest_copy, spawn=None, now=time.time, sleep=time.sleep,
+           lanes=None, env=os.environ) -> str:
     """Make sure the newest daemon runs. "" when one already does; else what was done, in one line; a line starting
     FALLBACK when no daemon can be had - the caller then takes the fallback (lane daemon design, section 6)."""
+    spawn = spawn or _spawn   # looked up now, not when this was defined
+    if env.get(OFF_ENV, "").strip().lower() == "off":
+        return f"{FALLBACK}{OFF_ENV}=off"
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
     release, where = newest()

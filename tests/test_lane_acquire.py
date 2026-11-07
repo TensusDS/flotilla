@@ -356,3 +356,76 @@ def test_a_wake_between_looks_does_not_push_the_next_look_back(lanes):
     acquire.acquire(lanes, lambda: reads.append(clock.now) or QUIET, who="main session 1", note="suite",
                     capacity=1, wait=31.0, clock=clock, sleep=sleep, jitter=lambda: 0.0)
     assert reads == [0.0, 15.0, 30.0]
+
+
+# --- rule 5: the daemon admits; with none, only into an empty lane (lane daemon design, 4.5 and 6) ---
+
+import json   # noqa: E402
+from types import SimpleNamespace   # noqa: E402
+
+
+def admit(lanes, booking):
+    lanes.apply(SimpleNamespace(starts=((booking, False, 0.3),), ceilings=(), squeezed=(), restored=(), orders=(),
+                                thaws=(), why=(), over_mb=0), (4242, "m9"))
+
+
+def by_daemon(lanes, reading=QUIET, *, answer="", wait=60.0, clock=None, sleep=None, said=None, by_hand=False):
+    clock = clock or Clock()
+    return acquire.acquire(lanes, lambda: reading, who="main session 1", note="suite", capacity=1, wait=wait,
+                           clock=clock, sleep=sleep or clock.sleep, jitter=lambda: 0.0, value=lambda r: "by value",
+                           scheduler=lambda: answer, floor_mb=2000, say=(said.append if said is not None else None),
+                           by_hand=by_hand)
+
+
+def test_a_waiter_is_admitted_by_the_daemon_not_by_itself(lanes):
+    clock, naps = Clock(), []
+
+    def sleep(seconds):
+        clock.sleep(seconds)
+        naps.append(seconds)
+        if len(naps) == 3:
+            mine = next(iter(lanes.waiters()))
+            assert mine.state == book.WAITING and mine.floor_mb == 2000   # nobody admitted it meanwhile
+            admit(lanes, mine.id)
+    grant = by_daemon(lanes, clock=clock, sleep=sleep)
+    assert grant.booking.state == book.HELD and len(naps) == 3 and grant.booking.path.startswith("value")
+
+
+def test_a_waiter_holds_back_while_its_gates_fail(lanes):
+    busy = Reading([Answer("ci", True, "a CI run on this machine")], [], [])
+    grant = by_daemon(lanes, busy, wait=0.0)
+    item = lanes.bookings()[grant.booking.id] if grant.booking else next(iter(lanes.bookings().values()))
+    assert grant.booking is None and item.held_back == "ci: a CI run on this machine"
+
+
+def test_a_waiter_prints_the_daemons_why(lanes, tmp_path):
+    said, clock = [], Clock()
+
+    def sleep(seconds):
+        clock.sleep(seconds)
+        mine = next(iter(lanes.waiters()), None)
+        if mine is not None and len(said) == 1:
+            (tmp_path / "daemon.json").write_text(json.dumps({"why": {mine.id: "memory: 3000 MB needed"}}))
+    by_daemon(lanes, wait=40.0, clock=clock, sleep=sleep, said=said)
+    assert said[0] == "waiting for the lane: waits because: the lane daemon has not looked at this run yet"
+    assert any("memory: 3000 MB needed" in line for line in said)
+
+
+def test_with_no_daemon_a_run_starts_only_into_an_empty_lane(lanes):
+    holder = take(lanes, who="review session 1")
+    said = []
+    grant = by_daemon(lanes, answer="lane daemon not running: it did not start", wait=0.0, said=said)
+    assert grant.booking is None and "a new run starts only into an empty lane" in grant.why
+    lanes.release(holder.booking.id)
+    grant = by_daemon(lanes, answer="lane daemon not running: it did not start", wait=0.0)
+    assert grant.booking.state == book.HELD and grant.booking.path == "fallback: empty lane"
+
+
+def test_take_by_hand_waits_as_a_by_hand_booking(lanes):
+    clock = Clock()
+
+    def sleep(seconds):
+        clock.sleep(seconds)
+        admit(lanes, next(iter(lanes.waiters())).id)
+    grant = by_daemon(lanes, clock=clock, sleep=sleep, by_hand=True)
+    assert grant.booking.by_hand and grant.booking.pid is None

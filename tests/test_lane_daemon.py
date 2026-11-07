@@ -19,6 +19,12 @@ from flotilla.lane import book, daemon
 REPO = Path(__file__).resolve().parents[1]
 
 
+@pytest.fixture(autouse=True)
+def daemon_on(monkeypatch):
+    """The suite keeps clients from raising a daemon (conftest); these tests are about raising one."""
+    monkeypatch.delenv(daemon.OFF_ENV, raising=False)
+
+
 class Procs:
     def __init__(self, dead=()):
         self.dead = set(dead)
@@ -124,7 +130,7 @@ def newest_is(release, where):
     return lambda: (release, where)
 
 
-def test_ensure_starts_when_nothing_runs(tmp_path):
+def test_ensure_starts_when_nothing_runs(tmp_path, monkeypatch):
     spawn = Spawned(tmp_path, Procs())
     try:
         line = daemon.ensure(tmp_path, Procs(), newest=newest_is(__version__, REPO), spawn=spawn, sleep=lambda s: None)
@@ -235,8 +241,10 @@ def test_serve_hands_over_to_a_newer_copy(tmp_path, monkeypatch):
 # --- real processes ---
 
 def env_for(tmp_path):
-    return {**os.environ, "FLOTILLA_STATE_DIR": str(tmp_path / "state"), "CLAUDE_CONFIG_DIR": str(tmp_path / "claude"),
-            "PYTHONDONTWRITEBYTECODE": "1"}
+    env = {**os.environ, "FLOTILLA_STATE_DIR": str(tmp_path / "state"), "CLAUDE_CONFIG_DIR": str(tmp_path / "claude"),
+           "PYTHONDONTWRITEBYTECODE": "1"}
+    env.pop(daemon.OFF_ENV, None)   # these tests raise the daemon for real, in their own state directory
+    return env
 
 
 def start(tmp_path, *extra):
@@ -312,3 +320,17 @@ def test_daemon_exits_idle(tmp_path):
         assert not daemon.lock_held(lane_root(tmp_path))
     finally:
         stop_all(proc)
+
+
+def test_ensure_takes_the_spawn_named_at_call_time(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(daemon, "_spawn", lambda where, root, handover=False: calls.append(where))
+    daemon.ensure(tmp_path, Procs(), newest=newest_is(__version__, REPO), sleep=lambda s: None)
+    assert calls == [REPO]
+
+
+def test_the_daemon_can_be_switched_off(tmp_path, monkeypatch):
+    monkeypatch.setenv(daemon.OFF_ENV, "off")
+    spawn = Spawned(tmp_path, Procs())
+    assert daemon.ensure(tmp_path, Procs(), spawn=spawn) == f"{daemon.FALLBACK}{daemon.OFF_ENV}=off"
+    assert spawn.calls == []

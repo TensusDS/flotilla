@@ -677,7 +677,7 @@ def test_a_freeze_false_tier_pins_the_receipts_booking(tmp_path, monkeypatch):
     assert not commands.pinned_for(profile, "handover", ["unit"])
 
 
-def test_a_lane_run_books_by_value_with_its_purpose(tmp_path, monkeypatch):
+def test_a_lane_run_books_with_its_purpose(tmp_path, monkeypatch):   # no daemon in tests: the fallback admits it
     from flotilla.core.storage import LocalLogStore
     from flotilla.lane import book
     root = onboarded(tmp_path, monkeypatch)
@@ -686,7 +686,7 @@ def test_a_lane_run_books_by_value_with_its_purpose(tmp_path, monkeypatch):
     assert code == 0
     found = book.Book(LocalLogStore(tmp_path / "state" / "lane"), None).bookings()
     item = max(found.values(), key=lambda item: book.number(item.id) or 0)
-    assert item.kind == "review" and item.path.startswith("value") and item.asked
+    assert item.kind == "review" and item.path == "fallback: empty lane" and item.asked and item.floor_mb
 
 
 

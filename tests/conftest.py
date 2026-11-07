@@ -180,3 +180,16 @@ def no_real_foreign_run(monkeypatch):
             return []
         return real(table, patterns, exclude)
     monkeypatch.setattr(machine, "foreign_runs", only_a_tests_own_table)
+
+
+@pytest.fixture(autouse=True)
+def no_lane_daemon_is_raised(monkeypatch):
+    """A lane client raises the lane daemon when none runs (lane daemon design, ruling 2); in a test that would leave a
+    real process and a scope behind. A test's client takes the fallback instead; the daemon's own tests start it in
+    child processes or pass their own `spawn`."""
+    from flotilla.lane import daemon
+
+    def refused(where, root, handover=False):
+        raise OSError("tests raise no lane daemon")
+    monkeypatch.setattr(daemon, "_spawn", refused)
+    monkeypatch.setenv(daemon.OFF_ENV, "off")   # and a CLI a test runs in a child process does not either

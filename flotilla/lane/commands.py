@@ -182,6 +182,21 @@ def _share_line() -> str:
             "first come, first served")
 
 
+def scheduler_for(table, lanes):
+    """What a waiter calls each poll: raise the lane daemon when it is absent, say once what was done, and answer ""
+    while one runs or the fallback's reason (lane daemon design, ruling 2)."""
+    from flotilla.lane import daemon
+    said = {"line": ""}
+
+    def ask() -> str:
+        line = daemon.ensure(paths.state_dir() / "lane", table, lanes=lanes)
+        if line and not line.startswith(daemon.FALLBACK) and line != said["line"]:
+            print(line)
+            said["line"] = line
+        return line if line.startswith(daemon.FALLBACK) else ""
+    return ask
+
+
 def _lanes(table) -> book.Book:
     return book.Book(LocalLogStore(paths.state_dir() / "lane"), table)
 
@@ -277,7 +292,8 @@ def booked(root, *, note: str, wait: float, run_for: str = "", as_name=None, com
                   capacity=capacity, share=share, wait=wait, table=table, run_for=run_for, say=print, command=text,
                   ladder=ladder, will_run=list(will_run or []), project=project, room=room_for(profile),
                   value=value_for(profile), kind=kind_of(purpose, who, root),
-                  pinned=pinned_for(profile, purpose, will_run)) as grant:
+                  pinned=pinned_for(profile, purpose, will_run), scheduler=scheduler_for(table, lanes),
+                  floor_mb=machine.memory_floor_mb(profile)) as grant:
         yield grant
 
 
@@ -510,7 +526,8 @@ def _take(args) -> int:
     grant = acq.acquire(lanes, _reader(lanes, table, profile, top, problem), who=_who(args.as_name), note=args.note,
                         capacity=capacity, share=share, wait=args.wait, pid=pid, mark=table.start_mark(pid) or "",
                         by_hand=True, say=print, project=_project(args.root), room=room_for(profile),
-                        value=value_for(profile))
+                        value=value_for(profile), scheduler=scheduler_for(table, lanes),
+                        floor_mb=machine.memory_floor_mb(profile))
     if grant.booking is None:
         print(f"refused: {grant.why}")
         return 2
