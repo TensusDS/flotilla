@@ -278,6 +278,7 @@ class Slot:
     ceiling_s: float | None = None            # set by Watch.start(): no freeze in force outlasts it
     done_freezing = False                     # let go or past its ceiling: this process freezes this command no more
     journal_since: float | None = None        # when the watch entered the journal call it is in, by this clock
+    on_scope = None                           # set by Watch.start(): told each scope's name, for the daemon's ceiling
 
     def __init__(self, kind: str, *, run=subprocess.run, root: Path = CGROUP_ROOT, clock=time.monotonic,
                  proc_self: Path = PROC_SELF, table=None, tree_mb=None):
@@ -302,6 +303,11 @@ class Slot:
             return list(argv)
         name = re.sub(r"[^A-Za-z0-9_.-]", "_", booking or "run")[:40]
         self.unit = f"{UNIT_PREFIX}{name}-{os.getpid()}-{next(_scopes)}.scope"
+        if self.on_scope is not None:
+            try:
+                self.on_scope(self.unit)
+            except Exception:  # noqa: BLE001 - a journal that cannot be written leaves the run without a ceiling
+                pass
         return ["systemd-run", "--user", "--scope", "--quiet", "--collect", f"--unit={self.unit}", "-p",
                 "CPUWeight=100", "--", *argv]
 

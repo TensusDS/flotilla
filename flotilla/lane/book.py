@@ -768,9 +768,10 @@ class Book:
                 self._write(tx, booking_id, HELD, path=f"value: P {worth:.2f}, {'heavy' if heavy else 'light'}",
                             started=self._now(), heavy=bool(heavy), **hand)
                 done.append(booking_id)
+            started = set(done)   # a run started in this very tick gets its start ceiling with it
             for booking_id, mb in actions.ceilings:
                 item = found.get(booking_id)
-                if item is None or item.state != HELD:
+                if item is None or (item.state != HELD and booking_id not in started):
                     continue
                 flag = {"squeezed": True} if booking_id in squeezed else \
                     ({"squeezed": False} if booking_id in restored else {})

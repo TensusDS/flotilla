@@ -189,6 +189,7 @@ class Watch:
 
     def start(self) -> None:
         self.slot.done_freezing = False   # a new booking is a new run: an earlier let-go was another run's
+        self.slot.on_scope = lambda unit: self.lanes.scoped(self.booking_id, unit)   # the daemon sets its ceiling
         self._mark(None)
         self.slot.watcher = self.thread
         try:
@@ -202,6 +203,7 @@ class Watch:
         if self.thread.is_alive():
             self.thread.join(timeout=LOOK_S + 2)
         self.slot.watcher = None
+        self.slot.on_scope = None
         self._mark(None)
         if self.root is not None:
             admission.forget_beat(self.root, self.booking_id)

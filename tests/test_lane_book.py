@@ -865,3 +865,11 @@ def test_frozen_counts_daemon_freezes(lane):
     raw(lanes, booking=waits.id, state=book.HELD, frozen="ordered", order_cause="waiter", ordered_at=lanes._now())
     item = lanes.frozen(waits.id, freeze_kind="scope", unit="", group=None, held_mb=100)
     assert (item.held_freezes, item.freezes) == (0, 1)
+
+
+def test_apply_gives_a_run_it_starts_its_ceiling(lane):
+    lanes, _ = lane
+    waiter = lanes.enqueue("w", "", pid=21, mark="m")
+    lanes.apply(actions(starts=((waiter.id, False, 0.3),), ceilings=((waiter.id, 1280),)), (4242, "m9"))
+    found = lanes.bookings()[waiter.id]
+    assert (found.state, found.ceiling_mb) == (book.HELD, 1280)
