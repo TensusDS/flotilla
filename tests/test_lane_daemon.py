@@ -694,3 +694,15 @@ def test_holding_the_lock_open_is_read_from_the_processes_own_descriptors(tmp_pa
             other.wait()
     finally:
         held.release()
+
+
+
+def test_a_beat_from_the_future_is_no_beat(tmp_path):   # fifth review, 3: one write must not keep a dead daemon alive
+    write_beat(tmp_path, beat=time.time() + 1e6)
+    assert daemon.gone(tmp_path)
+    write_beat(tmp_path, beat=time.time() + 1)   # a clock a second apart: still a beat
+    assert not daemon.gone(tmp_path)
+    write_beat(tmp_path, beat=time.time() - 1)
+    assert not daemon.gone(tmp_path)
+    write_beat(tmp_path, beat=time.time() - daemon.STALE_S - 1)
+    assert daemon.gone(tmp_path)

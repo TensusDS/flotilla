@@ -902,7 +902,7 @@ class Ceilings:
 
     def cgroup_of(self, unit, booking):
         from pathlib import Path
-        return Path("/own") if unit else None
+        return Path("/own") / unit if unit else None   # a path per scope: which one was lifted is seen
 
     def read(self, path):
         return None
@@ -930,10 +930,11 @@ def test_a_watch_lifts_its_own_ceiling_when_the_daemon_is_gone(lane):   # final 
     lanes.daemon_double.silent()                     # no beat for the stale bound: gone, judged in one look
     w.step()
     w.step()
-    assert own.writes == [(Path("/own"), None)]      # once, and only its own scope
+    first = Path("/own") / s.unit
+    assert own.writes == [(first, None)]             # once, and only its own scope
     s.unit = f"flotilla-lane-{run_id}-11-2.scope"    # the receipt's next tier, in a scope of its own
     w.step()
-    assert own.writes == [(Path("/own"), None), (Path("/own"), None)]   # its ceiling lifted too (fourth review, 6)
+    assert own.writes == [(first, None), (Path("/own") / s.unit, None)]   # that one lifted too (fourth review, 6)
 
 
 

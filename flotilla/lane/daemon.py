@@ -38,6 +38,8 @@ TICK_S, IDLE_S, STALE_S, TERM_WAIT_S, START_WAIT_S = 2.0, 600.0, 10.0, 5.0, 10.0
 #: its run because one tick was slow. A daemon whose ticks have stopped for STUCK_S - longer than any call a tick
 #: makes (systemctl answers within 10 s) - is stuck, and replaced (final review I3).
 BEAT_S, STUCK_S = 2.0, 60.0
+#: How far ahead of this clock a heartbeat may stand and still count: two clocks of one machine, read a moment apart.
+FUTURE_S = 2.0
 LOCK, BEAT, LOG, KEY = "daemon.lock", "daemon.json", "daemon.log", "daemon.key"
 seal = book.seal
 LOG_CAP = 1_000_000
@@ -170,7 +172,11 @@ def gone(root: Path, *, now=time.time) -> bool:
     """Whether the daemon is gone for a wrapper: no heartbeat, or none for STALE_S. A lock let go with a beat a
     second old is a handover - its successor adopts the ceilings as they stand - not an absence (fourth review, 1)."""
     beat = heartbeat(root)
-    return beat is None or now() - beat.beat > STALE_S
+    if beat is None:
+        return True
+    age = now() - beat.beat
+    # a beat from the future is no beat: one write of the file must not keep a dead daemon present (fifth review, 3)
+    return not -FUTURE_S <= age <= STALE_S
 
 
 def signed(root: Path, procs, item) -> bool:

@@ -151,11 +151,12 @@ class Watch:
 
     def _order_holds(self, item) -> bool:
         """Whether to obey an order on this booking. Any session writes the journal, so only an order the live lane
-        daemon signed counts - its pid and start mark, matched against its heartbeat and the lock it holds now - and
-        it must be fresh. A waiter's order then names a live waiter this run may be frozen for by the rules, its
-        first minute included; an overload's or a pressure's needs no waiter (the person's ruling 5), but never
-        freezes an immortal or pinned run whatever the daemon says. A run let go is never frozen again in this
-        process, whatever a journal line says (review of f32d91c; lane daemon design, 4.8)."""
+        daemon signed counts - its pid, start mark and seal - and it must be fresh and newer than this wrapper's own
+        last thaw. No order of any cause freezes a run immortal by this wrapper's own count of its run time. A
+        waiter's order then names a live waiter this run may be frozen for by the rules, its first minute included;
+        an overload's or a pressure's needs no waiter (the person's ruling 5) and holds only while this wrapper's own
+        readings of the machine agree. A run let go is never frozen again in this process, whatever a journal line
+        says (review of f32d91c; lane daemon design, 4.8)."""
         import datetime as dt
         if getattr(self.slot, "done_freezing", False):
             return False
@@ -179,9 +180,9 @@ class Watch:
             runs, machine = admission.view(found, estimate.history(found, now=now), value, now=now,
                                            live=self.lanes.live, mine="")
             me = next((run for run in runs if run.id == self.booking_id), None)
-            # immortal by the journal or by this wrapper's own count of its run time - which no line can make young
-            # again. Who is the right victim the wrapper does not judge: a second copy of the daemon's choice, fed
-            # from the journal, drifted from it and could be fed (the person's ruling, 2026-11-07: an honest bound)
+            # immortal by the journal (its own count was asked above, for every cause). Who is the right victim the
+            # wrapper does not judge: a second copy of the daemon's choice, fed from the journal, drifted from it and
+            # could be fed (the person's ruling, 2026-11-07: an honest bound)
             if me is None or me.pinned or policy.immortal(me, machine.immortal_s):
                 return False
             return self._over_now(found, value) if item.order_cause == "over" else self._pressed_now(found, item)

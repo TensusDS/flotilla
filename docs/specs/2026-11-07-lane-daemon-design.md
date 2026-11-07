@@ -343,4 +343,12 @@ Builder's changes that await the person:
 - after the reviews: the heartbeat thread and the 60 s bound on ticks; a wrapper lifting its own ceiling; a
   restarted daemon adopting each group's ceiling and forgetting which runs were squeezed; a daemon on SIGTERM
   leaving its ceilings to its successor (section 4.7); a booking's floor believed up to a quarter of the machine
-  (4.3); a wrapper counting its own run time for immortality (4.8).
+  (4.3); a wrapper counting its own run time for immortality (4.8);
+- the daemon is gone for a wrapper only when its heartbeat is missing, older than 10 s, or dated ahead of the clock -
+  not when its lock is briefly free in a handover (4.7). Under load a replacement can still take more than 10 s, and
+  wrappers then lift and thaw; the successor holds the runs again at their use plus the slack;
+- **open: a cap on freezes.** Each freeze lasts at most the freeze ceiling (10 min), but their number is not capped:
+  the daemon may freeze a run again after a thaw, and so may a session that reads the key, for as long as the
+  machine's readings agree - frozen time does not count towards immortality, so such a run can be held frozen most
+  of the time. A cap on the time a booking may stand frozen in all (say 10 min) would bound both; it would also stop
+  the daemon from freezing that run again once spent. The person's to decide.
