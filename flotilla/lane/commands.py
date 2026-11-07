@@ -649,10 +649,26 @@ def _stop_run(args) -> int:
     return 1
 
 
+def _daemon(args) -> int:
+    """`flotilla lane daemon run|ensure` (lane daemon design, 4.1 and 4.7)."""
+    from flotilla.lane import daemon
+    root = paths.state_dir() / "lane"
+    if getattr(args, "daemon_action", None) == "run":
+        return daemon.serve(root, handover=args.handover, idle_s=args.idle if args.idle else daemon.IDLE_S)
+    if getattr(args, "daemon_action", None) == "ensure":
+        table = ProcessTable.for_machine()
+        line = daemon.ensure(root, table, lanes=_lanes(table))
+        if line:
+            print(line)
+        return 1 if line.startswith(daemon.FALLBACK) else 0
+    print("flotilla lane daemon run | ensure")
+    return 2
+
+
 def run_lane_command(args) -> int:
     try:
         return {None: _status, "status": _status, "take": _take, "release": _release, "run": _run, "sweep": _sweep,
-                "stop": _stop_run}[args.action](args)
+                "stop": _stop_run, "daemon": _daemon}[args.action](args)
     except (StorageCorrupt, config.ConfigError, MoveRefused) as err:
         print(f"refused: {err}")
         return 2

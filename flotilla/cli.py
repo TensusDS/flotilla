@@ -351,6 +351,12 @@ def build_parser() -> argparse.ArgumentParser:
     lane_actions.add_parser("sweep", help="remove bookings whose process is gone")
     lane_stop = lane_actions.add_parser("stop", help="stop your own run in the lane, by the pid flotilla recorded")
     lane_stop.add_argument("--booking", default=None)
+    lane_daemon = lane_actions.add_parser("daemon", help="the lane's scheduler: one per machine, raised by any client")
+    daemon_actions = lane_daemon.add_subparsers(dest="daemon_action")
+    daemon_run = daemon_actions.add_parser("run", help="run the daemon here (lane clients start it themselves)")
+    daemon_run.add_argument("--handover", action="store_true", help=_argparse.SUPPRESS)
+    daemon_run.add_argument("--idle", type=float, default=None, help=_argparse.SUPPRESS)
+    daemon_actions.add_parser("ensure", help="start the daemon when it is absent, stuck or older than this copy")
     lane_actions.choices["status"].add_argument("--root", default=_argparse.SUPPRESS)
     for item in (lane_take, lane_release, lane_run, lane_actions.choices["sweep"], lane_stop):
         item.add_argument("--root", default=_argparse.SUPPRESS)
