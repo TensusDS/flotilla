@@ -45,6 +45,8 @@ class FakeSlot:
     def frozen_seconds(self):
         return self.seconds
 
+    done_freezing = False
+
 
 def value(available=9000, tree=5000):
     return admission.Value(cpus=8, cpu_factor=1.5, light_reserve=0.2, immortal_s=900.0, max_runs=10,
@@ -496,3 +498,37 @@ def test_the_ceiling_holds_when_a_crafted_line_turns_the_record_back_to_ordered(
     assert w.step() == "let go" and not s.frozen()
     assert lanes.bookings()[mine].unanswered   # and it does not freeze for that order once thawed
     assert w.step() != "froze" and not s.frozen()
+
+
+
+def test_the_ceiling_thaws_before_it_writes_the_journal(lane, monkeypatch):   # review of f32d91c, I-A
+    lanes, mine, _waiter, _later, _root = lane
+    s = FakeSlot()
+    tick = {"now": 0.0}
+    ceiling = lambda reading: dataclasses.replace(value(available=300), freeze_ceiling_s=600.0)  # noqa: E731
+    w = watch.Watch(lanes, mine, s, ceiling, clock=lambda: tick["now"], let_go_s=120, swap=lambda: (8000, 8000))
+    assert w.step() == "froze"
+    tick["now"] = 601.0
+
+    def locked(*a, **kw):
+        raise TimeoutError("the journal's lock is held")
+    monkeypatch.setattr(lanes, "thaw", locked)
+    monkeypatch.setattr(lanes, "unfreezable", locked)
+    with pytest.raises(TimeoutError):
+        w.step()
+    assert not s.frozen()   # thawed first: the journal could not be written, the command runs all the same
+
+
+def test_a_run_let_go_is_never_frozen_again_whatever_the_journal_says(lane):   # review of f32d91c, M-1
+    lanes, mine, waiter, _later, _root = lane
+    s = FakeSlot()
+    tick = {"now": 0.0}
+    ceiling = lambda reading: dataclasses.replace(value(available=300), freeze_ceiling_s=600.0)  # noqa: E731
+    w = watch.Watch(lanes, mine, s, ceiling, clock=lambda: tick["now"], let_go_s=120, swap=lambda: (8000, 8000))
+    assert w.step() == "froze"
+    tick["now"] = 601.0
+    assert w.step() == "let go"
+    long_ago = (lanes.clock() - dt.timedelta(seconds=70)).isoformat(timespec="seconds")
+    # crafted: the mark lifted, the first minute and the run time set to pass the rules, and a fresh order
+    _order(lanes, mine, order_by=waiter, ordered_at=lanes._now(), unanswered=False, started=long_ago, ran_s=10)
+    assert w.step() == "refused" and not s.frozen()

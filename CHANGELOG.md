@@ -27,10 +27,11 @@ Security and hygiene of a public repository.
     stop by signal, is let go after two minutes when its waiter still has not started.
   - What this does not do: a line written as the same user can name any live process with its real start mark as a
     waiter, and a run may be frozen for it within the lane's rules - for two minutes, and at most for the ceiling.
-    "Not frozen again" is a mark in the journal, which a crafted line can lift; every single freeze still ends. A crafted line can also have a session continue any stopped process of the user whose environment names no
-    other booking, by giving its pid and start mark, which are not secret. The lane bounds what a crafted line can
-    do; it cannot tell who wrote it. The journal is a booking, not a
-    lock.
+    A run that was let go is not frozen again by its own process, whatever a later line says; the ceiling is kept
+    by the frozen command's own loop, with no journal, so not even a held journal lock keeps it frozen. A crafted
+    line can also have a session continue any stopped process of the user whose environment names no other
+    booking, by giving its pid and start mark, which are not secret. The lane bounds what a crafted line can do; it
+    cannot tell who wrote it. The journal is a booking, not a lock.
 - **No project or client names, and no personal paths, in the repository.** Field-test reports are no longer kept
   here (they name the projects they ran on); tests, specs, plans, the changelog and code comments name their
   projects neutrally.

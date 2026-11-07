@@ -385,3 +385,24 @@ def test_stopped_asks_the_named_leader_only(tmp_path):   # review: a running anc
         (proc / str(pid) / "statm").write_text("100 10 0 0 0 0 0")
     assert freeze.stopped(10, proc_root=proc) is False   # it runs: what is stopped below it is another matter
     assert freeze.stopped(11, proc_root=proc) is True
+
+
+
+def test_the_slot_keeps_its_own_ceiling_without_the_journal():   # review of f32d91c, I-A
+    # the watch may be blocked on the journal's lock - held by a process inside the frozen command itself - so the
+    # command's own loop thaws the slot at the ceiling, with no journal at all, and the slot is done freezing
+    tick = {"now": 0.0}
+    s = freeze.Slot(freeze.SIGNAL, clock=lambda: tick["now"])
+    s.ceiling_s = 600.0
+    s.freeze(0)
+    alive = threading.Event()
+    watcher = threading.Thread(target=alive.wait)
+    watcher.start()
+    s.watcher = watcher   # alive, but blocked
+    try:
+        tick["now"] = 300.0
+        assert not s.guard() and s.frozen() and s.frozen_for() == 300.0
+        tick["now"] = 600.0
+        assert s.guard() and not s.frozen() and s.done_freezing
+    finally:
+        alive.set()

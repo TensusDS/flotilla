@@ -271,6 +271,8 @@ class Slot:
     """The holder process's one running command - what a freeze order acts on."""
 
     watcher: threading.Thread | None = None   # set by Watch.start(): the thread that obeys orders
+    ceiling_s: float | None = None            # set by Watch.start(): no freeze in force outlasts it
+    done_freezing = False                     # let go or past its ceiling: this process freezes this command no more
 
     def __init__(self, kind: str, *, run=subprocess.run, root: Path = CGROUP_ROOT, clock=time.monotonic,
                  proc_self: Path = PROC_SELF, table=None, tree_mb=None):
@@ -372,6 +374,11 @@ class Slot:
     def frozen(self) -> bool:
         return self._frozen_at is not None
 
+    def frozen_for(self) -> float:
+        """How long the freeze in force has lasted; 0 when not frozen."""
+        with self._lock:
+            return max(0.0, self.clock() - self._frozen_at) if self._frozen_at is not None else 0.0
+
     def frozen_seconds(self) -> float:
         """All the time this slot has been frozen in this process, the freeze in force included."""
         with self._lock:
@@ -387,12 +394,16 @@ class Slot:
             sleep(0.2)
 
     def guard(self) -> bool:
-        """Thaw when frozen and the watch that would thaw it is gone: a dead watch never leaves a command frozen.
-        True when it thawed."""
+        """Thaw when frozen and the watch that would thaw it is gone, or the freeze in force has reached its ceiling:
+        the command's own loop asks this every half second, with no journal and no lock, so neither a dead watch nor
+        one blocked on the journal's lock - held, maybe, by a process inside this very command - leaves it frozen
+        (review of f32d91c). True when it thawed."""
         watcher = self.watcher
         if self.frozen() and watcher is not None and not watcher.is_alive():
-            self.thaw()
-            return True
+            return self.thaw()
+        if self.frozen() and self.ceiling_s is not None and self.frozen_for() >= self.ceiling_s:
+            self.done_freezing = True
+            return self.thaw()
         return False
 
 

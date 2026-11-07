@@ -48,10 +48,12 @@ class Watch:
                 self.clock() - self._frozen_since >= self.value_of(None).freeze_ceiling_s:
             # no freeze outlasts its ceiling, whatever holds its room and whatever the record says now - a waiter
             # that turned into a take by hand, a forged one, a line that turned the record back to "ordered", or a
-            # queue that never gives the room back (the person's ruling, 2026-11-06)
+            # queue that never gives the room back (the person's ruling, 2026-11-06). Thawed first, the journal
+            # after: its lock may be held by a process inside this very command (review of f32d91c)
+            self.slot.done_freezing = True
+            self._thaw()
             if self.lanes.thaw(self.booking_id, self.value_of(None), force=True, never_again=True) is None:
                 self.lanes.unfreezable(self.booking_id)   # the record did not say frozen: it is never ordered again
-            self._thaw()
             return "let go"
         if item.frozen == "ordered" and not self.slot.frozen():
             if not self._order_holds(item):
@@ -72,6 +74,7 @@ class Watch:
                     self.clock() - self._frozen_since >= self.let_go_s:
                 if self.lanes.thaw(self.booking_id, self.value_of(None), force=True, never_again=True,
                                    while_waits=item.order_by) is not None:
+                    self.slot.done_freezing = True
                     self._thaw()
                     return "let go"
             if self.lanes.thaw(self.booking_id, self.value_of(None)) is not None:
@@ -85,8 +88,11 @@ class Watch:
 
     def _order_holds(self, item) -> bool:
         """Whether an order on this booking is one the policy would give: any session writes the journal, so the
-        holder obeys only a fresh order from a live waiter this run may be frozen for (security review of 0.30.0)."""
+        holder obeys only a fresh order from a live waiter this run may be frozen for (security review of 0.30.0).
+        A run let go is never frozen again in this process, whatever a journal line says (review of f32d91c)."""
         import datetime as dt
+        if getattr(self.slot, "done_freezing", False):
+            return False
         from flotilla.lane import estimate, policy
         found = self.lanes.bookings()
         waiter = found.get(item.order_by)
@@ -155,6 +161,10 @@ class Watch:
 
     def start(self) -> None:
         self.slot.watcher = self.thread
+        try:
+            self.slot.ceiling_s = self.value_of(None).freeze_ceiling_s
+        except Exception:  # noqa: BLE001 - an unreadable setting keeps the default the slot was given
+            pass
         self.thread.start()
 
     def stop(self) -> None:
