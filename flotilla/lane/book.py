@@ -214,10 +214,12 @@ class Booking:
     order_sig: str = ""                              # the daemon's seal over its order (lane daemon design, 4.8)
 
 
-def seal(key: bytes, booking: str, cause: str, ordered_at: str, order_by: str, pid, mark: str) -> str:
-    """The daemon's seal over one order: HMAC-SHA256 with the key only the daemon makes, over everything the order
-    says - a line copying a pid and a mark, or turning one order into another, does not carry it."""
-    text = "\n".join([booking, cause, ordered_at, order_by, str(pid), mark])
+def seal(key: bytes, booking: str, cause: str, ordered_at: str, order_by: str, pid, mark: str, reclaim_mb) -> str:
+    """The daemon's seal over one order: HMAC-SHA256 with the key the daemon makes, over everything the order says -
+    a line copying a pid and a mark, or turning one order into another, does not carry it. The key is this user's
+    file: the seal stops a writer of the journal alone (an older flotilla, a client gone wrong), not a session that
+    reads the user's files - against that, the wrapper's own checks hold (final review I4)."""
+    text = "\n".join([booking, cause, ordered_at, order_by, str(pid), mark, str(int(reclaim_mb or 0))])
     return hmac.new(key, text.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
@@ -798,7 +800,8 @@ class Book:
                 at = self._now()
                 self._write(tx, booking_id, HELD, frozen="ordered", order_by=waiter, order_cause=cause,
                             order_pid=pid, order_mark=mark, ordered_at=at, reclaim_mb=int(reclaim),
-                            order_sig=seal(key, booking_id, cause, at, waiter, pid, mark) if key else "")
+                            order_sig=seal(key, booking_id, cause, at, waiter, pid, mark, int(reclaim)) if key
+                            else "")
                 done.append(booking_id)
             for booking_id in actions.thaws:
                 item = found.get(booking_id)

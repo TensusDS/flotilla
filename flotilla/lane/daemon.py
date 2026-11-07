@@ -148,7 +148,8 @@ def signed(root: Path, procs, item) -> bool:
     found = key(root)
     if found is None or not item.order_sig:
         return False
-    expected = seal(found, item.id, item.order_cause, item.ordered_at, item.order_by, item.order_pid, item.order_mark)
+    expected = seal(found, item.id, item.order_cause, item.ordered_at, item.order_by, item.order_pid, item.order_mark,
+                    item.reclaim_mb)
     return hmac.compare_digest(expected, item.order_sig)
 
 

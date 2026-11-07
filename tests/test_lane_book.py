@@ -883,7 +883,7 @@ def test_apply_seals_its_orders(lane):   # security review of c0b73f9: a pid and
     key = b"k" * 32
     lanes.apply(actions(orders=((victim.id, 700, "over", ""),)), (4242, "m9", key))
     item = lanes.bookings()[victim.id]
-    assert item.order_sig == daemon.seal(key, item.id, "over", item.ordered_at, "", 4242, "m9")
+    assert item.order_sig == daemon.seal(key, item.id, "over", item.ordered_at, "", 4242, "m9", 700)
     assert len(item.order_sig) == 64
 
 

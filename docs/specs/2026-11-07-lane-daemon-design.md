@@ -232,10 +232,15 @@ rules, so the check changes:
 - the order must carry the **daemon's pid and start mark**, and they must match `daemon.json` and the process that
   holds `daemon.lock` now - and, since a pid and a mark are public, a **seal**: HMAC-SHA256 over everything the
   order says, with a key the daemon makes when it takes the lock (`daemon.key`, this user's only, never a link). A
-  line written by anyone else is refused, as a forged waiter is today (security review of the first build);
+  line written by anyone else is refused, as a forged waiter is today (security review of the first build). The
+  seal covers the reclaim too, and an order given before the run's last start or thaw is refused. Its bound, said
+  plainly: the key is this user's file, so the seal stops a writer of the journal alone - an older flotilla, a client
+  gone wrong - and not a session that reads the user's files. Against that, the wrapper's own checks below are the
+  line, and they read nothing from the journal unclamped;
 - the wrapper reads the machine for itself before it obeys a daemon's own order: an overload order only while
   `MemAvailable` reads below the most cautious live floor plus 512 MB; a pressure order names the pressed run, and
-  holds only while that run's group reads pressure at `PRESSED` or more;
+  holds only while that run's group, looked at for a second by the wrapper itself, is held at its ceiling and reads
+  its pages back at `REFAULT_MB_S` or more - the daemon's own rule;
 - the wrapper still refuses, by itself, to be frozen when it is immortal, pinned, or let go - the anti-goals do not
   rest on the daemon's word;
 - a waiter's order (2.7) is written by the daemon too, so it passes the same check; the waiter it names is checked

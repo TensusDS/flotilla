@@ -101,10 +101,11 @@ def write_key(root, key=KEY, mode=0o600):
     os.chmod(root / daemon.KEY, mode)
 
 
-def ordered(pid=4242, mark="m9", cause="over", by="", at="2026-11-07T10:00:00+00:00", key=KEY, booking="b5"):
+def ordered(pid=4242, mark="m9", cause="over", by="", at="2026-11-07T10:00:00+00:00", key=KEY, booking="b5",
+            reclaim=700):
     from types import SimpleNamespace
     return SimpleNamespace(id=booking, order_pid=pid, order_mark=mark, order_cause=cause, order_by=by, ordered_at=at,
-                           order_sig=daemon.seal(key, booking, cause, at, by, pid, mark))
+                           reclaim_mb=reclaim, order_sig=daemon.seal(key, booking, cause, at, by, pid, mark, reclaim))
 
 
 def test_signed_matches_only_the_live_daemon(tmp_path):   # review focus 1
@@ -133,6 +134,9 @@ def test_signed_needs_the_daemons_seal(tmp_path):   # security review of c0b73f9
         moved = ordered()
         moved.order_cause = "pressed"     # a sealed order turned into another
         assert not daemon.signed(tmp_path, Procs(), moved)
+        bigger = ordered()
+        bigger.reclaim_mb = 9999          # final review I4: what it moves to swap is sealed too
+        assert not daemon.signed(tmp_path, Procs(), bigger)
         write_key(tmp_path, mode=0o644)   # a key others may read is no key
         assert not daemon.signed(tmp_path, Procs(), ordered())
         (tmp_path / daemon.KEY).unlink()

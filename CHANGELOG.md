@@ -23,7 +23,9 @@ of swap used.
   nothing new starts. The swap budget of 0.30 (80 % used at most) limits every move that pushes pages out.
 - **A wrapper obeys only the live daemon's order**, sealed with a key the daemon makes for itself, and reads the
   machine for itself before it obeys one: an overload order only while memory reads near the floor, a pressure
-  order only while the run it names reads pressed.
+  order only while the run it names is held at its ceiling and reads its own pages back from swap. What the seal
+  does not do: the key is the user's own file, so it stops a writer of the journal alone, not a session that reads
+  the user's files; against that, the wrapper's own readings are the line.
 - **No daemon, a careful lane:** when none can be started, a run already going goes on, a frozen one thaws by its
   own guards, and a new run starts only into an empty lane. `FLOTILLA_LANE_DAEMON=off` chooses that on purpose.
 - `flotilla lane` begins with the daemon's line and shows each run's ceiling and memory pressure; `flotilla doctor`

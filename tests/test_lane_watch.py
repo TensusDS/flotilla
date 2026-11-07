@@ -86,7 +86,7 @@ def sign(lanes, booking, cause="waiter", by=DAEMON, key=KEY):
     """The daemon's signature and seal on the order a booking carries now."""
     from flotilla.lane import daemon
     item = lanes.bookings()[booking]
-    seal = daemon.seal(key, booking, cause, item.ordered_at, item.order_by, by[0], by[1])
+    seal = daemon.seal(key, booking, cause, item.ordered_at, item.order_by, by[0], by[1], item.reclaim_mb or 0)
     with lanes.store.transaction(book.KEY) as tx:
         tx.append({"at": lanes._now(), "booking": booking, "state": item.state, "order_cause": cause,
                    "order_pid": by[0], "order_mark": by[1], "order_sig": seal})
@@ -100,7 +100,7 @@ def order(lanes, booking, cause, by=DAEMON, waiter="", key=KEY):
         tx.append({"at": at, "booking": booking, "state": book.HELD, "frozen": "ordered",
                    "order_by": waiter, "order_cause": cause, "order_pid": by[0], "order_mark": by[1],
                    "ordered_at": at, "reclaim_mb": 700,
-                   "order_sig": daemon.seal(key, booking, cause, at, waiter, by[0], by[1])})
+                   "order_sig": daemon.seal(key, booking, cause, at, waiter, by[0], by[1], 700)})
 
 
 @pytest.fixture()
@@ -394,6 +394,7 @@ def test_an_order_is_clamped_to_the_swap_budget(lane):   # final review I7: the 
     lanes, mine, _waiter, _later, _root = lane
     with lanes.store.transaction(book.KEY) as tx:
         tx.append({"at": lanes._now(), "booking": mine, "state": book.HELD, "reclaim_mb": 9_000_000})
+    sign(lanes, mine)   # the daemon's own order asking too much: the reclaim is sealed now, and still clamped
     s = FakeSlot()
     w = watch.Watch(lanes, mine, s, lambda reading: value(available=300), swap=lambda: (8000, 8000))
     assert w.step() == "froze" and s.calls == [("freeze", 6400)]   # 80 % of 8000, none used
@@ -762,10 +763,11 @@ def test_an_overload_order_is_refused_when_the_machine_is_not_over(lane):   # se
 
 
 class Pressures:
-    """A run's group as the wrapper reads it, for a pressure order."""
+    """A run's group as the wrapper reads it, for a pressure order: each read a second on, `refault_s` MB read back
+    from swap and `events_s` hits of its ceiling a second."""
 
-    def __init__(self, pressure):
-        self.pressure = pressure
+    def __init__(self, pressure, refault_s=0, events_s=0):
+        self.pressure, self.refault_s, self.events_s, self.reads = pressure, refault_s, events_s, 0
 
     def cgroup_of(self, unit, booking):
         from pathlib import Path
@@ -773,7 +775,8 @@ class Pressures:
 
     def read(self, path):
         from flotilla.lane import groups
-        return groups.Reading(2000, 2000, 9, self.pressure, 0)
+        self.reads += 1
+        return groups.Reading(2000, 2000, 9 + self.events_s * self.reads, self.pressure, self.refault_s * self.reads)
 
 
 def test_a_pressure_order_needs_its_run_to_read_pressed(lane):   # security review of c0b73f9
@@ -784,10 +787,18 @@ def test_a_pressure_order_needs_its_run_to_read_pressed(lane):   # security revi
         tx.append({"at": lanes._now(), "booking": pressed, "state": book.HELD,
                    "unit": f"flotilla-lane-{pressed}-11-1.scope"})
     order(lanes, run_id, "pressed", waiter=pressed)
-    calm = watch.Watch(lanes, run_id, FakeSlot(), lambda reading: value(available=300), groups_io=Pressures(2.0))
+    calm = watch.Watch(lanes, run_id, FakeSlot(), lambda reading: value(available=300), groups_io=Pressures(2.0),
+                       sleep=lambda s: None)
     assert calm.step() == "refused"
     order(lanes, run_id, "pressed", waiter=pressed)
-    hot = watch.Watch(lanes, run_id, FakeSlot(), lambda reading: value(available=300), groups_io=Pressures(9.5))
+    # the second background review: pressure alone is weaker than the daemon's rule - a cold run pushing its pages
+    # out reads 17 % - so the wrapper asks the daemon's own question: held at its ceiling and reading pages back
+    pushing = watch.Watch(lanes, run_id, FakeSlot(), lambda reading: value(available=300),
+                          groups_io=Pressures(17.0, refault_s=0, events_s=50), sleep=lambda s: None)
+    assert pushing.step() == "refused"
+    order(lanes, run_id, "pressed", waiter=pressed)
+    hot = watch.Watch(lanes, run_id, FakeSlot(), lambda reading: value(available=300),
+                      groups_io=Pressures(9.5, refault_s=45, events_s=100), sleep=lambda s: None)
     assert hot.step() == "froze"
 
 
@@ -854,3 +865,19 @@ def test_an_overload_order_is_judged_against_a_floor_in_reason(lane, monkeypatch
     order(lanes, run_id, "over")
     s = FakeSlot()
     assert watch.Watch(lanes, run_id, s, lambda reading: value(available=9000)).step() == "refused"
+
+
+
+def test_an_order_replayed_after_a_thaw_is_refused(lane):   # final review I4: a sealed order is no ticket for ever
+    lanes, _mine, _waiter, later, _root = lane
+    run_id = young(lanes, later)
+    order(lanes, run_id, "over")
+    old = lanes.bookings()[run_id]
+    later(5)
+    daemon_thaws(lanes, run_id)   # the daemon thawed it since; the same order line written again
+    with lanes.store.transaction(book.KEY) as tx:
+        tx.append({"at": lanes._now(), "booking": run_id, "state": book.HELD, "frozen": "ordered",
+                   "order_by": old.order_by, "order_cause": old.order_cause, "order_pid": old.order_pid,
+                   "order_mark": old.order_mark, "ordered_at": old.ordered_at, "reclaim_mb": old.reclaim_mb,
+                   "order_sig": old.order_sig})
+    assert watch.Watch(lanes, run_id, FakeSlot(), lambda reading: value(available=300)).step() == "refused"

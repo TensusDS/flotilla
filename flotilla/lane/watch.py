@@ -23,6 +23,8 @@ LET_GO_S = 120.0   # a freeze held this long while its waiter still waits is let
 #: An overload order is obeyed only while MemAvailable reads below the floor plus this: the wrapper reads the machine
 #: for itself rather than take the journal's word (security review of c0b73f9). Builder's number.
 OVER_MARGIN_MB = 512
+#: How long the wrapper looks at the pressed run's group before it obeys a pressure order.
+PARITY_S = 1.0
 
 
 class Watch:
@@ -142,6 +144,9 @@ class Watch:
         given = book._when(item.ordered_at)
         if given is None or not dt.timedelta(0) <= now - given <= dt.timedelta(seconds=admission.ANSWER_S):
             return False
+        began = book._when(item.started)
+        if began is not None and given < began:   # given before its last start or thaw: an order replayed (I4)
+            return False
         found = self.lanes.bookings()
         if item.order_cause in ("over", "pressed"):
             value = self.value_of(None)
@@ -180,14 +185,24 @@ class Watch:
         return available is not None and available < max(value.floor_mb, named) + OVER_MARGIN_MB
 
     def _pressed_now(self, found, item) -> bool:
-        """The run the order is for - named in it - is held, and its own group reads pressed."""
+        """The run the order is for - named in it - is held, and its own group reads pressed by the daemon's own
+        rule: held at its ceiling and reading its pages back from swap, over a second of this wrapper's own looking.
+        Pressure alone is weaker than that rule: a cold run pushing its pages out reads as much (second background
+        review)."""
         from flotilla.lane import tick
         pressed = found.get(item.order_by)
         if pressed is None or pressed.state != book.HELD or not pressed.unit or not self.lanes.live(pressed):
             return False
         path = self.groups.cgroup_of(pressed.unit, pressed.id)
-        reading = self.groups.read(path) if path is not None else None
-        return reading is not None and reading.pressure is not None and reading.pressure >= tick.PRESSED
+        first = self.groups.read(path) if path is not None else None
+        if first is None:
+            return False
+        began = self.clock()
+        self.sleep(PARITY_S)
+        second = self.groups.read(path)
+        spent = max(PARITY_S, self.clock() - began)
+        return second is not None and second.high_events > first.high_events and \
+            (second.refault_mb - first.refault_mb) / spent >= tick.REFAULT_MB_S
 
     def _reclaim(self, asked: int) -> int:
         """What an order may move to swap: any session writes the journal, so the figure is held to what the swap
