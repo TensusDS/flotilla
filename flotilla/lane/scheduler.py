@@ -82,6 +82,10 @@ class Scheduler:
         self.history = History()
         self._paths: dict[tuple[str, str], object] = {}
         self.last_machine: policy.Machine | None = None
+        # the ceilings this daemon decided, and the runs it squeezed: never the journal's word, which any session
+        # writes (final review C1). A run first seen in a scope - after a restart - takes its group's ceiling as is.
+        self.ceilings: dict[str, int | None] = {}
+        self.squeezed: set[str] = set()
 
     def _path(self, item):
         key = (item.id, item.unit)
@@ -115,13 +119,16 @@ class Scheduler:
             path = self._path(item) if item.state == book.HELD and item.unit else None
             reading = self.groups.read(path) if path is not None else None
             paths[run.id], readings[run.id] = path, reading
-            seen = self.history.run(now, run.id, reading, item.ceiling_mb) if item.state == book.HELD else {}
+            if item.state == book.HELD and run.id not in self.ceilings and reading is not None:
+                self.ceilings[run.id] = reading.high_mb
+            ceiling = self.ceilings.get(run.id) if item.state == book.HELD else None
+            seen = self.history.run(now, run.id, reading, ceiling) if item.state == book.HELD else {}
             frozen = item.frozen == "frozen"
             enriched.append(dataclasses.replace(
                 run, mem_mb=reading.current_mb if reading is not None and run.state != policy.WAITING else run.mem_mb,
-                ceiling_mb=item.ceiling_mb, scoped=path is not None, at_ceiling=seen.get("at_ceiling", False),
+                ceiling_mb=ceiling, scoped=path is not None, at_ceiling=seen.get("at_ceiling", False),
                 pressure=seen.get("pressure"), pressed_s=seen.get("pressed_s", 0.0), grew_mb=seen.get("grew_mb", 0),
-                peak_mb=seen.get("peak_mb", 0), squeezed=item.squeezed,
+                peak_mb=seen.get("peak_mb", 0), squeezed=run.id in self.squeezed,
                 cause=item.order_cause or (policy.WAITER if item.order_by else ""),
                 frozen_s=_seconds_since(item.frozen_at, moment) if frozen else 0.0, held_freezes=item.held_freezes,
                 reclaimed_mb=(item.reclaim_mb or 0) if frozen else 0, rule=item.rule or 0))
@@ -129,23 +136,33 @@ class Scheduler:
                                       over_s=self.history.machine(now, available, floor))
         self.last_machine = machine
         actions = tick.tick(enriched, machine)
-        lanes.apply(actions, self.signer)
+        applied = set(lanes.apply(actions, self.signer))
+        for booking, mb in actions.ceilings:
+            if booking in applied:
+                self.ceilings[booking] = mb
+        self.squeezed |= {b for b in actions.squeezed if b in applied}
+        self.squeezed -= {b for b in actions.restored if b in applied}
         after = lanes.bookings()
         for booking, path in paths.items():
             item = after.get(booking)
-            if path is None or item is None or item.state != book.HELD:
+            if path is None or item is None or item.state != book.HELD or booking not in self.ceilings:
                 continue
+            want = self.ceilings[booking]
+            want = None if want is None else max(policy.MIN_CEILING_MB, int(want))   # never a ceiling that starves
             reading = readings[booking]
-            if reading is None or reading.high_mb != item.ceiling_mb:
-                self.groups.set_high(path, item.ceiling_mb)
+            if reading is None or reading.high_mb != want:
+                self.groups.set_high(path, want)
         self.history.forget(set(live))
         self._paths = {key: path for key, path in self._paths.items() if key[0] in live}
+        held = {b for b, item in live.items() if item.state == book.HELD}
+        self.ceilings = {b: mb for b, mb in self.ceilings.items() if b in held or b in applied}
+        self.squeezed &= held | applied
         pressed = {r.id: r.pressed_s >= tick.PRESSED_S for r in enriched}
         under = available is not None and available < floor
         picture = {
             "why": dict(actions.why),
-            "groups": {b: {"ceiling_mb": after[b].ceiling_mb, "current_mb": readings[b].current_mb,
-                           "pressure": readings[b].pressure, "squeezed": after[b].squeezed,
+            "groups": {b: {"ceiling_mb": self.ceilings.get(b), "current_mb": readings[b].current_mb,
+                           "pressure": readings[b].pressure, "squeezed": b in self.squeezed,
                            "pressed": pressed.get(b, False)}
                        for b in readings if readings[b] is not None and b in after},
             "over": {"mb": floor - available, "s": machine.over_s, "nothing": actions.over_mb} if under else {},

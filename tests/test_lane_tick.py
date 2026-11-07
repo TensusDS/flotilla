@@ -212,3 +212,11 @@ def test_a_held_run_is_frozen_at_once_when_the_swap_is_at_its_budget():   # foun
     a = tick([held], machine(2000, swap_free=3500))   # 1500 MB left of the budget: under the reserve
     assert a.orders == (("h", 0, "pressed", "h"),)
     assert tick([held], machine(2000, swap_free=5000)).orders == ()   # 3000 MB to spare: it waits PRESSED_S
+
+
+
+def test_a_scoped_run_without_a_ceiling_gets_one_at_its_use():   # final review C1: a ceiling is the daemon's own
+    bare = aged("b", 0.3, 1000, scoped=True)
+    assert ceilings(tick([bare], machine(10000))) == {"b": 1000 + policy.slack(1000)}
+    assert tick([aged("u", 0.3, 1000)], machine(10000)).ceilings == ()                      # no scope: nothing to hold
+    assert tick([run("i", RUNNING, 1000, ran_s=IMM, scoped=True)], machine(10000)).ceilings == ()   # immortal

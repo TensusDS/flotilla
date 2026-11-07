@@ -103,6 +103,14 @@ class _Tick:
                     (r.pinned or policy.immortal(r, self.m.immortal_s)):
                 self.set_ceiling(r, None)
 
+    # 1b. a run in a scope with no ceiling - a daemon before this one lifted it, or never set one - is held at its use
+    #     and the slack: every run the daemon can hold lives under a ceiling it decided
+    def cap(self) -> None:
+        for r in self.runs:
+            if r.state == RUNNING and r.scoped and self.ceiling[r.id] is None and not r.pinned \
+                    and not policy.immortal(r, self.m.immortal_s):
+                self.set_ceiling(r, r.mem_mb + policy.slack(r.mem_mb))
+
     def over(self) -> bool:
         return self.known and self.m.available_mb < self.m.floor_mb
 
@@ -262,6 +270,7 @@ def tick(runs: list[Run], machine: Machine) -> Actions:
     lifted, squeezed runs restored, the overload, the pressure, the starts, the growth, the thaws."""
     t = _Tick(runs, machine)
     t.lift()
+    t.cap()
     hold = t.restore()
     over = t.overload()
     if not over:

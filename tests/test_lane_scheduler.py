@@ -121,15 +121,41 @@ def test_step_admits_a_waiter_and_sets_its_ceiling(lane):
     assert fake.writes == [(Path("/g"), start)]
 
 
-def test_step_reconciles_a_ceiling_the_file_lost(lane):
+def test_step_rewrites_its_own_ceiling_the_file_lost(lane):
     lanes, sched, clock, fake, values = lane
     item = lanes.enqueue("w", "", pid=11, mark="m")
+    sched.step()   # admitted, with the start ceiling this daemon decided
     unit = f"flotilla-lane-{item.id}-11-1.scope"
-    raw(lanes, booking=item.id, state=book.HELD, started=lanes._now(), unit=unit, ceiling_mb=1024)
+    lanes.scoped(item.id, unit)
     fake.found[(unit, item.id)] = Path("/g")
-    fake.readings[Path("/g")] = reading(500, high=None)
+    fake.readings[Path("/g")] = reading(500, high=None)   # someone set the file back to max
+    clock.t = 2.0
     sched.step()
-    assert (Path("/g"), 1024) in fake.writes
+    assert fake.writes == [(Path("/g"), policy.start_ceiling(admission.DEFAULT_MB))]
+
+
+def test_step_never_writes_a_ceiling_it_did_not_decide(lane):   # final review C1: the journal is anyone's
+    lanes, sched, clock, fake, values = lane
+    item = lanes.enqueue("v", "", pid=11, mark="m")
+    unit = f"flotilla-lane-{item.id}-11-1.scope"
+    raw(lanes, booking=item.id, state=book.HELD, started=lanes._now(), unit=unit)
+    fake.found[(unit, item.id)] = Path("/g")
+    fake.readings[Path("/g")] = reading(3000, high=None)
+    raw(lanes, booking=item.id, state=book.HELD, ceiling_mb=0)   # a line any session can append
+    sched.step()
+    assert all(mb is None or mb >= 256 for _path, mb in fake.writes) and (Path("/g"), 0) not in fake.writes
+    assert fake.writes == [(Path("/g"), 3000 + policy.slack(3000))]   # its own decision: the run's use and slack
+
+
+def test_a_restarted_daemon_takes_the_groups_ceiling_as_the_truth(lane):
+    lanes, sched, clock, fake, values = lane
+    item = lanes.enqueue("v", "", pid=11, mark="m")
+    unit = f"flotilla-lane-{item.id}-11-1.scope"
+    raw(lanes, booking=item.id, state=book.HELD, started=lanes._now(), unit=unit, ceiling_mb=300)
+    fake.found[(unit, item.id)] = Path("/g")
+    fake.readings[Path("/g")] = reading(900, high=1024)   # what the daemon before this one set
+    actions, picture = sched.step()
+    assert fake.writes == [] and picture["groups"][item.id]["ceiling_mb"] == 1024
 
 
 def test_step_uses_the_largest_floor_among_live_bookings(lane):
