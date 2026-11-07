@@ -828,6 +828,23 @@ def test_apply_clears_a_squeeze_whose_ceiling_stays(lane):   # review of 39dfdf7
     assert lanes.apply(actions(restored=(run.id,)), (4242, "m9")) == []   # nothing to clear: nothing written
 
 
+def test_apply_never_brings_back_a_released_booking_to_clear_its_squeeze(lane):   # review of b6173cd, minor 3a
+    lanes, _ = lane
+    run = held(lanes, "s", pid=26)
+    lanes.apply(actions(ceilings=((run.id, 2500),), squeezed=(run.id,)), (4242, "m9"))
+    lanes.release(run.id)
+    assert lanes.apply(actions(restored=(run.id,)), (4242, "m9")) == []
+    assert lanes.bookings()[run.id].state == book.RELEASED
+
+
+def test_apply_keeps_a_squeeze_set_in_the_same_tick(lane):   # review of b6173cd, minor 2: squeezed beats restored
+    lanes, _ = lane
+    run = held(lanes, "s", pid=27)
+    lanes.apply(actions(ceilings=((run.id, 2500),), squeezed=(run.id,)), (4242, "m9"))
+    lanes.apply(actions(squeezed=(run.id,), restored=(run.id,)), (4242, "m9"))
+    assert lanes.bookings()[run.id].squeezed is True
+
+
 def test_apply_skips_what_no_longer_applies(lane):
     lanes, _ = lane
     gone = lanes.enqueue("g", "", pid=31, mark="m")

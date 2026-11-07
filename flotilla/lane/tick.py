@@ -98,7 +98,8 @@ class _Tick:
     # 1. a run that became immortal, or is pinned, is never held by a ceiling: a ceiling under what it would use is a
     #    hidden freeze, and nothing freezes it. A run that can be frozen no more - its freeze total spent, let go, an
     #    order unanswered, its watch stopped - keeps a ceiling that grows with it, but a squeeze it cannot leave ends
-    #    at once: back to its use and the slack, over the floor or not (the person's ruling, 2026-11-07)
+    #    at once: back to its use and the slack, or the ceiling it has when that is higher, over the floor or not (the
+    #    person's ruling, 2026-11-07)
     def lift(self) -> None:
         for r in self.runs:
             if r.state == WAITING:

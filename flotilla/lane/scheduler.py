@@ -149,7 +149,9 @@ class Scheduler:
             if booking in applied:
                 self.ceilings[booking] = mb
         self.squeezed |= {b for b in actions.squeezed if b in applied}
-        self.squeezed -= {b for b in actions.restored if b in applied}
+        # a squeeze the daemon ended is over whether or not a line had to be written: a line any session appends may
+        # have said so first (review of b6173cd); one no longer held leaves through `held` all the same
+        self.squeezed -= set(actions.restored)
         after = lanes.bookings()
         for booking, path in paths.items():
             item = after.get(booking)

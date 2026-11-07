@@ -209,3 +209,33 @@ def test_a_floor_out_of_reason_does_not_make_the_machine_over(lane):   # final r
     clock.t = 12.0
     sched.step()
     assert sched.last_machine.floor_mb == 3900 and lanes.bookings()[victim.id].frozen == ""
+
+
+
+def test_a_squeeze_ends_in_the_daemons_record_though_the_journal_says_it_ended(lane):   # review of b6173cd, minor 1
+    # a line any session can append says "not squeezed" first: nothing is left to write, and the daemon's own record
+    # of the squeeze must end all the same, or the run stays "squeezed" in the status and may hold starts back
+    from pathlib import Path
+    lanes, sched, clock, fake, values = lane
+    item = lanes.enqueue("v", "", pid=11, mark="m")
+    unit = f"flotilla-lane-{item.id}-11-1.scope"
+    raw(lanes, booking=item.id, state=book.HELD, started=lanes._now(), unit=unit)
+    group = Path("/g")
+    fake.found[(unit, item.id)] = group
+    fake.readings[group] = reading(3000, high=None)
+    sched.step()                                   # held at its use and the slack
+    values.box["available"] = 1500                 # below the floor long enough: squeezed
+    for moment in (2.0, 14.0, 16.0):
+        clock.t = moment
+        sched.step()
+        if item.id in sched.squeezed:
+            break
+    assert item.id in sched.squeezed
+    ceiling = sched.ceilings[item.id]
+    values.box["available"] = 10000
+    fake.readings[group] = reading(ceiling // 2, high=ceiling)   # its use fell well under the ceiling it has
+    raw(lanes, booking=item.id, state=book.HELD, unanswered=True)   # frozen no more
+    raw(lanes, booking=item.id, state=book.HELD, squeezed=False)    # the forged line
+    clock.t = 30.0
+    actions, _picture = sched.step()
+    assert item.id in actions.restored and item.id not in sched.squeezed

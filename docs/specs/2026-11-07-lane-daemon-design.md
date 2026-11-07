@@ -145,8 +145,8 @@ its grace included). A started run gets a ceiling at once (b).
   hidden freeze, and nothing freezes it;
 - a run that can be **frozen no more** - its freeze total or a freeze's ceiling reached, let go, an order
   unanswered, its watch stopped or failed - keeps a ceiling that grows with it while there is room, and is never
-  squeezed: a squeeze it is under when it becomes so ends at once, back to its use and the slack, over the floor or
-  not. Pressed without room (c), it is the run lower ones are frozen for, never a victim; with none lower, it waits
+  squeezed: a squeeze it is under when it becomes so ends at once, back to its use and the slack - or the ceiling it
+  has, when that is higher - over the floor or not. Pressed without room (c), it is the run lower ones are frozen for, never a victim; with none lower, it waits
   at its ceiling *(the person's ruling, 2026-11-07, over lifting its ceiling: a low run then grew unheld and the
   overload squeezed higher runs in its place)*. Over the floor it counts with the immortal and pinned - the
   builder's reading of ruling 8, not the person's words.
@@ -156,7 +156,7 @@ back from swap at `REFAULT_MB_S` or more for `PRESSED_S` (it is hot: it churns s
 worst case; section 3), counts
 as a **waiter for memory** with its own P. Among it and the controllable runs of lower P, the **lowest** is frozen
 (4.4's order): the pressed run itself when it is the lowest - never one that can be frozen no more (b) - else a
-lower run that gives it room. This holds whether
+lower run that gives it room. With several pressed, the highest that has such a victim is served *(builder's call)*. This holds whether
 or not the machine is over its floor: a ceiling keeps `MemAvailable` up by pushing pages out, so a churning run may
 never let the machine count as overloaded.
 
@@ -358,8 +358,8 @@ builder's changes since (2026-11-07):
   longer hold a run frozen most of the time. The slot's own guard, for a watch that sticks, holds no more than the
   rest of the total;
 - a run that can be frozen no more keeps a ceiling that grows with it, is never squeezed, and is the run lower ones
-  are frozen for when it is pressed (4.3 b, c): chosen over lifting its ceiling, which let a low run grow unheld
-  and made higher ones pay in the overload: chosen. *(Builder's reading, not the person's words: ruling 8's
+  are frozen for when it is pressed (4.3 b, c), over lifting its ceiling, which let a low run grow unheld and
+  made higher ones pay in the overload: chosen. *(Builder's reading, not the person's words: ruling 8's
   "immortal or pinned" covers such a run too, and the status names it.)*
 
 Builder's changes that await the person:

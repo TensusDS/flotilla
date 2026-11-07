@@ -794,7 +794,7 @@ class Book:
                 self._write(tx, booking_id, HELD, ceiling_mb=mb, **flag)
                 done.append(booking_id)
             written = {booking_id for booking_id, _mb in actions.ceilings}
-            for booking_id in restored - written:   # back from a squeeze at the ceiling it has: the flag goes alone
+            for booking_id in restored - written - squeezed:   # back from a squeeze at the ceiling it has: the flag alone
                 item = found.get(booking_id)
                 if item is None or item.state != HELD or not item.squeezed:
                     continue
