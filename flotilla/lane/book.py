@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import copy
 import datetime as dt
+import hashlib
+import hmac
 import re
 import sys
 from collections.abc import Callable
@@ -49,7 +51,7 @@ FIELDS = ("who", "note", "pid", "mark", "run_for", "why", "command", "ladder", "
           "kind", "asked", "started", "ran_s", "frozen", "order_by", "ordered_at", "reclaim_mb", "frozen_at",
           "held_mb", "frozen_s", "freezes", "heavy", "pinned", "unanswered", "freeze_kind", "unit", "group",
           "peak_cores", "group_mark", "refused_by", "refused_at", "order_cause", "order_pid", "order_mark",
-          "ceiling_mb", "squeezed", "held_back", "by_hand", "floor_mb", "held_freezes")
+          "ceiling_mb", "squeezed", "held_back", "by_hand", "floor_mb", "held_freezes", "order_sig")
 MEASURED = ("seconds", "peak_mb", "cores", "busy", "verdict", "ran", "peak_cores")
 #: A freeze order's progress on a held booking: ordered by a waiter, then frozen by its holder; absent while it runs.
 FROZEN_STATES = ("ordered", "frozen")
@@ -110,6 +112,8 @@ def _clean(key, value):
         return value if isinstance(value, str) and UNIT.fullmatch(value) else ""
     if key == "order_cause":
         return value if value in CAUSES else ""
+    if key == "order_sig":
+        return value if isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) else ""
     if key == "held_back":
         return visible(value[:200]) if isinstance(value, str) else ""
     if key in ("order_by", "group_mark", "refused_by", "order_mark"):
@@ -207,6 +211,14 @@ class Booking:
     by_hand: bool = False                            # a waiter taking the lane by hand: admitted as nobody's
     floor_mb: int | None = None                      # the asking project's memory floor
     held_freezes: int = 0                            # freezes for an overload or a pressure, not for a waiter
+    order_sig: str = ""                              # the daemon's seal over its order (lane daemon design, 4.8)
+
+
+def seal(key: bytes, booking: str, cause: str, ordered_at: str, order_by: str, pid, mark: str) -> str:
+    """The daemon's seal over one order: HMAC-SHA256 with the key only the daemon makes, over everything the order
+    says - a line copying a pid and a mark, or turning one order into another, does not carry it."""
+    text = "\n".join([booking, cause, ordered_at, order_by, str(pid), mark])
+    return hmac.new(key, text.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
 def number(name) -> int | None:
@@ -749,11 +761,13 @@ class Book:
             if item is not None and item.state == WAITING and item.held_back != why:
                 self._write(tx, booking_id, WAITING, held_back=why)
 
-    def apply(self, actions, signer: tuple[int, str]) -> list[str]:
+    def apply(self, actions, signer: tuple) -> list[str]:
         """The daemon's decisions of one tick, in one transaction, each checked against the booking as it stands in
-        this lock and skipped when it no longer applies. `signer`: the daemon's pid and start mark, carried by every
-        order so a wrapper can tell it from a line anyone wrote (lane daemon design, 4.8). The ids written."""
-        pid, mark = signer
+        this lock and skipped when it no longer applies. `signer`: the daemon's pid, start mark and key; every order
+        carries the pid and mark and a seal made with the key, so a wrapper can tell it from a line anyone wrote -
+        a pid and a mark alone are public (lane daemon design, 4.8; security review of c0b73f9). The ids written."""
+        pid, mark = signer[0], signer[1]
+        key = signer[2] if len(signer) > 2 else b""
         done: list[str] = []
         squeezed, restored = set(actions.squeezed), set(actions.restored)
         with self.store.transaction(KEY) as tx:
@@ -781,8 +795,10 @@ class Book:
                 item = found.get(booking_id)
                 if item is None or item.state != HELD or item.frozen or item.unanswered:
                     continue
+                at = self._now()
                 self._write(tx, booking_id, HELD, frozen="ordered", order_by=waiter, order_cause=cause,
-                            order_pid=pid, order_mark=mark, ordered_at=self._now(), reclaim_mb=int(reclaim))
+                            order_pid=pid, order_mark=mark, ordered_at=at, reclaim_mb=int(reclaim),
+                            order_sig=seal(key, booking_id, cause, at, waiter, pid, mark) if key else "")
                 done.append(booking_id)
             for booking_id in actions.thaws:
                 item = found.get(booking_id)

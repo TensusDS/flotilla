@@ -36,7 +36,7 @@ class Actions:
     ceilings: tuple[tuple[str, int | None], ...] = ()     # (id, MB); None lifts it to max
     squeezed: tuple[str, ...] = ()                        # ids whose entry in `ceilings` is a squeeze
     restored: tuple[str, ...] = ()                        # squeezed runs given back used + slack
-    orders: tuple[tuple[str, int, str, str], ...] = ()    # (id, reclaim MB, cause, the waiter's id or "")
+    orders: tuple[tuple[str, int, str, str], ...] = ()    # (id, reclaim MB, cause, the waiter's or pressed run's id)
     thaws: tuple[str, ...] = ()
     why: tuple[tuple[str, str], ...] = ()                 # (id, why it does not move)
     over_mb: int = 0                                      # over the floor and nothing can be taken (ruling 8)
@@ -162,7 +162,7 @@ class _Tick:
                  and not policy.daemon_reason(r, self.m)]
         v = policy.victim([p, *lower], self.m.immortal_s)
         reclaim = 0 if v.id == p.id else min(v.mem_mb, self.ceiling[p.id], _swap_room(self.m))
-        self.order(v, reclaim, policy.PRESSED_CAUSE)
+        self.order(v, reclaim, policy.PRESSED_CAUSE, p.id)   # the wrapper checks that this run reads pressed
 
     def decide_machine(self) -> Machine:
         return self.m if self.space is None else dataclasses.replace(self.m, free_mb=self.space)

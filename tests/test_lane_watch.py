@@ -56,6 +56,7 @@ def value(available=9000, tree=5000):
 
 
 DAEMON = (4242, "m9")
+KEY = b"s" * 32
 
 
 class Daemon:
@@ -70,6 +71,8 @@ class Daemon:
         (root / daemon.BEAT).write_text(json.dumps({
             "pid": DAEMON[0], "mark": DAEMON[1], "copy": "", "release": "0.31.0", "protocol": daemon.PROTOCOL,
             "tick": time.time(), "why": {}, "groups": {}, "over": {}}))
+        (root / daemon.KEY).write_bytes(KEY)
+        os.chmod(root / daemon.KEY, 0o600)
         self.fd = os.open(root / daemon.LOCK, os.O_RDWR | os.O_CREAT, 0o600)
         fcntl.flock(self.fd, fcntl.LOCK_EX)
 
@@ -79,20 +82,25 @@ class Daemon:
             self.fd = None
 
 
-def sign(lanes, booking, cause="waiter", by=DAEMON):
-    """The daemon's signature on the order a booking carries now."""
+def sign(lanes, booking, cause="waiter", by=DAEMON, key=KEY):
+    """The daemon's signature and seal on the order a booking carries now."""
+    from flotilla.lane import daemon
     item = lanes.bookings()[booking]
+    seal = daemon.seal(key, booking, cause, item.ordered_at, item.order_by, by[0], by[1])
     with lanes.store.transaction(book.KEY) as tx:
         tx.append({"at": lanes._now(), "booking": booking, "state": item.state, "order_cause": cause,
-                   "order_pid": by[0], "order_mark": by[1]})
+                   "order_pid": by[0], "order_mark": by[1], "order_sig": seal})
 
 
-def order(lanes, booking, cause, by=DAEMON, waiter=""):
+def order(lanes, booking, cause, by=DAEMON, waiter="", key=KEY):
     """An order as the daemon writes it (Book.apply)."""
+    from flotilla.lane import daemon
+    at = lanes._now()
     with lanes.store.transaction(book.KEY) as tx:
-        tx.append({"at": lanes._now(), "booking": booking, "state": book.HELD, "frozen": "ordered",
+        tx.append({"at": at, "booking": booking, "state": book.HELD, "frozen": "ordered",
                    "order_by": waiter, "order_cause": cause, "order_pid": by[0], "order_mark": by[1],
-                   "ordered_at": lanes._now(), "reclaim_mb": 700})
+                   "ordered_at": at, "reclaim_mb": 700,
+                   "order_sig": daemon.seal(key, booking, cause, at, waiter, by[0], by[1])})
 
 
 @pytest.fixture()
@@ -735,6 +743,52 @@ def young(lanes, later):
                    "path": "value: P 0.06, light"})
     later(10)
     return item.id
+
+
+def test_an_order_with_the_daemons_pid_and_mark_but_a_wrong_seal_is_refused(lane):   # security review of c0b73f9
+    lanes, _mine, _waiter, later, _root = lane
+    run_id = young(lanes, later)
+    order(lanes, run_id, "over", key=b"x" * 32)   # pid and mark copied from the heartbeat; the key not known
+    s = FakeSlot()
+    assert watch.Watch(lanes, run_id, s, lambda reading: value(available=300)).step() == "refused" and s.calls == []
+
+
+def test_an_overload_order_is_refused_when_the_machine_is_not_over(lane):   # security review of c0b73f9
+    lanes, _mine, _waiter, later, _root = lane
+    run_id = young(lanes, later)
+    order(lanes, run_id, "over")
+    s = FakeSlot()
+    assert watch.Watch(lanes, run_id, s, lambda reading: value(available=9000)).step() == "refused"
+
+
+class Pressures:
+    """A run's group as the wrapper reads it, for a pressure order."""
+
+    def __init__(self, pressure):
+        self.pressure = pressure
+
+    def cgroup_of(self, unit, booking):
+        from pathlib import Path
+        return Path("/g")
+
+    def read(self, path):
+        from flotilla.lane import groups
+        return groups.Reading(2000, 2000, 9, self.pressure)
+
+
+def test_a_pressure_order_needs_its_run_to_read_pressed(lane):   # security review of c0b73f9
+    lanes, _mine, _waiter, later, _root = lane
+    run_id = young(lanes, later)
+    pressed = young(lanes, later)
+    with lanes.store.transaction(book.KEY) as tx:
+        tx.append({"at": lanes._now(), "booking": pressed, "state": book.HELD,
+                   "unit": f"flotilla-lane-{pressed}-11-1.scope"})
+    order(lanes, run_id, "pressed", waiter=pressed)
+    calm = watch.Watch(lanes, run_id, FakeSlot(), lambda reading: value(available=300), groups_io=Pressures(3.0))
+    assert calm.step() == "refused"
+    order(lanes, run_id, "pressed", waiter=pressed)
+    hot = watch.Watch(lanes, run_id, FakeSlot(), lambda reading: value(available=300), groups_io=Pressures(90.0))
+    assert hot.step() == "froze"
 
 
 def test_an_overload_order_freezes_a_young_run(lane):   # the person's ruling 5

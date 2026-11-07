@@ -20,12 +20,17 @@ from flotilla.lane import admission, book, freeze
 
 LOOK_S = 5.0     # the longest a watch goes without a look
 LET_GO_S = 120.0   # a freeze held this long while its waiter still waits is let go (builder's number)
+#: An overload order is obeyed only while MemAvailable reads below the floor plus this: the wrapper reads the machine
+#: for itself rather than take the journal's word (security review of c0b73f9). Builder's number.
+OVER_MARGIN_MB = 512
 
 
 class Watch:
     def __init__(self, lanes, booking_id: str, slot, value_of: Callable, *, clock=time.monotonic,
-                 sleep=time.sleep, let_go_s: float = LET_GO_S, root=None, swap=None):
+                 sleep=time.sleep, let_go_s: float = LET_GO_S, root=None, swap=None, groups_io=None):
+        from flotilla.lane import groups
         self.lanes, self.booking_id, self.slot, self.value_of = lanes, booking_id, slot, value_of
+        self.groups = groups_io or groups
         self.swap = swap or freeze.swap_mb
         self.clock, self.sleep, self.let_go_s = clock, sleep, let_go_s
         self.root = root if root is not None else getattr(lanes.store, "root", None)
@@ -131,7 +136,7 @@ class Watch:
         if getattr(self.slot, "done_freezing", False):
             return False
         from flotilla.lane import daemon, estimate, policy
-        if self.root is None or not daemon.signed(self.root, self.lanes.procs, item.order_pid, item.order_mark):
+        if self.root is None or not daemon.signed(self.root, self.lanes.procs, item):
             return False
         now = self.lanes._moment()
         given = book._when(item.ordered_at)
@@ -139,10 +144,13 @@ class Watch:
             return False
         found = self.lanes.bookings()
         if item.order_cause in ("over", "pressed"):
-            runs, machine = admission.view(found, estimate.history(found, now=now), self.value_of(None), now=now,
+            value = self.value_of(None)
+            runs, machine = admission.view(found, estimate.history(found, now=now), value, now=now,
                                            live=self.lanes.live, mine="")
             me = next((run for run in runs if run.id == self.booking_id), None)
-            return me is not None and not me.pinned and not policy.immortal(me, machine.immortal_s)
+            if me is None or me.pinned or policy.immortal(me, machine.immortal_s):
+                return False
+            return self._over_now(found, value) if item.order_cause == "over" else self._pressed_now(found, item)
         if item.order_cause != "waiter":
             return False
         waiter = found.get(item.order_by)
@@ -159,6 +167,24 @@ class Watch:
         # (review of ed148e3, 1)
         return me is not None and them is not None and not policy.victim_reason(me, them, machine,
                                                                                  by_rules_only=True)
+
+    def _over_now(self, found, value) -> bool:
+        """The machine reads near or below the most cautious floor of the live bookings, as the daemon's is."""
+        available = value.available_mb()
+        floors = [item.floor_mb for item in found.values() if item.floor_mb is not None and self.lanes.live(item)
+                  and item.state in (book.HELD, book.WAITING)]
+        return available is not None and available < max([value.floor_mb, *floors]) + OVER_MARGIN_MB
+
+    def _pressed_now(self, found, item) -> bool:
+        """The run the order is for - named in it - is held, and its own group reads pressed."""
+        from flotilla.lane import tick
+        pressed = found.get(item.order_by)
+        if pressed is None or pressed.state != book.HELD or not pressed.unit or not self.lanes.live(pressed):
+            return False
+        path = self.groups.cgroup_of(pressed.unit, pressed.id)
+        reading = self.groups.read(path) if path is not None else None
+        # avg10 decays over the seconds between the daemon's look and this one: half the mark still says pressed
+        return reading is not None and reading.pressure is not None and reading.pressure >= tick.PRESSED / 2
 
     def _reclaim(self, asked: int) -> int:
         """What an order may move to swap: any session writes the journal, so the figure is held to what the swap

@@ -13,9 +13,12 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import fcntl
+import hmac
 import json
 import os
+import secrets
 import signal
+import stat
 import subprocess
 import sys
 import time
@@ -29,7 +32,8 @@ PROTOCOL = 1
 KNOWN = frozenset({1})
 #: Builder's numbers (lane daemon design, section 7); they await the field test.
 TICK_S, IDLE_S, STALE_S, TERM_WAIT_S, START_WAIT_S = 2.0, 600.0, 10.0, 5.0, 10.0
-LOCK, BEAT, LOG = "daemon.lock", "daemon.json", "daemon.log"
+LOCK, BEAT, LOG, KEY = "daemon.lock", "daemon.json", "daemon.log", "daemon.key"
+seal = book.seal
 LOG_CAP = 1_000_000
 ERRORS_IN_A_ROW = 3
 FALLBACK = "lane daemon not running: "
@@ -97,11 +101,49 @@ def alive(root: Path, procs, *, now=time.time) -> Heartbeat | None:
     return beat if now() - beat.tick <= STALE_S else None
 
 
-def signed(root: Path, procs, pid: int | None, mark: str) -> bool:
-    """Whether an order's signature is the live daemon's: any session writes the journal, and only the daemon decides
-    (lane daemon design, 4.8)."""
+def key(root: Path) -> bytes | None:
+    """The running daemon's key: a regular file of this user's, readable by nobody else, never a link; None
+    otherwise."""
+    path = Path(root) / KEY
+    try:
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except OSError:
+        return None
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) & 0o077:
+            return None
+        found = os.read(fd, 4096)
+    finally:
+        os.close(fd)
+    return found if len(found) >= 32 else None
+
+
+def _new_key(root: Path) -> bytes:
+    """A key of this daemon's own, made when it takes the lock: an order sealed by an earlier daemon does not hold."""
+    found = secrets.token_hex(32).encode("ascii")
+    tmp = Path(root) / f".{KEY}.{os.getpid()}"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    try:
+        os.write(fd, found)
+    finally:
+        os.close(fd)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, Path(root) / KEY)
+    return found
+
+
+def signed(root: Path, procs, item) -> bool:
+    """Whether the order a booking carries is the live daemon's: its pid and start mark, and its seal over everything
+    the order says. Any session writes the journal, and only the daemon decides (lane daemon design, 4.8)."""
     beat = alive(root, procs)
-    return beat is not None and bool(mark) and pid == beat.pid and mark == beat.mark
+    if beat is None or not item.order_mark or item.order_pid != beat.pid or item.order_mark != beat.mark:
+        return False
+    found = key(root)
+    if found is None or not item.order_sig:
+        return False
+    expected = seal(found, item.id, item.order_cause, item.ordered_at, item.order_by, item.order_pid, item.order_mark)
+    return hmac.compare_digest(expected, item.order_sig)
 
 
 def newest_copy(*, running: Path | None = None, installs=claude_state.installs) -> tuple[str, Path]:
@@ -266,7 +308,7 @@ def _loop(root: Path, *, idle_s, ticks, clock, sleep, newest, lanes, value_of, p
     value_of = value_of or commands.value_for({})
     pid = os.getpid()
     mark = procs.start_mark(pid) or ""
-    sched = Scheduler(lanes, value_of, signer=(pid, mark), groups_io=groups_io, clock=clock,
+    sched = Scheduler(lanes, value_of, signer=(pid, mark, _new_key(root)), groups_io=groups_io, clock=clock,
                       default_floor=machine.memory_floor_mb({}))
 
     def leave(number, _frame):

@@ -74,9 +74,9 @@ def test_pressed_without_room_freezes_the_lowest():
                    scoped=True)
     lower = aged("l", 0.2, 1500, scoped=True)
     a = tick([pressed, lower], machine(2000 + 0 + 0))
-    assert [(o[0], o[2]) for o in a.orders] == [("l", "pressed")]
+    assert [(o[0], o[2], o[3]) for o in a.orders] == [("l", "pressed", "p")]   # it names the run it is for
     a = tick([pressed], machine(2000))
-    assert a.orders == (("p", 0, "pressed", ""),)
+    assert a.orders == (("p", 0, "pressed", "p"),)
     calm = aged("p", 0.4, 2000, ceiling_mb=2000, at_ceiling=True, pressure=80.0, pressed_s=5, scoped=True)
     assert tick([calm, lower], machine(2000)).orders == ()
 

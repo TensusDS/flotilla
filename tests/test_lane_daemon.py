@@ -80,20 +80,55 @@ def test_alive_needs_the_lock_the_pid_and_a_fresh_tick(tmp_path):
         held.release()
 
 
+KEY = b"s" * 32
+
+
+def write_key(root, key=KEY, mode=0o600):
+    (root / daemon.KEY).write_bytes(key)
+    os.chmod(root / daemon.KEY, mode)
+
+
+def ordered(pid=4242, mark="m9", cause="over", by="", at="2026-11-07T10:00:00+00:00", key=KEY, booking="b5"):
+    from types import SimpleNamespace
+    return SimpleNamespace(id=booking, order_pid=pid, order_mark=mark, order_cause=cause, order_by=by, ordered_at=at,
+                           order_sig=daemon.seal(key, booking, cause, at, by, pid, mark))
+
+
 def test_signed_matches_only_the_live_daemon(tmp_path):   # review focus 1
     write_beat(tmp_path)
+    write_key(tmp_path)
     held = Held(tmp_path)
     try:
-        assert daemon.signed(tmp_path, Procs(), 4242, "m9")
-        assert not daemon.signed(tmp_path, Procs(), 4242, "other")
-        assert not daemon.signed(tmp_path, Procs(), 4243, "m9")
-        assert not daemon.signed(tmp_path, Procs(), None, "")
+        assert daemon.signed(tmp_path, Procs(), ordered())
+        assert not daemon.signed(tmp_path, Procs(), ordered(mark="other"))
+        assert not daemon.signed(tmp_path, Procs(), ordered(pid=4243))
         write_beat(tmp_path, tick=time.time() - 60)
-        assert not daemon.signed(tmp_path, Procs(), 4242, "m9")
+        assert not daemon.signed(tmp_path, Procs(), ordered())
     finally:
         held.release()
     write_beat(tmp_path)
-    assert not daemon.signed(tmp_path, Procs(), 4242, "m9")   # the lock is not held
+    assert not daemon.signed(tmp_path, Procs(), ordered())   # the lock is not held
+
+
+def test_signed_needs_the_daemons_seal(tmp_path):   # security review of c0b73f9: a pid and a mark are public
+    write_beat(tmp_path)
+    write_key(tmp_path)
+    held = Held(tmp_path)
+    try:
+        forged = ordered(key=b"x" * 32)   # the daemon's pid and mark, copied from its heartbeat
+        assert not daemon.signed(tmp_path, Procs(), forged)
+        moved = ordered()
+        moved.order_cause = "pressed"     # a sealed order turned into another
+        assert not daemon.signed(tmp_path, Procs(), moved)
+        write_key(tmp_path, mode=0o644)   # a key others may read is no key
+        assert not daemon.signed(tmp_path, Procs(), ordered())
+        (tmp_path / daemon.KEY).unlink()
+        (tmp_path / "elsewhere").write_bytes(KEY)
+        os.chmod(tmp_path / "elsewhere", 0o600)
+        (tmp_path / daemon.KEY).symlink_to(tmp_path / "elsewhere")
+        assert not daemon.signed(tmp_path, Procs(), ordered())
+    finally:
+        held.release()
 
 
 def copy(tmp_path, name, with_bin=True):
@@ -227,6 +262,8 @@ def test_serve_exits_idle_and_lifts(tmp_path, monkeypatch):
         now[0] += seconds
     code = daemon.serve(tmp_path, idle_s=5, clock=lambda: now[0], sleep=sleep, newest=newest_is(__version__, REPO))
     assert code == 0 and lifted == [tmp_path]
+    key = tmp_path / daemon.KEY
+    assert len(key.read_bytes()) >= 32 and (key.stat().st_mode & 0o077) == 0   # a key of its own, private
     assert daemon.heartbeat(tmp_path).pid == os.getpid() and not daemon.lock_held(tmp_path)
 
 

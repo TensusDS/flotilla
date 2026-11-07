@@ -69,7 +69,7 @@ def _seconds_since(text: str, now: dt.datetime) -> float:
 
 
 class Scheduler:
-    def __init__(self, lanes, value_of, *, signer: tuple[int, str], groups_io=groups, clock=time.monotonic,
+    def __init__(self, lanes, value_of, *, signer: tuple, groups_io=groups, clock=time.monotonic,
                  default_floor: int):
         self.lanes, self.value_of, self.signer, self.groups = lanes, value_of, signer, groups_io
         self.clock, self.default_floor = clock, default_floor

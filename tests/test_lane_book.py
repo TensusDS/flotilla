@@ -873,3 +873,22 @@ def test_apply_gives_a_run_it_starts_its_ceiling(lane):
     lanes.apply(actions(starts=((waiter.id, False, 0.3),), ceilings=((waiter.id, 1280),)), (4242, "m9"))
     found = lanes.bookings()[waiter.id]
     assert (found.state, found.ceiling_mb) == (book.HELD, 1280)
+
+
+
+def test_apply_seals_its_orders(lane):   # security review of c0b73f9: a pid and a mark are no secret
+    from flotilla.lane import daemon
+    lanes, _ = lane
+    victim = held(lanes, "v", pid=22)
+    key = b"k" * 32
+    lanes.apply(actions(orders=((victim.id, 700, "over", ""),)), (4242, "m9", key))
+    item = lanes.bookings()[victim.id]
+    assert item.order_sig == daemon.seal(key, item.id, "over", item.ordered_at, "", 4242, "m9")
+    assert len(item.order_sig) == 64
+
+
+def test_a_seal_folds_clean(lane):
+    lanes, _ = lane
+    raw(lanes, booking="b70", state=book.HELD, who="x", order_sig="not hex")
+    raw(lanes, booking="b71", state=book.HELD, who="x", order_sig="ab" * 32)
+    assert lanes.bookings()["b70"].order_sig == "" and lanes.bookings()["b71"].order_sig == "ab" * 32
