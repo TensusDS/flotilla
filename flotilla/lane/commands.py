@@ -329,7 +329,11 @@ def describe_estimate(item, hist) -> str:
     found = estimate.for_booking(item, hist)
     seconds = "? s" if found.seconds is None else f"{found.seconds:.0f} s"
     cores = "? cores" if found.cores is None else f"{found.cores:g} cores"
-    return f"estimate: {seconds}, {cores}, {_size(found.peak_mb)} ({found.source})"
+    memory = _size(found.peak_mb)
+    if found.typical_mb is not None and found.peak_mb is not None and found.typical_mb < found.peak_mb:
+        # admitted by the largest, started under the usual (field test item 11): two figures, each named
+        memory = f"up to {memory}, usually {_size(found.typical_mb)}"
+    return f"estimate: {seconds}, {cores}, {memory} ({found.source})"
 
 
 def _foreign(table, proc, tail: str) -> str:

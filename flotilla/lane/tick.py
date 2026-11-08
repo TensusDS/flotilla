@@ -224,11 +224,14 @@ class _Tick:
             d = policy.decide(self.runs, machine, w.id, may_freeze=not taken)
             if d.start:
                 self.starts.append((w.id, w.heavy, self.p[w.id]))
-                ceiling = policy.start_ceiling(w.mem_mb)
+                # admitted by its largest peak, it starts under what it usually takes and grows from there; this
+                # tick keeps the largest from the runs after it, as its first half-minute does from the next ticks
+                typical = w.mem_mb if w.start_mb is None else min(w.start_mb, w.mem_mb)
+                ceiling = policy.start_ceiling(typical)
                 self.ceiling[w.id] = ceiling
                 self.changed[w.id] = ceiling
                 if self.space is not None:
-                    self.space -= ceiling
+                    self.space -= max(ceiling, w.mem_mb)
             elif d.freeze and not taken:
                 for victim_id, mb in d.freeze:
                     self.orders.append((victim_id, mb, policy.WAITER, w.id))

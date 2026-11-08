@@ -133,8 +133,13 @@ class rules (2.7a), heavy cores (2.4), the run cap (2.9), fair share (2.10), and
 its grace included). A started run gets a ceiling at once (b).
 
 **b. Ceilings** (runs in a scope only; section 4.6 for the rest) *(builder's call, from the bench)*:
-- **at the start**: `memory.high = max(estimate, 256 MB) + slack`, slack = max(256 MB, 10 % of it). The estimate is
-  the one admission used (the 0.30 reservation);
+- **at the start**: `memory.high = max(typical, 256 MB) + slack`, slack = max(256 MB, 10 % of it). Admission still
+  goes by the largest peak of the command's last ten runs (the 0.30 reservation), and this tick and the run's first
+  half-minute keep that largest from the runs after it; the ceiling starts at the **median** peak of the same runs
+  and grows from there. *(The person's ruling, 2026-11-08, option B: one command often runs light and heavy - a test
+  tier on a small row and on a big one - and a ceiling at the largest peak promised every light run the heavy one's
+  memory; three such runs read the lane as full while 8 GB stood free. A command with no measured median - a fixed
+  prior, the first-run default - starts at the figure it was admitted by.)*
 - **growth**: a run is **at its ceiling** when its group's `memory.events` "high" counter rose since the last tick
   (the kernel throttled it - an instant signal, unlike the 10 s pressure average). A run at its ceiling gets more
   **whenever there is room**, hot or cold: up to doubling its ceiling per tick, in priority order, until room is

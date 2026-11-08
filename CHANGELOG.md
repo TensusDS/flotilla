@@ -13,9 +13,15 @@ of swap used.
   two seconds. Sessions only ask and wait. Any lane client - a `lane run`, a receipt, `lane take`, an orchestrator
   at its start - raises it when it is absent, stuck or older than the newest copy installed; it leaves after ten
   minutes with no booking. `flotilla lane daemon ensure` does the same by hand.
-- **A run's memory is held by a soft ceiling** (`memory.high` of its scope) that starts at its estimate and grows -
-  up to doubling every two seconds - while the machine has room. A run predicted wrong grows into the room there
-  is, and is held the moment the room ends. The ceiling never kills: the kernel moves the run's cold pages to swap.
+- **A run's memory is held by a soft ceiling** (`memory.high` of its scope) that starts at what its command usually
+  takes - the median peak of its last runs - and grows, up to doubling every two seconds, while the machine has room.
+  A run still waits until its command's largest peak fits, but once started it no longer holds that largest peak in
+  reserve: in the field test one command ran light and heavy, and three light runs under the heavy figure read the
+  lane as full while 8 GB stood free. A run predicted wrong grows into the room there is, and is held the moment
+  the room ends. The ceiling never kills: the kernel moves the run's cold pages to swap.
+- **A run that waits for memory says "of room", not "free"**, with what makes it up: MemAvailable, less the floor,
+  less what the runs already started are held to. `flotilla lane` shows both figures of a run's estimate when they
+  differ: "up to 3.5 GB, usually 220 MB".
 - **When the machine goes below its memory floor, or a run stalls at its ceiling with no room to give it**, the
   run of lowest priority - among near-equal ones, the one that grew most in the last minute - is squeezed (its
   ceiling lowered under its use) and then frozen, never killed. The first-minute grace does not protect from this;

@@ -32,6 +32,30 @@ def test_a_started_run_gets_its_start_ceiling():
     assert [s[0] for s in a.starts] == ["w"] and ceilings(a)["w"] == 512
 
 
+def test_a_run_is_admitted_by_its_largest_peak_and_starts_under_its_typical_one():   # option B, 2026-11-08
+    w = run("w", WAITING, 3600, start_mb=220)
+    a = tick([w], machine(2000 + 4000))
+    assert [s[0] for s in a.starts] == ["w"] and ceilings(a)["w"] == 512
+    hold = tick([aged("h", 0.5, 300, ceiling_mb=556, scoped=True), w], machine(2000 + 3000))
+    assert hold.starts == () and "3600 MB needed" in dict(hold.why)["w"]
+
+
+def test_a_run_started_this_tick_keeps_its_largest_peak_from_the_growth_after_it():
+    grower = aged("g", 0.3, 1000, ceiling_mb=1000, at_ceiling=True, scoped=True)
+    a = tick([grower, run("w", WAITING, 3600, start_mb=220, kind="push")], machine(2000 + 4000))
+    assert [s[0] for s in a.starts] == ["w"]
+    assert ceilings(a).get("g") == 1400   # 4000 room less the 3600 the new run was admitted on, not its 512 ceiling
+
+
+def test_the_memory_reason_names_the_room_and_what_holds_the_rest():   # item 11 of the field test, 2026-11-08
+    held = [aged(f"r{n}", 0.5, 200, ceiling_mb=2960, scoped=True) for n in range(2)]
+    a = tick([*held, run("w", WAITING, 3112)], machine(2000 + 8000))
+    why = dict(a.why)["w"]
+    assert "MB free" not in why
+    assert "memory: 3112 MB needed, 2480 MB of room" in why
+    assert "10000 MB available, less the 2000 MB floor and 5520 MB held for runs already started" in why
+
+
 def test_starts_follow_decide():
     a = tick([aged("h", 0.5, 7000), run("hi", WAITING, 1500, kind="push"), run("lo", WAITING, 1500)],
              machine(2000 + 2000))   # room for one of them

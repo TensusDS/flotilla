@@ -902,3 +902,16 @@ def test_the_freeze_total_is_a_setting(monkeypatch):   # the person's ruling, 20
     monkeypatch.setattr(commands, "_machine", lambda: {"lane_freeze_total_minutes": 30})
     assert commands.freeze_total_minutes() == 30
     assert commands.value_for({})(None).freeze_total_s == 1800.0
+
+
+def test_an_estimate_names_both_memory_figures_when_they_differ():   # item 11 of the field test, 2026-11-08
+    import datetime as dt
+    from flotilla.lane import book, commands, estimate
+    now = dt.datetime.now(dt.timezone.utc)
+    ladder = ["exact:pytest -q", "project:p"]
+    done = {f"r{n}": book.Booking(id=f"r{n}", state=book.RELEASED, ended=(now - dt.timedelta(hours=n + 1)).isoformat(),
+                                  ladder=ladder, project="p", peak_mb=peak, seconds=20.0, cores=1.0, busy=0.2,
+                                  verdict="green") for n, peak in enumerate([200, 210, 3600, 220, 3500])}
+    item = book.Booking(id="w", ladder=ladder, project="p")
+    line = commands.describe_estimate(item, estimate.history(done, now=now))
+    assert line == "estimate: 20 s, 1 cores, up to 3.5 GB, usually 220 MB (5 runs (exact match))"

@@ -24,7 +24,7 @@ def test_the_first_run_on_an_empty_machine_starts_whatever_its_size():
 
 def test_a_run_that_does_not_fit_free_memory_waits_and_says_so():
     d = decide([run("h", RUNNING, 6000), run("b2", WAITING, 2000)], machine(free=1200), "b2")
-    assert not d.start and "memory: 2000 MB needed, 1200 MB free" in d.why
+    assert not d.start and "memory: 2000 MB needed, 1200 MB of room" in d.why
 
 def test_the_second_heavy_waits_past_the_cpu_bound():   # 8 + 8 > 1.5 * 8
     d = decide([run("h", RUNNING, 2000, True, 8), run("b2", WAITING, 2000, True, 8)], machine(free=6000), "b2")
@@ -33,6 +33,7 @@ def test_the_second_heavy_waits_past_the_cpu_bound():   # 8 + 8 > 1.5 * 8
 def test_heavies_leave_twenty_percent_to_light_runs():   # 4000 + 3500 > 0.8 * 9000
     d = decide([run("h", RUNNING, 4000, True, 2), run("b2", WAITING, 3500, True, 2)], machine(free=5000), "b2")
     assert not d.start and "reserve 1800 MB for light runs" in d.why
+    assert "3200 MB of room for heavy runs" in d.why and "available" not in d.why   # the share, not the room, holds it
 
 def test_a_light_run_starts_in_the_reserve_beside_heavies():
     runs = [run("h", RUNNING, 7000, True, 4), run("b2", WAITING, 500)]

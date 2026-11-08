@@ -492,3 +492,25 @@ def test_a_refusal_with_no_moment_or_a_future_one_holds_nobody_off(lane):   # mi
     raw(lanes, booking=first.id, state=book.HELD, refused_by=mine.id, refused_at="2099-01-01T00:00:00+00:00")
     lanes.grant(mine.id, slots=1, value=value(tree={11: 5000}, available=300))
     assert lanes.bookings()[first.id].frozen == "ordered"
+
+
+def test_a_waiter_is_admitted_by_its_largest_peak_and_starts_from_its_typical_one(lane):   # option B, 2026-11-08
+    from flotilla.lane import estimate
+    lanes, _procs, _later = lane
+    ladder = ["exact:pytest -q", "project:p"]
+    done = {f"r{n}": book.Booking(id=f"r{n}", state=book.RELEASED, ended=(T0 - dt.timedelta(hours=n + 1)).isoformat(),
+                                  ladder=ladder, project="p", peak_mb=peak, seconds=20.0, cores=1.0, busy=0.2,
+                                  verdict="green") for n, peak in enumerate([200, 210, 3600, 220, 3500])}
+    mine = lanes.enqueue("main session 2", "x", pid=12, mark="m", ladder=ladder, project="p")
+    found = {**done, **lanes.bookings()}
+    runs, _m = admission.view(found, estimate.history(found, now=T0), value(), now=T0, live=lanes.live, mine="")
+    waiter = next(r for r in runs if r.id == mine.id)
+    assert (waiter.mem_mb, waiter.start_mb) == (3600, 220)
+
+
+def test_a_waiter_never_measured_starts_from_what_it_is_expected_to_take(lane):
+    lanes, _procs, _later = lane
+    mine = lanes.enqueue("main session 2", "x", pid=12, mark="m", ladder=["exact:new"], project="p")
+    runs, _m = admission.view(lanes.bookings(), {}, value(), now=T0, live=lanes.live, mine="")
+    waiter = next(r for r in runs if r.id == mine.id)
+    assert waiter.start_mb is None and waiter.mem_mb == admission.DEFAULT_MB

@@ -62,6 +62,7 @@ class Run:
     freezable: bool = True      # its wrapper can obey an order
     holds: bool = False         # its freeze orders are out: the runs behind it leave it the memory it needs
     refused_for: str = ""       # whose order it refused a moment ago: no waiter's candidate until the bound is over
+    start_mb: int | None = None  # what it usually takes, its ceiling's start: admitted by mem_mb (its largest)
     # what the lane daemon reads of a run's group and keeps between its ticks (lane daemon design, 4.3)
     ceiling_mb: int | None = None   # its soft ceiling (memory.high); None: none
     scoped: bool = False            # its group was found: a ceiling can be set and read
@@ -182,9 +183,20 @@ def victim(candidates: list[Run], immortal_s: float) -> Run | None:
     return min(near, key=lambda r: (-r.grew_mb, priority(r, immortal_s), -r.order))
 
 
-def _memory_why(need: int, free: int, machine: Machine) -> str:
+def _memory_why(need: int, free: int, machine: Machine, *, heavy_room: int | None = None) -> str:
+    """The room is not what the machine has free: the daemon reads it as MemAvailable less the floor and less what
+    the runs already started are held to - their ceilings' headroom, their first half-minute (field test item 11).
+    `heavy_room`: the share the heavy runs may still take, when that and not the room holds a heavy run back."""
     reserve = round(machine.light_reserve * machine.give_mb)
-    return f"memory: {need} MB needed, {max(0, free)} MB free, reserve {reserve} MB for light runs"
+    if heavy_room is not None:
+        return f"memory: {need} MB needed, {max(0, heavy_room)} MB of room for heavy runs, reserve {reserve} MB for " \
+               "light runs"
+    why = f"memory: {need} MB needed, {max(0, free)} MB of room"
+    if machine.available_mb is not None:
+        held = max(0, machine.available_mb - machine.floor_mb - free)
+        why += (f" ({machine.available_mb} MB available, less the {machine.floor_mb} MB floor and {held} MB held for "
+                f"runs already started)")
+    return f"{why}, reserve {reserve} MB for light runs"
 
 
 #: What a failed check was about: only a lack of free memory is one that freezing a run can cure.
@@ -212,7 +224,7 @@ def _fits(r: Run, pool: list[Run], free: int | None, machine: Machine) -> tuple[
         if known:
             room = (1 - machine.light_reserve) * machine.give_mb - sum(p.mem_mb for p in heavies)
             if r.mem_mb > room:
-                return _memory_why(r.mem_mb, min(free, int(room)), machine), BOUND
+                return _memory_why(r.mem_mb, free, machine, heavy_room=min(free, int(room))), BOUND
     # free memory last: FREE then means nothing but memory stands in the way, so a freeze would let the run in -
     # never a freeze for a run a bound would still hold back
     if known and r.mem_mb > free:
