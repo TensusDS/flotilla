@@ -920,3 +920,25 @@ def test_a_seal_folds_clean(lane):
     raw(lanes, booking="b70", state=book.HELD, who="x", order_sig="not hex")
     raw(lanes, booking="b71", state=book.HELD, who="x", order_sig="ab" * 32)
     assert lanes.bookings()["b70"].order_sig == "" and lanes.bookings()["b71"].order_sig == "ab" * 32
+
+
+def test_since_is_when_a_booking_entered_its_state_not_its_last_record():   # field test of 2026-11-08, item 6
+    # the daemon writes a held run's ceiling every few seconds: `flotilla lane` read "since 00:00, 0 min" for a run
+    # held from 23:57, and the fair share read its project as served a moment ago
+    at = lambda minute: f"2026-11-08T23:{minute:02d}:00+00:00"   # noqa: E731
+    found = book.fold([{"at": at(50), "booking": "b1", "state": "waiting"},
+                       {"at": at(52), "booking": "b1", "state": "waiting", "refused_by": "b2"},
+                       {"at": at(57), "booking": "b1", "state": "held"},
+                       {"at": at(58), "booking": "b1", "state": "held", "ceiling_mb": 512},
+                       {"at": at(59), "booking": "b1", "state": "held", "frozen": "ordered"}])
+    assert found["b1"].since == at(57)
+    waiting = book.fold([{"at": at(50), "booking": "b2", "state": "waiting"},
+                         {"at": at(55), "booking": "b2", "state": "waiting", "refused_by": "b1"}])
+    assert waiting["b2"].since == at(50)
+
+
+def test_a_project_is_served_when_its_run_was_granted_not_when_the_daemon_last_wrote():
+    now = dt.datetime(2026, 11, 8, 23, 59, tzinfo=dt.timezone.utc)
+    found = book.fold([{"at": "2026-11-08T23:40:00+00:00", "booking": "b1", "state": "held", "project": "a"},
+                       {"at": "2026-11-08T23:58:00+00:00", "booking": "b1", "state": "held", "ceiling_mb": 900}])
+    assert book.last_served(found, now) == {"a": "2026-11-08T23:40:00+00:00"}

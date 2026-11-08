@@ -181,7 +181,7 @@ class Booking:
     path: str = ""                                   # how it was admitted: fifo, or fair and for which project
     place: int | None = None                         # the place it stands in: an expired booking's, made again
     kind: str = ""                                   # its purpose: push, handover, review or run (rule 4)
-    asked: str = ""                                  # when it first asked; `since` moves with every record
+    asked: str = ""                                  # when it first asked; `since` is when it entered its state
     started: str = ""                                # when it last started or thawed
     ran_s: float | None = None                       # run time before its last start, frozen time left out
     frozen: str = ""                                 # "", "ordered" (a waiter asked) or "frozen" (its holder obeyed)
@@ -250,9 +250,13 @@ def fold(records, into: dict[str, Booking] | None = None) -> dict[str, Booking]:
         for key in FIELDS:
             if key in event:
                 setattr(item, key, _clean(key, event[key]))
+        entered = seen is None or seen.state != event["state"]
         item.state = event["state"]
         if item.state in (HELD, WAITING):
-            item.since = event["at"]
+            # when it began to hold or to wait, not its last line: the daemon writes a held run's ceiling every few
+            # seconds, and the fair share, the start estimates and `flotilla lane` read this (field test, 2026-11-08)
+            if entered or not item.since:
+                item.since = event["at"]
         else:
             item.ended = event["at"]
         found[item.id] = item
