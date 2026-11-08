@@ -8,6 +8,16 @@ something through, B a bug a user meets, P polish, tests or docs), or `open, des
 run). A later triage re-checks only items whose named files changed since that version. An item that is done -
 fixed by a release, or found fixed - leaves its section for **Done** at the bottom, one line with the version.
 
+## From the field test of the lane daemon, batches 1-3 (2026-11-07..08, 0.30.1 and lane/daemon c5baaff)
+
+Two demo fleets on one machine (8 cores, 15 GB), batch 1 on 0.30.1, then batch 1 again and batches 2-3 on the lane
+daemon. The findings the person took into work are fixed on their own branches; these two were deferred.
+
+- **A run held at once may print no "waits because" line.** The main's push receipt for one row printed none; whether
+  a run admitted without waiting should say so, or the line went missing, was not checked. *(open, measure)*
+- **Claude Code `plugin update` keeps a stale cache of a same-version local plugin** (development setup, not
+  flotilla): a reinstall was needed to load the changed code. Worth a line in the development notes. *(open, P)*
+
 ## From the field test of two demo fleets on one lane (2026-11-06, 0.29.3)
 
 Two four-seat fleets (demo-a, demo-b), five small rows each, one lane (`lane_capacity = 1`, `lane_share =
