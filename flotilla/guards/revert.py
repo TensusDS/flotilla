@@ -14,6 +14,7 @@ warning: a false refusal costs more than the rare miss (spec, section 10). Ceili
 
 from __future__ import annotations
 
+import shlex
 import subprocess
 
 from flotilla.guards import Finding
@@ -192,13 +193,22 @@ def _at_risk(kind, detail, index_saves, directory, run) -> list[str] | None:
     return [line for line in done.stdout.splitlines() if line.strip()]
 
 
-def _fix(kind, index_saves) -> str:
+def _probe(lost) -> str:
+    """How to undo a change made only to be thrown away - a probe, an injected regression - without a form that
+    reads the index in silence: write the file from its revision (field test of 2026-11-08, item 10)."""
+    path = shlex.quote(lost[0])
+    return (f"; a change made only to be thrown away (a probe) is undone from the repository root by writing the "
+            f"file from its revision: `git show HEAD:{path} > {path}`")
+
+
+def _fix(kind, index_saves, lost=()) -> str:
+    probe = _probe(lost) if kind == "paths" and lost else ""
     if kind == "paths" and index_saves:
         return ("`git add` those files first: the index becomes the save point, and the same command then reverts "
-                "only what changed after it")
+                "only what changed after it" + probe)
     if kind == "untracked":
         return "move them, add them, or `git stash push --include-untracked`, before cleaning"
-    return "this form overwrites the index too, so `git add` saves nothing: commit, or `git stash`, first"
+    return "this form overwrites the index too, so `git add` saves nothing: commit, or `git stash`, first" + probe
 
 
 def check(segment, run=subprocess.run) -> Finding | None:
@@ -228,4 +238,4 @@ def check(segment, run=subprocess.run) -> Finding | None:
         return None
     shown = ", ".join(lost[:SHOWN]) + (f" and {len(lost) - SHOWN} more" if len(lost) > SHOWN else "")
     return Finding(GUARD, True, f"flotilla revert guard: `{segment.text}` would destroy uncommitted work "
-                                f"({shown}). {_fix(kind, index_saves)}.")
+                                f"({shown}). {_fix(kind, index_saves, lost)}.")

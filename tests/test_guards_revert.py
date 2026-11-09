@@ -196,3 +196,16 @@ def test_a_switch_creating_a_branch_named_like_flags_is_not_a_force(tmp_path, co
     root = plain_repo(tmp_path)
     (root / "f.txt").write_text("changed\n", encoding="utf-8")
     assert check(command, root) is None
+
+
+def test_a_refused_revert_of_paths_names_how_to_undo_a_throwaway_probe(tmp_path):
+    """Field test of 2026-11-07..08, item 10: a reviewer reverting its own injected probe met the refusal and had no
+    form that both undoes a probe and keeps the guard's promise. Writing the file from its revision does: it names
+    the revision and changes nothing else."""
+    root = plain_repo(tmp_path)
+    (root / "f.txt").write_text("work\n", encoding="utf-8")
+    found = check("git checkout -- f.txt", root)
+    assert found.refuse and "git show HEAD:f.txt > f.txt" in found.text
+    git(root, "add", "f.txt")
+    named = check("git checkout HEAD -- f.txt", root)
+    assert named.refuse and "git show HEAD:f.txt > f.txt" in named.text

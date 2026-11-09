@@ -26,6 +26,12 @@ of swap used.
 - **`flotilla watch` and `flotilla inbox` give the census 20 s**, not a hook's 3 s, and `flotilla watch --wait` asks
   a census that missed a look again, ending with 2 only after three misses in a row: under load `claude agents`
   answered late, and the orchestrators' watch went blind exactly when the machine was tight.
+- **`flotilla work reconcile` names the rows queued and not yet on origin** instead of "nothing is queued or
+  landed", which it printed while `work show` listed a queued row.
+- **A `lane run --for <branch>` on a detached HEAD at that branch's tip is recorded on its row**, so a reviewer's
+  runs, read on the handed tip, reach the ledger; a detached HEAD anywhere else is still not, and says where it is.
+- **The revert guard's refusal names how to undo a throwaway probe**: write the file from its revision, `git show
+  HEAD:<path> > <path>`. The guard refuses what it refused before.
 - **A booking's "since" is when it began to hold or to wait**, not its last journal line: the daemon writes a held
   run's ceiling every few seconds, and `flotilla lane`, the fair share and the start estimates read a run held for
   minutes as just started.
