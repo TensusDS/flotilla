@@ -414,3 +414,24 @@ def test_an_effort_claude_code_does_not_take_is_named_before_any_seat(tmp_path, 
     code, out = run_cli("spawn", "--post", "reviewer=1", "--dry-run", "--root", str(root))
     assert code == 2 and "fleet.effort.reviewer" in out
     assert not (tmp_path / "app-reviewer-1").exists()
+
+
+def test_the_fleet_names_a_seat_held_on_a_start_up_question(tmp_path, monkeypatch):   # field test 2026-11-07, S3
+    from fleetkit import FakeClaude
+    from flotilla.fleet import spawn
+    from flotilla.ledger.commands import open_ledger
+    from flotilla.core.storage import LocalLogStore
+    root = onboarded(tmp_path, monkeypatch)
+    fake = FakeClaude(held_on="New MCP server found in this project: mint")
+    ledger = open_ledger(root)
+    ledger.run = fake
+    spawn.spawn(ledger, {"main": 1}, census=fake.census, store=LocalLogStore(tmp_path / "names"), caller="test",
+                wait=0.1, poll=0.05, sleep=lambda s: None)
+    monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [])
+    monkeypatch.setattr("flotilla.core.census.held_at_start",
+                        lambda names, **kw: [s for s in fake.sessions if s.name in names])
+    code, out = run_cli("fleet", "--root", str(root))
+    assert code == 0, out
+    assert ("main session 1  (main)  has not started: Claude Code holds it at start on a question nobody answers in "
+            "the background - «New MCP server found in this project: mint»; answer it with `claude attach 000001`, "
+            "or `flotilla fleet retire main session 1` stops it") in out

@@ -459,3 +459,27 @@ def test_down_names_what_waits_on_the_person(tmp_path):
     lines, _ = do_down(ledger, fake)
     assert old.exists()
     assert any("1 piece of work waits on the person" in line and "/flotilla:gc" in line for line in lines), lines
+
+
+def test_a_seat_held_on_a_start_up_question_is_alive_to_the_fleet_and_stopped_by_down(tmp_path, monkeypatch):
+    """Field test 2026-11-07, S3: the census lists a seat held on Claude Code's start-up question with no process,
+    which reads as gone; `fleet` said "not running", and `fleet down` removed its tree and branch and left the
+    session waiting. The fleet's census asks the seats it misses whether they are held."""
+    from flotilla.fleet import commands as fleet_commands
+    fake = FakeClaude(held_on="New MCP server found in this project: mint")
+    root, ledger, seat = raised_world(tmp_path, fake)
+    asked = []
+
+    def held_at_start(names, **kw):
+        asked.append(set(names))
+        return [s for s in fake.sessions if s.held_on is not None and s.name in names]
+    monkeypatch.setattr("flotilla.core.census.held_at_start", held_at_start)
+    monkeypatch.setattr(fleet_commands, "census", lambda: [s for s in fake.sessions if s.held_on is None])
+    ask = fleet_commands.census_for(ledger)
+    [item] = retire.fleet_view(ledger, ask())
+    assert item["live"] and item["held_on"] == "New MCP server found in this project: mint" and asked == [
+        {"main session 1"}]
+    lines, refused = retire.down(ledger, caller="test", me="orchestrator 1", census=ask, wait=0.2, poll=0.05,
+                                 sleep=lambda s: None)
+    assert fake.stopped == ["000001"] and "retired main session 1 (stopped 000001)" in lines
+    assert [s for s in fake.sessions if s.name == "main session 1"] == []

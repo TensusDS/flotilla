@@ -75,6 +75,7 @@ def fleet_view(ledger, sessions: list | None) -> list[dict]:
             "locked": bool(row.tree) and str(Path(row.tree).resolve()) in locked,
             "live": None if sessions is None else found is not None,
             "state": found.state if found else "", "short_id": (found.short_id or "") if found else "",
+            "held_on": found.held_on if found else None,
             "dirty": _dirty(row.tree),
             "work": [other for other in rows.values()
                      if other.is_open and other.owner == row.owner and other.state != "reserved"],

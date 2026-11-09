@@ -33,7 +33,8 @@ def run_watch_command(args, *, gather=None, now: dt.datetime | None = None, slee
         return 2
     if gather is None:
         from flotilla.watch import context
-        gather = lambda root, sid: context.gather(root, sid, census_timeout=context.COMMAND_CENSUS_TIMEOUT)  # noqa: E731
+        gather = lambda root, sid: context.gather(root, sid, census_timeout=context.COMMAND_CENSUS_TIMEOUT,  # noqa: E731
+                                                  held_seats=True)
     from flotilla.watch import render
     ctx = gather(root, "")
     problems = _problems(ctx)

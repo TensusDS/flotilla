@@ -106,6 +106,13 @@ def no_real_process_is_stopped(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_seat_is_held_at_start(monkeypatch):
+    """Asking whether a seat is held on a start-up question asks the real `claude agents` and `claude logs`; no test
+    does unless it says so (test_census.py keeps the real one)."""
+    monkeypatch.setattr("flotilla.core.census.held_at_start", lambda names, **kw: [])
+
+
+@pytest.fixture(autouse=True)
 def the_caller_is_a_person_in_a_terminal(monkeypatch):
     """Answering a permission question and recording onboarding answers ask who calls (security review F2-F12).
     A test is a person at a terminal in an interactive session unless it says otherwise; no test asks the census."""

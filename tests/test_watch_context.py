@@ -92,3 +92,22 @@ def test_a_hook_gathers_with_a_hooks_three_seconds(tmp_path, monkeypatch):   # r
         raise ConfigError("not needed here")
     context.gather(tmp_path, "aaa", open_ledger=closed, parent_of=no_parent)
     assert asked == [context.HOOK_CHECK_TIMEOUT] == [3]
+
+
+def test_a_command_asks_the_seats_the_census_misses_whether_they_are_held_at_start(tmp_path, monkeypatch):
+    """Field test 2026-11-07, S3: a seat held on a start-up question is listed with no process and dropped as gone.
+    `watch` and `inbox` ask the seats they miss; a hook does not pay for it."""
+    import dataclasses
+    from flotilla.core import census
+    held = dataclasses.replace(sess("main session 2"), short_id="0204d254", held_on="New MCP server found")
+    asked = []
+    monkeypatch.setattr(census, "held_at_start", lambda names, **kw: asked.append(set(names)) or [held])
+    seat = row("r1", branch="fleet/main-2", owner="main session 2", state="reserved")
+    gone = row("r2", branch="fleet/main-3", owner="main session 3", state="released")
+    ledger = SimpleNamespace(rows=lambda: rows(seat, gone), root=tmp_path)
+    me = sess("orchestrator 1", sid="aaa")
+    ctx = context.gather(tmp_path, "aaa", census=lambda: [me], open_ledger=lambda r: ledger, parent_of=no_parent,
+                         held_seats=True)
+    assert [s.name for s in ctx.sessions] == ["orchestrator 1", "main session 2"] and asked == [{"main session 2"}]
+    context.gather(tmp_path, "aaa", census=lambda: [me], open_ledger=lambda r: ledger, parent_of=no_parent)
+    assert asked == [{"main session 2"}]   # a hook's gather does not ask

@@ -40,6 +40,13 @@ of swap used.
   the scope - measured with Claude Code 2.1.319. A project that installed flotilla after the user did runs the
   user's copy: spawn no longer asks for a restart that would change nothing, and `/flotilla:update` holds the
   user's copy for a deferred fleet that rides it, though the project has an install record of its own.
+- **A seat Claude Code holds at start on a question is seen, said and stopped.** A project's `.mcp.json`, or one
+  in a folder above it, makes Claude Code ask every new session "New MCP server found in this project" before it
+  starts; in the background nobody answers. Such a seat is listed with no process, which read as gone: spawn said
+  "not yet seen in the census", `flotilla fleet` said "not running", nothing told the person, and `fleet down`
+  removed the seat's tree and branch and left the session waiting. Now spawn, `flotilla fleet`, `watch` and `inbox`
+  name the question and `claude attach <id>` to answer it, and `fleet down` and `retire` stop the session. A seat
+  is told apart from a long-gone job by its screen, asked of `claude logs`, and only for seats the census misses.
 - **A booking's "since" is when it began to hold or to wait**, not its last journal line: the daemon writes a held
   run's ceiling every few seconds, and `flotilla lane`, the fair share and the start estimates read a run held for
   minutes as just started.

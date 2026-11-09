@@ -1,5 +1,6 @@
 """A fake `claude` for fleet tests: launches and stops are recorded, the census is a list, git runs for real."""
 
+import dataclasses
 import json
 import subprocess
 
@@ -16,7 +17,8 @@ def session(name, short_id, state="blocked", cwd=""):
 
 class FakeClaude:
     def __init__(self, sessions=(), *, appear=True, fail_launch=False, reachable=True, fail_on=(),
-                 appear_then_fail=False, timeout=False, plugin_entries=None, plugin_list_fails=False):
+                 appear_then_fail=False, timeout=False, plugin_entries=None, plugin_list_fails=False,
+                 held_on=None):
         # what `claude plugin list --json` answers: by default flotilla enabled and nothing that brings MCP servers
         self.plugin_entries = list(plugin_entries if plugin_entries is not None else [FLOTILLA_ENABLED])
         self.plugin_list_fails = plugin_list_fails
@@ -31,6 +33,7 @@ class FakeClaude:
         self.fail_launch = fail_launch
         self.reachable = reachable
         self.stops = True
+        self.held_on = held_on   # a launch Claude Code holds at start on this question (census.held_at_start)
         self.stop_fails: set[str] = set()   # session names whose `claude stop` exits 1
 
     def census(self):
@@ -51,7 +54,8 @@ class FakeClaude:
             if self.fail_launch or self.appear_then_fail or name in self.fail_on:
                 return subprocess.CompletedProcess(cmd, 1, "", "error: not logged in")
             if self.appear:
-                self.sessions.append(session(name, f"{len(self.launched):06x}"))
+                self.sessions.append(dataclasses.replace(session(name, f"{len(self.launched):06x}"),
+                                                         held_on=self.held_on))
             return subprocess.CompletedProcess(cmd, 0, "backgrounded", "")
         if cmd[1:4] == ["plugin", "list", "--json"]:
             self.plugin_lists.append(kwargs.get("cwd"))
