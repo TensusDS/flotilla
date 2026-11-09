@@ -254,8 +254,11 @@ def fold(records, into: dict[str, Booking] | None = None) -> dict[str, Booking]:
         item.state = event["state"]
         if item.state in (HELD, WAITING):
             # when it began to hold or to wait, not its last line: the daemon writes a held run's ceiling every few
-            # seconds, and the fair share, the start estimates and `flotilla lane` read this (field test, 2026-11-08)
-            if entered or not item.since:
+            # seconds, and the fair share, the start estimates, a start-less holder's grace, reservation and run time
+            # and `flotilla lane` read this (field test, 2026-11-08). A moment ahead of a later line is a clock that
+            # stepped back: it heals to that line, as it did when every line moved it (review of cfed01d)
+            ahead = item.since and (_when(item.since) or _when(event["at"])) > _when(event["at"])
+            if entered or not item.since or ahead:
                 item.since = event["at"]
         else:
             item.ended = event["at"]
@@ -393,8 +396,8 @@ def heavy_starts(found: dict, hist, *, slots: int, now: dt.datetime, live, ceili
     lanes = []
     for item in found.values():
         if item.state == HELD and live(item) and (counted or not item.path.startswith("light")):
-            began = _when(item.since) or now
-            lanes.append(max(began + dt.timedelta(seconds=span(item)), now + dt.timedelta(minutes=1)))
+            left = span(item) - _run_time(item, now)   # frozen time is no progress (review of cfed01d)
+            lanes.append(now + dt.timedelta(seconds=max(left, 60.0)))
     lanes = sorted(lanes)[len(lanes) - slots:] if 0 < slots <= len(lanes) else sorted(lanes) if slots > 0 else []
     lanes += [now] * max(slots - len(lanes), 0)
     starts: dict[str, dt.datetime | None] = {}
@@ -418,6 +421,13 @@ def light_verdict(found: dict, mine: Booking, room: Room, hist, live) -> str:
 def _seconds_since(text: str, now: dt.datetime) -> float:
     moment = _when(text)
     return max(0.0, (now - moment).total_seconds()) if moment is not None else 0.0
+
+
+def _run_time(item: Booking, now: dt.datetime) -> float:
+    """How long a holder has run: before its last start, plus since it, unless it stands frozen now."""
+    if item.frozen == "frozen":
+        return item.ran_s or 0.0
+    return (item.ran_s or 0.0) + _seconds_since(item.started or item.since, now)
 
 
 def _frozen_for(item: Booking, now: dt.datetime) -> float:

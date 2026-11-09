@@ -1,3 +1,5 @@
+import dataclasses
+
 import pytest
 
 from flotilla.core.storage import LocalLogStore
@@ -942,3 +944,27 @@ def test_a_project_is_served_when_its_run_was_granted_not_when_the_daemon_last_w
     found = book.fold([{"at": "2026-11-08T23:40:00+00:00", "booking": "b1", "state": "held", "project": "a"},
                        {"at": "2026-11-08T23:58:00+00:00", "booking": "b1", "state": "held", "ceiling_mb": 900}])
     assert book.last_served(found, now) == {"a": "2026-11-08T23:40:00+00:00"}
+
+
+def test_heavy_starts_count_a_holder_by_its_run_time_not_its_frozen_time():   # review of cfed01d, finding 1
+    # granted 45 min ago, frozen 35 of them after 5 min of running, thawed 5 min ago: 10 min run of a 30 min span
+    now = NOW()
+    hist = {"exact:r": [est.Sample(1800.0, 1000, 4.0, 0.5, "green", "")] * 3}
+    holder = book.Booking(id="b1", state=book.HELD, ladder=["exact:r"], path="fifo", rule=5, ran_s=300.0,
+                          since=(now - dt.timedelta(minutes=45)).isoformat(),
+                          started=(now - dt.timedelta(minutes=5)).isoformat())
+    waiter = book.Booking(id="b2", state=book.WAITING, ladder=["exact:r"], rule=5)
+    starts = book.heavy_starts({"b1": holder, "b2": waiter}, hist, slots=1, now=now, live=lambda item: True,
+                               ceiling=1800)
+    assert abs((starts["b2"] - now).total_seconds() - 20 * 60) < 2
+    frozen = dataclasses.replace(holder, frozen="frozen", started="")   # frozen now: its run time stands still
+    starts = book.heavy_starts({"b1": frozen, "b2": waiter}, hist, slots=1, now=now, live=lambda item: True,
+                               ceiling=1800)
+    assert abs((starts["b2"] - now).total_seconds() - 25 * 60) < 2
+
+
+def test_a_since_ahead_of_a_later_record_heals_to_it():   # review of cfed01d, finding 2: the clock stepped back
+    found = book.fold([{"at": "2026-11-09T01:00:00+00:00", "booking": "b1", "state": "held"},
+                       {"at": "2026-11-09T00:10:00+00:00", "booking": "b1", "state": "held", "ceiling_mb": 512}])
+    assert found["b1"].since == "2026-11-09T00:10:00+00:00"
+
