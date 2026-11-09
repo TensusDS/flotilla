@@ -96,21 +96,19 @@ def loads_all(directory: Path, env=os.environ, home: Path | None = None) -> list
     where = Path(directory).resolve()
     ids = enabled_ids(directory, env, home)
 
-    def release(of: list[tuple[str, dict]], enabled: bool = False) -> str | None:
+    def release(of: list[tuple[str, dict]]) -> str | None:
+        # a record for another path only - a moved repository, a second clone - loads nothing here, however
+        # `claude plugin list` reports it ("not cached", measured with `claude -p --debug`, review of 0fb0c07)
         own = [item for _, item in of
                if item.get("scope") in ("local", "project") and _same(item.get("projectPath"), where)]
         if own:
             return str(min(own, key=lambda item: item.get("scope") != "local").get("version") or "") or None
         user = next((item for _, item in of if item.get("scope") == "user"), None)
-        if user is None and enabled and of:
-            # enabled here, installed only for another path (a moved repository, a second clone): Claude Code loads
-            # it all the same (measured with `claude plugin list`, review of 424c879)
-            user = of[0][1]
         return str(user.get("version") or "") or None if user else None
     if ids is None:
         name = release(found)
         return [("", name)] if name else []
-    loads = [(plugin, release([entry for entry in found if entry[0] == plugin], enabled=True)) for plugin in ids]
+    loads = [(plugin, release([entry for entry in found if entry[0] == plugin])) for plugin in ids]
     return [(plugin, name) for plugin, name in loads if name]
 
 
@@ -121,7 +119,8 @@ def loads_in(directory: Path, env=os.environ, home: Path | None = None) -> str |
     names = [name for _, name in loads_all(directory, env, home)]
     if not names:
         return None
-    return min(names, key=lambda name: _version(name) or (-1, -1, -1))
+    dotted = [name for name in names if _version(name) is not None]   # a commit names no order (review of 0fb0c07)
+    return min(dotted, key=_version) if dotted else names[0]
 
 
 def running_root() -> Path:

@@ -127,17 +127,27 @@ def test_two_enabled_marketplaces_on_two_releases_are_named_as_a_double_load(mac
     assert "enabledPlugins" in said
 
 
-def test_an_enabled_id_whose_only_record_is_another_paths_still_loads(machine):   # review of 424c879, M1
-    # a moved repository or a second clone: Claude Code reports such an id enabled, and a seat loads it
+def test_an_enabled_id_whose_only_record_is_another_paths_does_not_load(machine):   # reviews of 424c879, 0fb0c07
+    # a moved repository or a second clone: `claude plugin list` reports such an id enabled, but a session started
+    # here does not load it ("not cached", measured with `claude -p --debug`, Claude Code 2.1.319)
     from flotilla.core import claude_state
     ledger, config, env = machine
     records_of(config, {"flotilla@flotilla": [install("user", "0.29.3")],
                         "flotilla@flotilla-local": [install("project", "0.30.1", "/the/old/clone")]})
     enable(config / "settings.json", flotilla__flotilla=True)
     enable(ledger.root / ".claude" / "settings.json", flotilla__flotilla_local=True)
-    assert sorted(claude_state.loads_all(ledger.root, env)) == [("flotilla@flotilla", "0.29.3"),
-                                                                ("flotilla@flotilla-local", "0.30.1")]
-    assert "two releases" in REAL(ledger, running="0.29.3", env=env)
+    assert claude_state.loads_all(ledger.root, env) == [("flotilla@flotilla", "0.29.3")]
+    assert REAL(ledger, running="0.29.3", env=env) == ""
+
+
+def test_a_release_named_by_a_commit_is_never_taken_for_the_oldest(machine):   # review of 0fb0c07, L1
+    from flotilla.core import claude_state
+    ledger, config, env = machine
+    records_of(config, {"flotilla@flotilla": [install("user", "0.31.0")],
+                        "flotilla@flotilla-local": [install("project", "a1b2c3d4e5f6", ledger.root)]})
+    enable(config / "settings.json", flotilla__flotilla=True)
+    enable(ledger.root / ".claude" / "settings.json", flotilla__flotilla_local=True)
+    assert claude_state.loads_in(ledger.root, env) == "0.31.0"
 
 
 def test_with_two_releases_loading_the_older_is_what_every_copy_has_reached(machine):   # review of 424c879, L1
