@@ -80,6 +80,11 @@ def _seconds_since(text: str, now: dt.datetime) -> float:
     return max(0.0, (now - moment).total_seconds()) if moment is not None else 0.0
 
 
+def _written(mb: int | None) -> int | None:
+    """A ceiling as the daemon writes it: never one that starves (MIN_CEILING_MB); None lifts it to max."""
+    return None if mb is None else max(policy.MIN_CEILING_MB, int(mb))
+
+
 class Scheduler:
     def __init__(self, lanes, value_of, *, signer: tuple, groups_io=groups, clock=time.monotonic,
                  default_floor, total_mb=None):
@@ -128,12 +133,12 @@ class Scheduler:
             reading = self.groups.read(path) if path is not None else None
             paths[run.id], readings[run.id] = path, reading
             if item.state == book.HELD and run.id not in self.ceilings and reading is not None:
-                self.ceilings[run.id] = reading.high_mb
+                self.ceilings[run.id] = _written(reading.high_mb)   # adopted as it will be written (review of bd42f9c)
             ceiling = self.ceilings.get(run.id) if item.state == book.HELD else None
             seen = self.history.run(now, run.id, reading, ceiling) if item.state == book.HELD else {}
             frozen = item.frozen == "frozen"
             # a ceiling decided and not read back - a write that failed, a file set back - holds nothing
-            written = None if ceiling is None else max(policy.MIN_CEILING_MB, int(ceiling))   # as it is written
+            written = _written(ceiling)
             bound = written is None or (reading is not None and reading.high_mb is not None
                                         and abs(reading.high_mb - written) <= 1)
             enriched.append(dataclasses.replace(
@@ -161,8 +166,7 @@ class Scheduler:
             item = after.get(booking)
             if path is None or item is None or item.state != book.HELD or booking not in self.ceilings:
                 continue
-            want = self.ceilings[booking]
-            want = None if want is None else max(policy.MIN_CEILING_MB, int(want))   # never a ceiling that starves
+            want = _written(self.ceilings[booking])
             reading = readings[booking]
             if reading is None or reading.high_mb != want:
                 self.groups.set_high(path, want)

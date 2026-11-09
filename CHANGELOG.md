@@ -26,12 +26,14 @@ of swap used.
 - **`flotilla watch` and `flotilla inbox` give the census 20 s**, not a hook's 3 s, and `flotilla watch --wait` asks
   a census that missed a look again, ending with 2 only after three misses in a row: under load `claude agents`
   answered late, and the orchestrators' watch went blind exactly when the machine was tight.
-- **`flotilla work reconcile` names the rows queued and not yet on origin** instead of "nothing is queued or
-  landed", which it printed while `work show` listed a queued row.
-- **A `lane run --for <branch>` on a detached HEAD at that branch's tip is recorded on its row**, so a reviewer's
-  runs, read on the handed tip, reach the ledger; a detached HEAD anywhere else is still not, and says where it is.
-- **The revert guard's refusal names how to undo a throwaway probe**: write the file from its revision, `git show
-  HEAD:<path> > <path>`. The guard refuses what it refused before.
+- **`flotilla work reconcile` names the queued rows origin has said nothing of yet**, beside whatever else it
+  prints, instead of "nothing is queued or landed", which it printed while `work show` listed a queued row; a local
+  ledger names its rows by their state.
+- **A `lane run --for <branch>` on a detached HEAD at that branch's tip is recorded on its row**, so a reviewer
+  reading the branch's current tip detached has its runs reach the ledger; a detached HEAD anywhere else - an older
+  tip included - is still not, and says where it is.
+- **The revert guard's refusal names how to set a throwaway probe aside with nothing lost**: `git stash push --
+  <path>`, which `git stash pop` brings back. The guard refuses what it refused before.
 - **Which release a session loads follows `enabledPlugins`**, not any marketplace's install record: a stale
   record of a marketplace the project turned off no longer reads as the release a seat would load (spawn refused
   "one fleet on two releases" for it), and two enabled marketplaces on two releases are named as the double load

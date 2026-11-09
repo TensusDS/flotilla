@@ -256,3 +256,11 @@ def test_a_ledger_lost_in_the_confirming_sample_ends_the_wait_and_says_ledger(tm
     broken = context(tmp_path, me=None, sessions=DROPPED, ledger_error="trunk carries no .flotilla/project.toml")
     code, out = run_wait(tmp_path, capsys, [calm, news, broken, calm, calm, calm], seconds=100.0)
     assert code == 2 and "ledger: could not be read" in out and "nothing new" not in out
+
+
+def test_a_confirming_sample_missed_at_the_deadline_ends_with_2(tmp_path, capsys):   # review of 147d228
+    calm = context(tmp_path, me=None, sessions=QUIET)
+    news = context(tmp_path, me=None, sessions=DROPPED, rows_=HANDED)
+    lost = context(tmp_path, me=None, census_error="`claude agents --json` did not answer within 20s")
+    code, out = run_wait(tmp_path, capsys, [calm, calm, news, lost], seconds=60.0)
+    assert code == 2 and "did not answer within 20s" in out and "nothing new" not in out
