@@ -769,3 +769,20 @@ def test_status_names_a_seat_held_on_a_start_up_question_not_orphaned(tmp_path, 
         commands._status(ledger, SimpleNamespace(stalled=None))
     text = out.getvalue()
     assert "held at start: main session 1 has not started" in text and "orphaned" not in text, text
+
+
+def test_status_says_when_it_could_not_ask_about_held_seats(tmp_path, monkeypatch):   # review of fd338c6
+    from types import SimpleNamespace
+    from fleetkit import held_seat_world
+    from flotilla.ledger import commands
+    from flotilla.ledger.errors import MoveRefused
+    ledger, fake, plain = held_seat_world(tmp_path, monkeypatch)
+    ledger.census = plain
+
+    def cannot(names):
+        raise MoveRefused("could not ask whether main session 1 is held at start: census timed out")
+    monkeypatch.setattr(ledger, "held_names", cannot)
+    out = io.StringIO()
+    with redirect_stdout(out):
+        commands._status(ledger, SimpleNamespace(stalled=None))
+    assert "held at start: unknown (could not ask" in out.getvalue(), out.getvalue()

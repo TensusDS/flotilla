@@ -537,8 +537,9 @@ def _status(ledger: core.Ledger, args) -> int:
         try:
             held = ledger.held_names({row.owner for row in rows.values()
                                       if row.is_open and row.state == "reserved"} - live)
-        except MoveRefused:
+        except MoveRefused as err:   # a view says what it could not ask (review of fd338c6)
             held = set()
+            print(f"held at start: unknown ({err}); a seat shown orphaned may be waiting on a start-up question")
         live |= held
         for name in sorted(held):
             print(f"held at start: {name} has not started, a start-up question waits; `flotilla fleet` names it")

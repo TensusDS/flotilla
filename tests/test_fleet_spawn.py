@@ -543,7 +543,7 @@ def test_a_seat_held_on_a_start_up_question_is_reported_with_the_question(tmp_pa
     assert raised[0].short_id == "000001"
     assert raised[0].note == ("Claude Code holds it at start on a question nobody answers in the background - "
                               "«New MCP server found in this project: mint»; answer it with `claude attach 000001`, "
-                              "or `flotilla fleet retire main session 1` stops it")
+                              "or `flotilla retire \"main session 1\"` stops it")
     assert [row.session_id for row in ledger.rows().values()] == ["sid-000001"]
 
 

@@ -272,14 +272,15 @@ class _Seen(Exception):
     pass
 
 
-def test_a_seat_held_on_a_start_up_question_takes_no_memory_credit(tmp_path, monkeypatch):
+@pytest.mark.parametrize("post", ["main", "orchestrator"])   # review of fd338c6: the leader's term too
+def test_a_seat_held_on_a_start_up_question_takes_no_memory_credit(tmp_path, monkeypatch, post):
     """Review of 3f5bd79: sizing credited a full seat's memory back for a held seat, which has not started; the room
     was overstated by up to a seat per held seat. A running seat is still credited."""
     import dataclasses
     import pytest
     from fleetkit import held_seat_world
     from flotilla.fleet import sizing
-    ledger, fake, plain = held_seat_world(tmp_path, monkeypatch)
+    ledger, fake, plain = held_seat_world(tmp_path, monkeypatch, counts={post: 1})
 
     def recommend(machine, *args, **kwargs):
         raise _Seen(machine.live_seats)

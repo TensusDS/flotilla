@@ -467,7 +467,7 @@ def test_the_fleet_names_a_seat_held_on_a_start_up_question(tmp_path, monkeypatc
     assert code == 0, out
     assert ("main session 1  (main)  has not started: Claude Code holds it at start on a question nobody answers in "
             "the background - «New MCP server found in this project: mint»; answer it with `claude attach 000001`, "
-            "or `flotilla fleet retire main session 1` stops it") in out
+            "or `flotilla retire \"main session 1\"` stops it") in out
 
 
 def test_spawn_says_the_start_up_question_a_new_seat_is_held_on(tmp_path, monkeypatch):   # review of bedb2a3

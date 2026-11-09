@@ -284,8 +284,8 @@ def release(ledger: Ledger, actor: Actor, branch: str, *, why: str = "", settled
         raise MoveRefused(f"{current.owner} is alive; only they release their own work")
     if current is not None and current.owner != actor.name and ledger.held_names({current.owner}):
         raise MoveRefused(f"{current.owner} is alive, held at start on a question nobody answers in the background "
-                          "(`flotilla fleet` names it); answer it, or retire it with `flotilla fleet retire "
-                          f"{current.owner}`; only they release their own work")
+                          f"(`flotilla fleet` names it); answer it, or retire it with `flotilla retire "
+                          f"\"{current.owner}\"`; only they release their own work")
     with ledger.session() as s:
         row = s.need_open_row(branch)
         state = s.next_state(row, "release")

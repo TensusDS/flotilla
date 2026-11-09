@@ -316,3 +316,23 @@ def test_another_session_cannot_release_a_seat_held_on_a_start_up_question(tmp_p
     with pytest.raises(MoveRefused, match="main session 1 is alive, held at start on a question"):
         core.release(ledger, actor(ledger, "orchestrator 1"), "fleet/main-1", why="its session is gone")
     assert [row.state for row in ledger.rows().values()] == ["reserved"]
+
+
+def test_the_way_out_a_held_seats_release_refusal_names_is_a_real_command(tmp_path, monkeypatch):
+    """Review of fd338c6: the refusal named `flotilla fleet retire <name>`, which `fleet` does not take, with the
+    name unquoted; the command it names now parses, quoted as written."""
+    import re
+    import shlex
+    import pytest
+    from fleetkit import held_seat_world
+    from flotilla import cli
+    from flotilla.ledger import core
+    from flotilla.ledger.errors import MoveRefused
+    from ledgerkit import actor
+    ledger, fake, plain = held_seat_world(tmp_path, monkeypatch)
+    ledger.census = plain
+    with pytest.raises(MoveRefused) as err:
+        core.release(ledger, actor(ledger, "orchestrator 1"), "fleet/main-1", why="its session is gone")
+    named = re.search(r"`(flotilla retire [^`]+)`", str(err.value)).group(1)
+    args = cli.build_parser().parse_args(shlex.split(named)[1:])
+    assert args.name == "main session 1"

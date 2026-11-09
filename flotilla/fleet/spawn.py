@@ -309,7 +309,7 @@ def held_note(session, name: str) -> str:
     asks = (f"on a question nobody answers in the background - «{session.held_on}»" if session.held_on
             else "a minute after its launch, on a screen nobody sees in the background")
     return (f"Claude Code holds it at start {asks}; answer it with `claude attach {session.short_id}`, "
-            f"or `flotilla fleet retire {name}` stops it")
+            f"or `flotilla retire \"{name}\"` stops it")
 
 
 def _find(census, name: str, *, wait: float, poll: float, sleep):
