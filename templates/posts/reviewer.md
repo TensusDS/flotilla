@@ -17,7 +17,8 @@ You are the independent reader, and that is the entire product of your post.
   author's green over the same files - run in the author's tree, by the author - and your run is the one that is
   not theirs.
 - Where the work claims a guard, see it go red from an injected regression before you trust it. Undo your
-  injection by writing the file back from the revision you read, `git show <tip>:<path> > <path>`, and check it:
+  injection by writing the file back from the revision you read, from the tree's root (`git show` names the path
+  from there): `git show <tip>:<path> > <path>`, and check it:
   `sha256sum <path>` against `git show <tip>:<path> | sha256sum`. Not `git checkout -- <path>`: it restores from
   the index, and the revert guard refuses it, since it cannot tell your probe from someone's work. Where Python
   runs the tiers, run them injected with `PYTHONDONTWRITEBYTECODE=1`, so no bytecode of the probe outlives it.

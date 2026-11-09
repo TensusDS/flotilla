@@ -271,20 +271,22 @@ def _posts(root: Path) -> list[Finding]:
         posts = trunk_rules(root).posts
     except Exception as err:  # noqa: BLE001 - a check that could not ask says so; it never reports ok by default
         return [Finding("warn", "posts", f"the posts on trunk could not be read: {err}")]
+    details, fixes = [], []
     strange = unknown_moves(posts)
     if strange:
         from flotilla import __version__
-        return [Finding("warn", "posts", f"flotilla {__version__}: " + "; ".join(strange),
-                        "a newer flotilla's post: update this one with `/flotilla:update`; a typo: fix it in "
-                        ".flotilla/posts/<post>.md, then `flotilla onboard publish`")]
-    old = behind(posts)
-    if not old:
+        details.append(f"flotilla {__version__}: " + "; ".join(strange))
+        fixes.append("a newer flotilla's post: update this one with `/flotilla:update`; a typo: fix it in "
+                     ".flotilla/posts/<post>.md, then `flotilla onboard publish`")
+    old = behind(posts)   # said beside the unknown moves, not hidden by them (review of 372832d)
+    if old:
+        named = ", ".join(f"{name} (v{have}, shipped v{shipped})" for name, have, shipped in old)
+        details.append(f"older than the template flotilla ships: {named}; a copy keeps the rules it was made with")
+        fixes.append(f"compare {TEMPLATE_DIR}/<post>.md with .flotilla/posts/<post>.md, take the new text keeping "
+                     "your own edits, then `flotilla onboard publish`")
+    if not details:
         return [Finding("ok", "posts", f"every post on trunk is at the template flotilla ships ({len(posts)} read)")]
-    named = ", ".join(f"{name} (v{have}, shipped v{shipped})" for name, have, shipped in old)
-    return [Finding("warn", "posts", f"older than the template flotilla ships: {named}; a copy keeps the rules it was "
-                                     "made with",
-                    f"compare {TEMPLATE_DIR}/<post>.md with .flotilla/posts/<post>.md, take the new text keeping "
-                    "your own edits, then `flotilla onboard publish`")]
+    return [Finding("warn", "posts", "; and ".join(details), "; and ".join(fixes))]
 
 
 def _lane(env, swap=None) -> Finding:

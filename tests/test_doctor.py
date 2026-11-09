@@ -874,3 +874,16 @@ def test_doctor_names_a_stuck_daemon(tmp_path):   # final review M5
         assert found.status == "warn" and "stuck" in found.detail
     finally:
         os.close(fd)
+
+
+def test_doctor_says_an_older_post_beside_an_unknown_move(tmp_path):   # review of 372832d: not hidden by it
+    import re
+    from ledgerkit import commit, git
+    root = published(tmp_path, behind=("orchestrator",))
+    minor = root / ".flotilla" / "posts" / "minor.md"
+    minor.write_text(re.sub(r"(?m)^(may: \[)", r"\1hnad, ", minor.read_text(encoding="utf-8")), encoding="utf-8")
+    git(root, "add", ".flotilla")
+    commit(root, "a typo")
+    git(root, "push", "-q", "origin", "main")
+    found = posts_finding(root, tmp_path)
+    assert "(hnad)" in found.detail and "older than the template flotilla ships: orchestrator" in found.detail
