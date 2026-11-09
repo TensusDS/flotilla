@@ -7,7 +7,8 @@ the orchestrator, while what it already saw does not (field test F23).
 Exit codes: `--once` 0 nothing needs attention, 1 something does; `--wait` 0 whether it woke on news ("attention
 (new):") or the time ran out ("nothing new") - a wake is not a failure, and Claude Code showed every one as failed
 (alpha, 0.7.16); either 2 when the census or the ledger could not be asked (printed, never read as "nothing") - a
-`--wait` asks a census that missed a look again, and gives up after CENSUS_MISSES in a row. v1 has no schedule of its own
+`--wait` asks a census that missed a look after its first again, and ends with 2 after CENSUS_MISSES in a row or
+when its last looks missed. v1 has no schedule of its own
 (spec, section 8).
 """
 
@@ -79,15 +80,18 @@ def _problems(ctx) -> list[str]:
     return problems
 
 
-def _confirmed(items, root, gather, confirm, sleep):
+def _confirmed(items, root, gather, confirm, sleep, problems=None):
     """Keep a dropped ball only if a second census sample, `confirm` seconds on, still shows it: a session caught
-    once at `waiting` is often busy a moment later (field test F10). None when the second sample failed."""
+    once at `waiting` is often busy a moment later (field test F10). None when the second sample failed; its
+    context goes into `problems`, when given, so the caller can tell a missed census from an unreadable ledger."""
     from flotilla.watch.fleet import DROPPED
     if not any(item.kind == DROPPED for item in items):
         return items
     sleep(confirm)
     again = gather(root, "")
     if _problems(again):
+        if problems is not None:
+            problems.append(again)
         return None
     still = {_key(item) for item in again.fleet()}
     return [item for item in items if item.kind != DROPPED or _key(item) in still]
@@ -105,7 +109,7 @@ def _wait(root, gather, ctx, seconds, interval, now, sleep, clock, confirm=5.0) 
     from flotilla.watch import render
     seen = {_key(item) for item in ctx.fleet()}
     deadline = clock() + seconds
-    misses = 0
+    misses, last = 0, []
     while True:
         left = deadline - clock()   # one reading per turn: the tests drive the clock one step per call
         if left <= 0:
@@ -117,16 +121,18 @@ def _wait(root, gather, ctx, seconds, interval, now, sleep, clock, confirm=5.0) 
             print("\n".join(problems))
             return 2
         if problems:
-            misses += 1
+            misses, last = misses + 1, problems
             continue
         items = ctx.fleet()
         new = [item for item in items if _key(item) not in seen]
-        confirmed = _confirmed(new, root, gather, confirm, sleep) if new else new
+        failed: list = []
+        confirmed = _confirmed(new, root, gather, confirm, sleep, failed) if new else new
         if confirmed is None:   # the second sample missed: nothing is news yet, and it is asked again next look
-            misses += 1
-            if misses >= CENSUS_MISSES:
-                print("census: could not be asked for the second sample")
+            missed = _problems(failed[0]) if failed else ["census: could not be asked for the second sample"]
+            if (failed and failed[0].ledger is None) or misses + 1 >= CENSUS_MISSES:
+                print("\n".join(missed))
                 return 2
+            misses, last = misses + 1, missed
             continue
         misses = 0
         seen = {_key(item) for item in items}   # what went away and came back is news again
@@ -138,5 +144,8 @@ def _wait(root, gather, ctx, seconds, interval, now, sleep, clock, confirm=5.0) 
             print("attention (new):")
             print("\n".join(render.lines(new, now or dt.datetime.now(dt.timezone.utc), limit=10_000)))
             return 0   # the news is in the output; a wake is not a failure (alpha orchestrator, 0.7.16)
+    if misses:   # its last looks saw nothing at all: that is "could not ask", never "nothing new" (review of 406a533)
+        print("\n".join(last))
+        return 2
     print(f"attention: nothing new in {seconds:g} s")
     return 0

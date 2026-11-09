@@ -232,3 +232,27 @@ def test_once_counts_the_persons_queue_as_the_inbox_does(tmp_path, capsys):
     code, out = run(tmp_path, context(tmp_path, me=None, sessions=[sess("main session 1", state="working")],
                                       rows_=rows(asked, held)), capsys)
     assert code == 1 and "waits on the person (2):" in out and "feat/held" in out
+
+
+def test_a_wait_whose_last_looks_missed_the_census_says_so_not_nothing_new(tmp_path, capsys):   # review of 406a533
+    calm = context(tmp_path, me=None, sessions=QUIET)
+    lost = context(tmp_path, me=None, census_error="`claude agents --json` did not answer within 20s")
+    code, out = run_wait(tmp_path, capsys, [calm, calm, lost], seconds=60.0)
+    assert code == 2 and "could not be asked" in out and "nothing new" not in out
+    code, out = run_wait(tmp_path, capsys, [calm, lost, lost], seconds=40.0)
+    assert code == 2 and "nothing new" not in out
+
+
+def test_a_ledger_lost_mid_wait_ends_it_at_once(tmp_path, capsys):   # review of 406a533
+    calm = context(tmp_path, me=None, sessions=QUIET)
+    broken = context(tmp_path, me=None, sessions=QUIET, ledger_error="trunk carries no .flotilla/project.toml")
+    code, out = run_wait(tmp_path, capsys, [calm, broken, calm, calm], seconds=200.0)
+    assert code == 2 and "ledger: could not be read" in out
+
+
+def test_a_ledger_lost_in_the_confirming_sample_ends_the_wait_and_says_ledger(tmp_path, capsys):
+    calm = context(tmp_path, me=None, sessions=QUIET)
+    news = context(tmp_path, me=None, sessions=DROPPED, rows_=HANDED)
+    broken = context(tmp_path, me=None, sessions=DROPPED, ledger_error="trunk carries no .flotilla/project.toml")
+    code, out = run_wait(tmp_path, capsys, [calm, news, broken, calm, calm, calm], seconds=100.0)
+    assert code == 2 and "ledger: could not be read" in out and "nothing new" not in out

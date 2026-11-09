@@ -82,3 +82,13 @@ def test_a_wait_is_asked_of_the_whole_census_not_the_projects_members(tmp_path):
                        rows_=rows(waiting, theirs))
     ctx.project = [me, ctx.sessions[1]]   # what project.members keeps: main session 2 holds nothing open here
     assert not any("wait_gone" in item.text or item.kind == "dropped" for item in ctx.fleet())
+
+
+def test_a_hook_gathers_with_a_hooks_three_seconds(tmp_path, monkeypatch):   # review of 406a533: commands get 20 s
+    from flotilla.core import census
+    asked = []
+    monkeypatch.setattr(census, "read_census", lambda timeout=None, **kw: asked.append(timeout) or [])
+    def closed(root):
+        raise ConfigError("not needed here")
+    context.gather(tmp_path, "aaa", open_ledger=closed, parent_of=no_parent)
+    assert asked == [context.HOOK_CHECK_TIMEOUT] == [3]
