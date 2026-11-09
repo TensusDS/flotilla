@@ -3,7 +3,7 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
-## 0.31.0 - unreleased
+## 0.31.0 - 2026-11-09
 
 The lane gets one scheduler per machine. A field test of 0.30 admitted five heavy runs on light estimates and froze
 nothing, because only a waiter could order a freeze, and nobody waited: the machine fell to 0.5 GB free with 10 GB
