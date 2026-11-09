@@ -19,9 +19,10 @@ from flotilla.onboard.questions import AnswerError
 PERSONS = ("answer", "apply", "restore", "forget")
 
 
-def _census():
-    from flotilla.fleet.commands import census
-    return census()
+def _census(ledger):
+    """The fleet's census: a seat Claude Code holds on a start-up question is alive, not a dead seat (S3)."""
+    from flotilla.fleet.commands import census_for
+    return census_for(ledger)
 
 
 def _items(ledger, sessions, data: dict | None = None):
@@ -92,7 +93,7 @@ def run_gc(args, *, ledger=None, census=None) -> int:
         return 0
     from flotilla.core.census import CensusUnavailable
     try:
-        sessions = (census or _census)()
+        sessions = (census or _census(ledger))()
     except CensusUnavailable as err:
         print(f"the collector needs the census to see which trees a live session works in ({err}); nothing done")
         return 2
@@ -139,7 +140,7 @@ def run_gc(args, *, ledger=None, census=None) -> int:
             print(f"{visible(key)}: the recorded answer is dropped; it is asked again")
             return 0
         lines, complete = apply.apply(ledger, data, items=found, keys=tuple(args.keys or ()), sessions=sessions,
-                                      twins=report.finder, census=census or _census)
+                                      twins=report.finder, census=census or _census(ledger))
         if not args.keys:
             lines += expiry.carry_out(ledger, data, now=now, low=low)
     except AnswerError as err:

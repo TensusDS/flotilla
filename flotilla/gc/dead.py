@@ -2,7 +2,7 @@
 census no longer lists, and whose tree still exists. What holds the tree decides what happens, and no case is silent
 (the person's call, 2026-10-31):
 
-- nothing works in it: retired exactly as `flotilla fleet retire` does for a session already gone;
+- nothing works in it: retired exactly as `flotilla retire` does for a session already gone;
 - only zombies: the same. A zombie has exited - it holds no memory, no files and no directory, and no signal reaches
   it (measured on Linux: its `cwd` is unreadable with ENOENT, SIGTERM leaves it `Z`, it has no `VmRSS`) - so it is
   never seen as working in a tree;

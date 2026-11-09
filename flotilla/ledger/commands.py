@@ -432,6 +432,40 @@ def _broke(ledger, caller, args) -> tuple[Row, str]:
                     f"`flotilla tree switch {fix.branch}`")
 
 
+#: The openings of reconcile's lines; the branch a line is about follows its opening (review of 87ca05b: a branch
+#: called `merge` was read as named by another row's "it finds the merge that carries it").
+LINE_OPENINGS = ("shipped ", "not yet ", "refused ", "pushed, not landed ")
+
+
+def _subject(line: str) -> str:
+    for opening in LINE_OPENINGS:
+        if line.startswith(opening):
+            rest = line[len(opening):].split()
+            return rest[0].removesuffix(":") if rest else ""   # a comma is legal in a branch name
+    return ""
+
+
+def _unsaid_by_reconcile(ledger, lines: list[str]) -> str:
+    """The open rows reconcile has no line for, named by their state, or "": a queued row origin has said nothing of
+    yet is no line of reconcile's in direct mode, and a bare "nothing is queued" denied a row `work show` lists (field
+    test of 2026-11-08, item 9; review of 70f59d9). A local ledger asks no origin for any row."""
+    named = {_subject(line) for line in lines}
+    open_rows = [row for row in ledger.rows().values() if row.is_open and row.state in ("queued", "landed")
+                 and row.branch not in named]
+    if not open_rows:
+        return ""
+    queued = sorted(row.branch for row in open_rows if row.state == "queued")
+    landed = sorted(row.branch for row in open_rows if row.state == "landed")
+    if ledger.mode == "local":
+        parts = ([f"queued: {', '.join(queued)}"] if queued else []) + (
+            [f"landed: {', '.join(landed)} (delivered - its owner closes it)"] if landed else [])
+        return "a local ledger asks no origin; " + "; ".join(parts)
+    if not queued:
+        return ""
+    rows = "row" if len(queued) == 1 else "rows"
+    return f"{len(queued)} queued {rows} with no word from origin yet: {', '.join(queued)} - nothing to ship there yet"
+
+
 def reconcile_exit(lines: list[str]) -> int:
     """The worst of what reconcile found: a move owed - a refusal, or a pushed row to `land` - (2) outweighs a row not
     proved yet (3), which outweighs none."""
@@ -499,6 +533,16 @@ def _status(ledger: core.Ledger, args) -> int:
     except MoveRefused as err:
         live = None
         print(f"census: unknown ({err}); liveness is not asserted")
+    if live is not None:   # a seat held on a start-up question is not orphaned (S3)
+        try:
+            held = ledger.held_names({row.owner for row in rows.values()
+                                      if row.is_open and row.state == "reserved"} - live)
+        except MoveRefused as err:   # a view says what it could not ask (review of fd338c6)
+            held = set()
+            print(f"held at start: unknown ({err}); a seat shown orphaned may be waiting on a start-up question")
+        live |= held
+        for name in sorted(held):
+            print(f"held at start: {name} has not started, a start-up question waits; `flotilla fleet` names it")
     print("roster:")
     entries = views.roster(rows, ledger.profile, live)
     if not entries:
@@ -585,7 +629,8 @@ def run_ledger_command(args) -> int:
         before = ledger.rows()
         if args.command == "work" and args.move == "reconcile":
             lines = delivery.reconcile(ledger, caller)
-            print("\n".join(lines) if lines else "nothing is queued or landed")
+            said = _unsaid_by_reconcile(ledger, lines)
+            print("\n".join([*lines, *([said] if said else [])]) or "nothing is queued or landed")
             shipped = [line.split()[1] for line in lines if line.startswith("shipped ")]
             if shipped:
                 from flotilla.gc import due

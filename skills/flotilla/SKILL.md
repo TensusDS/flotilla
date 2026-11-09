@@ -55,6 +55,11 @@ signal is recorded as killed, with no verdict: never report it as passed, and ne
 exit code of a pipeline. The lane is not a lock: a run started without it is seen only as an unbooked run, and
 nobody waits for its result. The Bash guard warns when you start one; book it instead of ignoring the warning.
 
+One lane daemon per machine decides when each run starts, from every booking at once; you only ask and wait, and
+`flotilla lane` says why. A run's memory is held by a ceiling that grows while the machine has room; a run that
+outgrows the machine is squeezed, then frozen until there is room again - never killed. A red after a freeze says
+so: a test that times itself may have failed on the frozen minutes.
+
 A run in the lane has a ceiling - at least half an hour, or `--max <seconds>`; a receipt's tiers get ten times their
 measured time, at least ten minutes - past which it is stopped with everything it started and recorded as killed. To stop your own
 run sooner, `flotilla lane stop`: it uses the pid flotilla recorded. Never `pkill -f` your way to it - the pattern

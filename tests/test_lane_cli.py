@@ -69,6 +69,32 @@ def test_a_run_for_a_branch_records_its_result_on_the_row(tmp_path, monkeypatch)
     assert "held: nobody" in run_cli("lane", "--root", str(root))[1]
 
 
+def test_a_run_on_the_branchs_tip_detached_records_its_result_on_the_row(tmp_path, monkeypatch):
+    """Field test of 2026-11-07..08, item 8: a reviewer reads on a detached HEAD, and `lane run --for <branch>` there
+    answered "not recorded: the tree is on HEAD" - the reviewer's runs never reached the row. A detached HEAD at the
+    branch's own tip is that branch's result; anywhere else it is still not."""
+    root = onboarded(tmp_path, monkeypatch)
+    git(root, "checkout", "-q", "-b", "feat/x")
+    assert run_cli("work", "claim", "feat/x", "--root", str(root), "--as", "main session 1")[0] == 0
+    git(root, "checkout", "-q", "--detach", "feat/x")
+    code, out = run_cli("lane", "run", "--for", "feat/x", "--tree", str(root), "--as", "main session 1", "--",
+                        sys.executable, "-c", "print('===== 3 passed in 0.10s =====')")
+    assert code == 0 and "not recorded" not in out, out
+    assert "last run: green: 3 passed in 0.10s" in run_cli("status", "--root", str(root))[1]
+
+
+def test_a_run_detached_off_the_branchs_tip_is_not_recorded_and_says_where_it_is(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    git(root, "checkout", "-q", "-b", "feat/x")
+    assert run_cli("work", "claim", "feat/x", "--root", str(root), "--as", "main session 1")[0] == 0
+    git(root, "checkout", "-q", "--detach", "main")
+    commit(root, "elsewhere", "other.txt")
+    code, out = run_cli("lane", "run", "--for", "feat/x", "--tree", str(root), "--as", "main session 1", "--",
+                        sys.executable, "-c", "print('===== 3 passed in 0.10s =====')")
+    assert "not recorded on the ledger" in out and "not the tip of feat/x" in out, out
+    assert "last run" not in run_cli("status", "--root", str(root))[1]   # and indeed nothing was recorded
+
+
 def test_a_killed_run_exits_non_zero_and_says_so(tmp_path, monkeypatch):
     root = onboarded(tmp_path, monkeypatch)
     code, out = run_cli("lane", "run", "--tree", str(root), "--as", "main session 1", "--", sys.executable, "-c",
@@ -179,8 +205,8 @@ def test_lane_stop_stops_the_holders_own_run(tmp_path, monkeypatch):
     runner = subprocess.Popen([sys.executable, cli_path, "lane", "run", "--tree", str(root), "--as", "main session 7",
                                "--", sys.executable, "-c", "import time; time.sleep(60)"], env=env,
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    for _ in range(100):
-        if "main session 7" in run_cli("lane", "--root", str(root))[1]:
+    for _ in range(100):   # holding, not still waiting: a waiting booking is withdrawn, not stopped (f50bcd7)
+        if "main session 7" in run_cli("lane", "--root", str(root))[1].split("waiting:", 1)[0]:
             break
         time.sleep(0.1)
     code, out = run_cli("lane", "stop", "--root", str(root), "--as", "main session 8")
@@ -190,6 +216,49 @@ def test_lane_stop_stops_the_holders_own_run(tmp_path, monkeypatch):
     said, _ = runner.communicate(timeout=20)
     assert runner.returncode != 0 and "killed" in said
     assert "held: nobody" in run_cli("lane", "--root", str(root))[1]
+
+
+def test_lane_stop_withdraws_the_callers_own_waiting_booking(tmp_path, monkeypatch):
+    """Field test of 2026-11-07..08, item 7: a session that asked for the lane and then wanted out had no word for
+    it - `lane stop` looked only at runs holding the lane. Its waiting client leaves the line on SIGTERM."""
+    import os
+    import subprocess
+    import time
+    root = onboarded(tmp_path, monkeypatch)
+    env = {**os.environ, "FLOTILLA_STATE_DIR": str(tmp_path / "state"), "FLOTILLA_NO_CENSUS": "1"}
+    cli_path = os.path.join(os.path.dirname(__file__), "..", "bin", "flotilla")
+
+    def lane_run(who):
+        return subprocess.Popen([sys.executable, cli_path, "lane", "run", "--tree", str(root), "--as", who, "--",
+                                 sys.executable, "-c", "import time; time.sleep(60)"], env=env,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    holder = lane_run("main session 7")
+    for _ in range(100):
+        if "main session 7" in run_cli("lane", "--root", str(root))[1].split("waiting:", 1)[0]:
+            break
+        time.sleep(0.1)
+    waiter = lane_run("main session 9")
+    for _ in range(100):
+        if "main session 9" in run_cli("lane", "--root", str(root))[1].split("waiting:", 1)[-1]:
+            break
+        time.sleep(0.1)
+    try:
+        code, out = run_cli("lane", "stop", "--root", str(root), "--as", "main session 9")
+        assert code == 0 and "withdrew" in out, out
+        waiter.communicate(timeout=20)
+        assert waiter.returncode != 0
+        from flotilla.core.storage import LocalLogStore
+        from flotilla.lane import book
+        journal = book.fold(LocalLogStore(tmp_path / "state" / "lane").read(book.KEY).records)   # no sweep here
+        left = [item for item in journal.values() if item.who == "main session 9"]
+        assert [item.state for item in left] == [book.LEFT], left   # the client left the line itself
+        status = run_cli("lane", "--root", str(root))[1]
+        assert "main session 9" not in status and "main session 7" in status, status
+    finally:
+        run_cli("lane", "stop", "--root", str(root), "--as", "main session 7")
+        holder.communicate(timeout=20)
+        if waiter.poll() is None:
+            waiter.kill()
 
 
 def test_lane_stop_does_not_take_another_sessions_word(tmp_path, monkeypatch):
@@ -431,7 +500,7 @@ def test_showing_the_lane_sweeps_dead_bookings(tmp_path, monkeypatch):
     dead = book.Book(LocalLogStore(tmp_path / "state" / "lane"), ProcessTable.for_machine()).enqueue(
         "main session 2", "waiting", pid=ended.pid, mark="gone")
     _, out = run_cli("lane", "--root", str(root))
-    assert out.splitlines()[0] == f"swept 1 booking(s) whose process is gone: {dead.id}", out
+    assert out.splitlines()[1] == f"swept 1 booking(s) whose process is gone: {dead.id}", out   # after the daemon
     assert "waiting: nobody" in out
 
 
@@ -677,7 +746,7 @@ def test_a_freeze_false_tier_pins_the_receipts_booking(tmp_path, monkeypatch):
     assert not commands.pinned_for(profile, "handover", ["unit"])
 
 
-def test_a_lane_run_books_by_value_with_its_purpose(tmp_path, monkeypatch):
+def test_a_lane_run_books_with_its_purpose(tmp_path, monkeypatch):   # no daemon in tests: the fallback admits it
     from flotilla.core.storage import LocalLogStore
     from flotilla.lane import book
     root = onboarded(tmp_path, monkeypatch)
@@ -686,7 +755,7 @@ def test_a_lane_run_books_by_value_with_its_purpose(tmp_path, monkeypatch):
     assert code == 0
     found = book.Book(LocalLogStore(tmp_path / "state" / "lane"), None).bookings()
     item = max(found.values(), key=lambda item: book.number(item.id) or 0)
-    assert item.kind == "review" and item.path.startswith("value") and item.asked
+    assert item.kind == "review" and item.path == "fallback: empty lane" and item.asked and item.floor_mb
 
 
 
@@ -721,7 +790,8 @@ def test_a_run_reads_its_priority_and_a_frozen_one_says_by_whose_order():
     assert "frozen since " in commands.value_of(frozen, item, machine, now)
     assert "by b14's order" in commands.value_of(frozen, item, machine, now)
     lapsed = book.Booking(id="b9", unanswered=True)
-    assert "b9 did not answer a freeze order" in commands.value_of(run, lapsed, machine, now)
+    assert "b9 is never frozen again (an order went unanswered, its watch stopped, or its freezes reached their " \
+        "bound)" in commands.value_of(run, lapsed, machine, now)
 
 
 def test_an_older_waiter_is_named_in_the_lane(tmp_path, monkeypatch):
@@ -750,3 +820,280 @@ def test_lane_stop_signals_no_pid_without_a_start_mark(tmp_path, monkeypatch):  
     monkeypatch.setattr(commands.os, "kill", lambda pid, number: sent.append(pid))
     code, out = run_cli("lane", "stop", "--root", str(root), "--as", "main session 1")
     assert sent == [] and code == 2
+
+
+
+def test_a_frozen_scope_names_the_thaw_that_fits_it():   # review of ed148e3, 4
+    import datetime as dt
+    from flotilla.lane import book, commands, policy
+    now = dt.datetime(2026, 11, 6, 10, 30, tzinfo=dt.timezone.utc)
+    machine = policy.Machine(cpus=8, give_mb=9000, free_mb=3000, swap_free_mb=8000, swap_total_mb=8000)
+    frozen = policy.Run("b4", policy.FROZEN, 900, False, 1, ran_s=120)
+    scoped = book.Booking(id="b4", frozen="frozen", order_by="b14", group=4242, unit="flotilla-lane-b4-9-1.scope")
+    stopped = book.Booking(id="b4", frozen="frozen", order_by="b14", group=4242)
+    assert "flotilla-lane-b4-9-1.scope" in commands.value_of(frozen, scoped, machine, now)
+    assert "kill -CONT" not in commands.value_of(frozen, scoped, machine, now)
+    assert "kill -CONT -4242" in commands.value_of(frozen, stopped, machine, now)
+
+
+
+def test_a_frozen_scopes_hint_writes_the_freeze_file_itself():   # review of the follow-up, declined: systemd's thaw
+    import datetime as dt
+    from flotilla.lane import book, commands, policy
+    now = dt.datetime(2026, 11, 6, 10, 30, tzinfo=dt.timezone.utc)
+    machine = policy.Machine(cpus=8, give_mb=9000, free_mb=3000, swap_free_mb=8000, swap_total_mb=8000)
+    frozen = policy.Run("b4", policy.FROZEN, 900, False, 1, ran_s=120)
+    scoped = book.Booking(id="b4", frozen="frozen", order_by="b14", group=4242, unit="flotilla-lane-b4-9-1.scope")
+    line = commands.value_of(frozen, scoped, machine, now)
+    assert "cgroup.freeze" in line and "flotilla-lane-b4-9-1.scope" in line
+
+
+
+def test_the_freeze_ceiling_is_a_setting(monkeypatch):   # the person's ruling, 2026-11-06
+    from flotilla.lane import commands
+    for bad in ({"lane_freeze_ceiling_minutes": 1}, {"lane_freeze_ceiling_minutes": 241},
+                {"lane_freeze_ceiling_minutes": True}, {"lane_freeze_ceiling_minutes": "10"}, {}):
+        monkeypatch.setattr(commands, "_machine", lambda bad=bad: bad)
+        assert commands.freeze_ceiling_minutes() == 10
+    monkeypatch.setattr(commands, "_machine", lambda: {"lane_freeze_ceiling_minutes": 30})
+    assert commands.freeze_ceiling_minutes() == 30
+    assert commands.value_for({})(None).freeze_ceiling_s == 1800.0
+
+
+
+def test_a_hint_never_names_another_bookings_scope():   # review, minor 5
+    import datetime as dt
+    from flotilla.lane import book, commands, policy
+    now = dt.datetime(2026, 11, 6, 10, 30, tzinfo=dt.timezone.utc)
+    machine = policy.Machine(cpus=8, give_mb=9000, free_mb=3000, swap_free_mb=8000, swap_total_mb=8000)
+    frozen = policy.Run("b4", policy.FROZEN, 900, False, 1, ran_s=120)
+    theirs = book.Booking(id="b4", frozen="frozen", order_by="b14", unit="flotilla-lane-b9-9-1.scope")
+    assert "flotilla-lane-b9" not in commands.value_of(frozen, theirs, machine, now)
+
+
+
+# --- the lane daemon, as `flotilla lane` shows it (lane daemon design, 4.9) ---
+
+class LiveDaemon:
+    """This test process posing as the lane daemon: its heartbeat, its lock held."""
+
+    def __init__(self, root, groups=None, over=None, release="0.31.0"):
+        import fcntl
+        import json
+        import os
+        import time
+        from flotilla.lane import daemon
+        from flotilla.lane.procs import ProcessTable
+        root.mkdir(parents=True, exist_ok=True)
+        pid = os.getpid()
+        (root / daemon.BEAT).write_text(json.dumps({
+            "pid": pid, "mark": ProcessTable.for_machine().start_mark(pid), "copy": "", "release": release,
+            "protocol": daemon.PROTOCOL, "tick": time.time() - 3, "beat": time.time(), "why": {}, "groups": groups or {},
+            "over": over or {}}))
+        self.fd = os.open(root / daemon.LOCK, os.O_RDWR | os.O_CREAT, 0o600)
+        fcntl.flock(self.fd, fcntl.LOCK_EX)
+
+    def gone(self):
+        import os
+        os.close(self.fd)
+
+
+def held_here(tmp_path, booking="b40", **fields):
+    import os
+    from flotilla.core.storage import LocalLogStore
+    from flotilla.lane import book
+    from flotilla.lane.procs import ProcessTable
+    lanes = book.Book(LocalLogStore(tmp_path / "state" / "lane"), ProcessTable.for_machine())
+    pid = os.getpid()
+    with lanes.store.transaction(book.KEY) as tx:
+        tx.append({"at": lanes._now(), "booking": booking, "state": book.HELD, "who": "main session 1",
+                   "note": "suite", "pid": pid, "mark": ProcessTable.for_machine().start_mark(pid), "rule": 5,
+                   "started": lanes._now(), "path": "value: P 0.10, light", **fields})
+
+
+def test_status_names_the_daemon(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    code, out = run_cli("lane", "--root", str(root))
+    assert code == 0 and out.splitlines()[0].startswith("lane daemon: not running - FLOTILLA_LANE_DAEMON=off; "
+                                                        "a new run starts only into an empty lane"), out
+    monkeypatch.delenv("FLOTILLA_LANE_DAEMON")
+    live = LiveDaemon(tmp_path / "state" / "lane")
+    try:
+        code, out = run_cli("lane", "--root", str(root))
+        first = out.splitlines()[0]
+        assert first.startswith("lane daemon: running, pid ") and ", 0.31.0, last tick " in first, out
+    finally:
+        live.gone()
+
+
+def test_status_prints_ceiling_and_pressure(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    monkeypatch.delenv("FLOTILLA_LANE_DAEMON")
+    held_here(tmp_path)
+    live = LiveDaemon(tmp_path / "state" / "lane", groups={"b40": {"ceiling_mb": 1229, "current_mb": 1100,
+                                                                    "pressure": 3.2, "squeezed": True,
+                                                                    "pressed": False}})
+    try:
+        _code, out = run_cli("lane", "--root", str(root))
+        line = next(line for line in out.splitlines() if line.strip().startswith("b40"))
+        assert "ceiling 1.2 GB, pressure 3 %, squeezed" in line, out
+    finally:
+        live.gone()
+
+
+def test_status_prints_over_and_nothing_to_take(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    monkeypatch.delenv("FLOTILLA_LANE_DAEMON")
+    live = LiveDaemon(tmp_path / "state" / "lane", over={"mb": 700, "s": 14.0, "nothing": 700})
+    try:
+        _code, out = run_cli("lane", "--root", str(root))
+        assert "machine: over its floor by 700 MB for 14 s" in out
+        assert "nothing can be frozen: every run over the line is immortal, pinned or frozen no more" in out
+    finally:
+        live.gone()
+
+
+def test_status_names_an_older_booking(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    held_here(tmp_path, booking="b41", rule=4)
+    _code, out = run_cli("lane", "--root", str(root))
+    line = next(line for line in out.splitlines() if line.strip().startswith("b41"))
+    assert "(an older flotilla: decides for itself)" in line, out
+
+
+
+def test_the_freeze_total_is_a_setting(monkeypatch):   # the person's ruling, 2026-11-07
+    from flotilla.lane import commands
+    for bad in ({"lane_freeze_total_minutes": 1}, {"lane_freeze_total_minutes": 241},
+                {"lane_freeze_total_minutes": True}, {"lane_freeze_total_minutes": "10"}, {}):
+        monkeypatch.setattr(commands, "_machine", lambda bad=bad: bad)
+        assert commands.freeze_total_minutes() == 10
+    monkeypatch.setattr(commands, "_machine", lambda: {"lane_freeze_total_minutes": 30})
+    assert commands.freeze_total_minutes() == 30
+    assert commands.value_for({})(None).freeze_total_s == 1800.0
+
+
+def test_an_estimate_names_both_memory_figures_when_they_differ():   # item 11 of the field test, 2026-11-08
+    import datetime as dt
+    from flotilla.lane import book, commands, estimate
+    now = dt.datetime.now(dt.timezone.utc)
+    ladder = ["exact:pytest -q", "project:p"]
+    done = {f"r{n}": book.Booking(id=f"r{n}", state=book.RELEASED, ended=(now - dt.timedelta(hours=n + 1)).isoformat(),
+                                  ladder=ladder, project="p", peak_mb=peak, seconds=20.0, cores=1.0, busy=0.2,
+                                  verdict="green") for n, peak in enumerate([200, 210, 3600, 220, 3500])}
+    item = book.Booking(id="w", ladder=ladder, project="p")
+    line = commands.describe_estimate(item, estimate.history(done, now=now))
+    assert line == "estimate: 20 s, 1 cores, up to 3.5 GB, usually 220 MB (5 runs (exact match))"
+
+
+
+class _Racing:
+    """A lane whose waiting booking is granted as the stop lands (review of f50bcd7)."""
+    def __init__(self, granted):
+        from flotilla.lane import book
+        self.waiting = book.Booking(id="b2", state=book.WAITING, who="main session 9", pid=4242, mark="m",
+                                    note="suite")
+        self.granted, self.reads, self.signalled, self.looks = granted, 0, False, 0
+
+    def bookings(self):
+        self.reads += 1
+        return {"b2": self.granted if self.signalled else self.waiting}
+
+    def holders(self, found=None):
+        return [item for item in (found or self.bookings()).values() if item.state == "held"]
+
+    def waiters(self, found=None):
+        return [item for item in (found or self.bookings()).values() if item.state == "waiting"]
+
+    def live(self, item):   # alive for two looks after the signal, then gone
+        self.looks += self.signalled
+        return self.looks <= 2
+
+
+def _stop_racing(monkeypatch, granted):
+    import argparse
+    from flotilla.lane import commands
+    lane = _Racing(granted)
+    monkeypatch.setattr(commands, "_lanes", lambda table: lane)
+    monkeypatch.setattr(commands, "_who", lambda as_name: "main session 9")
+    monkeypatch.setattr(commands.os, "kill", lambda pid, sig: setattr(lane, "signalled", True))
+    monkeypatch.setattr(commands.time, "sleep", lambda s: None)
+    out = io.StringIO()
+    with redirect_stdout(out):
+        code = commands._stop_run(argparse.Namespace(as_name="main session 9", booking=None))
+    return code, out.getvalue(), lane
+
+
+def test_lane_stop_of_a_booking_granted_as_it_lands_stops_the_run_and_says_it_started(monkeypatch):
+    import dataclasses
+    from flotilla.lane import book
+    code, out, _lane = _stop_racing(monkeypatch, None)
+    assert code == 0 and "withdrew" in out   # the line was left: nothing else happened
+    code, out, _lane = _stop_racing(monkeypatch, dataclasses.replace(_Racing(None).waiting, state=book.HELD))
+    assert code == 0 and "never started" not in out and "stopped b2" in out and "granted" in out, out
+
+
+def test_lane_stop_of_a_booking_granted_by_hand_as_it_lands_names_the_release(monkeypatch):
+    import dataclasses
+    from flotilla.lane import book
+    by_hand = dataclasses.replace(_Racing(None).waiting, state=book.HELD, pid=None, mark="")
+    code, out, _lane = _stop_racing(monkeypatch, by_hand)
+    assert code == 1 and "flotilla lane release" in out and "never started" not in out, out
+
+
+def test_lane_stop_reads_the_journal_once_to_find_the_booking(monkeypatch):
+    code, _out, lane = _stop_racing(monkeypatch, None)
+    assert code == 0 and lane.reads >= 1
+    # holders and waiters come from one read: a grant between two reads would hide the booking from both
+    import argparse
+    from flotilla.lane import commands
+    counted = _Racing(None)
+    monkeypatch.setattr(commands, "_lanes", lambda table: counted)
+    monkeypatch.setattr(commands.os, "kill", lambda pid, sig: None)
+    monkeypatch.setattr(counted, "live", lambda item: False)
+    with redirect_stdout(io.StringIO()):
+        commands._stop_run(argparse.Namespace(as_name="main session 9", booking=None))
+    assert counted.reads == 1
+
+
+def test_lane_stop_refusal_names_the_session_not_a_holder(monkeypatch):
+    import argparse
+    from flotilla.lane import commands
+    lane = _Racing(None)
+    monkeypatch.setattr(commands, "_lanes", lambda table: lane)
+    monkeypatch.setattr(commands, "_who", lambda as_name: "main session 1")
+    out = io.StringIO()
+    with redirect_stdout(out):
+        code = commands._stop_run(argparse.Namespace(as_name="main session 1", booking=None))
+    assert code == 2 and "no run or waiting booking in the lane is main session 1's" in out.getvalue()
+    assert "ask its session" in out.getvalue() and "holder" not in out.getvalue()
+
+
+
+def test_lane_stop_signals_once_and_only_the_pid_it_vetted(monkeypatch):   # review of 6d92325: a security property
+    import argparse
+    import dataclasses
+    from flotilla.lane import book, commands
+    lane = _Racing(None)
+    lane.granted = dataclasses.replace(lane.waiting, state=book.HELD, pid=9999, mark="forged")   # rewritten by a peer
+    sent = []
+    monkeypatch.setattr(commands, "_lanes", lambda table: lane)
+    monkeypatch.setattr(commands, "_who", lambda as_name: "main session 9")
+    monkeypatch.setattr(commands.os, "kill", lambda pid, sig: sent.append((pid, sig)) or setattr(lane, "signalled", True))
+    monkeypatch.setattr(commands.time, "sleep", lambda s: None)
+    with redirect_stdout(io.StringIO()):
+        commands._stop_run(argparse.Namespace(as_name="main session 9", booking=None))
+    import signal
+    assert sent == [(4242, signal.SIGTERM)]
+
+
+def test_lane_stop_words_a_withdrawal_by_where_the_booking_ended(monkeypatch):   # review of 6d92325
+    import dataclasses
+    from flotilla.lane import book
+    waiting = _Racing(None).waiting
+    # granted in the instant before the client's leave, which wrote LEFT over it: nothing ran
+    code, out, _lane = _stop_racing(monkeypatch, dataclasses.replace(waiting, state=book.LEFT))
+    assert code == 0 and "withdrew" in out and "granted" not in out, out
+    # granted and run, then stopped: it did start
+    code, out, _lane = _stop_racing(monkeypatch, dataclasses.replace(waiting, state=book.RELEASED))
+    assert code == 0 and "stopped b2" in out and "granted as the stop landed" in out and "never" not in out, out

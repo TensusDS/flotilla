@@ -118,6 +118,7 @@ def collect(*, cwd: Path, env=os.environ, run=subprocess.run, which=shutil.which
         findings.append(Finding("fail", "state", f"{state} is not writable: {err}"))
 
     findings.append(_lane(env, swap))
+    findings.append(_lane_daemon(env))
 
     from flotilla.core import claude_state
     copy = claude_state.copy_in_use(started_in or cwd, running=running, env=env, home=home)   # the user's can shadow
@@ -265,19 +266,27 @@ def _posts(root: Path) -> list[Finding]:
     """The posts the fleet reads - trunk's, as the ledger loads them - against the templates flotilla ships: the
     files on disk may hold an edit not published yet, or lag behind a trunk that moved (review of 0.7.13)."""
     from flotilla.ledger.commands import trunk_rules
-    from flotilla.posts import TEMPLATE_DIR, behind
+    from flotilla.posts import TEMPLATE_DIR, behind, unknown_moves
     try:
         posts = trunk_rules(root).posts
     except Exception as err:  # noqa: BLE001 - a check that could not ask says so; it never reports ok by default
         return [Finding("warn", "posts", f"the posts on trunk could not be read: {err}")]
-    old = behind(posts)
-    if not old:
+    details, fixes = [], []
+    strange = unknown_moves(posts)
+    if strange:
+        from flotilla import __version__
+        details.append(f"flotilla {__version__}: " + "; ".join(strange))
+        fixes.append("a newer flotilla's post: update this one with `/flotilla:update`; a typo: fix it in "
+                     ".flotilla/posts/<post>.md, then `flotilla onboard publish`")
+    old = behind(posts)   # said beside the unknown moves, not hidden by them (review of 372832d)
+    if old:
+        named = ", ".join(f"{name} (v{have}, shipped v{shipped})" for name, have, shipped in old)
+        details.append(f"older than the template flotilla ships: {named}; a copy keeps the rules it was made with")
+        fixes.append(f"compare {TEMPLATE_DIR}/<post>.md with .flotilla/posts/<post>.md, take the new text keeping "
+                     "your own edits, then `flotilla onboard publish`")
+    if not details:
         return [Finding("ok", "posts", f"every post on trunk is at the template flotilla ships ({len(posts)} read)")]
-    named = ", ".join(f"{name} (v{have}, shipped v{shipped})" for name, have, shipped in old)
-    return [Finding("warn", "posts", f"older than the template flotilla ships: {named}; a copy keeps the rules it was "
-                                     "made with",
-                    f"compare {TEMPLATE_DIR}/<post>.md with .flotilla/posts/<post>.md, take the new text keeping "
-                    "your own edits, then `flotilla onboard publish`")]
+    return [Finding("warn", "posts", "; and ".join(details), "; and ".join(fixes))]
 
 
 def _lane(env, swap=None) -> Finding:
@@ -302,6 +311,31 @@ def _lane(env, swap=None) -> Finding:
     if not parts:
         return Finding("ok", "lane", "runs share the machine by memory and priority; a younger run may be frozen")
     return Finding(status, "lane", "; ".join(parts), fix)
+
+
+def _lane_daemon(env, procs=None, newest=None) -> Finding:
+    """Whether the lane daemon runs, and on which release beside the newest installed (lane daemon design, 4.7)."""
+    from flotilla.core import claude_state
+    from flotilla.lane import daemon
+    from flotilla.lane.procs import ProcessTable
+    root = paths.state_dir(env) / "lane"
+    try:
+        beat = daemon.alive(root, procs or ProcessTable.for_machine())
+        release, _where = (newest or (lambda: daemon.newest_copy(installs=lambda: claude_state.installs(env))))()
+    except Exception as err:  # noqa: BLE001 - a check that could not ask says so; it never reports ok by default
+        return Finding("warn", "lane daemon", f"could not be asked: {err}")
+    if beat is None:
+        last = daemon.heartbeat(root)
+        if last is not None and daemon.lock_held(root):   # final review M5: held, and silent
+            import time
+            return Finding("warn", "lane daemon", f"stuck: its lock is held, no heartbeat for "
+                                                  f"{max(0, round(time.time() - last.beat))} s",
+                           "`flotilla lane daemon ensure` replaces it (any lane client does the same)")
+        return Finding("ok", "lane daemon", "not running; the next lane client starts it")
+    if daemon._version(release) > daemon._version(beat.release):
+        return Finding("warn", "lane daemon", f"running {beat.release}, older than {release} installed",
+                       "`flotilla lane daemon ensure` replaces it (any lane client does the same)")
+    return Finding("ok", "lane daemon", f"running {beat.release}, pid {beat.pid}")
 
 
 def render(findings: list[Finding], quiet: bool) -> list[str]:

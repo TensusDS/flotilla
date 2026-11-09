@@ -1,0 +1,17 @@
+{
+  "made_from": "The lane journal of a field test, 2026-11-07 01:51:30-02:02 UTC, and the machine samples taken every ~16 s (record: /home/user/var/demo-2026-11-07/). Each run is a booking of that window: when it asked (seconds from 01:51:30), its kind, what admission estimated (the light prior of its command text), and its load as the journal measured it (peak MB) with the load spec's 240 s of work for a heavy task and 20 s for a light one. The demo's load touched its whole block, so every run is hot. outside_mb is the memory the samples show used before the first run (15603 total, ~10000 available); swap_used_outside_mb likewise. Names neutralised.",
+  "machine": {"total_mb": 15603, "outside_mb": 5600, "swap_total_mb": 12287, "swap_used_outside_mb": 3656,
+              "floor_mb": 2000, "cpus": 8, "immortal_s": 180},
+  "runs": [
+    {"id": "r1", "ask_s": 18,  "kind": "review",   "estimate_mb": 214, "mb": 3600, "seconds": 240, "hot": true},
+    {"id": "r2", "ask_s": 44,  "kind": "handover", "estimate_mb": 216, "mb": 216,  "seconds": 12,  "hot": true},
+    {"id": "r3", "ask_s": 99,  "kind": "handover", "estimate_mb": 216, "mb": 2600, "seconds": 240, "hot": true},
+    {"id": "r4", "ask_s": 138, "kind": "handover", "estimate_mb": 216, "mb": 3100, "seconds": 240, "hot": true},
+    {"id": "r5", "ask_s": 153, "kind": "handover", "estimate_mb": 216, "mb": 2500, "seconds": 240, "hot": true},
+    {"id": "r6", "ask_s": 179, "kind": "handover", "estimate_mb": 216, "mb": 216,  "seconds": 20,  "hot": true},
+    {"id": "r7", "ask_s": 200, "kind": "handover", "estimate_mb": 216, "mb": 3600, "seconds": 240, "hot": true},
+    {"id": "r8", "ask_s": 201, "kind": "handover", "estimate_mb": 216, "mb": 3100, "seconds": 240, "hot": true},
+    {"id": "r9", "ask_s": 283, "kind": "handover", "estimate_mb": 216, "mb": 216,  "seconds": 20,  "hot": true},
+    {"id": "r10", "ask_s": 365, "kind": "review",  "estimate_mb": 21,  "mb": 21,   "seconds": 1,   "hot": true}
+  ]
+}

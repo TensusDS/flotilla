@@ -303,6 +303,15 @@ def _record_session(ledger, actor: Actor, row_id: str, session_id: str) -> None:
         return
 
 
+def held_note(session, name: str) -> str:
+    """What to say of a seat Claude Code holds at start (census.held_at_start): nobody answers it in the
+    background, so the person is told the question and the way to it."""
+    asks = (f"on a question nobody answers in the background - «{session.held_on}»" if session.held_on
+            else "a minute after its launch, on a screen nobody sees in the background")
+    return (f"Claude Code holds it at start {asks}; answer it with `claude attach {session.short_id}`, "
+            f"or `flotilla retire \"{name}\"` stops it")
+
+
 def _find(census, name: str, *, wait: float, poll: float, sleep):
     """The session with this name in the census: (session or None, whether the census answered at all, how many
     sessions the census listed under the name)."""
@@ -380,6 +389,12 @@ def release_split(ledger, *, running: str, env=os.environ, home: Path | None = N
         main = launch.main_checkout(ledger.root, run=ledger.run)
     except launch.LaunchError:
         return ""
+    both = sorted(set(claude_state.loads_all(main, env, home)))
+    if len({name for _, name in both}) > 1:   # two marketplaces enabled: every seat loads two releases (item 5)
+        named = " and ".join(f"{name} ({plugin})" for plugin, name in both)
+        return (f"a seat raised now would load two releases of flotilla at once: {named}, both enabled for {main} - "
+                "turn one off in `enabledPlugins` (`false` in the project's .claude/settings.local.json for the "
+                "user's), then raise; or `--anyway` to raise it as it is")
     coming = claude_state.loads_in(main, env, home)
     if not coming or claude_state._version(coming) is None or claude_state._version(running) is None \
             or claude_state._version(coming) == claude_state._version(running):
@@ -446,6 +461,8 @@ def raise_seat(ledger, seat: launch.Seat, *, caller: str, census, wait: float = 
     if found is not None:
         if named == 1:
             _record_session(ledger, actor, row.id, found.session_id)
+        if found.held_on is not None:   # listed with no process: Claude Code asks it something first (S3)
+            return Raised(seat, found.short_id, held_note(found, seat.name) + (f" ({problem})" if problem else ""))
         return Raised(seat, found.short_id, f"{problem}, but the session is in the census" if problem else "")
     if problem and answered:
         raise _take_back(ledger, seat, actor, row.id, problem)

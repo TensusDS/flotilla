@@ -1,4 +1,6 @@
+import json
 import re
+from pathlib import Path
 
 import pytest
 
@@ -47,9 +49,44 @@ def test_frontmatter_values(tmp_path):
     assert post.body.strip() == "Body text."
 
 
-def test_an_unknown_move_is_refused_by_name(tmp_path):
-    with pytest.raises(P.PostError, match="merge"):
-        P.load_post(write(tmp_path, "reviewer", GOOD.replace("[take, accept, fix]", "[take, merge]")))
+def test_an_unknown_move_is_read_but_never_granted(tmp_path):
+    """Field test 2026-11-07, item 4: a session on an older flotilla refused every push into a project whose post
+    named a move it did not know, because it could not read the posts at all. An unknown move is now kept aside:
+    the post gains none of it, and doctor names it (a typo, or a newer flotilla's move)."""
+    post = P.load_post(write(tmp_path, "reviewer", GOOD.replace("[take, accept, fix]", "[take, merge]")))
+    assert post.may == frozenset({"take"}) and post.unknown == ("merge",)
+
+
+def test_every_shipped_template_names_only_moves_this_release_knows():
+    assert {name: post.unknown for name, post in templates().items() if post.unknown} == {}
+
+
+def test_a_move_refused_to_a_post_with_unknown_moves_says_this_flotilla_may_be_older(tmp_path):
+    from flotilla.ledger.actor import Actor, require_may
+    from flotilla.ledger.errors import MoveRefused
+    post = P.load_post(write(tmp_path, "reviewer", GOOD.replace("[take, accept, fix]", "[take, merge]")))
+    with pytest.raises(MoveRefused) as err:
+        require_may(Actor("review session 1", post, "census", "review session 1"), "accept", {"reviewer": post})
+    assert "post `reviewer` may not `accept`" in str(err.value)
+    assert "it also names moves this flotilla does not know (merge)" in str(err.value) and "update" in str(err.value)
+
+
+MOVES_RECORD = Path(__file__).parent / "fixtures" / "post-moves.json"
+
+
+def test_a_template_that_changes_its_moves_raises_its_version():
+    """A newer flotilla's move is told from a typo by the post's template_version (doctor), so a template never
+    changes `may` under the same version. Measured over the 82 releases to 0.31.0: one move ever added to a
+    template (`requires`, 0.24.1, with v21 -> v22), none dropped or renamed. When this fails, raise the template's
+    template_version and record the new moves here."""
+    recorded = json.loads(MOVES_RECORD.read_text(encoding="utf-8"))
+    now = {name: [post.template_version, sorted(post.may)] for name, post in templates().items()}
+    assert set(recorded) == set(now), "every shipped template is recorded"
+    for name, (version, moves) in now.items():
+        old_version, old_moves = recorded[name]
+        assert version >= old_version, f"{name}: template_version went down"
+        assert version > old_version or moves == old_moves, (
+            f"{name}: `may` changed at template_version {version}; raise it and record the moves in {MOVES_RECORD}")
 
 
 def test_a_pattern_without_a_number_is_refused(tmp_path):
@@ -329,3 +366,11 @@ def test_the_orchestrator_relays_the_persons_lines_from_the_inbox(tmp_path):
     post = load_posts(tmp_path)["orchestrator"]
     body = (tmp_path / ".flotilla" / "posts" / "orchestrator.md").read_text(encoding="utf-8")
     assert post.template_version >= 24 and "`flotilla inbox` names" in body
+
+
+def test_the_reviewer_undoes_its_probe_from_the_revision_it_read():
+    """Field test 2026-11-07, item 10: a reviewer undoing its own injected regression met the revert guard on
+    `git checkout -- <file>`; the guard stays, and the post says the form that names the revision."""
+    post = templates()["reviewer"]
+    assert post.template_version >= 6 and "`git show <tip>:<path> > <path>`" in post.body
+    assert "`sha256sum <path>` against `git show <tip>:<path> | sha256sum`" in post.body

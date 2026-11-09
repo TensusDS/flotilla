@@ -14,7 +14,7 @@ file, HEAD, a session that started in it), the answer is set aside and the quest
 - **keep**: nothing; the answer stays until something in the trees changes.
 - **words**: nothing here; a session carries the person's words out as ordinary work.
 - **stop** (a dead seat something works in): SIGTERM to exactly the processes the person was shown, each still the
-  process it was (pid and start time); once they are gone the seat is retired as `flotilla fleet retire` would. One
+  process it was (pid and start time); once they are gone the seat is retired as `flotilla retire` would. One
   that does not stop keeps the seat, and it is asked again.
 - **retire** (a dead seat on a machine that does not show processes): the seat is retired.
 - **park** (released work's unlanded branch): its tip and reflog-only commits are pinned under parked refs and the

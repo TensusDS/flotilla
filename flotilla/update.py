@@ -124,7 +124,6 @@ def report(*, run=subprocess.run, census, env=os.environ, home: Path | None = No
     except CensusUnavailable as err:
         return Report(entry, foreign, asked.newest, asked.stable, installs, pins, [],
                       f"the census could not be asked ({err}): who works where is unknown")
-    owned = {item.project for item in installs if item.project is not None}
     grouped: dict[Path, tuple[list[str], list[str]]] = {}
     for item in sessions:
         main = _main_of(item.cwd, run) if item.cwd else None
@@ -132,7 +131,9 @@ def report(*, run=subprocess.run, census, env=os.environ, home: Path | None = No
             continue
         seats, interactive = grouped.setdefault(main, ([], []))
         (seats if item.kind == "background" else interactive).append(item.name or item.short_id or "?")
-    fleets = [Fleet(main, sorted(seats), sorted(interactive), main not in owned)
+    # which copy a fleet rides is the first record that applies to it, not whether it has one of its own: a user
+    # install made first wins over a project's made later (measured, review of 7e6a9b8)
+    fleets = [Fleet(main, sorted(seats), sorted(interactive), claude_state.rides_user_copy(main, env, home))
               for main, (seats, interactive) in sorted(grouped.items()) if seats]
     return Report(entry, foreign, asked.newest, asked.stable, installs, pins, fleets, error)
 
@@ -237,8 +238,10 @@ def render(report_: Report, chosen: Plan) -> list[str]:
 def stand_down(project: Path, *, keep: frozenset, census) -> tuple[list[str], int]:
     """`flotilla fleet down` for a project, from wherever the person runs this: (lines, seats refused)."""
     from flotilla.fleet import retire
+    from flotilla.fleet.commands import census_for
     from flotilla.ledger.commands import open_ledger
-    return retire.down(open_ledger(project), caller="update", me="", keep=keep, census=census)
+    ledger = open_ledger(project)   # a seat held on a start-up question is stopped, not left waiting (S3)
+    return retire.down(ledger, caller="update", me="", keep=keep, census=census_for(ledger, census))
 
 
 def _deferrals(state: Path) -> dict:
@@ -392,7 +395,6 @@ def apply(report_: Report, chosen: Plan, mark: str, *, run=subprocess.run, censu
         data[str(project)] = {"to": report_.newest, "at": now.isoformat()}
         lines.append(f"deferred {project}: its fleet keeps working; its next session start and /flotilla:down say "
                      "the update waits")
-    owned = {item.project for item in report_.installs if item.project is not None}
     for item in chosen.updates:
         if item.project is not None and item.project in failed_stops or item.scope == "user" and user_held:
             continue
@@ -410,7 +412,7 @@ def apply(report_: Report, chosen: Plan, mark: str, *, run=subprocess.run, censu
         if ok and item.project is not None:
             data.pop(str(item.project), None)
         if ok and item.scope == "user":   # the projects whose sessions load the user's copy
-            for key in [key for key in data if Path(key) not in owned]:
+            for key in [key for key in data if claude_state.rides_user_copy(Path(key), env, home)]:
                 data.pop(key)
     try:
         _write_deferrals(state, data)

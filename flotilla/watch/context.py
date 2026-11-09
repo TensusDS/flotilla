@@ -12,6 +12,9 @@ from pathlib import Path
 
 #: Seconds per external call inside a hook; the timeouts in hooks/hooks.json leave room for it.
 HOOK_CHECK_TIMEOUT = 3
+#: A command - `flotilla watch`, `flotilla inbox` - may wait for a loaded machine: at 3 s the orchestrator's watch
+#: went blind exactly when the machine was tight (field test of 2026-11-08, item 3).
+COMMAND_CENSUS_TIMEOUT = 20
 
 
 @dataclass
@@ -112,12 +115,29 @@ def this_session(sessions, session_id: str, *, parent_of=None, start_pid: int | 
     return find_calling_session(sessions, parent_of=parent_of, start_pid=start_pid)
 
 
+def _with_held(sessions: list, rows: dict, timeout: float) -> list:
+    """The census with the seats it misses that Claude Code holds at start on a question (field test 2026-11-07,
+    S3): listed with no process, such a seat reads as gone and nobody is told a question waits. Asked by the
+    `watch` and `inbox` commands only - a hook does not pay a `claude logs` per missing seat."""
+    from flotilla.core import census
+    listed = {item.name for item in sessions}
+    missing = {row.owner for row in rows.values()
+               if row.is_open and row.state == "reserved" and row.owner and row.owner not in listed}
+    if not missing:
+        return sessions
+    try:
+        return sessions + census.held_at_start(missing, timeout=timeout)
+    except census.CensusUnavailable:
+        return sessions   # the first answer stands: the seats read as gone, as before
+
+
 def gather(root, session_id: str, *, census=None, open_ledger=None, parent_of=None,
-           start_pid: int | None = None) -> Context:
+           start_pid: int | None = None, census_timeout: float = HOOK_CHECK_TIMEOUT,
+           held_seats: bool = False) -> Context:
     from flotilla.core.census import CensusUnavailable, read_census
     ctx = Context(root=Path(root), session_id=session_id or "")
     try:
-        ctx.sessions = (census or (lambda: read_census(timeout=HOOK_CHECK_TIMEOUT)))()
+        ctx.sessions = (census or (lambda: read_census(timeout=census_timeout)))()
     except CensusUnavailable as err:
         ctx.census_error = str(err)
     if ctx.sessions is not None:
@@ -129,6 +149,8 @@ def gather(root, session_id: str, *, census=None, open_ledger=None, parent_of=No
         ctx.rows = ctx.ledger.rows()
     except Exception as err:  # noqa: BLE001 - a hook says what it could not read and goes on
         ctx.ledger, ctx.rows, ctx.ledger_error = None, {}, str(err) or type(err).__name__
+    if held_seats and ctx.sessions is not None and ctx.ledger is not None:
+        ctx.sessions = _with_held(ctx.sessions, ctx.rows, census_timeout)
     if ctx.sessions is not None and ctx.ledger is not None:
         from flotilla.ledger import project
         ctx.project = project.members(ctx.sessions, ctx.rows, project.roots(ctx.ledger.root))

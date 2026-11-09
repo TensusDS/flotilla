@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 from flotilla.core import config, paths, repo
 from flotilla.core import platform as plat
@@ -21,6 +22,22 @@ def census():
     if os.environ.get(NO_CENSUS):
         raise CensusUnavailable(f"{NO_CENSUS} is set")
     return read_census()
+
+
+def census_for(ledger, base=None):
+    """The census as the fleet reads it: the seats it misses are asked whether Claude Code holds them at start on
+    a question (field test 2026-11-07, S3) - such a seat is listed with no process and reads as gone, so `fleet`
+    called it not running and `fleet down` removed its tree and left it waiting. `base` is the census it adds to
+    (`census` by default). Only when a seat is missing does it pay a second `claude agents` and a `claude logs`
+    per bare row of that name."""
+    from flotilla.core import census as census_module
+
+    def ask():
+        sessions = (base or census)()
+        listed = {item.name for item in sessions}
+        missing = {row.owner for row in retire.post_rows(ledger) if row.owner and row.owner not in listed}
+        return sessions + census_module.held_at_start(missing) if missing else sessions
+    return ask
 
 
 def calling_session(sessions):
@@ -67,7 +84,7 @@ def _lead(ledger, args) -> int:
     if post is None:
         raise MoveRefused("this project has no orchestrator post in .flotilla/posts/")
     try:
-        sessions = census()
+        sessions = census_for(ledger)()   # a held orchestrator leads already: two would lead once it is answered
     except CensusUnavailable as err:
         raise MoveRefused(f"--lead needs the census to keep the name unique ({err})") from err
     mine = project.members(sessions, ledger.rows(), project.roots(ledger.root))
@@ -79,8 +96,11 @@ def _lead(ledger, args) -> int:
     held += [item.name or item.session_id for item in mine if item.session_id in waiting
              and (me_now is None or item.session_id != me_now.session_id) and item.name not in held]
     if held:   # two sessions routing one fleet's work (review of 0.6.8, I2)
+        waiting = [item for item in mine if item.name in held and getattr(item, "held_on", None) is not None]
+        attach = "".join(f"; {item.name} has not started, a start-up question waits: `claude attach "
+                         f"{item.short_id}` answers it" for item in waiting)
         raise MoveRefused(f"{', '.join(held)} already leads this project's fleet; talk to it, or retire it "
-                          "(/flotilla:retire) and run --lead again")
+                          f"(/flotilla:retire) and run --lead again{attach}")
     taken = {item.name for item in sessions if item.name}
     taken |= {name for row in ledger.rows().values() for name in (row.owner, row.reader) if name}
     from flotilla.fleet import lead
@@ -118,7 +138,7 @@ def _gaps(ledger, counts: dict) -> list[str]:
     import datetime as dt
     try:
         wanted = compose.normalise(counts, ledger.posts)
-        mine = project.members(census(), ledger.rows(), project.roots(ledger.root))
+        mine = project.members(census_for(ledger)(), ledger.rows(), project.roots(ledger.root))
     except (compose.CompositionError, CensusUnavailable):
         return []
     held = spawn._live_posts(ledger, mine)
@@ -151,13 +171,14 @@ def _spawn(ledger, args) -> int:
         from flotilla.ledger import project
         flag = "--recommended" if recommended else "--fill"
         try:
-            mine = project.members(census(), ledger.rows(), project.roots(ledger.root))   # the census is the
-            held = dict(spawn._live_posts(ledger, mine))                                   # machine's (M3)
+            # the census is the machine's (M3), with the seats held on a start-up question (review of 14c5ff8)
+            mine = project.members(census_for(ledger)(), ledger.rows(), project.roots(ledger.root))
+            held = dict(spawn._live_posts(ledger, mine))
         except CensusUnavailable as err:
             raise MoveRefused(f"{flag} needs the census to see who is alive ({err}); name the counts instead") from err
         if recommended:
             from flotilla.fleet import sizing
-            rec = sizing.gather(ledger, tasks=args.tasks, tasks_file=args.tasks_file, census=census, run=ledger.run)
+            rec = sizing.gather(ledger, tasks=args.tasks, tasks_file=args.tasks_file, census=census_for(ledger), run=ledger.run)
             for line in sizing.render(rec):
                 print(line)
             if rec.raise_nothing and not args.anyway:
@@ -182,8 +203,8 @@ def _spawn(ledger, args) -> int:
     store = LocalLogStore(paths.state_dir() / "fleet")
     if args.dry_run:
         try:
-            live = {item.name for item in census() if item.name}
-            probe = census
+            probe = census_for(ledger)   # a held seat's name is taken (review of 14c5ff8)
+            live = {item.name for item in probe() if item.name}
         except CensusUnavailable as err:
             print(f"census: unknown ({err}); names may collide with live sessions")
             live, probe = set(), (lambda: [])  # noqa: E731
@@ -219,7 +240,7 @@ def _spawn(ledger, args) -> int:
                                  f"{err}") from err
     gaps = _gaps(ledger, counts)   # asked before the launch: a seat just raised may not be in the census yet
     try:
-        raised, warnings = spawn.spawn(ledger, counts, census=census, store=store,
+        raised, warnings = spawn.spawn(ledger, counts, census=census_for(ledger), store=store,
                                        caller=f"spawn {caller_line(sessions)}", anyway=args.anyway)
     except spawn.SpawnStopped as err:
         print("raised before the spawn stopped:")
@@ -273,7 +294,7 @@ def _fleet(ledger, args) -> int:
     if getattr(args, "action", None) == "size":
         return _size(ledger, args)
     try:
-        sessions = census()
+        sessions = census_for(ledger)()
     except CensusUnavailable as err:
         sessions = None
         print(f"census: unknown ({err}); liveness is not asserted")
@@ -291,6 +312,8 @@ def _fleet(ledger, args) -> int:
         attach = f"claude attach {item['short_id']}" if item["short_id"] else "no id in the census"
         live = {True: f"alive ({item['state'] or 'no state'}), {attach}",
                 False: "not running", None: "liveness unknown"}[item["live"]]
+        if item.get("held_on") is not None:
+            live = "has not started: " + spawn.held_note(SimpleNamespace(**item), item["name"])
         dirty = {None: ", its state unknown", 0: ""}.get(item["dirty"], f", {item['dirty']} uncommitted")
         tree = item["tree"] if item["tree_exists"] else f"{item['tree']} (missing)"
         lock = "locked" if item["locked"] else "not locked"
@@ -309,7 +332,7 @@ def _size(ledger, args) -> int:
     import json
 
     from flotilla.fleet import sizing
-    rec = sizing.gather(ledger, tasks=args.tasks, tasks_file=args.tasks_file, census=census, run=ledger.run)
+    rec = sizing.gather(ledger, tasks=args.tasks, tasks_file=args.tasks_file, census=census_for(ledger), run=ledger.run)
     if args.json:
         print(json.dumps({"counts": rec.counts, "authors": rec.authors, "caps": rec.caps, "binding": rec.binding,
                           "lines": rec.lines, "raise_nothing": rec.raise_nothing}, indent=2))
@@ -325,11 +348,11 @@ def _clean(ledger, *, act: bool, daily: bool = False) -> int:
     """Trees and branches whose work is surely on trunk go; everything else stays, with why (decision 206)."""
     from flotilla.fleet import cleanup
     try:
-        sessions = census()
+        sessions = census_for(ledger)()
     except CensusUnavailable as err:
         raise MoveRefused(f"cleaning needs the census to see which trees a live session works in ({err}); "
                           "nothing was removed") from err
-    for line in cleanup.sweep(ledger, sessions=sessions, act=act or daily, daily=daily, census=census,
+    for line in cleanup.sweep(ledger, sessions=sessions, act=act or daily, daily=daily, census=census_for(ledger),
                               caller="fleet clean --daily"):
         print(line)
     if not act and not daily:
@@ -349,7 +372,7 @@ def _down(ledger) -> int:
     if not me and os.environ.get("CLAUDECODE"):
         raise retire.RetireRefused("cannot tell which session runs this, and stopping it mid-command would cut the "
                                    "command short; nothing was stopped: run `flotilla fleet down` from a terminal")
-    lines, refused = retire.down(ledger, caller=f"fleet down {caller_line(sessions)}", me=me, census=census)
+    lines, refused = retire.down(ledger, caller=f"fleet down {caller_line(sessions)}", me=me, census=census_for(ledger))
     print("\n".join(lines))
     from flotilla import update
     waits = update.deferred(paths.state_dir(), launch.main_checkout(ledger.root, run=ledger.run))
@@ -366,7 +389,7 @@ def _retire(ledger, args) -> int:
         caller = f"retire {caller_line(sessions)}"
     except CensusUnavailable:
         caller = "retire, census unknown"
-    for line in retire.retire(ledger, args.name, caller=caller, census=census):
+    for line in retire.retire(ledger, args.name, caller=caller, census=census_for(ledger)):
         print(line)
     return 0
 
@@ -382,7 +405,7 @@ def _helper(ledger, args) -> int:
         from flotilla.gc import due   # its tree goes once it is retired; the collector's pass is due (gc design 4 g)
         print(due.noted(ledger, f"helper {me.name} done"))
         return 0
-    raised = helpers.raise_helper(ledger, me, args.branch, task=args.task, census=census,
+    raised = helpers.raise_helper(ledger, me, args.branch, task=args.task, census=census_for(ledger),
                                   store=LocalLogStore(paths.state_dir() / "fleet"),
                                   caller=f"helper raise by {me.name}", anyway=args.anyway)
     note = f" ({raised.note})" if raised.note else ""

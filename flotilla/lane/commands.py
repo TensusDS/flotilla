@@ -90,6 +90,25 @@ def freeze_on() -> bool:
     return _machine().get("lane_freeze", True) is not False
 
 
+FREEZE_CEILING_MINUTES, FREEZE_CEILING_BOUNDS = 10, (2, 240)
+
+
+def freeze_ceiling_minutes() -> float:
+    """machine.toml `lane_freeze_ceiling_minutes`: the longest one freeze lasts, whatever holds its room; then the run
+    is thawed and never frozen again (the person's ruling, 2026-11-06: a frozen command never stays frozen)."""
+    return _number("lane_freeze_ceiling_minutes", FREEZE_CEILING_MINUTES, FREEZE_CEILING_BOUNDS)
+
+
+FREEZE_TOTAL_MINUTES, FREEZE_TOTAL_BOUNDS = 10, (2, 240)
+
+
+def freeze_total_minutes() -> float:
+    """machine.toml `lane_freeze_total_minutes`: the longest a booking stands frozen in all, over every freeze and
+    whoever ordered it - the daemon or a line forged in the journal; then the run is thawed and never frozen again
+    (the person's ruling, 2026-11-07)."""
+    return _number("lane_freeze_total_minutes", FREEZE_TOTAL_MINUTES, FREEZE_TOTAL_BOUNDS)
+
+
 def max_runs() -> int:
     """machine.toml `lane_max_runs`: runs at once at most, whatever memory allows (section 2.4)."""
     return _number("lane_max_runs", MAX_RUNS, MAX_RUNS_BOUNDS, whole=True)
@@ -131,6 +150,7 @@ def value_for(profile: dict):
     cpus, floor = machine.cpus(), machine.memory_floor_mb(profile)
     kind = freeze.backend(setting=freeze_on())[0]
     reserve, immortal, cap, factor = light_reserve(), immortal_minutes() * 60.0, max_runs(), cpu_factor()
+    ceiling, total = freeze_ceiling_minutes() * 60.0, freeze_total_minutes() * 60.0
     root = paths.state_dir() / "lane"
 
     def make(reading=None):
@@ -138,7 +158,8 @@ def value_for(profile: dict):
                                max_runs=cap, freeze=kind, available_mb=resources.available_mb, floor_mb=floor,
                                swap_mb=freeze.swap_mb, tree_mb=peak.tree_rss_mb,
                                beat_age_s=lambda booking: admission.beat_age(root, booking),
-                               foreign=len(reading.computing) if reading is not None else 0)
+                               foreign=len(reading.computing) if reading is not None else 0,
+                               freeze_ceiling_s=ceiling, freeze_total_s=total)
     return make
 
 
@@ -169,6 +190,21 @@ def _share_line() -> str:
         return f"share: {value} (machine.toml lane_share)"
     return (f"share: fifo - machine.toml lane_share = {visible(repr(value))} is not understood (fifo or fair), so "
             "first come, first served")
+
+
+def scheduler_for(table, lanes):
+    """What a waiter calls each poll: raise the lane daemon when it is absent, say once what was done, and answer ""
+    while one runs or the fallback's reason (lane daemon design, ruling 2)."""
+    from flotilla.lane import daemon
+    said = {"line": ""}
+
+    def ask() -> str:
+        line = daemon.ensure(paths.state_dir() / "lane", table, lanes=lanes)
+        if line and not line.startswith(daemon.FALLBACK) and line != said["line"]:
+            print(line)
+            said["line"] = line
+        return line if line.startswith(daemon.FALLBACK) else ""
+    return ask
 
 
 def _lanes(table) -> book.Book:
@@ -266,7 +302,8 @@ def booked(root, *, note: str, wait: float, run_for: str = "", as_name=None, com
                   capacity=capacity, share=share, wait=wait, table=table, run_for=run_for, say=print, command=text,
                   ladder=ladder, will_run=list(will_run or []), project=project, room=room_for(profile),
                   value=value_for(profile), kind=kind_of(purpose, who, root),
-                  pinned=pinned_for(profile, purpose, will_run)) as grant:
+                  pinned=pinned_for(profile, purpose, will_run), scheduler=scheduler_for(table, lanes),
+                  floor_mb=machine.memory_floor_mb(profile)) as grant:
         yield grant
 
 
@@ -292,7 +329,11 @@ def describe_estimate(item, hist) -> str:
     found = estimate.for_booking(item, hist)
     seconds = "? s" if found.seconds is None else f"{found.seconds:.0f} s"
     cores = "? cores" if found.cores is None else f"{found.cores:g} cores"
-    return f"estimate: {seconds}, {cores}, {_size(found.peak_mb)} ({found.source})"
+    memory = _size(found.peak_mb)
+    if found.typical_mb is not None and found.peak_mb is not None and found.typical_mb < found.peak_mb:
+        # admitted by the largest, started under the usual (field test item 11): two figures, each named
+        memory = f"up to {memory}, usually {_size(found.typical_mb)}"
+    return f"estimate: {seconds}, {cores}, {memory} ({found.source})"
 
 
 def _foreign(table, proc, tail: str) -> str:
@@ -334,19 +375,64 @@ def value_of(run, item, machine, now: dt.datetime) -> str:
     if item.frozen == "frozen":
         since = book._when(item.frozen_at)
         text += f"; frozen since {_clock(since) if since else '?'} by {visible(item.order_by)}'s order"
-        if item.group:
+        if item.unit.startswith(f"flotilla-lane-{item.id}-"):   # this booking's scope, and the freeze file itself:
+            # systemd's own thaw may not see a freeze it did not make
+            text += (f" (if its command stays frozen: echo 0 > \"/sys/fs/cgroup$(systemctl --user show -p "
+                     f"ControlGroup --value {item.unit})/cgroup.freeze\")")
+        elif item.group:
             text += f" (if its command stays stopped: kill -CONT -{item.group})"
     elif item.frozen == "ordered":
         text += f"; ordered frozen by {visible(item.order_by)}, not yet answered"
     if item.unanswered:
-        text += f"; {item.id} did not answer a freeze order"
+        text += (f"; {item.id} is never frozen again (an order went unanswered, its watch stopped, or its freezes "
+                 "reached their bound)")
     return text
+
+
+def daemon_line(lanes):
+    """The first line of `flotilla lane`: whether the lane daemon runs, and the heartbeat when it does (lane daemon
+    design, 4.9)."""
+    from flotilla.lane import daemon
+    root = paths.state_dir() / "lane"
+    beat = daemon.alive(root, lanes.procs)
+    if beat is not None:
+        return (f"lane daemon: running, pid {beat.pid}, {visible(beat.release)}, last tick "
+                f"{max(0, round(time.time() - beat.tick))} s ago"), beat
+    if os.environ.get(daemon.OFF_ENV, "").strip().lower() == "off":
+        why = f"{daemon.OFF_ENV}=off"
+    else:
+        last = daemon.heartbeat(root)
+        why = (f"no tick for {max(0, round(time.time() - last.tick))} s" if last is not None and daemon.lock_held(root)
+               else "the next lane client starts it")
+    return f"lane daemon: not running - {why}; a new run starts only into an empty lane", None
+
+
+def _groups_text(beat, item) -> str:
+    """A held run's ceiling and pressure as the daemon last read them."""
+    seen = beat.groups.get(item.id) if beat is not None and isinstance(beat.groups, dict) else None
+    if not isinstance(seen, dict):
+        return ""
+    ceiling, pressure = seen.get("ceiling_mb"), seen.get("pressure")
+    parts = [f"ceiling {_gb(ceiling)} GB" if isinstance(ceiling, (int, float)) else "no ceiling"]
+    if isinstance(pressure, (int, float)):
+        parts.append(f"pressure {round(pressure)} %")
+    if seen.get("squeezed") is True:
+        parts.append("squeezed")
+    if seen.get("pressed") is True:
+        parts.append("pressed")
+    return "; " + ", ".join(parts)
+
+
+def _older(item) -> str:
+    return " (an older flotilla: decides for itself)" if (item.rule or 0) < book.RULE else ""
 
 
 def _status(args) -> int:
     table = ProcessTable.for_machine()
     lanes = _lanes(table)
     profile, top, problem = _profile(args.root)
+    line, beat = daemon_line(lanes)
+    print(line)
     # a dead booking blocks nobody since grant skips it, but it misleads whoever reads this; only a process that does
     # not exist is swept here - one failed look (a `ps` that did not answer) must not release a live holder for good
     try:
@@ -365,7 +451,7 @@ def _status(args) -> int:
     room = room_for(profile)(reading)
     counted = book.older_waiting(found, lanes.live)   # an older flotilla waits: every run is counted, none is light
     if not counted:
-        return _status_by_value(lanes, found, held, waiting, reading, now, hist, profile, mode)
+        return _status_by_value(lanes, found, held, waiting, reading, now, hist, profile, mode, beat)
     print(f"capacity: {slots} heavy run(s) at a time (machine.toml lane_capacity); light runs take no place")
     print(_share_line())
     used, total, reserved = book.budget(found, room, hist, lanes.live)
@@ -416,7 +502,7 @@ def _status(args) -> int:
     return 0
 
 
-def _status_by_value(lanes, found, held, waiting, reading, now, hist, profile, mode) -> int:
+def _status_by_value(lanes, found, held, waiting, reading, now, hist, profile, mode, beat=None) -> int:
     """`flotilla lane` while every waiter goes by value: what the machine gives, each run's priority, and why each
     waiter waits (lane shared machine design, section 5)."""
     from flotilla.lane import admission, freeze, policy
@@ -433,6 +519,11 @@ def _status_by_value(lanes, found, held, waiting, reading, now, hist, profile, m
     print(f"heavy runs: {sum(run.par for run in heavies):g} of {m.cpu_factor * m.cpus:g} cores in use "
           f"(lane_cpu_factor {m.cpu_factor:g}), {_gb(sum(run.mem_mb for run in heavies))} of {_gb(room)} GB "
           f"(light reserve {round(m.light_reserve * 100)} %); at most {m.max_runs} runs at once")
+    over = beat.over if beat is not None and isinstance(beat.over, dict) else {}
+    if isinstance(over.get("mb"), (int, float)):
+        print(f"machine: over its floor by {round(over['mb'])} MB for {round(over.get('s') or 0)} s")
+        if over.get("nothing"):
+            print("nothing can be frozen: every run over the line is immortal, pinned or frozen no more")
     if "lane_capacity" in _machine():
         print(f"lane_capacity = {visible(repr(_machine()['lane_capacity']))} in machine.toml no longer has an effect "
               "(0.30); runs share the machine by memory and priority")
@@ -446,7 +537,8 @@ def _status_by_value(lanes, found, held, waiting, reading, now, hist, profile, m
         size = ("heavy" if by_id[item.id].heavy else "light") if item.id in by_id else "heavy"
         worth = f"; {value_of(by_id[item.id], item, m, now)}" if item.id in by_id else ""
         print(f"  {item.id} {size} {item.who} ({item.note or 'no note'}) since {item.since}"
-              f"{_for_how_long(item.since)}{target}; {by}; {state}; {describe_estimate(item, hist)}{worth}")
+              f"{_for_how_long(item.since)}{target}; {by}; {state}; {describe_estimate(item, hist)}{worth}"
+              f"{_groups_text(beat, item)}{_older(item)}")
     for proc in reading.computing:
         print("  " + _foreign(lanes.procs, proc, " (foreign: its memory is simply not free)"))
     if mode == "fair":
@@ -495,7 +587,8 @@ def _take(args) -> int:
     grant = acq.acquire(lanes, _reader(lanes, table, profile, top, problem), who=_who(args.as_name), note=args.note,
                         capacity=capacity, share=share, wait=args.wait, pid=pid, mark=table.start_mark(pid) or "",
                         by_hand=True, say=print, project=_project(args.root), room=room_for(profile),
-                        value=value_for(profile))
+                        value=value_for(profile), scheduler=scheduler_for(table, lanes),
+                        floor_mb=machine.memory_floor_mb(profile))
     if grant.booking is None:
         print(f"refused: {grant.why}")
         return 2
@@ -546,7 +639,13 @@ def _where(tree: Path) -> tuple[str, str, bool | None]:
 def _record(args, result, where, started: str) -> None:
     from flotilla.ledger.commands import open_ledger
     branch, revision, clean = where
-    if branch != args.for_:
+    if branch == "HEAD" and revision:   # detached, as a reviewer reads: the branch's own tip is that branch's result
+        tip = gitq.branch_tip(Path(args.tree), args.for_)
+        if tip != revision:
+            print(f"note: the run was not recorded on the ledger: HEAD is detached at {revision[:7]}, not the tip of "
+                  f"{args.for_} ({tip[:7] if tip else 'no such branch here'}), so the result is not about that branch")
+            return
+    elif branch != args.for_:
         print(f"note: the run was not recorded on the ledger: the tree is on {branch or 'no branch'}, not "
               f"{args.for_}, so the result is not about that branch")
         return
@@ -606,15 +705,21 @@ def _run(args) -> int:
 
 def _stop_run(args) -> int:
     """Stop the caller's own run in the lane by the pid flotilla recorded, so nobody has to find it with `pkill`
-    (beta field test W22: a seat's `pkill -f` matched its own command line and killed itself first)."""
+    (beta field test W22: a seat's `pkill -f` matched its own command line and killed itself first) - or withdraw
+    its own booking still waiting in line, whose client leaves the line on the same signal (field test of
+    2026-11-08, item 7)."""
     lanes = _lanes(ProcessTable.for_machine())
     who = _who(args.as_name)
-    # a pid with its start mark only: one without could be any process the journal names (review of 0.30.1, I4)
-    held = [item for item in lanes.holders() if item.pid and item.mark and args.booking in (None, item.id)]
+    # a pid with its start mark only: one without could be any process the journal names (review of 0.30.1, I4);
+    # one read for both: a booking granted between two reads would be in neither (review of f50bcd7)
+    found = lanes.bookings()
+    held = [item for item in [*lanes.holders(found), *lanes.waiters(found)]
+            if item.pid and item.mark and args.booking in (None, item.id)]
     mine = [item for item in held if item.who == visible(who)]   # who is stored visible (F2)
     if not mine:
         others = ", ".join(f"{item.id} ({item.who})" for item in held)
-        print(f"refused: no run in the lane is {who}'s" + (f"; held: {others} - ask its holder" if others else ""))
+        print(f"refused: no run or waiting booking in the lane is {who}'s"
+              + (f"; in the lane: {others} - ask its session" if others else ""))
         return 2
     if len(mine) > 1:
         print("refused: several runs are yours; name one with --booking: " + ", ".join(item.id for item in mine))
@@ -624,20 +729,54 @@ def _stop_run(args) -> int:
         print(f"{item.id}'s process is already gone; `flotilla lane sweep` clears the booking")
         return 0
     os.kill(item.pid, signal.SIGTERM)   # the run stops its command's whole group and releases the lane itself
-    for _ in range(100):
+    for _ in range(100):   # the only signal: to the pid vetted above, never to one a later record names
         if not lanes.live(item):
-            print(f"stopped {item.id} ({item.note or 'no note'}) with everything it started: a `lane run` is recorded "
-                  "as killed, with no verdict; a receipt issues none")
-            return 0
+            break
         time.sleep(0.1)
-    print(f"sent the stop to {item.id} (pid {item.pid}); it has not ended within 10 s - `flotilla lane` shows it")
-    return 1
+    else:
+        now = lanes.bookings().get(item.id)
+        where = "it is still in line" if now is not None and now.state == book.WAITING else "it has not ended"
+        print(f"sent the stop to {item.id} (pid {item.pid}); {where} after 10 s - `flotilla lane` shows it")
+        return 1
+    # worded by where the booking ended once its process is gone, never by a state passed on the way: a waiting
+    # client leaves the line even over a grant that landed in the same instant (review of 6d92325)
+    now = lanes.bookings().get(item.id)
+    if item.state == book.WAITING:
+        if now is not None and now.state == book.HELD and now.pid is None:
+            print(f"{item.id} was granted by hand as the stop landed: its `lane take` ended, and the lane stays "
+                  "booked until `flotilla lane release`")
+            return 1
+        if now is None or now.state in (book.LEFT, book.EXPIRED, book.WAITING):
+            print(f"withdrew {item.id} ({item.note or 'no note'}) from the line: it never started")
+            return 0
+        granted = " (granted as the stop landed)"
+    else:
+        granted = ""
+    print(f"stopped {item.id} ({item.note or 'no note'}){granted} with everything it started: a `lane run` "
+          "whose command had started is recorded as killed, with no verdict; a receipt issues none")
+    return 0
+
+
+def _daemon(args) -> int:
+    """`flotilla lane daemon run|ensure` (lane daemon design, 4.1 and 4.7)."""
+    from flotilla.lane import daemon
+    root = paths.state_dir() / "lane"
+    if getattr(args, "daemon_action", None) == "run":
+        return daemon.serve(root, handover=args.handover, idle_s=args.idle if args.idle else daemon.IDLE_S)
+    if getattr(args, "daemon_action", None) == "ensure":
+        table = ProcessTable.for_machine()
+        line = daemon.ensure(root, table, lanes=_lanes(table))
+        if line:
+            print(line)
+        return 1 if line.startswith(daemon.FALLBACK) else 0
+    print("flotilla lane daemon run | ensure")
+    return 2
 
 
 def run_lane_command(args) -> int:
     try:
         return {None: _status, "status": _status, "take": _take, "release": _release, "run": _run, "sweep": _sweep,
-                "stop": _stop_run}[args.action](args)
+                "stop": _stop_run, "daemon": _daemon}[args.action](args)
     except (StorageCorrupt, config.ConfigError, MoveRefused) as err:
         print(f"refused: {err}")
         return 2

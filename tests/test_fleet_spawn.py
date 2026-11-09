@@ -532,3 +532,24 @@ def test_a_dry_run_with_no_room_warns(tmp_path, monkeypatch):
     monkeypatch.setattr(spawn, "disk_usage", lambda path: namedtuple("U", "total used free")(2**40, 0, 2**30))
     seats, warnings = spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False, strict=False)
     assert any("disk_no_room_mb" in line for line in warnings), warnings
+
+
+def test_a_seat_held_on_a_start_up_question_is_reported_with_the_question(tmp_path):
+    """Field test 2026-11-07, S3: every seat of the first raise stopped on Claude Code's "New MCP server found"
+    question, and spawn said "not yet seen in the census" - nobody was told a question waited."""
+    fake = FakeClaude(held_on="New MCP server found in this project: mint")
+    root, ledger, store = world(tmp_path, fake)
+    raised, _ = run(ledger, store, fake, {"main": 1})
+    assert raised[0].short_id == "000001"
+    assert raised[0].note == ("Claude Code holds it at start on a question nobody answers in the background - "
+                              "«New MCP server found in this project: mint»; answer it with `claude attach 000001`, "
+                              "or `flotilla retire \"main session 1\"` stops it")
+    assert [row.session_id for row in ledger.rows().values()] == ["sid-000001"]
+
+
+def test_a_held_seats_note_keeps_the_failed_launchs_text(tmp_path):   # review of 14c5ff8, finding 3
+    fake = FakeClaude(held_on="New MCP server found in this project: mint", appear_then_fail=True)
+    root, ledger, store = world(tmp_path, fake)
+    raised, _ = run(ledger, store, fake, {"main": 1})
+    assert "«New MCP server found in this project: mint»" in raised[0].note
+    assert "`claude --bg` exited 1" in raised[0].note

@@ -3,6 +3,87 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.31.0 - unreleased
+
+The lane gets one scheduler per machine. A field test of 0.30 admitted five heavy runs on light estimates and froze
+nothing, because only a waiter could order a freeze, and nobody waited: the machine fell to 0.5 GB free with 10 GB
+of swap used.
+
+- **One lane daemon per machine decides every start, ceiling, freeze and thaw**, from the whole lane at once, every
+  two seconds. Sessions only ask and wait. Any lane client - a `lane run`, a receipt, `lane take`, an orchestrator
+  at its start - raises it when it is absent, stuck or older than the newest copy installed; it leaves after ten
+  minutes with no booking. `flotilla lane daemon ensure` does the same by hand.
+- **A run's memory is held by a soft ceiling** (`memory.high` of its scope) that starts at what its command usually
+  takes - the median peak of its last runs - and grows, up to doubling every two seconds, while the machine has room.
+  A run still waits until its command's largest peak fits, but once started it no longer holds that largest peak in
+  reserve: in the field test one command ran light and heavy, and three light runs under the heavy figure read the
+  lane as full while 8 GB stood free. A run predicted wrong grows into the room there is, and is held the moment
+  the room ends. The ceiling never kills: the kernel moves the run's cold pages to swap.
+- **A run that waits for memory says "of room", not "free"**, with what makes it up: MemAvailable, less the floor,
+  less what the runs started or ahead in line are held to. `flotilla lane` shows both figures of a run's estimate when they
+  differ: "up to 3.5 GB, usually 220 MB".
+- **`flotilla lane stop` withdraws your own booking still waiting in line**, not only a run that holds the lane.
+- **`flotilla watch` and `flotilla inbox` give the census 20 s**, not a hook's 3 s, and `flotilla watch --wait` asks
+  a census that missed a look again, ending with 2 only after three misses in a row: under load `claude agents`
+  answered late, and the orchestrators' watch went blind exactly when the machine was tight.
+- **`flotilla work reconcile` names the queued rows origin has said nothing of yet**, beside whatever else it
+  prints, instead of "nothing is queued or landed", which it printed while `work show` listed a queued row; a local
+  ledger names its rows by their state.
+- **A `lane run --for <branch>` on a detached HEAD at that branch's tip is recorded on its row**, so a reviewer
+  reading the branch's current tip detached has its runs reach the ledger; a detached HEAD anywhere else - an older
+  tip included - is still not, and says where it is.
+- **Which release a session loads follows `enabledPlugins`**, not any marketplace's install record: a stale
+  record of a marketplace the project turned off no longer reads as the release a seat would load (spawn refused
+  "one fleet on two releases" for it), and two enabled marketplaces on two releases are named as the double load
+  they are before a seat is raised.
+- **The copy a session loads is the first install record that applies to it**, the user's or its own, whatever
+  the scope - measured with Claude Code 2.1.319. A project that installed flotilla after the user did runs the
+  user's copy: spawn no longer asks for a restart that would change nothing, and `/flotilla:update` holds the
+  user's copy for a deferred fleet that rides it, though the project has an install record of its own.
+- **A seat Claude Code holds at start on a question is seen, said and stopped.** A project's `.mcp.json`, or one
+  in a folder above it, makes Claude Code ask every new session "New MCP server found in this project" before it
+  starts; in the background nobody answers. Such a seat is listed with no process, which read as gone: spawn said
+  "not yet seen in the census", `flotilla fleet` said "not running", nothing told the person, and `fleet down`
+  removed the seat's tree and branch and left the session waiting. Now spawn, `flotilla fleet`, `watch` and `inbox`
+  name the question and `claude attach <id>` to answer it; `fleet down`, `retire` and `/flotilla:update` stop the
+  session, the collector counts it alive, and `spawn --fill`, `--recommended` and `--lead` count it raised. A seat is told apart from a long-gone job by its screen, asked of
+  `claude logs` only for seats the census misses, and only a screen that asks counts.
+- **A post naming a move this flotilla does not know is read, and that move is not granted**, where it closed
+  every push before: an older flotilla could not read the posts of a project a newer one wrote, so "who may land
+  could not be told" refused even the sender (field test 2026-11-07; the session ran a copy older than 0.24.1,
+  which knew no `requires`). A refusal names the moves it does not know and says to update; `flotilla doctor` says
+  whether a newer flotilla or a typo is the likelier cause, by the post's template_version. Across all 82 releases
+  one move was ever added to a template, none dropped or renamed, and a test now holds a template's moves to its
+  version. When no post may land and some post names an unknown move, a lander may be among them, so every push
+  stays closed, as before.
+- **The reviewer post says how to undo its own probe** (template 6): write the file back from the revision read,
+  from the tree's root, `git show <tip>:<path> > <path>`, and check it with `sha256sum`. The revert guard is
+  unchanged.
+- **A booking's "since" is when it began to hold or to wait**, not its last journal line: the daemon writes a held
+  run's ceiling every few seconds, and `flotilla lane`, the fair share and the start estimates read a run held for
+  minutes as just started.
+- **When the machine goes below its memory floor, or a run stalls at its ceiling with no room to give it**, the
+  run of lowest priority - among near-equal ones, the one that grew most in the last minute - is squeezed (its
+  ceiling lowered under its use) and then frozen, never killed. The first-minute grace does not protect from this;
+  immortal and pinned runs are never touched, and when only they are over the line, `flotilla lane` says so and
+  nothing new starts. The swap budget of 0.30 (80 % used at most) limits every move that pushes pages out.
+- **A wrapper obeys only the live daemon's order**, sealed with a key the daemon makes for itself, and reads the
+  machine for itself before it obeys one: an overload order only while memory reads near the floor, a pressure
+  order only while the run it names is held at its ceiling and reads its own pages back from swap. What the seal
+  does not do: the key is the user's own file, so it stops a writer of the journal alone, not a session that reads
+  the user's files. Against such a session the lane promises only what the wrapper reads for itself: a run
+  immortal by its own clock is never frozen, an order holds only while the machine's own readings agree, each
+  freeze lasts at most the freeze ceiling, and nothing is killed.
+- **A booking stands frozen 10 minutes in all at most**, over every freeze and whoever ordered it - the daemon or a
+  forged order: `lane_freeze_total_minutes` in `machine.toml` (10 by default, 2-240). Then the run is thawed and
+  never frozen again.
+- **No daemon, a careful lane:** when none can be started, a run already going goes on, a frozen one thaws by its
+  own guards, and a new run starts only into an empty lane. `FLOTILLA_LANE_DAEMON=off` chooses that on purpose.
+- `flotilla lane` begins with the daemon's line and shows each run's ceiling and memory pressure; `flotilla doctor`
+  reports the daemon and its release. The orchestrator post (template 28) raises the daemon at its start.
+- Bookings are rule 5. A booking of 0.30 or older still decides for itself while it waits; the daemon counts its
+  memory and never admits it, and a rule-5 wrapper obeys no order such a client writes.
+
 ## 0.30.1 - 2026-11-06
 
 Security and hygiene of a public repository.
@@ -11,14 +92,28 @@ Security and hygiene of a public repository.
   record could name a process or a scope that is not a lane run.
   - A frozen command is thawed from outside only when the process itself proves it is the booking's - its own
     environment carries `FLOTILLA_LANE_BOOKING` - or when the scope's name carries the booking. A process that
-    gives no word either way is kept, never dropped: `flotilla lane` shows it with the `kill -CONT` that resumes it.
-  - A holder freezes its command only for a fresh order from a waiter with a live process and its start mark, that
-    lacks memory alone, and that the lane's rules let it be frozen for (not immortal, past its first minute, lower in
-    priority). Any other order lapses.
+    gives no word either way (its environment cleared or unreadable) is continued when the process the record
+    names - its pid and start mark - still stands stopped, so a lane command is never left stopped; while even that
+    cannot be read the booking is kept, never dropped, and `flotilla lane` shows the command that resumes it (a
+    write to the scope's `cgroup.freeze`, or `kill -CONT` for a stop by signal).
+  - A holder freezes its command only for a fresh order from a waiter with a live process and its start mark that
+    the lane's rules let it be frozen for (not immortal, past its first minute, lower in priority; whether it is
+    heavy beside a heavy waiter is the waiter's to judge). Any other order lapses, and no waiter orders that run
+    again until the answer bound is over.
   - A booking's pid must be a real process number, and `flotilla lane stop` signals only a pid with its start mark:
     a crafted `pid` of `-1` could otherwise have signalled every process of the user.
-  - What this bounds is what a crafted line can do; a process writing as the same user can still name a live run
-    of its own. The journal is a booking, not a lock.
+  - No freeze outlasts its ceiling, `lane_freeze_ceiling_minutes` in `machine.toml` (10 by default, 2-240):
+    then the run is thawed whatever holds its room - it may then run beside the run that took its room, so memory
+    may overcommit - and is not frozen again. And any freeze, a scope's as well as a
+    stop by signal, is let go after two minutes when its waiter still has not started.
+  - What this does not do: a line written as the same user can name any live process with its real start mark as a
+    waiter, and a run may be frozen for it within the lane's rules - for two minutes, and at most for the ceiling.
+    A run that was let go is not frozen again by its own process, whatever a later line says; the ceiling is kept
+    by the frozen command's own loop, with no journal, and a watch inside one journal call for 15 s - a held lock -
+    is read as gone, its run thawed and not frozen again in that booking; the freeze itself never counts. A crafted
+    line can also have a session continue any stopped process of the user whose environment names no other
+    booking, by giving its pid and start mark, which are not secret. The lane bounds what a crafted line can do; it
+    cannot tell who wrote it. The journal is a booking, not a lock.
 - **No project or client names, and no personal paths, in the repository.** Field-test reports are no longer kept
   here (they name the projects they ran on); tests, specs, plans, the changelog and code comments name their
   projects neutrally.

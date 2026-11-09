@@ -91,6 +91,26 @@ def test_a_receipt_sums_the_tiers_it_will_run():
     assert est.receipt_estimate(["lint"], hist, project="p").seconds == 5.0
 
 
+def test_typical_memory_is_the_median_peak_beside_the_largest():
+    # one command, light and heavy rows (the field test of 2026-11-08): the largest peak admits, the typical one is
+    # what a run usually takes - its ceiling starts there and grows (the person's choice, option B)
+    runs = [done(i, LADDER, peak=peak) for i, peak in enumerate([200, 210, 3600, 220, 3500])]
+    e = est.estimate(LADDER, est.history(bookings(*runs), now=NOW), project="p")
+    assert (e.peak_mb, e.typical_mb) == (3600, 220)
+
+
+def test_a_receipts_typical_memory_is_its_heaviest_tiers():
+    ran = [{"name": "unit", "status": "green", "seconds": 40.0, "peak_mb": 1700, "cores": 6.9, "busy": 0.5},
+           {"name": "lint", "status": "green", "seconds": 5.0, "peak_mb": 300, "cores": 1.0, "busy": 0.5}]
+    runs = [done(i, ["receipt:p:handover:lint+unit", "project:p"], ran=ran) for i in range(3)]
+    hist = est.history(bookings(*runs), now=NOW)
+    assert est.receipt_estimate(["unit", "lint"], hist, project="p").typical_mb == 1700
+
+
+def test_the_fixed_prior_has_no_typical_memory_of_its_own():
+    assert est.estimate(LADDER, {}, project="p").typical_mb is None
+
+
 def test_a_saturated_runs_cores_are_left_out_even_when_larger():
     runs = [done(1, LADDER, cores=2.0, busy=0.5), done(2, LADDER, cores=2.5, busy=0.6),
             done(3, LADDER, cores=3.0, busy=0.99)]   # 3 of 8 cores while the machine was full: a crowd, not demand
@@ -233,3 +253,9 @@ def test_a_tiers_peak_cores_reaches_the_receipt_estimate():
     runs = [done(i, ["exact:flotilla receipt"], ran=ran) for i in range(3)]
     e = est.receipt_estimate(["unit"], est.history(bookings(*runs), now=NOW), project="p")
     assert e.peak_cores == 5.5
+
+
+def test_a_project_priors_typical_memory_is_the_median_of_its_runs():   # review of option B, Q1 gap
+    runs = [done(i, [f"exact:old{i}", "project:p"], peak=peak) for i, peak in enumerate([300, 400, 5000])]
+    e = est.estimate(["exact:new", "project:p"], est.history(bookings(*runs), now=NOW), project="p")
+    assert e.source.startswith("project prior") and (e.peak_mb, e.typical_mb) == (5000, 400)

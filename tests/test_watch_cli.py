@@ -80,11 +80,41 @@ def test_what_was_there_at_the_start_does_not_wake_it(tmp_path, capsys):
     assert code == 0 and "nothing new in 60 s" in out
 
 
-def test_a_census_lost_mid_wait_exits_2(tmp_path, capsys):
+def test_a_census_lost_mid_wait_three_looks_in_a_row_exits_2(tmp_path, capsys):
     calm = context(tmp_path, me=None, sessions=QUIET)
     lost = context(tmp_path, me=None, census_error="`claude` is not on PATH")
-    code, out = run_wait(tmp_path, capsys, [calm, lost])
+    code, out = run_wait(tmp_path, capsys, [calm, lost, lost, lost], seconds=200.0)
     assert code == 2 and "could not be asked" in out and "nothing new" not in out
+
+
+def test_a_census_that_misses_one_look_mid_wait_is_asked_again(tmp_path, capsys):   # field test 2026-11-08, item 3
+    # under load `claude agents` answers late: one miss must not blind the orchestrator's watch
+    calm = context(tmp_path, me=None, sessions=QUIET)
+    late = context(tmp_path, me=None, census_error="`claude agents --json` did not answer within 20s")
+    news = context(tmp_path, me=None, sessions=DROPPED, rows_=HANDED)
+    code, out = run_wait(tmp_path, capsys, [calm, late, news, news], seconds=200.0)
+    assert code == 0 and "attention (new):" in out and "review session 1 holds the move" in out
+
+
+def test_a_confirming_sample_lost_mid_wait_is_a_miss_not_the_end(tmp_path, capsys):
+    calm = context(tmp_path, me=None, sessions=QUIET)
+    lost = context(tmp_path, me=None, census_error="`claude` is not on PATH")
+    news = context(tmp_path, me=None, sessions=DROPPED, rows_=HANDED)
+    code, out = run_wait(tmp_path, capsys, [calm, news, lost, news, news], seconds=200.0)
+    assert code == 0 and "attention (new):" in out
+
+
+def test_the_watch_command_asks_the_census_with_a_commands_patience(tmp_path, monkeypatch, capsys):
+    from flotilla.core import census
+    asked = []
+
+    def read(timeout=None, **kw):
+        asked.append(timeout)
+        return []
+    monkeypatch.setattr(census, "read_census", read)
+    onboarded(tmp_path)
+    run_watch_command(args(tmp_path), now=NOW, sleep=lambda s: None)
+    assert asked and min(asked) >= 20   # a hook's 3 s is for hooks; a command may wait for a loaded machine
 
 
 def test_the_cli_parses_watch_wait():
@@ -202,3 +232,35 @@ def test_once_counts_the_persons_queue_as_the_inbox_does(tmp_path, capsys):
     code, out = run(tmp_path, context(tmp_path, me=None, sessions=[sess("main session 1", state="working")],
                                       rows_=rows(asked, held)), capsys)
     assert code == 1 and "waits on the person (2):" in out and "feat/held" in out
+
+
+def test_a_wait_whose_last_looks_missed_the_census_says_so_not_nothing_new(tmp_path, capsys):   # review of 406a533
+    calm = context(tmp_path, me=None, sessions=QUIET)
+    lost = context(tmp_path, me=None, census_error="`claude agents --json` did not answer within 20s")
+    code, out = run_wait(tmp_path, capsys, [calm, calm, lost], seconds=60.0)
+    assert code == 2 and "could not be asked" in out and "nothing new" not in out
+    code, out = run_wait(tmp_path, capsys, [calm, lost, lost], seconds=40.0)
+    assert code == 2 and "nothing new" not in out
+
+
+def test_a_ledger_lost_mid_wait_ends_it_at_once(tmp_path, capsys):   # review of 406a533
+    calm = context(tmp_path, me=None, sessions=QUIET)
+    broken = context(tmp_path, me=None, sessions=QUIET, ledger_error="trunk carries no .flotilla/project.toml")
+    code, out = run_wait(tmp_path, capsys, [calm, broken, calm, calm], seconds=200.0)
+    assert code == 2 and "ledger: could not be read" in out
+
+
+def test_a_ledger_lost_in_the_confirming_sample_ends_the_wait_and_says_ledger(tmp_path, capsys):
+    calm = context(tmp_path, me=None, sessions=QUIET)
+    news = context(tmp_path, me=None, sessions=DROPPED, rows_=HANDED)
+    broken = context(tmp_path, me=None, sessions=DROPPED, ledger_error="trunk carries no .flotilla/project.toml")
+    code, out = run_wait(tmp_path, capsys, [calm, news, broken, calm, calm, calm], seconds=100.0)
+    assert code == 2 and "ledger: could not be read" in out and "nothing new" not in out
+
+
+def test_a_confirming_sample_missed_at_the_deadline_ends_with_2(tmp_path, capsys):   # review of 147d228
+    calm = context(tmp_path, me=None, sessions=QUIET)
+    news = context(tmp_path, me=None, sessions=DROPPED, rows_=HANDED)
+    lost = context(tmp_path, me=None, census_error="`claude agents --json` did not answer within 20s")
+    code, out = run_wait(tmp_path, capsys, [calm, calm, news, lost], seconds=60.0)
+    assert code == 2 and "did not answer within 20s" in out and "nothing new" not in out

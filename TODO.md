@@ -8,6 +8,51 @@ something through, B a bug a user meets, P polish, tests or docs), or `open, des
 run). A later triage re-checks only items whose named files changed since that version. An item that is done -
 fixed by a release, or found fixed - leaves its section for **Done** at the bottom, one line with the version.
 
+## From the field test of the lane daemon, batches 1-3 (2026-11-07..08, 0.30.1 and lane/daemon c5baaff)
+
+Two demo fleets on one machine (8 cores, 15 GB), batch 1 on 0.30.1, then batch 1 again and batches 2-3 on the lane
+daemon. The findings the person took into work are fixed on their own branches; these two were deferred.
+
+- **A run held at once may print no "waits because" line.** The main's push receipt for one row printed none; whether
+  a run admitted without waiting should say so, or the line went missing, was not checked. *(open, measure)*
+- **Claude Code `plugin update` keeps a stale cache of a same-version local plugin** (development setup, not
+  flotilla): a reinstall was needed to load the changed code. Worth a line in the development notes. *(open, P)*
+- **Reconcile's line openings are kept by hand in four places** (`ledger/delivery.py` `reconcile` f-strings,
+  `ledger/commands.py` `LINE_OPENINGS`, `reconcile_exit` and the `shipped ` parse in `run_ledger_command`): a
+  reworded line would make its branch appear twice in the output, and no test depends on `_subject`'s answer for
+  every line shape delivery produces (reviews of f762170 and 4cd760c). One owner of the openings, or a test over
+  every line delivery produces. *(checked 2026-11-09 on lane/daemon: still P -
+  flotilla/ledger/commands.py `_subject`)*
+- **A directory marketplace loads from its folder, whatever the install record says** (`readFromFolder` in
+  `claude plugin list`; measured 2026-11-09 with `claude -p --debug`, Claude Code 2.1.319): `loads_all` reads the
+  record's version, so for a directory marketplace the release a seat loads can differ from the one named. Predates
+  item 5. *(open, measure - flotilla/core/claude_state.py `loads_all`)*
+- **With no `enabledPlugins` naming flotilla anywhere, Claude Code loads nothing**, while `loads_all` falls back
+  to the install records and names a release (measured 2026-11-09, Claude Code 2.1.319, review of 7e6a9b8, F2).
+  Whether older Claude Code enabled an installed plugin implicitly was not measured, so the fallback stays.
+  *(open, measure - flotilla/core/claude_state.py `loads_all`)*
+- **A seat held on a start-up question, after it is answered or declined** (review of 14c5ff8): measured only
+  while the dialog stands. Whether a seat whose dialog was declined and which then exited keeps showing the dialog
+  in `claude logs` - which would read it as held for good, and keep its tree from the collector - needs a real
+  Claude Code. `/flotilla:update`'s report also reads the plain census: a project whose every seat is held shows no
+  fleet, so `--stop`/`--defer` is not asked there; such a seat has loaded no release yet. Other readers of the
+  plain census still read a held seat as gone (review of 3f5bd79): a handover wait on one is refused or flagged
+  (ledger/handover.py `_whom`, `_gone`), and ledger/outside.py's liveness; `adopt` of its reserved row is refused
+  anyway. A `--recommended --dry-run` asks the fleet's census up to five times, each paying a second `claude
+  agents` and a `claude logs` per held seat; the `--recommended` call into sizing has no test of its own.
+  *(open, measure - flotilla/core/census.py `held_at_start`, flotilla/update.py `report`)*
+- **`/flotilla:update` still reads ownership by record in two places** (review of dfa07ea): after a project's own
+  record is updated, `apply` drops its deferral although the project may ride the user's copy, still held - the
+  "update waits" reminder is lost, no copy moves (`flotilla/update.py` `apply`, the project branch); and `user_held`
+  counts only projects with a working fleet, so `--defer` of a project with no fleet riding the user's copy says
+  "its fleet keeps working" while the user's copy is updated (`plan`; older, extended by dfa07ea to a project whose
+  own record follows the user's). *(checked 2026-11-09 on lane/daemon: still B, low - flotilla/update.py)*
+- **Wording of the copy a session loads** (review of dfa07ea): `rides_user_copy` answers True when no copy loads, so
+  a fleet whose enabled id has no record here is shown "(on the user's copy)" and its docstring overstates; the
+  `copy_in_use` docstring still calls the rule unmeasured, and its fix line "bring the project's install up" does
+  not make the project's copy load when the user's record comes first. *(checked 2026-11-09 on lane/daemon: still
+  P - flotilla/core/claude_state.py)*
+
 ## From the field test of two demo fleets on one lane (2026-11-06, 0.29.3)
 
 Two four-seat fleets (demo-a, demo-b), five small rows each, one lane (`lane_capacity = 1`, `lane_share =
@@ -57,6 +102,11 @@ for them first.
 - **`budget for light runs: 0 of 12 cores` reads as "none left"**; it means none in use (the test's watcher misread
   it so). Say "0 of 12 cores in use". *(closed in 0.30.0: the line is gone; the lane says "heavy runs: 0 of 12 cores
   in use" - flotilla/lane/commands.py `_status_by_value`)*
+
+- **A stop by signal whose group leader is gone leaves the rest of its group stopped.** When a dead holder's frozen
+  command group has lost its leader, the lane reads it as gone and clears the booking, but other members of the group
+  may still stand stopped; `killpg(group, SIGCONT)` would reach them. Found by the review of 0.30.1's fixes.
+  *(open: flotilla/lane/book.py `_thaw_command`)*
 
 **The person's road.**
 

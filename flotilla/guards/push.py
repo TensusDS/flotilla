@@ -575,6 +575,11 @@ def _may_not_land(root, where: OriginTrunk, who, run, *, hook: bool = False) -> 
     posts = _posts_at(root, where, run)
     landing = sorted(post.name for post in posts.values() if LAND in post.may)
     if not landing:
+        strange = sorted(f"`{post.name}`: {', '.join(post.unknown)}" for post in posts.values() if post.unknown)
+        if strange:   # a lander may be among the moves not read: never more open than an unreadable post (372832d)
+            raise Unknown(f"no post on origin's trunk may land, and posts name moves this flotilla does not know "
+                          f"({'; '.join(strange)}): a typo, or a newer flotilla's move - fix the post, or update this "
+                          "flotilla (`/flotilla:update`)")
         return ""
     rule = (f"only a session whose post may land ({', '.join(f'`{name}`' for name in landing)}) pushes to "
             f"`{where.trunk}` or a tag, or merges a pull request")
@@ -598,6 +603,9 @@ def _may_not_land(root, where: OriginTrunk, who, run, *, hook: bool = False) -> 
     others = sorted({other for other in live if other and other not in names})
     landers = [other for other in others if holds(other, LAND)]
     said = f"{name} holds the post `{post.name}`, which may not land: {rule}."
+    if post.unknown:   # read, never granted (item 4): the post may be a newer flotilla's
+        said += (f" Its post also names moves this flotilla does not know ({', '.join(post.unknown)}): if a newer "
+                 "flotilla wrote it, update this one (`/flotilla:update`).")
     hands = "hand" in post.may   # a reviewer, an orchestrator, a helper and a judge have no work of their own to hand
     if landers:
         who_lands = landers[0] if len(landers) == 1 else "one of " + ", ".join(landers)

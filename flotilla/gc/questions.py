@@ -36,10 +36,10 @@ OPTIONS = {
     "junk": ("junk", "Junk", "Removed for good now, the commits parked; never asked about again."),
     "keep": ("keep", "Keep", "The tree stays; asked again only when something in it changes."),
     "stop": ("stop", "Stop them and retire the seat", "SIGTERM to exactly the processes shown, then the seat is "
-                                                     "retired as `flotilla fleet retire` would."),
+                                                     "retired as `flotilla retire` would."),
     "park": ("park", "Park and delete the branch", "Its commits are pinned under a parked ref and the branch goes; "
                                                     "`git branch <name> <parked ref>` brings it back."),
-    "retire": ("retire", "Retire the seat", "The seat is retired as `flotilla fleet retire` would; check with `ps` "
+    "retire": ("retire", "Retire the seat", "The seat is retired as `flotilla retire` would; check with `ps` "
                                             "first that nothing works in its tree."),
 }
 WORK = ("archive", "junk", "keep")

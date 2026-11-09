@@ -71,10 +71,10 @@ fleet.
 **Pin a release** instead, to choose when you move: name a tag on the first line (the tags are listed in
 [CHANGELOG.md](CHANGELOG.md)):
 
-    claude plugin marketplace add TensusDS/flotilla#v0.30.1 --scope project
+    claude plugin marketplace add TensusDS/flotilla#v0.31.0 --scope project
     claude plugin install flotilla@flotilla --scope project
 
-That writes `"ref": "v0.30.1"` into the project's settings and installs that release; `claude plugin update` stays on
+That writes `"ref": "v0.31.0"` into the project's settings and installs that release; `claude plugin update` stays on
 it. A machine keeps one marketplace of a name for all its projects, so give the projects on one machine the same
 channel or pin; `/flotilla:doctor` names a pin the machine does not follow. And a tag can be moved on GitHub, so a pin
 chooses when you move, not who can change what the tag names.
@@ -537,7 +537,7 @@ one, and never a receipt whose tier says `freeze = false` in `.flotilla/project.
 holds a lease). On Linux with a user systemd each run starts in a scope of its own; a freeze stops it and moves only
 the memory the waiter needs to swap, so the run comes back in seconds (about 13 s for each gigabyte moved). On macOS,
 and on Linux without a user systemd, a freeze is a stop by signal; the waiter starts only when the memory shows free,
-and a stop held two minutes for nothing is let go. A frozen run waits again keeping its first ask and its run time,
+and any freeze held two minutes for a waiter that still has not started is let go. A frozen run waits again keeping its first ask and its run time,
 its ceiling stops while it is frozen, and a red after a freeze says so. A freeze never leaves the machine's swap more
 than 80 % used. A frozen command never stays frozen for a wrapper that died or hung: the next grant thaws it.
 
@@ -548,6 +548,8 @@ than 80 % used. A frozen command never stays frozen for a wrapper that died or h
 | `lane_immortal_minutes` | 15 | run time after which a run is never frozen (1-240) |
 | `lane_freeze` | on | `false`: admission and order only, nothing is frozen; `flotilla doctor` recommends keeping it on |
 | `lane_max_runs` | 10 | runs holding the lane at once (1-64) |
+| `lane_freeze_ceiling_minutes` | 10 | the longest one freeze lasts, whatever holds its room (2-240); then the run is thawed - it may run beside the run that took its room, so memory may overcommit - and its own process freezes it no more |
+| `lane_freeze_total_minutes` | 10 | the longest a booking stands frozen in all, over every freeze and whoever ordered it - the lane daemon or a forged order (2-240); then it is thawed and never frozen again - it may run beside the run that took its room, so memory may overcommit; it keeps a ceiling that grows with it, and lower runs are frozen for it when it is pressed |
 
 `lane_capacity` no longer has an effect; `flotilla lane` and `flotilla doctor` say so while it is set. While a seat
 of a flotilla before 0.30 waits, the lane counts every run against `lane_capacity` as before, until it goes. A

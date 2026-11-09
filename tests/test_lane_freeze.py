@@ -323,15 +323,164 @@ def test_a_process_without_the_variable_or_with_another_booking():   # review of
             child.wait()
 
 
+def _ps_both(command, environment, code=0):
+    """`ps -ww` prints the command; `ps -wwE` prints the command, then the environment."""
+    def run(argv, **kw):
+        if "-wwE" in argv:
+            return done(code, f"{command} {environment}\n")
+        return done(code, f"{command}\n")
+    return run
+
+
 def _ps(out, code=0):
     return lambda argv, **kw: done(code, out)
 
 
 def test_carries_reads_ps_where_there_is_no_proc(tmp_path):   # review of 0.30.1, I3: the macOS branch
     gone = tmp_path / "no-proc"
-    line = "/bin/sh -c pytest PATH=/usr/bin FLOTILLA_LANE_BOOKING=b7 HOME=/home/user\n"
-    assert freeze.carries(42, "b7", proc_root=gone, run=_ps(line)) is True
-    assert freeze.carries(42, "b70", proc_root=gone, run=_ps(line)) is False   # another booking's, by exact token
-    assert freeze.carries(42, "b7", proc_root=gone, run=_ps("/bin/sh -c pytest PATH=/usr/bin\n")) is None
-    assert freeze.carries(42, "b7", proc_root=gone, run=_ps("/bin/sh -c pytest\n")) is None   # no environment shown
+    env = "PATH=/usr/bin FLOTILLA_LANE_BOOKING=b7 HOME=/home/user"
+    assert freeze.carries(42, "b7", proc_root=gone, run=_ps_both("/bin/sh -c pytest", env)) is True
+    assert freeze.carries(42, "b70", proc_root=gone, run=_ps_both("/bin/sh -c pytest", env)) is False
+    assert freeze.carries(42, "b7", proc_root=gone, run=_ps_both("/bin/sh -c pytest", "PATH=/usr/bin")) is None
+    assert freeze.carries(42, "b7", proc_root=gone, run=_ps_both("/bin/sh -c pytest", "")) is None   # none shown
     assert freeze.carries(42, "b7", proc_root=gone, run=_ps("", code=1)) is False   # no such process
+
+
+
+
+def test_a_booking_named_in_the_commands_own_words_is_not_its_environment(tmp_path):   # review of ed148e3, 3
+    gone = tmp_path / "no-proc"
+    command = 'bash -c FLOTILLA_LANE_BOOKING=b2 make'
+    run = _ps_both(command, "PATH=/usr/bin FLOTILLA_LANE_BOOKING=b1 HOME=/home/user")
+    assert freeze.carries(42, "b1", proc_root=gone, run=run) is True     # its environment, not its arguments
+    run = _ps_both(command, "PATH=/usr/bin HOME=/home/user")
+    assert freeze.carries(42, "b1", proc_root=gone, run=run) is None     # no word in the environment itself
+
+
+
+def test_stopped_reads_the_process_state(tmp_path):
+    proc = tmp_path / "proc"
+    for pid, state in ((10, "T"), (11, "S"), (12, "Z"), (13, "t")):
+        (proc / str(pid)).mkdir(parents=True)
+        (proc / str(pid) / "stat").write_text(f"{pid} (sh -c x) {state} 1 {pid} 0")
+        (proc / str(pid) / "statm").write_text("100 10 0 0 0 0 0")
+    assert [freeze.stopped(pid, proc_root=proc) for pid in (10, 11, 12, 13, 99)] == [True, False, True, True, False]
+
+
+def test_stopped_asks_ps_where_there_is_no_proc(tmp_path):
+    gone = tmp_path / "no-proc"
+    assert freeze.stopped(42, proc_root=gone, run=lambda argv, **kw: done(0, "T+\n")) is True
+    assert freeze.stopped(42, proc_root=gone, run=lambda argv, **kw: done(0, "S\n")) is False
+    assert freeze.stopped(42, proc_root=gone, run=lambda argv, **kw: done(1, "")) is False   # gone
+
+
+
+
+
+def test_stopped_asks_the_named_leader_only(tmp_path):   # review: a running ancestor's stopped descendants are not ours
+    proc = tmp_path / "proc"
+    for pid, state, ppid, pgrp in ((10, "S", 1, 10), (11, "T", 10, 11)):
+        (proc / str(pid)).mkdir(parents=True)
+        (proc / str(pid) / "stat").write_text(f"{pid} (sh -c x) {state} {ppid} {pgrp} 0")
+        (proc / str(pid) / "statm").write_text("100 10 0 0 0 0 0")
+    assert freeze.stopped(10, proc_root=proc) is False   # it runs: what is stopped below it is another matter
+    assert freeze.stopped(11, proc_root=proc) is True
+
+
+
+def test_the_slot_keeps_its_own_ceiling_without_the_journal():   # review of f32d91c, I-A
+    # the watch may be blocked on the journal's lock - held by a process inside the frozen command itself - so the
+    # command's own loop thaws the slot at the ceiling, with no journal at all, and the slot is done freezing
+    tick = {"now": 0.0}
+    s = freeze.Slot(freeze.SIGNAL, clock=lambda: tick["now"])
+    s.ceiling_s = 600.0
+    s.freeze(0)
+    alive = threading.Event()
+    watcher = threading.Thread(target=alive.wait)
+    watcher.start()
+    s.watcher = watcher   # alive, but blocked
+    try:
+        tick["now"] = 300.0
+        assert not s.guard() and s.frozen() and s.frozen_for() == 300.0
+        tick["now"] = 600.0
+        assert s.guard() and not s.frozen() and s.done_freezing
+    finally:
+        alive.set()
+
+
+
+def test_a_watch_that_makes_no_progress_is_treated_as_gone():   # review of d4c28c5, minor 1
+    # the watch is alive but stuck - on the journal's lock, held maybe by a process inside this very command: the
+    # slot does not wait for the ceiling
+    tick = {"now": 0.0}
+    s = freeze.Slot(freeze.SIGNAL, clock=lambda: tick["now"])
+    s.ceiling_s = 600.0
+    s.freeze(0)
+    s.journal_since = 0.0   # the watch entered a journal call, and has not come out
+    stuck = threading.Event()
+    watcher = threading.Thread(target=stuck.wait)
+    watcher.start()
+    s.watcher = watcher
+    try:
+        tick["now"] = 10.0
+        assert not s.guard() and s.frozen()
+        tick["now"] = freeze.WATCH_STALE_S + 1
+        assert s.guard() and not s.frozen() and s.done_freezing
+    finally:
+        stuck.set()
+
+
+def test_the_ceiling_counts_from_before_the_reclaim(tmp_path, monkeypatch):   # review of d4c28c5, minor 4
+    root = fake_cgroup(tmp_path)
+    s = freeze.Slot(freeze.SCOPE, root=root, run=fake_systemctl, tree_mb=lambda pid: 100)
+    s.contain(["pytest"], booking="b1")
+    s.attach(4242)
+    seen = []
+    monkeypatch.setattr(freeze.Slot, "_freeze_scope", lambda self, cgroup, mb: seen.append(self.frozen()))
+    s.freeze(512)
+    assert seen == [True]   # already frozen, by the slot's clock, while the scope froze and reclaimed
+
+
+def test_a_detached_scope_is_still_thawed(tmp_path):   # review of d4c28c5, minor 5
+    root = fake_cgroup(tmp_path)
+    scope = root / "user.slice/flotilla-lane-b1-9-1.scope"
+    s = freeze.Slot(freeze.SCOPE, root=root, run=fake_systemctl, tree_mb=lambda pid: 100)
+    s.contain(["pytest"], booking="b1")
+    s.attach(4242)
+    s.freeze(0)
+    (scope / "cgroup.freeze").write_text("1")
+    s.detach()   # the leader was killed while frozen; the rest of its scope still stands frozen
+    assert s.thaw() and (scope / "cgroup.freeze").read_text().strip() == "0"
+
+
+
+def test_a_long_freeze_is_never_read_as_a_stuck_watch():   # review of 9d9d244, I1
+    # the freeze itself - systemctl, the kernel's freeze, gigabytes of reclaim - can take longer than the stuck bound;
+    # only time spent inside a journal call counts
+    tick = {"now": 0.0}
+    s = freeze.Slot(freeze.SIGNAL, clock=lambda: tick["now"])
+    s.ceiling_s = 600.0
+    s.freeze(0)
+    alive = threading.Event()
+    watcher = threading.Thread(target=alive.wait)
+    watcher.start()
+    s.watcher = watcher
+    try:
+        tick["now"] = freeze.WATCH_STALE_S + 30   # a long freeze, the watch not in the journal
+        assert not s.guard() and s.frozen() and not s.done_freezing
+    finally:
+        alive.set()
+
+
+def test_a_freeze_that_fails_is_not_counted(tmp_path, monkeypatch):   # review of 9d9d244, minor 3
+    root = fake_cgroup(tmp_path)
+    s = freeze.Slot(freeze.SCOPE, root=root, run=fake_systemctl, tree_mb=lambda pid: 100)
+    s.contain(["pytest"], booking="b1")
+    s.attach(4242)
+
+    def broken(self, cgroup, mb):
+        raise OSError("cannot write cgroup.freeze")
+    monkeypatch.setattr(freeze.Slot, "_freeze_scope", broken)
+    with pytest.raises(OSError):
+        s.freeze(512)
+    assert s.freezes == 0 and not s.frozen()   # nothing froze: neither counted nor left saying frozen

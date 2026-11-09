@@ -40,6 +40,10 @@ class Estimate:
     peak_mb: int | None
     source: str
     peak_cores: float | None = None   # the busiest stretch any sample saw: a heavy run's parallelism (section 4.4)
+    #: What a run usually takes, the median peak: its ceiling starts there and grows, while `peak_mb`, the largest,
+    #: admits it. One command often runs light and heavy (a test tier on a small row and a big one); a ceiling at the
+    #: largest promised every light run the heavy one's memory (the field test of 2026-11-08, the person's option B).
+    typical_mb: int | None = None
 
 
 PRIOR = Estimate(None, 4.0, 2048, "fixed prior: 4 cores, 2 GB")
@@ -98,6 +102,11 @@ def _peak(samples: list[Sample]) -> int | None:
     return max(usable) if usable else None
 
 
+def _typical(samples: list[Sample]) -> int | None:
+    usable = [s.peak_mb for s in samples if s.peak_mb is not None]
+    return round(statistics.median(usable)) if usable else None
+
+
 def _peak_cores(samples: list[Sample]) -> float | None:
     usable = [s.peak_cores for s in samples if s.peak_cores is not None]
     return max(usable) if usable else None
@@ -124,12 +133,13 @@ def estimate(ladder: list[str], hist: dict[str, list[Sample]], *, project: str, 
                 if seconds is not None:
                     source += f"; duration from {len(more)} runs ({coarser.split(':', 1)[0]} match)"
                     break
-        return Estimate(seconds, _cores(samples, cpus), _peak(samples), source, _peak_cores(samples))
+        return Estimate(seconds, _cores(samples, cpus), _peak(samples), source, _peak_cores(samples),
+                        _typical(samples))
     samples = hist.get(f"project:{project}", [])
     if len(samples) >= ENOUGH:
         return Estimate(None, _p90([s.cores for s in samples]), _p90([s.peak_mb for s in samples]),
                         f"project prior: 90th percentile of {len(samples)} runs",
-                        _p90([s.peak_cores for s in samples]))
+                        _p90([s.peak_cores for s in samples]), _typical(samples))
     return PRIOR
 
 
@@ -144,7 +154,8 @@ def receipt_estimate(will_run: list[str], hist: dict[str, list[Sample]], *, proj
     peak = max((p.peak_mb for p in parts if p.peak_mb is not None), default=None)
     sources = sorted({p.source for p in parts})
     busiest = max((p.peak_cores for p in parts if p.peak_cores is not None), default=None)
-    return Estimate(seconds, cores, peak, f"{len(parts)} tier(s): " + "; ".join(sources), busiest)
+    typical = max((p.typical_mb for p in parts if p.typical_mb is not None), default=None)
+    return Estimate(seconds, cores, peak, f"{len(parts)} tier(s): " + "; ".join(sources), busiest, typical)
 
 
 #: A run is light when its own measurements say it is short and small (lane light runs design, section 2): it then

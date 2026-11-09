@@ -69,16 +69,66 @@ def installs(env=os.environ, home: Path | None = None) -> list[tuple[str, dict]]
             for item in items if isinstance(item, dict)]
 
 
-def loads_in(directory: Path, env=os.environ, home: Path | None = None) -> str | None:
-    """The release a session started in `directory` would load: that directory's own install (local before
-    project), else the user's; None when no record names one."""
+def enabled_ids(directory: Path, env=os.environ, home: Path | None = None) -> list[str] | None:
+    """The flotilla plugin ids (`flotilla@<market>`) a session started in `directory` enables, with `enabledPlugins`
+    merged key by key - the user's settings, then the project's, then its local ones; None when none of them names a
+    flotilla id, so the install records alone must answer."""
+    merged: dict = {}
+    try:
+        user = [json.loads((config_dir(env, home) / "settings.json").read_text(encoding="utf-8"))]
+    except (OSError, ValueError, RecursionError):
+        user = []
+    for data in [*user, *_settings(Path(directory))]:
+        enabled = data.get("enabledPlugins") if isinstance(data, dict) else None
+        if isinstance(enabled, dict):
+            merged.update({str(key): value for key, value in enabled.items() if str(key).startswith("flotilla@")})
+    if not merged:
+        return None
+    return sorted(key for key, on in merged.items() if on is True)
+
+
+def loaded_records(directory: Path, env=os.environ, home: Path | None = None) -> list[tuple[str, dict]]:
+    """The install record each flotilla a session started in `directory` loads, as (id, record): for every enabled
+    id the first of its records that applies there - the user's, or a local or project one for this path - whatever
+    its scope; `claude plugin install` appends, so a user install made first wins over a project's made later. A
+    record for another path only - a moved repository, a second clone - loads nothing here, however `claude plugin
+    list` reports it ("not cached"). Both measured with `claude -p --debug`, Claude Code 2.1.319 (reviews of 0fb0c07
+    and 7e6a9b8). Only the ids the settings enable count (item 5); with no setting naming flotilla, the records
+    decide as one list."""
     found = installs(env, home)
-    own = [item for _, item in found if item.get("scope") in ("local", "project")
-           and _same(item.get("projectPath"), Path(directory).resolve())]
-    if own:
-        return str(min(own, key=lambda item: item.get("scope") != "local").get("version") or "") or None
-    user = next((item for _, item in found if item.get("scope") == "user"), None)
-    return str(user.get("version") or "") or None if user else None
+    where = Path(directory).resolve()
+
+    def first(of: list[tuple[str, dict]]) -> tuple[str, dict] | None:
+        return next(((name, item) for name, item in of if item.get("scope") == "user" or (
+            item.get("scope") in ("local", "project") and _same(item.get("projectPath"), where))), None)
+    ids = enabled_ids(directory, env, home)
+    groups = [found] if ids is None else [[entry for entry in found if entry[0] == plugin] for plugin in ids]
+    return [hit for hit in (first(group) for group in groups) if hit is not None]
+
+
+def rides_user_copy(directory: Path, env=os.environ, home: Path | None = None) -> bool:
+    """Whether a session started in `directory` loads the user's copy - or no recorded copy at all, which an update
+    of the user's copy is the one to reach."""
+    loaded = loaded_records(directory, env, home)
+    return not loaded or any(item.get("scope") == "user" for _, item in loaded)
+
+
+def loads_all(directory: Path, env=os.environ, home: Path | None = None) -> list[tuple[str, str]]:
+    """Each flotilla a session started in `directory` would load, as (id, release) - `loaded_records`' versions."""
+    loads = [(plugin, str(item.get("version") or "")) for plugin, item in loaded_records(directory, env, home)]
+    return [(plugin if enabled_ids(directory, env, home) is not None else "", name) for plugin, name in loads if name]
+
+
+def loads_in(directory: Path, env=os.environ, home: Path | None = None) -> str | None:
+    """The release a session started in `directory` would load - the oldest dotted one, when two enabled
+    marketplaces load two (`loads_all` names them), as a deferred update waits for every copy (review of 424c879);
+    a copy named by a commit has no place in that order and is left out of it, unless every copy is one. None when
+    no record names one."""
+    names = [name for _, name in loads_all(directory, env, home)]
+    if not names:
+        return None
+    dotted = [name for name in names if _version(name) is not None]   # a commit names no order (review of 0fb0c07)
+    return min(dotted, key=_version) if dotted else names[0]
 
 
 def running_root() -> Path:

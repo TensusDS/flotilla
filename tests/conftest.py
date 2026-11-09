@@ -106,6 +106,13 @@ def no_real_process_is_stopped(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_seat_is_held_at_start(monkeypatch):
+    """Asking whether a seat is held on a start-up question asks the real `claude agents` and `claude logs`; no test
+    does unless it says so (test_census.py keeps the real one)."""
+    monkeypatch.setattr("flotilla.core.census.held_at_start", lambda names, **kw: [])
+
+
+@pytest.fixture(autouse=True)
 def the_caller_is_a_person_in_a_terminal(monkeypatch):
     """Answering a permission question and recording onboarding answers ask who calls (security review F2-F12).
     A test is a person at a terminal in an interactive session unless it says otherwise; no test asks the census."""
@@ -180,3 +187,16 @@ def no_real_foreign_run(monkeypatch):
             return []
         return real(table, patterns, exclude)
     monkeypatch.setattr(machine, "foreign_runs", only_a_tests_own_table)
+
+
+@pytest.fixture(autouse=True)
+def no_lane_daemon_is_raised(monkeypatch):
+    """A lane client raises the lane daemon when none runs (lane daemon design, ruling 2); in a test that would leave a
+    real process and a scope behind. A test's client takes the fallback instead; the daemon's own tests start it in
+    child processes or pass their own `spawn`."""
+    from flotilla.lane import daemon
+
+    def refused(where, root, handover=False):
+        raise OSError("tests raise no lane daemon")
+    monkeypatch.setattr(daemon, "_spawn", refused)
+    monkeypatch.setenv(daemon.OFF_ENV, "off")   # and a CLI a test runs in a child process does not either

@@ -456,3 +456,17 @@ def test_blocked_with_no_status_stays_ambiguous():
     from types import SimpleNamespace
     seat = SimpleNamespace(kind="background", state="blocked", status=None, name="main session 8")
     assert _census_word(seat) == "blocked: idle, or waiting on a permission prompt"
+
+
+def test_a_seat_held_on_a_start_up_question_waits_on_the_person():
+    """Field test 2026-11-07, S3: nothing told the person that a question waited before the seat could start."""
+    import dataclasses
+    held = dataclasses.replace(sess("main session 1"), short_id="0204d254",
+                               held_on="New MCP server found in this project: mint")
+    unread = dataclasses.replace(sess("review session 1"), short_id="77aa0011", held_on="")
+    found = fleet.fleet({}, PR, [held, unread], post_of=post_of)
+    assert [(item.kind, item.text) for item in found] == [
+        (fleet.PERSON, "main session 1 has not started: Claude Code holds it on a start-up question - «New MCP "
+                       "server found in this project: mint»; answer it with `claude attach 0204d254`"),
+        (fleet.PERSON, "review session 1 has not started a minute after its launch; `claude attach 77aa0011` shows "
+                       "what it waits on")]

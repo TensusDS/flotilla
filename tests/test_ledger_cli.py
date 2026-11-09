@@ -91,12 +91,12 @@ def test_receipt_then_hand(tmp_path, monkeypatch):
 def test_a_broken_post_file_refuses_by_name(tmp_path, monkeypatch):
     root = onboarded(tmp_path, monkeypatch, PLAIN)
     post = root / ".flotilla" / "posts" / "main.md"
-    post.write_text(post.read_text(encoding="utf-8").replace("may: [", "may: [merge, "), encoding="utf-8")
-    git(root, "add", ".flotilla")
+    post.write_text(post.read_text(encoding="utf-8").replace("{n}", "", 1), encoding="utf-8")   # an unknown
+    git(root, "add", ".flotilla")                                                     # move is read now (item 4)
     commit(root, "a broken post")
     git(root, "push", "-q", "origin", "main")
     code, out = run_cli("work", "claim", "feat/y", "--root", str(root), "--as", "main session 1")
-    assert code == 2 and "origin/main:.flotilla/posts/main.md" in out and "merge" in out
+    assert code == 2 and "origin/main:.flotilla/posts/main.md" in out and "name_pattern" in out
 
 
 def test_every_cli_call_in_the_post_templates_exists():
@@ -698,3 +698,91 @@ def test_receipt_show_judges_a_revision_by_its_own_profile(tmp_path, monkeypatch
     commit(root, "a broken profile")
     code, out = run_cli("receipt", "show", "--rev", trunk, "--purpose", "handover", "--tree", str(root))
     assert code != 2 and "refused:" not in out and "no handover receipt over" in out, out
+
+
+def _handed_and_queued(tmp_path, monkeypatch, profile, branch="feat/x"):
+    root = onboarded(tmp_path, monkeypatch, profile)
+    tree = tmp_path / f"app-{branch.replace('/', '-')}"
+    assert run_cli("tree", "cut", branch, "--tree", str(tree), "--root", str(root), "--as", "main session 1")[0] == 0
+    tip = commit(tree, "work", f"{branch.replace('/', '-')}.txt")
+    assert run_cli("work", "hand", branch, "--root", str(tree), "--as", "main session 1")[0] == 0
+    assert run_cli("work", "take", branch, "--root", str(root), "--as", "review session 1")[0] == 0
+    assert run_cli("work", "accept", branch, "--reviewed", tip[:8], "--root", str(root),
+                   "--as", "review session 1")[0] == 0
+    assert run_cli("work", "queue", branch, "--root", str(root), "--as", "sender 1")[0] == 0
+    return root
+
+
+def test_reconcile_with_a_queued_row_not_pushed_does_not_say_nothing_is_queued(tmp_path, monkeypatch):
+    """Field test of 2026-11-07..08, item 9: reconcile printed "nothing is queued or landed" while `work show` had a
+    row queued - a direct-mode row not yet on origin is no line of reconcile's, but it is queued."""
+    root = _handed_and_queued(tmp_path, monkeypatch, DIRECT_PLAIN)
+    code, out = run_cli("work", "reconcile", "--root", str(root), "--as", "sender 1")
+    assert code == 0 and "nothing is queued or landed" not in out
+    assert "1 queued row with no word from origin yet: feat/x" in out, out
+
+
+def test_reconcile_names_a_quiet_queued_row_beside_the_lines_it_prints(tmp_path, monkeypatch):   # review of 70f59d9
+    from flotilla.ledger import delivery
+    root = _handed_and_queued(tmp_path, monkeypatch, DIRECT_PLAIN)
+    monkeypatch.setattr(delivery, "reconcile", lambda ledger, actor: ["shipped feat/other (green)"])
+    code, out = run_cli("work", "reconcile", "--root", str(root), "--as", "sender 1")
+    assert "shipped feat/other" in out and "1 queued row with no word from origin yet: feat/x" in out, out
+    monkeypatch.setattr(delivery, "reconcile", lambda ledger, actor: ["not yet feat/x: the fetch failed"])
+    code, out = run_cli("work", "reconcile", "--root", str(root), "--as", "sender 1")
+    assert "no word from origin" not in out, out   # reconcile said it already
+
+
+def test_a_local_ledgers_landed_row_is_not_called_queued(tmp_path, monkeypatch):   # review of 70f59d9
+    root = _handed_and_queued(tmp_path, monkeypatch, {**PLAIN, "flow": {"mode": "local"}})
+    merge(root, "feat/x")
+    assert run_cli("work", "land", "feat/x", "--root", str(root), "--as", "sender 1")[0] == 0
+    code, out = run_cli("work", "reconcile", "--root", str(root), "--as", "sender 1")
+    assert code == 0 and "queued" not in out and "landed: feat/x" in out and "asks no origin" in out, out
+
+
+def test_reconcile_reads_the_branch_each_line_is_about_not_any_word_in_it(tmp_path, monkeypatch):   # review 87ca05b
+    from flotilla.ledger import delivery
+    root = _handed_and_queued(tmp_path, monkeypatch, DIRECT_PLAIN, branch="merge")
+    said = ["pushed, not landed feat/y: origin's `main` carries abc1234; record it with `flotilla work land feat/y` "
+            "- it finds the merge that carries it"]
+    monkeypatch.setattr(delivery, "reconcile", lambda ledger, actor: list(said))
+    code, out = run_cli("work", "reconcile", "--root", str(root), "--as", "sender 1")
+    assert "1 queued row with no word from origin yet: merge" in out, out
+
+
+def test_a_reconcile_lines_branch_keeps_a_comma_its_name_has():   # review of f762170, L2
+    from flotilla.ledger import commands
+    assert commands._subject("not yet feat,: the fetch failed") == "feat,"
+    assert commands._subject("shipped feat/x (green)") == "feat/x"
+    assert commands._subject("something else entirely") == ""
+
+
+def test_status_names_a_seat_held_on_a_start_up_question_not_orphaned(tmp_path, monkeypatch):   # review of 3f5bd79
+    from fleetkit import held_seat_world
+    from types import SimpleNamespace
+    from flotilla.ledger import commands
+    ledger, fake, plain = held_seat_world(tmp_path, monkeypatch)
+    ledger.census = plain
+    out = io.StringIO()
+    with redirect_stdout(out):
+        commands._status(ledger, SimpleNamespace(stalled=None))
+    text = out.getvalue()
+    assert "held at start: main session 1 has not started" in text and "orphaned" not in text, text
+
+
+def test_status_says_when_it_could_not_ask_about_held_seats(tmp_path, monkeypatch):   # review of fd338c6
+    from types import SimpleNamespace
+    from fleetkit import held_seat_world
+    from flotilla.ledger import commands
+    from flotilla.ledger.errors import MoveRefused
+    ledger, fake, plain = held_seat_world(tmp_path, monkeypatch)
+    ledger.census = plain
+
+    def cannot(names):
+        raise MoveRefused("could not ask whether main session 1 is held at start: census timed out")
+    monkeypatch.setattr(ledger, "held_names", cannot)
+    out = io.StringIO()
+    with redirect_stdout(out):
+        commands._status(ledger, SimpleNamespace(stalled=None))
+    assert "held at start: unknown (could not ask" in out.getvalue(), out.getvalue()

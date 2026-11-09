@@ -315,9 +315,13 @@ def gather(ledger, *, tasks=None, tasks_file=None, census=None, run=subprocess.r
         except CensusUnavailable as err:
             notes.append(f"census: unknown ({err}); running seats not counted back into memory")
         else:
-            held = spawn._live_posts(ledger, mine)
-            lead = _leader_kind(ledger, mine)
-            live = sum(n for post, n in held.items() if post != "orchestrator") + (lead == "background")
+            # a seat held on a start-up question counts as raised, but no memory it holds is credited back:
+            # it has not started (review of 3f5bd79)
+            running = [item for item in mine if getattr(item, "held_on", None) is None]
+            held = spawn._live_posts(ledger, running)
+            lead = _leader_kind(ledger, mine)   # a held orchestrator leads; it holds no memory (review of fd338c6)
+            live = sum(n for post, n in held.items() if post != "orchestrator") + \
+                (_leader_kind(ledger, running) == "background")
     problem = measurements_problem(ledger.state_dir, ledger.repo_key)
     run_seconds, run_mb, run_note = handover_cost(ledger.profile, load_measurements(ledger.state_dir, ledger.repo_key),
                                                   load_peaks(ledger.state_dir, ledger.repo_key), problem=problem)

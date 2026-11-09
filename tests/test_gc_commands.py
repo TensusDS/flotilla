@@ -232,3 +232,28 @@ def test_forget_drops_the_archive_answer(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr(caller, "person_refusal", lambda what: "")
     assert run(ledger, "forget", key="expiry@000000000000") == 0
     assert "answer" not in gc_store.load(ledger.state_dir, ledger.repo_key)["expiry"]
+
+
+def test_the_collectors_census_counts_a_seat_held_on_a_start_up_question_alive(tmp_path, monkeypatch):
+    """Review of bedb2a3, finding 2: the collector read a held seat as dead and offered to retire it."""
+    from fleetkit import held_seat_world
+    ledger, fake, plain = held_seat_world(tmp_path, monkeypatch)
+    monkeypatch.setattr("flotilla.fleet.commands.census", plain)
+    assert [s.name for s in commands._census(ledger)()] == ["main session 1"]
+
+
+def test_the_collector_command_does_not_offer_a_held_seat_as_dead(tmp_path, monkeypatch, capsys):
+    """Review of 14c5ff8, finding 2: the test above guards the helper; this one, `flotilla gc next` itself."""
+    from fleetkit import held_seat_world
+    ledger, fake, plain = held_seat_world(tmp_path, monkeypatch)
+    monkeypatch.setattr("flotilla.fleet.commands.census", plain)
+    monkeypatch.setattr("flotilla.gc.trees._raising", lambda *a, **kw: "")   # long launched: not "still launching"
+    import time
+    data = store.load(ledger.state_dir, ledger.repo_key)
+    data["dead_since"] = {"r1": time.time() - 86_400}   # an earlier look found it gone: a confirmed dead seat
+    store.save(ledger.state_dir, ledger.repo_key, data)
+    args = argparse.Namespace(command="gc", action="next", root=str(ledger.root))
+    capsys.readouterr()
+    assert commands.run_gc(args, ledger=ledger) == 0
+    shown = json.loads(capsys.readouterr().out)
+    assert not any("main session 1" in json.dumps(question) for question in shown["questions"]), shown

@@ -304,6 +304,31 @@ def test_doctor_is_quiet_about_current_newer_and_custom_posts(tmp_path):
     assert posts_finding(root, tmp_path).status == "ok"
 
 
+def test_doctor_names_a_move_this_flotilla_does_not_know_and_both_causes(tmp_path):
+    """Field test 2026-11-07, item 4: a post naming a move this release does not know is read, not refused, and
+    gains nothing of it; doctor says so, and whether a newer flotilla or a typo is the likelier cause."""
+    import re
+    from ledgerkit import commit, git
+    root = published(tmp_path)
+    folder = root / ".flotilla" / "posts"
+    main = folder / "main.md"
+    text = re.sub(r"(?m)^(may: \[)", r"\1teleport, ", main.read_text(encoding="utf-8"))
+    main.write_text(re.sub(r"(?m)^template_version: (\d+)$", lambda m: f"template_version: {int(m.group(1)) + 1}",
+                           text), encoding="utf-8")
+    minor = folder / "minor.md"
+    minor.write_text(re.sub(r"(?m)^(may: \[)", r"\1hnad, ", minor.read_text(encoding="utf-8")), encoding="utf-8")
+    git(root, "add", ".flotilla")
+    commit(root, "a newer move and a typo")
+    git(root, "push", "-q", "origin", "main")
+    found = posts_finding(root, tmp_path)
+    assert found.status == "warn", found.detail
+    assert "main names a move this flotilla does not know (teleport) and gains none of it: its template_version is " \
+           "above the one this flotilla ships, so a newer flotilla most likely wrote it" in found.detail
+    assert "minor names a move this flotilla does not know (hnad) and gains none of it: most likely a typo" \
+           in found.detail
+    assert "/flotilla:update" in found.fix and ".flotilla/posts/" in found.fix
+
+
 # A copy installed for the user loaded in place of the project's own (gamma on 0.23.1 ran 0.21.0,
 # 2026-10-29; the khrushchevka fleet on 0.13.0 ran 0.10.2, 2026-10-12): Claude Code does not document which copy
 # wins, so flotilla compares the copy that runs with the project's.
@@ -792,3 +817,73 @@ def test_freezing_off_is_a_warning_with_the_reason_to_keep_it(tmp_path):
 def test_no_swap_means_nothing_can_be_frozen(tmp_path):
     found = collect(tmp_path, swap=lambda: (0, 0))
     assert "no swap - nothing can be frozen" in found["lane"].detail
+
+
+
+# --- the lane daemon (lane daemon design, 4.7) ---
+
+class AllAlive:
+    def alive(self, pid, mark):
+        return True
+
+
+def test_doctor_reports_the_lane_daemon(tmp_path):
+    import fcntl
+    import json
+    import os
+    import time
+    from flotilla.lane import daemon
+    env = {"FLOTILLA_STATE_DIR": str(tmp_path / "state"), "CLAUDE_CONFIG_DIR": str(tmp_path / "claude")}
+    found = doctor._lane_daemon(env, procs=AllAlive(), newest=lambda: ("0.31.0", tmp_path))
+    assert found.status == "ok" and "not running; the next lane client starts it" in found.detail
+    root = tmp_path / "state" / "lane"
+    root.mkdir(parents=True)
+    (root / daemon.BEAT).write_text(json.dumps({"pid": 4242, "mark": "m", "copy": "", "release": "0.31.0",
+                                                "protocol": daemon.PROTOCOL, "tick": time.time(), "beat": time.time(), "why": {},
+                                                "groups": {}, "over": {}}))
+    fd = os.open(root / daemon.LOCK, os.O_RDWR | os.O_CREAT, 0o600)
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    try:
+        found = doctor._lane_daemon(env, procs=AllAlive(), newest=lambda: ("0.31.0", tmp_path))
+        assert found.status == "ok" and found.detail == "running 0.31.0, pid 4242"
+        found = doctor._lane_daemon(env, procs=AllAlive(), newest=lambda: ("0.32.0", tmp_path))
+        assert found.status == "warn" and "0.31.0, older than 0.32.0 installed" in found.detail
+        assert "flotilla lane daemon ensure" in found.fix
+    finally:
+        os.close(fd)
+
+
+
+def test_doctor_names_a_stuck_daemon(tmp_path):   # final review M5
+    import fcntl
+    import json
+    import os
+    import time
+    from flotilla.lane import daemon
+    env = {"FLOTILLA_STATE_DIR": str(tmp_path / "state"), "CLAUDE_CONFIG_DIR": str(tmp_path / "claude")}
+    root = tmp_path / "state" / "lane"
+    root.mkdir(parents=True)
+    old = time.time() - 120
+    (root / daemon.BEAT).write_text(json.dumps({"pid": 4242, "mark": "m", "copy": "", "release": "0.31.0",
+                                                "protocol": daemon.PROTOCOL, "tick": old, "beat": old, "why": {},
+                                                "groups": {}, "over": {}}))
+    fd = os.open(root / daemon.LOCK, os.O_RDWR | os.O_CREAT, 0o600)
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    try:
+        found = doctor._lane_daemon(env, procs=AllAlive(), newest=lambda: ("0.31.0", tmp_path))
+        assert found.status == "warn" and "stuck" in found.detail
+    finally:
+        os.close(fd)
+
+
+def test_doctor_says_an_older_post_beside_an_unknown_move(tmp_path):   # review of 372832d: not hidden by it
+    import re
+    from ledgerkit import commit, git
+    root = published(tmp_path, behind=("orchestrator",))
+    minor = root / ".flotilla" / "posts" / "minor.md"
+    minor.write_text(re.sub(r"(?m)^(may: \[)", r"\1hnad, ", minor.read_text(encoding="utf-8")), encoding="utf-8")
+    git(root, "add", ".flotilla")
+    commit(root, "a typo")
+    git(root, "push", "-q", "origin", "main")
+    found = posts_finding(root, tmp_path)
+    assert "(hnad)" in found.detail and "older than the template flotilla ships: orchestrator" in found.detail

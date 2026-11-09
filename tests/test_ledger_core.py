@@ -301,3 +301,38 @@ def test_a_live_owner_releasing_its_own_seat_keeps_its_tree(tmp_path):
     row = core.release(ledger, actor(ledger, "minor session 1"), "fleet/minor-1", why="leaving")
     assert git(tree, "rev-parse", "--abbrev-ref", "HEAD") == "feat/held"
     assert "alive" in row.history[-1]["evidence"]["tree"]
+
+
+def test_another_session_cannot_release_a_seat_held_on_a_start_up_question(tmp_path, monkeypatch):
+    """Review of 3f5bd79: the ledger read a held seat as gone, so another session could release its reserved row
+    and detach its branch; once answered, the seat would start with no row."""
+    import pytest
+    from fleetkit import held_seat_world
+    from flotilla.ledger import core
+    from flotilla.ledger.errors import MoveRefused
+    from ledgerkit import actor
+    ledger, fake, plain = held_seat_world(tmp_path, monkeypatch)
+    ledger.census = plain
+    with pytest.raises(MoveRefused, match="main session 1 is alive, held at start on a question"):
+        core.release(ledger, actor(ledger, "orchestrator 1"), "fleet/main-1", why="its session is gone")
+    assert [row.state for row in ledger.rows().values()] == ["reserved"]
+
+
+def test_the_way_out_a_held_seats_release_refusal_names_is_a_real_command(tmp_path, monkeypatch):
+    """Review of fd338c6: the refusal named `flotilla fleet retire <name>`, which `fleet` does not take, with the
+    name unquoted; the command it names now parses, quoted as written."""
+    import re
+    import shlex
+    import pytest
+    from fleetkit import held_seat_world
+    from flotilla import cli
+    from flotilla.ledger import core
+    from flotilla.ledger.errors import MoveRefused
+    from ledgerkit import actor
+    ledger, fake, plain = held_seat_world(tmp_path, monkeypatch)
+    ledger.census = plain
+    with pytest.raises(MoveRefused) as err:
+        core.release(ledger, actor(ledger, "orchestrator 1"), "fleet/main-1", why="its session is gone")
+    named = re.search(r"`(flotilla retire [^`]+)`", str(err.value)).group(1)
+    args = cli.build_parser().parse_args(shlex.split(named)[1:])
+    assert args.name == "main session 1"

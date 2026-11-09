@@ -24,7 +24,7 @@ def test_the_first_run_on_an_empty_machine_starts_whatever_its_size():
 
 def test_a_run_that_does_not_fit_free_memory_waits_and_says_so():
     d = decide([run("h", RUNNING, 6000), run("b2", WAITING, 2000)], machine(free=1200), "b2")
-    assert not d.start and "memory: 2000 MB needed, 1200 MB free" in d.why
+    assert not d.start and "memory: 2000 MB needed, 1200 MB of room" in d.why
 
 def test_the_second_heavy_waits_past_the_cpu_bound():   # 8 + 8 > 1.5 * 8
     d = decide([run("h", RUNNING, 2000, True, 8), run("b2", WAITING, 2000, True, 8)], machine(free=6000), "b2")
@@ -33,6 +33,7 @@ def test_the_second_heavy_waits_past_the_cpu_bound():   # 8 + 8 > 1.5 * 8
 def test_heavies_leave_twenty_percent_to_light_runs():   # 4000 + 3500 > 0.8 * 9000
     d = decide([run("h", RUNNING, 4000, True, 2), run("b2", WAITING, 3500, True, 2)], machine(free=5000), "b2")
     assert not d.start and "reserve 1800 MB for light runs" in d.why
+    assert "3200 MB of room for heavy runs" in d.why and "available" not in d.why   # the share, not the room, holds it
 
 def test_a_light_run_starts_in_the_reserve_beside_heavies():
     runs = [run("h", RUNNING, 7000, True, 4), run("b2", WAITING, 500)]
@@ -220,3 +221,109 @@ def test_a_lone_heavy_keeps_the_light_reserve_beside_light_runs():   # final rev
     d = decide(runs, machine(free=8500), "h")
     assert not d.start and "reserve 1800 MB for light runs" in d.why
     assert decide([run("h", WAITING, 8000, True, 4)], machine(free=8500), "h").start   # an empty machine: it goes
+
+
+
+def test_a_run_that_just_refused_this_waiter_is_no_candidate():   # review of ed148e3, 1: back-off
+    runs = [run("y", RUNNING, 2000, ran_s=90, since_start_s=90, refused_for="b2"),
+            run("b2", WAITING, 1000, kind="push")]
+    d = decide(runs, machine(free=0), "b2")
+    assert d.freeze == () and "y refused an order a moment ago" in d.why
+
+
+
+def test_a_run_that_just_refused_any_waiter_is_no_candidate():   # review of the follow-up, I2
+    runs = [run("y", RUNNING, 2000, ran_s=90, since_start_s=90, refused_for="b9"),
+            run("b2", WAITING, 1000, kind="push")]
+    d = decide(runs, machine(free=0), "b2")
+    assert d.freeze == () and "y refused an order a moment ago" in d.why
+
+
+def test_the_holders_check_leaves_heaviness_to_the_waiter():   # review of the follow-up, I1
+    from flotilla.lane.policy import victim_reason
+    me, them = run("h", RUNNING, 4000, True, 4, ran_s=120, since_start_s=120), run("w", WAITING, 4000, True, 4,
+                                                                                    kind="push", waited_s=600)
+    assert "heavy" in victim_reason(me, them, machine(free=0))
+    assert victim_reason(me, them, machine(free=0), by_rules_only=True) == ""
+
+
+# --- the daemon's inputs (lane daemon design, 2026-11-07) ---
+
+from flotilla.lane import policy   # noqa: E402
+
+IMM = 1000.0
+
+
+def aged(id, p, grew=0, **kw):
+    """A running run whose priority is `p` with immortality at 1000 s: type part 0.06, run part 0.0005 per second."""
+    return run(id, RUNNING, 1000, ran_s=(p - 0.06) / 0.0005, since_start_s=600, grew_mb=grew, **kw)
+
+
+def test_start_ceiling():
+    assert (policy.start_ceiling(100), policy.start_ceiling(0), policy.start_ceiling(4000)) == (512, 512, 4400)
+    assert (policy.slack(100), policy.slack(4000)) == (256, 400)
+
+
+def test_room_counts_unused_ceiling_as_promised():
+    m = Machine(cpus=8, give_mb=9000, free_mb=7500, swap_free_mb=8000, available_mb=10000, floor_mb=2000)
+    runs = [run("a", RUNNING, 1000, ceiling_mb=3000), run("b", RUNNING, 500), run("w", WAITING, 9000,
+                                                                                    ceiling_mb=99999)]
+    assert policy.room(runs, m) == 10000 - 2000 - 2000 - 500
+    assert policy.room(runs, Machine(cpus=8, give_mb=None, free_mb=None, swap_free_mb=None)) is None
+
+
+def test_victim_is_the_lowest_priority():
+    assert policy.victim([aged("a", 0.30), aged("b", 0.20)], IMM).id == "b"
+    assert policy.victim([], IMM) is None
+
+
+def test_victim_tie_break_by_growth():   # the person's ruling, 2026-11-07
+    assert policy.victim([aged("low", 0.20, 100), aged("near", 0.24, 3000), aged("far", 0.40, 9000)], IMM).id == "near"
+    assert policy.victim([aged("low", 0.20, 100), aged("near", 0.26, 3000), aged("far", 0.40, 9000)], IMM).id == "low"
+
+
+def test_daemon_reason_ignores_the_grace():   # ruling 5
+    m = machine(free=0, immortal_s=IMM)
+    young = run("y", RUNNING, 1000, ran_s=10, since_start_s=10)
+    assert policy.daemon_reason(young, m) == ""
+    assert "pinned" in policy.daemon_reason(run("y", RUNNING, 1000, pinned=True), m)
+    assert "immortal" in policy.daemon_reason(run("y", RUNNING, 1000, ran_s=IMM), m)
+    assert policy.daemon_reason(run("y", RUNNING, 1000, refused_for="x"), m)
+    assert policy.daemon_reason(run("y", FROZEN, 1000), m)
+    assert policy.daemon_reason(run("y", RUNNING, 1000, freezable=False), m)
+
+
+
+def test_a_floor_is_believed_up_to_a_quarter_of_the_machine():   # final review C2: any session writes floor_mb
+    assert policy.clamp_floor(9_000_000, 15603) == 3900
+    assert policy.clamp_floor(1000, 15603) == 1000
+    assert policy.clamp_floor(1500, 4000) == 1500        # never under the default floor
+    assert policy.clamp_floor(9_000_000, None) == 4096
+
+
+
+def test_a_negative_floor_is_no_floor():   # fix review R9
+    assert policy.clamp_floor(-5000, 15603) == 0
+
+
+def test_the_heavy_share_is_named_only_when_it_and_not_the_room_holds_a_heavy_run_back():   # review of B, finding 4
+    d = decide([run("h", RUNNING, 4000, True, 2), run("b2", WAITING, 3500, True, 2)], machine(free=1000), "b2")
+    assert "1000 MB of room" in d.why and "for heavy runs" not in d.why
+
+
+
+def test_a_run_no_ceiling_holds_keeps_its_admitted_memory_and_the_slack_promised():   # third review of B, 1 and 2
+    from flotilla.lane import policy
+    unscoped = run("a", RUNNING, 300, ceiling_mb=512, admitted_mb=4000, scoped=False, since_start_s=600)
+    assert policy.promised(unscoped, 512) == 4000 + policy.slack(4000) - 300
+    unbound = run("a", RUNNING, 300, ceiling_mb=512, admitted_mb=4000, scoped=True, bound=False, since_start_s=600)
+    assert policy.promised(unbound, 512) == 4000 + policy.slack(4000) - 300
+    by_hand = run("h", RUNNING, 300, scoped=False, since_start_s=600)   # nothing admitted it by a figure
+    assert policy.promised(by_hand, None) == 0
+
+
+def test_a_ceilings_headroom_is_promised_beyond_the_views_own_reservation():   # third review of B, finding 4
+    from flotilla.lane import policy
+    # first half-minute: the view reserved 300 (admitted 3600 less a tree of 3300); the group reads 300
+    r = run("a", RUNNING, 300, ceiling_mb=3000, admitted_mb=3600, reserved_mb=300, scoped=True, since_start_s=10)
+    assert policy.promised(r, 3000) == 3000 - 300 - 300

@@ -196,3 +196,15 @@ def test_a_switch_creating_a_branch_named_like_flags_is_not_a_force(tmp_path, co
     root = plain_repo(tmp_path)
     (root / "f.txt").write_text("changed\n", encoding="utf-8")
     assert check(command, root) is None
+
+
+def test_a_refused_revert_names_no_way_to_throw_the_change_away(tmp_path):
+    """Field test of 2026-11-07..08, item 10, and its two reviews: the guard cannot tell a throwaway probe from
+    work, nor whose it is, so it names only save points. Both hints it tried lost work - `git show HEAD:<path> >
+    <path>` emptied a file absent from HEAD and wrote HEAD over staged work; `git stash push` shares one stash
+    among every worktree of a fleet, so a pop applied a peer's probe and a drop deleted a peer's work."""
+    root = plain_repo(tmp_path)
+    (root / "f.txt").write_text("work\n", encoding="utf-8")
+    found = check("git checkout -- f.txt", root)
+    assert found.refuse and "git add" in found.text
+    assert "git show" not in found.text and "stash push" not in found.text and "drop" not in found.text

@@ -37,6 +37,8 @@ def not_working(session) -> bool:
 
 
 def _census_word(session) -> str:
+    if getattr(session, "held_on", None) is not None:
+        return "has not started, held on a start-up question"
     if session.kind == "background":
         if session.status == "waiting":
             return "waiting on a permission prompt nobody answers"
@@ -50,6 +52,14 @@ def _census_word(session) -> str:
                 return "blocked: idle, or waiting on a permission prompt"
             return "idle (no permission question of it waits in flotilla's queue)"
     return session.state or session.status or "unknown"
+
+
+def _held_text(name: str, session) -> str:
+    if session.held_on:
+        return (f"{name} has not started: Claude Code holds it on a start-up question - «{session.held_on}»; "
+                f"answer it with `claude attach {session.short_id}`")
+    return (f"{name} has not started a minute after its launch; `claude attach {session.short_id}` shows what it "
+            "waits on")
 
 
 def movers(row, profile: dict, live: set[str], post_of, rows: dict | None = None) -> set[str]:
@@ -98,6 +108,9 @@ def fleet(rows: dict, profile: dict, sessions, *, post_of, former_of=None, break
                                   row.updated_at, who=name))
     for name in sorted(live):
         session = by_name[name]
+        if getattr(session, "held_on", None) is not None:   # listed with no process: Claude Code asks it something first (S3)
+            items.append(Item(PERSON, "", _held_text(name, session), "", who=name))
+            continue
         dropped = any(item.kind == DROPPED and item.who == name for item in items)
         if session.status == "waiting" and name not in asking and post_of(name) and not dropped \
                 and session.kind != "interactive":   # the person is in front of it: waiting on them is normal (W17)

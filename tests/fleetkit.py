@@ -1,5 +1,6 @@
 """A fake `claude` for fleet tests: launches and stops are recorded, the census is a list, git runs for real."""
 
+import dataclasses
 import json
 import subprocess
 
@@ -16,7 +17,8 @@ def session(name, short_id, state="blocked", cwd=""):
 
 class FakeClaude:
     def __init__(self, sessions=(), *, appear=True, fail_launch=False, reachable=True, fail_on=(),
-                 appear_then_fail=False, timeout=False, plugin_entries=None, plugin_list_fails=False):
+                 appear_then_fail=False, timeout=False, plugin_entries=None, plugin_list_fails=False,
+                 held_on=None):
         # what `claude plugin list --json` answers: by default flotilla enabled and nothing that brings MCP servers
         self.plugin_entries = list(plugin_entries if plugin_entries is not None else [FLOTILLA_ENABLED])
         self.plugin_list_fails = plugin_list_fails
@@ -31,6 +33,7 @@ class FakeClaude:
         self.fail_launch = fail_launch
         self.reachable = reachable
         self.stops = True
+        self.held_on = held_on   # a launch Claude Code holds at start on this question (census.held_at_start)
         self.stop_fails: set[str] = set()   # session names whose `claude stop` exits 1
 
     def census(self):
@@ -45,13 +48,15 @@ class FakeClaude:
             self.launched.append(list(cmd))
             name = cmd[cmd.index("-n") + 1]
             if self.appear_then_fail or self.timeout:
-                self.sessions.append(session(name, f"{len(self.launched):06x}"))
+                self.sessions.append(dataclasses.replace(session(name, f"{len(self.launched):06x}"),
+                                                         held_on=self.held_on))
             if self.timeout:
                 raise subprocess.TimeoutExpired(cmd, 180)
             if self.fail_launch or self.appear_then_fail or name in self.fail_on:
                 return subprocess.CompletedProcess(cmd, 1, "", "error: not logged in")
             if self.appear:
-                self.sessions.append(session(name, f"{len(self.launched):06x}"))
+                self.sessions.append(dataclasses.replace(session(name, f"{len(self.launched):06x}"),
+                                                         held_on=self.held_on))
             return subprocess.CompletedProcess(cmd, 0, "backgrounded", "")
         if cmd[1:4] == ["plugin", "list", "--json"]:
             self.plugin_lists.append(kwargs.get("cwd"))
@@ -66,3 +71,20 @@ class FakeClaude:
                 self.sessions = [s for s in self.sessions if s.short_id != cmd[2]]
             return subprocess.CompletedProcess(cmd, 0, "", "")
         return subprocess.CompletedProcess(cmd, 1, "", f"fake claude: {cmd[1:]}")
+
+
+def held_seat_world(tmp_path, monkeypatch, *, held_on="New MCP server found in this project: mint", counts=None):
+    """A ledger with one raised seat Claude Code holds on a start-up question: the plain census misses it, and
+    census.held_at_start finds it (review of bedb2a3, finding 2). Returns (ledger, fake, plain census)."""
+    from flotilla.core.storage import LocalLogStore
+    from flotilla.fleet import spawn
+    from ledgerkit import PROFILE, make_ledger, repo_with_origin
+    fake = FakeClaude(held_on=held_on)
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile={**PROFILE, "permissions": {"mode": "auto"}}, run=fake,
+                         census=fake.census)
+    spawn.spawn(ledger, counts or {"main": 1}, census=fake.census, store=LocalLogStore(tmp_path / "state" / "fleet"),
+                caller="test", wait=0.1, poll=0.05, sleep=lambda seconds: None)
+    monkeypatch.setattr("flotilla.core.census.held_at_start",
+                        lambda names, **kw: [s for s in fake.sessions if s.held_on is not None and s.name in names])
+    return ledger, fake, lambda: [s for s in fake.sessions if s.held_on is None]

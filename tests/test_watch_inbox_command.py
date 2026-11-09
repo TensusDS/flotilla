@@ -56,7 +56,7 @@ def world(tmp_path, monkeypatch):
     root = onboarded(tmp_path / "project")
     monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
     ctx = context(root, me=ORCH, rows_=rows(asking("r1"), asking("r2")))
-    monkeypatch.setattr("flotilla.watch.context.gather", lambda r, sid: ctx)
+    monkeypatch.setattr("flotilla.watch.context.gather", lambda r, sid, **kw: ctx)
     monkeypatch.setattr(caller, "calling_sessions", lambda: [])
     monkeypatch.setattr(caller, "has_terminal", lambda: True)
     monkeypatch.setattr(inbox_command, "_now", lambda: NOW)
@@ -112,7 +112,7 @@ def test_a_census_that_cannot_be_asked_records_nothing(world, capsys, monkeypatc
 
 def test_an_empty_queue_exits_0(world, capsys, monkeypatch):
     empty = context(world.root, me=ORCH, rows_={})
-    monkeypatch.setattr("flotilla.watch.context.gather", lambda r, sid: empty)
+    monkeypatch.setattr("flotilla.watch.context.gather", lambda r, sid, **kw: empty)
     code, out = run(world, capsys)
     assert code == 0 and "nothing waits on you" in out
 
@@ -144,3 +144,15 @@ def test_a_session_name_reaches_the_screen_as_one_safe_line(tmp_path, monkeypatc
 def test_a_subagent_hand_back_is_a_machine_prompt():
     assert not shown.persons_prompt('<agent-message from="a1">done</agent-message>')
     assert shown.persons_prompt("what needs me?")
+
+
+def test_the_inbox_command_asks_the_census_with_a_commands_patience(world, capsys, monkeypatch):   # item 3, 11-08
+    asked = {}
+    empty = context(world.root, me=ORCH, rows_={})
+
+    def gather(root, sid, **kw):
+        asked.update(kw)
+        return empty
+    monkeypatch.setattr("flotilla.watch.context.gather", gather)
+    run(world, capsys)
+    assert asked.get("census_timeout", 0) >= 20

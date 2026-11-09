@@ -31,6 +31,10 @@ UNIT_PREFIX = "flotilla-lane-"
 CGROUP_ROOT = Path("/sys/fs/cgroup")
 PROC_SELF = Path("/proc/self/cgroup")
 FROZEN_WAIT_S = 5.0   # how long a freeze waits for the kernel to say the scope is frozen
+#: A watch inside one journal call this long while its command is frozen is read as stuck - on the journal's lock,
+#: held maybe by a process inside that very command - and the command is thawed (reviews of d4c28c5 and 9d9d244).
+#: Only journal calls count: the freeze itself, its reclaim and systemctl never do.
+WATCH_STALE_S = 15.0
 _probed: dict[tuple, tuple[str, str]] = {}
 _scopes = itertools.count(1)   # per process, not per slot: a scope not yet collected keeps its name a while
 
@@ -211,18 +215,55 @@ def carries(pid: int, booking: str, *, proc_root: Path = Path("/proc"), run=subp
         except (OSError, ValueError):
             return None
     else:
-        try:   # macOS: `ps -E` appends the environment to the command, for the user's own processes
-            done = run(["ps", "-wwE", "-p", str(int(pid)), "-o", "command="], capture_output=True, text=True,
+        # macOS: `ps -E` appends the environment to the command, for the user's own processes. The command's own
+        # words come first and may name a booking too, so only what follows them is read (review of ed148e3, 3)
+        try:
+            shown = run(["ps", "-wwE", "-p", str(int(pid)), "-o", "command="], capture_output=True, text=True,
+                        timeout=5, check=False)
+            bare = run(["ps", "-ww", "-p", str(int(pid)), "-o", "command="], capture_output=True, text=True,
                        timeout=5, check=False)
         except (OSError, subprocess.SubprocessError, ValueError):
             return None
-        if done.returncode != 0:
+        if shown.returncode != 0:
             return False
-        entries = (done.stdout or "").split()
+        full, command = (shown.stdout or "").strip(), (bare.stdout or "").strip()
+        if bare.returncode != 0 or not full.startswith(command):
+            return None
+        entries = full[len(command):].split()
     named = _booking_of(entries)
     if not named:
         return None
     return named == booking
+
+
+def _state(proc_root: Path, pid: int) -> str | None:
+    try:
+        stat = (proc_root / str(int(pid)) / "stat").read_text(encoding="utf-8", errors="replace")
+    except FileNotFoundError:
+        return ""
+    except (OSError, ValueError):
+        return None
+    fields = stat[stat.rfind(")") + 2:].split()
+    return fields[0] if fields else None
+
+
+def stopped(pid: int, *, proc_root: Path = Path("/proc"), run=subprocess.run) -> bool | None:
+    """Whether process `pid` - the leader a frozen record names - stands stopped (T, or t when a stopped process is
+    also traced), or ended a zombie whose group may still hold stopped members. Only the named leader is asked: what
+    stands stopped under a running process is not proven the lane's (review of the 0.30.1 follow-up). False when it
+    runs or is gone; None when its state cannot be read."""
+    if proc_root.is_dir():
+        leader = _state(proc_root, pid)
+        if leader is None:
+            return None
+        return leader in ("T", "t", "Z")
+    try:
+        done = run(["ps", "-o", "stat=", "-p", str(int(pid))], capture_output=True, text=True, timeout=5, check=False)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    if done.returncode != 0:
+        return False
+    return (done.stdout or "").strip()[:1] in ("T", "Z")
 
 
 def thaw_tree(pid: int, *, table=None) -> bool:
@@ -234,6 +275,10 @@ class Slot:
     """The holder process's one running command - what a freeze order acts on."""
 
     watcher: threading.Thread | None = None   # set by Watch.start(): the thread that obeys orders
+    ceiling_s: float | None = None            # set by Watch.start(): no freeze in force outlasts it
+    done_freezing = False                     # let go or past its ceiling: this process freezes this command no more
+    journal_since: float | None = None        # when the watch entered the journal call it is in, by this clock
+    on_scope = None                           # set by Watch.start(): told each scope's name, for the daemon's ceiling
 
     def __init__(self, kind: str, *, run=subprocess.run, root: Path = CGROUP_ROOT, clock=time.monotonic,
                  proc_self: Path = PROC_SELF, table=None, tree_mb=None):
@@ -246,6 +291,7 @@ class Slot:
         self._frozen_at: float | None = None
         self._frozen_total = 0.0
         self._how = ""            # how the freeze in force was made: scope or signal
+        self._frozen_pid: int | None = None   # the command the freeze in force stopped: thawed even once detached
         self._cgroup: Path | None = None   # the frozen scope's cgroup, kept: a thaw asks systemd nothing
         self.freezes = 0          # how many times it was frozen in this process
 
@@ -257,6 +303,11 @@ class Slot:
             return list(argv)
         name = re.sub(r"[^A-Za-z0-9_.-]", "_", booking or "run")[:40]
         self.unit = f"{UNIT_PREFIX}{name}-{os.getpid()}-{next(_scopes)}.scope"
+        if self.on_scope is not None:
+            try:
+                self.on_scope(self.unit)
+            except Exception:  # noqa: BLE001 - a journal that cannot be written leaves the run without a ceiling
+                pass
         return ["systemd-run", "--user", "--scope", "--quiet", "--collect", f"--unit={self.unit}", "-p",
                 "CPUWeight=100", "--", *argv]
 
@@ -281,18 +332,26 @@ class Slot:
         with self._lock:
             held = self.tree_mb(self.pid) if self.pid is not None else 0
             how, unit = "", ""
-            if self.pid is not None:
-                cgroup = _cgroup_of(self.unit, self.run, self.root) if self.unit and self.kind == SCOPE else None
-                if cgroup is not None:
-                    self._freeze_scope(cgroup, reclaim_mb)
-                    how, unit, self._cgroup = SCOPE, self.unit, cgroup
-                else:   # no scope, or its scope is gone: the stop still holds the command
-                    _signal_tree(self.pid, signal.SIGSTOP, self.table())
-                    how = SIGNAL
-            self._how = how
-            if self._frozen_at is None:
+            began = self._frozen_at is None
+            if began:   # the ceiling counts from here, before the scope freezes and reclaims
                 self._frozen_at = self.clock()
+            self._frozen_pid = self.pid
+            try:
+                if self.pid is not None:
+                    cgroup = _cgroup_of(self.unit, self.run, self.root) if self.unit and self.kind == SCOPE else None
+                    if cgroup is not None:
+                        self._freeze_scope(cgroup, reclaim_mb)
+                        how, unit, self._cgroup = SCOPE, self.unit, cgroup
+                    else:   # no scope, or its scope is gone: the stop still holds the command
+                        _signal_tree(self.pid, signal.SIGSTOP, self.table())
+                        how = SIGNAL
+            except BaseException:
+                if began:   # nothing froze: the slot neither says frozen nor counts it (review of 9d9d244)
+                    self._frozen_at, self._frozen_pid = None, None
+                raise
+            if began:
                 self.freezes += 1
+            self._how = how
             return {"freeze_kind": how or (SIGNAL if self.kind != SCOPE else SCOPE), "unit": unit,
                     "group": self.pid, "held_mb": held or 0}
 
@@ -316,24 +375,30 @@ class Slot:
         """Thaw the command. False, and still frozen, when the scope would not take the write: the caller tries
         again - a slot never says thawed over a command that is still frozen (final review of 0.30.0, I4)."""
         with self._lock:
-            if self.pid is not None:
-                if self._how == SCOPE:
-                    cgroup = self._cgroup or _cgroup_of(self.unit, self.run, self.root)
-                    if cgroup is not None and (cgroup / "cgroup.freeze").exists():
-                        try:
-                            (cgroup / "cgroup.freeze").write_text("0", encoding="utf-8")
-                        except OSError:
-                            return False
-                elif self._how == SIGNAL:
-                    _signal_tree(self.pid, signal.SIGCONT, self.table())
+            # by what the freeze in force stopped, not by the command attached now: its leader may be gone and the
+            # rest of its scope or tree still frozen (review of d4c28c5)
+            if self._how == SCOPE:
+                cgroup = self._cgroup or (_cgroup_of(self.unit, self.run, self.root) if self.unit else None)
+                if cgroup is not None and (cgroup / "cgroup.freeze").exists():
+                    try:
+                        (cgroup / "cgroup.freeze").write_text("0", encoding="utf-8")
+                    except OSError:
+                        return False
+            elif self._how == SIGNAL and self._frozen_pid is not None:
+                _signal_tree(self._frozen_pid, signal.SIGCONT, self.table())
             if self._frozen_at is not None:
                 self._frozen_total += max(0.0, self.clock() - self._frozen_at)
                 self._frozen_at = None
-            self._how, self._cgroup = "", None
+            self._how, self._cgroup, self._frozen_pid = "", None, None
             return True
 
     def frozen(self) -> bool:
         return self._frozen_at is not None
+
+    def frozen_for(self) -> float:
+        """How long the freeze in force has lasted; 0 when not frozen."""
+        with self._lock:
+            return max(0.0, self.clock() - self._frozen_at) if self._frozen_at is not None else 0.0
 
     def frozen_seconds(self) -> float:
         """All the time this slot has been frozen in this process, the freeze in force included."""
@@ -350,12 +415,22 @@ class Slot:
             sleep(0.2)
 
     def guard(self) -> bool:
-        """Thaw when frozen and the watch that would thaw it is gone: a dead watch never leaves a command frozen.
-        True when it thawed."""
+        """Thaw when frozen and the watch that would thaw it is gone or stuck, or the freeze in force has reached its
+        ceiling: the command's own loop asks this about every second, with no journal and no lock, so neither a dead
+        watch nor one blocked on the journal's lock - held, maybe, by a process inside this very command - leaves it
+        frozen (reviews of f32d91c and d4c28c5). True when it thawed."""
         watcher = self.watcher
         if self.frozen() and watcher is not None and not watcher.is_alive():
-            self.thaw()
-            return True
+            return self.thaw()
+        since, began = self.journal_since, self._frozen_at
+        # a mark from before the freeze in force is a look that ended before it: never read as stuck on it
+        if began is not None and watcher is not None and since is not None and since >= began and \
+                self.clock() - since > WATCH_STALE_S:
+            self.done_freezing = True   # a watch stuck that long cannot be trusted to thaw it: never again
+            return self.thaw()
+        if self.frozen() and self.ceiling_s is not None and self.frozen_for() >= self.ceiling_s:
+            self.done_freezing = True
+            return self.thaw()
         return False
 
 

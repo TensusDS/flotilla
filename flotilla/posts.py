@@ -44,6 +44,7 @@ class Post:
     plugins_written: bool = False   # whether the post says `plugins:` at all (a post older than the key does not)
     project: str = ""   # the fleet's name its seats carry (`beta-orchestrator 1`); "" for a profile without one
     effort: str = ""   # `claude --effort` for its seats; "" leaves Claude Code's default
+    unknown: tuple = ()   # moves `may` names that this release does not know: read, never granted (item 4)
 
     def matches(self, session_name: str) -> bool:
         regex = "^" + re.escape(self.name_pattern).replace(re.escape("{n}"), r"\d+") + "$"
@@ -93,9 +94,9 @@ def load_post(path: Path) -> Post:
     may = meta.get("may", [])
     if not isinstance(may, list):
         raise PostError(f"{path}: `may` must be a list like [claim, hand]")
-    unknown = sorted(set(may) - set(MOVES))
-    if unknown:
-        raise PostError(f"{path}: `may` names unknown moves: {', '.join(unknown)}")
+    # a move this release does not know is kept aside, never granted: a newer flotilla's post must not close an
+    # older one's guard to every push (field test 2026-11-07, item 4); doctor names it, typo or newer
+    unknown = tuple(sorted(set(may) - set(MOVES)))
     one_copy = meta.get("writes_one_copy", False)
     if not isinstance(one_copy, bool):
         raise PostError(f"{path}: `writes_one_copy` must be true or false")
@@ -114,8 +115,8 @@ def load_post(path: Path) -> Post:
     kept = meta.get("plugins", [])
     if not isinstance(kept, list):
         raise PostError(f"{path}: `plugins` must be a list of plugin ids like [playwright@claude-plugins-official]")
-    return Post(name, pattern, frozenset(may), one_copy, version, path, body, model, mode, tuple(kept),
-                "plugins" in meta, effort=effort)
+    return Post(name, pattern, frozenset(set(may) & set(MOVES)), one_copy, version, path, body, model, mode,
+                tuple(kept), "plugins" in meta, effort=effort, unknown=unknown)
 
 
 def _folder(root: Path) -> Path:
@@ -143,6 +144,23 @@ def post_for_session(posts: dict[str, Post], session_name: str) -> Post | None:
     if len(hits) > 1:
         raise PostError(f"`{session_name}` matches more than one post: {', '.join(sorted(p.name for p in hits))}")
     return hits[0] if hits else None
+
+
+def unknown_moves(posts: dict, *, template_dir: Path = TEMPLATE_DIR) -> list[str]:
+    """For each post naming moves this release does not know, what that most likely means. A shipped template
+    raises its template_version whenever its moves change (tests/test_posts.py), so a post above the version this
+    release ships most likely comes from a newer flotilla; at or below it, or a project's own post, a typo."""
+    found = []
+    for name, post in sorted(posts.items()):
+        if not post.unknown:
+            continue
+        template = Path(template_dir) / f"{name}.md"
+        shipped = load_post(template).template_version if template.is_file() else None
+        why = ("its template_version is above the one this flotilla ships, so a newer flotilla most likely wrote it"
+               if shipped is not None and post.template_version > shipped else "most likely a typo")
+        found.append(f"{name} names a move this flotilla does not know ({', '.join(post.unknown)}) and gains none "
+                     f"of it: {why}")
+    return found
 
 
 def behind(posts: dict, *, template_dir: Path = TEMPLATE_DIR) -> list[tuple[str, int, int]]:

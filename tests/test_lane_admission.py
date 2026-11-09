@@ -396,6 +396,7 @@ def test_a_group_with_no_word_of_its_booking_is_kept_not_cleared(lane, monkeypat
     calls = []
     monkeypatch.setattr(freeze, "thaw_tree", lambda pid, **kw: calls.append(pid) or True)
     monkeypatch.setattr(freeze, "carries", lambda pid, booking: None)   # a re-exec cleared its environment
+    monkeypatch.setattr(freeze, "stopped", lambda pid: None)            # and its state cannot be read either
     procs.dead.add(11)
     mine = lanes.enqueue("main session 2", "x", pid=12, mark="m")
     lanes.grant(mine.id, slots=1, value=value())
@@ -420,3 +421,118 @@ def test_refuse_cancels_only_the_order_it_read(lane):   # review of 0.30.1, mino
     assert lanes.refuse(first.id, order_by="b999", ordered_at=order.ordered_at) is None   # a newer order: kept
     assert lanes.bookings()[first.id].frozen == "ordered"
     assert lanes.refuse(first.id, order_by=order.order_by, ordered_at=order.ordered_at).frozen == ""
+
+
+
+def test_a_waiter_does_not_order_again_a_run_that_just_refused_it(lane):   # review of ed148e3, 1: back-off
+    lanes, _procs, later = lane
+    first = holder(lanes, later, tree={11: 5000}, after=61)   # just past its first minute: still well below a push
+    mine = lanes.enqueue("main session 2", "receipt", pid=12, mark="m", kind="push")
+    v = value(tree={11: 5000}, available=300)
+    lanes.grant(mine.id, slots=1, value=v)
+    order = lanes.bookings()[first.id]
+    assert order.frozen == "ordered"
+    lanes.refuse(first.id, order_by=order.order_by, ordered_at=order.ordered_at)
+    later(5)
+    lanes.grant(mine.id, slots=1, value=v)
+    assert lanes.bookings()[first.id].frozen == ""   # not ordered again at once
+    assert "refused" in lanes.waits_for
+    later(admission.ANSWER_S - 4)
+    lanes.grant(mine.id, slots=1, value=v)
+    assert lanes.bookings()[first.id].frozen == "ordered"   # the back-off is over
+
+
+
+def _silent(lanes, procs, later, monkeypatch, state):
+    first = holder(lanes, later)
+    lanes.frozen(first.id, freeze_kind="signal", unit="", group=13, held_mb=100)
+    calls = []
+    monkeypatch.setattr(freeze, "thaw_tree", lambda pid, **kw: calls.append(pid) or True)
+    monkeypatch.setattr(freeze, "carries", lambda pid, booking: None)   # no word of its booking
+    monkeypatch.setattr(freeze, "stopped", lambda pid: state)
+    procs.dead.add(11)
+    mine = lanes.enqueue("main session 2", "x", pid=12, mark="m")
+    lanes.grant(mine.id, slots=1, value=value())
+    return first, calls
+
+
+def test_a_silent_process_still_stopped_is_continued(lane, monkeypatch):   # the person's ruling, 2026-11-06
+    lanes, procs, later = lane
+    first, calls = _silent(lanes, procs, later, monkeypatch, True)
+    assert calls == [13] and lanes.bookings()[first.id].state == book.RELEASED
+
+
+def test_a_silent_process_that_runs_is_left_alone(lane, monkeypatch):
+    lanes, procs, later = lane
+    first, calls = _silent(lanes, procs, later, monkeypatch, False)
+    assert calls == [] and lanes.bookings()[first.id].state == book.RELEASED   # nothing of the lane's stopped there
+
+
+
+def test_a_run_that_refused_an_order_is_left_alone_by_every_waiter(lane):   # review of the follow-up, I2
+    lanes, _procs, later = lane
+    first = holder(lanes, later, tree={11: 5000}, after=61)
+    one = lanes.enqueue("main session 2", "receipt", pid=12, mark="m", kind="push")
+    two = lanes.enqueue("main session 3", "receipt", pid=13, mark="m", kind="push")
+    v = value(tree={11: 5000}, available=300)
+    lanes.grant(one.id, slots=1, value=v)
+    order = lanes.bookings()[first.id]
+    assert order.frozen == "ordered" and order.order_by == one.id
+    lanes.refuse(first.id, order_by=order.order_by, ordered_at=order.ordered_at)
+    later(2)
+    lanes.grant(two.id, slots=1, value=v)
+    lanes.grant(one.id, slots=1, value=v)
+    assert lanes.bookings()[first.id].frozen == ""   # neither waiter orders it again within the answer bound
+
+
+def test_a_refusal_with_no_moment_or_a_future_one_holds_nobody_off(lane):   # minor 2
+    lanes, _procs, later = lane
+    first = holder(lanes, later, tree={11: 5000}, after=61)
+    mine = lanes.enqueue("main session 2", "receipt", pid=12, mark="m", kind="push")
+    raw(lanes, booking=first.id, state=book.HELD, refused_by=mine.id, refused_at="2099-01-01T00:00:00+00:00")
+    lanes.grant(mine.id, slots=1, value=value(tree={11: 5000}, available=300))
+    assert lanes.bookings()[first.id].frozen == "ordered"
+
+
+def test_a_waiter_is_admitted_by_its_largest_peak_and_starts_from_its_typical_one(lane):   # option B, 2026-11-08
+    from flotilla.lane import estimate
+    lanes, _procs, _later = lane
+    ladder = ["exact:pytest -q", "project:p"]
+    done = {f"r{n}": book.Booking(id=f"r{n}", state=book.RELEASED, ended=(T0 - dt.timedelta(hours=n + 1)).isoformat(),
+                                  ladder=ladder, project="p", peak_mb=peak, seconds=20.0, cores=1.0, busy=0.2,
+                                  verdict="green") for n, peak in enumerate([200, 210, 3600, 220, 3500])}
+    mine = lanes.enqueue("main session 2", "x", pid=12, mark="m", ladder=ladder, project="p")
+    found = {**done, **lanes.bookings()}
+    runs, _m = admission.view(found, estimate.history(found, now=T0), value(), now=T0, live=lanes.live, mine="")
+    waiter = next(r for r in runs if r.id == mine.id)
+    assert (waiter.mem_mb, waiter.start_mb) == (3600, 220)
+
+
+def test_a_waiter_never_measured_starts_from_what_it_is_expected_to_take(lane):
+    lanes, _procs, _later = lane
+    mine = lanes.enqueue("main session 2", "x", pid=12, mark="m", ladder=["exact:new"], project="p")
+    runs, _m = admission.view(lanes.bookings(), {}, value(), now=T0, live=lanes.live, mine="")
+    waiter = next(r for r in runs if r.id == mine.id)
+    assert waiter.start_mb is None and waiter.mem_mb == admission.DEFAULT_MB
+
+
+def test_a_held_run_keeps_the_memory_it_was_admitted_by_when_its_estimate_moves(lane):   # second review, imp. 2
+    lanes, _procs, later = lane
+    first = holder(lanes, later, tree={11: 300})
+    raw(lanes, booking=first.id, state=book.HELD, admitted_mb=4000)
+    runs, _m = admission.view(lanes.bookings(), {}, value(tree={11: 300}), now=T0, live=lanes.live, mine="")
+    assert next(r for r in runs if r.id == first.id).admitted_mb == 4000
+
+
+def test_a_run_carries_its_own_reservation_only_in_its_first_half_minute(lane):   # second review, important 1
+    lanes, _procs, later = lane
+    item = lanes.enqueue("main session 1", "suite", pid=11, mark="m")
+    lanes.grant(item.id, slots=1, value=value(tree={11: 100}))
+    raw(lanes, booking=item.id, state=book.HELD, admitted_mb=3600, started=T0.isoformat())
+    runs, machine = admission.view(lanes.bookings(), {}, value(tree={11: 100}), now=T0 + dt.timedelta(seconds=10),
+                                   live=lanes.live, mine="")
+    run = next(r for r in runs if r.id == item.id)
+    assert run.reserved_mb == 3500 and machine.free_mb == 9000 - 3500
+    runs, _m = admission.view(lanes.bookings(), {}, value(tree={11: 100}), now=T0 + dt.timedelta(seconds=60),
+                              live=lanes.live, mine="")
+    assert next(r for r in runs if r.id == item.id).reserved_mb == 0

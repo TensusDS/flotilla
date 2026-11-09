@@ -15,10 +15,7 @@ from pathlib import Path
 
 from flotilla.lane import book, policy
 
-#: A run started within this window is counted at least at its expected memory: a just-started process has not
-#: grown into its memory yet, and the next waiter would read it as free (section 2.2). Builder's number, awaits the
-#: field test.
-WINDOW_S = 30.0
+WINDOW_S = policy.WINDOW_S   # a just-started run is counted at least at the memory it was admitted by
 #: The expected memory of a run never measured, while this machine has too few first runs to say (the person's
 #: ruling of 2026-11-06: the 75th percentile of each command's first run, this until FIRST_RUNS_NEEDED are measured).
 DEFAULT_MB = 1024
@@ -47,6 +44,8 @@ class Value:
     tree_mb: Callable[[int], int | None]            # a holder's process tree, now
     beat_age_s: Callable[[str], float | None]       # seconds since a booking's watch last beat; None: no beat file
     foreign: int = 0
+    freeze_ceiling_s: float = 600.0                 # no freeze outlasts this, whatever holds its room
+    freeze_total_s: float = 600.0                   # no booking stands frozen longer in all, whoever froze it
 
 
 def default_mb(found: dict) -> int:
@@ -102,6 +101,12 @@ def _seconds(now: dt.datetime, text: str) -> float:
     return max(0.0, (now - moment).total_seconds()) if moment is not None else 0.0
 
 
+def _fresh(now: dt.datetime, text: str) -> bool:
+    """Within the answer bound of `now` - a missing, unreadable or future moment is not."""
+    moment = book._when(text)
+    return moment is not None and 0 <= (now - moment).total_seconds() < ANSWER_S
+
+
 def _own(item, hist, cpus: int):
     """The run's measured estimate - any step of its ladder, the project prior included (section 2.2) - or None
     when only the fixed prior answers, which measures nothing on this machine."""
@@ -127,6 +132,7 @@ def view(found: dict, hist, value: Value, *, now: dt.datetime, live, mine: str, 
     served = book.last_served(found, now) if share == "fair" else {}
     reserved, runs = 0, []
     for item in [*held, *waiting]:
+        own_reserve = 0
         own = _own(item, hist, value.cpus)
         expected = own.peak_mb if own is not None and own.peak_mb is not None else fallback
         par = (own.peak_cores or own.cores) if own is not None and (own.peak_cores or own.cores) else value.cpus / 2
@@ -142,9 +148,13 @@ def view(found: dict, hist, value: Value, *, now: dt.datetime, live, mine: str, 
         else:
             state = policy.ORDERED if item.frozen == "ordered" else policy.RUNNING
             tree = trees.get(item.id)
+            # the memory it was admitted by, pinned by the daemon at its start: the estimate moves as runs end
+            # (second review of option B, important 2)
+            expected = item.admitted_mb or expected
             mem = tree if tree is not None else expected
             if since_start < WINDOW_S and item.pid is not None:   # by hand: its whole promise is kept below
-                reserved += max(0, expected - (tree or 0))
+                own_reserve = max(0, expected - (tree or 0))
+                reserved += own_reserve
                 mem = max(mem, expected)
             ran = before + since_start
         heavy = policy.is_heavy(mem, give, was=item.heavy)
@@ -160,7 +170,11 @@ def view(found: dict, hist, value: Value, *, now: dt.datetime, live, mine: str, 
             waited_s=_seconds(now, item.asked or item.since), ran_s=ran, since_start_s=since_start,
             order=book._order(item), fair=(projects.get(item.project, 0), served.get(item.project, ""))
             if share == "fair" else (), pinned=pinned, freezable=freezable,
-            holds=item.state == book.WAITING and item.id in holding))
+            holds=item.state == book.WAITING and item.id in holding,
+            refused_for=item.refused_by if _fresh(now, item.refused_at) else "",
+            start_mb=own.typical_mb if own is not None and own.peak_mb is not None else None,
+            admitted_mb=int(expected) if item.state == book.HELD and item.pid is not None else 0,
+            reserved_mb=own_reserve))
     swap = value.swap_mb()
     from flotilla.lane import freeze
     machine = policy.Machine(
