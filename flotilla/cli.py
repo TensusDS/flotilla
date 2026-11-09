@@ -349,7 +349,7 @@ def build_parser() -> argparse.ArgumentParser:
     lane_run.add_argument("run_command", nargs=_argparse.REMAINDER, metavar="COMMAND")
     lane_actions.add_parser("status", help="who holds the lane and who waits - the same as bare `flotilla lane`")
     lane_actions.add_parser("sweep", help="remove bookings whose process is gone")
-    lane_stop = lane_actions.add_parser("stop", help="stop your own run in the lane, by the pid flotilla recorded")
+    lane_stop = lane_actions.add_parser("stop", help="stop your own run in the lane, or withdraw your own booking still waiting, by the pid flotilla recorded")
     lane_stop.add_argument("--booking", default=None)
     lane_daemon = lane_actions.add_parser("daemon", help="the lane's scheduler: one per machine, raised by any client")
     daemon_actions = lane_daemon.add_subparsers(dest="daemon_action")

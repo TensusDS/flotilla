@@ -22,6 +22,10 @@ of swap used.
 - **A run that waits for memory says "of room", not "free"**, with what makes it up: MemAvailable, less the floor,
   less what the runs started or ahead in line are held to. `flotilla lane` shows both figures of a run's estimate when they
   differ: "up to 3.5 GB, usually 220 MB".
+- **`flotilla lane stop` withdraws your own booking still waiting in line**, not only a run that holds the lane.
+- **A booking's "since" is when it began to hold or to wait**, not its last journal line: the daemon writes a held
+  run's ceiling every few seconds, and `flotilla lane`, the fair share and the start estimates read a run held for
+  minutes as just started.
 - **When the machine goes below its memory floor, or a run stalls at its ceiling with no room to give it**, the
   run of lowest priority - among near-equal ones, the one that grew most in the last minute - is squeezed (its
   ceiling lowered under its use) and then frozen, never killed. The first-minute grace does not protect from this;

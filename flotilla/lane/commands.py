@@ -699,15 +699,18 @@ def _run(args) -> int:
 
 def _stop_run(args) -> int:
     """Stop the caller's own run in the lane by the pid flotilla recorded, so nobody has to find it with `pkill`
-    (beta field test W22: a seat's `pkill -f` matched its own command line and killed itself first)."""
+    (beta field test W22: a seat's `pkill -f` matched its own command line and killed itself first) - or withdraw
+    its own booking still waiting in line, whose client leaves the line on the same signal (field test of
+    2026-11-08, item 7)."""
     lanes = _lanes(ProcessTable.for_machine())
     who = _who(args.as_name)
     # a pid with its start mark only: one without could be any process the journal names (review of 0.30.1, I4)
-    held = [item for item in lanes.holders() if item.pid and item.mark and args.booking in (None, item.id)]
+    held = [item for item in [*lanes.holders(), *lanes.waiters()]
+            if item.pid and item.mark and args.booking in (None, item.id)]
     mine = [item for item in held if item.who == visible(who)]   # who is stored visible (F2)
     if not mine:
         others = ", ".join(f"{item.id} ({item.who})" for item in held)
-        print(f"refused: no run in the lane is {who}'s" + (f"; held: {others} - ask its holder" if others else ""))
+        print(f"refused: no run in the lane is {who}'s" + (f"; in the lane: {others} - ask its holder" if others else ""))
         return 2
     if len(mine) > 1:
         print("refused: several runs are yours; name one with --booking: " + ", ".join(item.id for item in mine))
@@ -717,6 +720,15 @@ def _stop_run(args) -> int:
         print(f"{item.id}'s process is already gone; `flotilla lane sweep` clears the booking")
         return 0
     os.kill(item.pid, signal.SIGTERM)   # the run stops its command's whole group and releases the lane itself
+    if item.state == book.WAITING:
+        for _ in range(100):
+            now = lanes.bookings().get(item.id)
+            if now is None or now.state != book.WAITING or not lanes.live(item):
+                print(f"withdrew {item.id} ({item.note or 'no note'}) from the line: it never started")
+                return 0
+            time.sleep(0.1)
+        print(f"sent the stop to {item.id} (pid {item.pid}); it is still in line after 10 s - `flotilla lane` shows it")
+        return 1
     for _ in range(100):
         if not lanes.live(item):
             print(f"stopped {item.id} ({item.note or 'no note'}) with everything it started: a `lane run` is recorded "

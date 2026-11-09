@@ -192,6 +192,44 @@ def test_lane_stop_stops_the_holders_own_run(tmp_path, monkeypatch):
     assert "held: nobody" in run_cli("lane", "--root", str(root))[1]
 
 
+def test_lane_stop_withdraws_the_callers_own_waiting_booking(tmp_path, monkeypatch):
+    """Field test of 2026-11-07..08, item 7: a session that asked for the lane and then wanted out had no word for
+    it - `lane stop` looked only at runs holding the lane. Its waiting client leaves the line on SIGTERM."""
+    import os
+    import subprocess
+    import time
+    root = onboarded(tmp_path, monkeypatch)
+    env = {**os.environ, "FLOTILLA_STATE_DIR": str(tmp_path / "state"), "FLOTILLA_NO_CENSUS": "1"}
+    cli_path = os.path.join(os.path.dirname(__file__), "..", "bin", "flotilla")
+
+    def lane_run(who):
+        return subprocess.Popen([sys.executable, cli_path, "lane", "run", "--tree", str(root), "--as", who, "--",
+                                 sys.executable, "-c", "import time; time.sleep(60)"], env=env,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    holder = lane_run("main session 7")
+    for _ in range(100):
+        if "main session 7" in run_cli("lane", "--root", str(root))[1]:
+            break
+        time.sleep(0.1)
+    waiter = lane_run("main session 9")
+    for _ in range(100):
+        if "main session 9" in run_cli("lane", "--root", str(root))[1].split("waiting:", 1)[-1]:
+            break
+        time.sleep(0.1)
+    try:
+        code, out = run_cli("lane", "stop", "--root", str(root), "--as", "main session 9")
+        assert code == 0 and "withdrew" in out, out
+        waiter.communicate(timeout=20)
+        assert waiter.returncode != 0
+        status = run_cli("lane", "--root", str(root))[1]
+        assert "main session 9" not in status and "main session 7" in status, status
+    finally:
+        run_cli("lane", "stop", "--root", str(root), "--as", "main session 7")
+        holder.communicate(timeout=20)
+        if waiter.poll() is None:
+            waiter.kill()
+
+
 def test_lane_stop_does_not_take_another_sessions_word(tmp_path, monkeypatch):
     """Review of 0.6.2, I2: the lane fell back to the name given with --as even when the census said the caller is
     another session, so `lane stop --as <peer>` stopped the peer's run (and `release` released it)."""

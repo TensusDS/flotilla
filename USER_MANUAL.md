@@ -118,7 +118,7 @@ not asked about again.
 
     flotilla lane                         who holds the machine
     flotilla lane run --for <branch> [--max SECONDS] -- <command>
-    flotilla lane stop                    stop your own run in the lane
+    flotilla lane stop                    stop your own run in the lane, or withdraw your waiting booking
     flotilla lane daemon ensure           start the lane's scheduler when it is absent (any lane client does)
     flotilla guard status                 guards on, hooks installed
     flotilla permit next | list | answer <id> allow|session --mark <mark> | answer <id> deny --why "<why>"
