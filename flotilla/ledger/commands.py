@@ -432,6 +432,19 @@ def _broke(ledger, caller, args) -> tuple[Row, str]:
                     f"`flotilla tree switch {fix.branch}`")
 
 
+def _nothing_to_reconcile(ledger) -> str:
+    """What an empty reconcile means: a queued row not yet on origin is no line of its own in direct mode, and
+    "nothing is queued" would deny a row `work show` lists (field test of 2026-11-08, item 9)."""
+    waiting = sorted(row.branch for row in ledger.rows().values() if row.is_open and row.state in ("queued", "landed"))
+    if not waiting:
+        return "nothing is queued or landed"
+    rows = "row" if len(waiting) == 1 else "rows"
+    if ledger.mode == "local":
+        return f"{len(waiting)} {rows} queued: {', '.join(waiting)} - a local ledger asks no origin"
+    return (f"{len(waiting)} {rows} queued and not yet on origin: {', '.join(waiting)} - nothing to ship until the "
+            "sender pushes")
+
+
 def reconcile_exit(lines: list[str]) -> int:
     """The worst of what reconcile found: a move owed - a refusal, or a pushed row to `land` - (2) outweighs a row not
     proved yet (3), which outweighs none."""
@@ -585,7 +598,7 @@ def run_ledger_command(args) -> int:
         before = ledger.rows()
         if args.command == "work" and args.move == "reconcile":
             lines = delivery.reconcile(ledger, caller)
-            print("\n".join(lines) if lines else "nothing is queued or landed")
+            print("\n".join(lines) if lines else _nothing_to_reconcile(ledger))
             shipped = [line.split()[1] for line in lines if line.startswith("shipped ")]
             if shipped:
                 from flotilla.gc import due

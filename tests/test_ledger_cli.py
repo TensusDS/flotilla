@@ -698,3 +698,20 @@ def test_receipt_show_judges_a_revision_by_its_own_profile(tmp_path, monkeypatch
     commit(root, "a broken profile")
     code, out = run_cli("receipt", "show", "--rev", trunk, "--purpose", "handover", "--tree", str(root))
     assert code != 2 and "refused:" not in out and "no handover receipt over" in out, out
+
+
+def test_reconcile_with_a_queued_row_not_pushed_does_not_say_nothing_is_queued(tmp_path, monkeypatch):
+    """Field test of 2026-11-07..08, item 9: reconcile printed "nothing is queued or landed" while `work show` had a
+    row queued - a direct-mode row not yet on origin is no line of reconcile's, but it is queued."""
+    root = onboarded(tmp_path, monkeypatch, DIRECT_PLAIN)
+    tree = tmp_path / "app-main-1"
+    assert run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")[0] == 0
+    tip = commit(tree, "work", "work.txt")
+    assert run_cli("work", "hand", "feat/x", "--root", str(tree), "--as", "main session 1")[0] == 0
+    assert run_cli("work", "take", "feat/x", "--root", str(root), "--as", "review session 1")[0] == 0
+    assert run_cli("work", "accept", "feat/x", "--reviewed", tip[:8], "--root", str(root),
+                   "--as", "review session 1")[0] == 0
+    assert run_cli("work", "queue", "feat/x", "--root", str(root), "--as", "sender 1")[0] == 0
+    code, out = run_cli("work", "reconcile", "--root", str(root), "--as", "sender 1")
+    assert code == 0 and "nothing is queued or landed" not in out
+    assert "1 row queued and not yet on origin: feat/x" in out, out
