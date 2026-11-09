@@ -739,3 +739,13 @@ def test_a_local_ledgers_landed_row_is_not_called_queued(tmp_path, monkeypatch):
     assert run_cli("work", "land", "feat/x", "--root", str(root), "--as", "sender 1")[0] == 0
     code, out = run_cli("work", "reconcile", "--root", str(root), "--as", "sender 1")
     assert code == 0 and "queued" not in out and "landed: feat/x" in out and "asks no origin" in out, out
+
+
+def test_reconcile_reads_the_branch_each_line_is_about_not_any_word_in_it(tmp_path, monkeypatch):   # review 87ca05b
+    from flotilla.ledger import delivery
+    root = _handed_and_queued(tmp_path, monkeypatch, DIRECT_PLAIN, branch="merge")
+    said = ["pushed, not landed feat/y: origin's `main` carries abc1234; record it with `flotilla work land feat/y` "
+            "- it finds the merge that carries it"]
+    monkeypatch.setattr(delivery, "reconcile", lambda ledger, actor: list(said))
+    code, out = run_cli("work", "reconcile", "--root", str(root), "--as", "sender 1")
+    assert "1 queued row with no word from origin yet: merge" in out, out

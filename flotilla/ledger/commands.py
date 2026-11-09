@@ -432,11 +432,24 @@ def _broke(ledger, caller, args) -> tuple[Row, str]:
                     f"`flotilla tree switch {fix.branch}`")
 
 
+#: The openings of reconcile's lines; the branch a line is about follows its opening (review of 87ca05b: a branch
+#: called `merge` was read as named by another row's "it finds the merge that carries it").
+LINE_OPENINGS = ("shipped ", "not yet ", "refused ", "pushed, not landed ")
+
+
+def _subject(line: str) -> str:
+    for opening in LINE_OPENINGS:
+        if line.startswith(opening):
+            rest = line[len(opening):].split()
+            return rest[0].rstrip(":,") if rest else ""
+    return ""
+
+
 def _unsaid_by_reconcile(ledger, lines: list[str]) -> str:
     """The open rows reconcile has no line for, named by their state, or "": a queued row origin has said nothing of
     yet is no line of reconcile's in direct mode, and a bare "nothing is queued" denied a row `work show` lists (field
     test of 2026-11-08, item 9; review of 70f59d9). A local ledger asks no origin for any row."""
-    named = {word.strip(":,()") for line in lines for word in line.split()}
+    named = {_subject(line) for line in lines}
     open_rows = [row for row in ledger.rows().values() if row.is_open and row.state in ("queued", "landed")
                  and row.branch not in named]
     if not open_rows:
