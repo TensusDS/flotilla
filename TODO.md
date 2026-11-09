@@ -31,6 +31,12 @@ daemon. The findings the person took into work are fixed on their own branches; 
   to the install records and names a release (measured 2026-11-09, Claude Code 2.1.319, review of 7e6a9b8, F2).
   Whether older Claude Code enabled an installed plugin implicitly was not measured, so the fallback stays.
   *(open, measure - flotilla/core/claude_state.py `loads_all`)*
+- **A seat held on a start-up question, after it is answered or declined** (review of 14c5ff8): measured only
+  while the dialog stands. Whether a seat whose dialog was declined and which then exited keeps showing the dialog
+  in `claude logs` - which would read it as held for good, and keep its tree from the collector - needs a real
+  Claude Code. `/flotilla:update`'s report also reads the plain census: a project whose every seat is held shows no
+  fleet, so `--stop`/`--defer` is not asked there; such a seat has loaded no release yet.
+  *(open, measure - flotilla/core/census.py `held_at_start`, flotilla/update.py `report`)*
 - **`/flotilla:update` still reads ownership by record in two places** (review of dfa07ea): after a project's own
   record is updated, `apply` drops its deferral although the project may ride the user's copy, still held - the
   "update waits" reminder is lost, no copy moves (`flotilla/update.py` `apply`, the project branch); and `user_held`

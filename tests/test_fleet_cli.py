@@ -475,3 +475,12 @@ def test_spawn_says_the_start_up_question_a_new_seat_is_held_on(tmp_path, monkey
     code, out = run_cli("spawn", "-M", "1", "--root", str(root))
     assert "main session 2" in out and "Claude Code holds it at start on a question nobody answers in the " \
            "background - «New MCP server found in this project: mint»" in out, out
+
+
+def test_fill_counts_a_seat_held_on_a_start_up_question_as_raised(tmp_path, monkeypatch):
+    """Review of 14c5ff8, finding 1: `--fill` read the held `main session 1` as missing and raised `main session 2`
+    beside it - in the field every seat was held, so each --fill would have added more held seats."""
+    root, fake = held_world(tmp_path, monkeypatch)
+    code, out = run_cli("spawn", "--fill", "--dry-run", "--root", str(root))
+    assert code == 0, out
+    assert "review session 1" in out and "main session 2" not in out, out

@@ -48,7 +48,8 @@ class FakeClaude:
             self.launched.append(list(cmd))
             name = cmd[cmd.index("-n") + 1]
             if self.appear_then_fail or self.timeout:
-                self.sessions.append(session(name, f"{len(self.launched):06x}"))
+                self.sessions.append(dataclasses.replace(session(name, f"{len(self.launched):06x}"),
+                                                         held_on=self.held_on))
             if self.timeout:
                 raise subprocess.TimeoutExpired(cmd, 180)
             if self.fail_launch or self.appear_then_fail or name in self.fail_on:

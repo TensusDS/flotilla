@@ -84,7 +84,7 @@ def _lead(ledger, args) -> int:
     if post is None:
         raise MoveRefused("this project has no orchestrator post in .flotilla/posts/")
     try:
-        sessions = census()
+        sessions = census_for(ledger)()   # a held orchestrator leads already: two would lead once it is answered
     except CensusUnavailable as err:
         raise MoveRefused(f"--lead needs the census to keep the name unique ({err})") from err
     mine = project.members(sessions, ledger.rows(), project.roots(ledger.root))
@@ -168,13 +168,14 @@ def _spawn(ledger, args) -> int:
         from flotilla.ledger import project
         flag = "--recommended" if recommended else "--fill"
         try:
-            mine = project.members(census(), ledger.rows(), project.roots(ledger.root))   # the census is the
-            held = dict(spawn._live_posts(ledger, mine))                                   # machine's (M3)
+            # the census is the machine's (M3), with the seats held on a start-up question (review of 14c5ff8)
+            mine = project.members(census_for(ledger)(), ledger.rows(), project.roots(ledger.root))
+            held = dict(spawn._live_posts(ledger, mine))
         except CensusUnavailable as err:
             raise MoveRefused(f"{flag} needs the census to see who is alive ({err}); name the counts instead") from err
         if recommended:
             from flotilla.fleet import sizing
-            rec = sizing.gather(ledger, tasks=args.tasks, tasks_file=args.tasks_file, census=census, run=ledger.run)
+            rec = sizing.gather(ledger, tasks=args.tasks, tasks_file=args.tasks_file, census=census_for(ledger), run=ledger.run)
             for line in sizing.render(rec):
                 print(line)
             if rec.raise_nothing and not args.anyway:
@@ -199,8 +200,8 @@ def _spawn(ledger, args) -> int:
     store = LocalLogStore(paths.state_dir() / "fleet")
     if args.dry_run:
         try:
-            live = {item.name for item in census() if item.name}
-            probe = census
+            probe = census_for(ledger)   # a held seat's name is taken (review of 14c5ff8)
+            live = {item.name for item in probe() if item.name}
         except CensusUnavailable as err:
             print(f"census: unknown ({err}); names may collide with live sessions")
             live, probe = set(), (lambda: [])  # noqa: E731
@@ -328,7 +329,7 @@ def _size(ledger, args) -> int:
     import json
 
     from flotilla.fleet import sizing
-    rec = sizing.gather(ledger, tasks=args.tasks, tasks_file=args.tasks_file, census=census, run=ledger.run)
+    rec = sizing.gather(ledger, tasks=args.tasks, tasks_file=args.tasks_file, census=census_for(ledger), run=ledger.run)
     if args.json:
         print(json.dumps({"counts": rec.counts, "authors": rec.authors, "caps": rec.caps, "binding": rec.binding,
                           "lines": rec.lines, "raise_nothing": rec.raise_nothing}, indent=2))

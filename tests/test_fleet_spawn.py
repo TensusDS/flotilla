@@ -545,3 +545,11 @@ def test_a_seat_held_on_a_start_up_question_is_reported_with_the_question(tmp_pa
                               "«New MCP server found in this project: mint»; answer it with `claude attach 000001`, "
                               "or `flotilla fleet retire main session 1` stops it")
     assert [row.session_id for row in ledger.rows().values()] == ["sid-000001"]
+
+
+def test_a_held_seats_note_keeps_the_failed_launchs_text(tmp_path):   # review of 14c5ff8, finding 3
+    fake = FakeClaude(held_on="New MCP server found in this project: mint", appear_then_fail=True)
+    root, ledger, store = world(tmp_path, fake)
+    raised, _ = run(ledger, store, fake, {"main": 1})
+    assert "«New MCP server found in this project: mint»" in raised[0].note
+    assert "`claude --bg` exited 1" in raised[0].note

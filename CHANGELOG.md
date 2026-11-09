@@ -46,7 +46,7 @@ of swap used.
   "not yet seen in the census", `flotilla fleet` said "not running", nothing told the person, and `fleet down`
   removed the seat's tree and branch and left the session waiting. Now spawn, `flotilla fleet`, `watch` and `inbox`
   name the question and `claude attach <id>` to answer it; `fleet down`, `retire` and `/flotilla:update` stop the
-  session, and the collector counts it alive. A seat is told apart from a long-gone job by its screen, asked of
+  session, the collector counts it alive, and `spawn --fill`, `--recommended` and `--lead` count it raised. A seat is told apart from a long-gone job by its screen, asked of
   `claude logs` only for seats the census misses, and only a screen that asks counts.
 - **A post naming a move this flotilla does not know is read, and that move is not granted**, where it closed
   every push before: an older flotilla could not read the posts of a project a newer one wrote, so "who may land
@@ -54,9 +54,11 @@ of swap used.
   which knew no `requires`). A refusal names the moves it does not know and says to update; `flotilla doctor` says
   whether a newer flotilla or a typo is the likelier cause, by the post's template_version. Across all 82 releases
   one move was ever added to a template, none dropped or renamed, and a test now holds a template's moves to its
-  version.
+  version. When no post may land and some post names an unknown move, a lander may be among them, so every push
+  stays closed, as before.
 - **The reviewer post says how to undo its own probe** (template 6): write the file back from the revision read,
-  `git show <tip>:<path> > <path>`, and check it with `sha256sum`. The revert guard is unchanged.
+  from the tree's root, `git show <tip>:<path> > <path>`, and check it with `sha256sum`. The revert guard is
+  unchanged.
 - **A booking's "since" is when it began to hold or to wait**, not its last journal line: the daemon writes a held
   run's ceiling every few seconds, and `flotilla lane`, the fair share and the start estimates read a run held for
   minutes as just started.
