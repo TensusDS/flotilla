@@ -31,6 +31,17 @@ daemon. The findings the person took into work are fixed on their own branches; 
   to the install records and names a release (measured 2026-11-09, Claude Code 2.1.319, review of 7e6a9b8, F2).
   Whether older Claude Code enabled an installed plugin implicitly was not measured, so the fallback stays.
   *(open, measure - flotilla/core/claude_state.py `loads_all`)*
+- **`/flotilla:update` still reads ownership by record in two places** (review of dfa07ea): after a project's own
+  record is updated, `apply` drops its deferral although the project may ride the user's copy, still held - the
+  "update waits" reminder is lost, no copy moves (`flotilla/update.py` `apply`, the project branch); and `user_held`
+  counts only projects with a working fleet, so `--defer` of a project with no fleet riding the user's copy says
+  "its fleet keeps working" while the user's copy is updated (`plan`; older, extended by dfa07ea to a project whose
+  own record follows the user's). *(checked 2026-11-09 on lane/daemon: still B, low - flotilla/update.py)*
+- **Wording of the copy a session loads** (review of dfa07ea): `rides_user_copy` answers True when no copy loads, so
+  a fleet whose enabled id has no record here is shown "(on the user's copy)" and its docstring overstates; the
+  `copy_in_use` docstring still calls the rule unmeasured, and its fix line "bring the project's install up" does
+  not make the project's copy load when the user's record comes first. *(checked 2026-11-09 on lane/daemon: still
+  P - flotilla/core/claude_state.py)*
 
 ## From the field test of two demo fleets on one lane (2026-11-06, 0.29.3)
 
