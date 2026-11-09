@@ -133,8 +133,9 @@ class Scheduler:
             seen = self.history.run(now, run.id, reading, ceiling) if item.state == book.HELD else {}
             frozen = item.frozen == "frozen"
             # a ceiling decided and not read back - a write that failed, a file set back - holds nothing
-            bound = ceiling is None or (reading is not None and reading.high_mb is not None
-                                        and abs(reading.high_mb - ceiling) <= 1)
+            written = None if ceiling is None else max(policy.MIN_CEILING_MB, int(ceiling))   # as it is written
+            bound = written is None or (reading is not None and reading.high_mb is not None
+                                        and abs(reading.high_mb - written) <= 1)
             enriched.append(dataclasses.replace(
                 run, mem_mb=reading.current_mb if reading is not None and run.state != policy.WAITING else run.mem_mb,
                 ceiling_mb=ceiling, scoped=path is not None, bound=bound, at_ceiling=seen.get("at_ceiling", False),

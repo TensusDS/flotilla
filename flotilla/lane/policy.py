@@ -66,7 +66,7 @@ class Run:
     admitted_mb: int = 0        # running: the memory it was admitted by, pinned at its start - promised while no
                                 # ceiling holds it
     reserved_mb: int = 0        # running, first half-minute: what the view reserved for it (admitted less its tree)
-    bound: bool = True          # its group reads the ceiling the daemon decided: a ceiling really holds it
+    bound: bool = True          # no decided ceiling went unread: its group reads back what the daemon wrote
     # what the lane daemon reads of a run's group and keeps between its ticks (lane daemon design, 4.3)
     ceiling_mb: int | None = None   # its soft ceiling (memory.high); None: none
     scoped: bool = False            # its group was found: a ceiling can be set and read

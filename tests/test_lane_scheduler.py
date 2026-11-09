@@ -262,3 +262,26 @@ def test_a_run_whose_group_does_not_read_the_decided_ceiling_is_not_bound(lane, 
     sched.step()
     bound = [next(r for r in runs if r.id == item.id).bound for runs in seen]
     assert bound == [True, False]
+
+
+
+def test_a_ceiling_set_back_to_another_number_or_written_clamped_is_read_right(lane, monkeypatch):   # review a93e2cc
+    from flotilla.lane import tick as tick_module
+    lanes, sched, clock, fake, values = lane
+    item = lanes.enqueue("w", "", pid=11, mark="m")
+    sched.step()
+    unit = f"flotilla-lane-{item.id}-11-1.scope"
+    lanes.scoped(item.id, unit)
+    fake.found[(unit, item.id)] = Path("/g")
+    seen = []
+    real = tick_module.tick
+    monkeypatch.setattr(tick_module, "tick", lambda runs, machine: seen.append(runs) or real(runs, machine))
+    start = policy.start_ceiling(admission.DEFAULT_MB)
+    fake.readings[Path("/g")] = reading(100, high=start + 500)   # a session set it to another number
+    clock.t = 2.0
+    sched.step()
+    sched.ceilings[item.id] = 200   # a ceiling below the floor of ceilings, as a restart reads one: written as 256
+    fake.readings[Path("/g")] = reading(100, high=policy.MIN_CEILING_MB)
+    clock.t = 4.0
+    sched.step()
+    assert [next(r for r in runs if r.id == item.id).bound for runs in seen] == [False, True]
