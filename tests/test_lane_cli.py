@@ -92,6 +92,7 @@ def test_a_run_detached_off_the_branchs_tip_is_not_recorded_and_says_where_it_is
     code, out = run_cli("lane", "run", "--for", "feat/x", "--tree", str(root), "--as", "main session 1", "--",
                         sys.executable, "-c", "print('===== 3 passed in 0.10s =====')")
     assert "not recorded on the ledger" in out and "not the tip of feat/x" in out, out
+    assert "last run" not in run_cli("status", "--root", str(root))[1]   # and indeed nothing was recorded
 
 
 def test_a_killed_run_exits_non_zero_and_says_so(tmp_path, monkeypatch):

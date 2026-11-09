@@ -753,7 +753,7 @@ def _stop_run(args) -> int:
     else:
         granted = ""
     print(f"stopped {item.id} ({item.note or 'no note'}){granted} with everything it started: a `lane run` "
-          "is recorded as killed, with no verdict; a receipt issues none")
+          "whose command had started is recorded as killed, with no verdict; a receipt issues none")
     return 0
 
 
