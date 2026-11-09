@@ -285,3 +285,17 @@ def test_a_ceiling_set_back_to_another_number_or_written_clamped_is_read_right(l
     clock.t = 4.0
     sched.step()
     assert [next(r for r in runs if r.id == item.id).bound for runs in seen] == [False, True]
+
+
+def test_a_reading_adopted_after_a_restart_is_taken_as_it_will_be_written(lane):   # review of 179cd95, L5
+    lanes, sched, clock, fake, values = lane
+    item = lanes.enqueue("w", "", pid=11, mark="m")
+    sched.step()
+    unit = f"flotilla-lane-{item.id}-11-1.scope"
+    lanes.scoped(item.id, unit)
+    fake.found[(unit, item.id)] = Path("/g")
+    sched.ceilings.clear()   # a daemon that restarted: what it decided is gone, the group's reading is not
+    fake.readings[Path("/g")] = reading(100, high=100)   # set below the floor of ceilings by someone else
+    clock.t = 2.0
+    sched.step()
+    assert sched.ceilings[item.id] == policy.MIN_CEILING_MB

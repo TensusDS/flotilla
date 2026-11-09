@@ -95,7 +95,8 @@ class Scheduler:
         self._paths: dict[tuple[str, str], object] = {}
         self.last_machine: policy.Machine | None = None
         # the ceilings this daemon decided, and the runs it squeezed: never the journal's word, which any session
-        # writes (final review C1). A run first seen in a scope - after a restart - takes its group's ceiling as is.
+        # writes (final review C1). A run first seen in a scope - after a restart - takes its group's ceiling, clamped as
+        # it will be written (`_written`).
         self.ceilings: dict[str, int | None] = {}
         self.squeezed: set[str] = set()
 
