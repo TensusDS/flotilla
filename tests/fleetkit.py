@@ -70,3 +70,20 @@ class FakeClaude:
                 self.sessions = [s for s in self.sessions if s.short_id != cmd[2]]
             return subprocess.CompletedProcess(cmd, 0, "", "")
         return subprocess.CompletedProcess(cmd, 1, "", f"fake claude: {cmd[1:]}")
+
+
+def held_seat_world(tmp_path, monkeypatch, *, held_on="New MCP server found in this project: mint"):
+    """A ledger with one raised seat Claude Code holds on a start-up question: the plain census misses it, and
+    census.held_at_start finds it (review of bedb2a3, finding 2). Returns (ledger, fake, plain census)."""
+    from flotilla.core.storage import LocalLogStore
+    from flotilla.fleet import spawn
+    from ledgerkit import PROFILE, make_ledger, repo_with_origin
+    fake = FakeClaude(held_on=held_on)
+    root = repo_with_origin(tmp_path)
+    ledger = make_ledger(root, tmp_path / "state", profile={**PROFILE, "permissions": {"mode": "auto"}}, run=fake,
+                         census=fake.census)
+    spawn.spawn(ledger, {"main": 1}, census=fake.census, store=LocalLogStore(tmp_path / "state" / "fleet"),
+                caller="test", wait=0.1, poll=0.05, sleep=lambda seconds: None)
+    monkeypatch.setattr("flotilla.core.census.held_at_start",
+                        lambda names, **kw: [s for s in fake.sessions if s.held_on is not None and s.name in names])
+    return ledger, fake, lambda: [s for s in fake.sessions if s.held_on is None]

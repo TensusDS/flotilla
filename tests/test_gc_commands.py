@@ -232,3 +232,11 @@ def test_forget_drops_the_archive_answer(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr(caller, "person_refusal", lambda what: "")
     assert run(ledger, "forget", key="expiry@000000000000") == 0
     assert "answer" not in gc_store.load(ledger.state_dir, ledger.repo_key)["expiry"]
+
+
+def test_the_collectors_census_counts_a_seat_held_on_a_start_up_question_alive(tmp_path, monkeypatch):
+    """Review of bedb2a3, finding 2: the collector read a held seat as dead and offered to retire it."""
+    from fleetkit import held_seat_world
+    ledger, fake, plain = held_seat_world(tmp_path, monkeypatch)
+    monkeypatch.setattr("flotilla.fleet.commands.census", plain)
+    assert [s.name for s in commands._census(ledger)()] == ["main session 1"]

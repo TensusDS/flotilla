@@ -136,27 +136,49 @@ def claude_with(rows, screens):
 def test_a_seat_held_on_a_start_up_question_is_told_from_a_gone_job_by_its_screen():
     run, _ = claude_with([bare("dead0001", started_ms=NOW_MS - 86_400_000), bare("0204d254")],
                          {"0204d254": DIALOG})
-    held = HELD_AT_START({"app-main session 1"}, run=run, now_ms=NOW_MS)
+    held = HELD_AT_START({"app-main session 1"}, run=run)
     assert [(s.short_id, s.held_on) for s in held] == \
         [("0204d254", "New MCP server found in this project: probe-dialog")]
     assert census.drop_gone(census.parse_census(json.dumps([bare("0204d254")]))) == []   # the row alone cannot tell
 
 
-def test_a_screen_with_no_question_is_held_only_once_the_seat_is_a_minute_old():
+def test_a_screen_that_asks_nothing_is_never_held_however_old():
+    """Review of bedb2a3: "the screen answers and the seat is a minute old" rested on a gone job's `claude logs`
+    exiting 1, measured once; a Claude Code that kept a gone job's last screen would raise every stale row. Only a
+    screen that asks counts."""
     screen = "\x1b[2J Claude Code v2.1.319\n > reply with the word ok\n Processing... (0s)\n"
-    run, _ = claude_with([bare("young001")], {"young001": screen})
-    assert HELD_AT_START({"app-main session 1"}, run=run, now_ms=NOW_MS) == []   # still starting
-    run, _ = claude_with([bare("old00001", started_ms=NOW_MS - 61_000)], {"old00001": screen})
-    assert [(s.short_id, s.held_on) for s in HELD_AT_START({"app-main session 1"}, run=run, now_ms=NOW_MS)] == \
-        [("old00001", "")]
+    run, _ = claude_with([bare("young001"), bare("old00001", started_ms=NOW_MS - 86_400_000)],
+                         {"young001": screen, "old00001": screen})
+    assert HELD_AT_START({"app-main session 1"}, run=run) == []
+
+
+def test_the_question_is_made_safe_to_show():
+    """A `.mcp.json` server's name is the project's text, shown to the person by watch and inbox."""
+    screen = ("\x1b]8;;https://example.invalid\x07New MCP server found in this project: evil\x1b[2Jname\x1b]8;;\x07"
+              "\n Enter to confirm\n")
+    run, _ = claude_with([bare("0204d254")], {"0204d254": screen})
+    [held] = HELD_AT_START({"app-main session 1"}, run=run)
+    assert held.held_on == "New MCP server found in this project: evil name"
+
+
+def test_one_screen_is_asked_with_its_own_short_timeout():
+    asked = []
+
+    def run(cmd, **kwargs):
+        asked.append((cmd[1], kwargs.get("timeout")))
+        if cmd[1] == "logs":
+            return subprocess.CompletedProcess(cmd, 0, DIALOG, "")
+        return subprocess.CompletedProcess(cmd, 0, json.dumps([bare("0204d254")]), "")
+    HELD_AT_START({"app-main session 1"}, run=run, timeout=20)
+    assert asked == [("agents", 20), ("logs", census.LOGS_TIMEOUT)] and census.LOGS_TIMEOUT == 10
 
 
 def test_only_the_named_bare_rows_are_looked_at():
     rows = [bare("other001", name="someone else"), {**bare("live0001"), "pid": 4242, "status": "busy"}]
     run, asked = claude_with(rows, {"other001": DIALOG, "live0001": DIALOG})
-    assert HELD_AT_START({"app-main session 1"}, run=run, now_ms=NOW_MS) == []
+    assert HELD_AT_START({"app-main session 1"}, run=run) == []
     assert asked == [["agents", "--json"]]
-    assert HELD_AT_START(set(), run=run, now_ms=NOW_MS) == [] and asked == [["agents", "--json"]]   # nobody to ask
+    assert HELD_AT_START(set(), run=run) == [] and asked == [["agents", "--json"]]   # nobody to ask
 
 
 def test_a_screen_that_cannot_be_read_is_not_held():
@@ -164,4 +186,4 @@ def test_a_screen_that_cannot_be_read_is_not_held():
         if cmd[1] == "logs":
             raise subprocess.TimeoutExpired(cmd, 30)
         return subprocess.CompletedProcess(cmd, 0, json.dumps([bare("0204d254")]), "")
-    assert HELD_AT_START({"app-main session 1"}, run=run, now_ms=NOW_MS) == []
+    assert HELD_AT_START({"app-main session 1"}, run=run) == []

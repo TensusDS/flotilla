@@ -462,7 +462,7 @@ def raise_seat(ledger, seat: launch.Seat, *, caller: str, census, wait: float = 
         if named == 1:
             _record_session(ledger, actor, row.id, found.session_id)
         if found.held_on is not None:   # listed with no process: Claude Code asks it something first (S3)
-            return Raised(seat, found.short_id, held_note(found, seat.name))
+            return Raised(seat, found.short_id, held_note(found, seat.name) + (f" ({problem})" if problem else ""))
         return Raised(seat, found.short_id, f"{problem}, but the session is in the census" if problem else "")
     if problem and answered:
         raise _take_back(ledger, seat, actor, row.id, problem)

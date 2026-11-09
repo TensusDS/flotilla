@@ -415,3 +415,13 @@ def test_a_deferred_fleet_riding_the_users_copy_holds_it_though_it_has_a_record_
     assert [fleet.on_user_copy for fleet in rep.fleets] == [True]
     chosen = update.plan(rep, defer={a})
     assert not any(item.scope == "user" for item in chosen.updates)
+
+
+def test_an_updates_stand_down_stops_a_seat_held_on_a_start_up_question(tmp_path, monkeypatch):
+    """Review of bedb2a3, finding 2: `/flotilla:update` stood a fleet down on the plain census, so a held seat was
+    retired "(it was not running)" and left waiting - the very case `fleet down` was fixed for."""
+    from fleetkit import held_seat_world
+    ledger, fake, plain = held_seat_world(tmp_path, monkeypatch)
+    monkeypatch.setattr("flotilla.ledger.commands.open_ledger", lambda project: ledger)
+    lines, refused = update.stand_down(ledger.root, keep=frozenset(), census=plain)
+    assert fake.stopped == ["000001"] and "retired main session 1 (stopped 000001)" in lines, lines

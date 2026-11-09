@@ -11,7 +11,6 @@ import json
 import os
 import re
 import subprocess
-import time
 from dataclasses import dataclass, replace
 
 
@@ -30,7 +29,7 @@ class Session:
     state: str | None
     cwd: str
     started_at_ms: int | None
-    held_on: str | None = None   # set only by held_at_start: the start-up question it is held on, "" unread
+    held_on: str | None = None   # set only by held_at_start: the start-up question it is held on
 
 
 def _int_or_none(value) -> int | None:
@@ -95,28 +94,30 @@ def read_census(run=subprocess.run, claude: str = "claude", timeout: float = 30,
 
 #: A screen that asks the person to choose: Claude Code's start-up dialogs end with it (measured, 2.1.319).
 DIALOG_MARK = "Enter to confirm"
-#: A seat listed with no process for this long has not started, whatever its screen shows.
-HELD_AFTER_S = 60
-_ESCAPE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b[78]")
+#: How long one `claude logs` may take; it answered in 0.6 s (measured, 2.1.319).
+LOGS_TIMEOUT = 10
+_ESCAPE = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-9;?]*[A-Za-z]|\x1b[78]")
 
 
 def held_at_start(names, *, run=subprocess.run, claude: str = "claude", timeout: float = 30,
-                  now_ms: int | None = None) -> list[Session]:
+                  logs_timeout: float = LOGS_TIMEOUT) -> list[Session]:
     """The sessions named in `names` that Claude Code lists with no process and no status while their screen
-    still answers `claude logs`: held at start by a question nobody answers in the background. The row alone
-    reads the same as a job long gone, which `drop_gone` drops; a gone job has no screen (field test 2026-11-07,
-    S3: a project's `.mcp.json` asked every seat "New MCP server found in this project"). A screen that asks
-    nothing is held only once the seat is HELD_AFTER_S old: before that it may still be starting."""
+    shows a start-up dialog: held at start by a question nobody answers in the background. The row alone reads
+    the same as a job long gone, which `drop_gone` drops; a gone job's `claude logs` exits 1, "job not found"
+    (field test 2026-11-07, S3: a `.mcp.json` asked every seat "New MCP server found in this project"; measured
+    again 2026-11-09 on 2.1.319). Only a screen that asks counts: a seat whose screen asks nothing reads as before,
+    so a Claude Code that kept a gone job's last screen would still not raise a gone seat. The question is the
+    screen's first line with a letter in it, made safe to show (a server's name in it is the project's text)."""
     if not names:
         return []
-    now_ms = int(time.time() * 1000) if now_ms is None else now_ms
+    from flotilla.core.text import visible
     held = []
     for session in parse_census(read_text(run, claude, timeout)):
         if session.kind != "background" or session.name not in names or session.pid is not None \
                 or session.status is not None or not session.short_id:
             continue
         try:
-            shown = run([claude, "logs", session.short_id], capture_output=True, text=True, timeout=timeout,
+            shown = run([claude, "logs", session.short_id], capture_output=True, text=True, timeout=logs_timeout,
                         check=False)
         except (OSError, subprocess.TimeoutExpired):
             continue
@@ -125,9 +126,7 @@ def held_at_start(names, *, run=subprocess.run, claude: str = "claude", timeout:
         lines = [" ".join(line.split()) for line in _ESCAPE.sub(" ", shown.stdout or "").splitlines()]
         if any(DIALOG_MARK in line for line in lines):
             question = next((line for line in lines if any(ch.isalpha() for ch in line)), "")
-            held.append(replace(session, held_on=question[:160]))
-        elif session.started_at_ms is not None and now_ms - session.started_at_ms >= HELD_AFTER_S * 1000:
-            held.append(replace(session, held_on=""))
+            held.append(replace(session, held_on=visible(question)[:160]))
     return held
 
 

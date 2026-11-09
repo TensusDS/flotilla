@@ -238,8 +238,10 @@ def render(report_: Report, chosen: Plan) -> list[str]:
 def stand_down(project: Path, *, keep: frozenset, census) -> tuple[list[str], int]:
     """`flotilla fleet down` for a project, from wherever the person runs this: (lines, seats refused)."""
     from flotilla.fleet import retire
+    from flotilla.fleet.commands import census_for
     from flotilla.ledger.commands import open_ledger
-    return retire.down(open_ledger(project), caller="update", me="", keep=keep, census=census)
+    ledger = open_ledger(project)   # a seat held on a start-up question is stopped, not left waiting (S3)
+    return retire.down(ledger, caller="update", me="", keep=keep, census=census_for(ledger, census))
 
 
 def _deferrals(state: Path) -> dict:

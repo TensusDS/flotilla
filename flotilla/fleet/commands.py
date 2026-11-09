@@ -24,14 +24,16 @@ def census():
     return read_census()
 
 
-def census_for(ledger):
+def census_for(ledger, base=None):
     """The census as the fleet reads it: the seats it misses are asked whether Claude Code holds them at start on
     a question (field test 2026-11-07, S3) - such a seat is listed with no process and reads as gone, so `fleet`
-    called it not running and `fleet down` removed its tree and left it waiting."""
+    called it not running and `fleet down` removed its tree and left it waiting. `base` is the census it adds to
+    (`census` by default). Only when a seat is missing does it pay a second `claude agents` and a `claude logs`
+    per bare row of that name."""
     from flotilla.core import census as census_module
 
     def ask():
-        sessions = census()
+        sessions = (base or census)()
         listed = {item.name for item in sessions}
         missing = {row.owner for row in retire.post_rows(ledger) if row.owner and row.owner not in listed}
         return sessions + census_module.held_at_start(missing) if missing else sessions
@@ -133,7 +135,7 @@ def _gaps(ledger, counts: dict) -> list[str]:
     import datetime as dt
     try:
         wanted = compose.normalise(counts, ledger.posts)
-        mine = project.members(census(), ledger.rows(), project.roots(ledger.root))
+        mine = project.members(census_for(ledger)(), ledger.rows(), project.roots(ledger.root))
     except (compose.CompositionError, CensusUnavailable):
         return []
     held = spawn._live_posts(ledger, mine)

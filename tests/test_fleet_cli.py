@@ -416,6 +416,39 @@ def test_an_effort_claude_code_does_not_take_is_named_before_any_seat(tmp_path, 
     assert not (tmp_path / "app-reviewer-1").exists()
 
 
+def held_world(tmp_path, monkeypatch):
+    """A project with one seat Claude Code holds on a start-up question, where every command's ledger runs the fake
+    `claude` (review of bedb2a3: the commands' wiring was guarded only for `fleet`)."""
+    from fleetkit import FakeClaude
+    from flotilla.core.storage import LocalLogStore
+    from flotilla.fleet import spawn
+    from flotilla.ledger.commands import open_ledger
+    root = onboarded(tmp_path, monkeypatch)
+    fake = FakeClaude(held_on="New MCP server found in this project: mint")
+    ledger = open_ledger(root)
+    ledger.run = fake
+    spawn.spawn(ledger, {"main": 1}, census=fake.census, store=LocalLogStore(tmp_path / "names"), caller="test",
+                wait=0.1, poll=0.05, sleep=lambda s: None)
+
+    def opened(path, *args, **kwargs):
+        found = open_ledger(path, *args, **kwargs)
+        found.run = fake
+        return found
+    monkeypatch.setattr("flotilla.fleet.commands.open_ledger", opened)
+    monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [s for s in fake.sessions if s.held_on is None])
+    monkeypatch.setattr("flotilla.core.census.held_at_start",
+                        lambda names, **kw: [s for s in fake.sessions if s.held_on is not None and s.name in names])
+    monkeypatch.delenv("CLAUDECODE", raising=False)
+    return root, fake
+
+
+@pytest.mark.parametrize("command", [("fleet", "down"), ("retire", "main session 1")])
+def test_down_and_retire_stop_a_seat_held_on_a_start_up_question(tmp_path, monkeypatch, command):
+    root, fake = held_world(tmp_path, monkeypatch)
+    code, out = run_cli(*command, "--root", str(root))
+    assert fake.stopped == ["000001"] and "retired main session 1 (stopped 000001)" in out, out
+
+
 def test_the_fleet_names_a_seat_held_on_a_start_up_question(tmp_path, monkeypatch):   # field test 2026-11-07, S3
     from fleetkit import FakeClaude
     from flotilla.fleet import spawn
@@ -435,3 +468,10 @@ def test_the_fleet_names_a_seat_held_on_a_start_up_question(tmp_path, monkeypatc
     assert ("main session 1  (main)  has not started: Claude Code holds it at start on a question nobody answers in "
             "the background - «New MCP server found in this project: mint»; answer it with `claude attach 000001`, "
             "or `flotilla fleet retire main session 1` stops it") in out
+
+
+def test_spawn_says_the_start_up_question_a_new_seat_is_held_on(tmp_path, monkeypatch):   # review of bedb2a3
+    root, fake = held_world(tmp_path, monkeypatch)
+    code, out = run_cli("spawn", "-M", "1", "--root", str(root))
+    assert "main session 2" in out and "Claude Code holds it at start on a question nobody answers in the " \
+           "background - «New MCP server found in this project: mint»" in out, out

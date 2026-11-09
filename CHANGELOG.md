@@ -45,8 +45,9 @@ of swap used.
   starts; in the background nobody answers. Such a seat is listed with no process, which read as gone: spawn said
   "not yet seen in the census", `flotilla fleet` said "not running", nothing told the person, and `fleet down`
   removed the seat's tree and branch and left the session waiting. Now spawn, `flotilla fleet`, `watch` and `inbox`
-  name the question and `claude attach <id>` to answer it, and `fleet down` and `retire` stop the session. A seat
-  is told apart from a long-gone job by its screen, asked of `claude logs`, and only for seats the census misses.
+  name the question and `claude attach <id>` to answer it; `fleet down`, `retire` and `/flotilla:update` stop the
+  session, and the collector counts it alive. A seat is told apart from a long-gone job by its screen, asked of
+  `claude logs` only for seats the census misses, and only a screen that asks counts.
 - **A post naming a move this flotilla does not know is read, and that move is not granted**, where it closed
   every push before: an older flotilla could not read the posts of a project a newer one wrote, so "who may land
   could not be told" refused even the sender (field test 2026-11-07; the session ran a copy older than 0.24.1,
