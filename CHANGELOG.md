@@ -23,6 +23,9 @@ of swap used.
   less what the runs started or ahead in line are held to. `flotilla lane` shows both figures of a run's estimate when they
   differ: "up to 3.5 GB, usually 220 MB".
 - **`flotilla lane stop` withdraws your own booking still waiting in line**, not only a run that holds the lane.
+- **`flotilla watch` and `flotilla inbox` give the census 20 s**, not a hook's 3 s, and `flotilla watch --wait` asks
+  a census that missed a look again, ending with 2 only after three misses in a row: under load `claude agents`
+  answered late, and the orchestrators' watch went blind exactly when the machine was tight.
 - **A booking's "since" is when it began to hold or to wait**, not its last journal line: the daemon writes a held
   run's ceiling every few seconds, and `flotilla lane`, the fair share and the start estimates read a run held for
   minutes as just started.

@@ -12,6 +12,9 @@ from pathlib import Path
 
 #: Seconds per external call inside a hook; the timeouts in hooks/hooks.json leave room for it.
 HOOK_CHECK_TIMEOUT = 3
+#: A command - `flotilla watch`, `flotilla inbox` - may wait for a loaded machine: at 3 s the orchestrator's watch
+#: went blind exactly when the machine was tight (field test of 2026-11-08, item 3).
+COMMAND_CENSUS_TIMEOUT = 20
 
 
 @dataclass
@@ -113,11 +116,11 @@ def this_session(sessions, session_id: str, *, parent_of=None, start_pid: int | 
 
 
 def gather(root, session_id: str, *, census=None, open_ledger=None, parent_of=None,
-           start_pid: int | None = None) -> Context:
+           start_pid: int | None = None, census_timeout: float = HOOK_CHECK_TIMEOUT) -> Context:
     from flotilla.core.census import CensusUnavailable, read_census
     ctx = Context(root=Path(root), session_id=session_id or "")
     try:
-        ctx.sessions = (census or (lambda: read_census(timeout=HOOK_CHECK_TIMEOUT)))()
+        ctx.sessions = (census or (lambda: read_census(timeout=census_timeout)))()
     except CensusUnavailable as err:
         ctx.census_error = str(err)
     if ctx.sessions is not None:

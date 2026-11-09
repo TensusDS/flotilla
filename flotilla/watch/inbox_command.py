@@ -72,7 +72,7 @@ def run_inbox_command(args) -> int:
     if root is None:
         print(f"refused: not onboarded: no .flotilla/project.toml at or above {Path(args.root).resolve()}")
         return 2
-    ctx = context.gather(root, "")
+    ctx = context.gather(root, "", census_timeout=context.COMMAND_CENSUS_TIMEOUT)
     problems = [f"census: could not be asked ({ctx.census_error})"] if ctx.sessions is None else []
     if ctx.ledger is None:
         problems.append(f"ledger: could not be read ({ctx.ledger_error})")

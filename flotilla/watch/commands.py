@@ -6,7 +6,8 @@ the orchestrator, while what it already saw does not (field test F23).
 
 Exit codes: `--once` 0 nothing needs attention, 1 something does; `--wait` 0 whether it woke on news ("attention
 (new):") or the time ran out ("nothing new") - a wake is not a failure, and Claude Code showed every one as failed
-(alpha, 0.7.16); either 2 when the census or the ledger could not be asked (printed, never read as "nothing"). v1 has no schedule of its own
+(alpha, 0.7.16); either 2 when the census or the ledger could not be asked (printed, never read as "nothing") - a
+`--wait` asks a census that missed a look again, and gives up after CENSUS_MISSES in a row. v1 has no schedule of its own
 (spec, section 8).
 """
 
@@ -30,7 +31,8 @@ def run_watch_command(args, *, gather=None, now: dt.datetime | None = None, slee
         print(f"refused: not onboarded: no .flotilla/project.toml at or above {Path(args.root).resolve()}")
         return 2
     if gather is None:
-        from flotilla.watch.context import gather
+        from flotilla.watch import context
+        gather = lambda root, sid: context.gather(root, sid, census_timeout=context.COMMAND_CENSUS_TIMEOUT)  # noqa: E731
     from flotilla.watch import render
     ctx = gather(root, "")
     problems = _problems(ctx)
@@ -91,12 +93,19 @@ def _confirmed(items, root, gather, confirm, sleep):
     return [item for item in items if item.kind != DROPPED or _key(item) in still]
 
 
+#: Looks in a row the census may miss before a wait gives up: under load `claude agents` answers late, and one miss
+#: must not blind the orchestrator's watch (field test of 2026-11-08, item 3).
+CENSUS_MISSES = 3
+
+
 def _wait(root, gather, ctx, seconds, interval, now, sleep, clock, confirm=5.0) -> int:
     """Block until an attention item appears that was not there at the start. What was there does not wake it,
-    so a standing item cannot turn the wait into a loop."""
+    so a standing item cannot turn the wait into a loop. A census that misses a look is asked again at the next one;
+    CENSUS_MISSES in a row, or a ledger that cannot be read, end the wait with 2."""
     from flotilla.watch import render
     seen = {_key(item) for item in ctx.fleet()}
     deadline = clock() + seconds
+    misses = 0
     while True:
         left = deadline - clock()   # one reading per turn: the tests drive the clock one step per call
         if left <= 0:
@@ -104,16 +113,23 @@ def _wait(root, gather, ctx, seconds, interval, now, sleep, clock, confirm=5.0) 
         sleep(min(interval, left))
         ctx = gather(root, "")
         problems = _problems(ctx)
-        if problems:
+        if problems and (ctx.ledger is None or misses + 1 >= CENSUS_MISSES):
             print("\n".join(problems))
             return 2
+        if problems:
+            misses += 1
+            continue
         items = ctx.fleet()
         new = [item for item in items if _key(item) not in seen]
-        seen = {_key(item) for item in items}   # what went away and came back is news again
         confirmed = _confirmed(new, root, gather, confirm, sleep) if new else new
-        if confirmed is None:
-            print("census: could not be asked for the second sample")
-            return 2
+        if confirmed is None:   # the second sample missed: nothing is news yet, and it is asked again next look
+            misses += 1
+            if misses >= CENSUS_MISSES:
+                print("census: could not be asked for the second sample")
+                return 2
+            continue
+        misses = 0
+        seen = {_key(item) for item in items}   # what went away and came back is news again
         # a ball the second sample cleared was not seen: when it really drops at the next poll, it is news
         seen -= {_key(item) for item in new} - {_key(item) for item in confirmed}
         new = confirmed
