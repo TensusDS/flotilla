@@ -367,3 +367,10 @@ def test_the_orchestrator_relays_the_persons_lines_from_the_inbox(tmp_path):
     body = (tmp_path / ".flotilla" / "posts" / "orchestrator.md").read_text(encoding="utf-8")
     assert post.template_version >= 24 and "`flotilla inbox` names" in body
 
+
+def test_the_reviewer_undoes_its_probe_from_the_revision_it_read():
+    """Field test 2026-11-07, item 10: a reviewer undoing its own injected regression met the revert guard on
+    `git checkout -- <file>`; the guard stays, and the post says the form that names the revision."""
+    post = templates()["reviewer"]
+    assert post.template_version >= 6 and "`git show <tip>:<path> > <path>`" in post.body
+    assert "`sha256sum <path>` against `git show <tip>:<path> | sha256sum`" in post.body

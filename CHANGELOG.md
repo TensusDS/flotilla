@@ -54,6 +54,8 @@ of swap used.
   whether a newer flotilla or a typo is the likelier cause, by the post's template_version. Across all 82 releases
   one move was ever added to a template, none dropped or renamed, and a test now holds a template's moves to its
   version.
+- **The reviewer post says how to undo its own probe** (template 6): write the file back from the revision read,
+  `git show <tip>:<path> > <path>`, and check it with `sha256sum`. The revert guard is unchanged.
 - **A booking's "since" is when it began to hold or to wait**, not its last journal line: the daemon writes a held
   run's ceiling every few seconds, and `flotilla lane`, the fair share and the start estimates read a run held for
   minutes as just started.
