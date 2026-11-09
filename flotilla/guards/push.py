@@ -598,6 +598,9 @@ def _may_not_land(root, where: OriginTrunk, who, run, *, hook: bool = False) -> 
     others = sorted({other for other in live if other and other not in names})
     landers = [other for other in others if holds(other, LAND)]
     said = f"{name} holds the post `{post.name}`, which may not land: {rule}."
+    if post.unknown:   # read, never granted (item 4): the post may be a newer flotilla's
+        said += (f" Its post also names moves this flotilla does not know ({', '.join(post.unknown)}): if a newer "
+                 "flotilla wrote it, update this one (`/flotilla:update`).")
     hands = "hand" in post.may   # a reviewer, an orchestrator, a helper and a judge have no work of their own to hand
     if landers:
         who_lands = landers[0] if len(landers) == 1 else "one of " + ", ".join(landers)

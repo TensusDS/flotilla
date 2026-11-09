@@ -47,6 +47,13 @@ of swap used.
   removed the seat's tree and branch and left the session waiting. Now spawn, `flotilla fleet`, `watch` and `inbox`
   name the question and `claude attach <id>` to answer it, and `fleet down` and `retire` stop the session. A seat
   is told apart from a long-gone job by its screen, asked of `claude logs`, and only for seats the census misses.
+- **A post naming a move this flotilla does not know is read, and that move is not granted**, where it closed
+  every push before: an older flotilla could not read the posts of a project a newer one wrote, so "who may land
+  could not be told" refused even the sender (field test 2026-11-07; the session ran a copy older than 0.24.1,
+  which knew no `requires`). A refusal names the moves it does not know and says to update; `flotilla doctor` says
+  whether a newer flotilla or a typo is the likelier cause, by the post's template_version. Across all 82 releases
+  one move was ever added to a template, none dropped or renamed, and a test now holds a template's moves to its
+  version.
 - **A booking's "since" is when it began to hold or to wait**, not its last journal line: the daemon writes a held
   run's ceiling every few seconds, and `flotilla lane`, the fair share and the start estimates read a run held for
   minutes as just started.

@@ -90,4 +90,6 @@ def require_may(actor: Actor, move: str, posts: dict) -> None:
     if move not in actor.post.may:
         allowed = sorted(post.name for post in posts.values() if move in post.may)
         who = f"posts that may: {', '.join(allowed)}" if allowed else "no post may"
-        raise MoveRefused(f"post `{actor.post.name}` may not `{move}`; {who}")
+        newer = (f"; it also names moves this flotilla does not know ({', '.join(actor.post.unknown)}): if a newer "
+                 "flotilla wrote the post, update this one (`/flotilla:update`)" if actor.post.unknown else "")
+        raise MoveRefused(f"post `{actor.post.name}` may not `{move}`; {who}{newer}")

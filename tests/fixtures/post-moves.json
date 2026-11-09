@@ -1,0 +1,85 @@
+{
+ "helper": [
+  1,
+  [
+   "release",
+   "reserve",
+   "wait"
+  ]
+ ],
+ "judge": [
+  6,
+  [
+   "broke",
+   "reserve",
+   "unbroke",
+   "wait",
+   "walked"
+  ]
+ ],
+ "main": [
+  12,
+  [
+   "claim",
+   "close",
+   "hand",
+   "moved",
+   "release",
+   "reserve",
+   "wait"
+  ]
+ ],
+ "minor": [
+  10,
+  [
+   "claim",
+   "close",
+   "hand",
+   "moved",
+   "release",
+   "reserve",
+   "wait"
+  ]
+ ],
+ "orchestrator": [
+  28,
+  [
+   "adopt",
+   "assign",
+   "hold",
+   "release",
+   "requires",
+   "reserve",
+   "unhold",
+   "urgent",
+   "wait",
+   "walkable"
+  ]
+ ],
+ "reviewer": [
+  5,
+  [
+   "accept",
+   "fix",
+   "recuse",
+   "reserve",
+   "take",
+   "vouch",
+   "wait"
+  ]
+ ],
+ "sender": [
+  10,
+  [
+   "inbatch",
+   "land",
+   "offledger",
+   "queue",
+   "release",
+   "reserve",
+   "return",
+   "ship",
+   "wait"
+  ]
+ ]
+}

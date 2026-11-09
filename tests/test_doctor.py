@@ -304,6 +304,31 @@ def test_doctor_is_quiet_about_current_newer_and_custom_posts(tmp_path):
     assert posts_finding(root, tmp_path).status == "ok"
 
 
+def test_doctor_names_a_move_this_flotilla_does_not_know_and_both_causes(tmp_path):
+    """Field test 2026-11-07, item 4: a post naming a move this release does not know is read, not refused, and
+    gains nothing of it; doctor says so, and whether a newer flotilla or a typo is the likelier cause."""
+    import re
+    from ledgerkit import commit, git
+    root = published(tmp_path)
+    folder = root / ".flotilla" / "posts"
+    main = folder / "main.md"
+    text = re.sub(r"(?m)^(may: \[)", r"\1teleport, ", main.read_text(encoding="utf-8"))
+    main.write_text(re.sub(r"(?m)^template_version: (\d+)$", lambda m: f"template_version: {int(m.group(1)) + 1}",
+                           text), encoding="utf-8")
+    minor = folder / "minor.md"
+    minor.write_text(re.sub(r"(?m)^(may: \[)", r"\1hnad, ", minor.read_text(encoding="utf-8")), encoding="utf-8")
+    git(root, "add", ".flotilla")
+    commit(root, "a newer move and a typo")
+    git(root, "push", "-q", "origin", "main")
+    found = posts_finding(root, tmp_path)
+    assert found.status == "warn", found.detail
+    assert "main names a move this flotilla does not know (teleport) and gains none of it: its template_version is " \
+           "above the one this flotilla ships, so a newer flotilla most likely wrote it" in found.detail
+    assert "minor names a move this flotilla does not know (hnad) and gains none of it: most likely a typo" \
+           in found.detail
+    assert "/flotilla:update" in found.fix and ".flotilla/posts/" in found.fix
+
+
 # A copy installed for the user loaded in place of the project's own (gamma on 0.23.1 ran 0.21.0,
 # 2026-10-29; the khrushchevka fleet on 0.13.0 ran 0.10.2, 2026-10-12): Claude Code does not document which copy
 # wins, so flotilla compares the copy that runs with the project's.

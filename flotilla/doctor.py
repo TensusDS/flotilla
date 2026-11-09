@@ -266,11 +266,17 @@ def _posts(root: Path) -> list[Finding]:
     """The posts the fleet reads - trunk's, as the ledger loads them - against the templates flotilla ships: the
     files on disk may hold an edit not published yet, or lag behind a trunk that moved (review of 0.7.13)."""
     from flotilla.ledger.commands import trunk_rules
-    from flotilla.posts import TEMPLATE_DIR, behind
+    from flotilla.posts import TEMPLATE_DIR, behind, unknown_moves
     try:
         posts = trunk_rules(root).posts
     except Exception as err:  # noqa: BLE001 - a check that could not ask says so; it never reports ok by default
         return [Finding("warn", "posts", f"the posts on trunk could not be read: {err}")]
+    strange = unknown_moves(posts)
+    if strange:
+        from flotilla import __version__
+        return [Finding("warn", "posts", f"flotilla {__version__}: " + "; ".join(strange),
+                        "a newer flotilla's post: update this one with `/flotilla:update`; a typo: fix it in "
+                        ".flotilla/posts/<post>.md, then `flotilla onboard publish`")]
     old = behind(posts)
     if not old:
         return [Finding("ok", "posts", f"every post on trunk is at the template flotilla ships ({len(posts)} read)")]
