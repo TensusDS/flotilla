@@ -304,3 +304,8 @@ def test_a_floor_is_believed_up_to_a_quarter_of_the_machine():   # final review 
 
 def test_a_negative_floor_is_no_floor():   # fix review R9
     assert policy.clamp_floor(-5000, 15603) == 0
+
+
+def test_the_heavy_share_is_named_only_when_it_and_not_the_room_holds_a_heavy_run_back():   # review of B, finding 4
+    d = decide([run("h", RUNNING, 4000, True, 2), run("b2", WAITING, 3500, True, 2)], machine(free=1000), "b2")
+    assert "1000 MB of room" in d.why and "for heavy runs" not in d.why

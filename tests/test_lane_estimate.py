@@ -253,3 +253,9 @@ def test_a_tiers_peak_cores_reaches_the_receipt_estimate():
     runs = [done(i, ["exact:flotilla receipt"], ran=ran) for i in range(3)]
     e = est.receipt_estimate(["unit"], est.history(bookings(*runs), now=NOW), project="p")
     assert e.peak_cores == 5.5
+
+
+def test_a_project_priors_typical_memory_is_the_median_of_its_runs():   # review of option B, Q1 gap
+    runs = [done(i, [f"exact:old{i}", "project:p"], peak=peak) for i, peak in enumerate([300, 400, 5000])]
+    e = est.estimate(["exact:new", "project:p"], est.history(bookings(*runs), now=NOW), project="p")
+    assert e.source.startswith("project prior") and (e.peak_mb, e.typical_mb) == (5000, 400)

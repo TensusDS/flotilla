@@ -15,10 +15,7 @@ from pathlib import Path
 
 from flotilla.lane import book, policy
 
-#: A run started within this window is counted at least at its expected memory: a just-started process has not
-#: grown into its memory yet, and the next waiter would read it as free (section 2.2). Builder's number, awaits the
-#: field test.
-WINDOW_S = 30.0
+WINDOW_S = policy.WINDOW_S   # a just-started run is counted at least at the memory it was admitted by
 #: The expected memory of a run never measured, while this machine has too few first runs to say (the person's
 #: ruling of 2026-11-06: the 75th percentile of each command's first run, this until FIRST_RUNS_NEEDED are measured).
 DEFAULT_MB = 1024
@@ -170,7 +167,8 @@ def view(found: dict, hist, value: Value, *, now: dt.datetime, live, mine: str, 
             if share == "fair" else (), pinned=pinned, freezable=freezable,
             holds=item.state == book.WAITING and item.id in holding,
             refused_for=item.refused_by if _fresh(now, item.refused_at) else "",
-            start_mb=own.typical_mb if own is not None and own.peak_mb is not None else None))
+            start_mb=own.typical_mb if own is not None and own.peak_mb is not None else None,
+            admitted_mb=int(expected) if item.state == book.HELD and item.pid is not None else 0))
     swap = value.swap_mb()
     from flotilla.lane import freeze
     machine = policy.Machine(

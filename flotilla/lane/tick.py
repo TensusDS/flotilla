@@ -52,10 +52,6 @@ class Actions:
     over_mb: int = 0                                      # over the floor and nothing can be taken (ruling 8)
 
 
-def _promised(ceiling: int | None, mem: int) -> int:
-    return max(0, ceiling - mem) if ceiling is not None else 0
-
-
 def _swap_room(machine: Machine) -> int:
     """What may still be pushed to swap within the budget; 0 when the swap cannot be read."""
     if machine.swap_free_mb is None or not machine.swap_total_mb:
@@ -85,7 +81,7 @@ class _Tick:
         if old == mb:
             return
         if self.space is not None and r.state in (RUNNING, ORDERED):
-            self.space += _promised(old, r.mem_mb) - _promised(mb, r.mem_mb)
+            self.space += policy.promised(r, old) - policy.promised(r, mb)
         self.ceiling[r.id] = mb
         self.changed[r.id] = mb
 
@@ -139,7 +135,7 @@ class _Tick:
                         key=lambda r: -self.p[r.id]):
             hold = True
             target = r.mem_mb + policy.slack(r.mem_mb)
-            need = _promised(target, r.mem_mb) - _promised(self.ceiling[r.id], r.mem_mb)
+            need = policy.promised(r, target) - policy.promised(r, self.ceiling[r.id])
             if self.space is not None and self.space >= need:
                 self.set_ceiling(r, target)
                 self.restored.append(r.id)
@@ -245,12 +241,12 @@ class _Tick:
         if self.space is None:
             return
         for r in sorted(self.runs, key=lambda r: -self.p[r.id]):
-            if self.space <= 0:
-                break
             ceiling = self.ceiling[r.id]
             if r.state not in (RUNNING, ORDERED) or ceiling is None or not r.at_ceiling or r.squeezed:
                 continue
-            self.set_ceiling(r, ceiling + min(ceiling, self.space))
+            allowance = self.space + policy.reserved_for(r, ceiling)   # its own first half-minute's memory is free
+            if allowance > 0:
+                self.set_ceiling(r, ceiling + min(ceiling, allowance))
 
     # 7. thaws: a waiter's freeze by the waiters' rules, the daemon's own when room covers what the run will take
     def thaw(self) -> None:

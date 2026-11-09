@@ -126,7 +126,10 @@ the project's patterns, unknown readings) stay with the **client**: it asks only
 while it waits, as today.
 
 **Free room**, used everywhere below: `room = MemAvailable - floor - Σ(ceiling - used) of capped runs - reservations`
-- what is left once every ceiling's unused headroom is counted as promised.
+- what is left once every ceiling's unused headroom is counted as promised. A run with no scope has no ceiling that
+binds, so the memory it was admitted by stays promised instead (`max(ceiling, admitted) - used`); in a run's first
+half-minute, where the reservation already holds up to that memory, only headroom above it counts again, and the run
+may grow into its own reservation without taking the room *(review of option B, 2026-11-08)*.
 
 **a. Starts.** Waiters in priority order, by the 0.30 rules unchanged: free memory now (2.2, with "free" = room), the
 class rules (2.7a), heavy cores (2.4), the run cap (2.9), fair share (2.10), and the freeze for a higher waiter (2.7,

@@ -1,5 +1,7 @@
 """tick: one pure decision over the whole lane - starts, ceilings, squeezes, freezes, thaws (lane daemon design, 4.3)."""
 
+import dataclasses
+
 from flotilla.lane import policy
 from flotilla.lane.policy import FROZEN, ORDERED, RUNNING, WAITING, Machine, Run
 from flotilla.lane.tick import OVER_S, PRESSED_S, THAW_AFTER_S, tick
@@ -53,7 +55,7 @@ def test_the_memory_reason_names_the_room_and_what_holds_the_rest():   # item 11
     why = dict(a.why)["w"]
     assert "MB free" not in why
     assert "memory: 3112 MB needed, 2480 MB of room" in why
-    assert "10000 MB available, less the 2000 MB floor and 5520 MB held for runs already started" in why
+    assert "10000 MB available, less the 2000 MB floor and 5520 MB held for runs started or ahead in line" in why
 
 
 def test_starts_follow_decide():
@@ -300,3 +302,28 @@ def test_no_swap_is_no_swap_reserve():   # third review, 3: nothing is pushed to
     held = aged("h", 0.3, 512, ceiling_mb=512, at_ceiling=True, pressed_s=2, scoped=True)
     assert tick([held], machine(2000, swap_free=0, swap_total=0)).orders == ()
     assert tick([held], machine(2000, swap_free=None, swap_total=None)).orders == ()
+
+
+def test_a_run_no_ceiling_holds_keeps_the_memory_it_was_admitted_by():   # review of option B, finding 1
+    # no scope (macOS, the signal backend, a refused scope): its recorded ceiling binds nothing, so the largest peak
+    # it was admitted by stays promised after its first half-minute, as the old start ceiling at that peak did
+    a = run("a", RUNNING, 300, ceiling_mb=512, admitted_mb=3600, scoped=False)
+    out = tick([a, run("b", WAITING, 3500)], machine(2000 + 4000))
+    assert out.starts == () and "3500 MB needed" in dict(out.why)["b"]
+    scoped = dataclasses.replace(a, scoped=True)
+    assert [s[0] for s in tick([scoped, run("b", WAITING, 3500)], machine(2000 + 4000)).starts] == ["b"]
+
+
+def test_a_run_in_its_first_half_minute_grows_into_its_own_reservation():   # review of option B, finding 2
+    # admitted by 3600, started under 512: the view keeps 3600 - 300 for it from the runs after it, so its ceiling's
+    # headroom up to that figure is not promised twice, and it may grow into it with 100 MB of room left over
+    a = run("a", RUNNING, 300, ceiling_mb=512, admitted_mb=3600, scoped=True, at_ceiling=True, since_start_s=10.0)
+    out = tick([a], machine(2000 + 3400, free_mb=3400 - 3300))
+    assert ceilings(out)["a"] == 1024
+
+
+def test_the_memory_reason_says_held_for_runs_started_or_ahead_and_no_room_when_none():
+    held = [aged(f"r{n}", 0.5, 200, ceiling_mb=2960, scoped=True) for n in range(2)]
+    why = dict(tick([*held, run("w", WAITING, 3112)], machine(2000 + 5000)).why)["w"]
+    assert "memory: 3112 MB needed, no room (7000 MB available, less the 2000 MB floor and 5520 MB held for runs " \
+           "started or ahead in line)" in why

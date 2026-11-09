@@ -20,7 +20,7 @@ of swap used.
   lane as full while 8 GB stood free. A run predicted wrong grows into the room there is, and is held the moment
   the room ends. The ceiling never kills: the kernel moves the run's cold pages to swap.
 - **A run that waits for memory says "of room", not "free"**, with what makes it up: MemAvailable, less the floor,
-  less what the runs already started are held to. `flotilla lane` shows both figures of a run's estimate when they
+  less what the runs started or ahead in line are held to. `flotilla lane` shows both figures of a run's estimate when they
   differ: "up to 3.5 GB, usually 220 MB".
 - **When the machine goes below its memory floor, or a run stalls at its ceiling with no room to give it**, the
   run of lowest priority - among near-equal ones, the one that grew most in the last minute - is squeezed (its

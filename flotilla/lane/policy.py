@@ -63,6 +63,7 @@ class Run:
     holds: bool = False         # its freeze orders are out: the runs behind it leave it the memory it needs
     refused_for: str = ""       # whose order it refused a moment ago: no waiter's candidate until the bound is over
     start_mb: int | None = None  # what it usually takes, its ceiling's start: admitted by mem_mb (its largest)
+    admitted_mb: int = 0        # running: the memory it was admitted by - promised while no ceiling holds it
     # what the lane daemon reads of a run's group and keeps between its ticks (lane daemon design, 4.3)
     ceiling_mb: int | None = None   # its soft ceiling (memory.high); None: none
     scoped: bool = False            # its group was found: a ceiling can be set and read
@@ -146,15 +147,41 @@ def start_ceiling(estimate_mb: int) -> int:
     return base + slack(base)
 
 
+#: A run started within this window is counted at least at the memory it was admitted by: a just-started process has
+#: not grown into its memory yet, and the next waiter would read it as free (section 2.2). Builder's number, awaits
+#: the field test.
+WINDOW_S = 30.0
+
+
+def promised(r: Run, ceiling: int | None) -> int:
+    """What a running run may still take that the room must not give away. A ceiling in a scope holds it: its
+    headroom. With no scope, no ceiling binds - the signal backend, macOS, a refused scope - so the memory it was
+    admitted by stays promised, as the 0.30 reservation did (review of option B, finding 1). In its first
+    half-minute the view already reserves up to that memory, so only the headroom above it counts again (finding 2)."""
+    if r.state not in (RUNNING, ORDERED):
+        return 0
+    top = ceiling if r.scoped else max(ceiling or 0, r.admitted_mb)
+    if top is None:
+        return 0
+    base = max(r.mem_mb, r.admitted_mb) if r.since_start_s < WINDOW_S else r.mem_mb
+    return max(0, top - base)
+
+
+def reserved_for(r: Run, ceiling: int | None) -> int:
+    """What the view reserved for `r` in its first half-minute that its ceiling has not reached yet: it may grow into
+    that without taking the room of others."""
+    if r.state not in (RUNNING, ORDERED) or r.since_start_s >= WINDOW_S:
+        return 0
+    return max(0, r.admitted_mb - max(ceiling or 0, r.mem_mb))
+
+
 def room(runs: list[Run], machine: Machine) -> int | None:
     """What is left once every ceiling's unused headroom is counted as promised: MemAvailable, less the floor, the
     reservation for just-started runs, and each capped run's ceiling over its use. None when memory is unknown."""
     if machine.available_mb is None or machine.free_mb is None:
         return None
     reserved = max(0, machine.available_mb - machine.floor_mb - machine.free_mb)
-    promised = sum(max(0, r.ceiling_mb - r.mem_mb) for r in runs
-                   if r.state in (RUNNING, ORDERED) and r.ceiling_mb is not None)
-    return machine.available_mb - machine.floor_mb - promised - reserved
+    return machine.available_mb - machine.floor_mb - sum(promised(r, r.ceiling_mb) for r in runs) - reserved
 
 
 def daemon_reason(v: Run, machine: Machine) -> str:
@@ -185,17 +212,17 @@ def victim(candidates: list[Run], immortal_s: float) -> Run | None:
 
 def _memory_why(need: int, free: int, machine: Machine, *, heavy_room: int | None = None) -> str:
     """The room is not what the machine has free: the daemon reads it as MemAvailable less the floor and less what
-    the runs already started are held to - their ceilings' headroom, their first half-minute (field test item 11).
+    the runs started or ahead in line are held to - ceilings' headroom, first half-minutes (field test item 11).
     `heavy_room`: the share the heavy runs may still take, when that and not the room holds a heavy run back."""
     reserve = round(machine.light_reserve * machine.give_mb)
-    if heavy_room is not None:
+    if heavy_room is not None and heavy_room < free:
         return f"memory: {need} MB needed, {max(0, heavy_room)} MB of room for heavy runs, reserve {reserve} MB for " \
                "light runs"
-    why = f"memory: {need} MB needed, {max(0, free)} MB of room"
+    why = f"memory: {need} MB needed, " + (f"{free} MB of room" if free > 0 else "no room")
     if machine.available_mb is not None:
         held = max(0, machine.available_mb - machine.floor_mb - free)
         why += (f" ({machine.available_mb} MB available, less the {machine.floor_mb} MB floor and {held} MB held for "
-                f"runs already started)")
+                f"runs started or ahead in line)")
     return f"{why}, reserve {reserve} MB for light runs"
 
 
