@@ -14,7 +14,6 @@ warning: a false refusal costs more than the rare miss (spec, section 10). Ceili
 
 from __future__ import annotations
 
-import shlex
 import subprocess
 
 from flotilla.guards import Finding
@@ -193,16 +192,16 @@ def _at_risk(kind, detail, index_saves, directory, run) -> list[str] | None:
     return [line for line in done.stdout.splitlines() if line.strip()]
 
 
-def _probe(lost) -> str:
-    """How to undo a change made only to be thrown away - a probe, an injected regression - without a form that
-    reads the index in silence: write the file from its revision (field test of 2026-11-08, item 10)."""
-    path = shlex.quote(lost[0])
-    return (f"; a change made only to be thrown away (a probe) is undone from the repository root by writing the "
-            f"file from its revision: `git show HEAD:{path} > {path}`")
+#: How to set a throwaway change - a probe, an injected regression - aside without a form that loses anything: the
+#: stash keeps it, `git stash pop` brings it back, and no path or redirect is spelled out (field test of 2026-11-08,
+#: item 10; review of 3560cbc: a `git show HEAD:<path> > <path>` hint emptied a file absent from HEAD, wrote HEAD
+#: over staged work, and turned a quoted name into a junk file).
+PROBE = ("; a change made only to be thrown away (a probe) is set aside with nothing lost by "
+         "`git stash push -- <path>` (`git stash pop` brings it back, `git stash drop` discards it)")
 
 
-def _fix(kind, index_saves, lost=()) -> str:
-    probe = _probe(lost) if kind == "paths" and lost else ""
+def _fix(kind, index_saves) -> str:
+    probe = PROBE if kind == "paths" else ""
     if kind == "paths" and index_saves:
         return ("`git add` those files first: the index becomes the save point, and the same command then reverts "
                 "only what changed after it" + probe)
@@ -238,4 +237,4 @@ def check(segment, run=subprocess.run) -> Finding | None:
         return None
     shown = ", ".join(lost[:SHOWN]) + (f" and {len(lost) - SHOWN} more" if len(lost) > SHOWN else "")
     return Finding(GUARD, True, f"flotilla revert guard: `{segment.text}` would destroy uncommitted work "
-                                f"({shown}). {_fix(kind, index_saves, lost)}.")
+                                f"({shown}). {_fix(kind, index_saves)}.")

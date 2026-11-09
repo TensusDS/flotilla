@@ -198,14 +198,21 @@ def test_a_switch_creating_a_branch_named_like_flags_is_not_a_force(tmp_path, co
     assert check(command, root) is None
 
 
-def test_a_refused_revert_of_paths_names_how_to_undo_a_throwaway_probe(tmp_path):
-    """Field test of 2026-11-07..08, item 10: a reviewer reverting its own injected probe met the refusal and had no
-    form that both undoes a probe and keeps the guard's promise. Writing the file from its revision does: it names
-    the revision and changes nothing else."""
+def test_a_refused_revert_of_paths_names_a_way_to_set_a_probe_aside_that_loses_nothing(tmp_path):
+    """Field test of 2026-11-07..08, item 10: a reviewer reverting its own injected probe met the refusal with no way
+    out but `git add`. The way named must lose nothing whatever the file's state: `git stash push` keeps the change
+    and `git stash pop` brings it back. Review of 3560cbc: a `git show HEAD:<path> > <path>` hint emptied a file
+    absent from HEAD, wrote HEAD over staged work, and made junk files of quoted names - so no path, no redirect."""
     root = plain_repo(tmp_path)
     (root / "f.txt").write_text("work\n", encoding="utf-8")
     found = check("git checkout -- f.txt", root)
-    assert found.refuse and "git show HEAD:f.txt > f.txt" in found.text
+    assert found.refuse and "git stash push -- <path>" in found.text and "git stash pop" in found.text
+    assert " > " not in found.text and "git show" not in found.text
     git(root, "add", "f.txt")
     named = check("git checkout HEAD -- f.txt", root)
-    assert named.refuse and "git show HEAD:f.txt > f.txt" in named.text
+    assert named.refuse and "git stash push -- <path>" in named.text
+    (root / "new.txt").write_text("staged\n", encoding="utf-8")
+    git(root, "add", "new.txt")
+    (root / "new.txt").write_text("staged and edited\n", encoding="utf-8")
+    absent = check("git checkout -- new.txt", root)   # not in HEAD: the hint must not name HEAD
+    assert absent.refuse and "HEAD:" not in absent.text
