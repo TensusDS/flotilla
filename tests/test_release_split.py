@@ -125,3 +125,27 @@ def test_two_enabled_marketplaces_on_two_releases_are_named_as_a_double_load(mac
     said = REAL(ledger, running="0.30.1", env=env)
     assert "two releases" in said and "0.29.3" in said and "flotilla@flotilla" in said and "--anyway" in said, said
     assert "enabledPlugins" in said
+
+
+def test_an_enabled_id_whose_only_record_is_another_paths_still_loads(machine):   # review of 424c879, M1
+    # a moved repository or a second clone: Claude Code reports such an id enabled, and a seat loads it
+    from flotilla.core import claude_state
+    ledger, config, env = machine
+    records_of(config, {"flotilla@flotilla": [install("user", "0.29.3")],
+                        "flotilla@flotilla-local": [install("project", "0.30.1", "/the/old/clone")]})
+    enable(config / "settings.json", flotilla__flotilla=True)
+    enable(ledger.root / ".claude" / "settings.json", flotilla__flotilla_local=True)
+    assert sorted(claude_state.loads_all(ledger.root, env)) == [("flotilla@flotilla", "0.29.3"),
+                                                                ("flotilla@flotilla-local", "0.30.1")]
+    assert "two releases" in REAL(ledger, running="0.29.3", env=env)
+
+
+def test_with_two_releases_loading_the_older_is_what_every_copy_has_reached(machine):   # review of 424c879, L1
+    # a deferred update waits until every copy a session loads has reached it, not the newest one
+    from flotilla.core import claude_state
+    ledger, config, env = machine
+    records_of(config, {"flotilla@flotilla": [install("user", "0.31.0")],
+                        "flotilla@flotilla-local": [install("project", "0.30.1", ledger.root)]})
+    enable(config / "settings.json", flotilla__flotilla=True)
+    enable(ledger.root / ".claude" / "settings.json", flotilla__flotilla_local=True)
+    assert claude_state.loads_in(ledger.root, env) == "0.30.1"
