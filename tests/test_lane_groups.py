@@ -71,7 +71,11 @@ def test_cgroup_of_refuses(tmp_path, case):   # review focus 3
     assert found is None
 
 
-def test_read_parses_the_four_files(tmp_path):
+def test_read_parses_the_four_files(tmp_path, monkeypatch):
+    # the refault figure is in the kernel's own page size (the next test): pinned here to 4 KB, which a Mac's
+    # 16 KB pages broke on CI (0.31.0)
+    real = os.sysconf
+    monkeypatch.setattr(os, "sysconf", lambda name: 4096 if name == "SC_PAGE_SIZE" else real(name))
     group = tmp_path / "g"
     group.mkdir()
     (group / "memory.current").write_text("1073741824\n")
