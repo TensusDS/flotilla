@@ -51,7 +51,7 @@ FIELDS = ("who", "note", "pid", "mark", "run_for", "why", "command", "ladder", "
           "kind", "asked", "started", "ran_s", "frozen", "order_by", "ordered_at", "reclaim_mb", "frozen_at",
           "held_mb", "frozen_s", "freezes", "heavy", "pinned", "unanswered", "freeze_kind", "unit", "group",
           "peak_cores", "group_mark", "refused_by", "refused_at", "order_cause", "order_pid", "order_mark",
-          "ceiling_mb", "squeezed", "held_back", "by_hand", "floor_mb", "held_freezes", "order_sig")
+          "ceiling_mb", "squeezed", "held_back", "by_hand", "floor_mb", "held_freezes", "order_sig", "admitted_mb")
 MEASURED = ("seconds", "peak_mb", "cores", "busy", "verdict", "ran", "peak_cores")
 #: A freeze order's progress on a held booking: ordered by a waiter, then frozen by its holder; absent while it runs.
 FROZEN_STATES = ("ordered", "frozen")
@@ -71,8 +71,8 @@ BOUNDS = {"seconds": (0.0, 7 * 86400.0), "peak_mb": (0.0, 1e7), "cores": (0.0, 1
 #: The booking's own figures beside the measured ones a tier also carries (a tier's are BOUNDS alone).
 FIGURES = {**BOUNDS, "ran_s": BOUNDS["seconds"], "frozen_s": BOUNDS["seconds"], "reclaim_mb": BOUNDS["peak_mb"],
            "held_mb": BOUNDS["peak_mb"], "peak_cores": BOUNDS["cores"], "ceiling_mb": BOUNDS["peak_mb"],
-           "floor_mb": BOUNDS["peak_mb"]}
-WHOLE = ("peak_mb", "reclaim_mb", "held_mb", "ceiling_mb", "floor_mb")
+           "floor_mb": BOUNDS["peak_mb"], "admitted_mb": BOUNDS["peak_mb"]}
+WHOLE = ("peak_mb", "reclaim_mb", "held_mb", "ceiling_mb", "floor_mb", "admitted_mb")
 
 
 def _figure(key, value):
@@ -206,6 +206,7 @@ class Booking:
     order_pid: int | None = None                     # the daemon that signed the order: its pid and start mark
     order_mark: str = ""
     ceiling_mb: int | None = None                    # the soft ceiling the daemon set on its scope; None: none
+    admitted_mb: int | None = None                   # the memory the daemon admitted it by, pinned at its start
     squeezed: bool = False                           # its ceiling was lowered below its use for an overload
     held_back: str = ""                              # a waiter's own gates hold it (CI, disk...): the daemon skips it
     by_hand: bool = False                            # a waiter taking the lane by hand: admitted as nobody's
@@ -789,14 +790,16 @@ class Book:
         with self.store.transaction(KEY) as tx:
             found = self._found(tx)
             now = self._moment()
+            pinned = dict(getattr(actions, "admitted", ()))   # what each start was admitted by
             for booking_id, heavy, worth in actions.starts:
                 item = found.get(booking_id)
                 if item is None or item.state != WAITING or not self.live(item) or (item.rule or 0) < RULE \
                         or item.held_back:
                     continue
                 hand = {"pid": None, "mark": ""} if item.by_hand else {}
+                admitted = {"admitted_mb": int(pinned[booking_id])} if pinned.get(booking_id) else {}
                 self._write(tx, booking_id, HELD, path=f"value: P {worth:.2f}, {'heavy' if heavy else 'light'}",
-                            started=self._now(), heavy=bool(heavy), **hand)
+                            started=self._now(), heavy=bool(heavy), **hand, **admitted)
                 done.append(booking_id)
             started = set(done)   # a run started in this very tick gets its start ceiling with it
             for booking_id, mb in actions.ceilings:

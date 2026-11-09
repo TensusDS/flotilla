@@ -132,6 +132,7 @@ def view(found: dict, hist, value: Value, *, now: dt.datetime, live, mine: str, 
     served = book.last_served(found, now) if share == "fair" else {}
     reserved, runs = 0, []
     for item in [*held, *waiting]:
+        own_reserve = 0
         own = _own(item, hist, value.cpus)
         expected = own.peak_mb if own is not None and own.peak_mb is not None else fallback
         par = (own.peak_cores or own.cores) if own is not None and (own.peak_cores or own.cores) else value.cpus / 2
@@ -147,9 +148,13 @@ def view(found: dict, hist, value: Value, *, now: dt.datetime, live, mine: str, 
         else:
             state = policy.ORDERED if item.frozen == "ordered" else policy.RUNNING
             tree = trees.get(item.id)
+            # the memory it was admitted by, pinned by the daemon at its start: the estimate moves as runs end
+            # (second review of option B, important 2)
+            expected = item.admitted_mb or expected
             mem = tree if tree is not None else expected
             if since_start < WINDOW_S and item.pid is not None:   # by hand: its whole promise is kept below
-                reserved += max(0, expected - (tree or 0))
+                own_reserve = max(0, expected - (tree or 0))
+                reserved += own_reserve
                 mem = max(mem, expected)
             ran = before + since_start
         heavy = policy.is_heavy(mem, give, was=item.heavy)
@@ -168,7 +173,8 @@ def view(found: dict, hist, value: Value, *, now: dt.datetime, live, mine: str, 
             holds=item.state == book.WAITING and item.id in holding,
             refused_for=item.refused_by if _fresh(now, item.refused_at) else "",
             start_mb=own.typical_mb if own is not None and own.peak_mb is not None else None,
-            admitted_mb=int(expected) if item.state == book.HELD and item.pid is not None else 0))
+            admitted_mb=int(expected) if item.state == book.HELD and item.pid is not None else 0,
+            reserved_mb=own_reserve))
     swap = value.swap_mb()
     from flotilla.lane import freeze
     machine = policy.Machine(

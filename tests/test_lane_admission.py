@@ -514,3 +514,25 @@ def test_a_waiter_never_measured_starts_from_what_it_is_expected_to_take(lane):
     runs, _m = admission.view(lanes.bookings(), {}, value(), now=T0, live=lanes.live, mine="")
     waiter = next(r for r in runs if r.id == mine.id)
     assert waiter.start_mb is None and waiter.mem_mb == admission.DEFAULT_MB
+
+
+def test_a_held_run_keeps_the_memory_it_was_admitted_by_when_its_estimate_moves(lane):   # second review, imp. 2
+    lanes, _procs, later = lane
+    first = holder(lanes, later, tree={11: 300})
+    raw(lanes, booking=first.id, state=book.HELD, admitted_mb=4000)
+    runs, _m = admission.view(lanes.bookings(), {}, value(tree={11: 300}), now=T0, live=lanes.live, mine="")
+    assert next(r for r in runs if r.id == first.id).admitted_mb == 4000
+
+
+def test_a_run_carries_its_own_reservation_only_in_its_first_half_minute(lane):   # second review, important 1
+    lanes, _procs, later = lane
+    item = lanes.enqueue("main session 1", "suite", pid=11, mark="m")
+    lanes.grant(item.id, slots=1, value=value(tree={11: 100}))
+    raw(lanes, booking=item.id, state=book.HELD, admitted_mb=3600, started=T0.isoformat())
+    runs, machine = admission.view(lanes.bookings(), {}, value(tree={11: 100}), now=T0 + dt.timedelta(seconds=10),
+                                   live=lanes.live, mine="")
+    run = next(r for r in runs if r.id == item.id)
+    assert run.reserved_mb == 3500 and machine.free_mb == 9000 - 3500
+    runs, _m = admission.view(lanes.bookings(), {}, value(tree={11: 100}), now=T0 + dt.timedelta(seconds=60),
+                              live=lanes.live, mine="")
+    assert next(r for r in runs if r.id == item.id).reserved_mb == 0

@@ -63,7 +63,9 @@ class Run:
     holds: bool = False         # its freeze orders are out: the runs behind it leave it the memory it needs
     refused_for: str = ""       # whose order it refused a moment ago: no waiter's candidate until the bound is over
     start_mb: int | None = None  # what it usually takes, its ceiling's start: admitted by mem_mb (its largest)
-    admitted_mb: int = 0        # running: the memory it was admitted by - promised while no ceiling holds it
+    admitted_mb: int = 0        # running: the memory it was admitted by, pinned at its start - promised while no
+                                # ceiling holds it
+    reserved_mb: int = 0        # running, first half-minute: what the view reserved for it (admitted less its tree)
     # what the lane daemon reads of a run's group and keeps between its ticks (lane daemon design, 4.3)
     ceiling_mb: int | None = None   # its soft ceiling (memory.high); None: none
     scoped: bool = False            # its group was found: a ceiling can be set and read
@@ -154,25 +156,26 @@ WINDOW_S = 30.0
 
 
 def promised(r: Run, ceiling: int | None) -> int:
-    """What a running run may still take that the room must not give away. A ceiling in a scope holds it: its
-    headroom. With no scope, no ceiling binds - the signal backend, macOS, a refused scope - so the memory it was
-    admitted by stays promised, as the 0.30 reservation did (review of option B, finding 1). In its first
-    half-minute the view already reserves up to that memory, so only the headroom above it counts again (finding 2)."""
+    """What a running run may still take that the room must not give away, beyond the view's reservation for it. A
+    ceiling in a scope holds it: its headroom. With no scope, no ceiling binds - the signal backend, macOS, a refused
+    scope - so the memory it was admitted by stays promised, as the 0.30 reservation did (review of option B,
+    finding 1). In its first half-minute the view has reserved `reserved_mb` for it already, sized from its process
+    tree; only what the headroom holds beyond that counts again (second review, important 1)."""
     if r.state not in (RUNNING, ORDERED):
         return 0
     top = ceiling if r.scoped else max(ceiling or 0, r.admitted_mb)
     if top is None:
         return 0
-    base = max(r.mem_mb, r.admitted_mb) if r.since_start_s < WINDOW_S else r.mem_mb
-    return max(0, top - base)
+    return max(0, top - r.mem_mb - r.reserved_mb)
 
 
 def reserved_for(r: Run, ceiling: int | None) -> int:
-    """What the view reserved for `r` in its first half-minute that its ceiling has not reached yet: it may grow into
-    that without taking the room of others."""
-    if r.state not in (RUNNING, ORDERED) or r.since_start_s >= WINDOW_S:
+    """What the view reserved for `r` that its ceiling's headroom does not cover yet: it may grow into that without
+    taking the room of others."""
+    if r.state not in (RUNNING, ORDERED):
         return 0
-    return max(0, r.admitted_mb - max(ceiling or 0, r.mem_mb))
+    headroom = max(0, ceiling - r.mem_mb) if ceiling is not None else 0
+    return max(0, r.reserved_mb - headroom)
 
 
 def room(runs: list[Run], machine: Machine) -> int | None:

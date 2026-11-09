@@ -317,9 +317,23 @@ def test_a_run_no_ceiling_holds_keeps_the_memory_it_was_admitted_by():   # revie
 def test_a_run_in_its_first_half_minute_grows_into_its_own_reservation():   # review of option B, finding 2
     # admitted by 3600, started under 512: the view keeps 3600 - 300 for it from the runs after it, so its ceiling's
     # headroom up to that figure is not promised twice, and it may grow into it with 100 MB of room left over
-    a = run("a", RUNNING, 300, ceiling_mb=512, admitted_mb=3600, scoped=True, at_ceiling=True, since_start_s=10.0)
+    a = run("a", RUNNING, 300, ceiling_mb=512, admitted_mb=3600, reserved_mb=3300, scoped=True, at_ceiling=True,
+            since_start_s=10.0)
     out = tick([a], machine(2000 + 3400, free_mb=3400 - 3300))
     assert ceilings(out)["a"] == 1024
+
+
+def test_a_run_grows_only_into_what_the_view_reserved_for_it():   # second review of option B, important 1
+    # the view sized the reservation from the process tree (wrapper included): 300 MB, not the 3300 that admitted
+    # less the group's reading would say; 212 of it is the ceiling's headroom already, so it may grow by 88 only
+    a = run("a", RUNNING, 300, ceiling_mb=512, admitted_mb=3600, reserved_mb=300, scoped=True, at_ceiling=True,
+            since_start_s=10.0)
+    assert ceilings(tick([a], machine(2000 + 300, free_mb=0)))["a"] == 600
+
+
+def test_a_started_run_carries_the_memory_it_was_admitted_by():   # second review of option B, important 2
+    a = tick([run("w", WAITING, 3600, start_mb=220)], machine(10000))
+    assert dict(a.admitted) == {"w": 3600}
 
 
 def test_the_memory_reason_says_held_for_runs_started_or_ahead_and_no_room_when_none():

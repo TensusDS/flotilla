@@ -968,3 +968,9 @@ def test_a_since_ahead_of_a_later_record_heals_to_it():   # review of cfed01d, f
                        {"at": "2026-11-09T00:10:00+00:00", "booking": "b1", "state": "held", "ceiling_mb": 512}])
     assert found["b1"].since == "2026-11-09T00:10:00+00:00"
 
+
+def test_apply_pins_the_memory_a_run_was_admitted_by(lane):   # second review of option B, important 2
+    lanes, _ = lane
+    item = lanes.enqueue("a", "", pid=11, mark="m")
+    lanes.apply(actions(starts=((item.id, True, 0.3),), admitted=((item.id, 3600),)), (4242, "m9"))
+    assert lanes.bookings()[item.id].admitted_mb == 3600

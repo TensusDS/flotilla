@@ -43,6 +43,7 @@ HELD_SWAP_RESERVE_MB = 2048
 @dataclass(frozen=True)
 class Actions:
     starts: tuple[tuple[str, bool, float], ...] = ()      # (id, heavy, P)
+    admitted: tuple[tuple[str, int], ...] = ()            # (id, MB) each start was admitted by: pinned in the journal
     ceilings: tuple[tuple[str, int | None], ...] = ()     # (id, MB); None lifts it to max
     squeezed: tuple[str, ...] = ()                        # ids whose entry in `ceilings` is a squeeze
     restored: tuple[str, ...] = ()                        # squeezed runs given back used + slack
@@ -72,6 +73,7 @@ class _Tick:
         self.restored: list[str] = []
         self.orders: list[tuple[str, int, str, str]] = []
         self.starts: list[tuple[str, bool, float]] = []
+        self.admitted: list[tuple[str, int]] = []
         self.thaws: list[str] = []
         self.why: dict[str, str] = {}
         self.over_mb = 0
@@ -220,6 +222,7 @@ class _Tick:
             d = policy.decide(self.runs, machine, w.id, may_freeze=not taken)
             if d.start:
                 self.starts.append((w.id, w.heavy, self.p[w.id]))
+                self.admitted.append((w.id, int(w.mem_mb)))
                 # admitted by its largest peak, it starts under what it usually takes and grows from there; this
                 # tick keeps the largest from the runs after it, as its first half-minute does from the next ticks
                 typical = w.mem_mb if w.start_mb is None else min(w.start_mb, w.mem_mb)
@@ -283,7 +286,8 @@ class _Tick:
         return ""
 
     def actions(self) -> Actions:
-        return Actions(starts=tuple(self.starts), ceilings=tuple(self.changed.items()),
+        return Actions(starts=tuple(self.starts), admitted=tuple(self.admitted),
+                       ceilings=tuple(self.changed.items()),
                        squeezed=tuple(self.squeezed), restored=tuple(self.restored), orders=tuple(self.orders),
                        thaws=tuple(self.thaws), why=tuple(self.why.items()), over_mb=self.over_mb)
 

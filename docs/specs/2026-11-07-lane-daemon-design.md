@@ -127,9 +127,11 @@ while it waits, as today.
 
 **Free room**, used everywhere below: `room = MemAvailable - floor - Σ(ceiling - used) of capped runs - reservations`
 - what is left once every ceiling's unused headroom is counted as promised. A run with no scope has no ceiling that
-binds, so the memory it was admitted by stays promised instead (`max(ceiling, admitted) - used`); in a run's first
-half-minute, where the reservation already holds up to that memory, only headroom above it counts again, and the run
-may grow into its own reservation without taking the room *(review of option B, 2026-11-08)*.
+binds, so the memory it was admitted by - pinned in the journal at its start, since the estimate moves as runs end
+- stays promised instead (`max(ceiling, admitted) - used`). In a run's first half-minute the view reserves
+`admitted - tree` for it (its process tree, wrapper included); a ceiling's headroom counts only beyond that
+reservation, and the run may grow into the part of it its headroom does not cover without taking the room *(reviews
+of option B, 2026-11-08 and 09)*.
 
 **a. Starts.** Waiters in priority order, by the 0.30 rules unchanged: free memory now (2.2, with "free" = room), the
 class rules (2.7a), heavy cores (2.4), the run cap (2.9), fair share (2.10), and the freeze for a higher waiter (2.7,
