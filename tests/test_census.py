@@ -190,7 +190,7 @@ def test_a_screen_that_cannot_be_read_is_not_held():
 
 
 def test_what_the_strip_leaves_is_still_made_safe_to_show():   # review of 14c5ff8, finding 4: visible() itself
-    screen = "New MCP server \x1b(0found\x9b2J here‮: evil\x07\n Enter to confirm\n"
+    screen = "New MCP server \x1b(0found\x9b2J here\u202e: evil\x07\n Enter to confirm\n"
     run, _ = claude_with([bare("0204d254")], {"0204d254": screen})
     [held] = HELD_AT_START({"app-main session 1"}, run=run)
-    assert held.held_on.isprintable() and "\x1b" not in held.held_on and "‮" not in held.held_on
+    assert held.held_on.isprintable() and "\x1b" not in held.held_on and "\u202e" not in held.held_on

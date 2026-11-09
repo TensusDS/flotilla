@@ -533,6 +533,15 @@ def _status(ledger: core.Ledger, args) -> int:
     except MoveRefused as err:
         live = None
         print(f"census: unknown ({err}); liveness is not asserted")
+    if live is not None:   # a seat held on a start-up question is not orphaned (S3)
+        try:
+            held = ledger.held_names({row.owner for row in rows.values()
+                                      if row.is_open and row.state == "reserved"} - live)
+        except MoveRefused:
+            held = set()
+        live |= held
+        for name in sorted(held):
+            print(f"held at start: {name} has not started, a start-up question waits; `flotilla fleet` names it")
     print("roster:")
     entries = views.roster(rows, ledger.profile, live)
     if not entries:

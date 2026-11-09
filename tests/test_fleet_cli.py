@@ -416,7 +416,7 @@ def test_an_effort_claude_code_does_not_take_is_named_before_any_seat(tmp_path, 
     assert not (tmp_path / "app-reviewer-1").exists()
 
 
-def held_world(tmp_path, monkeypatch):
+def held_world(tmp_path, monkeypatch, counts=None):
     """A project with one seat Claude Code holds on a start-up question, where every command's ledger runs the fake
     `claude` (review of bedb2a3: the commands' wiring was guarded only for `fleet`)."""
     from fleetkit import FakeClaude
@@ -427,8 +427,8 @@ def held_world(tmp_path, monkeypatch):
     fake = FakeClaude(held_on="New MCP server found in this project: mint")
     ledger = open_ledger(root)
     ledger.run = fake
-    spawn.spawn(ledger, {"main": 1}, census=fake.census, store=LocalLogStore(tmp_path / "names"), caller="test",
-                wait=0.1, poll=0.05, sleep=lambda s: None)
+    spawn.spawn(ledger, counts or {"main": 1}, census=fake.census, store=LocalLogStore(tmp_path / "names"),
+                caller="test", wait=0.1, poll=0.05, sleep=lambda s: None)
 
     def opened(path, *args, **kwargs):
         found = open_ledger(path, *args, **kwargs)
@@ -484,3 +484,17 @@ def test_fill_counts_a_seat_held_on_a_start_up_question_as_raised(tmp_path, monk
     code, out = run_cli("spawn", "--fill", "--dry-run", "--root", str(root))
     assert code == 0, out
     assert "review session 1" in out and "main session 2" not in out, out
+
+
+def test_lead_names_a_held_orchestrator_and_how_to_answer_it(tmp_path, monkeypatch):   # review of 3f5bd79
+    root, fake = held_world(tmp_path, monkeypatch, counts={"orchestrator": 1})
+    monkeypatch.setattr("flotilla.core.caller.person_refusal", lambda what: "")
+    code, out = run_cli("spawn", "--lead", "--root", str(root))
+    assert code == 2 and "orchestrator 1 already leads" in out and "`claude attach 000001` answers it" in out, out
+
+
+def test_a_dry_run_reads_a_held_sender_as_holding_its_one_copy(tmp_path, monkeypatch):   # review of 3f5bd79
+    """The dry run planned a second sender beside a held one, which the real spawn refuses."""
+    root, fake = held_world(tmp_path, monkeypatch, counts={"sender": 1})
+    code, out = run_cli("spawn", "-s", "1", "--dry-run", "--root", str(root))
+    assert code == 2 and "writes one-copy resources" in out and "alive here: sender 1" in out, out

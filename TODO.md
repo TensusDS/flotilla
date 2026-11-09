@@ -35,7 +35,11 @@ daemon. The findings the person took into work are fixed on their own branches; 
   while the dialog stands. Whether a seat whose dialog was declined and which then exited keeps showing the dialog
   in `claude logs` - which would read it as held for good, and keep its tree from the collector - needs a real
   Claude Code. `/flotilla:update`'s report also reads the plain census: a project whose every seat is held shows no
-  fleet, so `--stop`/`--defer` is not asked there; such a seat has loaded no release yet.
+  fleet, so `--stop`/`--defer` is not asked there; such a seat has loaded no release yet. Other readers of the
+  plain census still read a held seat as gone (review of 3f5bd79): a handover wait on one is refused or flagged
+  (ledger/handover.py `_whom`, `_gone`), and ledger/outside.py's liveness; `adopt` of its reserved row is refused
+  anyway. A `--recommended --dry-run` asks the fleet's census up to five times, each paying a second `claude
+  agents` and a `claude logs` per held seat; the `--recommended` call into sizing has no test of its own.
   *(open, measure - flotilla/core/census.py `held_at_start`, flotilla/update.py `report`)*
 - **`/flotilla:update` still reads ownership by record in two places** (review of dfa07ea): after a project's own
   record is updated, `apply` drops its deferral although the project may ride the user's copy, still held - the

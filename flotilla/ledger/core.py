@@ -79,6 +79,19 @@ class Ledger:
     def live_names(self) -> set[str]:
         return {session.name for session in self.live_sessions() if session.name}
 
+    def held_names(self, names) -> set[str]:
+        """Of `names` - which the census does not list - those Claude Code holds at start on a question: listed with
+        no process, such a seat reads as gone and is not (field test 2026-11-07, S3). Asked only where a move or a
+        view would treat a name as gone: it costs a second `claude agents` and a `claude logs` per bare row."""
+        names = {name for name in names if name}
+        if not names:
+            return set()
+        from flotilla.core import census as census_module
+        try:
+            return {session.name for session in census_module.held_at_start(names)}
+        except CensusUnavailable as err:
+            raise MoveRefused(f"could not ask whether {', '.join(sorted(names))} is held at start: {err}") from err
+
     @contextlib.contextmanager
     def session(self):
         with self.store.transaction(self.repo_key) as tx:
@@ -269,6 +282,10 @@ def release(ledger: Ledger, actor: Actor, branch: str, *, why: str = "", settled
                     if row.branch == branch and row.is_open), None)
     if current is not None and current.owner != actor.name and current.owner in ledger.live_names():
         raise MoveRefused(f"{current.owner} is alive; only they release their own work")
+    if current is not None and current.owner != actor.name and ledger.held_names({current.owner}):
+        raise MoveRefused(f"{current.owner} is alive, held at start on a question nobody answers in the background "
+                          "(`flotilla fleet` names it); answer it, or retire it with `flotilla fleet retire "
+                          f"{current.owner}`; only they release their own work")
     with ledger.session() as s:
         row = s.need_open_row(branch)
         state = s.next_state(row, "release")

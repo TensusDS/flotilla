@@ -756,3 +756,16 @@ def test_a_reconcile_lines_branch_keeps_a_comma_its_name_has():   # review of f7
     assert commands._subject("not yet feat,: the fetch failed") == "feat,"
     assert commands._subject("shipped feat/x (green)") == "feat/x"
     assert commands._subject("something else entirely") == ""
+
+
+def test_status_names_a_seat_held_on_a_start_up_question_not_orphaned(tmp_path, monkeypatch):   # review of 3f5bd79
+    from fleetkit import held_seat_world
+    from types import SimpleNamespace
+    from flotilla.ledger import commands
+    ledger, fake, plain = held_seat_world(tmp_path, monkeypatch)
+    ledger.census = plain
+    out = io.StringIO()
+    with redirect_stdout(out):
+        commands._status(ledger, SimpleNamespace(stalled=None))
+    text = out.getvalue()
+    assert "held at start: main session 1 has not started" in text and "orphaned" not in text, text

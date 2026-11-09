@@ -96,8 +96,11 @@ def _lead(ledger, args) -> int:
     held += [item.name or item.session_id for item in mine if item.session_id in waiting
              and (me_now is None or item.session_id != me_now.session_id) and item.name not in held]
     if held:   # two sessions routing one fleet's work (review of 0.6.8, I2)
+        waiting = [item for item in mine if item.name in held and getattr(item, "held_on", None) is not None]
+        attach = "".join(f"; {item.name} has not started, a start-up question waits: `claude attach "
+                         f"{item.short_id}` answers it" for item in waiting)
         raise MoveRefused(f"{', '.join(held)} already leads this project's fleet; talk to it, or retire it "
-                          "(/flotilla:retire) and run --lead again")
+                          f"(/flotilla:retire) and run --lead again{attach}")
     taken = {item.name for item in sessions if item.name}
     taken |= {name for row in ledger.rows().values() for name in (row.owner, row.reader) if name}
     from flotilla.fleet import lead

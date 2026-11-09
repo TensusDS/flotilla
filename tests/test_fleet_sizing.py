@@ -265,3 +265,30 @@ def test_an_unknown_leader_is_not_called_this_session():
 def test_test_runs_say_the_lane_runs_up_to_its_cap_as_memory_allows():
     rec = recommend(machine(run_seconds=600, lane_runs=10), work(), PACE, {})
     assert any("the lane runs up to 10 at once, as memory allows" in line for line in rec.lines)
+
+
+
+class _Seen(Exception):
+    pass
+
+
+def test_a_seat_held_on_a_start_up_question_takes_no_memory_credit(tmp_path, monkeypatch):
+    """Review of 3f5bd79: sizing credited a full seat's memory back for a held seat, which has not started; the room
+    was overstated by up to a seat per held seat. A running seat is still credited."""
+    import dataclasses
+    import pytest
+    from fleetkit import held_seat_world
+    from flotilla.fleet import sizing
+    ledger, fake, plain = held_seat_world(tmp_path, monkeypatch)
+
+    def recommend(machine, *args, **kwargs):
+        raise _Seen(machine.live_seats)
+    monkeypatch.setattr(sizing, "recommend", recommend)
+    held = [s for s in fake.sessions if s.held_on is not None]
+    running = [dataclasses.replace(s, held_on=None) for s in held]
+    seen = []
+    for census in (lambda: held, lambda: running):
+        with pytest.raises(_Seen) as caught:
+            sizing.gather(ledger, census=census, run=lambda *a, **kw: None)
+        seen.append(caught.value.args[0])
+    assert seen == [0, 1]
