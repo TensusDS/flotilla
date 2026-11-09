@@ -41,6 +41,11 @@ daemon. The findings the person took into work are fixed on their own branches; 
   anyway. A `--recommended --dry-run` asks the fleet's census up to five times, each paying a second `claude
   agents` and a `claude logs` per held seat; the `--recommended` call into sizing has no test of its own.
   *(open, measure - flotilla/core/census.py `held_at_start`, flotilla/update.py `report`)*
+- **The test suite can leave empty `flotilla-lane-b1-*.scope` units behind.** After the field test eight such
+  user units stood with no process in them and were stopped by hand (2026-11-09). `b1` is a booking id only the
+  tests use, so they came from suite runs, not from the fleets; a whole lane test run, watched, left none. Several
+  suites were killed mid-run that week; whether a killed run is what leaves them was not checked.
+  *(open, measure - flotilla/lane/freeze.py `UNIT_PREFIX` scope, its teardown)*
 - **`/flotilla:update` still reads ownership by record in two places** (review of dfa07ea): after a project's own
   record is updated, `apply` drops its deferral although the project may ride the user's copy, still held - the
   "update waits" reminder is lost, no copy moves (`flotilla/update.py` `apply`, the project branch); and `user_held`
@@ -531,12 +536,9 @@ journal figures: runs under 60 s waited a median 30.6 min for a median 6.8 s run
   not name `rig run`; the posts say long runs go through the lane). Idea: `lane run` refuses a command that is
   `flotilla rig run`, or the posts say a rig run is not a local long run.
   *(seen 2026-10-12 on 0.13.0: B - flotilla/lane/commands.py:264)*
-- **A seat stopped at a startup dialog looks like a seat that never came up.** A `.mcp.json` in a parent directory made
-  every new session ask "New MCP server found in this project". `spawn` said "launched, not yet seen in the census
-  after 30 s" for all five, `flotilla fleet` said "not running", the census said "blocked"; nothing named the dialog.
-  Each had to be attached to and answered. Idea: `spawn` and `fleet` say "waits at a dialog: attach and answer" for a
-  session the census lists as blocked right after launch; `doctor` names a parent `.mcp.json`.
-  *(seen 2026-10-12 on 0.13.0: B - flotilla/fleet/spawn.py:416)*
+- **`doctor` does not name a parent directory's `.mcp.json`**, which makes every new session ask "New MCP server
+  found in this project" at start. Since 0.31.0 `spawn` and `fleet` name the question once a seat is held on it;
+  `doctor` could say so before any seat is raised. *(checked 2026-11-09 on 0.31.0: still P - flotilla/doctor.py)*
 - **Before the profile reaches trunk, a commit of one's own on trunk cannot be pushed by the door.** `receipt run
   --purpose push` refused ("the project profile could not be read, so CI on this machine could not be asked"), and
   `onboard publish` refuses while trunk is ahead of origin. The way through was to park the commit on a branch,
@@ -845,6 +847,8 @@ Each is a limitation README states today, judged fixable in principle; none is p
 
 ## Done
 
+- A seat Claude Code holds on a start-up question is seen and named: `spawn`, `fleet`, `watch` and the inbox say
+  "has not started" with the question and `claude attach <id>`, and every count of raised seats includes it (0.31.0).
 - A test that asks `state_dir()` in pytest's own process is refused the real directory, wherever its file lives
   (alpha item 21: the rig tests' `world` wrote `machine.toml` as `rig`, `rig_provider`; the same road wrote the live
   rig journal), and re-measuring the machine keeps every key it does not measure (`lane_share` was lost) (0.29.3).
