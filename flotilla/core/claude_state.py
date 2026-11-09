@@ -69,16 +69,54 @@ def installs(env=os.environ, home: Path | None = None) -> list[tuple[str, dict]]
             for item in items if isinstance(item, dict)]
 
 
-def loads_in(directory: Path, env=os.environ, home: Path | None = None) -> str | None:
-    """The release a session started in `directory` would load: that directory's own install (local before
-    project), else the user's; None when no record names one."""
+def enabled_ids(directory: Path, env=os.environ, home: Path | None = None) -> list[str] | None:
+    """The flotilla plugin ids (`flotilla@<market>`) a session started in `directory` enables, with `enabledPlugins`
+    merged key by key - the user's settings, then the project's, then its local ones; None when none of them names a
+    flotilla id, so the install records alone must answer."""
+    merged: dict = {}
+    try:
+        user = [json.loads((config_dir(env, home) / "settings.json").read_text(encoding="utf-8"))]
+    except (OSError, ValueError, RecursionError):
+        user = []
+    for data in [*user, *_settings(Path(directory))]:
+        enabled = data.get("enabledPlugins") if isinstance(data, dict) else None
+        if isinstance(enabled, dict):
+            merged.update({str(key): value for key, value in enabled.items() if str(key).startswith("flotilla@")})
+    if not merged:
+        return None
+    return sorted(key for key, on in merged.items() if on is True)
+
+
+def loads_all(directory: Path, env=os.environ, home: Path | None = None) -> list[tuple[str, str]]:
+    """Each flotilla a session started in `directory` would load, as (id, release): for every enabled id its
+    install there (local before project), else the user's. Only the ids the settings enable count - a record of
+    another marketplace the project turned off loads nothing (field test of 2026-11-07, item 5). With no setting
+    naming flotilla, the records decide as they always did: that directory's install, else the user's."""
     found = installs(env, home)
-    own = [item for _, item in found if item.get("scope") in ("local", "project")
-           and _same(item.get("projectPath"), Path(directory).resolve())]
-    if own:
-        return str(min(own, key=lambda item: item.get("scope") != "local").get("version") or "") or None
-    user = next((item for _, item in found if item.get("scope") == "user"), None)
-    return str(user.get("version") or "") or None if user else None
+    where = Path(directory).resolve()
+    ids = enabled_ids(directory, env, home)
+
+    def release(of: list[tuple[str, dict]]) -> str | None:
+        own = [item for _, item in of
+               if item.get("scope") in ("local", "project") and _same(item.get("projectPath"), where)]
+        if own:
+            return str(min(own, key=lambda item: item.get("scope") != "local").get("version") or "") or None
+        user = next((item for _, item in of if item.get("scope") == "user"), None)
+        return str(user.get("version") or "") or None if user else None
+    if ids is None:
+        name = release(found)
+        return [("", name)] if name else []
+    loads = [(plugin, release([entry for entry in found if entry[0] == plugin])) for plugin in ids]
+    return [(plugin, name) for plugin, name in loads if name]
+
+
+def loads_in(directory: Path, env=os.environ, home: Path | None = None) -> str | None:
+    """The release a session started in `directory` would load - the newest, when two enabled marketplaces load
+    two (`loads_all` names them); None when no record names one."""
+    names = [name for _, name in loads_all(directory, env, home)]
+    if not names:
+        return None
+    return max(names, key=lambda name: _version(name) or (-1, -1, -1))
 
 
 def running_root() -> Path:

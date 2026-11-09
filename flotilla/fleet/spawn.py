@@ -380,6 +380,12 @@ def release_split(ledger, *, running: str, env=os.environ, home: Path | None = N
         main = launch.main_checkout(ledger.root, run=ledger.run)
     except launch.LaunchError:
         return ""
+    both = sorted(set(claude_state.loads_all(main, env, home)))
+    if len({name for _, name in both}) > 1:   # two marketplaces enabled: every seat loads two releases (item 5)
+        named = " and ".join(f"{name} ({plugin})" for plugin, name in both)
+        return (f"a seat raised now would load two releases of flotilla at once: {named}, both enabled for {main} - "
+                "turn one off in `enabledPlugins` (`false` in the project's .claude/settings.local.json for the "
+                "user's), then raise; or `--anyway` to raise it as it is")
     coming = claude_state.loads_in(main, env, home)
     if not coming or claude_state._version(coming) is None or claude_state._version(running) is None \
             or claude_state._version(coming) == claude_state._version(running):

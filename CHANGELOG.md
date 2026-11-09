@@ -32,6 +32,10 @@ of swap used.
   runs, read on the handed tip, reach the ledger; a detached HEAD anywhere else is still not, and says where it is.
 - **The revert guard's refusal names how to undo a throwaway probe**: write the file from its revision, `git show
   HEAD:<path> > <path>`. The guard refuses what it refused before.
+- **Which release a session loads follows `enabledPlugins`**, not any marketplace's install record: a stale
+  record of a marketplace the project turned off no longer reads as the release a seat would load (spawn refused
+  "one fleet on two releases" for it), and two enabled marketplaces on two releases are named as the double load
+  they are before a seat is raised.
 - **A booking's "since" is when it began to hold or to wait**, not its last journal line: the daemon writes a held
   run's ceiling every few seconds, and `flotilla lane`, the fair share and the start estimates read a run held for
   minutes as just started.
