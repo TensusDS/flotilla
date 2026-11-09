@@ -17,6 +17,15 @@ daemon. The findings the person took into work are fixed on their own branches; 
   a run admitted without waiting should say so, or the line went missing, was not checked. *(open, measure)*
 - **Claude Code `plugin update` keeps a stale cache of a same-version local plugin** (development setup, not
   flotilla): a reinstall was needed to load the changed code. Worth a line in the development notes. *(open, P)*
+- **Reconcile's line openings are kept by hand in three places** (`ledger/delivery.py` `reconcile` f-strings,
+  `ledger/commands.py` `LINE_OPENINGS` and `reconcile_exit`): a reworded line would make its branch appear twice in
+  the output, and no test feeds real reconcile lines through `_subject` (review of f762170, L3). One owner of the
+  openings, or a test over every line delivery produces. *(checked 2026-11-09 on lane/daemon: still P -
+  flotilla/ledger/commands.py `_subject`)*
+- **A directory marketplace loads from its folder, whatever the install record says** (`readFromFolder` in
+  `claude plugin list`; measured 2026-11-09 with `claude -p --debug`, Claude Code 2.1.319): `loads_all` reads the
+  record's version, so for a directory marketplace the release a seat loads can differ from the one named. Predates
+  item 5. *(open, measure - flotilla/core/claude_state.py `loads_all`)*
 
 ## From the field test of two demo fleets on one lane (2026-11-06, 0.29.3)
 

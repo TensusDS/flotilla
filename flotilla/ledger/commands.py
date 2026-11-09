@@ -441,7 +441,7 @@ def _subject(line: str) -> str:
     for opening in LINE_OPENINGS:
         if line.startswith(opening):
             rest = line[len(opening):].split()
-            return rest[0].rstrip(":,") if rest else ""
+            return rest[0].removesuffix(":") if rest else ""   # a comma is legal in a branch name
     return ""
 
 

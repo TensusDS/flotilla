@@ -749,3 +749,10 @@ def test_reconcile_reads_the_branch_each_line_is_about_not_any_word_in_it(tmp_pa
     monkeypatch.setattr(delivery, "reconcile", lambda ledger, actor: list(said))
     code, out = run_cli("work", "reconcile", "--root", str(root), "--as", "sender 1")
     assert "1 queued row with no word from origin yet: merge" in out, out
+
+
+def test_a_reconcile_lines_branch_keeps_a_comma_its_name_has():   # review of f762170, L2
+    from flotilla.ledger import commands
+    assert commands._subject("not yet feat,: the fetch failed") == "feat,"
+    assert commands._subject("shipped feat/x (green)") == "feat/x"
+    assert commands._subject("something else entirely") == ""
