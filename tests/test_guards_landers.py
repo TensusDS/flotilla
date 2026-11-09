@@ -627,3 +627,23 @@ def test_a_post_naming_a_newer_flotillas_move_does_not_close_every_push(tmp_path
     assert denied(ask(root, "git push origin HEAD:main", "sid-sender")) == ""
     why = denied(ask(root, "git push origin HEAD:main", "sid-main"))
     assert "may not land" in why and "does not know (teleport)" in why and "/flotilla:update" in why
+
+
+@pytest.mark.parametrize("spelled", ["Land", "land_v2"])
+def test_when_no_post_lands_because_a_move_is_unknown_the_push_is_closed_not_open(tmp_path, monkeypatch, spelled):
+    """Review of 372832d: "no post may land" reads as "no fleet to ask" and lets every push through. When the only
+    lander's landing move is one this flotilla does not know - a typo, or a newer flotilla's - who may land cannot be
+    told, and an unknown move must never grant more than an unreadable post did: every push stays closed."""
+    import re
+    root = fleet(tmp_path, monkeypatch)
+    path = root / ".flotilla" / "posts" / "sender.md"
+    text = path.read_text(encoding="utf-8")
+    path.write_text(re.sub(r"(?m)^(may: \[.*)\bland\b", rf"\g<1>{spelled}", text), encoding="utf-8")
+    assert spelled in path.read_text(encoding="utf-8")
+    git(root, "add", ".flotilla")
+    git(root, *IDENTITY, "commit", "-q", "-m", "the only lander's move misspelled")
+    git(root, "push", "-q", "origin", "main")
+    receipt(root, tmp_path / "state")
+    for session in ("sid-main", "sid-reviewer", "sid-sender"):
+        why = denied(ask(root, "git push origin HEAD:main", session))
+        assert "who may land could not be told" in why and spelled in why, (session, why)

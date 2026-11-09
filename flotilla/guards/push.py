@@ -575,6 +575,11 @@ def _may_not_land(root, where: OriginTrunk, who, run, *, hook: bool = False) -> 
     posts = _posts_at(root, where, run)
     landing = sorted(post.name for post in posts.values() if LAND in post.may)
     if not landing:
+        strange = sorted(f"`{post.name}`: {', '.join(post.unknown)}" for post in posts.values() if post.unknown)
+        if strange:   # a lander may be among the moves not read: never more open than an unreadable post (372832d)
+            raise Unknown(f"no post on origin's trunk may land, and posts name moves this flotilla does not know "
+                          f"({'; '.join(strange)}): a typo, or a newer flotilla's move - fix the post, or update this "
+                          "flotilla (`/flotilla:update`)")
         return ""
     rule = (f"only a session whose post may land ({', '.join(f'`{name}`' for name in landing)}) pushes to "
             f"`{where.trunk}` or a tag, or merges a pull request")

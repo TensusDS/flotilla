@@ -91,12 +91,12 @@ def test_receipt_then_hand(tmp_path, monkeypatch):
 def test_a_broken_post_file_refuses_by_name(tmp_path, monkeypatch):
     root = onboarded(tmp_path, monkeypatch, PLAIN)
     post = root / ".flotilla" / "posts" / "main.md"
-    post.write_text(post.read_text(encoding="utf-8").replace("may: [", "may: [merge, "), encoding="utf-8")
-    git(root, "add", ".flotilla")
+    post.write_text(post.read_text(encoding="utf-8").replace("{n}", "", 1), encoding="utf-8")   # an unknown
+    git(root, "add", ".flotilla")                                                     # move is read now (item 4)
     commit(root, "a broken post")
     git(root, "push", "-q", "origin", "main")
     code, out = run_cli("work", "claim", "feat/y", "--root", str(root), "--as", "main session 1")
-    assert code == 2 and "origin/main:.flotilla/posts/main.md" in out and "merge" in out
+    assert code == 2 and "origin/main:.flotilla/posts/main.md" in out and "name_pattern" in out
 
 
 def test_every_cli_call_in_the_post_templates_exists():
