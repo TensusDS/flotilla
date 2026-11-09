@@ -283,7 +283,7 @@ def test_a_seat_held_on_a_start_up_question_takes_no_memory_credit(tmp_path, mon
     ledger, fake, plain = held_seat_world(tmp_path, monkeypatch, counts={post: 1})
 
     def recommend(machine, *args, **kwargs):
-        raise _Seen(machine.live_seats)
+        raise _Seen(machine.live_seats, kwargs.get("orchestrator"))
     monkeypatch.setattr(sizing, "recommend", recommend)
     held = [s for s in fake.sessions if s.held_on is not None]
     running = [dataclasses.replace(s, held_on=None) for s in held]
@@ -291,5 +291,6 @@ def test_a_seat_held_on_a_start_up_question_takes_no_memory_credit(tmp_path, mon
     for census in (lambda: held, lambda: running):
         with pytest.raises(_Seen) as caught:
             sizing.gather(ledger, census=census, run=lambda *a, **kw: None)
-        seen.append(caught.value.args[0])
-    assert seen == [0, 1]
+        seen.append(caught.value.args)
+    leads = "background" if post == "orchestrator" else "none"   # a held orchestrator still leads (a0987ca)
+    assert seen == [(0, leads), (1, leads)]
