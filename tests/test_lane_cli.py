@@ -1066,3 +1066,33 @@ def test_lane_stop_refusal_names_the_session_not_a_holder(monkeypatch):
         code = commands._stop_run(argparse.Namespace(as_name="main session 1", booking=None))
     assert code == 2 and "no run or waiting booking in the lane is main session 1's" in out.getvalue()
     assert "ask its session" in out.getvalue() and "holder" not in out.getvalue()
+
+
+
+def test_lane_stop_signals_once_and_only_the_pid_it_vetted(monkeypatch):   # review of 6d92325: a security property
+    import argparse
+    import dataclasses
+    from flotilla.lane import book, commands
+    lane = _Racing(None)
+    lane.granted = dataclasses.replace(lane.waiting, state=book.HELD, pid=9999, mark="forged")   # rewritten by a peer
+    sent = []
+    monkeypatch.setattr(commands, "_lanes", lambda table: lane)
+    monkeypatch.setattr(commands, "_who", lambda as_name: "main session 9")
+    monkeypatch.setattr(commands.os, "kill", lambda pid, sig: sent.append((pid, sig)) or setattr(lane, "signalled", True))
+    monkeypatch.setattr(commands.time, "sleep", lambda s: None)
+    with redirect_stdout(io.StringIO()):
+        commands._stop_run(argparse.Namespace(as_name="main session 9", booking=None))
+    import signal
+    assert sent == [(4242, signal.SIGTERM)]
+
+
+def test_lane_stop_words_a_withdrawal_by_where_the_booking_ended(monkeypatch):   # review of 6d92325
+    import dataclasses
+    from flotilla.lane import book
+    waiting = _Racing(None).waiting
+    # granted in the instant before the client's leave, which wrote LEFT over it: nothing ran
+    code, out, _lane = _stop_racing(monkeypatch, dataclasses.replace(waiting, state=book.LEFT))
+    assert code == 0 and "withdrew" in out and "granted" not in out, out
+    # granted and run, then stopped: it did start
+    code, out, _lane = _stop_racing(monkeypatch, dataclasses.replace(waiting, state=book.RELEASED))
+    assert code == 0 and "stopped b2" in out and "granted as the stop landed" in out and "never" not in out, out

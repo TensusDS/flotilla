@@ -729,35 +729,32 @@ def _stop_run(args) -> int:
         print(f"{item.id}'s process is already gone; `flotilla lane sweep` clears the booking")
         return 0
     os.kill(item.pid, signal.SIGTERM)   # the run stops its command's whole group and releases the lane itself
-    granted = ""
-    if item.state == book.WAITING:
-        for _ in range(100):
-            now = lanes.bookings().get(item.id)
-            if now is not None and now.state == book.HELD:
-                # granted as the stop landed: a run stops as any holder does; a take by hand has handed its booking
-                # to nobody's process, and only a release frees it (review of f50bcd7)
-                if now.pid is None:
-                    print(f"{item.id} was granted by hand as the stop landed: its `lane take` ended, and the lane "
-                          f"stays booked until `flotilla lane release`")
-                    return 1
-                granted = " (granted as the stop landed)"
-                break
-            if now is None or now.state != book.WAITING or not lanes.live(item):
-                print(f"withdrew {item.id} ({item.note or 'no note'}) from the line: it never started")
-                return 0
-            time.sleep(0.1)
-        else:
-            print(f"sent the stop to {item.id} (pid {item.pid}); it is still in line after 10 s - `flotilla lane` "
-                  "shows it")
-            return 1
-    for _ in range(100):
+    for _ in range(100):   # the only signal: to the pid vetted above, never to one a later record names
         if not lanes.live(item):
-            print(f"stopped {item.id} ({item.note or 'no note'}){granted} with everything it started: a `lane run` "
-                  "is recorded as killed, with no verdict; a receipt issues none")
-            return 0
+            break
         time.sleep(0.1)
-    print(f"sent the stop to {item.id} (pid {item.pid}); it has not ended within 10 s - `flotilla lane` shows it")
-    return 1
+    else:
+        now = lanes.bookings().get(item.id)
+        where = "it is still in line" if now is not None and now.state == book.WAITING else "it has not ended"
+        print(f"sent the stop to {item.id} (pid {item.pid}); {where} after 10 s - `flotilla lane` shows it")
+        return 1
+    # worded by where the booking ended once its process is gone, never by a state passed on the way: a waiting
+    # client leaves the line even over a grant that landed in the same instant (review of 6d92325)
+    now = lanes.bookings().get(item.id)
+    if item.state == book.WAITING:
+        if now is not None and now.state == book.HELD and now.pid is None:
+            print(f"{item.id} was granted by hand as the stop landed: its `lane take` ended, and the lane stays "
+                  "booked until `flotilla lane release`")
+            return 1
+        if now is None or now.state in (book.LEFT, book.EXPIRED, book.WAITING):
+            print(f"withdrew {item.id} ({item.note or 'no note'}) from the line: it never started")
+            return 0
+        granted = " (granted as the stop landed)"
+    else:
+        granted = ""
+    print(f"stopped {item.id} ({item.note or 'no note'}){granted} with everything it started: a `lane run` "
+          "is recorded as killed, with no verdict; a receipt issues none")
+    return 0
 
 
 def _daemon(args) -> int:
