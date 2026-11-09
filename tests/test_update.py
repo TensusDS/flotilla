@@ -334,9 +334,25 @@ def test_a_deferral_on_the_user_copy_ends_when_the_user_install_is_updated(tmp_p
 def test_a_deferral_is_not_said_once_the_project_loads_the_release(tmp_path):
     m = Machine(tmp_path)
     a = m.project("a")
+    m.records.insert(0, m.records.pop())   # the project's install recorded first: that is the copy its sessions load
+    m.write_records()
     update._write_deferrals(m.state, {str(a): {"to": "0.29.0", "at": "2026-11-05T12:00:00+00:00"}})
     assert update.deferred(m.state, a, env=m.env)
-    m.records[-1]["version"] = "0.29.0"          # Claude Code's automatic update moved it
+    m.records[0]["version"] = "0.29.0"          # Claude Code's automatic update moved it
+    m.write_records()
+    assert update.deferred(m.state, a, env=m.env) == ""
+
+
+def test_a_deferral_stays_while_the_project_rides_the_users_copy(tmp_path):   # review of 7e6a9b8, F1
+    # the user's install recorded first loads in the project too (measured, Claude Code 2.1.319): its own record
+    # moving does not move what its sessions run
+    m = Machine(tmp_path)
+    a = m.project("a")
+    update._write_deferrals(m.state, {str(a): {"to": "0.29.0", "at": "2026-11-05T12:00:00+00:00"}})
+    m.records[-1]["version"] = "0.29.0"
+    m.write_records()
+    assert update.deferred(m.state, a, env=m.env)
+    m.records[0]["version"] = "0.29.0"
     m.write_records()
     assert update.deferred(m.state, a, env=m.env) == ""
 
@@ -387,3 +403,15 @@ def test_a_seat_raised_after_the_plan_was_shown_changes_the_mark(tmp_path):
     first = update.plan(m.report(), stop={a})
     m.sessions.append(session("a-main session 2", a, short="s9"))
     assert update.plan(m.report(), stop={a}).mark != first.mark
+
+
+def test_a_deferred_fleet_riding_the_users_copy_holds_it_though_it_has_a_record_of_its_own(tmp_path):   # 7e6a9b8 F1
+    # its own install recorded after the user's: its sessions load the user's copy (measured), so updating that copy
+    # would move the fleet the person asked to leave alone
+    m = Machine(tmp_path)
+    a = m.project("a")
+    m.sessions = [session("a-main session 1", a)]
+    rep = m.report()
+    assert [fleet.on_user_copy for fleet in rep.fleets] == [True]
+    chosen = update.plan(rep, defer={a})
+    assert not any(item.scope == "user" for item in chosen.updates)

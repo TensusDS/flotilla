@@ -159,3 +159,16 @@ def test_with_two_releases_loading_the_older_is_what_every_copy_has_reached(mach
     enable(config / "settings.json", flotilla__flotilla=True)
     enable(ledger.root / ".claude" / "settings.json", flotilla__flotilla_local=True)
     assert claude_state.loads_in(ledger.root, env) == "0.30.1"
+
+
+def test_the_first_record_that_applies_here_is_the_one_that_loads(machine):   # review of 7e6a9b8, F1
+    # measured with `claude -p --debug` (Claude Code 2.1.319): the first record in the id's list that is the user's
+    # or this path's loads, whatever its scope; `claude plugin install` appends, so a user install made first wins
+    from flotilla.core import claude_state
+    ledger, config, env = machine
+    records(config, install("user", "0.29.0"), install("project", "0.30.0", ledger.root))
+    assert claude_state.loads_in(ledger.root, env) == "0.29.0"
+    assert REAL(ledger, running="0.29.0", env=env) == ""
+    records(config, install("project", "0.30.0", "/another/clone"), install("local", "0.30.1", ledger.root),
+            install("project", "0.30.0", ledger.root))
+    assert claude_state.loads_in(ledger.root, env) == "0.30.1"

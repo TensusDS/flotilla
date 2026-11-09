@@ -36,6 +36,10 @@ of swap used.
   record of a marketplace the project turned off no longer reads as the release a seat would load (spawn refused
   "one fleet on two releases" for it), and two enabled marketplaces on two releases are named as the double load
   they are before a seat is raised.
+- **The copy a session loads is the first install record that applies to it**, the user's or its own, whatever
+  the scope - measured with Claude Code 2.1.319. A project that installed flotilla after the user did runs the
+  user's copy: spawn no longer asks for a restart that would change nothing, and `/flotilla:update` holds the
+  user's copy for a deferred fleet that rides it, though the project has an install record of its own.
 - **A booking's "since" is when it began to hold or to wait**, not its last journal line: the daemon writes a held
   run's ceiling every few seconds, and `flotilla lane`, the fair share and the start estimates read a run held for
   minutes as just started.
