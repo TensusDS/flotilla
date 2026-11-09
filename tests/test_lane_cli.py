@@ -69,6 +69,31 @@ def test_a_run_for_a_branch_records_its_result_on_the_row(tmp_path, monkeypatch)
     assert "held: nobody" in run_cli("lane", "--root", str(root))[1]
 
 
+def test_a_run_on_the_branchs_tip_detached_records_its_result_on_the_row(tmp_path, monkeypatch):
+    """Field test of 2026-11-07..08, item 8: a reviewer reads on a detached HEAD, and `lane run --for <branch>` there
+    answered "not recorded: the tree is on HEAD" - the reviewer's runs never reached the row. A detached HEAD at the
+    branch's own tip is that branch's result; anywhere else it is still not."""
+    root = onboarded(tmp_path, monkeypatch)
+    git(root, "checkout", "-q", "-b", "feat/x")
+    assert run_cli("work", "claim", "feat/x", "--root", str(root), "--as", "main session 1")[0] == 0
+    git(root, "checkout", "-q", "--detach", "feat/x")
+    code, out = run_cli("lane", "run", "--for", "feat/x", "--tree", str(root), "--as", "main session 1", "--",
+                        sys.executable, "-c", "print('===== 3 passed in 0.10s =====')")
+    assert code == 0 and "not recorded" not in out, out
+    assert "last run: green: 3 passed in 0.10s" in run_cli("status", "--root", str(root))[1]
+
+
+def test_a_run_detached_off_the_branchs_tip_is_not_recorded_and_says_where_it_is(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    git(root, "checkout", "-q", "-b", "feat/x")
+    assert run_cli("work", "claim", "feat/x", "--root", str(root), "--as", "main session 1")[0] == 0
+    git(root, "checkout", "-q", "--detach", "main")
+    commit(root, "elsewhere", "other.txt")
+    code, out = run_cli("lane", "run", "--for", "feat/x", "--tree", str(root), "--as", "main session 1", "--",
+                        sys.executable, "-c", "print('===== 3 passed in 0.10s =====')")
+    assert "not recorded on the ledger" in out and "not the tip of feat/x" in out, out
+
+
 def test_a_killed_run_exits_non_zero_and_says_so(tmp_path, monkeypatch):
     root = onboarded(tmp_path, monkeypatch)
     code, out = run_cli("lane", "run", "--tree", str(root), "--as", "main session 1", "--", sys.executable, "-c",

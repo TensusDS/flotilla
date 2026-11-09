@@ -639,7 +639,13 @@ def _where(tree: Path) -> tuple[str, str, bool | None]:
 def _record(args, result, where, started: str) -> None:
     from flotilla.ledger.commands import open_ledger
     branch, revision, clean = where
-    if branch != args.for_:
+    if branch == "HEAD" and revision:   # detached, as a reviewer reads: the branch's own tip is that branch's result
+        tip = gitq.branch_tip(Path(args.tree), args.for_)
+        if tip != revision:
+            print(f"note: the run was not recorded on the ledger: HEAD is detached at {revision[:7]}, not the tip of "
+                  f"{args.for_} ({tip[:7] if tip else 'no such branch here'}), so the result is not about that branch")
+            return
+    elif branch != args.for_:
         print(f"note: the run was not recorded on the ledger: the tree is on {branch or 'no branch'}, not "
               f"{args.for_}, so the result is not about that branch")
         return
