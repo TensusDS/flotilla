@@ -6,3 +6,7 @@ uv.lock
 
 # field-test reports: kept outside the repository (they name the projects they ran on)
 docs/field-tests/
+
+# the maintainer's own notes: handoffs, field notes, discussions and ideas that are no use to a user
+/local/
+CLAUDE.local.md

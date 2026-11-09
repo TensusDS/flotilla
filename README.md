@@ -900,8 +900,9 @@ python3 tools/check_version.py                                                  
 claude plugin validate .                                                           # the manifest
 ```
 
-The design is in `docs/specs/2026-09-22-flotilla-design.md`; every decision since, with its reason, is in
-`docs/specs/2026-09-22-decisions-log.md`.
+What each check is for, the rules every change keeps, how a release is made and how to try a change in a real
+Claude Code: [docs/development.md](docs/development.md). The design is in `docs/specs/2026-09-22-flotilla-design.md`;
+every decision since, with its reason, is in `docs/specs/2026-09-22-decisions-log.md`.
 
 ## Support, privacy and security
 
