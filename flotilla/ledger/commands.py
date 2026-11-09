@@ -432,17 +432,25 @@ def _broke(ledger, caller, args) -> tuple[Row, str]:
                     f"`flotilla tree switch {fix.branch}`")
 
 
-def _nothing_to_reconcile(ledger) -> str:
-    """What an empty reconcile means: a queued row not yet on origin is no line of its own in direct mode, and
-    "nothing is queued" would deny a row `work show` lists (field test of 2026-11-08, item 9)."""
-    waiting = sorted(row.branch for row in ledger.rows().values() if row.is_open and row.state in ("queued", "landed"))
-    if not waiting:
-        return "nothing is queued or landed"
-    rows = "row" if len(waiting) == 1 else "rows"
+def _unsaid_by_reconcile(ledger, lines: list[str]) -> str:
+    """The open rows reconcile has no line for, named by their state, or "": a queued row origin has said nothing of
+    yet is no line of reconcile's in direct mode, and a bare "nothing is queued" denied a row `work show` lists (field
+    test of 2026-11-08, item 9; review of 70f59d9). A local ledger asks no origin for any row."""
+    named = {word.strip(":,()") for line in lines for word in line.split()}
+    open_rows = [row for row in ledger.rows().values() if row.is_open and row.state in ("queued", "landed")
+                 and row.branch not in named]
+    if not open_rows:
+        return ""
+    queued = sorted(row.branch for row in open_rows if row.state == "queued")
+    landed = sorted(row.branch for row in open_rows if row.state == "landed")
     if ledger.mode == "local":
-        return f"{len(waiting)} {rows} queued: {', '.join(waiting)} - a local ledger asks no origin"
-    return (f"{len(waiting)} {rows} queued and not yet on origin: {', '.join(waiting)} - nothing to ship until the "
-            "sender pushes")
+        parts = ([f"queued: {', '.join(queued)}"] if queued else []) + (
+            [f"landed: {', '.join(landed)} (delivered - its owner closes it)"] if landed else [])
+        return "a local ledger asks no origin; " + "; ".join(parts)
+    if not queued:
+        return ""
+    rows = "row" if len(queued) == 1 else "rows"
+    return f"{len(queued)} queued {rows} with no word from origin yet: {', '.join(queued)} - nothing to ship there yet"
 
 
 def reconcile_exit(lines: list[str]) -> int:
@@ -598,7 +606,8 @@ def run_ledger_command(args) -> int:
         before = ledger.rows()
         if args.command == "work" and args.move == "reconcile":
             lines = delivery.reconcile(ledger, caller)
-            print("\n".join(lines) if lines else _nothing_to_reconcile(ledger))
+            said = _unsaid_by_reconcile(ledger, lines)
+            print("\n".join([*lines, *([said] if said else [])]) or "nothing is queued or landed")
             shipped = [line.split()[1] for line in lines if line.startswith("shipped ")]
             if shipped:
                 from flotilla.gc import due

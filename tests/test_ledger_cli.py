@@ -700,18 +700,42 @@ def test_receipt_show_judges_a_revision_by_its_own_profile(tmp_path, monkeypatch
     assert code != 2 and "refused:" not in out and "no handover receipt over" in out, out
 
 
+def _handed_and_queued(tmp_path, monkeypatch, profile, branch="feat/x"):
+    root = onboarded(tmp_path, monkeypatch, profile)
+    tree = tmp_path / f"app-{branch.replace('/', '-')}"
+    assert run_cli("tree", "cut", branch, "--tree", str(tree), "--root", str(root), "--as", "main session 1")[0] == 0
+    tip = commit(tree, "work", f"{branch.replace('/', '-')}.txt")
+    assert run_cli("work", "hand", branch, "--root", str(tree), "--as", "main session 1")[0] == 0
+    assert run_cli("work", "take", branch, "--root", str(root), "--as", "review session 1")[0] == 0
+    assert run_cli("work", "accept", branch, "--reviewed", tip[:8], "--root", str(root),
+                   "--as", "review session 1")[0] == 0
+    assert run_cli("work", "queue", branch, "--root", str(root), "--as", "sender 1")[0] == 0
+    return root
+
+
 def test_reconcile_with_a_queued_row_not_pushed_does_not_say_nothing_is_queued(tmp_path, monkeypatch):
     """Field test of 2026-11-07..08, item 9: reconcile printed "nothing is queued or landed" while `work show` had a
     row queued - a direct-mode row not yet on origin is no line of reconcile's, but it is queued."""
-    root = onboarded(tmp_path, monkeypatch, DIRECT_PLAIN)
-    tree = tmp_path / "app-main-1"
-    assert run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")[0] == 0
-    tip = commit(tree, "work", "work.txt")
-    assert run_cli("work", "hand", "feat/x", "--root", str(tree), "--as", "main session 1")[0] == 0
-    assert run_cli("work", "take", "feat/x", "--root", str(root), "--as", "review session 1")[0] == 0
-    assert run_cli("work", "accept", "feat/x", "--reviewed", tip[:8], "--root", str(root),
-                   "--as", "review session 1")[0] == 0
-    assert run_cli("work", "queue", "feat/x", "--root", str(root), "--as", "sender 1")[0] == 0
+    root = _handed_and_queued(tmp_path, monkeypatch, DIRECT_PLAIN)
     code, out = run_cli("work", "reconcile", "--root", str(root), "--as", "sender 1")
     assert code == 0 and "nothing is queued or landed" not in out
-    assert "1 row queued and not yet on origin: feat/x" in out, out
+    assert "1 queued row with no word from origin yet: feat/x" in out, out
+
+
+def test_reconcile_names_a_quiet_queued_row_beside_the_lines_it_prints(tmp_path, monkeypatch):   # review of 70f59d9
+    from flotilla.ledger import delivery
+    root = _handed_and_queued(tmp_path, monkeypatch, DIRECT_PLAIN)
+    monkeypatch.setattr(delivery, "reconcile", lambda ledger, actor: ["shipped feat/other (green)"])
+    code, out = run_cli("work", "reconcile", "--root", str(root), "--as", "sender 1")
+    assert "shipped feat/other" in out and "1 queued row with no word from origin yet: feat/x" in out, out
+    monkeypatch.setattr(delivery, "reconcile", lambda ledger, actor: ["not yet feat/x: the fetch failed"])
+    code, out = run_cli("work", "reconcile", "--root", str(root), "--as", "sender 1")
+    assert "no word from origin" not in out, out   # reconcile said it already
+
+
+def test_a_local_ledgers_landed_row_is_not_called_queued(tmp_path, monkeypatch):   # review of 70f59d9
+    root = _handed_and_queued(tmp_path, monkeypatch, {**PLAIN, "flow": {"mode": "local"}})
+    merge(root, "feat/x")
+    assert run_cli("work", "land", "feat/x", "--root", str(root), "--as", "sender 1")[0] == 0
+    code, out = run_cli("work", "reconcile", "--root", str(root), "--as", "sender 1")
+    assert code == 0 and "queued" not in out and "landed: feat/x" in out and "asks no origin" in out, out
