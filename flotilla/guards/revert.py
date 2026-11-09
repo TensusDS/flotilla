@@ -192,22 +192,13 @@ def _at_risk(kind, detail, index_saves, directory, run) -> list[str] | None:
     return [line for line in done.stdout.splitlines() if line.strip()]
 
 
-#: How to set a throwaway change - a probe, an injected regression - aside without a form that loses anything: the
-#: stash keeps it, `git stash pop` brings it back, and no path or redirect is spelled out (field test of 2026-11-08,
-#: item 10; review of 3560cbc: a `git show HEAD:<path> > <path>` hint emptied a file absent from HEAD, wrote HEAD
-#: over staged work, and turned a quoted name into a junk file).
-PROBE = ("; a change made only to be thrown away (a probe) is set aside with nothing lost by "
-         "`git stash push -- <path>` (`git stash pop` brings it back, `git stash drop` discards it)")
-
-
 def _fix(kind, index_saves) -> str:
-    probe = PROBE if kind == "paths" else ""
     if kind == "paths" and index_saves:
         return ("`git add` those files first: the index becomes the save point, and the same command then reverts "
-                "only what changed after it" + probe)
+                "only what changed after it")
     if kind == "untracked":
         return "move them, add them, or `git stash push --include-untracked`, before cleaning"
-    return "this form overwrites the index too, so `git add` saves nothing: commit, or `git stash`, first" + probe
+    return "this form overwrites the index too, so `git add` saves nothing: commit, or `git stash`, first"
 
 
 def check(segment, run=subprocess.run) -> Finding | None:

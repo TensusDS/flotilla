@@ -32,8 +32,6 @@ of swap used.
 - **A `lane run --for <branch>` on a detached HEAD at that branch's tip is recorded on its row**, so a reviewer
   reading the branch's current tip detached has its runs reach the ledger; a detached HEAD anywhere else - an older
   tip included - is still not, and says where it is.
-- **The revert guard's refusal names how to set a throwaway probe aside with nothing lost**: `git stash push --
-  <path>`, which `git stash pop` brings back. The guard refuses what it refused before.
 - **Which release a session loads follows `enabledPlugins`**, not any marketplace's install record: a stale
   record of a marketplace the project turned off no longer reads as the release a seat would load (spawn refused
   "one fleet on two releases" for it), and two enabled marketplaces on two releases are named as the double load
