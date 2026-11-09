@@ -221,6 +221,11 @@ def test_lane_stop_withdraws_the_callers_own_waiting_booking(tmp_path, monkeypat
         assert code == 0 and "withdrew" in out, out
         waiter.communicate(timeout=20)
         assert waiter.returncode != 0
+        from flotilla.core.storage import LocalLogStore
+        from flotilla.lane import book
+        journal = book.fold(LocalLogStore(tmp_path / "state" / "lane").read(book.KEY).records)   # no sweep here
+        left = [item for item in journal.values() if item.who == "main session 9"]
+        assert [item.state for item in left] == [book.LEFT], left   # the client left the line itself
         status = run_cli("lane", "--root", str(root))[1]
         assert "main session 9" not in status and "main session 7" in status, status
     finally:
@@ -953,3 +958,86 @@ def test_an_estimate_names_both_memory_figures_when_they_differ():   # item 11 o
     item = book.Booking(id="w", ladder=ladder, project="p")
     line = commands.describe_estimate(item, estimate.history(done, now=now))
     assert line == "estimate: 20 s, 1 cores, up to 3.5 GB, usually 220 MB (5 runs (exact match))"
+
+
+
+class _Racing:
+    """A lane whose waiting booking is granted as the stop lands (review of f50bcd7)."""
+    def __init__(self, granted):
+        from flotilla.lane import book
+        self.waiting = book.Booking(id="b2", state=book.WAITING, who="main session 9", pid=4242, mark="m",
+                                    note="suite")
+        self.granted, self.reads, self.signalled, self.looks = granted, 0, False, 0
+
+    def bookings(self):
+        self.reads += 1
+        return {"b2": self.granted if self.signalled else self.waiting}
+
+    def holders(self, found=None):
+        return [item for item in (found or self.bookings()).values() if item.state == "held"]
+
+    def waiters(self, found=None):
+        return [item for item in (found or self.bookings()).values() if item.state == "waiting"]
+
+    def live(self, item):   # alive for two looks after the signal, then gone
+        self.looks += self.signalled
+        return self.looks <= 2
+
+
+def _stop_racing(monkeypatch, granted):
+    import argparse
+    from flotilla.lane import commands
+    lane = _Racing(granted)
+    monkeypatch.setattr(commands, "_lanes", lambda table: lane)
+    monkeypatch.setattr(commands, "_who", lambda as_name: "main session 9")
+    monkeypatch.setattr(commands.os, "kill", lambda pid, sig: setattr(lane, "signalled", True))
+    monkeypatch.setattr(commands.time, "sleep", lambda s: None)
+    out = io.StringIO()
+    with redirect_stdout(out):
+        code = commands._stop_run(argparse.Namespace(as_name="main session 9", booking=None))
+    return code, out.getvalue(), lane
+
+
+def test_lane_stop_of_a_booking_granted_as_it_lands_stops_the_run_and_says_it_started(monkeypatch):
+    import dataclasses
+    from flotilla.lane import book
+    code, out, _lane = _stop_racing(monkeypatch, None)
+    assert code == 0 and "withdrew" in out   # the line was left: nothing else happened
+    code, out, _lane = _stop_racing(monkeypatch, dataclasses.replace(_Racing(None).waiting, state=book.HELD))
+    assert code == 0 and "never started" not in out and "stopped b2" in out and "granted" in out, out
+
+
+def test_lane_stop_of_a_booking_granted_by_hand_as_it_lands_names_the_release(monkeypatch):
+    import dataclasses
+    from flotilla.lane import book
+    by_hand = dataclasses.replace(_Racing(None).waiting, state=book.HELD, pid=None, mark="")
+    code, out, _lane = _stop_racing(monkeypatch, by_hand)
+    assert code == 1 and "flotilla lane release" in out and "never started" not in out, out
+
+
+def test_lane_stop_reads_the_journal_once_to_find_the_booking(monkeypatch):
+    code, _out, lane = _stop_racing(monkeypatch, None)
+    assert code == 0 and lane.reads >= 1
+    # holders and waiters come from one read: a grant between two reads would hide the booking from both
+    import argparse
+    from flotilla.lane import commands
+    counted = _Racing(None)
+    monkeypatch.setattr(commands, "_lanes", lambda table: counted)
+    monkeypatch.setattr(commands.os, "kill", lambda pid, sig: None)
+    monkeypatch.setattr(counted, "live", lambda item: False)
+    with redirect_stdout(io.StringIO()):
+        commands._stop_run(argparse.Namespace(as_name="main session 9", booking=None))
+    assert counted.reads == 1
+
+
+def test_lane_stop_refusal_names_the_session_not_a_holder(monkeypatch):
+    import argparse
+    from flotilla.lane import commands
+    lane = _Racing(None)
+    monkeypatch.setattr(commands, "_lanes", lambda table: lane)
+    monkeypatch.setattr(commands, "_who", lambda as_name: "main session 1")
+    out = io.StringIO()
+    with redirect_stdout(out):
+        code = commands._stop_run(argparse.Namespace(as_name="main session 1", booking=None))
+    assert code == 2 and "no run or waiting booking in the lane is main session 1's" in out.getvalue()
+    assert "ask its session" in out.getvalue() and "holder" not in out.getvalue()
