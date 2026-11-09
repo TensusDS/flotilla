@@ -239,3 +239,26 @@ def test_a_squeeze_ends_in_the_daemons_record_though_the_journal_says_it_ended(l
     clock.t = 30.0
     actions, _picture = sched.step()
     assert item.id in actions.restored and item.id not in sched.squeezed
+
+
+
+def test_a_run_whose_group_does_not_read_the_decided_ceiling_is_not_bound(lane, monkeypatch):   # third review of B
+    from flotilla.lane import tick as tick_module
+    lanes, sched, clock, fake, values = lane
+    item = lanes.enqueue("w", "", pid=11, mark="m")
+    sched.step()   # admitted, with the start ceiling this daemon decided
+    unit = f"flotilla-lane-{item.id}-11-1.scope"
+    lanes.scoped(item.id, unit)
+    fake.found[(unit, item.id)] = Path("/g")
+    seen = []
+    real = tick_module.tick
+    monkeypatch.setattr(tick_module, "tick", lambda runs, machine: seen.append(runs) or real(runs, machine))
+    start = policy.start_ceiling(admission.DEFAULT_MB)
+    fake.readings[Path("/g")] = reading(100, high=start)
+    clock.t = 2.0
+    sched.step()
+    fake.readings[Path("/g")] = reading(100, high=None)   # the write did not hold: nothing bounds it now
+    clock.t = 4.0
+    sched.step()
+    bound = [next(r for r in runs if r.id == item.id).bound for runs in seen]
+    assert bound == [True, False]

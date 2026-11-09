@@ -179,8 +179,8 @@ def test_lane_stop_stops_the_holders_own_run(tmp_path, monkeypatch):
     runner = subprocess.Popen([sys.executable, cli_path, "lane", "run", "--tree", str(root), "--as", "main session 7",
                                "--", sys.executable, "-c", "import time; time.sleep(60)"], env=env,
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    for _ in range(100):
-        if "main session 7" in run_cli("lane", "--root", str(root))[1]:
+    for _ in range(100):   # holding, not still waiting: a waiting booking is withdrawn, not stopped (f50bcd7)
+        if "main session 7" in run_cli("lane", "--root", str(root))[1].split("waiting:", 1)[0]:
             break
         time.sleep(0.1)
     code, out = run_cli("lane", "stop", "--root", str(root), "--as", "main session 8")
@@ -208,7 +208,7 @@ def test_lane_stop_withdraws_the_callers_own_waiting_booking(tmp_path, monkeypat
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     holder = lane_run("main session 7")
     for _ in range(100):
-        if "main session 7" in run_cli("lane", "--root", str(root))[1]:
+        if "main session 7" in run_cli("lane", "--root", str(root))[1].split("waiting:", 1)[0]:
             break
         time.sleep(0.1)
     waiter = lane_run("main session 9")

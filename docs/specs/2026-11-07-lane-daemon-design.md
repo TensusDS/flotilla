@@ -128,7 +128,9 @@ while it waits, as today.
 **Free room**, used everywhere below: `room = MemAvailable - floor - Σ(ceiling - used) of capped runs - reservations`
 - what is left once every ceiling's unused headroom is counted as promised. A run with no scope has no ceiling that
 binds, so the memory it was admitted by - pinned in the journal at its start, since the estimate moves as runs end
-- stays promised instead (`max(ceiling, admitted) - used`). In a run's first half-minute the view reserves
+- and its slack stay promised instead (`max(ceiling, admitted + slack) - used`), as a start ceiling at that figure
+would; so does a run whose group does not read back the ceiling the daemon decided (a write that failed, a file set
+back): it is held by nothing. In a run's first half-minute the view reserves
 `admitted - tree` for it (its process tree, wrapper included); a ceiling's headroom counts only beyond that
 reservation, and the run may grow into the part of it its headroom does not cover without taking the room *(reviews
 of option B, 2026-11-08 and 09)*.
@@ -145,6 +147,10 @@ its grace included). A started run gets a ceiling at once (b).
   tier on a small row and on a big one - and a ceiling at the largest peak promised every light run the heavy one's
   memory; three such runs read the lane as full while 8 GB stood free. A command with no measured median - a fixed
   prior, the first-run default - starts at the figure it was admitted by.)*
+  *The price, named:* after its first half-minute a run no longer holds its largest peak in reserve. One that grows
+  later into no room is held at its ceiling and, pressed, is frozen or has lower runs frozen for it (c). **On a
+  machine with no swap that step never fires** - pressed is read from pages faulted back from swap, and a frozen
+  run's memory stays in RAM - so such a run waits at its ceiling until another run ends (third review of option B).
 - **growth**: a run is **at its ceiling** when its group's `memory.events` "high" counter rose since the last tick
   (the kernel throttled it - an instant signal, unlike the 10 s pressure average). A run at its ceiling gets more
   **whenever there is room**, hot or cold: up to doubling its ceiling per tick, in priority order, until room is

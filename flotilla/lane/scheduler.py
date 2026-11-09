@@ -132,9 +132,12 @@ class Scheduler:
             ceiling = self.ceilings.get(run.id) if item.state == book.HELD else None
             seen = self.history.run(now, run.id, reading, ceiling) if item.state == book.HELD else {}
             frozen = item.frozen == "frozen"
+            # a ceiling decided and not read back - a write that failed, a file set back - holds nothing
+            bound = ceiling is None or (reading is not None and reading.high_mb is not None
+                                        and abs(reading.high_mb - ceiling) <= 1)
             enriched.append(dataclasses.replace(
                 run, mem_mb=reading.current_mb if reading is not None and run.state != policy.WAITING else run.mem_mb,
-                ceiling_mb=ceiling, scoped=path is not None, at_ceiling=seen.get("at_ceiling", False),
+                ceiling_mb=ceiling, scoped=path is not None, bound=bound, at_ceiling=seen.get("at_ceiling", False),
                 pressure=seen.get("pressure"), pressed_s=seen.get("pressed_s", 0.0), grew_mb=seen.get("grew_mb", 0),
                 peak_mb=seen.get("peak_mb", 0), squeezed=run.id in self.squeezed,
                 cause=item.order_cause or (policy.WAITER if item.order_by else ""),

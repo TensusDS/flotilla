@@ -66,6 +66,7 @@ class Run:
     admitted_mb: int = 0        # running: the memory it was admitted by, pinned at its start - promised while no
                                 # ceiling holds it
     reserved_mb: int = 0        # running, first half-minute: what the view reserved for it (admitted less its tree)
+    bound: bool = True          # its group reads the ceiling the daemon decided: a ceiling really holds it
     # what the lane daemon reads of a run's group and keeps between its ticks (lane daemon design, 4.3)
     ceiling_mb: int | None = None   # its soft ceiling (memory.high); None: none
     scoped: bool = False            # its group was found: a ceiling can be set and read
@@ -163,7 +164,9 @@ def promised(r: Run, ceiling: int | None) -> int:
     tree; only what the headroom holds beyond that counts again (second review, important 1)."""
     if r.state not in (RUNNING, ORDERED):
         return 0
-    top = ceiling if r.scoped else max(ceiling or 0, r.admitted_mb)
+    held = r.scoped and r.bound   # a group whose write did not hold is held by nothing (third review of option B)
+    admitted = r.admitted_mb + slack(r.admitted_mb) if r.admitted_mb else 0   # as its start ceiling at that figure was
+    top = ceiling if held else max(ceiling or 0, admitted)
     if top is None:
         return 0
     return max(0, top - r.mem_mb - r.reserved_mb)

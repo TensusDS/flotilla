@@ -309,3 +309,21 @@ def test_a_negative_floor_is_no_floor():   # fix review R9
 def test_the_heavy_share_is_named_only_when_it_and_not_the_room_holds_a_heavy_run_back():   # review of B, finding 4
     d = decide([run("h", RUNNING, 4000, True, 2), run("b2", WAITING, 3500, True, 2)], machine(free=1000), "b2")
     assert "1000 MB of room" in d.why and "for heavy runs" not in d.why
+
+
+
+def test_a_run_no_ceiling_holds_keeps_its_admitted_memory_and_the_slack_promised():   # third review of B, 1 and 2
+    from flotilla.lane import policy
+    unscoped = run("a", RUNNING, 300, ceiling_mb=512, admitted_mb=4000, scoped=False, since_start_s=600)
+    assert policy.promised(unscoped, 512) == 4000 + policy.slack(4000) - 300
+    unbound = run("a", RUNNING, 300, ceiling_mb=512, admitted_mb=4000, scoped=True, bound=False, since_start_s=600)
+    assert policy.promised(unbound, 512) == 4000 + policy.slack(4000) - 300
+    by_hand = run("h", RUNNING, 300, scoped=False, since_start_s=600)   # nothing admitted it by a figure
+    assert policy.promised(by_hand, None) == 0
+
+
+def test_a_ceilings_headroom_is_promised_beyond_the_views_own_reservation():   # third review of B, finding 4
+    from flotilla.lane import policy
+    # first half-minute: the view reserved 300 (admitted 3600 less a tree of 3300); the group reads 300
+    r = run("a", RUNNING, 300, ceiling_mb=3000, admitted_mb=3600, reserved_mb=300, scoped=True, since_start_s=10)
+    assert policy.promised(r, 3000) == 3000 - 300 - 300
