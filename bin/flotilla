@@ -8,12 +8,15 @@ import sys
 MINIMUM = (3, 11)
 #: flotilla.guards.PUSH_WORDS, for a guard hook that fails before flotilla can be imported (a test keeps them equal)
 PUSH_WORDS = ("push", "gh")
+#: flotilla.guards.PERSON_WORDS, kept equal the same way
+PERSON_WORDS = ("approve", "rig", "attention")
 
 
 def guard_answer(data, why):
     """The guard hook's answer when flotilla itself cannot judge: a command that may push is refused, unless the
-    gate was overridden knowingly; anything else runs, and the session is told. A message on stdout alone, or an
-    exit code, is no refusal to Claude Code (review of 0.7.9)."""
+    gate was overridden knowingly, in the environment - the command's own text waives nothing that was not judged;
+    a line that may hold a move only the person makes is put to the person; anything else runs, and the session is
+    told. A message on stdout alone, or an exit code, is no refusal to Claude Code (review of 0.7.9)."""
     import json
     command = ""
     try:
@@ -23,13 +26,19 @@ def guard_answer(data, why):
             command = tool_input["command"]
     except Exception:
         command = ""
-    knowingly = "FLOTILLA_GATE_OVERRIDE=" in command or bool(os.environ.get("FLOTILLA_GATE_OVERRIDE", "").strip())
+    knowingly = bool(os.environ.get("FLOTILLA_GATE_OVERRIDE", "").strip())
     refuse = any(word in command for word in PUSH_WORDS) and not knowingly
+    ask = not refuse and "flotilla" in command and any(word in command for word in PERSON_WORDS)
     text = "flotilla guards could not run (" + why.strip() + "); " + (
-        'a command that may push is refused. Knowingly: FLOTILLA_GATE_OVERRIDE="<why>"' if refuse
+        'a command that may push is refused. Knowingly: the person sets FLOTILLA_GATE_OVERRIDE="<why>" in the '
+        "environment the session runs in, or runs the command themselves with `!` in front" if refuse
+        else "this line may hold a move only the person makes and it could not be read, so the person decides "
+             "whether it runs" if ask
         else "the command runs unchecked")
     if refuse:
         body = {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": text}
+    elif ask:
+        body = {"hookEventName": "PreToolUse", "permissionDecision": "ask", "permissionDecisionReason": text}
     else:
         body = {"hookEventName": "PreToolUse", "additionalContext": text}
     return json.dumps({"hookSpecificOutput": body}) + "\n"

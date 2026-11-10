@@ -27,14 +27,39 @@ class Finding:
 
 
 PUSH_WORDS = ("push", "gh")
+#: Beside `flotilla` in a line, the words a move only the person makes is spelled with: `work approve`, every
+#: `rig` move, `attention`. A text check, wider than the moves themselves - it decides only what is asked of the
+#: person when no guard could read the line.
+PERSON_WORDS = ("approve", "rig", "attention")
+
+#: How a push the guards could not judge is let through knowingly. Never by the command's own text: judged, an
+#: override waives a missing receipt alone, and here nothing was judged - a word a session can type would waive the
+#: person's approval with it.
+KNOWINGLY = ('the person sets FLOTILLA_GATE_OVERRIDE="<why>" in the environment the session runs in, or runs the '
+             "command themselves with `!` in front")
+PERSONS_UNREAD = ("this line may hold a move only the person makes (`work approve`, a `rig` move, `attention`) "
+                  "and it could not be read, so the person decides whether it runs")
+
+
+def may_be_persons(command: str) -> bool:
+    return "flotilla" in command and any(word in command for word in PERSON_WORDS)
 
 
 def on_failure(command: str, err: Exception, env) -> Finding:
     """What the guards say when they could not judge: decided by reversibility, so a command that may push is
-    refused, unless the person overrode the gate knowingly; anything else runs, and the session is told."""
+    refused, unless the person overrode the gate knowingly, in the environment; a line that may hold the person's
+    own move is put to the person; anything else runs, and the session is told."""
     may_push = any(word in command for word in PUSH_WORDS)
-    knowingly = "FLOTILLA_GATE_OVERRIDE=" in command or bool(env.get("FLOTILLA_GATE_OVERRIDE", "").strip())
-    return Finding("guards", may_push and not knowingly,
-                   f"flotilla guards failed ({err}); "
-                   + ('a command that may push is refused on failure. Knowingly: FLOTILLA_GATE_OVERRIDE="<why>"'
-                      if may_push and not knowingly else "the command runs unchecked"))
+    refuse = may_push and not env.get("FLOTILLA_GATE_OVERRIDE", "").strip()
+    ask = not refuse and may_be_persons(command)
+    said = (f"a command that may push is refused on failure. Knowingly: {KNOWINGLY}" if refuse
+            else PERSONS_UNREAD if ask else "the command runs unchecked")
+    return Finding("guards", refuse, f"flotilla guards failed ({err}); {said}", ask=ask)
+
+
+def person_unjudged(command: str, err: Exception) -> Finding:
+    """The person guard alone failed: the other guards still judge the line, and the person decides a line that may
+    hold their own move - it is never let through unread."""
+    if may_be_persons(command):
+        return Finding("person", False, f"flotilla person guard failed ({err}); {PERSONS_UNREAD}", ask=True)
+    return Finding("person", False, f"flotilla person guard failed and let the command through: {err}")

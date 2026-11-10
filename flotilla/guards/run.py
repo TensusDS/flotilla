@@ -14,7 +14,7 @@ import os
 import subprocess
 from pathlib import Path
 
-from flotilla.guards import PUSH_WORDS, Finding, on_failure
+from flotilla.guards import PUSH_WORDS, Finding, on_failure, person_unjudged
 
 
 
@@ -34,13 +34,17 @@ def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run, who
     from flotilla.guards.rules import rules_for
     segments = shell.segments(command, Path(cwd) if cwd else None)
     every_line = shell.segments(command, Path(cwd) if cwd else None, bodies=True)
-    persons = [found for found in (person.check(segment) for segment in every_line) if found]   # always on, no rules
-    heredoc = person.heredoc_check(command, segments)
-    if heredoc is not None:
-        persons.append(heredoc)
-    # the person's own moves handed to an interpreter as text (the person, 2026-11-03): refused, or asked of them
-    whole = person.whole_text(every_line)
-    persons += [found for found in (person.wrapped_check(segment, whole, command) for segment in segments) if found]
+    try:
+        persons = [found for found in (person.check(segment) for segment in every_line) if found]   # always on
+        heredoc = person.heredoc_check(command, segments)
+        if heredoc is not None:
+            persons.append(heredoc)
+        # the person's own moves handed to an interpreter as text (the person, 2026-11-03): refused, or asked of them
+        whole = person.whole_text(every_line)
+        persons += [found for found in (person.wrapped_check(segment, whole, command) for segment in segments)
+                    if found]
+    except Exception as err:  # noqa: BLE001 - unread, the person's own move is the person's to decide; the rest judge on
+        persons = [person_unjudged(command, err)]
     if root is None:   # the session stands in no project; a push into one is still judged by that project (F18)
         return persons + [found for found in (push.guard(segment, root=None, profile={}, env=env, run=run, who=who)
                                               for segment in segments if push.door(segment) is not None)
@@ -54,6 +58,8 @@ def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run, who
                                                     who=who)
                                          for segment in segments if push.door(segment) is not None)
                  if finding is not None]
+        # neither reads the rules: what the ledger tracks is theirs to keep whatever the profile says
+        found += _organized(segments, root) + _collected(segments, root, session_id)
         return persons + found or [Finding("rules", False, f"flotilla guards: the project's rules could not be read ({err}); "
                                                  "the revert and line-number guards did not run")]
     on = profile.get("guards") or {}

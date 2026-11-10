@@ -27,8 +27,10 @@ PEERS_SHOWN = 8
 #: A Bash command naming none of these reaches no guard, so the hook answers before looking anything up. The last
 #: group lets a long run reach the lane guard: the lane's default run patterns and the launchers that run them. A
 #: tier whose program is none of these (`make test`, `./run-tests.sh`) is not warned about unless the line names one.
-#: `flotilla` lets the person guard see its CLI however the word `approve` is quoted.
+#: `flotilla` lets the person guard see its CLI however the word `approve` is quoted. `rm`, `worktree`, `branch` and
+#: `update-ref` are the gc guard's doors (a test holds every door it judges to a word here).
 GUARD_TRIGGERS = ("checkout", "restore", "reset", "clean", "switch", "sed", "push", "gh", "approve", "flotilla",
+                  "rm", "worktree", "branch", "update-ref",
                   "pytest", "py.test", "playwright", "vitest", "jest", "cargo", "go test", "npm", "pnpm", "yarn",
                   "npx", "bun", "tox", "nox")
 
@@ -135,6 +137,8 @@ def _guard(command: str, cwd: Path, payload: dict, out, now) -> int:
 
 #: `flotilla.guards.PUSH_WORDS`, for a failure in which even that module cannot be imported (a test keeps them equal)
 LAST_RESORT_PUSH_WORDS = ("push", "gh")
+#: `flotilla.guards.PERSON_WORDS`, kept equal the same way
+LAST_RESORT_PERSON_WORDS = ("approve", "rig", "attention")
 
 
 def _guard_failed(command: str, err: Exception, out) -> int:
@@ -142,15 +146,22 @@ def _guard_failed(command: str, err: Exception, out) -> int:
     try:
         from flotilla.guards import on_failure
         finding = on_failure(command, err, os.environ)
-        refuse, text = finding.refuse, finding.text
+        refuse, ask, text = finding.refuse, finding.ask, finding.text
     except Exception:  # noqa: BLE001 - the plugin cannot even read its own rule; refuse what may push
+        # the override is the environment's alone: the command's own text waives nothing that was not judged
         refuse = any(word in command for word in LAST_RESORT_PUSH_WORDS) and \
-            "FLOTILLA_GATE_OVERRIDE=" not in command and not os.environ.get("FLOTILLA_GATE_OVERRIDE", "").strip()
-        text = f"flotilla guards failed ({err}); " + ("a command that may push is refused on failure. Knowingly: "
-                                                     'FLOTILLA_GATE_OVERRIDE="<why>"' if refuse
-                                                     else "the command runs unchecked")
+            not os.environ.get("FLOTILLA_GATE_OVERRIDE", "").strip()
+        ask = not refuse and "flotilla" in command and any(word in command for word in LAST_RESORT_PERSON_WORDS)
+        text = f"flotilla guards failed ({err}); " + (
+            "a command that may push is refused on failure. Knowingly: the person sets "
+            'FLOTILLA_GATE_OVERRIDE="<why>" in the environment the session runs in, or runs the command themselves '
+            "with `!` in front" if refuse
+            else "this line may hold a move only the person makes and it could not be read, so the person decides "
+                 "whether it runs" if ask else "the command runs unchecked")
     body = ({"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": text}
-            if refuse else {"hookEventName": "PreToolUse", "additionalContext": text})
+            if refuse else {"hookEventName": "PreToolUse", "permissionDecision": "ask",
+                            "permissionDecisionReason": text}
+            if ask else {"hookEventName": "PreToolUse", "additionalContext": text})
     print(json.dumps({"hookSpecificOutput": body}), file=out)
     return 0
 
