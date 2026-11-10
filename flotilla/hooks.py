@@ -36,7 +36,8 @@ GUARD_TRIGGERS = ("checkout", "restore", "reset", "clean", "switch", "sed", "pus
                   "npx", "bun", "tox", "nox", "headless")
 #: The person's words that are too common as parts of other words (`origin`) to look for as text: looked for as whole
 #: words, they let code handed to an interpreter (`bash -c '$F rig open'`) reach the guard that reads it.
-GUARD_TRIGGER_WORDS = re.compile(r"\b(?:rig|attention)\b")
+GUARD_TRIGGER_PARTS = ("rig", "attention")
+GUARD_TRIGGER_WORDS = re.compile(r"\b(?:%s)\b" % "|".join(GUARD_TRIGGER_PARTS))
 _QUOTING = {ord(sign): None for sign in "'\"\\"}
 
 
@@ -48,9 +49,11 @@ def _unquoted(command: str) -> str:
 
 def _names_a_guarded_word(command: str) -> bool:
     text = _unquoted(command)
-    # whole words are looked for as typed too: taking the quotes out of `$A""rig` joins a word bash keeps apart
-    return any(word in text for word in GUARD_TRIGGERS) or GUARD_TRIGGER_WORDS.search(text) is not None \
-        or GUARD_TRIGGER_WORDS.search(command) is not None
+    if any(word in text for word in GUARD_TRIGGERS):
+        return True
+    if "$" in text or "`" in text:   # where a word begins is bash's to say once it expands something (`$A'r'ig`)
+        return any(word in text for word in GUARD_TRIGGER_PARTS)
+    return GUARD_TRIGGER_WORDS.search(text) is not None
 
 
 def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime | None = None) -> int:
@@ -170,9 +173,12 @@ def _guard_failed(command: str, err: Exception, out) -> int:
         bare = _unquoted(command)
         refuse = any(word in bare for word in LAST_RESORT_PUSH_WORDS) and \
             not os.environ.get("FLOTILLA_GATE_OVERRIDE", "").strip()
-        words = re.compile(r"\b(?:%s)\b" % "|".join(LAST_RESORT_PERSON_WORDS))
-        ask = not refuse and any(sign in bare for sign in ("flotilla", "$", "`")) and (
-            words.search(bare) is not None or words.search(command) is not None)
+        if "$" in bare or "`" in bare:   # as `flotilla.guards.may_be_persons`: the word anywhere is enough
+            persons = any(word in bare for word in LAST_RESORT_PERSON_WORDS)
+        else:
+            persons = "flotilla" in bare and re.search(
+                r"\b(?:%s)\b" % "|".join(LAST_RESORT_PERSON_WORDS), bare) is not None
+        ask = not refuse and persons
         text = f"flotilla guards failed ({err}); " + (
             "a command that may push is refused on failure. Knowingly: the person runs the command themselves - "
             'with `!` in front, or in a terminal - or sets FLOTILLA_GATE_OVERRIDE="<why>" in the environment the '

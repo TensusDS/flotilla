@@ -55,12 +55,14 @@ def unquoted(command: str) -> str:
 
 
 def may_be_persons(command: str) -> bool:
-    """One of the person's words stands in the line, beside flotilla or beside what the shell builds at run time
-    (a variable, a substitution): the program could be flotilla."""
+    """One of the person's words stands in the line: as a whole word beside flotilla, or anywhere in a line the
+    shell builds at run time (a variable, a substitution) - the program could be flotilla, and the word any part."""
     text = unquoted(command)
-    # the word is looked for as typed too: taking the quotes out of `$A""rig` joins a word bash keeps apart
-    return bool(_PERSON.search(text) or _PERSON.search(command)) and any(
-        sign in text for sign in ("flotilla", "$", "`"))
+    if "$" in text or "`" in text:
+        # where a word begins is bash's to say once it expands something (`$A'r'ig` is `rig` when A is empty):
+        # the word anywhere in the text is enough
+        return any(word in text for word in PERSON_WORDS)
+    return "flotilla" in text and _PERSON.search(text) is not None
 
 
 def on_failure(command: str, err: Exception, env) -> Finding:

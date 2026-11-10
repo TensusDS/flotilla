@@ -31,9 +31,11 @@ def guard_answer(data, why):
     bare = command.replace("\\\n", "").replace("'", "").replace('"', "").replace("\\", "")
     knowingly = bool(os.environ.get("FLOTILLA_GATE_OVERRIDE", "").strip())
     refuse = any(word in bare for word in PUSH_WORDS) and not knowingly
-    words = re.compile(r"\b(?:%s)\b" % "|".join(PERSON_WORDS))
-    ask = not refuse and any(sign in bare for sign in ("flotilla", "$", "`")) and (
-        words.search(bare) is not None or words.search(command) is not None)
+    if "$" in bare or "`" in bare:   # as flotilla.guards.may_be_persons: the word anywhere is enough
+        persons = any(word in bare for word in PERSON_WORDS)
+    else:
+        persons = "flotilla" in bare and re.search(r"\b(?:%s)\b" % "|".join(PERSON_WORDS), bare) is not None
+    ask = not refuse and persons
     text = "flotilla guards failed (" + why.strip() + "); " + (
         "a command that may push is refused on failure. Knowingly: the person runs the command themselves - "
         'with `!` in front, or in a terminal - or sets FLOTILLA_GATE_OVERRIDE="<why>" in the environment the '

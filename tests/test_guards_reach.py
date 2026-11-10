@@ -95,9 +95,11 @@ def test_code_handed_to_an_interpreter_that_names_a_persons_word_reaches_the_gua
     assert hooks._names_a_guarded_word(command)
 
 
-@pytest.mark.parametrize("command", ['$A""rig open', "$F wo''rk $B'attention' all"])
-def test_a_persons_word_bash_keeps_apart_from_a_variable_is_found_as_typed(tmp_path, command):
-    """Taking the quotes out joins `$A""rig` into one name; bash expands `$A` and keeps `rig`."""
+@pytest.mark.parametrize("command", ['$A""rig open', "$F wo''rk $B'attention' all", "$F $A'r'ig open",
+                                     "`which f` wo''rk $A'ap'prove W-1"])
+def test_in_a_line_bash_expands_a_persons_word_anywhere_is_enough(tmp_path, command):
+    """Where a word begins is bash's to say once it expands something: `$A'r'ig` is `rig` when A is empty, and no
+    reading of the text finds that as a whole word."""
     assert hooks._names_a_guarded_word(command)
     assert guards.on_failure(command, RuntimeError("x"), {}).ask
     fake, project = old_interpreter(tmp_path)
@@ -210,7 +212,7 @@ def test_the_failure_rule_reads_a_persons_move_through_quotes_and_variables(comm
 
 
 @pytest.mark.parametrize("command", ["cd /src/flotilla && git fetch origin", "cat .flotilla/project.toml | wc -l",
-                                     "bin/flotilla work show W-1 --trigger x", "echo $HOME/origin"])
+                                     "bin/flotilla work show W-1 --trigger x", "echo $HOME/notes"])
 def test_the_failure_rule_does_not_ask_about_a_persons_word_inside_another(command):
     found = guards.on_failure(command, RuntimeError("x"), {})
     assert not found.ask and not found.refuse
