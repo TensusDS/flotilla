@@ -441,28 +441,46 @@ def test_show_says_a_row_has_no_branch_yet(tmp_path, monkeypatch):
     assert "base: no branch yet" in out and "base unknown" not in out
 
 
-def _shipped(root, sha, branch="feat/other"):
-    """A row the sender shipped as trunk commit `sha`: the ledger's own record of where trunk was."""
-    from flotilla.ledger.commands import open_ledger
-    from ledgerkit import actor
-    ledger = open_ledger(root)
-    with ledger.session() as s:
-        s.append(actor(ledger, "sender 1"), "r50", "ship", "shipped",
-                 fields={"branch": branch, "owner": "main session 2", "merge": sha})
+def _read_and_on_trunk(root, tmp_path, branch="feat/other", owner="main session 2"):
+    """Another row read and accepted, then on origin's trunk: trunk moved by work the ledger accounts for."""
+    tree = tmp_path / "app-main-2"
+    run_cli("tree", "cut", branch, "--tree", str(tree), "--root", str(root), "--as", owner)
+    tip = commit(tree, "another row's work", "other.txt")
+    run_cli("work", "hand", branch, "--root", str(tree), "--as", owner)
+    run_cli("work", "take", branch, "--root", str(root), "--as", "review session 1")
+    code, out = run_cli("work", "accept", branch, "--reviewed", tip, "--root", str(root), "--as", "review session 1")
+    assert code == 0, out
+    git(root, "merge", "-q", "--ff-only", branch)
+    git(root, "push", "-q", "origin", "main")
+    return tip
 
 
 def _rebased_after_claim(tmp_path, monkeypatch):
-    """`feat/x` cut on trunk, another row shipped, and the owner rebased onto it: the case a field test met."""
+    """`feat/x` cut on trunk, another row read and on trunk, and the owner rebased onto it: a field test's case."""
     root = onboarded(tmp_path, monkeypatch, PLAIN)
     tree = tmp_path / "app-main-1"
     run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")
     claimed_on = git(root, "rev-parse", "main")
     commit(tree, "work", "work.txt")
-    moved_to = commit(root, "another row shipped", "other.txt")
-    git(root, "push", "-q", "origin", "main")
-    _shipped(root, moved_to)
+    moved_to = _read_and_on_trunk(root, tmp_path)
     git(tree, "-c", "user.email=t@example.invalid", "-c", "user.name=t", "rebase", "-q", "origin/main")
     return root, tree, claimed_on, moved_to
+
+
+def test_work_that_reached_trunk_unread_is_not_shown_as_read(tmp_path, monkeypatch):
+    """Second review of a7a44df, finding 1: the row's own commits pushed to trunk without a verdict, then another
+    row on top - the base shown was the tip itself, and the reader's diff was empty."""
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    tree = tmp_path / "app-main-1"
+    run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")
+    claimed_on = git(root, "rev-parse", "main")
+    commit(tree, "work that skips its reader", "work.txt")
+    run_cli("work", "hand", "feat/x", "--root", str(tree), "--as", "main session 1")
+    git(root, "merge", "-q", "--ff-only", "feat/x")
+    git(root, "push", "-q", "origin", "main")
+    _read_and_on_trunk(root, tmp_path)
+    code, out = run_cli("work", "show", "feat/x", "--root", str(root))
+    assert f"base {claimed_on} |" in out and "rebased" not in out, out
 
 
 def test_a_repointed_origin_ref_cannot_narrow_what_the_reader_is_shown(tmp_path, monkeypatch):

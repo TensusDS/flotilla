@@ -11,7 +11,7 @@ from flotilla.ledger import gitq
 from flotilla.ledger.actor import Actor, require_may
 from flotilla.ledger.core import Ledger
 from flotilla.ledger.errors import MoveRefused
-from flotilla.ledger.model import DELIVERED, Row
+from flotilla.ledger.model import Row
 from flotilla.posts import PostError, post_for_session
 
 
@@ -29,32 +29,35 @@ def read_from(ledger: Ledger, row: Row) -> tuple[str, str]:
     """Where the reader's diff starts, and the recorded base it moved from when the owner rebased ("" if it did not).
 
     The recorded base stays the row's: what waits for the person's yes counts every commit from it. Only what is
-    shown moves, only forward from the recorded base, and only onto trunk the ledger saw delivered: the fork point is
-    read from `origin/<trunk>`, a ref a seat can repoint (final review of 0.21.0, C1), so an owner could otherwise
-    point it at a commit of its own and have the reader start above it (security review of a7a44df)."""
+    shown moves, only forward from the recorded base, and only when another row's verdict accounts for every commit
+    the move skips - the same accounting the push guard trusts. Git alone cannot tell "rebased onto trunk" from "my
+    own commits reached trunk unread", and the fork point is read from `origin/<trunk>`, a ref a seat can repoint
+    (final review of 0.21.0, C1): either would otherwise start the reader above commits nobody read (security
+    review of a7a44df, and its second review)."""
     tip = row.tip or gitq.branch_tip(ledger.root, row.branch, run=ledger.run) or ""
     if not row.base or not tip:
         return row.base, ""
     fresh = gitq.merge_base(ledger.root, gitq.trunk_ref(ledger.root, ledger.trunk, run=ledger.run), tip,
                             run=ledger.run)
     if fresh and fresh != row.base and gitq.is_ancestor(ledger.root, row.base, fresh, run=ledger.run) is True \
-            and _delivered_trunk(ledger, fresh):
+            and _read_by_others(ledger, row, fresh):
         return fresh, row.base
     return row.base, ""
 
 
-#: How many of the latest delivered trunk commits a shown base is looked for under: a rebase is onto recent trunk.
-RECENT_DELIVERIES = 20
+#: The most commits a shown base may skip; past it the recorded base is shown, as before 0.31.1.
+MOST_SKIPPED = 300
 
 
-def _delivered_trunk(ledger: Ledger, sha: str) -> bool:
-    """Whether `sha` lies under a trunk commit the ledger recorded as delivered (`merge` of a landed, shipped or
-    outside-recorded row). Only the sender's and reader's moves record one; an owner cannot."""
-    rows = [row for row in ledger.rows().values()
-            if row.merge and (row.state in DELIVERED or row.state == "landed")]
-    rows.sort(key=lambda row: row.updated_at, reverse=True)
-    return any(gitq.is_ancestor(ledger.root, sha, row.merge, run=ledger.run) is True
-               for row in rows[:RECENT_DELIVERIES])
+def _read_by_others(ledger: Ledger, row: Row, fresh: str) -> bool:
+    """Whether every commit in `row.base..fresh` is accounted for by a verdict of a row other than this one."""
+    from flotilla.ledger import batch
+    listed = ledger.run(["git", "-C", str(ledger.root), "rev-list", "--count", fresh, f"^{row.base}"],
+                        capture_output=True, text=True, check=False)
+    if listed.returncode != 0 or not listed.stdout.strip().isdigit() or int(listed.stdout) > MOST_SKIPPED:
+        return False
+    others = {key: other for key, other in ledger.rows().items() if other.id != row.id}
+    return batch.unaccounted(ledger, others, fresh, since=row.base) == []
 
 
 def shown_base(base: str, moved_from: str, width: int | None = None) -> str:

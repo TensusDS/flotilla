@@ -47,9 +47,12 @@ def adopt(ledger: Ledger, actor: Actor, branch: str, *, to: str) -> Row:
             evidence["tree"] = (core.free_seat_tree(ledger, row.owner, row.tree) if held == row.branch else
                                 f"not freed: {row.tree} holds `{held or 'no branch'}` now, not `{row.branch}`")
             # a tree that no longer holds the branch is not where the heir works: the row follows the heir home, or
-            # the collector reads the live heir as working in the gone seat's tree and keeps it (alpha item 22)
-            home = _home_tree(s.rows, heir)
-            if home and _checked_out(ledger, row.tree) != row.branch:
+            # the collector reads the live heir as working in the gone seat's tree and keeps it (alpha item 22). A
+            # post row stays: it carries the gone seat's session id, and the gc guard would give that id the heir's
+            # tree as its own; and the heir would hold two post rows on one tree (review of c6a9933, 2)
+            home = _home_tree(s.rows, heir) if row.state != "reserved" else ""
+            still = _checked_out(ledger, row.tree) if held == row.branch else held
+            if home and still != row.branch:
                 fields["tree"] = home
         return s.append(actor, row.id, "adopt", state, fields=fields, evidence=evidence)
 

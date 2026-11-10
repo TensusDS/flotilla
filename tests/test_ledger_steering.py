@@ -220,6 +220,22 @@ def test_adopted_work_keeps_a_tree_that_still_holds_its_branch(world, tmp_path):
     assert row.tree == str(tree)
 
 
+def test_an_adopted_post_row_keeps_its_tree(world, tmp_path):
+    """Review of c6a9933, 2: a post row carries the gone seat's session id, so following the heir would give that id
+    the heir's tree as its own in the gc guard, and leave the heir two post rows on one tree."""
+    from ledgerkit import git
+    root, ledger = world
+    tree = tmp_path / "app-main-1"
+    git(root, "worktree", "add", "-q", "-b", "fleet/app-main-1", str(tree))
+    with ledger.session() as s:
+        s.append(actor(ledger, "main session 1"), "r80", "reserve", "reserved",
+                 fields={"branch": "fleet/app-main-1", "owner": "main session 1", "tree": str(tree),
+                         "session_id": "sid-gone"})
+    _home(root, ledger, tmp_path)
+    row = steering.adopt(ledger, actor(ledger, ORCH), "fleet/app-main-1", to="main session 2")
+    assert row.tree == str(tree)
+
+
 def test_adopted_work_keeps_its_tree_when_the_heir_has_no_home(world, tmp_path):
     """Nothing says where an heir without a post row works, so the row does not guess."""
     from flotilla.ledger import core
