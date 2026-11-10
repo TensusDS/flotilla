@@ -178,7 +178,8 @@ def _guard_failed(command: str, err: Exception, out) -> int:
             persons = any(word in bare for word in LAST_RESORT_PERSON_WORDS)
         else:
             words = re.compile(r"\b(?:%s)\b" % "|".join(LAST_RESORT_PERSON_WORDS))
-            blanked = _unquoted(re.sub(r"\\[\s\S]", " ", command))   # a backslash the code may make a blank of
+            # an escape the code it is handed to may make a blank of (`\t`, `\x20`)
+            blanked = _unquoted(re.sub(r"\\(?:x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|[0-7]{1,3}|[\s\S])", " ", command))
             persons = "flotilla" in bare and (words.search(bare) or words.search(blanked)) is not None
         ask = not refuse and persons
         text = f"flotilla guards failed ({err}); " + (

@@ -327,7 +327,8 @@ def check(segment) -> Finding | None:
         return Finding(GUARD, True, "flotilla: a brace here may expand into flotilla or its command (`{a,b}`), so the "
                                     "move it runs cannot be read before it runs. " + PLAINLY)
     built = (braces or any("$" in word or "`" in word for word in rest)) and any(word in GUARDED for word in rest)
-    named = built or any(_may_be(word, "rig") or _may_be(word, "work") for word in rest)
+    named = built or any(_may_be(word, "rig") or _may_be(word, "work") or _may_be(word, "attention")
+                         for word in rest)
     if (words and _opaque(words[0]) and named) or any(
             _opaque(command) or ((_is(command, "rig") or _is(command, "work")) and _opaque(move))
             for command, move in _reads(words)):

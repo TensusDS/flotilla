@@ -46,7 +46,7 @@ PERSONS_UNREAD = ("this line may hold a move only the person makes (`work approv
 
 _PERSON = re.compile(r"\b(?:%s)\b" % "|".join(PERSON_WORDS))
 _QUOTING = {ord(sign): None for sign in "'\"\\"}
-_ESCAPE = re.compile(r"\\[\s\S]")
+_ESCAPE = re.compile(r"\\(?:x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|[0-7]{1,3}|[\s\S])")
 
 
 def unquoted(command: str) -> str:

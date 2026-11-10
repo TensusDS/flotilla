@@ -80,7 +80,39 @@ def test_every_gc_door_is_spelled_with_one_of_its_door_words(tmp_path):
 SPLIT_WORDS = [("r\\m -rf ../app-main-1", "flotilla gc apply"), ('git wor""ktree prune', "flotilla gc apply"),
                ("git bran''ch -D fleet/main-1", "flotilla gc apply"),
                ('r\\\nm -rf ../app-main-1', "flotilla gc apply"),
+               # third review: bash joins the lines first, so the heredoc's body starts a line later than it looks
+               ("cat <<EOF; r\\\nm -rf ../app-main-1\nEOF", "flotilla gc apply"),
+               ("cat <<EOF; rm -rf \\\n../app-main-1\nEOF", "flotilla gc apply"),
                ('flot""illa work "ap"prove W-1', "person's own move"), ("g''h pr merge 5", "")]
+
+
+@pytest.mark.parametrize("command", ["git push \\\norigin main", "git checkout -- \\\n  f.txt",
+                                     "sed -i 2d \\\nf.txt"])
+def test_a_continued_command_is_judged_once_as_bash_runs_it(tmp_path, monkeypatch, command):
+    """Third review, finding 3: the joined reading stood beside the typed one, whose words still held the line break
+    (`\\norigin`), and every guard answered twice."""
+    from flotilla.guards import shell
+    root = onboarded(tmp_path)
+    (root / "f.txt").write_text("work\nmore\n", encoding="utf-8")
+    words = [segment.words for segment in shell.segments(command, root)]
+    assert not any("\n" in word for found in words for word in found), words
+    one_line = guard_run.evaluate(command.replace("\\\n", ""), root, root)
+    assert len(guard_run.evaluate(command, root, root)) == len(one_line) >= 1
+
+
+def test_a_quoted_heredoc_whose_body_ends_a_line_in_a_backslash_hides_nothing_after_it(tmp_path, monkeypatch):
+    """Why the joined reading stands beside the typed one and not in its place: joined, the body's last line takes
+    the delimiter into itself, and what follows would read as body."""
+    command = "cat <<'EOF'\nkeep\\\nEOF\nrm -rf ../app-main-1"
+    answer = ask(fleet(tmp_path, monkeypatch), command, monkeypatch, tmp_path)
+    assert answer and answer.get("permissionDecision") == "deny", answer
+
+
+@pytest.mark.parametrize("command", ["$F attention all", "F=bin/flotilla; $F attention digest"])
+def test_how_the_person_is_asked_is_not_changed_behind_a_variable_program(tmp_path, monkeypatch, command):
+    """Third review, finding 2: `rig` and `work` behind a variable program were refused, `attention` ran."""
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert answer and answer.get("permissionDecision") == "deny", answer
 
 
 @pytest.mark.parametrize("command,said", SPLIT_WORDS)
@@ -239,6 +271,14 @@ def test_the_entry_point_and_the_last_resort_read_a_push_through_quotes(tmp_path
 
 
 ESCAPED = "python3 -c \"run('flotilla\\trig\\topen'.split())\""
+
+
+@pytest.mark.parametrize("escape", ["\\x20", "\\040", "\\u0020", "\\n"])
+def test_a_whole_escape_is_read_as_a_blank(tmp_path, escape):
+    command = "python3 -c \"run('flotilla" + escape + "rig" + escape + "open'.split())\""
+    assert guards.on_failure(command, RuntimeError("x"), {}).ask
+    fake, project = old_interpreter(tmp_path)
+    assert decision(guard_through(fake, project, command)) == "ask"
 
 
 def test_a_backslash_the_code_makes_a_blank_of_does_not_hide_a_persons_word(tmp_path, monkeypatch):
