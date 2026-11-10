@@ -58,7 +58,9 @@ def may_be_persons(command: str) -> bool:
     """One of the person's words stands in the line, beside flotilla or beside what the shell builds at run time
     (a variable, a substitution): the program could be flotilla."""
     text = unquoted(command)
-    return bool(_PERSON.search(text)) and any(sign in text for sign in ("flotilla", "$", "`"))
+    # the word is looked for as typed too: taking the quotes out of `$A""rig` joins a word bash keeps apart
+    return bool(_PERSON.search(text) or _PERSON.search(command)) and any(
+        sign in text for sign in ("flotilla", "$", "`"))
 
 
 def on_failure(command: str, err: Exception, env) -> Finding:

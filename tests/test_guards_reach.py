@@ -95,6 +95,25 @@ def test_code_handed_to_an_interpreter_that_names_a_persons_word_reaches_the_gua
     assert hooks._names_a_guarded_word(command)
 
 
+@pytest.mark.parametrize("command", ['$A""rig open', "$F wo''rk $B'attention' all"])
+def test_a_persons_word_bash_keeps_apart_from_a_variable_is_found_as_typed(tmp_path, command):
+    """Taking the quotes out joins `$A""rig` into one name; bash expands `$A` and keeps `rig`."""
+    assert hooks._names_a_guarded_word(command)
+    assert guards.on_failure(command, RuntimeError("x"), {}).ask
+    fake, project = old_interpreter(tmp_path)
+    assert decision(guard_through(fake, project, command)) == "ask"
+
+
+def test_the_last_resort_finds_such_a_word_too(tmp_path, monkeypatch):
+    monkeypatch.setitem(sys.modules, "flotilla.guards.run", None)
+
+    def unreadable(*args, **kwargs):
+        raise RuntimeError("the rule itself is broken")
+    monkeypatch.setattr(guards, "on_failure", unreadable)
+    answer = ask(onboarded(tmp_path), '$A""rig open', monkeypatch, tmp_path)
+    assert answer and answer.get("permissionDecision") == "ask", answer
+
+
 @pytest.mark.parametrize("command", ["git fetch origin", "ls -la && make", "cat trigger.txt"])
 def test_a_persons_word_inside_another_word_is_no_reason_to_run_the_guards(command):
     assert not hooks._names_a_guarded_word(command)
