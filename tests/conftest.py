@@ -99,6 +99,32 @@ def memory_is_not_this_machines(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def a_suite_in_the_lane_is_not_a_nested_run(monkeypatch):
+    """The suite runs under a lane booking when it runs through the lane, as docs/development.md says it should, and
+    two traces of that booking reached every test. Its environment names the booking (`FLOTILLA_LANE_BOOKING`): a
+    test's `execute` took itself for a booked command, and a booking made in a test would reuse the suite's own.
+    And this process sits in the booking's `flotilla-lane-*` scope, which the lane reads from /proc/self/cgroup to
+    tell a nested run: six freeze tests took their slots for nested ones. A test sees neither - the cgroup this
+    process would be in outside any lane scope, and no booking - and a test that names its own cgroup file, or sets
+    the booking itself, gets what it set."""
+    from pathlib import Path
+
+    from flotilla.lane import acquire, freeze
+    monkeypatch.delenv(acquire.ENV, raising=False)
+    real = freeze._own_cgroup
+
+    def own(proc_self):
+        found = real(proc_self)
+        if Path(proc_self) != freeze.PROC_SELF:
+            return found
+        parts = found.split("/")
+        while len(parts) > 1 and parts[-1].startswith(freeze.UNIT_PREFIX):
+            parts.pop()
+        return "/".join(parts)
+    monkeypatch.setattr(freeze, "_own_cgroup", own)
+
+
+@pytest.fixture(autouse=True)
 def no_real_process_is_stopped(tmp_path, monkeypatch):
     """Retire stops orphans it finds in /proc; no test may look at, or signal, this machine's processes."""
     monkeypatch.setattr("flotilla.fleet.leftovers.PROC_ROOT", tmp_path / "no-proc-in-tests")

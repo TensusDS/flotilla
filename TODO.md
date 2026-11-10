@@ -8,6 +8,53 @@ something through, B a bug a user meets, P polish, tests or docs), or `open, des
 run). A later triage re-checks only items whose named files changed since that version. An item that is done -
 fixed by a release, or found fixed - leaves its section for **Done** at the bottom, one line with the version.
 
+## The community plugin directory refuses flotilla (since about 2026-11-05) - waiting on Anthropic, not a fix
+
+Submitted to Anthropic's community plugin directory on 2026-10-04. 0.29.2 passed the directory policy check; every
+version since 0.29.3 is refused. Nothing flotilla changed caused it: `hooks/` and the rest are the same in 0.29.2
+and 0.31.0 apart from the version line. Around 2026-11-05 the directory began to accept local code only from
+"Verified organizations", and no public page says what that is or how to become one (the open question, with a
+dozen other plugins refused the same week and no answer from Anthropic as of 2026-11-09:
+https://github.com/anthropics/claude-plugins-official/issues/7024; domain verification reportedly does not help).
+
+The four refusals, all "accepted only from Verified organizations":
+
+- `LOCAL_CODE_HOOK_COMMAND` - hooks of type command, and of any type: remove every hook.
+- `bin/` - remove the folder.
+- `allowed-tools` beyond plain Read, Grep, Glob and LS, with no `${...}` path: cut every list to those four.
+- files outside Markdown, text, JSON, YAML and images, or starting with `#!`: remove them (every `.py` file).
+
+Meeting them leaves Markdown skills that cannot run flotilla - no guards, no ledger, no lane - so the person's
+ruling (2026-11-09) is **not to chase the policy**: flotilla ships from its own marketplace as before, and the
+submission waits until Anthropic says how an organization becomes Verified. A "lite" directory edition was
+weighed and set aside for the same reason. Do not remove hooks or code to pass the check, and do not install hooks
+into the user's settings from a command to get around it. Checked against the checker for real problems: no file
+is non-UTF-8 or holds a NUL byte, and none of the four points at something to fix outside the directory.
+*(checked 2026-11-09 on 0.31.0: open, waiting on Anthropic - hooks/hooks.json, bin/, skills/*/SKILL.md)*
+
+## From the reviews of 0.31.1 (2026-11-10, adopt follows the heir, the base after a rebase)
+
+Deferred as cosmetic or as consistent with what `land` and the push guard already trust.
+
+- **Where the shown base quietly stays the recorded one** (fails safe, the reader reads more): a row whose commits
+  reached trunk with no later ledger move (a person merged the PR, `ship` not yet run), a direct-mode row landed
+  locally before the claim and pushed after it, a fleet with more than 50 rows moved since the claim, or more than
+  300 commits skipped. Whether the field meets these often enough to matter is not measured. *(open, measure -
+  flotilla/ledger/reading.py `_read_by_others`)*
+- **The accounting counts a queued row without a verdict as read** (`review.depth = none`, or `main-only` for a
+  non-main post): its whole range is "read", so commits of another row stacked under it, once on trunk, are skipped
+  in that row's shown base. `land` and the push guard trust it the same way; `rules_tree` is not passed either, as
+  in `land`. *(checked 2026-11-10 on 0.31.1: P, within land's trust - flotilla/ledger/batch.py Accounting)*
+- **Test gaps:** `test_only_rows_moved_since_the_claim_are_asked_about_a_rebase` leaves out a released row, which
+  the accounting already asked nothing of, so it proves the filter but not the saving on closed reviewed rows; the
+  50-row cap has no test. *(checked 2026-11-10 on 0.31.1: P - tests/test_ledger_cli.py)*
+- **A suite run through the lane hides the lane from its tests, not the tests from the lane** (conftest
+  `a_suite_in_the_lane_is_not_a_nested_run`). Real `SCOPE` slots a test makes start beside the suite's scope, and
+  the tests' children no longer carry the suite's booking, so where the lane freezes by signal (macOS, no user
+  systemd) it does not stop them with the suite, nor find detached ones as its leftovers. And the lane may still
+  freeze or cap the suite mid-test: a timing test that fails only in the lane suspects that first. Related to the
+  leftover `flotilla-lane-*.scope` units above. *(checked 2026-11-10 on 0.31.1: P - tests/conftest.py)*
+
 ## From the field test of the lane daemon, batches 1-3 (2026-11-07..08, 0.30.1 and lane/daemon c5baaff)
 
 Two demo fleets on one machine (8 cores, 15 GB), batch 1 on 0.30.1, then batch 1 again and batches 2-3 on the lane
@@ -134,9 +181,6 @@ for them first.
 
 **The ledger.**
 
-- **A row's base stays the pre-rebase one** after its owner rebases following the claim: `work show`, the reader's
-  letter and `work assign` print a base two ships old (both fleets, two days); one orchestrator corrected the reviewer
-  by hand. *(checked 2026-11-06 on 0.29.3: still B - flotilla/ledger, base recorded at claim)*
 - **`--requires` / `--after` refuse a delivered row by branch name**: "no such row or open branch" once the row has
   shipped and closed; by id it works. A work order written up front cannot know which rows close first; a delivered
   row should count as satisfied, or the refusal should say "closed - name it by id". Both fleets, both flags.
@@ -177,12 +221,6 @@ for them first.
   shipped. alpha parked r252, r245, r253, r270 with a hold until the person. Asked: a "superseded by <row|commit>"
   end from shipped, the person's or the orchestrator's move, with why. *(checked 2026-11-06 on 0.29.2: open, design -
   flotilla/ledger/transitions.py, "shipped")*
-- **`work adopt` leaves the old tree held by the adopter** (alpha item 22). The row keeps its old tree path, so
-  `fleet clean` reports "<seat> is alive and works in it" and the collector never archives it: ~35 trees, ~8 GB on
-  alpha. Asked: adopt re-points the row to the adopter's home tree, or marks the old tree orphaned. Narrowed live
-  (demo field test, 0.29.3): once the adopted row closes, `fleet clean` marks the old tree "would remove", so it is
-  held only while the row is open - alpha' 35 trees were rows still open. *(checked 2026-11-06 on 0.29.3: still B,
-  narrowed - flotilla/ledger/steering.py, adopt keeps `row.tree`)*
 - **`rig --put/--get` only inside the tree collides with a receipt in the same tree** (alpha item 20). A rig kit
   must be staged in the seat's tree; a queued receipt refuses any untracked file there, so the seat stops its receipt
   to run the kit. Asked: put/get from a seat-private directory outside the tree, or a kit directory the receipt
@@ -847,6 +885,10 @@ Each is a limitation README states today, judged fixable in principle; none is p
 
 ## Done
 
+- Adopted work follows its heir to its home tree when the gone seat's tree no longer holds the branch, so the
+  collector no longer reads the live heir as working there (alpha item 22) (0.31.1).
+- `work show` and the reader's letter name the base a rebase moved the work onto, and the one it moved from; the
+  recorded base, which the person's approval counts from, stays (0.31.1).
 - A seat Claude Code holds on a start-up question is seen and named: `spawn`, `fleet`, `watch` and the inbox say
   "has not started" with the question and `claude attach <id>`, and every count of raised seats includes it (0.31.0).
 - A test that asks `state_dir()` in pytest's own process is refused the real directory, wherever its file lives

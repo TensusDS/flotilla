@@ -441,6 +441,124 @@ def test_show_says_a_row_has_no_branch_yet(tmp_path, monkeypatch):
     assert "base: no branch yet" in out and "base unknown" not in out
 
 
+def _read_and_on_trunk(root, tmp_path, branch="feat/other", owner="main session 2"):
+    """Another row read and accepted, then on origin's trunk: trunk moved by work the ledger accounts for."""
+    tree = tmp_path / "app-main-2"
+    run_cli("tree", "cut", branch, "--tree", str(tree), "--root", str(root), "--as", owner)
+    tip = commit(tree, "another row's work", "other.txt")
+    run_cli("work", "hand", branch, "--root", str(tree), "--as", owner)
+    run_cli("work", "take", branch, "--root", str(root), "--as", "review session 1")
+    code, out = run_cli("work", "accept", branch, "--reviewed", tip, "--root", str(root), "--as", "review session 1")
+    assert code == 0, out
+    git(root, "merge", "-q", "--ff-only", branch)
+    git(root, "push", "-q", "origin", "main")
+    return tip
+
+
+def _rebased_after_claim(tmp_path, monkeypatch):
+    """`feat/x` cut on trunk, another row read and on trunk, and the owner rebased onto it: a field test's case."""
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    tree = tmp_path / "app-main-1"
+    run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")
+    claimed_on = git(root, "rev-parse", "main")
+    commit(tree, "work", "work.txt")
+    moved_to = _read_and_on_trunk(root, tmp_path)
+    git(tree, "-c", "user.email=t@example.invalid", "-c", "user.name=t", "rebase", "-q", "origin/main")
+    return root, tree, claimed_on, moved_to
+
+
+def test_only_rows_moved_since_the_claim_are_asked_about_a_rebase(tmp_path, monkeypatch):
+    """Review of bedca8d, A: accounting costs about five git calls a row, closed rows included; a row that last
+    moved before this one's claim cannot have read what reached trunk since, so it is not asked."""
+    from flotilla.ledger import batch
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    run_cli("work", "claim", "feat/old", "--root", str(root), "--as", "main session 2")
+    run_cli("work", "release", "feat/old", "--why", "not needed", "--root", str(root), "--as", "main session 2")
+    monkeypatch.setattr("flotilla.ledger.core.Ledger.now", lambda self: "2999-01-01T00:00:00+00:00")
+    tree = tmp_path / "app-main-1"
+    run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")
+    commit(tree, "work", "work.txt")
+    moved_to = _read_and_on_trunk(root, tmp_path)
+    git(tree, "-c", "user.email=t@example.invalid", "-c", "user.name=t", "rebase", "-q", "origin/main")
+    asked = []
+    real = batch.unaccounted
+
+    def spy(ledger, rows, *args, **kwargs):
+        asked.append(sorted(row.branch for row in rows.values()))
+        return real(ledger, rows, *args, **kwargs)
+    monkeypatch.setattr(batch, "unaccounted", spy)
+    code, out = run_cli("work", "show", "feat/x", "--root", str(root))
+    assert f"base {moved_to}" in out and asked == [["feat/other"]], (asked, out)
+
+
+def test_work_that_reached_trunk_unread_is_not_shown_as_read(tmp_path, monkeypatch):
+    """Second review of a7a44df, finding 1: the row's own commits pushed to trunk without a verdict, then another
+    row on top - the base shown was the tip itself, and the reader's diff was empty."""
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    tree = tmp_path / "app-main-1"
+    run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")
+    claimed_on = git(root, "rev-parse", "main")
+    commit(tree, "work that skips its reader", "work.txt")
+    run_cli("work", "hand", "feat/x", "--root", str(tree), "--as", "main session 1")
+    git(root, "merge", "-q", "--ff-only", "feat/x")
+    git(root, "push", "-q", "origin", "main")
+    _read_and_on_trunk(root, tmp_path)
+    code, out = run_cli("work", "show", "feat/x", "--root", str(root))
+    assert f"base {claimed_on} |" in out and "rebased" not in out, out
+
+
+def test_a_repointed_origin_ref_cannot_narrow_what_the_reader_is_shown(tmp_path, monkeypatch):
+    """Security review of a7a44df: an owner that points `refs/remotes/origin/<trunk>` at a commit of its own would
+    have the reader start below it, and that commit would go unread. The shown base moves only past commits another
+    row's verdict accounts for."""
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    tree = tmp_path / "app-main-1"
+    run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")
+    claimed_on = git(root, "rev-parse", "main")
+    hidden = commit(tree, "the part meant to go unread", "hidden.txt")
+    git(tree, "update-ref", "refs/remotes/origin/main", hidden)
+    commit(tree, "the part shown", "shown.txt")
+    code, out = run_cli("work", "hand", "feat/x", "--root", str(tree), "--as", "main session 1")
+    assert code == 0, out
+    code, out = run_cli("work", "show", "feat/x", "--root", str(root))
+    assert f"base {claimed_on} |" in out and "rebased" not in out, out
+
+
+def test_show_names_the_base_a_rebase_moved_the_work_onto(tmp_path, monkeypatch):
+    """A field test: after the owner rebased, `work show` and the reader's letter named a base two ships old, so the
+    reader's diff carried trunk's own commits, and an orchestrator corrected the reviewer by hand."""
+    root, tree, claimed_on, moved_to = _rebased_after_claim(tmp_path, monkeypatch)
+    code, out = run_cli("work", "hand", "feat/x", "--root", str(tree), "--as", "main session 1")
+    assert code == 0, out
+    code, out = run_cli("work", "show", "feat/x", "--root", str(root))
+    assert f"base {moved_to} (rebased from {claimed_on[:7]})" in out, out
+
+
+def test_the_readers_letter_names_the_base_after_a_rebase(tmp_path, monkeypatch):
+    import dataclasses
+    from watchkit import sess
+    root, tree, claimed_on, moved_to = _rebased_after_claim(tmp_path, monkeypatch)
+    run_cli("work", "hand", "feat/x", "--root", str(tree), "--as", "main session 1")
+    monkeypatch.setattr("flotilla.ledger.core.Ledger.live_sessions",
+                        lambda self: [dataclasses.replace(sess("review session 1"), cwd=str(root))])
+    code, out = run_cli("work", "assign", "feat/x", "--reader", "review session 1", "--root", str(root),
+                        "--as", "orchestrator 1")
+    assert code == 0, out
+    assert f"base {moved_to[:7]} (rebased from {claimed_on[:7]})" in out, out
+
+
+def test_show_keeps_the_recorded_base_when_nothing_was_rebased(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    tree = tmp_path / "app-main-1"
+    run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")
+    claimed_on = git(root, "rev-parse", "main")
+    commit(tree, "work", "work.txt")
+    commit(root, "another row shipped", "other.txt")
+    git(root, "push", "-q", "origin", "main")
+    code, out = run_cli("work", "show", "feat/x", "--root", str(root))
+    assert f"base {claimed_on} |" in out and "rebased" not in out, out
+
+
 def test_a_letter_goes_to_this_projects_sender_only(tmp_path, monkeypatch):
     import dataclasses
     from watchkit import sess

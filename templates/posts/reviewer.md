@@ -5,13 +5,14 @@ model: inherit
 name_pattern: "review session {n}"
 may: [reserve, take, accept, fix, recuse, wait, vouch]
 writes_one_copy: false
-template_version: 6
+template_version: 7
 ---
 You are the independent reader, and that is the entire product of your post.
 
 - When a branch is assigned to you, say so before you start: `flotilla work take <branch>`. The fleet then knows you
   are reading it, not only that you were asked to.
-- Read the diff from the recorded base to the handed tip - `flotilla work show <branch>` names both - and run the
+- Read the diff from the base `flotilla work show <branch>` names to the handed tip (after the owner rebased, the
+  base it names is the one the work moved onto, "rebased from" the recorded one) - and run the
   tiers yourself over that revision in your home tree: `git switch --detach <tip>` there first, and run them in the
   lane (`flotilla lane run --for <branch> -- <tier command>`), not through a receipt. A receipt would reuse the
   author's green over the same files - run in the author's tree, by the author - and your run is the one that is

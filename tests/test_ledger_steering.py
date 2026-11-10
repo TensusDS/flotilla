@@ -184,6 +184,83 @@ def test_adopt_keeps_a_dirty_tree_on_its_branch_and_says_so(world, tmp_path):
 
 
 
+def _home(root, ledger, tmp_path, heir="main session 2", name="app-main-2"):
+    """The heir's own seat: its post row names its home tree, as spawn reserves it."""
+    from ledgerkit import git
+    home = tmp_path / name
+    git(root, "worktree", "add", "-q", "-b", f"fleet/{name}", str(home))
+    with ledger.session() as s:
+        s.append(actor(ledger, heir), "r90", "reserve", "reserved",
+                 fields={"branch": f"fleet/{name}", "owner": heir, "tree": str(home)})
+    return home
+
+
+def test_adopted_work_follows_the_heir_to_its_home_tree(world, tmp_path):
+    """A field test (alpha item 22): the row kept the gone seat's tree, so the collector read the live heir as
+    working there and kept ~35 trees, ~8 GB, while the heir worked in its own tree."""
+    from flotilla.ledger import core
+    root, ledger = world
+    tree = _seat_tree_holding(root, tmp_path)
+    core.claim(ledger, actor(ledger, "main session 1"), "feat/held", tree=str(tree))
+    home = _home(root, ledger, tmp_path)
+    row = steering.adopt(ledger, actor(ledger, ORCH), "feat/held", to="main session 2")
+    assert row.tree == str(home)
+    assert row.history[-1]["evidence"]["tree"] == "detached"
+
+
+def test_adopted_work_keeps_a_tree_that_still_holds_its_branch(world, tmp_path):
+    """Uncommitted work keeps the branch checked out in the gone seat's tree: the heir can only go on there."""
+    from flotilla.ledger import core
+    root, ledger = world
+    tree = _seat_tree_holding(root, tmp_path)
+    core.claim(ledger, actor(ledger, "main session 1"), "feat/held", tree=str(tree))
+    _home(root, ledger, tmp_path)
+    (tree / "wip.txt").write_text("unsaved\n", encoding="utf-8")
+    row = steering.adopt(ledger, actor(ledger, ORCH), "feat/held", to="main session 2")
+    assert row.tree == str(tree)
+
+
+def test_an_adopted_post_row_keeps_its_tree(world, tmp_path):
+    """Review of c6a9933, 2: a post row carries the gone seat's session id, so following the heir would give that id
+    the heir's tree as its own in the gc guard, and leave the heir two post rows on one tree."""
+    from ledgerkit import git
+    root, ledger = world
+    tree = tmp_path / "app-main-1"
+    git(root, "worktree", "add", "-q", "-b", "fleet/app-main-1", str(tree))
+    with ledger.session() as s:
+        s.append(actor(ledger, "main session 1"), "r80", "reserve", "reserved",
+                 fields={"branch": "fleet/app-main-1", "owner": "main session 1", "tree": str(tree),
+                         "session_id": "sid-gone"})
+    _home(root, ledger, tmp_path)
+    row = steering.adopt(ledger, actor(ledger, ORCH), "fleet/app-main-1", to="main session 2")
+    assert row.tree == str(tree)
+
+
+def test_adopted_work_keeps_its_tree_when_the_heir_has_no_home(world, tmp_path):
+    """Nothing says where an heir without a post row works, so the row does not guess."""
+    from flotilla.ledger import core
+    root, ledger = world
+    tree = _seat_tree_holding(root, tmp_path)
+    core.claim(ledger, actor(ledger, "main session 1"), "feat/held", tree=str(tree))
+    row = steering.adopt(ledger, actor(ledger, ORCH), "feat/held", to="main session 2")
+    assert row.tree == str(tree)
+
+
+def test_a_tree_let_go_by_adopt_is_no_longer_read_as_the_heirs(world, tmp_path):
+    """The collector's view of the same field case: the gone seat's tree is not held by the live heir."""
+    from flotilla.gc import trees
+    from test_gc_trees import session
+    from flotilla.ledger import core
+    root, ledger = world
+    tree = _seat_tree_holding(root, tmp_path)
+    core.claim(ledger, actor(ledger, "main session 1"), "feat/held", tree=str(tree))
+    home = _home(root, ledger, tmp_path)
+    steering.adopt(ledger, actor(ledger, ORCH), "feat/held", to="main session 2")
+    heir = [session("main session 2", home)]
+    assert trees._alive(ledger, tree.resolve(), heir, set(), None) == ""
+    assert trees._alive(ledger, home.resolve(), heir, set(), None) == "main session 2 is alive and works in it"
+
+
 def test_adopt_leaves_a_tree_that_no_longer_holds_the_branch(world, tmp_path):
     """Final review of 0.21.0, M2: the gone owner's tree may be on another branch by now, perhaps a later seat's."""
     from flotilla.ledger import core

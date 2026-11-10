@@ -25,10 +25,65 @@ def _not_assigned_elsewhere(row: Row, actor: Actor) -> None:
         raise MoveRefused(f"`{row.branch}` is assigned to {row.reader}")
 
 
-def letter(row: Row) -> str:
-    base = row.base[:7] if row.base else "unknown"
+def read_from(ledger: Ledger, row: Row) -> tuple[str, str]:
+    """Where the reader's diff starts, and the recorded base it moved from when the owner rebased ("" if it did not).
+
+    The recorded base stays the row's: what waits for the person's yes counts every commit from it. Only what is
+    shown moves, only forward from the recorded base, and only when another row's verdict accounts for every commit
+    the move skips - the same accounting the push guard trusts. Git alone cannot tell "rebased onto trunk" from "my
+    own commits reached trunk unread", and the fork point is read from `origin/<trunk>`, a ref a seat can repoint
+    (final review of 0.21.0, C1): either would otherwise start the reader above commits nobody read (security
+    review of a7a44df, and its second review)."""
+    tip = row.tip or gitq.branch_tip(ledger.root, row.branch, run=ledger.run) or ""
+    if not row.base or not tip:
+        return row.base, ""
+    fresh = gitq.merge_base(ledger.root, gitq.trunk_ref(ledger.root, ledger.trunk, run=ledger.run), tip,
+                            run=ledger.run)
+    if fresh and fresh != row.base and gitq.is_ancestor(ledger.root, row.base, fresh, run=ledger.run) is True \
+            and _read_by_others(ledger, row, fresh):
+        return fresh, row.base
+    return row.base, ""
+
+
+#: The most commits a shown base may skip; past it the recorded base is shown, as before 0.31.1.
+MOST_SKIPPED = 300
+#: The most rows whose verdicts are read for it, the latest first. Accounting costs about five git calls a row,
+#: closed rows included (review of bedca8d, A: 314 calls for a ledger of 61 reviewed rows).
+MOST_ROWS = 50
+
+
+def _read_by_others(ledger: Ledger, row: Row, fresh: str) -> bool:
+    """Whether every commit in `row.base..fresh` is accounted for by a verdict of a row other than this one.
+
+    Only rows moved since this row's claim are asked: what the rebase skipped reached trunk after the base was
+    recorded. Leaving a row out can only leave a commit unaccounted, and then the recorded base is shown."""
+    from flotilla.ledger import batch
+    listed = ledger.run(["git", "-C", str(ledger.root), "rev-list", "--count", fresh, f"^{row.base}"],
+                        capture_output=True, text=True, check=False)
+    if listed.returncode != 0 or not listed.stdout.strip().isdigit() or int(listed.stdout) > MOST_SKIPPED:
+        return False
+    claimed = str(row.history[0].get("at") or "") if row.history else ""
+    others = [other for other in ledger.rows().values()
+              if other.id != row.id and (not claimed or other.updated_at >= claimed)]
+    others.sort(key=lambda other: other.updated_at, reverse=True)
+    try:
+        return batch.unaccounted(ledger, {other.id: other for other in others[:MOST_ROWS]}, fresh,
+                                 since=row.base) == []
+    except Exception:  # noqa: BLE001 - a shown base that cannot be checked is not moved; the move itself stands
+        return False
+
+
+def shown_base(base: str, moved_from: str, width: int | None = None) -> str:
+    """`base <sha>`, and what a rebase moved it from: a field test's reader read a diff from a base two ships old."""
+    said = f"base {base[:width] if width else base}"
+    return said + (f" (rebased from {moved_from[:7]})" if moved_from else "")
+
+
+def letter(row: Row, read: tuple[str, str] | None = None) -> str:
+    base, moved_from = read if read is not None else (row.base, "")
+    base_said = shown_base(base, moved_from, 7) if base else "base unknown"
     return (f"`{row.branch}` is handed to you to read (row {row.id}, owner {row.owner}, tip {row.tip[:7]}, "
-            f"base {base}).\n"
+            f"{base_said}).\n"
             f"Start with `flotilla work take {row.branch}`. Your verdict is "
             f"`flotilla work accept {row.branch} --reviewed <sha>` or "
             f"`flotilla work fix {row.branch} --why \"<what must change>\"`.")
@@ -85,7 +140,7 @@ def assign(ledger: Ledger, actor: Actor, branch: str, *, reader: str) -> tuple[R
         if reader_post is None or "accept" not in reader_post.may:
             raise MoveRefused(f"{reader} holds no post that may accept")
         new = s.append(actor, row.id, "assign", state, fields={"reader": reader, "taken": False})
-    return new, letter(new)
+    return new, letter(new, read_from(ledger, new))
 
 
 def accept(ledger: Ledger, actor: Actor, branch: str, *, reviewed: str) -> Row:

@@ -185,7 +185,7 @@ def summary(row: Row) -> str:
 def _base(ledger: core.Ledger, row: Row) -> str:
     """A row filed before its branch exists has no base yet; "unknown" would read as a git failure (F22)."""
     if row.base:
-        return f"base {row.base}"
+        return reading.shown_base(*reading.read_from(ledger, row))
     if gitq.branch_tip(ledger.root, row.branch, run=ledger.run) is None:
         return "base: no branch yet"
     return "base unknown"
@@ -698,7 +698,8 @@ def _letters(ledger: core.Ledger, caller, before: dict) -> None:
         roots = project.roots(ledger.root, ledger.run)
         return {session.name for session in project.members(sessions, ledger.rows(), roots) if session.name}
     try:
-        due = letters.changed(before, ledger.rows(), ledger.profile, ledger.posts, caller.name, live)
+        due = letters.changed(before, ledger.rows(), ledger.profile, ledger.posts, caller.name, live,
+                              lambda row: reading.read_from(ledger, row))
     except Exception as err:  # noqa: BLE001 - the move stands; say what could not be done
         print(f"note: the move is recorded; its letters could not be computed: {err}")
         return
