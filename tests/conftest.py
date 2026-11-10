@@ -99,6 +99,28 @@ def memory_is_not_this_machines(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def a_suite_in_the_lane_is_not_a_nested_run(monkeypatch):
+    """The suite runs in a lane scope when it runs through the lane, as docs/development.md says it should. The lane
+    reads this process's own cgroup to tell a nested `lane run`, which stays in its outer scope, and would take every
+    test's run for one: six freeze tests failed only there. The tests see the cgroup this process would be in outside
+    any lane scope; a test that names its own cgroup file reads it as given."""
+    from pathlib import Path
+
+    from flotilla.lane import freeze
+    real = freeze._own_cgroup
+
+    def own(proc_self):
+        found = real(proc_self)
+        if Path(proc_self) != freeze.PROC_SELF:
+            return found
+        parts = found.split("/")
+        while len(parts) > 1 and parts[-1].startswith(freeze.UNIT_PREFIX):
+            parts.pop()
+        return "/".join(parts)
+    monkeypatch.setattr(freeze, "_own_cgroup", own)
+
+
+@pytest.fixture(autouse=True)
 def no_real_process_is_stopped(tmp_path, monkeypatch):
     """Retire stops orphans it finds in /proc; no test may look at, or signal, this machine's processes."""
     monkeypatch.setattr("flotilla.fleet.leftovers.PROC_ROOT", tmp_path / "no-proc-in-tests")
