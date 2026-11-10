@@ -25,10 +25,33 @@ def _not_assigned_elsewhere(row: Row, actor: Actor) -> None:
         raise MoveRefused(f"`{row.branch}` is assigned to {row.reader}")
 
 
-def letter(row: Row) -> str:
-    base = row.base[:7] if row.base else "unknown"
+def read_from(ledger: Ledger, row: Row) -> tuple[str, str]:
+    """Where the reader's diff starts, and the recorded base it moved from when the owner rebased ("" if it did not).
+
+    The recorded base stays the row's: what waits for the person's yes counts every commit from it, and a fresher
+    one would be read from `origin/<trunk>`, a ref a seat can repoint (final review of 0.21.0, C1). Only what is
+    shown moves, and only forward along trunk: a fork point the recorded base is not under is not this row's."""
+    tip = row.tip or gitq.branch_tip(ledger.root, row.branch, run=ledger.run) or ""
+    if not row.base or not tip:
+        return row.base, ""
+    fresh = gitq.merge_base(ledger.root, gitq.trunk_ref(ledger.root, ledger.trunk, run=ledger.run), tip,
+                            run=ledger.run)
+    if fresh and fresh != row.base and gitq.is_ancestor(ledger.root, row.base, fresh, run=ledger.run) is True:
+        return fresh, row.base
+    return row.base, ""
+
+
+def shown_base(base: str, moved_from: str, width: int | None = None) -> str:
+    """`base <sha>`, and what a rebase moved it from: a field test's reader read a diff from a base two ships old."""
+    said = f"base {base[:width] if width else base}"
+    return said + (f" (rebased from {moved_from[:7]})" if moved_from else "")
+
+
+def letter(row: Row, read: tuple[str, str] | None = None) -> str:
+    base, moved_from = read if read is not None else (row.base, "")
+    base_said = shown_base(base, moved_from, 7) if base else "base unknown"
     return (f"`{row.branch}` is handed to you to read (row {row.id}, owner {row.owner}, tip {row.tip[:7]}, "
-            f"base {base}).\n"
+            f"{base_said}).\n"
             f"Start with `flotilla work take {row.branch}`. Your verdict is "
             f"`flotilla work accept {row.branch} --reviewed <sha>` or "
             f"`flotilla work fix {row.branch} --why \"<what must change>\"`.")
@@ -85,7 +108,7 @@ def assign(ledger: Ledger, actor: Actor, branch: str, *, reader: str) -> tuple[R
         if reader_post is None or "accept" not in reader_post.may:
             raise MoveRefused(f"{reader} holds no post that may accept")
         new = s.append(actor, row.id, "assign", state, fields={"reader": reader, "taken": False})
-    return new, letter(new)
+    return new, letter(new, read_from(ledger, new))
 
 
 def accept(ledger: Ledger, actor: Actor, branch: str, *, reviewed: str) -> Row:

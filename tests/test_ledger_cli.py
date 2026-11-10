@@ -441,6 +441,54 @@ def test_show_says_a_row_has_no_branch_yet(tmp_path, monkeypatch):
     assert "base: no branch yet" in out and "base unknown" not in out
 
 
+def _rebased_after_claim(tmp_path, monkeypatch):
+    """`feat/x` cut on trunk, trunk moved on origin, and the owner rebased onto it: the case a field test met."""
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    tree = tmp_path / "app-main-1"
+    run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")
+    claimed_on = git(root, "rev-parse", "main")
+    commit(tree, "work", "work.txt")
+    moved_to = commit(root, "another row shipped", "other.txt")
+    git(root, "push", "-q", "origin", "main")
+    git(tree, "-c", "user.email=t@example.invalid", "-c", "user.name=t", "rebase", "-q", "origin/main")
+    return root, tree, claimed_on, moved_to
+
+
+def test_show_names_the_base_a_rebase_moved_the_work_onto(tmp_path, monkeypatch):
+    """A field test: after the owner rebased, `work show` and the reader's letter named a base two ships old, so the
+    reader's diff carried trunk's own commits, and an orchestrator corrected the reviewer by hand."""
+    root, tree, claimed_on, moved_to = _rebased_after_claim(tmp_path, monkeypatch)
+    code, out = run_cli("work", "hand", "feat/x", "--root", str(tree), "--as", "main session 1")
+    assert code == 0, out
+    code, out = run_cli("work", "show", "feat/x", "--root", str(root))
+    assert f"base {moved_to} (rebased from {claimed_on[:7]})" in out, out
+
+
+def test_the_readers_letter_names_the_base_after_a_rebase(tmp_path, monkeypatch):
+    import dataclasses
+    from watchkit import sess
+    root, tree, claimed_on, moved_to = _rebased_after_claim(tmp_path, monkeypatch)
+    run_cli("work", "hand", "feat/x", "--root", str(tree), "--as", "main session 1")
+    monkeypatch.setattr("flotilla.ledger.core.Ledger.live_sessions",
+                        lambda self: [dataclasses.replace(sess("review session 1"), cwd=str(root))])
+    code, out = run_cli("work", "assign", "feat/x", "--reader", "review session 1", "--root", str(root),
+                        "--as", "orchestrator 1")
+    assert code == 0, out
+    assert f"base {moved_to[:7]} (rebased from {claimed_on[:7]})" in out, out
+
+
+def test_show_keeps_the_recorded_base_when_nothing_was_rebased(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    tree = tmp_path / "app-main-1"
+    run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")
+    claimed_on = git(root, "rev-parse", "main")
+    commit(tree, "work", "work.txt")
+    commit(root, "another row shipped", "other.txt")
+    git(root, "push", "-q", "origin", "main")
+    code, out = run_cli("work", "show", "feat/x", "--root", str(root))
+    assert f"base {claimed_on} |" in out and "rebased" not in out, out
+
+
 def test_a_letter_goes_to_this_projects_sender_only(tmp_path, monkeypatch):
     import dataclasses
     from watchkit import sess

@@ -84,7 +84,11 @@ def merges_cleanly(root: Path, a: str, b: str, run=subprocess.run) -> bool | Non
     return {0: True, 1: False}.get(done.returncode)
 
 def fork_point(root: Path, branch: str, trunk: str, run=subprocess.run) -> str | None:
-    done = _git(root, "merge-base", trunk_ref(root, trunk, run=run), f"refs/heads/{branch}", run=run)
+    return merge_base(root, trunk_ref(root, trunk, run=run), f"refs/heads/{branch}", run=run)
+
+
+def merge_base(root: Path, a: str, b: str, run=subprocess.run) -> str | None:
+    done = _git(root, "merge-base", a, b, run=run)
     return (done.stdout.strip() or None) if done.returncode == 0 else None
 
 

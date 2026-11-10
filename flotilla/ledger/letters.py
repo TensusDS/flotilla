@@ -39,10 +39,10 @@ def _post_of(posts: dict, name: str) -> str:
     return found.name if found is not None else ""
 
 
-def _body(row: Row) -> str:
+def _body(row: Row, read_from: Callable[[Row], tuple[str, str]] | None = None) -> str:
     if row.state == "handed":
         from flotilla.ledger.reading import letter
-        return letter(row)
+        return letter(row, read_from(row) if read_from is not None else None)
     said = f"`{row.branch}` (row {row.id}) is {WHAT.get(row.state, row.state)}; the next move is yours."
     if row.state == "fixing" and row.why:
         said += f" What must change: {visible(row.why)}"   # the reader's words, shown as data
@@ -52,8 +52,10 @@ def _body(row: Row) -> str:
 
 
 def changed(before: dict[str, Row], after: dict[str, Row], profile: dict, posts: dict, caller: str,
-            live: Callable[[], set[str] | None]) -> list[Letter]:
-    """A letter for every row whose mover changed to a session other than the caller's."""
+            live: Callable[[], set[str] | None],
+            read_from: Callable[[Row], tuple[str, str]] | None = None) -> list[Letter]:
+    """A letter for every row whose mover changed to a session other than the caller's. `read_from` says where a
+    reader's diff starts (`reading.read_from`); without it a letter names the recorded base."""
     mine = _post_of(posts, caller)
     due = []
     for row_id, row in after.items():
@@ -82,7 +84,7 @@ def changed(before: dict[str, Row], after: dict[str, Row], profile: dict, posts:
             to = (f"the session holding the {post} post",)
         else:
             to = tuple(sorted(name for name in names if _post_of(posts, name) == post))
-        found.append(Letter(mover=mover, to=to, branch=row.branch, text=_body(row), hint=hint))
+        found.append(Letter(mover=mover, to=to, branch=row.branch, text=_body(row, read_from), hint=hint))
     return found
 
 
