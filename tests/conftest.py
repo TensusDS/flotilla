@@ -100,13 +100,17 @@ def memory_is_not_this_machines(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def a_suite_in_the_lane_is_not_a_nested_run(monkeypatch):
-    """The suite runs in a lane scope when it runs through the lane, as docs/development.md says it should. The lane
-    reads this process's own cgroup to tell a nested `lane run`, which stays in its outer scope, and would take every
-    test's run for one: six freeze tests failed only there. The tests see the cgroup this process would be in outside
-    any lane scope; a test that names its own cgroup file reads it as given."""
+    """The suite runs under a lane booking when it runs through the lane, as docs/development.md says it should, and
+    two traces of that booking reached every test. Its environment names the booking (`FLOTILLA_LANE_BOOKING`): a
+    test's `execute` took itself for a booked command, and a booking made in a test would reuse the suite's own.
+    And this process sits in the booking's `flotilla-lane-*` scope, which the lane reads from /proc/self/cgroup to
+    tell a nested run: six freeze tests took their slots for nested ones. A test sees neither - the cgroup this
+    process would be in outside any lane scope, and no booking - and a test that names its own cgroup file, or sets
+    the booking itself, gets what it set."""
     from pathlib import Path
 
-    from flotilla.lane import freeze
+    from flotilla.lane import acquire, freeze
+    monkeypatch.delenv(acquire.ENV, raising=False)
     real = freeze._own_cgroup
 
     def own(proc_self):
