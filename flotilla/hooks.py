@@ -34,8 +34,9 @@ GUARD_TRIGGERS = ("checkout", "restore", "reset", "clean", "switch", "sed", "pus
                   "rm", "worktree", "branch", "update-ref",
                   "pytest", "py.test", "playwright", "vitest", "jest", "cargo", "go test", "npm", "pnpm", "yarn",
                   "npx", "bun", "tox", "nox", "headless")
-#: The person's words that are too common as parts of other words (`origin`) to look for as text: looked for as whole
-#: words, they let code handed to an interpreter (`bash -c '$F rig open'`) reach the guard that reads it.
+#: The person's words that are too common as parts of other words (`origin`) to look for as text. As whole words -
+#: or as parts, in a line that holds `$` or a backtick, where bash says where a word begins - they let code handed
+#: to an interpreter (`bash -c 'x rig open'`) reach the guard that reads it.
 GUARD_TRIGGER_PARTS = ("rig", "attention")
 GUARD_TRIGGER_WORDS = re.compile(r"\b(?:%s)\b" % "|".join(GUARD_TRIGGER_PARTS))
 _QUOTING = {ord(sign): None for sign in "'\"\\"}
@@ -176,8 +177,9 @@ def _guard_failed(command: str, err: Exception, out) -> int:
         if "$" in bare or "`" in bare:   # as `flotilla.guards.may_be_persons`: the word anywhere is enough
             persons = any(word in bare for word in LAST_RESORT_PERSON_WORDS)
         else:
-            persons = "flotilla" in bare and re.search(
-                r"\b(?:%s)\b" % "|".join(LAST_RESORT_PERSON_WORDS), bare) is not None
+            words = re.compile(r"\b(?:%s)\b" % "|".join(LAST_RESORT_PERSON_WORDS))
+            blanked = _unquoted(re.sub(r"\\[\s\S]", " ", command))   # a backslash the code may make a blank of
+            persons = "flotilla" in bare and (words.search(bare) or words.search(blanked)) is not None
         ask = not refuse and persons
         text = f"flotilla guards failed ({err}); " + (
             "a command that may push is refused on failure. Knowingly: the person runs the command themselves - "

@@ -49,8 +49,10 @@ def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run, who
         person_says(lambda: [person.check(segment)])
     person_says(lambda: [person.heredoc_check(command, segments)])
     # the person's own moves handed to an interpreter as text (the person, 2026-11-03): refused, or asked of them
-    person_says(lambda: [person.wrapped_check(segment, person.whole_text(every_line), command)
-                         for segment in segments])
+    whole: list[str] = []
+    person_says(lambda: whole.append(person.whole_text(every_line)) or [])
+    for segment in segments if whole else ():
+        person_says(lambda: [person.wrapped_check(segment, whole[0], command)])
     if root is None:   # the session stands in no project; a push into one is still judged by that project (F18)
         return persons + [found for found in (push.guard(segment, root=None, profile={}, env=env, run=run, who=who)
                                               for segment in segments if push.door(segment) is not None)

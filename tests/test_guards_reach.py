@@ -79,8 +79,8 @@ def test_every_gc_door_is_spelled_with_one_of_its_door_words(tmp_path):
 # Review of cb3a55f: the text check read the line as typed, the guards read its words as bash does.
 SPLIT_WORDS = [("r\\m -rf ../app-main-1", "flotilla gc apply"), ('git wor""ktree prune', "flotilla gc apply"),
                ("git bran''ch -D fleet/main-1", "flotilla gc apply"),
-               ('rm -r\\\nf ../app-main-1', "flotilla gc apply"),
-               ('flot""illa rig enable', "person's own move"), ("g''h pr merge 5", "")]
+               ('r\\\nm -rf ../app-main-1', "flotilla gc apply"),
+               ('flot""illa work "ap"prove W-1', "person's own move"), ("g''h pr merge 5", "")]
 
 
 @pytest.mark.parametrize("command,said", SPLIT_WORDS)
@@ -221,6 +221,76 @@ def test_the_failure_rule_does_not_ask_about_a_persons_word_inside_another(comma
 def test_the_failure_rule_reads_a_push_through_quotes():
     assert guards.on_failure("git pu''sh origin main", RuntimeError("x"), {}).refuse
     assert guards.on_failure('g"h" pr merge 5', RuntimeError("x"), {}).refuse
+
+
+def test_the_entry_point_and_the_last_resort_read_a_push_through_quotes(tmp_path, monkeypatch):
+    """Second review, finding 5: nothing held the other two copies to the unquoted reading."""
+    fake, project = old_interpreter(tmp_path)
+    assert decision(guard_through(fake, project, "g''h pr merge 5", {"FLOTILLA_GATE_OVERRIDE": ""})) == "deny"
+    monkeypatch.setitem(sys.modules, "flotilla.guards.run", None)
+
+    def unreadable(*args, **kwargs):
+        raise RuntimeError("the rule itself is broken")
+    monkeypatch.setattr(guards, "on_failure", unreadable)
+    # `checkout` takes the line past the text check; the push word is the split one
+    (tmp_path / "p").mkdir()
+    answer = ask(onboarded(tmp_path / "p"), "git checkout x && g''h pr merge 5", monkeypatch, tmp_path)
+    assert answer and answer.get("permissionDecision") == "deny", answer
+
+
+ESCAPED = "python3 -c \"run('flotilla\\trig\\topen'.split())\""
+
+
+def test_a_backslash_the_code_makes_a_blank_of_does_not_hide_a_persons_word(tmp_path, monkeypatch):
+    """Second review, finding 2: with the backslashes taken out the word is glued to its neighbours."""
+    assert guards.on_failure(ESCAPED, RuntimeError("x"), {}).ask
+    fake, project = old_interpreter(tmp_path)
+    assert decision(guard_through(fake, project, ESCAPED)) == "ask"
+    monkeypatch.setitem(sys.modules, "flotilla.guards.run", None)
+
+    def unreadable(*args, **kwargs):
+        raise RuntimeError("the rule itself is broken")
+    monkeypatch.setattr(guards, "on_failure", unreadable)
+    (tmp_path / "p").mkdir()
+    answer = ask(onboarded(tmp_path / "p"), ESCAPED, monkeypatch, tmp_path)
+    assert answer and answer.get("permissionDecision") == "ask", answer
+
+
+def test_a_symlink_loop_does_not_fail_the_guards(tmp_path, monkeypatch):
+    """Second review, finding 1: before Python 3.13 `Path.resolve` raises RuntimeError on a loop, which is no
+    OSError; bash fails the `cd` and runs the rest where it stood."""
+    import os
+    root = fleet(tmp_path, monkeypatch)
+    os.symlink("loop", root / "loop")
+    for command in ("cd loop; rm -rf ../app-main-1", "git -C loop status; rm -rf ../app-main-1"):
+        answer = ask(root, command, monkeypatch, tmp_path)
+        assert answer and answer.get("permissionDecision") == "deny", (command, answer)
+        assert "guards failed" not in answer["permissionDecisionReason"]
+
+
+def test_where_a_directory_leads_is_unknown_whatever_resolving_it_raises(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    from flotilla.guards import shell
+
+    def loops(self, *args, **kwargs):
+        raise RuntimeError("Symlink loop from x")
+    monkeypatch.setattr(Path, "resolve", loops)
+    assert shell.into(tmp_path, "anywhere") is None
+
+
+def test_the_wrapped_reading_failing_on_one_segment_costs_no_other_its_refusal(tmp_path, monkeypatch):
+    """Second review, finding 3: the wrapped reading was one try over every segment."""
+    from flotilla.guards import person
+    real = person.wrapped_check
+
+    def second_fails(segment, *args, **kwargs):
+        if "status" in segment.text:
+            raise RuntimeError("second segment on fire")
+        return real(segment, *args, **kwargs)
+    monkeypatch.setattr(person, "wrapped_check", second_fails)
+    answer = ask(onboarded(tmp_path), "bash -c 'flotilla work approve W-1'; git status", monkeypatch, tmp_path)
+    assert answer["permissionDecision"] == "deny", answer
 
 
 @pytest.mark.parametrize("command", ["bin/flotilla work approve W-1", "flotilla rig open"])

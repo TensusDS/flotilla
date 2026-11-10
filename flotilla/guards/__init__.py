@@ -13,7 +13,8 @@ xargs, find -exec, functions, aliases or scripts (./ship.sh), nor wrappers with 
 directory named through a variable (cd $D) is unknown: the revert guard then only warns, the push guard refuses.
 The line-number guard does not open sed -f scripts and does not know perl -i, awk -i inplace or ed. What the text
 hides from the push guard, the git pre-push hook catches: it asks git what is pushed. A program named through a
-variable (`$F rig open`) is not seen at all when nothing else in the line names flotilla. Code handed to an
+variable is refused when the line spells a word of the person's moves (`$F rig open`), and is not seen at all when
+the line builds that word too and nothing else in it names flotilla. Code handed to an
 interpreter (`bash -c`, `python3 -c`, a pipe into one, a heredoc or a here-string) is read only for the person's own
 moves: one spelled there is refused, flotilla run from a command line's code asks the person; a script the session
 writes and then runs is not read, and neither is `eval`."""
@@ -45,6 +46,7 @@ PERSONS_UNREAD = ("this line may hold a move only the person makes (`work approv
 
 _PERSON = re.compile(r"\b(?:%s)\b" % "|".join(PERSON_WORDS))
 _QUOTING = {ord(sign): None for sign in "'\"\\"}
+_ESCAPE = re.compile(r"\\[\s\S]")
 
 
 def unquoted(command: str) -> str:
@@ -62,7 +64,9 @@ def may_be_persons(command: str) -> bool:
         # where a word begins is bash's to say once it expands something (`$A'r'ig` is `rig` when A is empty):
         # the word anywhere in the text is enough
         return any(word in text for word in PERSON_WORDS)
-    return "flotilla" in text and _PERSON.search(text) is not None
+    # a backslash may also stand for a blank the code it is handed to makes of it (`'flotilla\trig\topen'.split()`)
+    blanked = unquoted(_ESCAPE.sub(" ", command))
+    return "flotilla" in text and (_PERSON.search(text) or _PERSON.search(blanked)) is not None
 
 
 def on_failure(command: str, err: Exception, env) -> Finding:

@@ -37,8 +37,8 @@ def into(base: Path | None, target: str | None) -> Path | None:
     try:
         path = path.resolve()
         return path if path.is_dir() else None
-    except (OSError, ValueError):   # a name too long, a NUL in it: where it leads cannot be said
-        return None
+    except Exception:  # noqa: BLE001 - a name too long, a NUL in it, a symlink loop (a RuntimeError before Python
+        return None    # 3.13): where it leads cannot be said, and that is no reason to fail every guard
 
 
 @dataclass(frozen=True)
@@ -232,7 +232,13 @@ def segments(command: str, cwd, *, bodies: bool = False) -> list[Segment]:
     if not bodies:
         command = without_heredoc_bodies(command)
     found: list[Segment] = []
-    for plain, parts in ((True, SEPARATORS.split(command)), (False, _split_outside_quotes(command))):
+    readings = [(True, SEPARATORS.split(command)), (False, _split_outside_quotes(command))]
+    if "\\\n" in command:
+        # bash joins a line that ends in a backslash to the next one, inside a word too (`r\`, newline, `m` is
+        # `rm`): one more reading, beside the others - a reading only ever adds a segment to judge
+        joined = command.replace("\\\n", "")
+        readings += [(True, SEPARATORS.split(joined)), (False, _split_outside_quotes(joined))]
+    for plain, parts in readings:
         here = Path(cwd).resolve() if cwd is not None else None
         for part in parts:
             text = part.strip()

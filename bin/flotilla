@@ -34,7 +34,9 @@ def guard_answer(data, why):
     if "$" in bare or "`" in bare:   # as flotilla.guards.may_be_persons: the word anywhere is enough
         persons = any(word in bare for word in PERSON_WORDS)
     else:
-        persons = "flotilla" in bare and re.search(r"\b(?:%s)\b" % "|".join(PERSON_WORDS), bare) is not None
+        words = re.compile(r"\b(?:%s)\b" % "|".join(PERSON_WORDS))
+        blanked = re.sub(r"\\[\s\S]", " ", command).replace("'", "").replace('"', "")
+        persons = "flotilla" in bare and (words.search(bare) or words.search(blanked)) is not None
     ask = not refuse and persons
     text = "flotilla guards failed (" + why.strip() + "); " + (
         "a command that may push is refused on failure. Knowingly: the person runs the command themselves - "

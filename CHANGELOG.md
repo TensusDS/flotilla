@@ -15,7 +15,9 @@ Four holes in the guards, found by reading them whole. Each let a command run th
 - **A person guard that fails no longer lets the person's own move run.** When the guard that keeps `work approve`,
   the `rig` moves and `attention` for the person raised an error, the line ran with a note that it was unchecked.
   Now the other guards still judge the line, and a line that names flotilla beside one of those words is put to the
-  person in Claude Code's own confirmation. The same holds when the guards fail whole, or cannot be imported.
+  person in Claude Code's own confirmation - and so is a line that holds `$` or a backtick with such a word anywhere
+  in it, `origin` included, since bash decides there what the words are. The same holds when the guards fail whole,
+  or cannot be imported.
 - **A push the guards could not judge is not opened by the command's own text.** On a failure,
   `FLOTILLA_GATE_OVERRIDE=` anywhere in the command - in an `echo`, in a comment - let the push through, unrecorded,
   and with it whatever the person's approval would have stopped. On a failure only the variable set in the
@@ -30,9 +32,13 @@ Four holes in the guards, found by reading them whole. Each let a command run th
   `g""h pr merge` and `flot""illa rig enable` named none of the hook's words as text, so no guard was asked, though
   each guard reads the words as bash does and would have refused. The hook now looks for its words with quotes and
   backslashes taken out, and the failure rule reads the line the same way. It also looks for `rig` and `attention`
-  as whole words, so code handed to an interpreter that names them reaches the guard that reads such code.
-- **A directory name too long to exist no longer fails the guards whole.** `cd` or `git -C` to such a name raised
-  inside the guards, and the rest of the line ran under the failure rule.
+  as whole words - as parts of words in a line that holds `$` or a backtick - so code handed to an interpreter that
+  names them reaches the guard that reads such code, and `$F rig open` is refused with nothing else in the line
+  naming flotilla. `headless` joins the words, for the lane guard's default patterns.
+- **A directory the guards cannot follow no longer fails them whole.** `cd` or `git -C` to a name too long to exist,
+  or into a symlink loop, raised inside the guards, and the rest of the line ran under the failure rule.
+- **A word continued on the next line is read as the word bash runs.** `r\`, a line break, `m -rf` is `rm -rf` to
+  bash and was two unknown pieces to the guards.
 - When the person guard fails in one of its readings, a refusal another reading already made stands.
 
 ## 0.31.1 - 2026-11-10
