@@ -15,9 +15,9 @@ Two findings of the field fleets, both in what a session is told about work that
 - **After a rebase, the reader is shown where the work starts now.** `work show` and the reader's letter named the
   base the row was claimed on, so a reviewer's diff carried trunk's own commits that came in with the rebase, and an
   orchestrator corrected its reviewer by hand. Both now name the base the rebase moved the work onto, and the one it
-  moved from: `base 1a2b3c4 (rebased from 9f8e7d6)`. What waits for the person's yes is still counted from the base
-  recorded at the claim: the newer one is read from `origin/<trunk>`, which a session can repoint, so it may show
-  more but never ask less.
+  moved from: `base 1a2b3c4 (rebased from 9f8e7d6)`. The newer base is read from `origin/<trunk>`, which a session
+  can repoint, so it is shown only when it lies under a trunk commit the ledger recorded as delivered; otherwise the
+  recorded base is shown as before. What waits for the person's yes is still counted from the recorded base.
 
 ## 0.31.0 - 2026-11-09
 

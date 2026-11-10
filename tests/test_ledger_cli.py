@@ -441,8 +441,18 @@ def test_show_says_a_row_has_no_branch_yet(tmp_path, monkeypatch):
     assert "base: no branch yet" in out and "base unknown" not in out
 
 
+def _shipped(root, sha, branch="feat/other"):
+    """A row the sender shipped as trunk commit `sha`: the ledger's own record of where trunk was."""
+    from flotilla.ledger.commands import open_ledger
+    from ledgerkit import actor
+    ledger = open_ledger(root)
+    with ledger.session() as s:
+        s.append(actor(ledger, "sender 1"), "r50", "ship", "shipped",
+                 fields={"branch": branch, "owner": "main session 2", "merge": sha})
+
+
 def _rebased_after_claim(tmp_path, monkeypatch):
-    """`feat/x` cut on trunk, trunk moved on origin, and the owner rebased onto it: the case a field test met."""
+    """`feat/x` cut on trunk, another row shipped, and the owner rebased onto it: the case a field test met."""
     root = onboarded(tmp_path, monkeypatch, PLAIN)
     tree = tmp_path / "app-main-1"
     run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")
@@ -450,8 +460,26 @@ def _rebased_after_claim(tmp_path, monkeypatch):
     commit(tree, "work", "work.txt")
     moved_to = commit(root, "another row shipped", "other.txt")
     git(root, "push", "-q", "origin", "main")
+    _shipped(root, moved_to)
     git(tree, "-c", "user.email=t@example.invalid", "-c", "user.name=t", "rebase", "-q", "origin/main")
     return root, tree, claimed_on, moved_to
+
+
+def test_a_repointed_origin_ref_cannot_narrow_what_the_reader_is_shown(tmp_path, monkeypatch):
+    """Security review of a7a44df: an owner that points `refs/remotes/origin/<trunk>` at a commit of its own would
+    have the reader start below it, and that commit would go unread. Only a trunk point the ledger recorded as
+    delivered moves the shown base."""
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    tree = tmp_path / "app-main-1"
+    run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")
+    claimed_on = git(root, "rev-parse", "main")
+    hidden = commit(tree, "the part meant to go unread", "hidden.txt")
+    git(tree, "update-ref", "refs/remotes/origin/main", hidden)
+    commit(tree, "the part shown", "shown.txt")
+    code, out = run_cli("work", "hand", "feat/x", "--root", str(tree), "--as", "main session 1")
+    assert code == 0, out
+    code, out = run_cli("work", "show", "feat/x", "--root", str(root))
+    assert f"base {claimed_on} |" in out and "rebased" not in out, out
 
 
 def test_show_names_the_base_a_rebase_moved_the_work_onto(tmp_path, monkeypatch):
