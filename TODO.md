@@ -32,6 +32,36 @@ into the user's settings from a command to get around it. Checked against the ch
 is non-UTF-8 or holds a NUL byte, and none of the four points at something to fix outside the directory.
 *(checked 2026-11-09 on 0.31.0: open, waiting on Anthropic - hooks/hooks.json, bin/, skills/*/SKILL.md)*
 
+## From the reviews of 0.31.2 (2026-11-10, what reaches the guards and what they answer on a failure)
+
+Four review rounds. What is left belongs to one cause: the guards read a command with a matcher and bash reads it
+with a parser, and each new reading closed the cases found and left a rarer one. The fix is one parse of the
+command that every guard shares, not one more reading.
+
+- **A continued door on a line that opens a heredoc, after a quoted heredoc whose body ends a line in a backslash**
+  (`cat <<'EOF'`, `keep\`, `EOF`, `cat <<EOF; r\`, `m -rf <seat>`, `EOF`) is seen by none of the three readings
+  (typed, bodies dropped then lines joined, lines joined then bodies dropped). Bash joins a continued line before it
+  looks for a heredoc, joins inside an unquoted body and never inside a quoted one; `segments` does a blind replace.
+  *(checked 2026-11-10 on 0.31.2: open, needs the shared parse - flotilla/guards/shell.py segments)*
+- **A continued push with the override in the environment records the override twice**: the push guard judges the
+  typed and the joined reading, and `evaluate` says a doubled finding once but the record is written by the guard.
+  The push guard's git and origin calls run twice for such a line too. *(checked 2026-11-10 on 0.31.2: P -
+  flotilla/guards/run.py evaluate, flotilla/guards/push.py)*
+- **`$A""rig open` on the judged path, with nothing in the line naming flotilla**: the hook's text check passes it
+  on since 0.31.2, and the person guard then says nothing - a variable program whose value ends in a blank, inside
+  the stated ceiling. On a failure path the same line is asked of the person. *(checked 2026-11-10 on 0.31.2: P -
+  flotilla/guards/person.py check)*
+- **When the guards fail, `FLOTILLA_GATE_OVERRIDE` in the environment opens any push at the hook, unrecorded**,
+  the person's approval and the lander's post included, which the judged path never waives. The command's own text
+  no longer does (0.31.2). Whether the environment should is the person's ruling. *(checked 2026-11-10 on 0.31.2:
+  open, a ruling - flotilla/guards/__init__.py on_failure)*
+- **A variable program with the bare word `attention` as an argument is refused** (`$GREP attention notes.md`), the
+  trade already made for `rig` and `work`. *(checked 2026-11-10 on 0.31.2: P - flotilla/guards/person.py check)*
+- **The person guard refuses a line whose words hold an extglob sign inside quotes**, for any word whose basename is
+  `flotilla` - a path handed to `grep` is enough (`grep -n "x*(" /src/flotilla`): `EXPANDS` is looked for as text,
+  quotes not read. A false refusal, met while reading the guards. *(checked 2026-11-10 on 0.31.2: open -
+  flotilla/guards/person.py check)*
+
 ## From the reviews of 0.31.1 (2026-11-10, adopt follows the heir, the base after a rebase)
 
 Deferred as cosmetic or as consistent with what `land` and the push guard already trust.

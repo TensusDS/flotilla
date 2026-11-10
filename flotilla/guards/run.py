@@ -29,7 +29,19 @@ def _safely(name: str, check) -> list[Finding]:
 def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run, who=None,
              session_id: str = "") -> list[Finding]:
     """`who` says which sessions the call answers to (`push.callers`); without it nobody's post is asked.
-    `session_id` names the calling session, whose seat row names its own tree; without it no tree is its own."""
+    `session_id` names the calling session, whose seat row names its own tree; without it no tree is its own.
+    A command continued over a line break is read as typed and joined, and both readings can say the same thing of
+    it: said once here, in the first reading's words."""
+    said, findings = set(), []
+    for finding in _evaluate(command, cwd, root, env=env, run=run, who=who, session_id=session_id):
+        key = (finding.guard, finding.refuse, finding.ask, " ".join(finding.text.replace("\\\n", "").split()))
+        if key not in said:
+            said.add(key)
+            findings.append(finding)
+    return findings
+
+
+def _evaluate(command: str, cwd, root, *, env, run, who, session_id: str) -> list[Finding]:
     from flotilla.guards import lane, line_edit, person, push, revert, shell
     from flotilla.guards.rules import rules_for
     segments = shell.segments(command, Path(cwd) if cwd else None)

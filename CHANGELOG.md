@@ -38,9 +38,12 @@ Four holes in the guards, found by reading them whole. Each let a command run th
 - **A directory the guards cannot follow no longer fails them whole.** `cd` or `git -C` to a name too long to exist,
   or into a symlink loop, raised inside the guards, and the rest of the line ran under the failure rule.
 - **A word continued on the next line is read as the word bash runs.** `r\`, a line break, `m -rf` is `rm -rf` to
-  bash and was two unknown pieces to the guards - on the line that opens a heredoc too, where bash joins the lines
-  before it looks for the body.
-- **`attention` behind a variable program is refused,** as `rig` and `work approve` were: `$F attention all` ran.
+  bash and was two unknown pieces to the guards. The joined lines are read beside the typed ones, on the line that
+  opens a heredoc too. This is still a matcher and not bash's parser: one rarer shape it does not read is in
+  `TODO.md`.
+- **`attention` behind a variable program is refused,** as `rig` and `work` were: `$F attention all` ran. The bare
+  word is enough, so `$GREP attention notes.md` is refused too.
+- On a failure, an escape that code may turn into a blank (`\t`, `\x20`) no longer hides one of the person's words.
 - When the person guard fails in one of its readings, a refusal another reading already made stands.
 
 ## 0.31.1 - 2026-11-10

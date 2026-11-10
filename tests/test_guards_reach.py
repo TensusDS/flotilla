@@ -88,16 +88,41 @@ SPLIT_WORDS = [("r\\m -rf ../app-main-1", "flotilla gc apply"), ('git wor""ktree
 
 @pytest.mark.parametrize("command", ["git push \\\norigin main", "git checkout -- \\\n  f.txt",
                                      "sed -i 2d \\\nf.txt"])
-def test_a_continued_command_is_judged_once_as_bash_runs_it(tmp_path, monkeypatch, command):
-    """Third review, finding 3: the joined reading stood beside the typed one, whose words still held the line break
-    (`\\norigin`), and every guard answered twice."""
-    from flotilla.guards import shell
+def test_a_continued_command_is_refused_and_not_said_twice_in_the_same_words(tmp_path, monkeypatch, command):
+    """Third review, finding 3: the joined reading stands beside the typed one, and a guard that says the same of
+    both says it once."""
     root = onboarded(tmp_path)
     (root / "f.txt").write_text("work\nmore\n", encoding="utf-8")
-    words = [segment.words for segment in shell.segments(command, root)]
-    assert not any("\n" in word for found in words for word in found), words
-    one_line = guard_run.evaluate(command.replace("\\\n", ""), root, root)
-    assert len(guard_run.evaluate(command, root, root)) == len(one_line) >= 1
+    found = guard_run.evaluate(command, root, root)
+    assert any(item.refuse for item in found), found
+    said = [" ".join(item.text.replace("\\\n", "").split()) for item in found]
+    assert len(said) == len(set(said)), said
+
+
+# Fourth review: a reading that took a segment away let a decoy elsewhere in the line take a refusal with it, and
+# joining before the bodies are dropped swallows the delimiter of a quoted body that ends a line in a backslash.
+DECOYS = ["sed -i 's/a/b/\n2d' f.txt; echo \\\n; sed -i 's/a/b/2d' f.txt",
+          'bash -c "true\nflotilla work approve W-1"; echo \\\n; bash -c "trueflotilla work approve W-1"',
+          'bash -c "a=flotilla\nb=work\nc=approve\n\\$a \\$b \\$c W-1"; echo \\\n; '
+          'bash -c "a=flotillab=workc=approve\\$a \\$b \\$c W-1"']
+
+
+@pytest.mark.parametrize("command", DECOYS)
+def test_no_reading_takes_a_refusal_another_made(tmp_path, monkeypatch, command):
+    root = onboarded(tmp_path)
+    (root / "f.txt").write_text("work\nmore\n", encoding="utf-8")
+    alone = ask(root, command.split("; echo")[0], monkeypatch, tmp_path)
+    assert alone and alone.get("permissionDecision") == "deny", alone
+    answer = ask(root, command, monkeypatch, tmp_path)
+    assert answer and answer.get("permissionDecision") == "deny", answer
+
+
+@pytest.mark.parametrize("command", ["cat <<'EOF'\nkeep\\\nEOF\nr\\\nm -rf ../app-main-1\nEOF",
+                                     "cat <<'EOF'\nkeep\\\nEOF\nrm -rf \\\n../app-main-1\ncat <<'EOF'\nx\nEOF"])
+def test_a_continued_door_after_a_quoted_body_that_ends_in_a_backslash_is_seen(tmp_path, monkeypatch, command):
+    answer = ask(fleet(tmp_path, monkeypatch), command, monkeypatch, tmp_path)
+    assert answer and answer.get("permissionDecision") == "deny", answer
+    assert "flotilla gc apply" in answer["permissionDecisionReason"]
 
 
 def test_a_quoted_heredoc_whose_body_ends_a_line_in_a_backslash_hides_nothing_after_it(tmp_path, monkeypatch):
@@ -273,12 +298,20 @@ def test_the_entry_point_and_the_last_resort_read_a_push_through_quotes(tmp_path
 ESCAPED = "python3 -c \"run('flotilla\\trig\\topen'.split())\""
 
 
-@pytest.mark.parametrize("escape", ["\\x20", "\\040", "\\u0020", "\\n"])
-def test_a_whole_escape_is_read_as_a_blank(tmp_path, escape):
+@pytest.mark.parametrize("escape", ["\\x20", "\\040", "\\u0020"])
+def test_a_whole_escape_is_read_as_a_blank(tmp_path, monkeypatch, escape):
     command = "python3 -c \"run('flotilla" + escape + "rig" + escape + "open'.split())\""
     assert guards.on_failure(command, RuntimeError("x"), {}).ask
     fake, project = old_interpreter(tmp_path)
     assert decision(guard_through(fake, project, command)) == "ask"
+    monkeypatch.setitem(sys.modules, "flotilla.guards.run", None)
+
+    def unreadable(*args, **kwargs):
+        raise RuntimeError("the rule itself is broken")
+    monkeypatch.setattr(guards, "on_failure", unreadable)
+    (tmp_path / "p").mkdir()
+    answer = ask(onboarded(tmp_path / "p"), command, monkeypatch, tmp_path)
+    assert answer and answer.get("permissionDecision") == "ask", answer
 
 
 def test_a_backslash_the_code_makes_a_blank_of_does_not_hide_a_persons_word(tmp_path, monkeypatch):
