@@ -32,6 +32,29 @@ into the user's settings from a command to get around it. Checked against the ch
 is non-UTF-8 or holds a NUL byte, and none of the four points at something to fix outside the directory.
 *(checked 2026-11-09 on 0.31.0: open, waiting on Anthropic - hooks/hooks.json, bin/, skills/*/SKILL.md)*
 
+## From the reviews of 0.31.1 (2026-11-10, adopt follows the heir, the base after a rebase)
+
+Deferred as cosmetic or as consistent with what `land` and the push guard already trust.
+
+- **Where the shown base quietly stays the recorded one** (fails safe, the reader reads more): a row whose commits
+  reached trunk with no later ledger move (a person merged the PR, `ship` not yet run), a direct-mode row landed
+  locally before the claim and pushed after it, a fleet with more than 50 rows moved since the claim, or more than
+  300 commits skipped. Whether the field meets these often enough to matter is not measured. *(open, measure -
+  flotilla/ledger/reading.py `_read_by_others`)*
+- **The accounting counts a queued row without a verdict as read** (`review.depth = none`, or `main-only` for a
+  non-main post): its whole range is "read", so commits of another row stacked under it, once on trunk, are skipped
+  in that row's shown base. `land` and the push guard trust it the same way; `rules_tree` is not passed either, as
+  in `land`. *(checked 2026-11-10 on 0.31.1: P, within land's trust - flotilla/ledger/batch.py Accounting)*
+- **Test gaps:** `test_only_rows_moved_since_the_claim_are_asked_about_a_rebase` leaves out a released row, which
+  the accounting already asked nothing of, so it proves the filter but not the saving on closed reviewed rows; the
+  50-row cap has no test. *(checked 2026-11-10 on 0.31.1: P - tests/test_ledger_cli.py)*
+- **A suite run through the lane hides the lane from its tests, not the tests from the lane** (conftest
+  `a_suite_in_the_lane_is_not_a_nested_run`). Real `SCOPE` slots a test makes start beside the suite's scope, and
+  the tests' children no longer carry the suite's booking, so where the lane freezes by signal (macOS, no user
+  systemd) it does not stop them with the suite, nor find detached ones as its leftovers. And the lane may still
+  freeze or cap the suite mid-test: a timing test that fails only in the lane suspects that first. Related to the
+  leftover `flotilla-lane-*.scope` units above. *(checked 2026-11-10 on 0.31.1: P - tests/conftest.py)*
+
 ## From the field test of the lane daemon, batches 1-3 (2026-11-07..08, 0.30.1 and lane/daemon c5baaff)
 
 Two demo fleets on one machine (8 cores, 15 GB), batch 1 on 0.30.1, then batch 1 again and batches 2-3 on the lane
