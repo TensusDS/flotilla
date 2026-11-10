@@ -716,7 +716,8 @@ Before a Bash command runs, flotilla refuses a few commands that do silent damag
   later push to the pull request cannot be merged in its place. A door is judged by the project it acts on, wherever
   the session stands. `FLOTILLA_GATE_OVERRIDE="<why>"` at the head of a push lets a missing receipt through and
   records the reason; it never waives a missing approval. When the guards themselves fail, a command that may push
-  is refused and only the variable set in the session's environment opens it - not the command's own text.
+  is refused at the hook and only the variable set in the session's environment opens it there - not the command's
+  own text.
   The same guard asks **who lands**: a session that holds one of the project's posts pushes to trunk or a tag, or
   runs `gh pr merge`, only if its post has the `land` move - the sender's. A call answers to the session that made
   it and to every seat its process runs under, so a session a seat starts inside itself is that seat's. Anyone

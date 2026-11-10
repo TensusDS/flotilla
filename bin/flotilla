@@ -26,14 +26,19 @@ def guard_answer(data, why):
             command = tool_input["command"]
     except Exception:
         command = ""
+    import re
+    # flotilla.guards.unquoted: a word split by quotes or a backslash is still found (a test keeps the two equal)
+    bare = command.replace("\\\n", "").replace("'", "").replace('"', "").replace("\\", "")
     knowingly = bool(os.environ.get("FLOTILLA_GATE_OVERRIDE", "").strip())
-    refuse = any(word in command for word in PUSH_WORDS) and not knowingly
-    ask = not refuse and "flotilla" in command and any(word in command for word in PERSON_WORDS)
-    text = "flotilla guards could not run (" + why.strip() + "); " + (
-        'a command that may push is refused. Knowingly: the person sets FLOTILLA_GATE_OVERRIDE="<why>" in the '
-        "environment the session runs in, or runs the command themselves with `!` in front" if refuse
-        else "this line may hold a move only the person makes and it could not be read, so the person decides "
-             "whether it runs" if ask
+    refuse = any(word in bare for word in PUSH_WORDS) and not knowingly
+    ask = not refuse and any(sign in bare for sign in ("flotilla", "$", "`")) and re.search(
+        r"\b(?:%s)\b" % "|".join(PERSON_WORDS), bare) is not None
+    text = "flotilla guards failed (" + why.strip() + "); " + (
+        "a command that may push is refused on failure. Knowingly: the person runs the command themselves - "
+        'with `!` in front, or in a terminal - or sets FLOTILLA_GATE_OVERRIDE="<why>" in the environment the '
+        "session runs in. Where flotilla's pre-push hook is installed, it judges a `git push` again" if refuse
+        else "this line may hold a move only the person makes (`work approve`, a `rig` move, `attention`) and "
+             "it could not be read, so the person decides whether it runs" if ask
         else "the command runs unchecked")
     if refuse:
         body = {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": text}

@@ -64,11 +64,49 @@ def test_every_gc_door_names_a_word_the_hook_looks_for(command):
     assert any(word in command for word in hooks.GUARD_TRIGGERS), command
 
 
-def test_a_door_the_guard_judges_is_one_the_hook_lets_reach_it(tmp_path):
-    """Whatever the gc guard calls a door, the hook's text check passes on to it."""
+def test_the_gc_guards_door_words_are_among_the_hooks():
+    assert set(gc.DOOR_WORDS) <= set(hooks.GUARD_TRIGGERS)
+
+
+def test_every_gc_door_is_spelled_with_one_of_its_door_words(tmp_path):
+    """`DOOR_WORDS` is what `door` reads: a door it judged under another word would be one the hook never passes on."""
     from flotilla.guards import shell
     for command in GC_DOORS:
-        assert any(gc.door(segment) for segment in shell.segments(command, tmp_path)), command
+        [segment] = [segment for segment in shell.segments(command, tmp_path) if gc.door(segment)]
+        assert segment.program in gc.DOOR_WORDS or segment.git()[0] in gc.DOOR_WORDS, command
+
+
+# Review of cb3a55f: the text check read the line as typed, the guards read its words as bash does.
+SPLIT_WORDS = [("r\\m -rf ../app-main-1", "flotilla gc apply"), ('git wor""ktree prune', "flotilla gc apply"),
+               ("git bran''ch -D fleet/main-1", "flotilla gc apply"),
+               ('rm -r\\\nf ../app-main-1', "flotilla gc apply"),
+               ('flot""illa rig enable', "person's own move"), ("g''h pr merge 5", "")]
+
+
+@pytest.mark.parametrize("command,said", SPLIT_WORDS)
+def test_a_word_split_by_quotes_or_a_backslash_still_reaches_its_guard(tmp_path, monkeypatch, command, said):
+    answer = ask(fleet(tmp_path, monkeypatch), command, monkeypatch, tmp_path)
+    assert answer and answer.get("permissionDecision") == "deny", answer
+    assert said in answer["permissionDecisionReason"]
+
+
+@pytest.mark.parametrize("command", ["bash -c 'x rig open'", "python3 -c \"run([p, 'attention', 'all'])\""])
+def test_code_handed_to_an_interpreter_that_names_a_persons_word_reaches_the_guards(command):
+    assert hooks._names_a_guarded_word(command)
+
+
+@pytest.mark.parametrize("command", ["git fetch origin", "ls -la && make", "cat trigger.txt"])
+def test_a_persons_word_inside_another_word_is_no_reason_to_run_the_guards(command):
+    assert not hooks._names_a_guarded_word(command)
+
+
+@pytest.mark.parametrize("command", ["a 'b' \"c\" d\\e", "x\\\ny", "", "plain"])
+def test_the_three_readings_of_unquoted_text_agree(command):
+    scope: dict = {}
+    source = ENTRY.read_text(encoding="utf-8")
+    line = next(line for line in source.splitlines() if line.strip().startswith("bare = "))
+    exec(line.strip(), {"command": command}, scope)
+    assert scope["bare"] == guards.unquoted(command) == hooks._unquoted(command)
 
 
 # --- 2. a person guard that cannot judge does not let the person's own move run ---
@@ -103,6 +141,65 @@ def test_a_person_guard_that_fails_says_so_about_any_other_line(tmp_path, monkey
     broken_person_guard(monkeypatch)
     answer = ask(onboarded(tmp_path), "git switch -c topic", monkeypatch, tmp_path)
     assert "permissionDecision" not in answer and "person guard on fire" in answer["additionalContext"]
+
+
+def test_a_person_guard_that_fails_beside_a_push_leaves_the_refusal_standing(tmp_path, monkeypatch):
+    broken_person_guard(monkeypatch)
+    answer = ask(onboarded(tmp_path), "flotilla work approve W-1 && git push origin main", monkeypatch, tmp_path)
+    assert answer["permissionDecision"] == "deny" and "receipt" in answer["permissionDecisionReason"]
+
+
+@pytest.mark.parametrize("breaks", ["wrapped_check", "heredoc_check", "whole_text"])
+def test_one_reading_of_the_person_guard_failing_costs_no_other_its_refusal(tmp_path, monkeypatch, breaks):
+    """Review of cb3a55f, finding 4: one try around every reading threw away a refusal already made, and a line
+    whose program is a variable names no flotilla for the failure's own text check."""
+    from flotilla.guards import person
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("one reading on fire")
+    monkeypatch.setattr(person, breaks, boom)
+    answer = ask(onboarded(tmp_path), "$F work approve W-1", monkeypatch, tmp_path)
+    assert answer["permissionDecision"] == "deny" and "variable" in answer["permissionDecisionReason"]
+
+
+def test_a_refusal_in_one_segment_stands_when_the_guard_fails_on_the_next(tmp_path, monkeypatch):
+    from flotilla.guards import person
+    real = person.check
+
+    def second_fails(segment):
+        if "status" in segment.text:
+            raise RuntimeError("second segment on fire")
+        return real(segment)
+    monkeypatch.setattr(person, "check", second_fails)
+    answer = ask(onboarded(tmp_path), "flotilla work approve W-1; git status", monkeypatch, tmp_path)
+    assert answer["permissionDecision"] == "deny" and "person's own move" in answer["permissionDecisionReason"]
+
+
+@pytest.mark.parametrize("door", ["cd {name}; ", "git -C {name} status; "])
+def test_a_directory_name_too_long_to_exist_does_not_fail_the_guards(tmp_path, monkeypatch, door):
+    """Review of cb3a55f, finding 1: `cd` to a name over the file system's limit raised out of the matcher, bash
+    failed the `cd` and ran the rest - under the failure rule, which reads text."""
+    command = door.format(name="a" * 300) + "/x/bin/flot''illa work approve W-1"
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert answer["permissionDecision"] == "deny" and "person's own move" in answer["permissionDecisionReason"]
+
+
+@pytest.mark.parametrize("command", ["/x/bin/flot''illa work approve W-1", "$F work approve W-1",
+                                     "`which f` rig open", 'flo\\tilla "attention" all'])
+def test_the_failure_rule_reads_a_persons_move_through_quotes_and_variables(command):
+    assert guards.on_failure(command, RuntimeError("x"), {}).ask
+
+
+@pytest.mark.parametrize("command", ["cd /src/flotilla && git fetch origin", "cat .flotilla/project.toml | wc -l",
+                                     "bin/flotilla work show W-1 --trigger x", "echo $HOME/origin"])
+def test_the_failure_rule_does_not_ask_about_a_persons_word_inside_another(command):
+    found = guards.on_failure(command, RuntimeError("x"), {})
+    assert not found.ask and not found.refuse
+
+
+def test_the_failure_rule_reads_a_push_through_quotes():
+    assert guards.on_failure("git pu''sh origin main", RuntimeError("x"), {}).refuse
+    assert guards.on_failure('g"h" pr merge 5', RuntimeError("x"), {}).refuse
 
 
 @pytest.mark.parametrize("command", ["bin/flotilla work approve W-1", "flotilla rig open"])
@@ -231,8 +328,10 @@ def test_unreadable_rules_leave_the_gc_guard_judging(tmp_path, monkeypatch):
     def unreadable(*args, **kwargs):
         raise RuntimeError("rules on fire")
     monkeypatch.setattr("flotilla.guards.rules.rules_for", unreadable)
-    found = guard_run.evaluate("git worktree prune", root, root)
+    found = guard_run.evaluate("git branch -D fleet/main-1", root, root)
     assert any(item.guard == gc.GUARD and item.refuse for item in found), found
+    # judged, not refused wholesale: a branch that is none of the fleet's is the person's
+    assert [item.guard for item in guard_run.evaluate("git branch -D mine", root, root)] == ["rules"]
 
 
 def test_unreadable_rules_leave_the_organize_guard_judging(tmp_path, monkeypatch):

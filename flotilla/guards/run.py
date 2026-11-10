@@ -34,17 +34,23 @@ def evaluate(command: str, cwd, root, *, env=os.environ, run=subprocess.run, who
     from flotilla.guards.rules import rules_for
     segments = shell.segments(command, Path(cwd) if cwd else None)
     every_line = shell.segments(command, Path(cwd) if cwd else None, bodies=True)
-    try:
-        persons = [found for found in (person.check(segment) for segment in every_line) if found]   # always on
-        heredoc = person.heredoc_check(command, segments)
-        if heredoc is not None:
-            persons.append(heredoc)
-        # the person's own moves handed to an interpreter as text (the person, 2026-11-03): refused, or asked of them
-        whole = person.whole_text(every_line)
-        persons += [found for found in (person.wrapped_check(segment, whole, command) for segment in segments)
-                    if found]
-    except Exception as err:  # noqa: BLE001 - unread, the person's own move is the person's to decide; the rest judge on
-        persons = [person_unjudged(command, err)]
+    persons: list[Finding] = []   # always on, no rules
+
+    def person_says(read) -> None:
+        """One reading of the person guard. Its failure is its own finding and costs no other reading its refusal:
+        unread, the person's own move is the person's to decide, and the rest judge on."""
+        try:
+            found = [item for item in read() if item]
+        except Exception as err:  # noqa: BLE001
+            found = [person_unjudged(command, err)]
+        persons.extend(item for item in found if item not in persons)
+
+    for segment in every_line:
+        person_says(lambda: [person.check(segment)])
+    person_says(lambda: [person.heredoc_check(command, segments)])
+    # the person's own moves handed to an interpreter as text (the person, 2026-11-03): refused, or asked of them
+    person_says(lambda: [person.wrapped_check(segment, person.whole_text(every_line), command)
+                         for segment in segments])
     if root is None:   # the session stands in no project; a push into one is still judged by that project (F18)
         return persons + [found for found in (push.guard(segment, root=None, profile={}, env=env, run=run, who=who)
                                               for segment in segments if push.door(segment) is not None)
@@ -99,7 +105,8 @@ def _collected(segments, root, session_id: str = "") -> list[Finding]:
         home = gc.seat_tree(ledger.rows().values(), session_id)
     except Exception as err:  # noqa: BLE001 - which trees are the fleet's is unknown: a door is refused
         return [Finding(gc.GUARD, True, f"flotilla cannot tell which trees and branches are the fleet's (the ledger "
-                                        f"could not be read: {err}); only the collector removes them")]
+                                        f"could not be read: {err}); only the collector removes them. If this "
+                                        "is none of the fleet's, the person runs it themselves with `!` in front.")]
     return [found for found in (gc.check(segment, seat_trees=seat_trees, fleet_branches=fleet_branches,
                                          archive=kept, home=home)
                             for segment in doors) if found]
@@ -116,7 +123,8 @@ def _organized(segments, root) -> list[Finding]:
     except Exception as err:  # noqa: BLE001 - what the ledger tracks is unknown: a door is refused
         return [Finding(organize.GUARD, True, f"flotilla cannot tell whether this pull request is tracked (the "
                                               f"ledger could not be read: {err}); only `flotilla organize apply` "
-                                              "acts on tracked pull requests")]
+                                              "acts on tracked pull requests. If this one is not tracked, "
+                                              "the person runs it themselves with `!` in front.")]
     return [found for found in (organize.check(segment, rows=rows, numbers=numbers) for segment in doors) if found]
 
 

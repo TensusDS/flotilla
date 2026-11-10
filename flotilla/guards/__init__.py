@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 CEILING = """\
@@ -35,21 +36,36 @@ PERSON_WORDS = ("approve", "rig", "attention")
 #: How a push the guards could not judge is let through knowingly. Never by the command's own text: judged, an
 #: override waives a missing receipt alone, and here nothing was judged - a word a session can type would waive the
 #: person's approval with it.
-KNOWINGLY = ('the person sets FLOTILLA_GATE_OVERRIDE="<why>" in the environment the session runs in, or runs the '
-             "command themselves with `!` in front")
+KNOWINGLY = ("the person runs the command themselves - with `!` in front, or in a terminal - or sets "
+             'FLOTILLA_GATE_OVERRIDE="<why>" in the environment the session runs in. Where flotilla\'s pre-push hook '
+             "is installed, it judges a `git push` again")
 PERSONS_UNREAD = ("this line may hold a move only the person makes (`work approve`, a `rig` move, `attention`) "
                   "and it could not be read, so the person decides whether it runs")
 
 
+_PERSON = re.compile(r"\b(?:%s)\b" % "|".join(PERSON_WORDS))
+_QUOTING = {ord(sign): None for sign in "'\"\\"}
+
+
+def unquoted(command: str) -> str:
+    """The command's text as its words would read: quotes, backslashes and line continuations taken out, so a word
+    split by a pair of quotes or a backslash is found by a text check. No parse - this is what is read when a parse
+    failed, or before one is made."""
+    return command.replace("\\\n", "").translate(_QUOTING)
+
+
 def may_be_persons(command: str) -> bool:
-    return "flotilla" in command and any(word in command for word in PERSON_WORDS)
+    """One of the person's words stands in the line, beside flotilla or beside what the shell builds at run time
+    (a variable, a substitution): the program could be flotilla."""
+    text = unquoted(command)
+    return bool(_PERSON.search(text)) and any(sign in text for sign in ("flotilla", "$", "`"))
 
 
 def on_failure(command: str, err: Exception, env) -> Finding:
     """What the guards say when they could not judge: decided by reversibility, so a command that may push is
     refused, unless the person overrode the gate knowingly, in the environment; a line that may hold the person's
     own move is put to the person; anything else runs, and the session is told."""
-    may_push = any(word in command for word in PUSH_WORDS)
+    may_push = any(word in unquoted(command) for word in PUSH_WORDS)
     refuse = may_push and not env.get("FLOTILLA_GATE_OVERRIDE", "").strip()
     ask = not refuse and may_be_persons(command)
     said = (f"a command that may push is refused on failure. Knowingly: {KNOWINGLY}" if refuse

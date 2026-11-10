@@ -656,10 +656,6 @@ Each is a limitation README states today, judged fixable in principle; none is p
 
 ## From the review of 0.7.9 (2026-10-04)
 
-- When the guards fail, an override anywhere in the command line counts (`echo FLOTILLA_GATE_OVERRIDE=x; git push`):
-  `flotilla.guards.on_failure`, the hook's last resort and `bin/flotilla` read it as a substring, while the push guard
-  counts it only at the head of the door's segment. *(checked 2026-10-04 on 0.7.9: still [P] - guards/__init__.py
-  on_failure)*
 - Onboarding a repository whose only workflows are symlinks now records no CI and reads no job ids from them; it matters
   only if GitHub Actions runs a symlinked workflow, which nobody measured. *(checked 2026-10-04 on 0.7.9: measure)*
 

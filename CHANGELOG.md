@@ -19,10 +19,21 @@ Four holes in the guards, found by reading them whole. Each let a command run th
 - **A push the guards could not judge is not opened by the command's own text.** On a failure,
   `FLOTILLA_GATE_OVERRIDE=` anywhere in the command - in an `echo`, in a comment - let the push through, unrecorded,
   and with it whatever the person's approval would have stopped. On a failure only the variable set in the
-  environment the session runs in opens it; the person can also run the command themselves with `!`. A push the
+  environment the session runs in opens it at the hook; the person can also run the command themselves with `!`.
+  Where flotilla's pre-push hook is installed it judges a `git push` again, by its own rule. A push the
   guards did judge is as before: an override at its head waives a missing receipt, recorded, and nothing else.
 - **Rules that cannot be read no longer switch off the gc and organize guards.** Neither reads the project's rules,
-  yet both were skipped with the guards that do.
+  yet both were skipped with the guards that do. Both need the ledger, and while it cannot be read either they
+  refuse every door - any `rm -r`, any forced branch deletion, any `gh pr close` - as they always did for an
+  unreadable ledger; the refusal now says the person can run the command themselves with `!`.
+- **A word split by quotes or a backslash no longer slips past the hook.** `r\m -rf`, `git wor""ktree prune`,
+  `g""h pr merge` and `flot""illa rig enable` named none of the hook's words as text, so no guard was asked, though
+  each guard reads the words as bash does and would have refused. The hook now looks for its words with quotes and
+  backslashes taken out, and the failure rule reads the line the same way. It also looks for `rig` and `attention`
+  as whole words, so code handed to an interpreter that names them reaches the guard that reads such code.
+- **A directory name too long to exist no longer fails the guards whole.** `cd` or `git -C` to such a name raised
+  inside the guards, and the rest of the line ran under the failure rule.
+- When the person guard fails in one of its readings, a refusal another reading already made stands.
 
 ## 0.31.1 - 2026-11-10
 

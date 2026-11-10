@@ -34,8 +34,11 @@ def into(base: Path | None, target: str | None) -> Path | None:
         if base is None:
             return None
         path = base / path
-    path = path.resolve()
-    return path if path.is_dir() else None
+    try:
+        path = path.resolve()
+        return path if path.is_dir() else None
+    except (OSError, ValueError):   # a name too long, a NUL in it: where it leads cannot be said
+        return None
 
 
 @dataclass(frozen=True)
