@@ -467,6 +467,30 @@ def _rebased_after_claim(tmp_path, monkeypatch):
     return root, tree, claimed_on, moved_to
 
 
+def test_only_rows_moved_since_the_claim_are_asked_about_a_rebase(tmp_path, monkeypatch):
+    """Review of bedca8d, A: accounting costs about five git calls a row, closed rows included; a row that last
+    moved before this one's claim cannot have read what reached trunk since, so it is not asked."""
+    from flotilla.ledger import batch
+    root = onboarded(tmp_path, monkeypatch, PLAIN)
+    run_cli("work", "claim", "feat/old", "--root", str(root), "--as", "main session 2")
+    run_cli("work", "release", "feat/old", "--why", "not needed", "--root", str(root), "--as", "main session 2")
+    monkeypatch.setattr("flotilla.ledger.core.Ledger.now", lambda self: "2999-01-01T00:00:00+00:00")
+    tree = tmp_path / "app-main-1"
+    run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")
+    commit(tree, "work", "work.txt")
+    moved_to = _read_and_on_trunk(root, tmp_path)
+    git(tree, "-c", "user.email=t@example.invalid", "-c", "user.name=t", "rebase", "-q", "origin/main")
+    asked = []
+    real = batch.unaccounted
+
+    def spy(ledger, rows, *args, **kwargs):
+        asked.append(sorted(row.branch for row in rows.values()))
+        return real(ledger, rows, *args, **kwargs)
+    monkeypatch.setattr(batch, "unaccounted", spy)
+    code, out = run_cli("work", "show", "feat/x", "--root", str(root))
+    assert f"base {moved_to}" in out and asked == [["feat/other"]], (asked, out)
+
+
 def test_work_that_reached_trunk_unread_is_not_shown_as_read(tmp_path, monkeypatch):
     """Second review of a7a44df, finding 1: the row's own commits pushed to trunk without a verdict, then another
     row on top - the base shown was the tip itself, and the reader's diff was empty."""
@@ -485,8 +509,8 @@ def test_work_that_reached_trunk_unread_is_not_shown_as_read(tmp_path, monkeypat
 
 def test_a_repointed_origin_ref_cannot_narrow_what_the_reader_is_shown(tmp_path, monkeypatch):
     """Security review of a7a44df: an owner that points `refs/remotes/origin/<trunk>` at a commit of its own would
-    have the reader start below it, and that commit would go unread. Only a trunk point the ledger recorded as
-    delivered moves the shown base."""
+    have the reader start below it, and that commit would go unread. The shown base moves only past commits another
+    row's verdict accounts for."""
     root = onboarded(tmp_path, monkeypatch, PLAIN)
     tree = tmp_path / "app-main-1"
     run_cli("tree", "cut", "feat/x", "--tree", str(tree), "--root", str(root), "--as", "main session 1")

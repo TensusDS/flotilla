@@ -47,17 +47,30 @@ def read_from(ledger: Ledger, row: Row) -> tuple[str, str]:
 
 #: The most commits a shown base may skip; past it the recorded base is shown, as before 0.31.1.
 MOST_SKIPPED = 300
+#: The most rows whose verdicts are read for it, the latest first. Accounting costs about five git calls a row,
+#: closed rows included (review of bedca8d, A: 314 calls for a ledger of 61 reviewed rows).
+MOST_ROWS = 50
 
 
 def _read_by_others(ledger: Ledger, row: Row, fresh: str) -> bool:
-    """Whether every commit in `row.base..fresh` is accounted for by a verdict of a row other than this one."""
+    """Whether every commit in `row.base..fresh` is accounted for by a verdict of a row other than this one.
+
+    Only rows moved since this row's claim are asked: what the rebase skipped reached trunk after the base was
+    recorded. Leaving a row out can only leave a commit unaccounted, and then the recorded base is shown."""
     from flotilla.ledger import batch
     listed = ledger.run(["git", "-C", str(ledger.root), "rev-list", "--count", fresh, f"^{row.base}"],
                         capture_output=True, text=True, check=False)
     if listed.returncode != 0 or not listed.stdout.strip().isdigit() or int(listed.stdout) > MOST_SKIPPED:
         return False
-    others = {key: other for key, other in ledger.rows().items() if other.id != row.id}
-    return batch.unaccounted(ledger, others, fresh, since=row.base) == []
+    claimed = str(row.history[0].get("at") or "") if row.history else ""
+    others = [other for other in ledger.rows().values()
+              if other.id != row.id and (not claimed or other.updated_at >= claimed)]
+    others.sort(key=lambda other: other.updated_at, reverse=True)
+    try:
+        return batch.unaccounted(ledger, {other.id: other for other in others[:MOST_ROWS]}, fresh,
+                                 since=row.base) == []
+    except Exception:  # noqa: BLE001 - a shown base that cannot be checked is not moved; the move itself stands
+        return False
 
 
 def shown_base(base: str, moved_from: str, width: int | None = None) -> str:
