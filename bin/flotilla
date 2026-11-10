@@ -8,12 +8,15 @@ import sys
 MINIMUM = (3, 11)
 #: flotilla.guards.PUSH_WORDS, for a guard hook that fails before flotilla can be imported (a test keeps them equal)
 PUSH_WORDS = ("push", "gh")
+#: flotilla.guards.PERSON_WORDS, kept equal the same way
+PERSON_WORDS = ("approve", "rig", "attention")
 
 
 def guard_answer(data, why):
     """The guard hook's answer when flotilla itself cannot judge: a command that may push is refused, unless the
-    gate was overridden knowingly; anything else runs, and the session is told. A message on stdout alone, or an
-    exit code, is no refusal to Claude Code (review of 0.7.9)."""
+    gate was overridden knowingly, in the environment - the command's own text waives nothing that was not judged;
+    a line that may hold a move only the person makes is put to the person; anything else runs, and the session is
+    told. A message on stdout alone, or an exit code, is no refusal to Claude Code (review of 0.7.9)."""
     import json
     command = ""
     try:
@@ -23,13 +26,30 @@ def guard_answer(data, why):
             command = tool_input["command"]
     except Exception:
         command = ""
-    knowingly = "FLOTILLA_GATE_OVERRIDE=" in command or bool(os.environ.get("FLOTILLA_GATE_OVERRIDE", "").strip())
-    refuse = any(word in command for word in PUSH_WORDS) and not knowingly
-    text = "flotilla guards could not run (" + why.strip() + "); " + (
-        'a command that may push is refused. Knowingly: FLOTILLA_GATE_OVERRIDE="<why>"' if refuse
+    import re
+    # flotilla.guards.unquoted: a word split by quotes or a backslash is still found (a test keeps the two equal)
+    bare = command.replace("\\\n", "").replace("'", "").replace('"', "").replace("\\", "")
+    knowingly = bool(os.environ.get("FLOTILLA_GATE_OVERRIDE", "").strip())
+    refuse = any(word in bare for word in PUSH_WORDS) and not knowingly
+    if "$" in bare or "`" in bare:   # as flotilla.guards.may_be_persons: the word anywhere is enough
+        persons = any(word in bare for word in PERSON_WORDS)
+    else:
+        words = re.compile(r"\b(?:%s)\b" % "|".join(PERSON_WORDS))
+        blanked = re.sub(r"\\(?:x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|[0-7]{1,3}|[\s\S])", " ", command)
+        blanked = blanked.replace("'", "").replace('"', "")
+        persons = "flotilla" in bare and (words.search(bare) or words.search(blanked)) is not None
+    ask = not refuse and persons
+    text = "flotilla guards failed (" + why.strip() + "); " + (
+        "a command that may push is refused on failure. Knowingly: the person runs the command themselves - "
+        'with `!` in front, or in a terminal - or sets FLOTILLA_GATE_OVERRIDE="<why>" in the environment the '
+        "session runs in. Where flotilla's pre-push hook is installed, it judges a `git push` again" if refuse
+        else "this line may hold a move only the person makes (`work approve`, a `rig` move, `attention`) and "
+             "it could not be read, so the person decides whether it runs" if ask
         else "the command runs unchecked")
     if refuse:
         body = {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": text}
+    elif ask:
+        body = {"hookEventName": "PreToolUse", "permissionDecision": "ask", "permissionDecisionReason": text}
     else:
         body = {"hookEventName": "PreToolUse", "additionalContext": text}
     return json.dumps({"hookSpecificOutput": body}) + "\n"

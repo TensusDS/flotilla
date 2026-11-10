@@ -114,7 +114,8 @@ def test_a_bash_glob_python_would_read_otherwise_is_refused(tmp_path, monkeypatc
     assert answer and answer["permissionDecision"] == "deny"
 
 
-# A variable program alone is not seen at all (guards.CEILING); these lines name flotilla too, so the hook fires.
+# A variable program whose line builds the move's word too is not seen at all (guards.CEILING); these lines name
+# flotilla, so the hook fires.
 @pytest.mark.parametrize("command", ["echo flotilla && $F r?g open --hours 1",
                                      "echo flotilla && $F r[i]g open --hours 1",
                                      "echo flotilla && $F r[^x]g open --hours 1", "$F w?rk approve feat/x",

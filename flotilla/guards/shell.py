@@ -3,8 +3,8 @@
 This is a matcher, not a shell parser, and its ceiling is named (`flotilla.guards.CEILING`) because silence would
 read as "nothing to see". A command is recognised at the start of a segment, behind leading assignments, `env`, a
 short list of wrappers and shell keywords. Heredoc bodies are data and are dropped. The line is split twice,
-plainly and respecting quotes, and a segment either split finds counts: missing a door costs more than asking once
-too often. A plain fragment whose quotes do not balance is a piece of a quoted string and is not read as a
+plainly and respecting quotes - and again with its continued lines joined, when it has any - and a segment any
+split finds counts: missing a door costs more than asking once too often. A plain fragment whose quotes do not balance is a piece of a quoted string and is not read as a
 command. `cd <literal>` is followed; a directory named through a variable is unknown (None).
 """
 
@@ -34,8 +34,11 @@ def into(base: Path | None, target: str | None) -> Path | None:
         if base is None:
             return None
         path = base / path
-    path = path.resolve()
-    return path if path.is_dir() else None
+    try:
+        path = path.resolve()
+        return path if path.is_dir() else None
+    except Exception:  # noqa: BLE001 - a name too long, a NUL in it, a symlink loop (a RuntimeError before Python
+        return None    # 3.13): where it leads cannot be said, and that is no reason to fail every guard
 
 
 @dataclass(frozen=True)
@@ -226,10 +229,25 @@ def _peel(words: list[str]) -> tuple[dict, list[str]]:
 def segments(command: str, cwd, *, bodies: bool = False) -> list[Segment]:
     """The command's segments. Heredoc bodies are taken out unless `bodies`: the person guard reads every line, since
     a line taken for a body that bash runs would hide a person's move, and a refused body line costs only a retry."""
+    # bash joins a line that ends in a backslash to the next one before it reads anything else - inside a word (`r\`,
+    # newline, `m` is `rm`), and on the line that opens a heredoc, whose body then starts a line later. This is no
+    # parser, so the joined text is read beside the typed one, in both orders of joining and dropping bodies: joined
+    # first is right for the line that opens a heredoc, bodies first for a quoted body that ends a line in a
+    # backslash, where joining swallows the delimiter. A reading only ever adds a segment to judge - none takes one
+    # away, or a decoy elsewhere in the line could (fourth review of the branch).
+    given = command
     if not bodies:
         command = without_heredoc_bodies(command)
+    texts = [command]
+    if "\\\n" in given:
+        for joined in (command.replace("\\\n", ""),
+                       given.replace("\\\n", "") if bodies else without_heredoc_bodies(given.replace("\\\n", ""))):
+            if joined not in texts:
+                texts.append(joined)
     found: list[Segment] = []
-    for plain, parts in ((True, SEPARATORS.split(command)), (False, _split_outside_quotes(command))):
+    readings = [reading for text in texts
+                for reading in ((True, SEPARATORS.split(text)), (False, _split_outside_quotes(text)))]
+    for plain, parts in readings:
         here = Path(cwd).resolve() if cwd is not None else None
         for part in parts:
             text = part.strip()

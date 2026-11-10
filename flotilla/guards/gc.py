@@ -43,6 +43,11 @@ def _zero(word: str) -> bool:
     return len(word) in (40, 64) and set(word) == {"0"}
 
 
+#: The program and the git verbs `door` reads. The hook's text check lets a line that names one reach this guard (a
+#: test holds them among its words).
+DOOR_WORDS = ("rm", "worktree", "branch", "update-ref")
+
+
 def door(segment) -> str:
     """"" when the segment is no door this guard judges; else its kind."""
     if segment.program == "rm":

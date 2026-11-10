@@ -3,6 +3,49 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.31.2 - 2026-11-10
+
+Four holes in the guards, found by reading them whole. Each let a command run that a guard was written to stop.
+
+- **The gc guard now sees the commands it judges.** The hook answers at once for a command that names none of a
+  short list of words, and `rm`, `worktree`, `branch` and `update-ref` were not on it: `git worktree remove` of a
+  seat's tree, `git branch -D` of a fleet branch, `rm -rf` of the archive ran without the guard being asked, unless
+  the line happened to name another of the words. They are refused now, as the gc design says. A command holding
+  `rm` anywhere in its text takes the guards' full path: about 150 ms where it took 60.
+- **A person guard that fails no longer lets the person's own move run.** When the guard that keeps `work approve`,
+  the `rig` moves and `attention` for the person raised an error, the line ran with a note that it was unchecked.
+  Now the other guards still judge the line, and a line that names flotilla beside one of those words is put to the
+  person in Claude Code's own confirmation - and so is a line that holds `$` or a backtick with such a word anywhere
+  in it, `origin` included, since bash decides there what the words are. The same holds when the guards fail whole,
+  or cannot be imported.
+- **A push the guards could not judge is not opened by the command's own text.** On a failure,
+  `FLOTILLA_GATE_OVERRIDE=` anywhere in the command - in an `echo`, in a comment - let the push through, unrecorded,
+  and with it whatever the person's approval would have stopped. On a failure only the variable set in the
+  environment the session runs in opens it at the hook; the person can also run the command themselves with `!`.
+  Where flotilla's pre-push hook is installed it judges a `git push` again, by its own rule. A push the
+  guards did judge is as before: an override at its head waives a missing receipt, recorded, and nothing else.
+- **Rules that cannot be read no longer switch off the gc and organize guards.** Neither reads the project's rules,
+  yet both were skipped with the guards that do. Both need the ledger, and while it cannot be read either they
+  refuse every door - any `rm -r`, any forced branch deletion, any `gh pr close` - as they always did for an
+  unreadable ledger; the refusal now says the person can run the command themselves with `!`.
+- **A word split by quotes or a backslash no longer slips past the hook.** `r\m -rf`, `git wor""ktree prune`,
+  `g""h pr merge` and `flot""illa rig enable` named none of the hook's words as text, so no guard was asked, though
+  each guard reads the words as bash does and would have refused. The hook now looks for its words with quotes and
+  backslashes taken out, and the failure rule reads the line the same way. It also looks for `rig` and `attention`
+  as whole words - as parts of words in a line that holds `$` or a backtick - so code handed to an interpreter that
+  names them reaches the guard that reads such code, and `$F rig open` is refused with nothing else in the line
+  naming flotilla. `headless` joins the words, for the lane guard's default patterns.
+- **A directory the guards cannot follow no longer fails them whole.** `cd` or `git -C` to a name too long to exist,
+  or into a symlink loop, raised inside the guards, and the rest of the line ran under the failure rule.
+- **A word continued on the next line is read as the word bash runs.** `r\`, a line break, `m -rf` is `rm -rf` to
+  bash and was two unknown pieces to the guards. The joined lines are read beside the typed ones, on the line that
+  opens a heredoc too. This is still a matcher and not bash's parser: one rarer shape it does not read is in
+  `TODO.md`.
+- **`attention` behind a variable program is refused,** as `rig` and `work` were: `$F attention all` ran. The bare
+  word is enough, so `$GREP attention notes.md` is refused too.
+- On a failure, an escape that code may turn into a blank (`\t`, `\x20`) no longer hides one of the person's words.
+- When the person guard fails in one of its readings, a refusal another reading already made stands.
+
 ## 0.31.1 - 2026-11-10
 
 Two findings of the field fleets, both in what a session is told about work that changed hands or moved.

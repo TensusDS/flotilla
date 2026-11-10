@@ -11,6 +11,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -27,10 +28,33 @@ PEERS_SHOWN = 8
 #: A Bash command naming none of these reaches no guard, so the hook answers before looking anything up. The last
 #: group lets a long run reach the lane guard: the lane's default run patterns and the launchers that run them. A
 #: tier whose program is none of these (`make test`, `./run-tests.sh`) is not warned about unless the line names one.
-#: `flotilla` lets the person guard see its CLI however the word `approve` is quoted.
+#: `flotilla` lets the person guard see its CLI however the word `approve` is quoted. `rm`, `worktree`, `branch` and
+#: `update-ref` are the gc guard's door words (a test holds `flotilla.guards.gc.DOOR_WORDS` among these).
 GUARD_TRIGGERS = ("checkout", "restore", "reset", "clean", "switch", "sed", "push", "gh", "approve", "flotilla",
+                  "rm", "worktree", "branch", "update-ref",
                   "pytest", "py.test", "playwright", "vitest", "jest", "cargo", "go test", "npm", "pnpm", "yarn",
-                  "npx", "bun", "tox", "nox")
+                  "npx", "bun", "tox", "nox", "headless")
+#: The person's words that are too common as parts of other words (`origin`) to look for as text. As whole words -
+#: or as parts, in a line that holds `$` or a backtick, where bash says where a word begins - they let code handed
+#: to an interpreter (`bash -c 'x rig open'`) reach the guard that reads it.
+GUARD_TRIGGER_PARTS = ("rig", "attention")
+GUARD_TRIGGER_WORDS = re.compile(r"\b(?:%s)\b" % "|".join(GUARD_TRIGGER_PARTS))
+_QUOTING = {ord(sign): None for sign in "'\"\\"}
+
+
+def _unquoted(command: str) -> str:
+    """`flotilla.guards.unquoted`, here so the common path imports nothing: quotes, backslashes and line
+    continuations taken out, so a word split by them (`wor""ktree`) is still found (a test keeps the two equal)."""
+    return command.replace("\\\n", "").translate(_QUOTING)
+
+
+def _names_a_guarded_word(command: str) -> bool:
+    text = _unquoted(command)
+    if any(word in text for word in GUARD_TRIGGERS):
+        return True
+    if "$" in text or "`" in text:   # where a word begins is bash's to say once it expands something (`$A'r'ig`)
+        return any(word in text for word in GUARD_TRIGGER_PARTS)
+    return GUARD_TRIGGER_WORDS.search(text) is not None
 
 
 def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime | None = None) -> int:
@@ -57,7 +81,7 @@ def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime
     if event == "guard":
         tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
         command = tool_input.get("command") if isinstance(tool_input.get("command"), str) else ""
-        if not any(word in command for word in GUARD_TRIGGERS):
+        if not _names_a_guarded_word(command):
             return 0
         try:   # an exception here exits non-zero, which Claude Code does not read as a refusal: the push would run
             return _guard(command, cwd, payload, out, now)
@@ -135,6 +159,8 @@ def _guard(command: str, cwd: Path, payload: dict, out, now) -> int:
 
 #: `flotilla.guards.PUSH_WORDS`, for a failure in which even that module cannot be imported (a test keeps them equal)
 LAST_RESORT_PUSH_WORDS = ("push", "gh")
+#: `flotilla.guards.PERSON_WORDS`, kept equal the same way
+LAST_RESORT_PERSON_WORDS = ("approve", "rig", "attention")
 
 
 def _guard_failed(command: str, err: Exception, out) -> int:
@@ -142,15 +168,31 @@ def _guard_failed(command: str, err: Exception, out) -> int:
     try:
         from flotilla.guards import on_failure
         finding = on_failure(command, err, os.environ)
-        refuse, text = finding.refuse, finding.text
+        refuse, ask, text = finding.refuse, finding.ask, finding.text
     except Exception:  # noqa: BLE001 - the plugin cannot even read its own rule; refuse what may push
-        refuse = any(word in command for word in LAST_RESORT_PUSH_WORDS) and \
-            "FLOTILLA_GATE_OVERRIDE=" not in command and not os.environ.get("FLOTILLA_GATE_OVERRIDE", "").strip()
-        text = f"flotilla guards failed ({err}); " + ("a command that may push is refused on failure. Knowingly: "
-                                                     'FLOTILLA_GATE_OVERRIDE="<why>"' if refuse
-                                                     else "the command runs unchecked")
+        # the override is the environment's alone: the command's own text waives nothing that was not judged
+        bare = _unquoted(command)
+        refuse = any(word in bare for word in LAST_RESORT_PUSH_WORDS) and \
+            not os.environ.get("FLOTILLA_GATE_OVERRIDE", "").strip()
+        if "$" in bare or "`" in bare:   # as `flotilla.guards.may_be_persons`: the word anywhere is enough
+            persons = any(word in bare for word in LAST_RESORT_PERSON_WORDS)
+        else:
+            words = re.compile(r"\b(?:%s)\b" % "|".join(LAST_RESORT_PERSON_WORDS))
+            # an escape the code it is handed to may make a blank of (`\t`, `\x20`)
+            blanked = _unquoted(re.sub(r"\\(?:x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|[0-7]{1,3}|[\s\S])", " ", command))
+            persons = "flotilla" in bare and (words.search(bare) or words.search(blanked)) is not None
+        ask = not refuse and persons
+        text = f"flotilla guards failed ({err}); " + (
+            "a command that may push is refused on failure. Knowingly: the person runs the command themselves - "
+            'with `!` in front, or in a terminal - or sets FLOTILLA_GATE_OVERRIDE="<why>" in the environment the '
+            "session runs in. Where flotilla's pre-push hook is installed, it judges a `git push` again" if refuse
+            else "this line may hold a move only the person makes (`work approve`, a `rig` move, `attention`) and "
+                 "it could not be read, so the person decides whether it runs" if ask
+            else "the command runs unchecked")
     body = ({"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": text}
-            if refuse else {"hookEventName": "PreToolUse", "additionalContext": text})
+            if refuse else {"hookEventName": "PreToolUse", "permissionDecision": "ask",
+                            "permissionDecisionReason": text}
+            if ask else {"hookEventName": "PreToolUse", "additionalContext": text})
     print(json.dumps({"hookSpecificOutput": body}), file=out)
     return 0
 
