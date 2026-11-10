@@ -3,6 +3,22 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.31.1 - 2026-11-10
+
+Two findings of the field fleets, both in what a session is told about work that changed hands or moved.
+
+- **Adopted work follows its heir home.** `flotilla work adopt` lets go of the gone seat's tree, so the heir switches
+  to the branch in its own tree, but the row went on naming the old one. The collector then read the live heir as
+  working there and kept the tree: a field fleet held about 35 trees, some 8 GB, while their rows stayed open. The
+  row now names the heir's home tree whenever the old one no longer holds the branch; a tree that still holds it -
+  uncommitted work kept it there - stays the row's, and so does the tree of an heir with no post row of its own.
+- **After a rebase, the reader is shown where the work starts now.** `work show` and the reader's letter named the
+  base the row was claimed on, so a reviewer's diff carried trunk's own commits that came in with the rebase, and an
+  orchestrator corrected its reviewer by hand. Both now name the base the rebase moved the work onto, and the one it
+  moved from: `base 1a2b3c4 (rebased from 9f8e7d6)`. What waits for the person's yes is still counted from the base
+  recorded at the claim: the newer one is read from `origin/<trunk>`, which a session can repoint, so it may show
+  more but never ask less.
+
 ## 0.31.0 - 2026-11-09
 
 The lane gets one scheduler per machine. A field test of 0.30 admitted five heavy runs on light estimates and froze
