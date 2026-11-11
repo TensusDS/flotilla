@@ -136,6 +136,30 @@ def _normalise(words: list[str]) -> list[str]:
     return out
 
 
+#: A shell's options that take the next word as their value, not as the script.
+SHELL_VALUED = {"-o", "+o", "-O", "+O", "--rcfile", "--init-file"}
+
+
+def _shell_script(tail: list[str]) -> int | None:
+    """Where the script stands among a shell's arguments; None when the shell reads it from stdin (`-s`, `-c` read
+    through by `_unwrap`, or nothing but options)."""
+    i = 0
+    while i < len(tail):
+        word = tail[i]
+        if word == "--":
+            return i + 1 if i + 1 < len(tail) else None
+        if word in SHELL_VALUED:
+            i += 2
+            continue
+        if word[:1] in "-+" and len(word) > 1:
+            if not word.startswith("--") and ("s" in word[1:] or "c" in word[1:]):
+                return None   # `-s`, `-es`: the script is stdin, what follows are its arguments
+            i += 1
+            continue
+        return i
+    return None
+
+
 def _program(words: list[str]) -> str:
     """The program the chain exists for: of each command the first stage of its pipeline (`node shoot.mjs | tail`
     is a screenshot job), trivial ones (`echo ok`, `tail`) left out, and of those the last (`npx tsc && npx vitest
@@ -162,7 +186,11 @@ def _program(words: list[str]) -> str:
         return ""
     name = PurePosixPath(rest[0]).name
     tail = rest[1:]
-    if INTERPRETER.match(name):
+    if name in SHELLS:   # `sh probe.sh` is that script, as `node shoot.mjs` is: one bare `sh` pooled every script's
+        script = _shell_script(tail)   # peak into each new one's estimate (field test 2026-11-11)
+        if script is not None:
+            name, tail = f"{name} {PurePosixPath(tail[script]).name}", tail[script + 1:]
+    elif INTERPRETER.match(name):
         if "-m" in tail and tail.index("-m") + 1 < len(tail):
             at = tail.index("-m") + 1
             name, tail = tail[at], tail[at + 1:]

@@ -327,3 +327,31 @@ def test_a_ceilings_headroom_is_promised_beyond_the_views_own_reservation():   #
     # first half-minute: the view reserved 300 (admitted 3600 less a tree of 3300); the group reads 300
     r = run("a", RUNNING, 300, ceiling_mb=3000, admitted_mb=3600, reserved_mb=300, scoped=True, since_start_s=10)
     assert policy.promised(r, 3000) == 3000 - 300 - 300
+
+
+def test_a_heavy_run_larger_than_the_heavy_share_says_it_starts_only_on_an_empty_lane():   # field test 2026-11-11
+    # 0.8 * 9000 = 7200 is the most heavy runs may take: 7500 never fits beside any run
+    runs = [run("other", RUNNING, 800), run("big", WAITING, 7500, True, 2)]
+    d = decide(runs, machine(free=8000), "big")
+    assert not d.start and "7500 MB needed, more than the 7200 MB heavy runs may take" in d.why
+    assert "starts only when the lane is empty" in d.why and d.freeze == ()
+
+
+def test_every_bound_that_holds_a_heavy_run_is_named_not_only_the_first():   # field test 2026-11-11
+    runs = [run("h", RUNNING, 1000, True, 8), run("big", WAITING, 7500, True, 8)]
+    d = decide(runs, machine(free=7000), "big")
+    assert "heavy runs' cores: 8 of 12" in d.why and "starts only when the lane is empty" in d.why
+
+
+def test_a_heavy_behind_one_that_waits_for_an_empty_lane_is_told_so():   # field test 2026-11-11
+    runs = [run("other", RUNNING, 800), run("big", WAITING, 7500, True, 2, order=1, waited_s=600),
+            run("b3", WAITING, 2000, True, 2, order=2)]
+    d = decide(runs, machine(free=8000), "b3")
+    assert not d.start and "behind heavy big, which starts only when the lane is empty" in d.why
+
+
+def test_a_heavy_behind_one_that_only_lacks_room_is_told_just_that():
+    runs = [run("h", RUNNING, 3000, True, 6), run("b2", WAITING, 5000, True, 4, order=2, waited_s=600),
+            run("b3", WAITING, 1900, True, 2, order=3)]
+    d = decide(runs, machine(free=4000), "b3")
+    assert d.why == "behind heavy b2"

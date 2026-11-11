@@ -104,3 +104,18 @@ def test_redirects_pipes_and_trailing_trivia_inside_a_shell_string():
     exact = sig.ladder(["sh", "-c", "npx vitest run > /tmp/o.log 2>&1"], tree=None, project=P)[0]
     assert exact == "exact:proj:npx vitest run"
     assert prog(["sh", "-c", "node gen.mjs | python3 check.py"]) == "prog:proj:node gen.mjs"   # the first stage
+
+
+def test_a_shell_running_a_script_is_named_by_its_script():   # field test 2026-11-11: every `sh <script>` was `sh`
+    assert prog(["sh", "/home/u/jobs/6cd5d245/tmp/probe79.sh"]) == "prog:proj:sh probe79.sh"
+    assert prog(["bash", "./ci/run.sh"]) == "prog:proj:bash run.sh"
+    assert prog(["bash", "-e", "-o", "pipefail", "build.sh"]) == "prog:proj:bash build.sh"   # `-o` takes a value
+    assert prog(["timeout", "600", "bash", "-x", "check.sh", "fast"]) == "prog:proj:bash check.sh fast"
+    assert prog(["sh", "big.sh"]) != prog(["sh", "small.sh"])
+
+
+def test_a_shell_with_no_script_keeps_its_name():
+    assert prog(["sh"]) == "prog:proj:sh"
+    assert prog(["bash", "-s", "fast"]) == "prog:proj:bash"           # the script comes from stdin: `fast` is $1
+    assert prog(["bash", "-es"]) == "prog:proj:bash"
+    assert prog(["bash", "-c", "npx vitest run"]) == "prog:proj:vitest run"   # `-c` is still read through

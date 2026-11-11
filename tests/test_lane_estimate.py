@@ -259,3 +259,15 @@ def test_a_project_priors_typical_memory_is_the_median_of_its_runs():   # review
     runs = [done(i, [f"exact:old{i}", "project:p"], peak=peak) for i, peak in enumerate([300, 400, 5000])]
     e = est.estimate(["exact:new", "project:p"], est.history(bookings(*runs), now=NOW), project="p")
     assert e.source.startswith("project prior") and (e.peak_mb, e.typical_mb) == (5000, 400)
+
+
+def test_a_new_script_under_a_shell_does_not_take_another_scripts_peak():   # field test 2026-11-11
+    from flotilla.lane import signature as sig
+    big = sig.ladder(["sh", "/w/jobs/a1b2c3d4/tmp/build-all.sh"], tree=None, project="p")
+    small = sig.ladder(["sh", "/w/jobs/e5f6a7b8/tmp/probe79.sh"], tree=None, project="p")
+    light = [done(i, [f"exact:old{i}", "project:p"], peak=900) for i in range(3)]
+    heavy = [done(10 + i, big, peak=5644) for i in range(3)]
+    e = est.estimate(small, est.history(bookings(*light, *heavy), now=NOW), project="p")
+    assert e.source.startswith("project prior")   # the project's 90th percentile, not build-all.sh's own figure
+    again = sig.ladder(["sh", "/w/jobs/0a1b2c3d/tmp/build-all.sh"], tree=None, project="p")
+    assert est.estimate(again, est.history(bookings(*light, *heavy), now=NOW), project="p").peak_mb == 5644

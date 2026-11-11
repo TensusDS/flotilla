@@ -236,29 +236,55 @@ def _memory_why(need: int, free: int, machine: Machine, *, heavy_room: int | Non
 FREE, BOUND = "free", "bound"
 
 
+def _heavy_share(machine: Machine) -> int | None:
+    """The most memory the heavy runs may take together; None when memory cannot be read."""
+    return None if machine.give_mb is None else int((1 - machine.light_reserve) * machine.give_mb)
+
+
+def alone_only(r: Run, machine: Machine) -> bool:
+    """A heavy run larger than the heavy share fits beside no run: only an empty lane takes it (section 2.2)."""
+    share = _heavy_share(machine)
+    return r.heavy and share is not None and r.mem_mb > share
+
+
 def _fits(r: Run, pool: list[Run], free: int | None, machine: Machine) -> tuple[str, str]:
-    """("", "") when `r` may start beside `pool` with `free` MB; else the first check that fails, named, and whether
-    it was free memory (FREE) or a bound of the lane (BOUND)."""
+    """("", "") when `r` may start beside `pool` with `free` MB; else every check that fails, named, and whether
+    only free memory failed (FREE) or a bound of the lane did (BOUND). Every bound is named, not the first: a run
+    held by the cores of the moment and by a size that never fits was told only of the cores (field test
+    2026-11-11)."""
     if not pool:
         return "", ""   # an empty machine takes its first run whatever its size (section 2.2)
+    failed = []
     if len(pool) >= machine.max_runs:
-        return f"runs at once: {len(pool)} of {machine.max_runs}", BOUND
+        failed.append(f"runs at once: {len(pool)} of {machine.max_runs}")
     known = machine.give_mb is not None and free is not None
     limit = machine.cpu_factor * machine.cpus
     if not known:   # no heavy runs to tell by memory: the bound on cores holds for every run (focus 4, final review)
         used = sum(p.par for p in pool)
         if used + r.par > limit:
-            return f"cores: {used:g} of {limit:g}", BOUND
+            failed.append(f"cores: {used:g} of {limit:g}")
     heavies = [p for p in pool if p.heavy]
+    memory_named = False
     if r.heavy:   # beside any run: only an empty machine lets one heavy run past them (sections 2.2, 2.4)
         used = sum(p.par for p in heavies)
         if heavies and used + r.par > limit:
-            return f"heavy runs' cores: {used:g} of {limit:g}", BOUND
+            failed.append(f"heavy runs' cores: {used:g} of {limit:g}")
         if known:
-            room = (1 - machine.light_reserve) * machine.give_mb - sum(p.mem_mb for p in heavies)
-            if r.mem_mb > room:
-                return _memory_why(r.mem_mb, free, machine, heavy_room=min(free, int(room))), BOUND
-    # free memory last: FREE then means nothing but memory stands in the way, so a freeze would let the run in -
+            share = _heavy_share(machine)
+            room = share - sum(p.mem_mb for p in heavies)
+            if alone_only(r, machine):
+                reserve = round(machine.light_reserve * machine.give_mb)
+                failed.append(f"memory: {r.mem_mb} MB needed, more than the {share} MB heavy runs may take (reserve "
+                              f"{reserve} MB for light runs): it starts only when the lane is empty")
+                memory_named = True
+            elif r.mem_mb > room:
+                failed.append(_memory_why(r.mem_mb, free, machine, heavy_room=min(free, int(room))))
+                memory_named = True
+    if failed:
+        if known and r.mem_mb > free and not memory_named:
+            failed.append(_memory_why(r.mem_mb, free, machine))
+        return "; ".join(failed), BOUND
+    # free memory alone: FREE then means nothing but memory stands in the way, so a freeze would let the run in -
     # never a freeze for a run a bound would still hold back
     if known and r.mem_mb > free:
         return _memory_why(r.mem_mb, free, machine), FREE
@@ -348,8 +374,10 @@ def decide(runs: list[Run], machine: Machine, mine: str, *, may_freeze: bool = T
         return None if free is None else free - kept
     for r in queue:
         if r.heavy and blocker is not None:
-            if r.id == mine:
-                return Decision(False, (), f"behind heavy {blocker}")
+            if r.id == mine:   # and why it waits, when that wait has no end while the lane is busy (2026-11-11)
+                alone = alone_only(by_id[blocker], machine)
+                return Decision(False, (), f"behind heavy {blocker}"
+                                + (", which starts only when the lane is empty" if alone else ""))
             continue
         failed, kind = _fits(r, pool, room(r), machine)
         if not failed:
