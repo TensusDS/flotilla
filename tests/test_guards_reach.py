@@ -158,7 +158,7 @@ def test_in_a_line_bash_expands_a_persons_word_anywhere_is_enough(tmp_path, comm
     """Where a word begins is bash's to say once it expands something: `$A'r'ig` is `rig` when A is empty, and no
     reading of the text finds that as a whole word."""
     assert hooks._names_a_guarded_word(command)
-    assert guards.on_failure(command, RuntimeError("x"), {}).ask
+    assert guards.on_failure(command, RuntimeError("x")).ask
     fake, project = old_interpreter(tmp_path)
     assert decision(guard_through(fake, project, command)) == "ask"
 
@@ -265,19 +265,19 @@ def test_a_directory_name_too_long_to_exist_does_not_fail_the_guards(tmp_path, m
 @pytest.mark.parametrize("command", ["/x/bin/flot''illa work approve W-1", "$F work approve W-1",
                                      "`which f` rig open", 'flo\\tilla "attention" all'])
 def test_the_failure_rule_reads_a_persons_move_through_quotes_and_variables(command):
-    assert guards.on_failure(command, RuntimeError("x"), {}).ask
+    assert guards.on_failure(command, RuntimeError("x")).ask
 
 
 @pytest.mark.parametrize("command", ["cd /src/flotilla && git fetch origin", "cat .flotilla/project.toml | wc -l",
                                      "bin/flotilla work show W-1 --trigger x", "echo $HOME/notes"])
 def test_the_failure_rule_does_not_ask_about_a_persons_word_inside_another(command):
-    found = guards.on_failure(command, RuntimeError("x"), {})
+    found = guards.on_failure(command, RuntimeError("x"))
     assert not found.ask and not found.refuse
 
 
 def test_the_failure_rule_reads_a_push_through_quotes():
-    assert guards.on_failure("git pu''sh origin main", RuntimeError("x"), {}).refuse
-    assert guards.on_failure('g"h" pr merge 5', RuntimeError("x"), {}).refuse
+    assert guards.on_failure("git pu''sh origin main", RuntimeError("x")).refuse
+    assert guards.on_failure('g"h" pr merge 5', RuntimeError("x")).refuse
 
 
 def test_the_entry_point_and_the_last_resort_read_a_push_through_quotes(tmp_path, monkeypatch):
@@ -301,7 +301,7 @@ ESCAPED = "python3 -c \"run('flotilla\\trig\\topen'.split())\""
 @pytest.mark.parametrize("escape", ["\\x20", "\\040", "\\u0020"])
 def test_a_whole_escape_is_read_as_a_blank(tmp_path, monkeypatch, escape):
     command = "python3 -c \"run('flotilla" + escape + "rig" + escape + "open'.split())\""
-    assert guards.on_failure(command, RuntimeError("x"), {}).ask
+    assert guards.on_failure(command, RuntimeError("x")).ask
     fake, project = old_interpreter(tmp_path)
     assert decision(guard_through(fake, project, command)) == "ask"
     monkeypatch.setitem(sys.modules, "flotilla.guards.run", None)
@@ -316,7 +316,7 @@ def test_a_whole_escape_is_read_as_a_blank(tmp_path, monkeypatch, escape):
 
 def test_a_backslash_the_code_makes_a_blank_of_does_not_hide_a_persons_word(tmp_path, monkeypatch):
     """Second review, finding 2: with the backslashes taken out the word is glued to its neighbours."""
-    assert guards.on_failure(ESCAPED, RuntimeError("x"), {}).ask
+    assert guards.on_failure(ESCAPED, RuntimeError("x")).ask
     fake, project = old_interpreter(tmp_path)
     assert decision(guard_through(fake, project, ESCAPED)) == "ask"
     monkeypatch.setitem(sys.modules, "flotilla.guards.run", None)
@@ -379,11 +379,11 @@ def test_guards_that_crash_whole_ask_the_person_about_a_line_that_may_hold_their
 
 def test_the_failure_rule_asks_only_where_a_persons_move_may_stand():
     err = RuntimeError("x")
-    assert guards.on_failure("flotilla work approve W-1", err, {}).ask
-    assert guards.on_failure("python3 -m flotilla rig enable", err, {}).ask
-    assert not guards.on_failure("flotilla work claim W-1", err, {}).ask
-    assert not guards.on_failure("git checkout -- f.txt", err, {}).ask
-    found = guards.on_failure("flotilla work approve W-1 && git push", err, {})
+    assert guards.on_failure("flotilla work approve W-1", err).ask
+    assert guards.on_failure("python3 -m flotilla rig enable", err).ask
+    assert not guards.on_failure("flotilla work claim W-1", err).ask
+    assert not guards.on_failure("git checkout -- f.txt", err).ask
+    found = guards.on_failure("flotilla work approve W-1 && git push", err)
     assert found.refuse   # the refusal stands; nothing is left to ask
 
 
@@ -460,28 +460,53 @@ def test_an_override_typed_into_the_command_does_not_open_a_push_the_guards_coul
     assert answer and answer.get("permissionDecision") == "deny", answer
 
 
+# --- 3a. nor does the environment: a push nothing judged has no override (the person's ruling on 0.31.3) ---
+
 @pytest.mark.parametrize("command", OVERRIDES)
-def test_the_failure_rule_reads_the_override_from_the_environment_alone(command):
-    err = RuntimeError("x")
-    assert guards.on_failure(command, err, {}).refuse
-    assert not guards.on_failure(command, err, {"FLOTILLA_GATE_OVERRIDE": "the person said so"}).refuse
-    assert guards.on_failure(command, err, {"FLOTILLA_GATE_OVERRIDE": "  "}).refuse
+def test_an_override_in_the_environment_does_not_open_a_push_the_guards_could_not_judge(tmp_path, monkeypatch,
+                                                                                        command):
+    """Until 0.31.4 the environment's override opened any push on a failure, unrecorded - the person's approval and
+    the lander's post included, which the judged path never waives."""
+    from flotilla.guards import shell
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("matcher on fire")
+    monkeypatch.setattr(shell, "segments", boom)
+    monkeypatch.setenv("FLOTILLA_GATE_OVERRIDE", "the person said so")
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    assert answer and answer.get("permissionDecision") == "deny", answer
+    assert "FLOTILLA_GATE_OVERRIDE" not in answer["permissionDecisionReason"], answer
 
 
-def test_the_last_resort_reads_the_override_from_the_environment_alone(tmp_path, monkeypatch):
+@pytest.mark.parametrize("command", OVERRIDES)
+def test_the_failure_rule_refuses_a_push_with_no_override(command, monkeypatch):
+    monkeypatch.setenv("FLOTILLA_GATE_OVERRIDE", "the person said so")
+    found = guards.on_failure(command, RuntimeError("x"))
+    assert found.refuse and "FLOTILLA_GATE_OVERRIDE" not in found.text and "`!`" in found.text
+
+
+def test_the_last_resort_refuses_a_push_with_no_override(tmp_path, monkeypatch):
     monkeypatch.setitem(sys.modules, "flotilla.guards.run", None)
 
     def unreadable(*args, **kwargs):
         raise RuntimeError("the rule itself is broken")
     monkeypatch.setattr(guards, "on_failure", unreadable)
-    answer = ask(onboarded(tmp_path), OVERRIDES[0], monkeypatch, tmp_path)
-    assert answer and answer.get("permissionDecision") == "deny", answer
+    root = onboarded(tmp_path)
+    for command in (OVERRIDES[0], "git push origin main"):
+        monkeypatch.delenv("FLOTILLA_GATE_OVERRIDE", raising=False)
+        answer = ask(root, command, monkeypatch, tmp_path)
+        assert answer and answer.get("permissionDecision") == "deny", answer
+        monkeypatch.setenv("FLOTILLA_GATE_OVERRIDE", "hotfix")
+        answer = ask(root, command, monkeypatch, tmp_path)
+        assert answer and answer.get("permissionDecision") == "deny", answer
+        assert "FLOTILLA_GATE_OVERRIDE" not in answer["permissionDecisionReason"], answer
 
 
-def test_an_entry_point_that_cannot_judge_reads_the_override_from_the_environment_alone(tmp_path):
+def test_an_entry_point_that_cannot_judge_refuses_a_push_with_no_override(tmp_path):
     fake, project = old_interpreter(tmp_path)
     assert decision(guard_through(fake, project, OVERRIDES[0], {"FLOTILLA_GATE_OVERRIDE": ""})) == "deny"
-    assert decision(guard_through(fake, project, "git push origin main", {"FLOTILLA_GATE_OVERRIDE": "hotfix"})) == ""
+    done = guard_through(fake, project, "git push origin main", {"FLOTILLA_GATE_OVERRIDE": "hotfix"})
+    assert decision(done) == "deny" and "FLOTILLA_GATE_OVERRIDE" not in done.stdout
 
 
 # --- 4. rules that cannot be read do not switch off the guards that never read them ---

@@ -34,12 +34,12 @@ PUSH_WORDS = ("push", "gh")
 #: person when no guard could read the line.
 PERSON_WORDS = ("approve", "rig", "attention")
 
-#: How a push the guards could not judge is let through knowingly. Never by the command's own text: judged, an
-#: override waives a missing receipt alone, and here nothing was judged - a word a session can type would waive the
-#: person's approval with it.
-KNOWINGLY = ("the person runs the command themselves - with `!` in front, or in a terminal - or sets "
-             'FLOTILLA_GATE_OVERRIDE="<why>" in the environment the session runs in. Where flotilla\'s pre-push hook '
-             "is installed, it judges a `git push` again")
+#: How a push the guards could not judge goes through: by the person's own hand alone. Judged, an override waives a
+#: missing receipt and is recorded; here nothing was judged, so an override - in the command's text or in the
+#: environment a session runs in - would waive the person's approval and the lander's post with it, unrecorded (the
+#: person's ruling on 0.31.3).
+KNOWINGLY = ("the person runs the command themselves - with `!` in front, or in a terminal. Where flotilla's "
+             "pre-push hook is installed, it judges a `git push` again")
 PERSONS_UNREAD = ("this line may hold a move only the person makes (`work approve`, a `rig` move, `attention`) "
                   "and it could not be read, so the person decides whether it runs")
 
@@ -69,12 +69,11 @@ def may_be_persons(command: str) -> bool:
     return "flotilla" in text and (_PERSON.search(text) or _PERSON.search(blanked)) is not None
 
 
-def on_failure(command: str, err: Exception, env) -> Finding:
+def on_failure(command: str, err: Exception) -> Finding:
     """What the guards say when they could not judge: decided by reversibility, so a command that may push is
-    refused, unless the person overrode the gate knowingly, in the environment; a line that may hold the person's
-    own move is put to the person; anything else runs, and the session is told."""
-    may_push = any(word in unquoted(command) for word in PUSH_WORDS)
-    refuse = may_push and not env.get("FLOTILLA_GATE_OVERRIDE", "").strip()
+    refused, with no override; a line that may hold the person's own move is put to the person; anything else runs,
+    and the session is told."""
+    refuse = any(word in unquoted(command) for word in PUSH_WORDS)
     ask = not refuse and may_be_persons(command)
     said = (f"a command that may push is refused on failure. Knowingly: {KNOWINGLY}" if refuse
             else PERSONS_UNREAD if ask else "the command runs unchecked")

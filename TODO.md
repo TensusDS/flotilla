@@ -51,10 +51,6 @@ command that every guard shares, not one more reading.
   on since 0.31.2, and the person guard then says nothing - a variable program whose value ends in a blank, inside
   the stated ceiling. On a failure path the same line is asked of the person. *(checked 2026-11-10 on 0.31.2: P -
   flotilla/guards/person.py check)*
-- **When the guards fail, `FLOTILLA_GATE_OVERRIDE` in the environment opens any push at the hook, unrecorded**,
-  the person's approval and the lander's post included, which the judged path never waives. The command's own text
-  no longer does (0.31.2). Whether the environment should is the person's ruling. *(checked 2026-11-10 on 0.31.2:
-  open, a ruling - flotilla/guards/__init__.py on_failure)*
 - **A variable program with the bare word `attention` as an argument is refused** (`$GREP attention notes.md`), the
   trade already made for `rig` and `work`. *(checked 2026-11-10 on 0.31.2: P - flotilla/guards/person.py check)*
 - **The person guard refuses a line whose words hold an extglob sign inside quotes**, for any word whose basename is

@@ -71,10 +71,10 @@ fleet.
 **Pin a release** instead, to choose when you move: name a tag on the first line (the tags are listed in
 [CHANGELOG.md](CHANGELOG.md)):
 
-    claude plugin marketplace add TensusDS/flotilla#v0.31.3 --scope project
+    claude plugin marketplace add TensusDS/flotilla#v0.31.4 --scope project
     claude plugin install flotilla@flotilla --scope project
 
-That writes `"ref": "v0.31.3"` into the project's settings and installs that release; `claude plugin update` stays on
+That writes `"ref": "v0.31.4"` into the project's settings and installs that release; `claude plugin update` stays on
 it. A machine keeps one marketplace of a name for all its projects, so give the projects on one machine the same
 channel or pin; `/flotilla:doctor` names a pin the machine does not follow. And a tag can be moved on GitHub, so a pin
 chooses when you move, not who can change what the tag names.
@@ -718,8 +718,8 @@ Before a Bash command runs, flotilla refuses a few commands that do silent damag
   later push to the pull request cannot be merged in its place. A door is judged by the project it acts on, wherever
   the session stands. `FLOTILLA_GATE_OVERRIDE="<why>"` at the head of a push lets a missing receipt through and
   records the reason; it never waives a missing approval. When the guards themselves fail, a command that may push
-  is refused at the hook and only the variable set in the session's environment opens it there - not the command's
-  own text.
+  is refused at the hook with no override - neither the command's text nor the session's environment opens it - and
+  the person runs it themselves, with `!` or in a terminal.
   The same guard asks **who lands**: a session that holds one of the project's posts pushes to trunk or a tag, or
   runs `gh pr merge`, only if its post has the `land` move - the sender's. A call answers to the session that made
   it and to every seat its process runs under, so a session a seat starts inside itself is that seat's. Anyone

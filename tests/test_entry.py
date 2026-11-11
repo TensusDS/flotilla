@@ -110,7 +110,7 @@ def test_an_old_interpreter_refuses_a_push_in_a_project(tmp_path):
     assert done.returncode == 0 and decision(done) == "deny" and "99.0" in done.stdout
     assert decision(guard_through(fake, project, "git status")) == ""
     overridden = guard_through(fake, project, "git push origin main", {"FLOTILLA_GATE_OVERRIDE": "hotfix"})
-    assert decision(overridden) == ""
+    assert decision(overridden) == "deny"   # nothing was judged: no override (0.31.4)
 
 
 def test_a_package_that_cannot_be_imported_refuses_a_push(tmp_path):

@@ -3,6 +3,17 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.31.4 - 2026-11-11
+
+- **A push the guards could not judge has no override at all.** When the guards themselves fail, a command that may
+  push is refused at the hook, and until now `FLOTILLA_GATE_OVERRIDE` set in the environment the session runs in
+  opened it, unrecorded - with whatever the person's approval or the lander's post would have stopped, which a
+  judged push never waives. Now nothing a session can set opens it: the person runs the command themselves, with `!`
+  in front or in a terminal. The same holds for flotilla's pre-push hook when flotilla is missing: it refuses, and a
+  person who knows why pushes from their own terminal with `git push --no-verify`. The hook already installed in a
+  repository keeps its old text until `flotilla guard install` writes it again. A push the guards did judge is as
+  before: an override at its head waives a missing receipt, recorded, and nothing else.
+
 ## 0.31.3 - 2026-11-11
 
 Four holes in the guards, found by reading them whole: each let a command run that a guard was written to stop. And
