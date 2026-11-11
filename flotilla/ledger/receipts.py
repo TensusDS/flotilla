@@ -88,7 +88,10 @@ def with_branch_tiers(root, rev: str, profile: dict, run=subprocess.run) -> tupl
 
 
 def tiers_fingerprint(tiers: list[dict]) -> str:
-    payload = json.dumps([[tier.get("name"), tier.get("command")] for tier in tiers])
+    """The tiers a receipt ran: name and command, and `reuse` when it is not true - a receipt that took a reused
+    answer must not stand once its tier says it reads the history. A tier with no `reuse` keeps its old figure."""
+    payload = json.dumps([[tier.get("name"), tier.get("command"), *([] if reusable(tier) else ["no reuse"])]
+                          for tier in tiers])
     return "sha256:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 

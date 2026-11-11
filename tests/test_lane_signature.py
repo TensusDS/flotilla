@@ -135,3 +135,17 @@ def test_a_script_in_a_temporary_folder_keeps_its_name_at_the_normalised_step():
     assert norm(["sh", "/tmp/probe79.sh"]) != norm(["sh", "/tmp/build-all.sh"])
     assert norm(["python3", "/var/tmp/x/check.py"]) == "norm:proj:python3 <tmp>/check.py"
     assert norm(["pytest", "--basetemp", "/tmp/pytest-of-u/7"]) == "norm:proj:pytest --basetemp <tmp>"   # a file
+
+
+def test_every_o_in_a_cluster_takes_a_value():   # review of 0.31.3: bash reads `-oe pipefail` as `-o pipefail -e`
+    assert prog(["bash", "-oe", "pipefail", "x.sh"]) == "prog:proj:bash x.sh"
+    assert prog(["bash", "-oO", "pipefail", "extglob", "x.sh"]) == "prog:proj:bash x.sh"
+
+
+def test_a_random_temporary_script_name_is_one_signature():   # review of 0.31.3: tempfile and mktemp names
+    norm = lambda command: sig.ladder(command, tree=None, project=P)[1]   # noqa: E731
+    assert norm(["python3", "/tmp/tmpk3j_9x2a.py"]) == norm(["python3", "/tmp/tmpq8z0w1rt.py"]) == \
+        "norm:proj:python3 <tmp>/<rand>.py"
+    assert norm(["sh", "/tmp/tmp.Xa9bC2dEfG.sh"]) == "norm:proj:sh <tmp>/<rand>.sh"
+    assert norm(["sh", "/tmp/A.SH"]) == "norm:proj:sh <tmp>/A.SH" and norm(["fish", "/tmp/x.fish"]).endswith("x.fish")
+    assert norm(["sh", "/tmp/tmpfiles-cleanup.sh"]) == "norm:proj:sh <tmp>/tmpfiles-cleanup.sh"   # a name, not random

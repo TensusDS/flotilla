@@ -11,7 +11,10 @@ from pathlib import PurePosixPath
 from flotilla.lane.machine import INTERPRETER, SHELLS
 
 #: What a script kept in a temporary folder ends in: its name stays in the normalised step.
-SCRIPTS = (".sh", ".bash", ".zsh", ".py", ".js", ".mjs", ".cjs", ".ts", ".rb", ".pl")
+SCRIPTS = (".sh", ".bash", ".zsh", ".ksh", ".fish", ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts", ".rb",
+           ".pl")
+#: A name `tempfile` (`tmpk3j_9x2a`) or `mktemp` (`tmp.Xa9bC2dEfG`) made up: new on every run, so not the script's.
+RANDOM_STEM = re.compile(r"^tmp(?:[a-z0-9_]{8}|\.[A-Za-z0-9]{10})$")
 WRAPPERS = {"npx", "pnpm", "yarn", "bunx", "uvx"}
 HEX = re.compile(r"\b[0-9a-f]{8,}\b")
 NUMBER = re.compile(r"\d{2,}")
@@ -115,6 +118,17 @@ def _place_tree(word: str, tree: str | None) -> str:
     return word
 
 
+def _temporary(name: str) -> str:
+    """A word in a temporary folder: `<tmp>` for a file, which differs per run; a script's name, numbers and made-up
+    names folded, since a script kept there is what runs."""
+    if not name.lower().endswith(SCRIPTS):
+        return "<tmp>"
+    stem, dot, suffix = name.rpartition(".")
+    if RANDOM_STEM.match(stem):
+        return f"<tmp>/<rand>{dot}{suffix}"
+    return f"<tmp>/{NUMBER.sub('<n>', HEX.sub('<hex>', name))}"
+
+
 def _normalise(words: list[str]) -> list[str]:
     out, skip = [], False
     for word in words:
@@ -128,8 +142,7 @@ def _normalise(words: list[str]) -> list[str]:
         if word.startswith("/tmp/") or word.startswith("/var/tmp/"):
             # a temporary file differs per run; a script kept there is what runs, and one `<tmp>` pooled every such
             # script's peak into each new one's estimate (review of 0.31.3)
-            name = PurePosixPath(word).name
-            out.append(f"<tmp>/{NUMBER.sub('<n>', HEX.sub('<hex>', name))}" if name.endswith(SCRIPTS) else "<tmp>")
+            out.append(_temporary(PurePosixPath(word).name))
             continue
         if PARALLEL.match(word) or (out and PARALLEL.match(out[-1]) and "=" not in out[-1]):
             out.append(word)   # parallelism changes what a run takes: its value stays (`-n 4`, `--maxWorkers=16`)
@@ -159,8 +172,8 @@ def _shell_script(tail: list[str]) -> int | None:
             letters = word[1:]
             if not word.startswith("--") and ("s" in letters or "c" in letters):
                 return None   # `-s`, `-es`: the script is stdin, what follows are its arguments
-            # `-o pipefail`, `-euo pipefail`, `-O extglob`: a cluster ending in o or O takes the next word
-            i += 2 if not word.startswith("--") and letters[-1:] in ("o", "O") else 1
+            # `-o pipefail`, `-euo pipefail`, `-oe pipefail`, `-oO pipefail extglob`: each o or O takes a word
+            i += 1 + (0 if word.startswith("--") else letters.count("o") + letters.count("O"))
             continue
         return i
     return None

@@ -14,9 +14,10 @@ commit. 0.31.2 was never tagged; its changes ship here.
   a script that takes about 1 GB. Larger than all the lane gives heavy runs, it could start only on an empty lane,
   never came while another project ran, and every heavy run of the line waited behind it. A shell running a script
   is now named by its script, as `node shoot.mjs` is, and a script kept in `/tmp` keeps its name too
-  (`sh <tmp>/probe<n>.sh`, where every such script was one `<tmp>`); `bash -euo pipefail x.sh` is `x.sh`. A script
-  never measured takes its project's 90th percentile: in a project whose recent runs are mostly larger than the
-  heavy share, it still waits for an empty lane, and now says so.
+  (`sh <tmp>/probe<n>.sh`, where every such script was one `<tmp>`); `bash -euo pipefail x.sh` is `bash x.sh`. A
+  script never measured takes its project's 90th percentile, the second largest of its last ten runs: when two of
+  them (one, in a project with five runs or fewer) were larger than the heavy share, it still waits for an empty
+  lane, and now says so.
 - **A run that waits is told every bound that holds it, not the first.** The run above was told "heavy runs'
   cores", a wait that ends; what held it was its size. A heavy run larger than the heavy share now says so - "more
   than the 5100 MB heavy runs may take (reserve 1280 MB for light runs): it starts only when the lane is empty" -
