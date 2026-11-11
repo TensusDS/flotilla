@@ -6,7 +6,8 @@ each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2
 ## 0.31.3 - 2026-11-11
 
 Four holes in the guards, found by reading them whole: each let a command run that a guard was written to stop. And
-a lane run that waited without end, found in a field fleet. 0.31.2 was never tagged; its changes ship here.
+two findings of a field fleet: a lane run that waited without end, and a history check answered from another
+commit. 0.31.2 was never tagged; its changes ship here.
 
 - **A script run by a shell is estimated by its own runs, not by every script's.** `sh probe.sh` was the program
   `sh` to the lane, so a script never measured took the largest peak of every `sh` run of its project: 5.6 GB for
@@ -21,6 +22,12 @@ a lane run that waited without end, found in a field fleet. 0.31.2 was never tag
   than the 5100 MB heavy runs may take (reserve 1280 MB for light runs): it starts only when the lane is empty" -
   and the heavy runs behind it are told why they wait: "behind heavy b12, which starts only when the lane is empty".
   Which run starts, and which is frozen, is decided as before.
+- **A test tier that reads the history can ask never to be reused.** A receipt reuses a tier's green answer over the
+  same files, whichever commit carried them, so a sender's merge that changes no file took the author's answer -
+  and a field fleet's tiers that check commit messages and what a merge commit carries never read the merge: its
+  sender ran them by hand before every push. `reuse = false` in a tier's `[[tests.tier]]` runs it over every
+  commit; a value other than true counts as false. Other tiers are reused as before, and a reused line still says
+  so: `reused: green over the same files at 1a2b3c4`.
 
 - **The gc guard now sees the commands it judges.** The hook answers at once for a command that names none of a
   short list of words, and `rm`, `worktree`, `branch` and `update-ref` were not on it: `git worktree remove` of a

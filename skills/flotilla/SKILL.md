@@ -64,7 +64,8 @@ A run in the lane has a ceiling - at least half an hour, or `--max <seconds>`; a
 measured time, at least ten minutes - past which it is stopped with everything it started and recorded as killed. To stop your own
 run sooner, `flotilla lane stop`: it uses the pid flotilla recorded. Never `pkill -f` your way to it - the pattern
 is in your own command line and matches it first. A receipt runs nothing twice: a tier already green over the
-same files is reused, and a fresh tree is set up (the profile's `tests.setup_command`) before its first run.
+same files is reused - its line says `reused: green over the same files at <sha>` - unless the profile marks it
+`reuse = false`, and a fresh tree is set up (the profile's `tests.setup_command`) before its first run.
 
 ## Helpers
 

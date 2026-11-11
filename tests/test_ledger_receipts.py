@@ -495,3 +495,26 @@ def test_a_receipt_tier_red_after_a_freeze_says_so():
         "red       unit: 2 failed (red after a freeze of 2 min)"
     assert tier_line({"name": "unit", "status": "green", "summary": "ok", "frozen_s": 120.0}) == \
         "green     unit: ok"
+
+
+@pytest.mark.parametrize("value", [False, "false", 0])
+def test_a_tier_that_reads_the_history_is_never_reused(tmp_path, value):
+    """A field fleet's tiers that check commit messages and what a merge commit carries were answered from the
+    author's tip: the sender's merge changes no file, so its own commit was never read (2026-11-11). `reuse` other
+    than true runs the tier over every commit; a value it cannot read runs it too."""
+    root = repo_with_origin(tmp_path)
+    command, counter = _counting(tmp_path)
+    history = {"schema": 1, "tests": {"tier": [
+        {"name": "commits", "command": command, "required_for": ["handover", "push"], "reuse": value}]}}
+    receipts.run_receipt(root, state=tmp_path / "s", repo_key=KEY, purpose="handover", profile=history, timeout=60)
+    commit(root, "a merge that changes no file")
+    assert receipts.to_run(root, state=tmp_path / "s", repo_key=KEY, purpose="push", profile=history) == ["commits"]
+    receipt = receipts.run_receipt(root, state=tmp_path / "s", repo_key=KEY, purpose="push", profile=history,
+                                   timeout=60)
+    assert counter.read_text() == "xx" and "reused" not in receipt["tiers"][0]["summary"]
+
+
+def test_reuse_true_is_the_default():
+    tier = {"name": "unit", "command": "x", "required_for": ["push"]}
+    assert receipts.reusable(tier) and receipts.reusable({**tier, "reuse": True})
+    assert not receipts.reusable({**tier, "reuse": False})
