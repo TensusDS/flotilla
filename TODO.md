@@ -58,6 +58,31 @@ command that every guard shares, not one more reading.
   quotes not read. A false refusal, met while reading the guards. *(checked 2026-11-10 on 0.31.2: open -
   flotilla/guards/person.py check)*
 
+## From the reviews of 0.31.4 (2026-11-11, a push nothing judged has no override)
+
+Two review rounds; what is left never lets through what a guard refuses - it only refuses with a vaguer word.
+
+- **A timed-out `git ls-remote` closes a feature-branch push that a failed one lets pass**: `origin_trunk` catches
+  `Unknown` alone around its first ask of origin, so a timeout leaves the trunk untold and the push is closed with no
+  override, while a non-zero exit falls back on the tree's trunk and the branch push passes. A timeout read as
+  `Unknown` there would decide as the docstring says. *(checked 2026-11-11 on 0.31.4: open - flotilla/guards/push.py
+  origin_trunk)*
+- **The closed door's words when origin could not be asked**: it always says "could not be read from origin", also
+  when `git worktree list` fell (`_own_repository`), and for a timeout gives no way forward ("run it again", or the
+  person's way); the comment on the `elif where is None` branch now also covers doors that land nothing. *(checked
+  2026-11-11 on 0.31.4: cosmetic - flotilla/guards/push.py guard)*
+- **`_when_untold` reads `guards` outside a try**: a `guards = "x"` on origin raises out of `guard()`; it is refused
+  by the failure rule, with no override, so only the words differ. *(checked 2026-11-11 on 0.31.4: cosmetic -
+  flotilla/guards/push.py _when_untold)*
+- **`guard status` cannot tell an old pre-push hook from a new one**: it looks for the marker line only, so a hook
+  installed before 0.31.4 keeps letting `FLOTILLA_GATE_OVERRIDE` through when flotilla is missing until `flotilla
+  guard install` runs again (the changelog says so). *(checked 2026-11-11 on 0.31.4: open - flotilla/guards/githooks.py
+  status)*
+- **The tests of a landing door whose origin could not be asked run with no caller**: `who=None` and no fleet whose
+  merges the person authorizes, the shape the hole had in production; the code is unconditional. Also the README's
+  "at the head of a push" leaves out the override read from the environment. *(checked 2026-11-11 on 0.31.4:
+  cosmetic - tests/test_guards_push.py, README.md push receipt)*
+
 ## From the reviews of 0.31.3 (2026-11-11, a shell's script names its lane run; tiers that read the history)
 
 Three review rounds; what is left changes only how well a run is estimated, never what a receipt or a guard allows.
