@@ -119,3 +119,19 @@ def test_a_shell_with_no_script_keeps_its_name():
     assert prog(["bash", "-s", "fast"]) == "prog:proj:bash"           # the script comes from stdin: `fast` is $1
     assert prog(["bash", "-es"]) == "prog:proj:bash"
     assert prog(["bash", "-c", "npx vitest run"]) == "prog:proj:vitest run"   # `-c` is still read through
+
+
+def test_a_shells_option_cluster_ending_in_o_takes_its_value():   # review of 0.31.3: `-euo pipefail` is no script
+    assert prog(["bash", "-euo", "pipefail", "a.sh"]) == "prog:proj:bash a.sh"
+    assert prog(["bash", "-euo", "pipefail", "a.sh"]) != prog(["bash", "-euo", "pipefail", "b.sh"])
+    assert prog(["sh", "-c", "bash -eO extglob ./build.sh"]) == "prog:proj:bash build.sh"
+    assert prog(["ksh", "x.sh"]) == "prog:proj:ksh x.sh"
+
+
+def test_a_script_in_a_temporary_folder_keeps_its_name_at_the_normalised_step():   # review of 0.31.3
+    norm = lambda command: sig.ladder(command, tree=None, project=P)[1]   # noqa: E731
+    assert norm(["sh", "/tmp/probe79.sh"]) == "norm:proj:sh <tmp>/probe<n>.sh"
+    assert norm(["sh", "/tmp/probe79.sh"]) == norm(["sh", "/tmp/probe80.sh"])   # one script, numbered per run
+    assert norm(["sh", "/tmp/probe79.sh"]) != norm(["sh", "/tmp/build-all.sh"])
+    assert norm(["python3", "/var/tmp/x/check.py"]) == "norm:proj:python3 <tmp>/check.py"
+    assert norm(["pytest", "--basetemp", "/tmp/pytest-of-u/7"]) == "norm:proj:pytest --basetemp <tmp>"   # a file

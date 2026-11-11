@@ -12,11 +12,15 @@ a lane run that waited without end, found in a field fleet. 0.31.2 was never tag
   `sh` to the lane, so a script never measured took the largest peak of every `sh` run of its project: 5.6 GB for
   a script that takes about 1 GB. Larger than all the lane gives heavy runs, it could start only on an empty lane,
   never came while another project ran, and every heavy run of the line waited behind it. A shell running a script
-  is now named by its script, as `node shoot.mjs` is; a script never measured takes its project's 90th percentile.
+  is now named by its script, as `node shoot.mjs` is, and a script kept in `/tmp` keeps its name too
+  (`sh <tmp>/probe<n>.sh`, where every such script was one `<tmp>`); `bash -euo pipefail x.sh` is `x.sh`. A script
+  never measured takes its project's 90th percentile: in a project whose recent runs are mostly larger than the
+  heavy share, it still waits for an empty lane, and now says so.
 - **A run that waits is told every bound that holds it, not the first.** The run above was told "heavy runs'
   cores", a wait that ends; what held it was its size. A heavy run larger than the heavy share now says so - "more
-  than the 5100 MB heavy runs may take: it starts only when the lane is empty" - and the heavy runs behind it are
-  told why they wait: "behind heavy b12, which starts only when the lane is empty".
+  than the 5100 MB heavy runs may take (reserve 1280 MB for light runs): it starts only when the lane is empty" -
+  and the heavy runs behind it are told why they wait: "behind heavy b12, which starts only when the lane is empty".
+  Which run starts, and which is frozen, is decided as before.
 
 - **The gc guard now sees the commands it judges.** The hook answers at once for a command that names none of a
   short list of words, and `rm`, `worktree`, `branch` and `update-ref` were not on it: `git worktree remove` of a

@@ -265,9 +265,10 @@ def test_a_new_script_under_a_shell_does_not_take_another_scripts_peak():   # fi
     from flotilla.lane import signature as sig
     big = sig.ladder(["sh", "/w/jobs/a1b2c3d4/tmp/build-all.sh"], tree=None, project="p")
     small = sig.ladder(["sh", "/w/jobs/e5f6a7b8/tmp/probe79.sh"], tree=None, project="p")
-    light = [done(i, [f"exact:old{i}", "project:p"], peak=900) for i in range(3)]
-    heavy = [done(10 + i, big, peak=5644) for i in range(3)]
-    e = est.estimate(small, est.history(bookings(*light, *heavy), now=NOW), project="p")
-    assert e.source.startswith("project prior")   # the project's 90th percentile, not build-all.sh's own figure
+    heavy = [done(i, big, peak=5644, days_ago=3) for i in range(3)]   # older: the project's last ten are light
+    light = [done(10 + i, [f"exact:old{i}", "project:p"], peak=900 + i) for i in range(10)]
+    hist = est.history(bookings(*heavy, *light), now=NOW)
+    e = est.estimate(small, hist, project="p")
+    assert e.source.startswith("project prior") and e.peak_mb == 908   # the project's 90th percentile
     again = sig.ladder(["sh", "/w/jobs/0a1b2c3d/tmp/build-all.sh"], tree=None, project="p")
-    assert est.estimate(again, est.history(bookings(*light, *heavy), now=NOW), project="p").peak_mb == 5644
+    assert est.estimate(again, hist, project="p").peak_mb == 5644   # build-all.sh keeps its own figure

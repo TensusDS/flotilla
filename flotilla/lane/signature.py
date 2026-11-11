@@ -8,9 +8,10 @@ import re
 import shlex
 from pathlib import PurePosixPath
 
-from flotilla.lane.machine import INTERPRETER
+from flotilla.lane.machine import INTERPRETER, SHELLS
 
-SHELLS = {"sh", "bash", "zsh", "dash"}
+#: What a script kept in a temporary folder ends in: its name stays in the normalised step.
+SCRIPTS = (".sh", ".bash", ".zsh", ".py", ".js", ".mjs", ".cjs", ".ts", ".rb", ".pl")
 WRAPPERS = {"npx", "pnpm", "yarn", "bunx", "uvx"}
 HEX = re.compile(r"\b[0-9a-f]{8,}\b")
 NUMBER = re.compile(r"\d{2,}")
@@ -125,7 +126,10 @@ def _normalise(words: list[str]) -> list[str]:
             skip = not redirect.group(1)   # `>` alone takes the next word as its target
             continue
         if word.startswith("/tmp/") or word.startswith("/var/tmp/"):
-            out.append("<tmp>")
+            # a temporary file differs per run; a script kept there is what runs, and one `<tmp>` pooled every such
+            # script's peak into each new one's estimate (review of 0.31.3)
+            name = PurePosixPath(word).name
+            out.append(f"<tmp>/{NUMBER.sub('<n>', HEX.sub('<hex>', name))}" if name.endswith(SCRIPTS) else "<tmp>")
             continue
         if PARALLEL.match(word) or (out and PARALLEL.match(out[-1]) and "=" not in out[-1]):
             out.append(word)   # parallelism changes what a run takes: its value stays (`-n 4`, `--maxWorkers=16`)
@@ -136,13 +140,13 @@ def _normalise(words: list[str]) -> list[str]:
     return out
 
 
-#: A shell's options that take the next word as their value, not as the script.
-SHELL_VALUED = {"-o", "+o", "-O", "+O", "--rcfile", "--init-file"}
+#: A shell's long options that take the next word as their value, not as the script.
+SHELL_VALUED = {"--rcfile", "--init-file"}
 
 
 def _shell_script(tail: list[str]) -> int | None:
-    """Where the script stands among a shell's arguments; None when the shell reads it from stdin (`-s`, `-c` read
-    through by `_unwrap`, or nothing but options)."""
+    """Where the script stands among a shell's arguments; None when there is none: the shell reads stdin (`-s`), runs
+    a string (`-c`, `-ec`: `_unwrap` reads through `sh -c` alone), or is given nothing but options."""
     i = 0
     while i < len(tail):
         word = tail[i]
@@ -152,9 +156,11 @@ def _shell_script(tail: list[str]) -> int | None:
             i += 2
             continue
         if word[:1] in "-+" and len(word) > 1:
-            if not word.startswith("--") and ("s" in word[1:] or "c" in word[1:]):
+            letters = word[1:]
+            if not word.startswith("--") and ("s" in letters or "c" in letters):
                 return None   # `-s`, `-es`: the script is stdin, what follows are its arguments
-            i += 1
+            # `-o pipefail`, `-euo pipefail`, `-O extglob`: a cluster ending in o or O takes the next word
+            i += 2 if not word.startswith("--") and letters[-1:] in ("o", "O") else 1
             continue
         return i
     return None

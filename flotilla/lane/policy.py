@@ -264,7 +264,6 @@ def _fits(r: Run, pool: list[Run], free: int | None, machine: Machine) -> tuple[
         if used + r.par > limit:
             failed.append(f"cores: {used:g} of {limit:g}")
     heavies = [p for p in pool if p.heavy]
-    memory_named = False
     if r.heavy:   # beside any run: only an empty machine lets one heavy run past them (sections 2.2, 2.4)
         used = sum(p.par for p in heavies)
         if heavies and used + r.par > limit:
@@ -276,13 +275,9 @@ def _fits(r: Run, pool: list[Run], free: int | None, machine: Machine) -> tuple[
                 reserve = round(machine.light_reserve * machine.give_mb)
                 failed.append(f"memory: {r.mem_mb} MB needed, more than the {share} MB heavy runs may take (reserve "
                               f"{reserve} MB for light runs): it starts only when the lane is empty")
-                memory_named = True
             elif r.mem_mb > room:
                 failed.append(_memory_why(r.mem_mb, free, machine, heavy_room=min(free, int(room))))
-                memory_named = True
-    if failed:
-        if known and r.mem_mb > free and not memory_named:
-            failed.append(_memory_why(r.mem_mb, free, machine))
+    if failed:   # the room of the moment is not named beside a bound: it would reprint the wait at every look
         return "; ".join(failed), BOUND
     # free memory alone: FREE then means nothing but memory stands in the way, so a freeze would let the run in -
     # never a freeze for a run a bound would still hold back
