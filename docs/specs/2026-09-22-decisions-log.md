@@ -1826,6 +1826,16 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    never that a file moved. Cost, accepted: a seat's output that matches only the person's own untracked output is
    archived, or asked about when large, instead of removed.
 
+250. **A push nothing judged has no override** (the person, 2026-11-11; reading the guards whole, 0.31.4). When the
+   guards fail, a command that may push is refused at the hook. `FLOTILLA_GATE_OVERRIDE` in the session's
+   environment opened it, unrecorded, and with it whatever the person's approval or the lander's post would have
+   stopped - which a judged push never waives (64, 236). The person ruled that this should not exist. Now the
+   failure paths (the guard rule, the hook's last resort, the entry point on an old Python, the pre-push hook with
+   flotilla missing) refuse such a push with no override, and the person runs it themselves: `!`, a terminal, or
+   `git push --no-verify`. Cost, accepted: while the guards are broken, a fleet does not push on its own. Its review
+   found the same waiver on the judged path: a landing door whose project was known but whose origin could not be
+   asked was asked only for the post, and its failure was overridable. It is now closed, as unreadable rules are.
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

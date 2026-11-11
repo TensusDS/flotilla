@@ -418,7 +418,7 @@ def guard_hook(command: str, cwd, root, out, *, env=os.environ, run=subprocess.r
         findings = evaluate(command, cwd, root, env=env, run=run, who=lambda: push.callers(session_id),
                             session_id=session_id)
     except Exception as err:  # noqa: BLE001 - decided by reversibility: a command that may push is refused
-        findings = [on_failure(command, err, env)]
+        findings = [on_failure(command, err)]
     refusals = [finding.text for finding in findings if finding.refuse]
     asks = [finding.text for finding in findings if finding.ask and not finding.refuse]
     # the allow answers auto mode's classifier only: in ask mode the person sees what they chose to see

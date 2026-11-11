@@ -37,9 +37,11 @@ def refresh_link(state_dir, cli) -> bool:
 
 
 def script(name: str) -> str:
-    missing = ('  if [ -n "${FLOTILLA_GATE_OVERRIDE:-}" ]; then\n'
-               '    echo "flotilla pre-push: override accepted, not recorded (flotilla is missing)" >&2\n'
-               "    exit 0\n  fi\n  exit 1\n") if name == "pre-push" else "  exit 0\n"
+    # A push that cannot be judged is refused, with no override, as when the check itself fails
+    # (`commands.run_githook`): the person who knows why pushes from their own terminal past the hook.
+    missing = ('  echo "flotilla pre-push: a push is refused while it cannot be judged. A person who knows why pushes '
+               'from their own terminal with: git push --no-verify" >&2\n'
+               "  exit 1\n") if name == "pre-push" else "  exit 0\n"
     return (f"#!/bin/sh\n{MARK} {name}\n"
             "# Installed by `flotilla guard install`. Remove this file to uninstall.\n"
             'state="${FLOTILLA_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/flotilla}"\n'

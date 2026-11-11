@@ -77,6 +77,23 @@ def test_a_pushed_trunk_without_a_receipt_is_refused_by_git(tmp_path):
     assert done.returncode == 0, done.stderr
 
 
+def test_a_pre_push_with_flotilla_missing_refuses_with_no_override(tmp_path):
+    """Until 0.31.4 the hook let `FLOTILLA_GATE_OVERRIDE` in the environment through when flotilla was missing,
+    unrecorded - a push nothing judged, the person's approval included. Now it is refused, as when the check
+    itself fails, and the person pushes past the hook from their own terminal."""
+    root = onboarded(tmp_path)
+    state = tmp_path / "state"
+    githooks.install(root, ["pre-push"], state_dir=state, cli=hooks.CLI)
+    githooks.link_path(state).unlink()
+    (root / "g.txt").write_text("x\n", encoding="utf-8")
+    git(root, "add", "g.txt")
+    git(root, *IDENTITY, "commit", "-q", "-m", "x")
+    env = {**os.environ, "FLOTILLA_STATE_DIR": str(state), "FLOTILLA_GATE_OVERRIDE": "hotfix"}
+    done = subprocess.run(["git", "push", "-q", "origin", "main"], cwd=root, env=env, capture_output=True, text=True)
+    assert done.returncode != 0 and "is missing" in done.stderr and "--no-verify" in done.stderr, done.stderr
+    assert "override" not in done.stderr, done.stderr
+
+
 def test_guard_check_prints_what_the_guards_would_say(tmp_path, capsys):
     root = onboarded(tmp_path)
     code = cli.main(["guard", "check", "sed -i '4d' f.txt", "--cwd", str(root)])

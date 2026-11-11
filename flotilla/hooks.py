@@ -164,16 +164,14 @@ LAST_RESORT_PERSON_WORDS = ("approve", "rig", "attention")
 
 
 def _guard_failed(command: str, err: Exception, out) -> int:
-    import os
     try:
         from flotilla.guards import on_failure
-        finding = on_failure(command, err, os.environ)
+        finding = on_failure(command, err)
         refuse, ask, text = finding.refuse, finding.ask, finding.text
     except Exception:  # noqa: BLE001 - the plugin cannot even read its own rule; refuse what may push
-        # the override is the environment's alone: the command's own text waives nothing that was not judged
+        # no override: nothing was judged, so neither the command's text nor the environment waives anything
         bare = _unquoted(command)
-        refuse = any(word in bare for word in LAST_RESORT_PUSH_WORDS) and \
-            not os.environ.get("FLOTILLA_GATE_OVERRIDE", "").strip()
+        refuse = any(word in bare for word in LAST_RESORT_PUSH_WORDS)
         if "$" in bare or "`" in bare:   # as `flotilla.guards.may_be_persons`: the word anywhere is enough
             persons = any(word in bare for word in LAST_RESORT_PERSON_WORDS)
         else:
@@ -184,8 +182,8 @@ def _guard_failed(command: str, err: Exception, out) -> int:
         ask = not refuse and persons
         text = f"flotilla guards failed ({err}); " + (
             "a command that may push is refused on failure. Knowingly: the person runs the command themselves - "
-            'with `!` in front, or in a terminal - or sets FLOTILLA_GATE_OVERRIDE="<why>" in the environment the '
-            "session runs in. Where flotilla's pre-push hook is installed, it judges a `git push` again" if refuse
+            "with `!` in front, or in a terminal. Where flotilla's pre-push hook is installed, it judges a "
+            "`git push` again" if refuse
             else "this line may hold a move only the person makes (`work approve`, a `rig` move, `attention`) and "
                  "it could not be read, so the person decides whether it runs" if ask
             else "the command runs unchecked")

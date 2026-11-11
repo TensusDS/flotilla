@@ -382,7 +382,8 @@ def test_a_guard_hook_that_crashes_before_judging_refuses_a_push(tmp_path, monke
         monkeypatch.setitem(sys.modules, "flotilla.guards.run", None)   # `import` of it raises ImportError
     code, body = guard_answer(tmp_path, "git push origin main")
     assert code == 0 and body.get("permissionDecision") == "deny"
-    assert "FLOTILLA_GATE_OVERRIDE" in body["permissionDecisionReason"]
+    why = body["permissionDecisionReason"]
+    assert "`!`" in why and "FLOTILLA_GATE_OVERRIDE" not in why
     code, body = guard_answer(tmp_path, "git checkout -- f.txt")
     assert code == 0 and body.get("permissionDecision") != "deny" and "unchecked" in body.get("additionalContext", "")
 
@@ -401,9 +402,10 @@ def test_when_even_the_guards_rule_cannot_be_read_the_last_resort_decides(tmp_pa
     monkeypatch.setattr(flotilla.guards, "on_failure", unreadable)
     code, body = guard_answer(tmp_path, "git push origin main")
     assert code == 0 and body.get("permissionDecision") == "deny"
-    monkeypatch.setenv("FLOTILLA_GATE_OVERRIDE", "hotfix")
+    monkeypatch.setenv("FLOTILLA_GATE_OVERRIDE", "hotfix")   # nothing was judged: no override (0.31.4)
     code, body = guard_answer(tmp_path, "git push origin main")
-    assert code == 0 and body.get("permissionDecision") != "deny" and "unchecked" in body.get("additionalContext", "")
+    assert code == 0 and body.get("permissionDecision") == "deny"
+    assert "FLOTILLA_GATE_OVERRIDE" not in body["permissionDecisionReason"]
 
 
 def test_the_orchestrator_is_told_what_is_new_and_the_rest_in_one_line(tmp_path):
