@@ -8,9 +8,13 @@ import re
 import shlex
 from pathlib import PurePosixPath
 
-from flotilla.lane.machine import INTERPRETER
+from flotilla.lane.machine import INTERPRETER, SHELLS
 
-SHELLS = {"sh", "bash", "zsh", "dash"}
+#: What a script kept in a temporary folder ends in: its name stays in the normalised step.
+SCRIPTS = (".sh", ".bash", ".zsh", ".ksh", ".fish", ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts", ".rb",
+           ".pl")
+#: A name `tempfile` (`tmpk3j_9x2a`) or `mktemp` (`tmp.Xa9bC2dEfG`) made up: new on every run, so not the script's.
+RANDOM_STEM = re.compile(r"^tmp(?:[a-z0-9_]{8}|\.[A-Za-z0-9]{10})$")
 WRAPPERS = {"npx", "pnpm", "yarn", "bunx", "uvx"}
 HEX = re.compile(r"\b[0-9a-f]{8,}\b")
 NUMBER = re.compile(r"\d{2,}")
@@ -114,6 +118,17 @@ def _place_tree(word: str, tree: str | None) -> str:
     return word
 
 
+def _temporary(name: str) -> str:
+    """A word in a temporary folder: `<tmp>` for a file, which differs per run; a script's name, numbers and made-up
+    names folded, since a script kept there is what runs."""
+    if not name.lower().endswith(SCRIPTS):
+        return "<tmp>"
+    stem, dot, suffix = name.rpartition(".")
+    if RANDOM_STEM.match(stem):
+        return f"<tmp>/<rand>{dot}{suffix}"
+    return f"<tmp>/{NUMBER.sub('<n>', HEX.sub('<hex>', name))}"
+
+
 def _normalise(words: list[str]) -> list[str]:
     out, skip = [], False
     for word in words:
@@ -125,7 +140,9 @@ def _normalise(words: list[str]) -> list[str]:
             skip = not redirect.group(1)   # `>` alone takes the next word as its target
             continue
         if word.startswith("/tmp/") or word.startswith("/var/tmp/"):
-            out.append("<tmp>")
+            # a temporary file differs per run; a script kept there is what runs, and one `<tmp>` pooled every such
+            # script's peak into each new one's estimate (review of 0.31.3)
+            out.append(_temporary(PurePosixPath(word).name))
             continue
         if PARALLEL.match(word) or (out and PARALLEL.match(out[-1]) and "=" not in out[-1]):
             out.append(word)   # parallelism changes what a run takes: its value stays (`-n 4`, `--maxWorkers=16`)
@@ -134,6 +151,36 @@ def _normalise(words: list[str]) -> list[str]:
         out.append("<n>" if word.isdigit() else NUMBER.sub("<n>", word) if "/" in word or ":" in word or "=" in word
                    else word)
     return out
+
+
+#: A shell's long options, which bash takes with one dash too (`-noprofile`): never a cluster of letters. Those that
+#: take the next word as their value, not as the script, are SHELL_VALUED.
+SHELL_LONG = {"login", "noprofile", "norc", "noediting", "posix", "restricted", "verbose", "version", "help",
+              "debugger", "dump-strings", "dump-po-strings", "pretty-print", "rcfile", "init-file"}
+SHELL_VALUED = {"rcfile", "init-file"}
+
+
+def _shell_script(tail: list[str]) -> int | None:
+    """Where the script stands among a shell's arguments; None when there is none: the shell reads stdin (`-s`), runs
+    a string (`-c`, `-ec`: `_unwrap` reads through `sh -c` alone), or is given nothing but options."""
+    i = 0
+    while i < len(tail):
+        word = tail[i]
+        if word == "--":
+            return i + 1 if i + 1 < len(tail) else None
+        long = word.lstrip("-") if word.startswith("-") else ""
+        if long in SHELL_LONG and (word.startswith("--") or len(long) > 1):
+            i += 2 if long in SHELL_VALUED else 1
+            continue
+        if word[:1] in "-+" and len(word) > 1:
+            letters = word[1:]
+            if not word.startswith("--") and ("s" in letters or "c" in letters):
+                return None   # `-s`, `-es`: the script is stdin, what follows are its arguments
+            # `-o pipefail`, `-euo pipefail`, `-oe pipefail`, `-oO pipefail extglob`: each o or O takes a word
+            i += 1 + (0 if word.startswith("--") else letters.count("o") + letters.count("O"))
+            continue
+        return i
+    return None
 
 
 def _program(words: list[str]) -> str:
@@ -162,7 +209,11 @@ def _program(words: list[str]) -> str:
         return ""
     name = PurePosixPath(rest[0]).name
     tail = rest[1:]
-    if INTERPRETER.match(name):
+    if name in SHELLS:   # `sh probe.sh` is that script, as `node shoot.mjs` is: one bare `sh` pooled every script's
+        script = _shell_script(tail)   # peak into each new one's estimate (field test 2026-11-11)
+        if script is not None:
+            name, tail = f"{name} {PurePosixPath(tail[script]).name}", tail[script + 1:]
+    elif INTERPRETER.match(name):
         if "-m" in tail and tail.index("-m") + 1 < len(tail):
             at = tail.index("-m") + 1
             name, tail = tail[at], tail[at + 1:]

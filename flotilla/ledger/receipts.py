@@ -88,7 +88,10 @@ def with_branch_tiers(root, rev: str, profile: dict, run=subprocess.run) -> tupl
 
 
 def tiers_fingerprint(tiers: list[dict]) -> str:
-    payload = json.dumps([[tier.get("name"), tier.get("command")] for tier in tiers])
+    """The tiers a receipt ran: name and command, and `reuse` when it is not true - a receipt that took a reused
+    answer must not stand once its tier says it reads the history. A tier with no `reuse` keeps its old figure."""
+    payload = json.dumps([[tier.get("name"), tier.get("command"), *([] if reusable(tier) else ["no reuse"])]
+                          for tier in tiers])
     return "sha256:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -98,6 +101,13 @@ def _path(state: Path, repo_key: str, sha: str, purpose: str) -> Path:
 
 def _tier_key(tier: dict) -> str:
     return tiers_fingerprint([tier])
+
+
+def reusable(tier: dict) -> bool:
+    """Whether a green answer over the same files answers this tier on another commit. A tier that reads the history -
+    commit messages, what a merge commit carries - says `reuse = false`: a sender's merge changes no file, and its
+    own commit was never read (field fleet, 2026-11-11). Anything but true, or no key, runs it again."""
+    return tier.get("reuse", True) is True
 
 
 def _files_path(state: Path, repo_key: str, files: str) -> Path:
@@ -181,7 +191,7 @@ def to_run(tree: Path, *, state: Path, repo_key: str, purpose: str, profile: dic
     """The tiers a receipt here would have to run: those with no green answer over these files yet."""
     sha = gitq.resolve(tree, "HEAD", run=run)
     known = _green_over(state, repo_key, gitq.files_of(tree, sha, run=run) if sha else None)
-    return [tier["name"] for tier in tiers_for(profile, purpose) if _tier_key(tier) not in known]
+    return [tier["name"] for tier in tiers_for(profile, purpose) if not reusable(tier) or _tier_key(tier) not in known]
 
 
 def run_receipt(tree: Path, *, state: Path, repo_key: str, purpose: str, profile: dict, timeout: float,
@@ -200,12 +210,13 @@ def run_receipt(tree: Path, *, state: Path, repo_key: str, purpose: str, profile
         prepared = set_up(tree, state=state, repo_key=repo_key, profile=profile, timeout=timeout, force=setup,
                           report=setup_report)
     # A tier's answer depends on the files it tests, not on the commit that carries them: a merge that changes no
-    # file is the files the author's receipt already tested. A green answer is reused; a red one runs again.
+    # file is the files the author's receipt already tested. A green answer is reused; a red one runs again, and so
+    # does a tier that reads the history (`reuse = false`).
     files = gitq.files_of(tree, sha, run=run)
     known = _green_over(state, repo_key, files)
     results, learned, ran_green, ran_peaks = [], {}, {}, {}
     for tier in tiers:
-        seen = known.get(_tier_key(tier))
+        seen = known.get(_tier_key(tier)) if reusable(tier) else None
         if seen:
             results.append({"name": tier["name"], "status": "green", "seconds": seen.get("seconds"),
                             "summary": f"reused: green over the same files at {str(seen.get('sha', ''))[:7]} "
@@ -221,8 +232,9 @@ def run_receipt(tree: Path, *, state: Path, repo_key: str, purpose: str, profile
         else:
             ran_green[r.name] = r.seconds
             ran_peaks[r.name] = r.peak_mb
-            learned[_tier_key(tier)] = {"sha": sha, "summary": r.summary or "", "seconds": r.seconds,
-                                        "at": now_iso()}
+            if reusable(tier):   # a tier that reads the history answers for its own commit only
+                learned[_tier_key(tier)] = {"sha": sha, "summary": r.summary or "", "seconds": r.seconds,
+                                            "at": now_iso()}
         results.append(result)
     # what ran was these files only if the tree still is them: a tree edited or moved during the run gets no receipt,
     # and its greens are not kept for other commits to reuse (review of 0.6.2, I1)

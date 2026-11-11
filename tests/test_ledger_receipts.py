@@ -495,3 +495,54 @@ def test_a_receipt_tier_red_after_a_freeze_says_so():
         "red       unit: 2 failed (red after a freeze of 2 min)"
     assert tier_line({"name": "unit", "status": "green", "summary": "ok", "frozen_s": 120.0}) == \
         "green     unit: ok"
+
+
+@pytest.mark.parametrize("value", [False, "false", 0])
+def test_a_tier_that_reads_the_history_is_never_reused(tmp_path, value):
+    """A field fleet's tiers that check commit messages and what a merge commit carries were answered from the
+    author's tip: the sender's merge changes no file, so its own commit was never read (2026-11-11). `reuse` other
+    than true runs the tier over every commit; a value it cannot read runs it too."""
+    root = repo_with_origin(tmp_path)
+    command, counter = _counting(tmp_path)
+    history = {"schema": 1, "tests": {"tier": [
+        {"name": "commits", "command": command, "required_for": ["handover", "push"], "reuse": value}]}}
+    receipts.run_receipt(root, state=tmp_path / "s", repo_key=KEY, purpose="handover", profile=history, timeout=60)
+    commit(root, "a merge that changes no file")
+    assert receipts.to_run(root, state=tmp_path / "s", repo_key=KEY, purpose="push", profile=history) == ["commits"]
+    receipt = receipts.run_receipt(root, state=tmp_path / "s", repo_key=KEY, purpose="push", profile=history,
+                                   timeout=60)
+    assert counter.read_text() == "xx" and "reused" not in receipt["tiers"][0]["summary"]
+
+
+def test_reuse_true_is_the_default():
+    tier = {"name": "unit", "command": "x", "required_for": ["push"]}
+    assert receipts.reusable(tier) and receipts.reusable({**tier, "reuse": True})
+    assert not receipts.reusable({**tier, "reuse": False})
+
+
+def test_a_receipt_made_before_its_tier_said_reuse_false_no_longer_counts(tmp_path):   # review of 0.31.3, B1
+    root = repo_with_origin(tmp_path)
+    sha = git(root, "rev-parse", "HEAD")
+    receipts.run_receipt(root, state=tmp_path / "s", repo_key=KEY, purpose="push", profile=profile(GREEN), timeout=60)
+    strict = profile(GREEN)
+    strict["tests"]["tier"][0]["reuse"] = False
+    ok, why = receipts.check_receipt(state=tmp_path / "s", repo_key=KEY, sha=sha, purpose="push", profile=strict)
+    assert not ok and "changed" in why
+    assert receipts.tiers_fingerprint(profile(GREEN)["tests"]["tier"]) == \
+        receipts.tiers_fingerprint([{**profile(GREEN)["tests"]["tier"][0], "reuse": True}])   # true is the default
+
+
+def test_only_the_tier_that_reads_the_history_runs_again(tmp_path):   # review of 0.31.3
+    root = repo_with_origin(tmp_path)
+    unit, unit_runs = _counting(tmp_path)
+    (tmp_path / "h").mkdir()
+    history, history_runs = _counting(tmp_path / "h")
+    both = {"schema": 1, "tests": {"tier": [
+        {"name": "unit", "command": unit, "required_for": ["push"]},
+        {"name": "commits", "command": history, "required_for": ["push"], "reuse": False}]}}
+    receipts.run_receipt(root, state=tmp_path / "s", repo_key=KEY, purpose="push", profile=both, timeout=60)
+    commit(root, "a merge that changes no file")
+    assert receipts.to_run(root, state=tmp_path / "s", repo_key=KEY, purpose="push", profile=both) == ["commits"]
+    receipt = receipts.run_receipt(root, state=tmp_path / "s", repo_key=KEY, purpose="push", profile=both, timeout=60)
+    assert unit_runs.read_text() == "x" and history_runs.read_text() == "xx"
+    assert [t["summary"].startswith("reused:") for t in receipt["tiers"]] == [True, False]

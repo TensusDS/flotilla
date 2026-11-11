@@ -71,10 +71,10 @@ fleet.
 **Pin a release** instead, to choose when you move: name a tag on the first line (the tags are listed in
 [CHANGELOG.md](CHANGELOG.md)):
 
-    claude plugin marketplace add TensusDS/flotilla#v0.31.2 --scope project
+    claude plugin marketplace add TensusDS/flotilla#v0.31.3 --scope project
     claude plugin install flotilla@flotilla --scope project
 
-That writes `"ref": "v0.31.2"` into the project's settings and installs that release; `claude plugin update` stays on
+That writes `"ref": "v0.31.3"` into the project's settings and installs that release; `claude plugin update` stays on
 it. A machine keeps one marketplace of a name for all its projects, so give the projects on one machine the same
 channel or pin; `/flotilla:doctor` names a pin the machine does not follow. And a tag can be moved on GitHub, so a pin
 chooses when you move, not who can change what the tag names.
@@ -571,7 +571,9 @@ to "on trunk" grew about tenfold after the first hours, almost all of it waiting
 turns slowed about twofold as sessions' contexts grew. So flotilla spends the lane carefully:
 
 - **nothing is tested twice** - a test tier already green over the same files (an author's tip and a sender's merge
-  that changes no file) is reused, and a receipt with nothing left to run does not queue at all;
+  that changes no file) is reused, and a receipt with nothing left to run does not queue at all. A tier that reads
+  the history and not only the files - commit messages, what a merge commit carries - says `reuse = false` in its
+  `[[tests.tier]]` and runs over every commit;
 - **a run has a ceiling** - for a receipt, ten times the slowest tier measured on this machine and at least ten
   minutes; for any other run, at least half an hour; `[lane] max_run_seconds` in the profile or `--max` for one run
   set another. Past it the run is stopped with every process it started and recorded as killed. `flotilla lane stop`

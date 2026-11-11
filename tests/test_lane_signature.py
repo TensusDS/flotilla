@@ -104,3 +104,56 @@ def test_redirects_pipes_and_trailing_trivia_inside_a_shell_string():
     exact = sig.ladder(["sh", "-c", "npx vitest run > /tmp/o.log 2>&1"], tree=None, project=P)[0]
     assert exact == "exact:proj:npx vitest run"
     assert prog(["sh", "-c", "node gen.mjs | python3 check.py"]) == "prog:proj:node gen.mjs"   # the first stage
+
+
+def test_a_shell_running_a_script_is_named_by_its_script():   # field test 2026-11-11: every `sh <script>` was `sh`
+    assert prog(["sh", "/home/u/jobs/6cd5d245/tmp/probe79.sh"]) == "prog:proj:sh probe79.sh"
+    assert prog(["bash", "./ci/run.sh"]) == "prog:proj:bash run.sh"
+    assert prog(["bash", "-e", "-o", "pipefail", "build.sh"]) == "prog:proj:bash build.sh"   # `-o` takes a value
+    assert prog(["timeout", "600", "bash", "-x", "check.sh", "fast"]) == "prog:proj:bash check.sh fast"
+    assert prog(["sh", "big.sh"]) != prog(["sh", "small.sh"])
+
+
+def test_a_shell_with_no_script_keeps_its_name():
+    assert prog(["sh"]) == "prog:proj:sh"
+    assert prog(["bash", "-s", "fast"]) == "prog:proj:bash"           # the script comes from stdin: `fast` is $1
+    assert prog(["bash", "-es"]) == "prog:proj:bash"
+    assert prog(["bash", "-c", "npx vitest run"]) == "prog:proj:vitest run"   # `-c` is still read through
+
+
+def test_a_shells_option_cluster_ending_in_o_takes_its_value():   # review of 0.31.3: `-euo pipefail` is no script
+    assert prog(["bash", "-euo", "pipefail", "a.sh"]) == "prog:proj:bash a.sh"
+    assert prog(["bash", "-euo", "pipefail", "a.sh"]) != prog(["bash", "-euo", "pipefail", "b.sh"])
+    assert prog(["sh", "-c", "bash -eO extglob ./build.sh"]) == "prog:proj:bash build.sh"
+    assert prog(["ksh", "x.sh"]) == "prog:proj:ksh x.sh"
+
+
+def test_a_script_in_a_temporary_folder_keeps_its_name_at_the_normalised_step():   # review of 0.31.3
+    norm = lambda command: sig.ladder(command, tree=None, project=P)[1]   # noqa: E731
+    assert norm(["sh", "/tmp/probe79.sh"]) == "norm:proj:sh <tmp>/probe<n>.sh"
+    assert norm(["sh", "/tmp/probe79.sh"]) == norm(["sh", "/tmp/probe80.sh"])   # one script, numbered per run
+    assert norm(["sh", "/tmp/probe79.sh"]) != norm(["sh", "/tmp/build-all.sh"])
+    assert norm(["python3", "/var/tmp/x/check.py"]) == "norm:proj:python3 <tmp>/check.py"
+    assert norm(["pytest", "--basetemp", "/tmp/pytest-of-u/7"]) == "norm:proj:pytest --basetemp <tmp>"   # a file
+
+
+def test_every_o_in_a_cluster_takes_a_value():   # review of 0.31.3: bash reads `-oe pipefail` as `-o pipefail -e`
+    assert prog(["bash", "-oe", "pipefail", "x.sh"]) == "prog:proj:bash x.sh"
+    assert prog(["bash", "-oO", "pipefail", "extglob", "x.sh"]) == "prog:proj:bash x.sh"
+
+
+def test_a_random_temporary_script_name_is_one_signature():   # review of 0.31.3: tempfile and mktemp names
+    norm = lambda command: sig.ladder(command, tree=None, project=P)[1]   # noqa: E731
+    assert norm(["python3", "/tmp/tmpk3j_9x2a.py"]) == norm(["python3", "/tmp/tmpq8z0w1rt.py"]) == \
+        "norm:proj:python3 <tmp>/<rand>.py"
+    assert norm(["sh", "/tmp/tmp.Xa9bC2dEfG.sh"]) == "norm:proj:sh <tmp>/<rand>.sh"
+    assert norm(["sh", "/tmp/A.SH"]) == "norm:proj:sh <tmp>/A.SH" and norm(["fish", "/tmp/x.fish"]).endswith("x.fish")
+    assert norm(["sh", "/tmp/tmpfiles-cleanup.sh"]) == "norm:proj:sh <tmp>/tmpfiles-cleanup.sh"   # a name, not random
+
+
+def test_a_long_option_spelled_with_one_dash_is_not_a_cluster():   # third review of 0.31.3: bash takes `-noprofile`
+    assert prog(["bash", "-noprofile", "x.sh"]) == "prog:proj:bash x.sh"
+    assert prog(["bash", "-login", "x.sh"]) == "prog:proj:bash x.sh"
+    assert prog(["bash", "-norc", "-posix", "x.sh"]) == "prog:proj:bash x.sh"
+    assert prog(["bash", "-rcfile", "rc", "x.sh"]) == "prog:proj:bash x.sh"
+    assert prog(["bash", "--init-file", "rc", "x.sh"]) == "prog:proj:bash x.sh"

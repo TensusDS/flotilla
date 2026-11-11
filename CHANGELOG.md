@@ -3,9 +3,33 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
-## 0.31.2 - 2026-11-10
+## 0.31.3 - 2026-11-11
 
-Four holes in the guards, found by reading them whole. Each let a command run that a guard was written to stop.
+Four holes in the guards, found by reading them whole: each let a command run that a guard was written to stop. And
+two findings of a field fleet: a lane run that waited without end, and a history check answered from another
+commit. 0.31.2 was never tagged; its changes ship here.
+
+- **A script run by a shell is estimated by its own runs, not by every script's.** `sh probe.sh` was the program
+  `sh` to the lane, so a script never measured took the largest peak of every `sh` run of its project: 5.6 GB for
+  a script that takes about 1 GB. Larger than all the lane gives heavy runs, it could start only on an empty lane,
+  never came while another project ran, and every heavy run of the line waited behind it. A shell running a script
+  is now named by its script, as `node shoot.mjs` is - `bash -euo pipefail x.sh` and `bash -noprofile x.sh` are
+  `bash x.sh` - and a script kept in `/tmp` keeps its name too: `sh <tmp>/probe<n>.sh`, where every such script was
+  one `<tmp>`, and one `<tmp>/<rand>.sh` for every name made up by tempfile or mktemp. A script never measured
+  takes its project's 90th percentile, the second largest of its last ten runs: when two of them (one, in a project
+  with five runs or fewer) were larger than the heavy share, it still waits for an empty lane, and now says so.
+- **A run that waits is told every bound that holds it, not the first.** The run above was told "heavy runs'
+  cores", a wait that ends; what held it was its size. A heavy run larger than the heavy share now says so - "more
+  than the 5100 MB heavy runs may take (reserve 1280 MB for light runs): it starts only when the lane is empty" -
+  and the heavy runs behind it are told why they wait: "behind heavy b12, which starts only when the lane is empty".
+  Which run starts, and which is frozen, is decided as before.
+- **A test tier that reads the history can ask never to be reused.** A receipt reuses a tier's green answer over the
+  same files, whichever commit carried them, so a sender's merge that changes no file took the author's answer -
+  and a field fleet's tiers that check commit messages and what a merge commit carries never read the merge: its
+  sender ran them by hand before every push. `reuse = false` in a tier's `[[tests.tier]]` runs it over every
+  commit; a value other than true counts as false. Setting it, or taking it off, voids the receipts made before.
+  Other tiers are reused as before, and a reused line still says so: `reused: green over the same files at
+  1a2b3c4`.
 
 - **The gc guard now sees the commands it judges.** The hook answers at once for a command that names none of a
   short list of words, and `rm`, `worktree`, `branch` and `update-ref` were not on it: `git worktree remove` of a
