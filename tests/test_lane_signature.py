@@ -149,3 +149,11 @@ def test_a_random_temporary_script_name_is_one_signature():   # review of 0.31.3
     assert norm(["sh", "/tmp/tmp.Xa9bC2dEfG.sh"]) == "norm:proj:sh <tmp>/<rand>.sh"
     assert norm(["sh", "/tmp/A.SH"]) == "norm:proj:sh <tmp>/A.SH" and norm(["fish", "/tmp/x.fish"]).endswith("x.fish")
     assert norm(["sh", "/tmp/tmpfiles-cleanup.sh"]) == "norm:proj:sh <tmp>/tmpfiles-cleanup.sh"   # a name, not random
+
+
+def test_a_long_option_spelled_with_one_dash_is_not_a_cluster():   # third review of 0.31.3: bash takes `-noprofile`
+    assert prog(["bash", "-noprofile", "x.sh"]) == "prog:proj:bash x.sh"
+    assert prog(["bash", "-login", "x.sh"]) == "prog:proj:bash x.sh"
+    assert prog(["bash", "-norc", "-posix", "x.sh"]) == "prog:proj:bash x.sh"
+    assert prog(["bash", "-rcfile", "rc", "x.sh"]) == "prog:proj:bash x.sh"
+    assert prog(["bash", "--init-file", "rc", "x.sh"]) == "prog:proj:bash x.sh"

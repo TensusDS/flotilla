@@ -14,7 +14,8 @@ commit. 0.31.2 was never tagged; its changes ship here.
   a script that takes about 1 GB. Larger than all the lane gives heavy runs, it could start only on an empty lane,
   never came while another project ran, and every heavy run of the line waited behind it. A shell running a script
   is now named by its script, as `node shoot.mjs` is, and a script kept in `/tmp` keeps its name too
-  (`sh <tmp>/probe<n>.sh`, where every such script was one `<tmp>`); `bash -euo pipefail x.sh` is `bash x.sh`. A
+  (`sh <tmp>/probe<n>.sh`, where every such script was one `<tmp>`; a name tempfile or mktemp made up is one
+  `<tmp>/<rand>.py`); `bash -euo pipefail x.sh` is `bash x.sh`. A
   script never measured takes its project's 90th percentile, the second largest of its last ten runs: when two of
   them (one, in a project with five runs or fewer) were larger than the heavy share, it still waits for an empty
   lane, and now says so.
@@ -27,8 +28,9 @@ commit. 0.31.2 was never tagged; its changes ship here.
   same files, whichever commit carried them, so a sender's merge that changes no file took the author's answer -
   and a field fleet's tiers that check commit messages and what a merge commit carries never read the merge: its
   sender ran them by hand before every push. `reuse = false` in a tier's `[[tests.tier]]` runs it over every
-  commit; a value other than true counts as false. Other tiers are reused as before, and a reused line still says
-  so: `reused: green over the same files at 1a2b3c4`.
+  commit; a value other than true counts as false. Setting it, or taking it off, voids the receipts made before.
+  Other tiers are reused as before, and a reused line still says so: `reused: green over the same files at
+  1a2b3c4`.
 
 - **The gc guard now sees the commands it judges.** The hook answers at once for a command that names none of a
   short list of words, and `rm`, `worktree`, `branch` and `update-ref` were not on it: `git worktree remove` of a

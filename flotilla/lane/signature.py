@@ -153,8 +153,11 @@ def _normalise(words: list[str]) -> list[str]:
     return out
 
 
-#: A shell's long options that take the next word as their value, not as the script.
-SHELL_VALUED = {"--rcfile", "--init-file"}
+#: A shell's long options, which bash takes with one dash too (`-noprofile`): never a cluster of letters. Those that
+#: take the next word as their value, not as the script, are SHELL_VALUED.
+SHELL_LONG = {"login", "noprofile", "norc", "noediting", "posix", "restricted", "verbose", "version", "help",
+              "debugger", "dump-strings", "dump-po-strings", "pretty-print", "rcfile", "init-file"}
+SHELL_VALUED = {"rcfile", "init-file"}
 
 
 def _shell_script(tail: list[str]) -> int | None:
@@ -165,8 +168,9 @@ def _shell_script(tail: list[str]) -> int | None:
         word = tail[i]
         if word == "--":
             return i + 1 if i + 1 < len(tail) else None
-        if word in SHELL_VALUED:
-            i += 2
+        long = word.lstrip("-") if word.startswith("-") else ""
+        if long in SHELL_LONG and (word.startswith("--") or len(long) > 1):
+            i += 2 if long in SHELL_VALUED else 1
             continue
         if word[:1] in "-+" and len(word) > 1:
             letters = word[1:]
