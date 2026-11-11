@@ -412,6 +412,36 @@ def test_the_sessions_own_repository_is_asked_whatever_its_config_holds(tmp_path
         assert "asked safely" not in found.text, command
 
 
+@pytest.mark.parametrize("command", ['FLOTILLA_GATE_OVERRIDE="x" git push origin main',
+                                     'FLOTILLA_GATE_OVERRIDE="x" gh pr merge 5 --match-head-commit abc1234'])
+@pytest.mark.parametrize("falls", [subprocess.TimeoutExpired(["git", "ls-remote"], 10),
+                                   push.Unknown("the profile on origin could not be read")])
+def test_an_override_never_opens_a_landing_door_whose_origin_could_not_be_asked(tmp_path, monkeypatch, command,
+                                                                                falls):
+    """Review of 0.31.4: a door whose project was known, but whose origin could not be asked which trunk and which
+    rules, was asked only for the caller's post in the session's project - never the person's approval - and its
+    failure was an ordinary one, which an override waived."""
+    root = onboarded(tmp_path)
+
+    def unasked(*args, **kwargs):
+        raise falls
+    monkeypatch.setattr(push, "origin_trunk", unasked)
+    found = judge(command, root, tmp_path)
+    assert found is not None and found.refuse and "could not be read from origin" in found.text, found
+    for key in (repo.identify(root).key, "unknown"):   # an override that opened nothing is not recorded
+        assert not overrides.recorded(tmp_path / "state", key), key
+
+
+def test_a_door_that_lands_nothing_keeps_its_override_when_origin_could_not_be_asked(tmp_path, monkeypatch):
+    root = onboarded(tmp_path)
+
+    def unasked(*args, **kwargs):
+        raise subprocess.TimeoutExpired(["git", "ls-remote"], 10)
+    monkeypatch.setattr(push, "origin_trunk", unasked)
+    found = judge('FLOTILLA_GATE_OVERRIDE="x" gh workflow run ci.yml', root, tmp_path)
+    assert found is not None and not found.refuse and "override recorded" in found.text, found
+
+
 def test_an_override_never_waives_the_approval_that_could_not_be_asked(tmp_path):
     """Final review of the scan fixes, I2: where origin could not be asked safely, which commits a person approved
     could not be told - and that refusal came through as an ordinary failure, which FLOTILLA_GATE_OVERRIDE lets past.

@@ -764,7 +764,12 @@ def guard(segment, *, root, profile, env=os.environ, run=subprocess.run, who=Non
     except Exception as err:  # noqa: BLE001 - the push guard's own failure refuses (spec, section 10)
         failures = [f"the guard failed: {err}"]
     if failures and not asked and not closed:   # it fell before the post was asked
-        if where is None:   # which project it acts on could not be told: a seat is asked by the one it stands in
+        if where is None and home_root is not None and d.kind in LANDS:
+            # its project is known, but origin could not be asked which trunk and which rules (a git that timed
+            # out, a profile on origin that could not be read): neither those rules nor the person's approval
+            # were read, and an override waives a receipt alone (review of 0.31.4)
+            closed = [failures[0]]
+        elif where is None:   # which project it acts on could not be told: a seat is asked by the one it stands in
             outsider = _asked_of_own(d, root, who, run)
         else:
             closed, outsider, unapproved = _when_untold(d, home_root, where, who, run, failures[0])

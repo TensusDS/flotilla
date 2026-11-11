@@ -21,9 +21,12 @@ ROOT = Path(__file__).resolve().parent.parent
 ENTRY = ROOT / "bin" / "flotilla"
 
 
-def ask(root, command, monkeypatch, tmp_path, mode="auto"):
+def ask(root, command, monkeypatch, tmp_path, mode="auto", override=""):
     monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
-    monkeypatch.delenv("FLOTILLA_GATE_OVERRIDE", raising=False)
+    if override:   # the environment the session runs in
+        monkeypatch.setenv("FLOTILLA_GATE_OVERRIDE", override)
+    else:
+        monkeypatch.delenv("FLOTILLA_GATE_OVERRIDE", raising=False)
     payload = {"cwd": str(root), "tool_name": "Bash", "tool_input": {"command": command, "description": "d"},
                "permission_mode": mode, "session_id": "sid-sender"}
     out = io.StringIO()
@@ -472,8 +475,7 @@ def test_an_override_in_the_environment_does_not_open_a_push_the_guards_could_no
     def boom(*args, **kwargs):
         raise RuntimeError("matcher on fire")
     monkeypatch.setattr(shell, "segments", boom)
-    monkeypatch.setenv("FLOTILLA_GATE_OVERRIDE", "the person said so")
-    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path)
+    answer = ask(onboarded(tmp_path), command, monkeypatch, tmp_path, override="the person said so")
     assert answer and answer.get("permissionDecision") == "deny", answer
     assert "FLOTILLA_GATE_OVERRIDE" not in answer["permissionDecisionReason"], answer
 
@@ -493,11 +495,9 @@ def test_the_last_resort_refuses_a_push_with_no_override(tmp_path, monkeypatch):
     monkeypatch.setattr(guards, "on_failure", unreadable)
     root = onboarded(tmp_path)
     for command in (OVERRIDES[0], "git push origin main"):
-        monkeypatch.delenv("FLOTILLA_GATE_OVERRIDE", raising=False)
         answer = ask(root, command, monkeypatch, tmp_path)
         assert answer and answer.get("permissionDecision") == "deny", answer
-        monkeypatch.setenv("FLOTILLA_GATE_OVERRIDE", "hotfix")
-        answer = ask(root, command, monkeypatch, tmp_path)
+        answer = ask(root, command, monkeypatch, tmp_path, override="hotfix")
         assert answer and answer.get("permissionDecision") == "deny", answer
         assert "FLOTILLA_GATE_OVERRIDE" not in answer["permissionDecisionReason"], answer
 

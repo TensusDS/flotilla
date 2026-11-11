@@ -1832,7 +1832,9 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    stopped - which a judged push never waives (64, 236). The person ruled that this should not exist. Now the
    failure paths (the guard rule, the hook's last resort, the entry point on an old Python, the pre-push hook with
    flotilla missing) refuse such a push with no override, and the person runs it themselves: `!`, a terminal, or
-   `git push --no-verify`. Cost, accepted: while the guards are broken, a fleet does not push on its own.
+   `git push --no-verify`. Cost, accepted: while the guards are broken, a fleet does not push on its own. Its review
+   found the same waiver on the judged path: a landing door whose project was known but whose origin could not be
+   asked was asked only for the post, and its failure was overridable. It is now closed, as unreadable rules are.
 
 ## Open questions (for the foundation spec)
 

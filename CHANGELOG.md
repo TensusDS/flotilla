@@ -12,7 +12,12 @@ each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2
   in front or in a terminal. The same holds for flotilla's pre-push hook when flotilla is missing: it refuses, and a
   person who knows why pushes from their own terminal with `git push --no-verify`. The hook already installed in a
   repository keeps its old text until `flotilla guard install` writes it again. A push the guards did judge is as
-  before: an override at its head waives a missing receipt, recorded, and nothing else.
+  before: an override waives a missing receipt, recorded, and never the person's approval.
+- **A push or merge whose origin could not be asked is closed, override or not.** When the project a push or a
+  `gh pr merge` lands in was known but its origin could not be asked which trunk and which rules (a `git` that timed
+  out, a profile on origin that could not be read), the guard asked only for the caller's post, never the person's
+  approval, and an override let it through, recorded. Now it is closed as a push whose rules cannot be read is; it
+  goes through once origin answers. `gh pr create` and `gh workflow run`, which land nothing, keep their override.
 
 ## 0.31.3 - 2026-11-11
 
