@@ -62,6 +62,24 @@ command that every guard shares, not one more reading.
   quotes not read. A false refusal, met while reading the guards. *(checked 2026-11-10 on 0.31.2: open -
   flotilla/guards/person.py check)*
 
+## From the reviews of 0.31.3 (2026-11-11, a shell's script names its lane run; tiers that read the history)
+
+Three review rounds; what is left changes only how well a run is estimated, never what a receipt or a guard allows.
+
+- **A shell's script is found by a reading of its options, not by bash's parser**: `bash - x.sh` is named `bash -`
+  (a bare `-` ends the options, as `--` does); `bash -version x.sh` and `-help` run no script but are named by it;
+  fish's options that take a value (`-C`, `-d`, `--init-command`) name the value; `debug` is missing from
+  SHELL_LONG, and the one-dash long options are read for every shell, though only bash has them.
+  *(checked 2026-11-11 on 0.31.3: P - flotilla/lane/signature.py _shell_script)*
+- **A temporary script's made-up name folds only for the default patterns**: a mktemp template (`probe.XXXXXX.sh`)
+  or a tempfile prefix (`probek3j_9x2a.py`) makes a new signature every run, and a real name of the default shape
+  (`tmp_rebuild.sh`, `tmp.background.sh`) folds with the made-up ones. The program step is not folded at all, which
+  is harmless while the normalised step answers first. *(checked 2026-11-11 on 0.31.3: P -
+  flotilla/lane/signature.py _temporary, RANDOM_STEM)*
+- **A heavy run's wait reason still carries the room of the moment** when free memory is below the heavy room
+  (`min(free, room)`), so its waiter reprints it as free memory moves - as before 0.31.3. *(checked 2026-11-11 on
+  0.31.3: P - flotilla/lane/policy.py _fits)*
+
 ## From the reviews of 0.31.1 (2026-11-10, adopt follows the heir, the base after a rebase)
 
 Deferred as cosmetic or as consistent with what `land` and the push guard already trust.
