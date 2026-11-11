@@ -122,7 +122,7 @@ A fleet can build flotilla. Three things differ from building any other project 
 - **A seat runs the flotilla installed for the project, not the code in its tree.** A guard broken on a branch
   cannot lock the fleet out; a fix reaches the fleet only after a release and `/flotilla:update`.
 - **Much of this repository is the person's to approve** in a fleet where merges are authorized by the person:
-  `.claude-plugin/`, `pyproject.toml`, `tests/conftest.py`, `.github/`, `CLAUDE.md` (`flotilla/ledger/approval.py`,
+  `.claude-plugin/`, `pyproject.toml`, `tests/conftest.py`, `.github/`, `.claude/` (`flotilla/ledger/approval.py`,
   `ALWAYS`). Every release touches the first two.
 - **Lane tests start real processes and systemd scopes.** A suite killed mid-run can leave empty
   `flotilla-lane-*.scope` units behind (`TODO.md`); `systemctl --user list-units 'flotilla-lane*'` shows them.
