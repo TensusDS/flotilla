@@ -169,7 +169,7 @@ def view(found: dict, hist, value: Value, *, now: dt.datetime, live, mine: str, 
             item.id, state, int(mem), heavy, float(par), kind=item.kind if item.kind in policy.TYPES else "run",
             waited_s=_seconds(now, item.asked or item.since), ran_s=ran, since_start_s=since_start,
             order=book._order(item), fair=(projects.get(item.project, 0), served.get(item.project, ""))
-            if share == "fair" else (), pinned=pinned, freezable=freezable,
+            if share == "fair" else (), project=item.project, pinned=pinned, freezable=freezable,
             holds=item.state == book.WAITING and item.id in holding,
             refused_for=item.refused_by if _fresh(now, item.refused_at) else "",
             start_mb=own.typical_mb if own is not None and own.peak_mb is not None else None,

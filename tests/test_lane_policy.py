@@ -355,3 +355,47 @@ def test_a_heavy_behind_one_that_only_lacks_room_is_told_just_that():
             run("b3", WAITING, 1900, True, 2, order=3)]
     d = decide(runs, machine(free=4000), "b3")
     assert d.why == "behind heavy b2"
+
+
+NINE, HALF = "2026-11-13T09:00:00+00:00", "2026-11-13T09:30:00+00:00"
+
+
+def _equal(id, project, served, order, **kw):
+    """A waiter of saturated wait: every one of them has the same priority."""
+    return run(id, WAITING, 100, waited_s=900, order=order, project=project, fair=(0, served) if served is not None
+               else (), **kw)
+
+
+def test_the_fair_line_weighs_each_place_again():   # review of 8dfcc24: one project took every slot of a tick
+    from flotilla.lane.policy import line
+    runs = [_equal("a1", "alpha", NINE, 1), _equal("a2", "alpha", NINE, 2),
+            _equal("b1", "beta", HALF, 3)]
+    assert [r.id for r in line(runs, 900)] == ["a1", "b1", "a2"]
+    two = machine(free=9000, max_runs=2)
+    assert [decide(runs, two, r.id).start for r in runs] == [True, False, True]
+
+
+def test_the_fifo_line_is_priority_then_place():
+    from flotilla.lane.policy import line
+    runs = [_equal("a1", "alpha", None, 1), _equal("a2", "alpha", None, 2), _equal("b1", "beta", None, 3, holds=True),
+            run("p", WAITING, 100, kind="push", waited_s=900, order=4)]
+    assert [r.id for r in line(runs, 900)] == ["p", "a1", "a2", "b1"]   # holding changes nothing a fifo machine did
+
+
+def test_under_the_fair_share_a_waiter_whose_freeze_is_out_keeps_its_place():   # review of 8dfcc24, minor
+    """Its project now holds a run, so its fair key fell behind an equal of another project: that one would take the
+    room the freeze made, and the frozen run would have stopped for nothing."""
+    from flotilla.lane.policy import line
+    runs = [_equal("a1", "alpha", NINE, 1, holds=True),
+            _equal("b1", "beta", "", 2)]
+    runs[0] = Run(**{**runs[0].__dict__, "fair": (1, NINE)})
+    assert [r.id for r in line(runs, 900)] == ["a1", "b1"]
+
+
+def test_a_frozen_run_takes_no_turn_in_the_fair_line():
+    from flotilla.lane.policy import line
+    frozen = run("f", FROZEN, 100, waited_s=900, order=1, project="alpha", fair=(1, NINE))
+    runs = [frozen, _equal("a1", "alpha", NINE, 2), _equal("b1", "beta", HALF, 3)]
+    runs[1] = Run(**{**runs[1].__dict__, "fair": (1, NINE)})
+    runs[2] = Run(**{**runs[2].__dict__, "fair": (1, HALF)})
+    assert [r.id for r in line(runs, 900)][1:] == ["a1", "b1"]

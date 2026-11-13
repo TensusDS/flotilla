@@ -559,9 +559,10 @@ minutes keeps its place. A waiter notices a release within a second. `flotilla l
 its parts, whether it is heavy and its memory now, when it becomes immortal, and for each frozen run by whose order.
 
 **Projects sharing a machine.** `lane_share = "fair"` in `machine.toml` breaks ties between runs of equal priority
-by project: the project holding the fewest runs and served least recently in the last day goes first; within a
-project the order is unchanged. A chosen waiter its own project's checks hold back (CI on this machine, a memory floor) is
-passed over after two polls, about 30 s. Only seats on flotilla 0.25 or later take part - an older seat keeps its
+by project: the project holding the fewest runs and served least recently in the last day goes first, and when
+several runs start at once each one counts as its project's turn before the next is chosen; within a project the
+order is unchanged. A waiter its own project's checks hold back (CI on this machine, a memory floor) is passed over
+until they let it through. Only seats on flotilla 0.25 or later take part - an older seat keeps its
 place in line and is never left waiting for a seat that yielded to it - so the protection reaches a project once its
 fleet is updated.
 `flotilla lane` shows the mode and each project's waiters and last turn.

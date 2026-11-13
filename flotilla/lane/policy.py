@@ -57,7 +57,8 @@ class Run:
     ran_s: float = 0.0          # run time across thaws
     since_start_s: float = 0.0  # since its last start or thaw
     order: int = 0              # its place in line
-    fair: tuple = ()            # tie-break key between equal priorities (fair share), smaller first
+    fair: tuple = ()            # under the fair share: (its project's runs held, its last service); () fifo
+    project: str = ""           # whose run it is: the fair share counts a turn per project
     pinned: bool = False        # never a victim: by hand, a `freeze = false` tier, an older flotilla's
     freezable: bool = True      # its wrapper can obey an order
     holds: bool = False         # its freeze orders are out: the runs behind it leave it the memory it needs
@@ -114,6 +115,41 @@ def priority(run: Run, immortal_s: float) -> float:
     return (type_part * TYPES.get(run.kind, TYPES["run"])
             + wait_part * min(1.0, max(0.0, run.waited_s) / WAIT_FULL_S)
             + run_part * min(1.0, max(0.0, run.ran_s) / immortal_s if immortal_s > 0 else 1.0))
+
+
+#: A turn taken in the line's replay: later than every last service the journal can hold (ISO times sort as text).
+SERVED_NOW = "~"
+
+
+def line(runs: list[Run], immortal_s: float) -> list[Run]:
+    """The waiting and frozen runs in the order room is offered to them, the one order the daemon's tick and each
+    waiter's replay share: by priority, then by place in line. Under the fair share, among equal priorities, a waiter
+    whose freeze orders are out goes first - the room its freeze makes is its own - then the project holding the
+    fewest runs and served least recently; a waiter placed ahead counts as its project's turn, so the next place is
+    weighed again (project share design, section 3): two slots freed at once go to two projects."""
+    p = {r.id: priority(r, immortal_s) for r in runs}
+    queue = sorted((r for r in runs if r.state in (WAITING, FROZEN)), key=lambda r: (-p[r.id], r.order))
+    if not any(r.fair for r in queue):
+        return queue
+    turns: dict[str, int] = {}
+
+    def fair(r: Run) -> tuple:
+        if not r.fair:
+            return ()
+        taken = turns.get(r.project, 0)
+        return (r.fair[0] + taken, SERVED_NOW if taken else r.fair[1])
+    out: list[Run] = []
+    while queue:
+        top = p[queue[0].id]
+        group = [r for r in queue if p[r.id] == top]
+        while group:
+            pick = min(group, key=lambda r: (not r.holds, fair(r), r.order))
+            group.remove(pick)
+            queue.remove(pick)
+            out.append(pick)
+            if pick.state == WAITING:   # a frozen run holds its slot already: it is counted in its project's runs
+                turns[pick.project] = turns.get(pick.project, 0) + 1
+    return out
 
 
 def immortal(run: Run, immortal_s: float) -> bool:
@@ -355,8 +391,7 @@ def decide(runs: list[Run], machine: Machine, mine: str, *, may_freeze: bool = T
     me = by_id.get(mine)
     if me is None or me.state not in (WAITING, FROZEN):
         return Decision(False, (), "not in line")
-    queue = sorted((r for r in runs if r.state in (WAITING, FROZEN)),
-                   key=lambda r: (-priority(r, machine.immortal_s), r.fair, r.order))
+    queue = line(runs, machine.immortal_s)
     pool = [r for r in runs if r.state in (RUNNING, ORDERED)]
     free = machine.free_mb
     # a waiter whose orders are out holds what it needs against the runs behind it: a run passing it would take the
