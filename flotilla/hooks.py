@@ -169,21 +169,48 @@ _READ = b"\x00"
 
 
 def _guard_in_time(command: str, cwd: Path, payload: dict, out, now) -> int:
-    """`_guard`, in a child process the hook waits for up to GUARD_DEADLINE. Not a thread or an alarm: a regular
-    expression holds the interpreter until it is done. Past the deadline the child and the programs it started are
+    """`_guard`, in a child process the hook waits for up to GUARD_DEADLINE. Not a thread or a Python signal handler:
+    a regular expression holds the interpreter until it is done. Past the deadline the child and the programs it started are
     killed, and the line gets the answer a line no guard read gets; so does a reading that ended before its answer."""
+    import signal
+    reading: list[int] = []   # the reading's pid, while there is one to end
+
+    def ended(*_):   # Claude Code ending the hook ends its reading too (review of 6d195ca)
+        if reading:
+            _end_reading(reading.pop())
+        os._exit(143)
+    try:   # before the fork: no moment in which a SIGTERM leaves a reading behind
+        before = signal.signal(signal.SIGTERM, ended)
+    except ValueError:   # not the main thread: nothing installed, nothing to restore
+        return _read_in_time(command, cwd, payload, out, now, reading)
+    try:
+        return _read_in_time(command, cwd, payload, out, now, reading)
+    finally:
+        signal.signal(signal.SIGTERM, signal.SIG_DFL if before is None else before)
+
+
+def _read_in_time(command: str, cwd: Path, payload: dict, out, now, reading: list[int]) -> int:
+    import math
     import select
     import signal
-    read, write = os.pipe()
     try:
-        pid = os.fork()
-    except OSError as err:   # the process limit: a reading here would have no deadline (security review, ab4af81)
-        os.close(read)
-        os.close(write)
+        read, write = os.pipe()
+        try:
+            pid = os.fork()
+        except OSError:
+            os.close(read)
+            os.close(write)
+            raise
+    except OSError as err:   # the process or file limit: a reading here would have no deadline (security review)
         return _unread(command, f"the guards could not start a reading ({err})", out)
     if pid == 0:   # the reading; it leaves only through os._exit, so nothing of the parent's runs twice
         status = 1
         try:
+            signal.signal(signal.SIGTERM, signal.SIG_DFL)
+            # the kernel ends it a little past the deadline, in the middle of a regular expression too, should the
+            # hook be killed outright and never end it (review of ab4af81)
+            signal.signal(signal.SIGALRM, signal.SIG_DFL)
+            signal.alarm(math.ceil(GUARD_DEADLINE) + 5)
             os.close(read)
             # its own session: one kill ends the reading and every git it started, and with no terminal a git or
             # ssh cannot stop to prompt; its own streams: the hook's are not held past the hook
@@ -202,11 +229,8 @@ def _guard_in_time(command: str, cwd: Path, payload: dict, out, now) -> int:
             status = 0
         finally:
             os._exit(status)
+    reading.append(pid)
     os.close(write)
-    try:   # Claude Code ending the hook ends its reading too (review of 6d195ca)
-        before = signal.signal(signal.SIGTERM, lambda *_: (_end_reading(pid), os._exit(143)))
-    except ValueError:   # not the main thread: nothing to restore
-        before = None
     chunks, finished, end = [], False, time.monotonic() + GUARD_DEADLINE
     try:
         while (left := end - time.monotonic()) > 0:
@@ -219,9 +243,8 @@ def _guard_in_time(command: str, cwd: Path, payload: dict, out, now) -> int:
             chunks.append(chunk)
     finally:
         os.close(read)
-        _end_reading(pid)
-        if before is not None:
-            signal.signal(signal.SIGTERM, before)
+        if reading:   # taken first: a SIGTERM from here on kills no pid this hook has reaped
+            _end_reading(reading.pop())
     data = b"".join(chunks)
     if not finished:
         return _unread(command, f"the guards did not finish reading this command in {GUARD_DEADLINE} seconds", out)

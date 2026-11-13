@@ -22,8 +22,9 @@ its default for new sessions - until the model's weekly limit stopped every seat
 - **The Bash guard answers within 20 seconds.** Claude Code lets a command run when a PreToolUse hook reaches its
   timeout, and some readings of a long, crafted line took longer than the hook's 30 seconds. The hook now reads in
   a child process and, past its deadline, kills it with the programs it started: a line that holds `push` or `gh`
-  is refused unread, any other is put to the person, and so is a line whose reading ended before its answer. A command over 16 000 characters is not read at all and is
-  answered the same way; a long script or message goes in a file the command names.
+  is refused unread, any other is put to the person. So is a line whose reading ended before its answer or could
+  not start, and a command over 16 000 characters, which is not read at all; a long script or message goes in a file
+  the command names.
 
 
 - **`lane_share = "fair"` works again under the lane daemon.** Since 0.31.0 the daemon decides who starts, and it
