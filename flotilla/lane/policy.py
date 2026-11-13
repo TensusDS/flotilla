@@ -124,10 +124,10 @@ SERVED_NOW = "~"
 def _offered(runs: list[Run], immortal_s: float, turns: dict[str, int]):
     """The waiting and frozen runs in the order room is offered to them: by priority, then by place in line. Under the
     fair share, among equal priorities, a waiter whose freeze orders are out goes first - the room its freeze makes
-    is its own - then the project holding the fewest runs and served least recently, its oldest waiter first. A run
-    the replay starts counts as its project's turn (`turns`, kept by the replay as it goes), so the next place is
-    weighed again (project share design, section 3): two projects holding the same share split two slots freed at
-    once, and a waiter that cannot start costs its project nothing."""
+    is its own - then the project holding the fewest runs and served least recently, its oldest waiter first. A
+    waiter the replay starts counts as its project's turn (`turns`, kept by the replay as it goes), so the next place
+    is weighed again (project share design, section 3): two projects whose runs held differ by one at most split two
+    slots freed at once, and a waiter that cannot start costs its project nothing."""
     p = {r.id: priority(r, immortal_s) for r in runs}
     queue = sorted((r for r in runs if r.state in (WAITING, FROZEN)), key=lambda r: (-p[r.id], r.order))
     if not any(r.fair for r in queue):
