@@ -421,7 +421,7 @@ def test_a_turn_taken_weighs_both_the_runs_held_and_the_service():   # review of
     runs = [_equal("a1", "alpha", NINE, 1), _equal("a2", "alpha", NINE, 2),
             _with(_equal("b1", "beta", HALF, 3), fair=(1, HALF)),
             run("g", RUNNING, 100, order=0, project="beta", fair=(1, HALF))]
-    two = machine(free=9000, max_runs=3)
+    two = machine(free=9000, max_runs=3)   # g holds one of three: two free, and the lane is not empty
     assert [decide(runs, two, r.id).start for r in runs[:3]] == [True, False, True]
 
 

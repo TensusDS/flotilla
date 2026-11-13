@@ -1842,10 +1842,11 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    scheduler now takes the setting's reader and asks it each tick, and the fair key breaks ties between equal
    priorities as the shared machine design (2.10) has it. Kept as it was: fair share is a tie-break, not a weight in
    the priority, so a project's waiter takes its turn once the wait part saturates (ten minutes) or among equals.
-   Each run the replay starts counts as its project's turn before the next place is weighed, so room freed for two
-   goes to two projects; a waiter that cannot start costs its project nothing, as `book.fair_choice` skipped a
-   choice that could not go; a waiter whose freeze orders are out stays ahead of its equals. The daemon's tick and
-   each waiter's own look read one replay. The audit asked whether to drop the feature instead; the person kept it.
+   Each waiter the replay starts counts as its project's turn before the next place is weighed, so two projects
+   holding the same share split room freed for two; a waiter that cannot start costs its project nothing, as
+   `book.fair_choice` skipped a choice that could not go; a waiter whose freeze orders are out stays ahead of its
+   equals. The daemon's tick and each waiter's own look read one replay. The audit asked whether to drop the feature
+   instead; the person kept it.
 
 ## Open questions (for the foundation spec)
 
