@@ -1836,6 +1836,14 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    found the same waiver on the judged path: a landing door whose project was known but whose origin could not be
    asked was asked only for the post, and its failure was overridable. It is now closed, as unreadable rules are.
 
+251. **The daemon applies the fair share** (the person, 2026-11-10; the refactor audit, 0.31.5). The daemon of 0.31.0
+   decided every start but built its picture of the line without `lane_share`, so each run's fair key was empty and
+   waiters of equal priority went first come, first served on a machine set to `fair`; nothing said so. The
+   scheduler now takes the setting's reader and asks it each tick, and the fair key breaks ties between equal
+   priorities as the shared machine design (2.10) has it. Kept as it was: fair share is a tie-break, not a weight in
+   the priority, so a project's waiter takes its turn once the wait part saturates (ten minutes) or among equals.
+   The audit asked whether to drop the feature instead; the person kept it.
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

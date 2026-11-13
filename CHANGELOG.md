@@ -3,6 +3,15 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.31.5 - 2026-11-13
+
+- **`lane_share = "fair"` works again under the lane daemon.** Since 0.31.0 the daemon decides who starts, and it
+  never read the setting: waiters of equal priority went first come, first served whatever `machine.toml` said,
+  while `flotilla lane` went on printing `share: fair`. Now the daemon reads it each tick, as the waiters did: among
+  waiters of equal priority - such as runs of the same kind, each waiting ten minutes or more - the project holding
+  the fewest runs and served least recently goes first. Priority still comes first: a project's run that has waited
+  one minute does not pass another's that has waited ten.
+
 ## 0.31.4 - 2026-11-11
 
 - **A push the guards could not judge has no override at all.** When the guards themselves fail, a command that may

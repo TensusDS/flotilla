@@ -87,9 +87,10 @@ def _written(mb: int | None) -> int | None:
 
 class Scheduler:
     def __init__(self, lanes, value_of, *, signer: tuple, groups_io=groups, clock=time.monotonic,
-                 default_floor, total_mb=None):
+                 default_floor, total_mb=None, share="fifo"):
         self.lanes, self.value_of, self.signer, self.groups = lanes, value_of, signer, groups_io
-        self.clock, self.default_floor = clock, default_floor
+        # machine.toml `lane_share`: a callable is read each tick, so a change holds from the next one
+        self.clock, self.default_floor, self.share = clock, default_floor, share
         self.total_mb = total_mb or _total_mb
         self.history = History()
         self._paths: dict[tuple[str, str], object] = {}
@@ -123,8 +124,9 @@ class Scheduler:
                                        default=default), self.total_mb())
         available = value.available_mb()
         value = dataclasses.replace(value, available_mb=lambda: available, floor_mb=floor)
+        share = self.share() if callable(self.share) else self.share
         runs, machine = admission.view(found, estimate.history(found, now=moment), value, now=moment,
-                                       live=lanes.live, mine="")
+                                       live=lanes.live, mine="", share=share)
         paths, readings, enriched = {}, {}, []
         for run in runs:
             item = found[run.id]

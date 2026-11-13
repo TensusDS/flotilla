@@ -508,7 +508,8 @@ def _loop(root: Path, *, idle_s, ticks, clock, sleep, newest, lanes, value_of, p
     key = _new_key(root)
     sched = (make_scheduler() if make_scheduler is not None else
              Scheduler(lanes, value_of, signer=(pid, mark, key), groups_io=groups_io, clock=clock,
-                       default_floor=lambda: machine.memory_floor_mb({})))   # read each tick (fix review R12)
+                       default_floor=lambda: machine.memory_floor_mb({}),   # read each tick (fix review R12)
+                       share=commands.share))
     state = {"picture": {}, "tick": time.time()}
     guard, stop = threading.Lock(), threading.Event()
 
