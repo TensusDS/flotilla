@@ -260,10 +260,13 @@ def build_parser() -> argparse.ArgumentParser:
     retire_.add_argument("name")
     retire_.add_argument("--root", default=".")
     fleet_ = sub.add_parser("fleet", help="the fleet's sessions, their trees and their work; `down` retires them")
-    fleet_.add_argument("action", nargs="?", choices=["down", "clean", "size"],
+    fleet_.add_argument("action", nargs="?", choices=["down", "clean", "size", "model"],
                         help="down: retire every seat but your own; clean: remove trees and branches whose work is "
                              "surely on trunk (a plan unless --yes); size: the fleet this machine and this backlog "
-                             "call for, and why (raises nothing)")
+                             "call for, and why (raises nothing); model: the model the fleet runs on, and where it "
+                             "is read")
+    fleet_.add_argument("name", nargs="?", default=None,
+                        help="with model: name the fleet's default model - the person's own move")
     fleet_.add_argument("--tasks", type=int, default=None, metavar="N", help="with size: tasks you named")
     fleet_.add_argument("--tasks-file", default=None, metavar="PATH", help="with size: those tasks, one per line")
     fleet_.add_argument("--json", action="store_true", help="with size: the recommendation as JSON")

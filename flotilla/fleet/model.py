@@ -115,6 +115,26 @@ def reviewers(profile: dict) -> str:
     return STRONGEST_REVIEWERS if fleet.get("model") == "reviewer-strongest" else ""
 
 
+def with_model(text: str, name: str) -> str:
+    """The profile's text with `[fleet] model = "<name>"`, every other line kept as written. A strongest-reviewer
+    profile gets `reviewers = "opus"` beside it, so its reviewers stay where they were."""
+    lines = text.splitlines()
+    start = next((i for i, line in enumerate(lines) if line.strip() == "[fleet]"), None)
+    entry = f'model = "{name}"'
+    if start is None:
+        return text.rstrip("\n") + f"\n\n[fleet]\n{entry}\n"
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].lstrip().startswith("[")), len(lines))
+    at = next((i for i in range(start + 1, end) if re.match(r"\s*model\s*=", lines[i])), None)
+    strongest = at is not None and re.match(r'\s*model\s*=\s*"reviewer-strongest"', lines[at])
+    has_reviewers = any(re.match(r"\s*reviewers\s*=", lines[i]) for i in range(start + 1, end))
+    extra = [f'reviewers = "{STRONGEST_REVIEWERS}"'] if strongest and not has_reviewers else []
+    if at is None:
+        lines[start + 1:start + 1] = [entry]
+    else:
+        lines[at:at + 1] = [entry, *extra]
+    return "\n".join(lines) + "\n"
+
+
 def recorded(row) -> str:
     """The model a seat's post row says it was raised on: its `reserve` event's evidence (fleet model design 5.4);
     "" for a seat raised before 0.32."""

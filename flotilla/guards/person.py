@@ -216,6 +216,25 @@ def _parsed(words: list[str]) -> list[tuple[str, str]]:
     return found
 
 
+def _names_fleet_model(words: list[str]) -> bool:
+    """`flotilla fleet model <name>`, as the CLI's parser reads it or as the plain words after flotilla read."""
+    for at, word in enumerate(words):
+        if not _runs_flotilla(word, words[at - 1] if at else ""):
+            continue
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                space = _parser().parse_args(words[at + 1:])
+        except SystemExit:   # a line the parser refuses runs nothing; read its plain words all the same
+            plain = [item for item in words[at + 1:] if not item.startswith("-")]
+            if len(plain) >= 3 and _is(plain[0], "fleet") and _is(plain[1], "model"):
+                return True
+            continue
+        if getattr(space, "command", "") == "fleet" and getattr(space, "action", "") == "model" \
+                and getattr(space, "name", None):
+            return True
+    return False
+
+
 def _rig_move(words: list[str]) -> str:
     for command, move in _reads(words) + _parsed(words):
         if _is(command, "rig") and any(_is(move, name) for name in RIG_MOVES):
@@ -348,6 +367,11 @@ def check(segment) -> Finding | None:
                                     "own choice, and a Claude tool call is never the person's. Show the person the "
                                     "command; they type it with `!` in front in their own Claude Code session, or run "
                                     "it in a terminal.")
+    if _names_fleet_model(words):
+        return Finding(GUARD, True, "flotilla: the model the fleet runs on is the person's own choice (`fleet model "
+                                    "<name>`), and a Claude tool call is never the person's. Show the person the "
+                                    "command; they type it with `!` in front in their own Claude Code session, or run "
+                                    "it in a terminal.")
     if _move(words) != "approve":
         return None
     return Finding(GUARD, True, "flotilla: approving work for trunk is the person's own move, and a Claude tool call "
@@ -361,7 +385,8 @@ _INTERPRETER = re.compile(r"(?:sh|bash|zsh|dash|ksh|fish|python(?:\d+(?:\.\d+)?)
 #: `approve` alone is not one: `gh pr review --approve` and a grep for the word are ordinary work (review of bebab1b).
 _PERSONS_MOVE = re.compile(r"\bwork\b[\s'\",\[\]+]+approve\b"
                            r"|\brig\b[\s'\",\[\]+]+(?:enable|disable|open|close|allow-image|unshare|share)\b"
-                           r"|\battention\b[\s'\",\[\]+]+(?:all|digest)\b")
+                           r"|\battention\b[\s'\",\[\]+]+(?:all|digest)\b"
+                           r"|\bfleet\b[\s'\",\[\]+]+model\b[\s'\",\[\]+]+[A-Za-z0-9]")
 #: The same moves' words anywhere in the code - a command built in pieces - judged only where flotilla is named too.
 #: `share` is a common word (`--why 'share gpu'`, `grep share`): anywhere after `rig` it counts only as a quoted token
 #: of its own - an argv element (`cmd.append('share')`) - so a command built in code, on standard input too, is still
@@ -372,7 +397,8 @@ _PERSONS_MOVE = re.compile(r"\bwork\b[\s'\",\[\]+]+approve\b"
 _SHARE_WORD, _RIG_WORD = re.compile(r"\b(?:unshare|share)\b"), re.compile(r"\brig\b")   # two searches: any order
 _MOVE_WORDS = re.compile(r"\bapprove\b|\brig\b[\s\S]*?\b(?:enable|disable|open|close|allow-image)\b"
                          r"|\brig\b[\s\S]*?['\"](?:unshare|share)['\"]"
-                         r"|\battention\b[\s\S]*?\b(?:all|digest)\b")
+                         r"|\battention\b[\s\S]*?\b(?:all|digest)\b"
+                         r"|\bfleet\b[\s'\",\[\]+]+model\b[\s'\",\[\]+]+[A-Za-z0-9]")
 #: flotilla as the program a line runs - `flotilla`, `.../bin/flotilla`, `flotilla.cli`, `-m flotilla` - never a path
 #: or a name it is part of (`flotilla-field`, `.flotilla/`, `~/.config/flotilla`): those are reads, not runs.
 _FLOTILLA = re.compile(r"(?:^|[\s'\"(\[,;|&`=])(?:\S*/bin/)?flotilla(?![\w./-])|\bflotilla\.cli\b"
@@ -383,7 +409,7 @@ _FLOTILLA_ANY = re.compile(r"(?:^|[\s'\"(\[,;|&`=])(?:\S*/)?flotilla(?![\w./-])|
                            r"|-m[\s'\",]+flotilla\b|\b(?:from|import)\s+flotilla\b")
 WRAPPED_REFUSAL = ("flotilla: this line hands code to an interpreter (`bash -c`, `python3 -c`, a pipe, a heredoc or a "
                    "here-string), and that code runs a move only the person makes - approving work, turning rented "
-                   "machines on or off or spending on them, or how the person is asked. A Claude tool call never runs "
+                   "machines on or off or spending on them, how the person is asked, or the fleet's model. A Claude tool call never runs "
                    "it, wrapped or not: show the person the line; they type it with `!` in front in their own Claude "
                    "Code session, or run it in a terminal.")
 WRAPPED_ASK = ("flotilla: this line hands flotilla commands to an interpreter as text (`bash -c`, `python3 -c`), "
