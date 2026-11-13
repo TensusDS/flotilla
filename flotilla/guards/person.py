@@ -393,16 +393,24 @@ def check(segment) -> Finding | None:
 
 #: Programs that run code handed to them as text, on their command line or on their standard input.
 _INTERPRETER = re.compile(r"(?:sh|bash|zsh|dash|ksh|fish|python(?:\d+(?:\.\d+)?)?|perl|ruby|node)")
-#: `fleet model` and then a name: options and punctuation may stand between, never only the two words (a read).
-#: Behind xargs or parallel the name comes from their input, so the two words are enough (security review, c8afd84).
-_FLEET_NAMING = (r"(?:\bfleet\b[\s\S]*?\bmodel\b(?:[\s'\",\[\]+]+(?:-\S*|[^\sA-Za-z0-9$`]\S*))*"
-                 r"[\s'\",\[\]+]+[A-Za-z0-9$`]|\b(?:xargs|parallel)\b[\s\S]*?\bfleet\b[\s\S]*?\bmodel\b)")
+#: `fleet` and then `model`, anywhere after. Wider than the move - a read of the model inside an interpreter is
+#: refused too - on purpose: a reading that wanted a name after `model` let `\opus`, `{opus,}`, a glob or a name built
+#: in Python through, and its nested repetition ran past the hook's timeout on crafted text (the review and the
+#: commit security review of c8afd84).
+_FLEET_WORD, _MODEL_WORD = re.compile(r"\bfleet\b"), re.compile(r"\bmodel\b")
+
+
+def _fleet_naming(text: str) -> bool:
+    """`model` anywhere after a `fleet`: two linear searches, never a regex gap that backtracks."""
+    first = _FLEET_WORD.search(text)
+    return first is not None and _MODEL_WORD.search(text, first.end()) is not None
+
+
 #: A move only the person makes, spelled as the CLI reads it - in a command line or an argv list (`'rig', 'open'`).
 #: `approve` alone is not one: `gh pr review --approve` and a grep for the word are ordinary work (review of bebab1b).
 _PERSONS_MOVE = re.compile(r"\bwork\b[\s'\",\[\]+]+approve\b"
                            r"|\brig\b[\s'\",\[\]+]+(?:enable|disable|open|close|allow-image|unshare|share)\b"
-                           r"|\battention\b[\s'\",\[\]+]+(?:all|digest)\b"
-                           r"|" + _FLEET_NAMING)
+                           r"|\battention\b[\s'\",\[\]+]+(?:all|digest)\b")
 #: The same moves' words anywhere in the code - a command built in pieces - judged only where flotilla is named too.
 #: `share` is a common word (`--why 'share gpu'`, `grep share`): anywhere after `rig` it counts only as a quoted token
 #: of its own - an argv element (`cmd.append('share')`) - so a command built in code, on standard input too, is still
@@ -413,8 +421,7 @@ _PERSONS_MOVE = re.compile(r"\bwork\b[\s'\",\[\]+]+approve\b"
 _SHARE_WORD, _RIG_WORD = re.compile(r"\b(?:unshare|share)\b"), re.compile(r"\brig\b")   # two searches: any order
 _MOVE_WORDS = re.compile(r"\bapprove\b|\brig\b[\s\S]*?\b(?:enable|disable|open|close|allow-image)\b"
                          r"|\brig\b[\s\S]*?['\"](?:unshare|share)['\"]"
-                         r"|\battention\b[\s\S]*?\b(?:all|digest)\b"
-                         r"|" + _FLEET_NAMING)
+                         r"|\battention\b[\s\S]*?\b(?:all|digest)\b")
 #: flotilla as the program a line runs - `flotilla`, `.../bin/flotilla`, `flotilla.cli`, `-m flotilla` - never a path
 #: or a name it is part of (`flotilla-field`, `.flotilla/`, `~/.config/flotilla`): those are reads, not runs.
 _FLOTILLA = re.compile(r"(?:^|[\s'\"(\[,;|&`=])(?:\S*/bin/)?flotilla(?![\w./-])|\bflotilla\.cli\b"
@@ -441,11 +448,11 @@ def _judge(text: str, *, ask_on_flotilla: bool) -> Finding | None:
     move's words anywhere in code that names flotilla (a command built in pieces). Asked: such a move through a
     program the guard cannot name, or - on a command line's code - flotilla run as a program."""
     anywhere = bool(_FLOTILLA_ANY.search(text))
-    if _PERSONS_MOVE.search(text):
+    if _PERSONS_MOVE.search(text) or _fleet_naming(text):
         if anywhere or "$" in text or "`" in text:
             return Finding(GUARD, True, WRAPPED_REFUSAL)
         return Finding(GUARD, False, UNREADABLE_MOVE_ASK, ask=True)   # review of bebab1b: never a silent pass
-    if anywhere and _MOVE_WORDS.search(text):
+    if anywhere and (_MOVE_WORDS.search(text) or _fleet_naming(text)):
         return Finding(GUARD, True, WRAPPED_REFUSAL)
     if anywhere and _SHARE_WORD.search(text) and _RIG_WORD.search(text):   # `share` in a longer string: not refused, never silently passed
         return Finding(GUARD, False, UNREADABLE_MOVE_ASK, ask=True)

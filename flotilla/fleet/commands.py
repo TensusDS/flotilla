@@ -316,7 +316,7 @@ def _model(ledger, args) -> int:
               f"model: not named; the person names it: `{fleet_model.ANSWER}`")
         return 0
     name = args.name.strip()
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._\[\]-]*", name) or name in (*fleet_model.LEGACY, "inherit"):
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._\[\]-]*", name) or name.lower() in (*fleet_model.LEGACY, "inherit"):
         raise MoveRefused(f"`{name}` is not a model's name; name one, such as `opus` or `sonnet`")
     refused = caller.person_refusal("names the fleet's model")
     if refused:

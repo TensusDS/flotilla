@@ -184,8 +184,8 @@ def _guard_failed(command: str, err: Exception, out) -> int:
             "a command that may push is refused on failure. Knowingly: the person runs the command themselves - "
             "with `!` in front, or in a terminal. Where flotilla's pre-push hook is installed, it judges a "
             "`git push` again" if refuse
-            else "this line may hold a move only the person makes (`work approve`, a `rig` move, `attention`) and "
-                 "it could not be read, so the person decides whether it runs" if ask
+            else "this line may hold a move only the person makes (`work approve`, a `rig` move, `attention`, "
+                 "`fleet model <name>`) and it could not be read, so the person decides whether it runs" if ask
             else "the command runs unchecked")
     body = ({"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": text}
             if refuse else {"hookEventName": "PreToolUse", "permissionDecision": "ask",

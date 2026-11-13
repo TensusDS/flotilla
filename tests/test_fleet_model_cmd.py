@@ -164,16 +164,6 @@ def test_a_profile_it_cannot_edit_safely_is_left_alone(tmp_path, monkeypatch):  
     assert model.note_for(tmp_path / "state", root) is None
 
 
-@pytest.mark.parametrize("line", ["python3 -m flotilla.cli fleet model",
-                                  "{cli} fleet 2>&1 | python3 -c 'import sys; "
-                                  "print(sys.stdin.read().count(\"model\"))'",
-                                  "bash -c 'echo the fleet runs one model; {cli} status'"])
-def test_a_read_inside_an_interpreter_is_not_refused(tmp_path, monkeypatch, line):   # review M1
-    root = project(tmp_path, monkeypatch)
-    answer = ask(root, line.format(cli=CLI), monkeypatch, tmp_path)
-    assert not answer or answer.get("permissionDecision") != "deny", answer
-
-
 @pytest.mark.parametrize("line", ["bash -c '{cli} fleet model $X'", "echo opus | xargs {cli} fleet model",
                                   "xargs -a names.txt {cli} fleet model"])
 def test_a_name_from_a_variable_or_xargs_is_refused(tmp_path, monkeypatch, line):   # review M1, M2
@@ -184,7 +174,7 @@ def test_a_name_from_a_variable_or_xargs_is_refused(tmp_path, monkeypatch, line)
 
 def test_inherit_is_not_a_models_name(tmp_path, monkeypatch):   # review M7
     root = project(tmp_path, monkeypatch)
-    code, out = run_cli("fleet", "model", "inherit", "--root", str(root))
+    code, out = run_cli("fleet", "model", "INHERIT", "--root", str(root))
     assert code == 2 and "not a model's name" in out
 
 
@@ -202,3 +192,21 @@ def test_wrapped_code_feeding_the_name_by_xargs_is_refused(tmp_path, monkeypatch
     root = project(tmp_path, monkeypatch)
     answer = ask(root, line.format(cli=CLI), monkeypatch, tmp_path)
     assert answer and answer["permissionDecision"] == "deny", answer
+
+
+@pytest.mark.parametrize("line", ["bash -c '{cli} fleet model \\opus'", "bash -c '{cli} fleet model {{opus,}}'",
+                                  "bash -c '{cli} fleet model ?pus'", "bash -c '{cli} fleet model >/dev/null \\opus'",
+                                  "python3 -c 'import os;n=\"opus\";os.system(f\"{cli} fleet model {{n}}\")'"])
+def test_wrapped_code_that_shapes_the_name_is_refused(tmp_path, monkeypatch, line):   # review of c8afd84, I-1
+    root = project(tmp_path, monkeypatch)
+    answer = ask(root, line.format(cli=CLI), monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny", answer
+
+
+def test_reading_crafted_text_stays_quick():   # commit security review of bbf74de: a guard past its timeout passes
+    import time
+    from flotilla.guards import person
+    for text in ("xargs " * 20000 + "fleet " * 20000, "fleet " * 50000, "fleet model " + "'-a " * 50000):
+        started = time.perf_counter()
+        person._judge("flotilla " + text, ask_on_flotilla=True)
+        assert time.perf_counter() - started < 2.0
