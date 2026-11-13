@@ -101,18 +101,16 @@ def test_a_reading_that_cannot_be_reaped_does_not_hold_the_answer(tmp_path, monk
     assert time.monotonic() - started < 5
 
 
-def test_without_a_fork_the_line_is_read_here(tmp_path, monkeypatch):
-    """Review of 6d195ca, M6: at the process limit the reading runs in the hook, as before the deadline."""
+@pytest.mark.parametrize("command, decision", [("git push origin main", "deny"), ("git checkout main", "ask")])
+def test_without_a_fork_the_line_is_answered_unread(tmp_path, monkeypatch, command, decision):
+    """Review of 6d195ca, M6, and the security review of ab4af81: a reading in the hook itself has no deadline, so a
+    slow line at the process limit would pass at Claude Code's timeout. Unread is bounded and never silent."""
     def no_fork():
         raise OSError(11, "Resource temporarily unavailable")
-
-    def guard(command, cwd, payload, out, now):
-        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": "here"}}),
-              file=out)
-        return 0
     monkeypatch.setattr(hooks.os, "fork", no_fork)
-    monkeypatch.setattr(hooks, "_guard", guard)
-    assert answer(tmp_path, "git checkout main")["additionalContext"] == "here"
+    monkeypatch.setattr(hooks, "_guard", lambda *args: pytest.fail("read without a deadline"))
+    found = answer(tmp_path, command)
+    assert found["permissionDecision"] == decision and "could not start" in found["permissionDecisionReason"]
 
 
 def test_a_hook_ended_from_outside_ends_its_reading(tmp_path):

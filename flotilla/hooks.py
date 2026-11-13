@@ -177,10 +177,10 @@ def _guard_in_time(command: str, cwd: Path, payload: dict, out, now) -> int:
     read, write = os.pipe()
     try:
         pid = os.fork()
-    except OSError:   # at the process limit: read here, as before the deadline - unbounded, but read
+    except OSError as err:   # the process limit: a reading here would have no deadline (security review, ab4af81)
         os.close(read)
         os.close(write)
-        return _guard(command, cwd, payload, out, now)
+        return _unread(command, f"the guards could not start a reading ({err})", out)
     if pid == 0:   # the reading; it leaves only through os._exit, so nothing of the parent's runs twice
         status = 1
         try:
