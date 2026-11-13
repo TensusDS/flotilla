@@ -421,23 +421,23 @@ class _TooLong(Exception):
 MAX_READ = 16_000
 
 
-def unread(command: str, why: str) -> Finding:
+def unread(command: str, why: str, hint: str = "") -> Finding:
     """A command no guard read: refused when it holds a push word, as on any failure to read; else the person's -
     never let through silently, since a crafted tail may be what kept it unread."""
     refuse = on_failure(command, RuntimeError(why)).refuse
     head = f"flotilla: {why}, so no guard read it"
+    hint = f" {hint}" if hint else ""
     if refuse:
-        return Finding("size", True, head + "; it holds `push` or `gh` (as a word or a part of one), and a line "
-                                            "holding them is refused unread. A long script or message goes in a "
-                                            "file the command names; or the person runs the line themselves, with "
-                                            "`!` in front or in a terminal.")
-    return Finding("size", False, head + "; the person decides whether it runs. A long script or message goes in a "
-                                         "file the command names.", ask=True)
+        return Finding("unread", True, head + "; it holds `push` or `gh` as text (a part of a word counts, quotes "
+                                              f"aside), and a line holding them is refused unread.{hint} Or the "
+                                              "person runs the line themselves, with `!` in front or in a terminal.")
+    return Finding("unread", False, head + f"; the person decides whether it runs.{hint}", ask=True)
 
 
 def too_long(command: str) -> Finding:
     """A command past MAX_READ, unread."""
-    return unread(command, f"this command is {len(command)} characters, more than the guards read ({MAX_READ})")
+    return unread(command, f"this command is {len(command)} characters, more than the guards read ({MAX_READ})",
+                  "A long script or message goes in a file the command names.")
 
 
 def guard_hook(command: str, cwd, root, out, *, env=os.environ, run=subprocess.run, mode: str = "",

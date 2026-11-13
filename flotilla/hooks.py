@@ -163,40 +163,50 @@ def _guard(command: str, cwd: Path, payload: dict, out, now) -> int:
                       session_id=str(payload.get("session_id") or ""), tool_input=tool_input)
 
 
-#: What a reading that finished writes before its answer: an empty answer lets the line run, a reading that died
-#: before it is a failure to read.
+#: What a reading writes after its whole answer: an empty answer lets the line run, and a reading that ended before
+#: the mark - killed halfway through its answer too - did not answer (review of 6d195ca).
 _READ = b"\x00"
 
 
 def _guard_in_time(command: str, cwd: Path, payload: dict, out, now) -> int:
     """`_guard`, in a child process the hook waits for up to GUARD_DEADLINE. Not a thread or an alarm: a regular
-    expression holds the interpreter until it is done. Past the deadline the child and every program it started (its
-    own process group) are killed, and the line gets the answer a line no guard read gets."""
+    expression holds the interpreter until it is done. Past the deadline the child and the programs it started are
+    killed, and the line gets the answer a line no guard read gets; so does a reading that ended before its answer."""
     import select
     import signal
     read, write = os.pipe()
-    pid = os.fork()
+    try:
+        pid = os.fork()
+    except OSError:   # at the process limit: read here, as before the deadline - unbounded, but read
+        os.close(read)
+        os.close(write)
+        return _guard(command, cwd, payload, out, now)
     if pid == 0:   # the reading; it leaves only through os._exit, so nothing of the parent's runs twice
         status = 1
         try:
             os.close(read)
-            os.setpgid(0, 0)
+            # its own session: one kill ends the reading and every git it started, and with no terminal a git or
+            # ssh cannot stop to prompt; its own streams: the hook's are not held past the hook
+            os.setsid()
+            quiet = os.open(os.devnull, os.O_RDWR)
+            for stream in (0, 1, 2):
+                os.dup2(quiet, stream)
             buffer = io.StringIO()
             try:
                 _guard(command, cwd, payload, buffer, now)
             except Exception as err:  # noqa: BLE001 - as in run_hook: the guards' own rule for a failure
                 _guard_failed(command, err, buffer)
-            left = memoryview(_READ + buffer.getvalue().encode())
+            left = memoryview(buffer.getvalue().encode() + _READ)
             while left:
                 left = left[os.write(write, left):]
             status = 0
         finally:
             os._exit(status)
     os.close(write)
-    try:
-        os.setpgid(pid, pid)   # either side may set it first; the kill below needs it set before it runs
-    except OSError:
-        pass
+    try:   # Claude Code ending the hook ends its reading too (review of 6d195ca)
+        before = signal.signal(signal.SIGTERM, lambda *_: (_end_reading(pid), os._exit(143)))
+    except ValueError:   # not the main thread: nothing to restore
+        before = None
     chunks, finished, end = [], False, time.monotonic() + GUARD_DEADLINE
     try:
         while (left := end - time.monotonic()) > 0:
@@ -209,21 +219,37 @@ def _guard_in_time(command: str, cwd: Path, payload: dict, out, now) -> int:
             chunks.append(chunk)
     finally:
         os.close(read)
-        try:
-            os.killpg(pid, signal.SIGKILL)   # a git still running is the reading's, finished or not
-        except OSError:
-            try:
-                os.kill(pid, signal.SIGKILL)
-            except OSError:
-                pass
-        os.waitpid(pid, 0)
+        _end_reading(pid)
+        if before is not None:
+            signal.signal(signal.SIGTERM, before)
     data = b"".join(chunks)
     if not finished:
         return _unread(command, f"the guards did not finish reading this command in {GUARD_DEADLINE} seconds", out)
-    if not data.startswith(_READ):
-        return _guard_failed(command, RuntimeError("the guards' reading ended without an answer"), out)
-    out.write(data[len(_READ):].decode())
+    if not data.endswith(_READ):
+        return _unread(command, "the guards' reading ended before its answer", out)
+    out.write(data[:-len(_READ)].decode())
     return 0
+
+
+def _end_reading(pid: int) -> None:
+    """Kill the reading's session - a git still running is the reading's, finished or not - and reap it if it goes
+    within a second. Killed before it is reaped, so its pid cannot have passed to another process; one stuck where
+    no signal reaches (a hung network mount) is left to init rather than holding the answer back."""
+    import signal
+    try:
+        os.killpg(pid, signal.SIGKILL)
+    except OSError:   # before its setsid: no group of its own yet, and nothing started
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+    for _ in range(100):
+        try:
+            if os.waitpid(pid, os.WNOHANG)[0]:
+                return
+        except ChildProcessError:
+            return
+        time.sleep(0.01)
 
 
 def _unread(command: str, why: str, out) -> int:
