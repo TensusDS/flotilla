@@ -10,13 +10,10 @@ each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2
   while `flotilla lane` went on printing `share: fair`. Now the daemon reads it each tick, as the waiters did: among
   waiters of equal priority - such as runs of the same kind, each waiting ten minutes or more - the project holding
   the fewest runs and served least recently goes first. Priority still comes first: a project's run that has waited
-  one minute does not pass another's that has waited ten.
-- **Room freed for several runs at once is shared between projects.** The order of equal waiters was weighed once
-  per look since 0.31.0, so when a large run ended and made room for two, both went to the project chosen first. Now
-  each run placed counts as its project's turn before the next place is weighed, as the waiters before 0.31 did, and
-  the daemon's tick and each waiter's own look read the line from the same function. Under `fair`, a waiter whose freeze
-  orders are out also keeps its place ahead of its equals, so another project's run does not take the room its
-  freeze made.
+  one minute does not pass another's that has waited ten. As before 0.31, each run started counts as its project's
+  turn before the next is chosen, so room freed for two runs at once goes to two projects, and a waiter that cannot
+  start yet costs its project nothing. A waiter whose freeze orders are out keeps its place ahead of its equals, so
+  another project's run does not take the room its freeze made.
 
 ## 0.31.4 - 2026-11-11
 

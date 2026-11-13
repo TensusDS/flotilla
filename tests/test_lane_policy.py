@@ -370,7 +370,7 @@ def test_the_fair_line_weighs_each_place_again():   # review of 8dfcc24: one pro
     from flotilla.lane.policy import line
     runs = [_equal("a1", "alpha", NINE, 1), _equal("a2", "alpha", NINE, 2),
             _equal("b1", "beta", HALF, 3)]
-    assert [r.id for r in line(runs, 900)] == ["a1", "b1", "a2"]
+    assert [r.id for r in line(runs, SERVER)] == ["a1", "b1", "a2"]
     two = machine(free=9000, max_runs=2)
     assert [decide(runs, two, r.id).start for r in runs] == [True, False, True]
 
@@ -379,7 +379,7 @@ def test_the_fifo_line_is_priority_then_place():
     from flotilla.lane.policy import line
     runs = [_equal("a1", "alpha", None, 1), _equal("a2", "alpha", None, 2), _equal("b1", "beta", None, 3, holds=True),
             run("p", WAITING, 100, kind="push", waited_s=900, order=4)]
-    assert [r.id for r in line(runs, 900)] == ["p", "a1", "a2", "b1"]   # holding changes nothing a fifo machine did
+    assert [r.id for r in line(runs, SERVER)] == ["p", "a1", "a2", "b1"]   # holding changes nothing a fifo machine did
 
 
 def test_under_the_fair_share_a_waiter_whose_freeze_is_out_keeps_its_place():   # review of 8dfcc24, minor
@@ -389,7 +389,7 @@ def test_under_the_fair_share_a_waiter_whose_freeze_is_out_keeps_its_place():   
     runs = [_equal("a1", "alpha", NINE, 1, holds=True),
             _equal("b1", "beta", "", 2)]
     runs[0] = Run(**{**runs[0].__dict__, "fair": (1, NINE)})
-    assert [r.id for r in line(runs, 900)] == ["a1", "b1"]
+    assert [r.id for r in line(runs, SERVER)] == ["a1", "b1"]
 
 
 def test_a_frozen_run_takes_no_turn_in_the_fair_line():
@@ -398,4 +398,14 @@ def test_a_frozen_run_takes_no_turn_in_the_fair_line():
     runs = [frozen, _equal("a1", "alpha", NINE, 2), _equal("b1", "beta", HALF, 3)]
     runs[1] = Run(**{**runs[1].__dict__, "fair": (1, NINE)})
     runs[2] = Run(**{**runs[2].__dict__, "fair": (1, HALF)})
-    assert [r.id for r in line(runs, 900)][1:] == ["a1", "b1"]
+    assert [r.id for r in line(runs, SERVER)][1:] == ["a1", "b1"]
+
+
+def test_a_waiter_that_cannot_start_costs_its_project_no_turn():   # review of e098233
+    """alpha is due; its first waiter does not fit, its second does. The second takes alpha's turn: the waiter that
+    cannot start takes none, as the waiters before 0.31 skipped a fair choice that could not go."""
+    runs = [_equal("a1", "alpha", NINE, 1), _equal("b1", "beta", HALF, 2), _equal("a2", "alpha", NINE, 3)]
+    runs[0] = Run(**{**runs[0].__dict__, "mem_mb": 5000})
+    runs.append(run("g", RUNNING, 100, order=0, project="gamma", fair=(1, HALF)))   # an empty lane starts anything
+    one = machine(free=1000, max_runs=2)
+    assert [decide(runs, one, r.id).start for r in runs[:3]] == [False, False, True]

@@ -213,7 +213,7 @@ class _Tick:
     # 5. starts, by the waiters' rules of 0.30
     def start(self) -> None:
         machine = self.decide_machine()
-        waiters = [r for r in policy.line(self.runs, self.m.immortal_s) if r.state == WAITING]   # as decide replays
+        waiters = [r for r in policy.line(self.runs, machine) if r.state == WAITING]   # as decide replays
         taken = bool(self.orders)
         for w in waiters:
             if w.rule < 5:

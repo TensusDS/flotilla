@@ -117,39 +117,102 @@ def priority(run: Run, immortal_s: float) -> float:
             + run_part * min(1.0, max(0.0, run.ran_s) / immortal_s if immortal_s > 0 else 1.0))
 
 
-#: A turn taken in the line's replay: later than every last service the journal can hold (ISO times sort as text).
+#: A turn taken in the replay: later than every last service the journal can hold (ISO times sort as text).
 SERVED_NOW = "~"
 
 
-def line(runs: list[Run], immortal_s: float) -> list[Run]:
-    """The waiting and frozen runs in the order room is offered to them, the one order the daemon's tick and each
-    waiter's replay share: by priority, then by place in line. Under the fair share, among equal priorities, a waiter
-    whose freeze orders are out goes first - the room its freeze makes is its own - then the project holding the
-    fewest runs and served least recently; a waiter placed ahead counts as its project's turn, so the next place is
-    weighed again (project share design, section 3): two slots freed at once go to two projects."""
+def _offered(runs: list[Run], immortal_s: float, turns: dict[str, int]):
+    """The waiting and frozen runs in the order room is offered to them: by priority, then by place in line. Under the
+    fair share, among equal priorities, a waiter whose freeze orders are out goes first - the room its freeze makes
+    is its own - then the project holding the fewest runs and served least recently, its oldest waiter first. A run
+    the replay starts counts as its project's turn (`turns`, kept by the replay as it goes), so the next place is
+    weighed again (project share design, section 3): two slots freed at once go to two projects, and a waiter that
+    cannot start costs its project nothing."""
     p = {r.id: priority(r, immortal_s) for r in runs}
     queue = sorted((r for r in runs if r.state in (WAITING, FROZEN)), key=lambda r: (-p[r.id], r.order))
     if not any(r.fair for r in queue):
-        return queue
-    turns: dict[str, int] = {}
+        yield from queue
+        return
 
-    def fair(r: Run) -> tuple:
-        if not r.fair:
-            return ()
+    def rank(r: Run) -> tuple:
         taken = turns.get(r.project, 0)
-        return (r.fair[0] + taken, SERVED_NOW if taken else r.fair[1])
-    out: list[Run] = []
-    while queue:
-        top = p[queue[0].id]
-        group = [r for r in queue if p[r.id] == top]
-        while group:
-            pick = min(group, key=lambda r: (not r.holds, fair(r), r.order))
-            group.remove(pick)
-            queue.remove(pick)
-            out.append(pick)
-            if pick.state == WAITING:   # a frozen run holds its slot already: it is counted in its project's runs
-                turns[pick.project] = turns.get(pick.project, 0) + 1
+        return (not r.holds, (r.fair[0] + taken, SERVED_NOW if taken else r.fair[1]) if r.fair else (), r.order)
+    i = 0
+    while i < len(queue):
+        j = i
+        while j < len(queue) and p[queue[j].id] == p[queue[i].id]:
+            j += 1
+        heads: dict[tuple, list[Run]] = {}   # each project's own line, in order: only its head is ever chosen
+        for r in queue[i:j]:
+            heads.setdefault((r.project, r.holds), []).append(r)
+        for own in heads.values():
+            own.reverse()
+        while heads:
+            key = min(heads, key=lambda k: rank(heads[k][-1]))
+            r = heads[key].pop()
+            if not heads[key]:
+                del heads[key]
+            yield r
+        i = j
+
+
+@dataclass
+class _Replay:
+    seen: list            # the runs the replay reached, in its order
+    pool: list
+    free: int | None
+    kept: int
+    unfit_ahead: list
+    done: Decision | None = None   # decided in the loop: `mine` started, or waits behind a heavy run
+    why: str = ""
+    about: str = ""
+
+
+def _replay(runs: list[Run], machine: Machine, mine: str) -> _Replay:
+    """Admission replayed in the line's order, as every waiter replays it, up to `mine` (to the end for "")."""
+    by_id = {r.id: r for r in runs}
+    pool = [r for r in runs if r.state in (RUNNING, ORDERED)]
+    # a waiter whose orders are out holds what it needs against the runs behind it: a run passing it would take the
+    # room the freeze made, and the waiter would order again, freezing run after run for nothing (found replaying the
+    # model's queues: one run frozen four times by the same heavy waiter that never started)
+    out = _Replay([], pool, machine.free_mb, 0, [])
+    blocker = None
+    turns: dict[str, int] = {}
+    for r in _offered(runs, machine.immortal_s, turns):
+        out.seen.append(r)
+        if r.heavy and blocker is not None:
+            if r.id == mine:   # and why it waits, when that wait has no end while the lane is busy (2026-11-11)
+                alone = alone_only(by_id[blocker], machine)
+                out.done = Decision(False, (), f"behind heavy {blocker}"
+                                    + (", which starts only when the lane is empty" if alone else ""))
+                return out
+            continue
+        failed, kind = _fits(r, pool, None if out.free is None else out.free - out.kept, machine)
+        if not failed:
+            pool.append(r)
+            if out.free is not None:
+                out.free -= r.mem_mb
+            if r.state == WAITING:   # a frozen run holds its slot already: it is counted in its project's runs
+                turns[r.project] = turns.get(r.project, 0) + 1
+            if r.id == mine:
+                out.done = Decision(True)
+                return out
+            continue
+        if r.heavy:
+            blocker = r.id
+        if r.id == mine:
+            out.why, out.about = failed, kind
+            return out
+        if r.holds:
+            out.kept += r.mem_mb
+        if kind == FREE:
+            out.unfit_ahead.append(r)
     return out
+
+
+def line(runs: list[Run], machine: Machine) -> list[Run]:
+    """The waiting and frozen runs in the order the replay reaches them: the order the daemon's tick asks them in."""
+    return _replay(runs, machine, "").seen
 
 
 def immortal(run: Run, immortal_s: float) -> bool:
@@ -387,45 +450,16 @@ def decide(runs: list[Run], machine: Machine, mine: str, *, may_freeze: bool = T
     class rules (section 2.7a): a light run passes a heavy one that does not fit, and a light one; no heavy run
     passes a higher heavy that does not fit. A heavy run may pass a light one that does not fit - the light one has
     freezing to make room and ends in minutes (the builder's call)."""
-    by_id = {r.id: r for r in runs}
-    me = by_id.get(mine)
+    me = next((r for r in runs if r.id == mine), None)
     if me is None or me.state not in (WAITING, FROZEN):
         return Decision(False, (), "not in line")
-    queue = line(runs, machine.immortal_s)
-    pool = [r for r in runs if r.state in (RUNNING, ORDERED)]
-    free = machine.free_mb
-    # a waiter whose orders are out holds what it needs against the runs behind it: a run passing it would take the
-    # room the freeze made, and the waiter would order again, freezing run after run for nothing (found replaying the
-    # model's queues: one run frozen four times by the same heavy waiter that never started)
-    kept = 0
-    blocker, why, about, unfit_ahead = None, "", "", []
+    seen = _replay(runs, machine, mine)
+    if seen.done is not None:
+        return seen.done
+    why, about, pool, free, kept, unfit_ahead = seen.why, seen.about, seen.pool, seen.free, seen.kept, seen.unfit_ahead
 
     def room(r: Run) -> int | None:
         return None if free is None else free - kept
-    for r in queue:
-        if r.heavy and blocker is not None:
-            if r.id == mine:   # and why it waits, when that wait has no end while the lane is busy (2026-11-11)
-                alone = alone_only(by_id[blocker], machine)
-                return Decision(False, (), f"behind heavy {blocker}"
-                                + (", which starts only when the lane is empty" if alone else ""))
-            continue
-        failed, kind = _fits(r, pool, room(r), machine)
-        if not failed:
-            pool.append(r)
-            if free is not None:
-                free -= r.mem_mb
-            if r.id == mine:
-                return Decision(True)
-            continue
-        if r.heavy:
-            blocker = r.id
-        if r.id == mine:
-            why, about = failed, kind
-            break
-        if r.holds:
-            kept += r.mem_mb
-        if kind == FREE:
-            unfit_ahead.append(r)
     memory_known = machine.give_mb is not None and free is not None
     if not memory_known or me.state == FROZEN or not may_freeze or about != FREE:
         return Decision(False, (), why, about)   # a frozen run comes back when it fits, never by an order (2.8)
