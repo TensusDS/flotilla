@@ -107,7 +107,9 @@ def _row_entry(ctx, row, rows: dict, must_approve) -> Entry | None:
 
 
 def _item_entry(item) -> Entry | None:
-    from flotilla.watch.fleet import PERSON, QUESTION
+    from flotilla.watch.fleet import OWED, PERSON, QUESTION
+    if item.kind == OWED:   # the fleet stands still until the person answers: urgent, and a blocker
+        return Entry(f"owed:{item.who}", "question", "", visible(item.text), item.since, "", True, True)
     if item.kind == QUESTION:
         return Entry(f"question:{item.branch}:{item.who}", "permission", "", visible(item.text), item.since,
                      item.branch, False, True)

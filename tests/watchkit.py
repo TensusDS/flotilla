@@ -7,7 +7,7 @@ from flotilla.core.census import Session
 from flotilla.ledger.model import Row
 from flotilla.posts import install_templates, load_posts
 
-PR = {"flow": {"mode": "pr"}, "review": {"depth": "every"}}
+PR = {"flow": {"mode": "pr"}, "review": {"depth": "every"}, "fleet": {"model": "opus"}}
 AT = "2026-09-27T10:00:00+00:00"
 NOW = dt.datetime(2026, 9, 27, 12, 0, tzinfo=dt.timezone.utc)
 

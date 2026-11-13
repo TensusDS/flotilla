@@ -160,7 +160,11 @@ def _fleet_profile(ledger) -> tuple[dict, str]:
     """The profile with the fleet's model named, and the line saying which and from where (fleet model design 5.1);
     refused when no model is named."""
     from flotilla.fleet import model as fleet_model
+    from flotilla.onboard import owed
     main = launch.main_checkout(ledger.root, run=ledger.run)
+    blocking = [item for item in owed.owed(ledger.profile, state=paths.state_dir(), main=main) if item.blocks_spawn]
+    if blocking:   # a decision an update owes the person (fleet model design 5.2): no seat until it is made
+        raise MoveRefused(" ".join(f"{item.question} The person answers with `{item.answer}`." for item in blocking))
     try:
         profile = fleet_model.resolved(ledger.profile, state=paths.state_dir(), main=main)
     except fleet_model.ModelUnnamed as err:

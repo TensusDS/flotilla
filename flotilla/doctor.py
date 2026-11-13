@@ -250,6 +250,7 @@ def _setup(root: Path, *, run, timeout: float, home: Path | None) -> list[Findin
         found.append(Finding("warn", "plugin", "could not tell whether flotilla is enabled here "
                                                "(`claude plugin list` did not answer)"))
     found += _posts(root)
+    found += _owed(root)
     trust = claude_state.trusted(root, home=home)
     if trust:
         found.append(Finding("ok", "trust", f"{root} is trusted"))
@@ -260,6 +261,28 @@ def _setup(root: Path, *, run, timeout: float, home: Path | None) -> list[Findin
         found.append(Finding("warn", "trust", f"could not tell whether {root} is trusted (no entry in "
                                               "~/.claude.json)", "run `claude` here once and accept the trust dialog"))
     return found
+
+
+def _owed(root: Path, *, profile: dict | None = None) -> list[Finding]:
+    """The decisions an update owes the person (fleet model design 5.2), on trunk's profile."""
+    from flotilla.core import paths
+    from flotilla.onboard import owed
+    if profile is None:
+        from flotilla.ledger.commands import trunk_rules
+        try:
+            profile = trunk_rules(root).profile
+        except Exception as err:  # noqa: BLE001 - a check that could not ask says so
+            return [Finding("warn", "decisions", f"the profile on trunk could not be read: {err}")]
+    try:
+        from flotilla.fleet import launch
+        main = launch.main_checkout(root)
+    except Exception:  # noqa: BLE001 - the note is keyed by the main checkout; the root is the best guess
+        main = root
+    found = owed.owed(profile, state=paths.state_dir(), main=main)
+    if not found:
+        return [Finding("ok", "decisions", "no decision an update owes the person is open")]
+    return [Finding("warn", "decisions", " ".join(item.question for item in found),
+                    "; ".join(f"the person runs `{item.answer}`" for item in found))]
 
 
 def _posts(root: Path) -> list[Finding]:

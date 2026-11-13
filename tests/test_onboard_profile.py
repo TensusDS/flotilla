@@ -21,7 +21,7 @@ def detection(root, **overrides):
 
 BASE_ANSWERS = {"flow": "pr-sender", "merge_auth": "human", "review": "every", "permissions": "ask",
                 "ci": "github", "ci_where": "cloud", "tiers": ["python"], "tracker": "nowhere",
-                "guards": ["revert", "push_receipt"], "model": "one"}
+                "guards": ["revert", "push_receipt"], "model": "opus"}
 
 
 def test_profile_loads_through_the_config_door(tmp_path):
@@ -206,7 +206,7 @@ def test_the_profile_carries_the_tree_setup_and_shows_it_as_a_command(tmp_path):
            "tests": [{"name": "node", "command": "npm test", "source": "package.json"}],
            "setup": {"command": "npm ci", "source": "package-lock.json"}}
     data = build_profile(det, {"flow": "local", "review": "every", "permissions": "auto", "tiers": ["node"],
-                               "model": "one"})
+                               "model": "opus"})
     assert data["tests"]["setup_command"] == "npm ci"
     assert ("tests.setup_command", "npm ci") in commands_of(data)
 
@@ -254,3 +254,13 @@ def test_code_only_writes_the_detected_paths_and_says_so_in_plain_words(tmp_path
     said = " ".join(plain_words(data))
     assert "work waits for your approval" in said and "unless it touches only docs/**, *.md" in said
     assert "CI, manifests and the fleet's rules always wait" in said
+
+
+def test_the_model_answer_names_the_fleets_model_and_the_reviewers(tmp_path):
+    from flotilla.onboard.profile import plain_words
+    data = build_profile(detection(tmp_path), {**BASE_ANSWERS, "model": "sonnet-opus-reviewers"})
+    assert data["fleet"]["model"] == "sonnet" and data["fleet"]["reviewers"] == "opus"
+    said = " ".join(plain_words(data))
+    assert "every seat runs on sonnet" in said and "posts that accept work run on opus" in said
+    data = build_profile(detection(tmp_path), {**BASE_ANSWERS, "model": "claude-opus-5-5"})
+    assert data["fleet"]["model"] == "claude-opus-5-5" and "reviewers" not in data["fleet"]

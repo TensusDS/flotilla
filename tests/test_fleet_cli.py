@@ -516,6 +516,7 @@ def test_spawn_refuses_while_the_fleets_model_is_not_named(tmp_path, monkeypatch
     _with_model(root, word)
     code, out = run_cli("spawn", "--default", "--dry-run", "--root", str(root))
     assert code == 2 and "! flotilla fleet model <name>" in out, out
+    assert "no longer lets the fleet inherit" in out   # the owed decision's own words (fleet model design 5.2)
     assert "main session 1" not in out
 
 

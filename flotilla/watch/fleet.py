@@ -21,6 +21,7 @@ DEVIATION, DROPPED, NOBODY, BREAK, QUESTION, PERSON = ("deviation", "dropped", "
                                                      "person")
 IDLE, DONE, HELPER, STRANGER, PILE = "idle", "done", "helper", "stranger", "pile"
 COLLECTOR, DISK = "collector", "disk"
+OWED = "owed"
 IDLE_SEAT_MINUTES = 60
 PILE_MOVES = 3   # this many moves of one seat nobody waits on, while a peer of its post holds none
 SEATS = "seats"
@@ -69,6 +70,13 @@ def movers(row, profile: dict, live: set[str], post_of, rows: dict | None = None
     if mover and not mover.startswith("the "):
         return {mover}
     return set()
+
+
+def owed_items(found) -> list[Item]:
+    """A decision an update owes the person (`flotilla.onboard.owed`): the orchestrator puts it to them, and it
+    waits in their queue until answered."""
+    return [Item(OWED, "", f"{item.question} The person answers with `{item.answer}`.", "", who=item.id)
+            for item in found]
 
 
 def fleet(rows: dict, profile: dict, sessions, *, post_of, former_of=None, breaks=(), asking=(), claimers=frozenset(),
