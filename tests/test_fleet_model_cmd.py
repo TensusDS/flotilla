@@ -129,3 +129,12 @@ def test_a_naming_the_guard_cannot_read_is_refused(tmp_path, monkeypatch, line):
     root = project(tmp_path, monkeypatch)
     answer = ask(root, line.format(cli=CLI), monkeypatch, tmp_path)
     assert answer and answer["permissionDecision"] == "deny", answer
+
+
+@pytest.mark.parametrize("line", ["{cli} fleet --root . $A opus", "{cli} fleet model --root $A",
+                                  "bash -c '{cli} fleet model --json opus'", "bash -c '{cli} fleet model --root . opus'",
+                                  "bash -c '{cli} fleet model -- opus'", "echo '{cli} fleet model --root . opus' | bash"])
+def test_a_naming_hidden_by_options_or_splitting_is_refused(tmp_path, monkeypatch, line):   # second security review
+    root = project(tmp_path, monkeypatch)
+    answer = ask(root, line.format(cli=CLI), monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny", answer

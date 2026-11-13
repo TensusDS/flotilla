@@ -217,16 +217,24 @@ def _parsed(words: list[str]) -> list[tuple[str, str]]:
 
 
 def _names_fleet_model(words: list[str]) -> bool:
-    """`flotilla fleet model <name>`, as the CLI's parser reads it or as the plain words after flotilla read."""
+    """`flotilla fleet model <name>`, as the CLI's parser reads it or as the plain words after flotilla read. A fleet
+    line holding any word bash decides at run time counts too: a variable, a substitution or a glob may become the
+    move or its name, and an unquoted variable is split into words - `model --root $A` with A=". opus" names opus
+    (the commit security reviews of 578779b and 6604e9e)."""
     for at, word in enumerate(words):
         if not _runs_flotilla(word, words[at - 1] if at else ""):
             continue
+        after = words[at + 1:]
+        if any(_is(item, "fleet") for item in after) and any(_opaque(item) for item in after):
+            return True
         try:
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 space = _parser().parse_args(words[at + 1:])
         except SystemExit:   # a line the parser refuses runs nothing; read its plain words all the same
-            plain = [item for item in words[at + 1:] if not item.startswith("-")]
-            if len(plain) >= 3 and _is(plain[0], "fleet") and _is(plain[1], "model"):
+            plain = [item for item in after if not item.startswith("-")]
+            if any(_is(item, "fleet") and any(_is(later, "model") and plain[spot + 1:][index + 1:]
+                                              for index, later in enumerate(plain[spot + 1:]))
+                   for spot, item in enumerate(plain)):
                 return True
             continue
         if getattr(space, "command", "") == "fleet" and getattr(space, "action", "") == "model" \
@@ -387,7 +395,7 @@ _INTERPRETER = re.compile(r"(?:sh|bash|zsh|dash|ksh|fish|python(?:\d+(?:\.\d+)?)
 _PERSONS_MOVE = re.compile(r"\bwork\b[\s'\",\[\]+]+approve\b"
                            r"|\brig\b[\s'\",\[\]+]+(?:enable|disable|open|close|allow-image|unshare|share)\b"
                            r"|\battention\b[\s'\",\[\]+]+(?:all|digest)\b"
-                           r"|\bfleet\b[\s\S]*?\bmodel\b[\s'\",\[\]+]+[A-Za-z0-9]")
+                           r"|\bfleet\b[\s\S]*?\bmodel\b")
 #: The same moves' words anywhere in the code - a command built in pieces - judged only where flotilla is named too.
 #: `share` is a common word (`--why 'share gpu'`, `grep share`): anywhere after `rig` it counts only as a quoted token
 #: of its own - an argv element (`cmd.append('share')`) - so a command built in code, on standard input too, is still
@@ -399,7 +407,7 @@ _SHARE_WORD, _RIG_WORD = re.compile(r"\b(?:unshare|share)\b"), re.compile(r"\bri
 _MOVE_WORDS = re.compile(r"\bapprove\b|\brig\b[\s\S]*?\b(?:enable|disable|open|close|allow-image)\b"
                          r"|\brig\b[\s\S]*?['\"](?:unshare|share)['\"]"
                          r"|\battention\b[\s\S]*?\b(?:all|digest)\b"
-                         r"|\bfleet\b[\s\S]*?\bmodel\b[\s'\",\[\]+]+[A-Za-z0-9]")
+                         r"|\bfleet\b[\s\S]*?\bmodel\b")
 #: flotilla as the program a line runs - `flotilla`, `.../bin/flotilla`, `flotilla.cli`, `-m flotilla` - never a path
 #: or a name it is part of (`flotilla-field`, `.flotilla/`, `~/.config/flotilla`): those are reads, not runs.
 _FLOTILLA = re.compile(r"(?:^|[\s'\"(\[,;|&`=])(?:\S*/bin/)?flotilla(?![\w./-])|\bflotilla\.cli\b"
