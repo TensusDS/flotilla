@@ -60,7 +60,7 @@ command that every guard shares, not one more reading.
 
 ## From the reviews of 0.31.5 (2026-11-13, the daemon applies the fair share)
 
-Three review rounds; what is left changes no start the daemon makes.
+Four review rounds; what is left changes no start the daemon makes on the fleets known.
 
 - **`flotilla lane` replays a waiter its own checks hold back; the daemon does not.** The status view builds its runs
   without the scheduler's `held_back` filter, so under `fair` such a waiter can take its project's turn in the

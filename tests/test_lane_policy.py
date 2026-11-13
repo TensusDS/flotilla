@@ -409,3 +409,38 @@ def test_a_waiter_that_cannot_start_costs_its_project_no_turn():   # review of e
     runs.append(run("g", RUNNING, 100, order=0, project="gamma", fair=(1, HALF)))   # an empty lane starts anything
     one = machine(free=1000, max_runs=2)
     assert [decide(runs, one, r.id).start for r in runs[:3]] == [False, False, True]
+
+
+def _with(r, **fields):
+    return Run(**{**r.__dict__, **fields})
+
+
+def test_a_turn_taken_weighs_both_the_runs_held_and_the_service():   # review of dcf78ca: two surviving mutants
+    """beta holds a run, alpha none: alpha goes first. Its turn makes it hold one, served now - so beta, holding one
+    and served earlier, goes next, though alpha was served before beta."""
+    runs = [_equal("a1", "alpha", NINE, 1), _equal("a2", "alpha", NINE, 2),
+            _with(_equal("b1", "beta", HALF, 3), fair=(1, HALF)),
+            run("g", RUNNING, 100, order=0, project="beta", fair=(1, HALF))]
+    two = machine(free=9000, max_runs=3)
+    assert [decide(runs, two, r.id).start for r in runs[:3]] == [True, False, True]
+
+
+def _behind_a_heavy():
+    """A heavy push that does not fit blocks the heavy runs behind it; alpha is due, and its first waiter is heavy."""
+    return [run("g", RUNNING, 100, order=0, project="gamma", fair=(1, HALF)),
+            run("h", WAITING, 20_000, True, 8, kind="push", waited_s=900, order=1, project="gamma", fair=(1, HALF)),
+            _with(_equal("a1", "alpha", NINE, 2), heavy=True), _equal("b1", "beta", HALF, 3),
+            _equal("a2", "alpha", NINE, 4)]
+
+
+def test_a_heavy_waiter_behind_a_heavy_costs_its_project_no_turn():   # review of dcf78ca: a surviving mutant
+    runs = _behind_a_heavy()
+    one = machine(free=1000, max_runs=2)
+    assert [decide(runs, one, i).start for i in ("a1", "b1", "a2")] == [False, False, True]
+
+
+def test_the_tick_starts_what_the_fair_replay_admits():   # review of dcf78ca: the daemon's path, not only decide
+    from flotilla.lane import tick
+    runs = _behind_a_heavy()
+    one = machine(free=1000, max_runs=2, available_mb=10_000, floor_mb=1500)
+    assert [start[0] for start in tick.tick(runs, one).starts] == ["a2"]
