@@ -58,6 +58,21 @@ command that every guard shares, not one more reading.
   quotes not read. A false refusal, met while reading the guards. *(checked 2026-11-10 on 0.31.2: open -
   flotilla/guards/person.py check)*
 
+## From the reviews of 0.31.5 (2026-11-13, the daemon applies the fair share)
+
+Four review rounds; what is left changes no start the daemon makes on the fleets known.
+
+- **`flotilla lane` replays a waiter its own checks hold back; the daemon does not.** The status view builds its runs
+  without the scheduler's `held_back` filter, so under `fair` such a waiter can take its project's turn in the
+  status's replay and the "waits because" line of the next waiter can differ from what the daemon does. *(checked
+  2026-11-13 on 0.31.5: open - flotilla/lane/commands.py status by value, flotilla/lane/scheduler.py step)*
+- **A waiter passed by the fair tie-break is not told so**: its reason reads as the bound it met ("runs at once: 1
+  of 1"), not the project served before it, which the share design asked for. *(checked 2026-11-13 on 0.31.5: open -
+  flotilla/lane/policy.py decide)*
+- **Holders on 0.28-0.29 write `light: ...` paths**: they count in the daemon's held runs per project but not as a
+  service, and `book.fair_choice` leaves them out of holding. Seats that old are gone from the fleets known. *(checked
+  2026-11-13 on 0.31.5: open - flotilla/lane/book.py last_served, fair_choice)*
+
 ## From the reviews of 0.31.4 (2026-11-11, a push nothing judged has no override)
 
 Two review rounds; what is left never lets through what a guard refuses - it only refuses with a vaguer word.

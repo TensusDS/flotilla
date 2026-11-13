@@ -772,3 +772,19 @@ def test_ensure_replaces_a_live_process_that_stopped_beating(tmp_path, monkeypat
     finally:
         if spawn.held is not None:
             spawn.held.release()
+
+
+def test_the_daemon_reads_the_lane_share_each_tick(tmp_path, monkeypatch):
+    """The daemon's scheduler is handed the reader of machine.toml `lane_share`, not a value read once: a share the
+    person changes holds from the next tick (lane shared machine design, 2.10; it was never handed before 0.31.5)."""
+    from flotilla.lane import commands, scheduler
+    made = []
+    real = scheduler.Scheduler
+
+    def recording(*args, **kwargs):
+        made.append(kwargs)
+        return real(*args, **kwargs)
+    monkeypatch.setattr(scheduler, "Scheduler", recording)
+    monkeypatch.setattr(daemon, "lift", lambda *a, **kw: 0)
+    daemon.serve(tmp_path, ticks=1, newest=newest_is(__version__, REPO), sleep=lambda s: None)
+    assert [kwargs.get("share") for kwargs in made] == [commands.share]

@@ -71,10 +71,10 @@ fleet.
 **Pin a release** instead, to choose when you move: name a tag on the first line (the tags are listed in
 [CHANGELOG.md](CHANGELOG.md)):
 
-    claude plugin marketplace add TensusDS/flotilla#v0.31.4 --scope project
+    claude plugin marketplace add TensusDS/flotilla#v0.31.5 --scope project
     claude plugin install flotilla@flotilla --scope project
 
-That writes `"ref": "v0.31.4"` into the project's settings and installs that release; `claude plugin update` stays on
+That writes `"ref": "v0.31.5"` into the project's settings and installs that release; `claude plugin update` stays on
 it. A machine keeps one marketplace of a name for all its projects, so give the projects on one machine the same
 channel or pin; `/flotilla:doctor` names a pin the machine does not follow. And a tag can be moved on GitHub, so a pin
 chooses when you move, not who can change what the tag names.
@@ -559,9 +559,10 @@ minutes keeps its place. A waiter notices a release within a second. `flotilla l
 its parts, whether it is heavy and its memory now, when it becomes immortal, and for each frozen run by whose order.
 
 **Projects sharing a machine.** `lane_share = "fair"` in `machine.toml` breaks ties between runs of equal priority
-by project: the project holding the fewest runs and served least recently in the last day goes first; within a
-project the order is unchanged. A chosen waiter its own project's checks hold back (CI on this machine, a memory floor) is
-passed over after two polls, about 30 s. Only seats on flotilla 0.25 or later take part - an older seat keeps its
+by project: the project holding the fewest runs and served least recently in the last day goes first, and when
+several runs start at once each one counts as its project's turn before the next is chosen; within a project the
+order is unchanged. A waiter its own project's checks hold back (CI on this machine, a memory floor) is passed over
+until they let it through. Only seats on flotilla 0.25 or later take part - an older seat keeps its
 place in line and is never left waiting for a seat that yielded to it - so the protection reaches a project once its
 fleet is updated.
 `flotilla lane` shows the mode and each project's waiters and last turn.

@@ -299,3 +299,91 @@ def test_a_reading_adopted_after_a_restart_is_taken_as_it_will_be_written(lane):
     clock.t = 2.0
     sched.step()
     assert sched.ceilings[item.id] == policy.MIN_CEILING_MB
+
+
+class Moment:
+    """The journal's clock, moved by hand: a waiter's priority grows with the minutes it has waited."""
+
+    def __init__(self):
+        self.now = dt.datetime(2026, 11, 13, 10, 0, tzinfo=dt.timezone.utc)
+
+    def __call__(self):
+        return self.now
+
+    def on(self, minutes):
+        self.now += dt.timedelta(minutes=minutes)
+
+
+def _one_run_lane(tmp_path, share, served=("alpha",), runs=1):
+    """A lane that starts `runs` runs at a time, each project of `served` served in turn, a minute apart."""
+    moment = Moment()
+    lanes = book.Book(LocalLogStore(tmp_path), Procs(), clock=moment)
+    values = value_of()
+
+    def at_most(reading=None):
+        import dataclasses
+        return dataclasses.replace(values(reading), max_runs=runs)
+    sched = scheduler.Scheduler(lanes, at_most, signer=(4242, "m9"), groups_io=FakeGroups(), clock=Clock(),
+                                default_floor=2000, total_mb=lambda: 15603, share=share)
+    for project in served:
+        turn = lanes.enqueue(f"{project} 0", "", pid=11, mark="m", project=project)
+        sched.step()
+        assert lanes.bookings()[turn.id].state == book.HELD
+        moment.on(1)
+        lanes.release(turn.id)
+    return lanes, sched, moment
+
+
+@pytest.mark.parametrize("share, first", [("fair", "beta"), ("fifo", "alpha"), (lambda: "fair", "beta")])
+def test_the_daemon_gives_an_even_turn_to_the_project_served_least_recently(tmp_path, share, first):
+    """Two waiters of equal priority - both waited past the wait's saturation - and one start: under `fair` the
+    project not served goes first, though it asked later; under `fifo` the older waiter does (lane shared machine
+    design, 2.10). `share` is read each tick when it is a callable, as machine.toml is."""
+    lanes, sched, moment = _one_run_lane(tmp_path, share)
+    alpha = lanes.enqueue("alpha 1", "", pid=12, mark="m", project="alpha")
+    moment.on(1)
+    beta = lanes.enqueue("beta 1", "", pid=13, mark="m", project="beta")
+    moment.on(20)
+    sched.step()
+    found = lanes.bookings()
+    held = {item.project for item in (found[alpha.id], found[beta.id]) if item.state == book.HELD}
+    assert held == {first}
+
+
+def test_a_fair_share_never_passes_a_waiter_of_higher_priority(tmp_path):
+    """Fair share is the tie-break, not a priority: a waiter that has waited ten minutes goes before one of a
+    project not served that has waited one (lane shared machine design, 2.10)."""
+    lanes, sched, moment = _one_run_lane(tmp_path, "fair")
+    alpha = lanes.enqueue("alpha 1", "", pid=12, mark="m", project="alpha")
+    moment.on(10)
+    beta = lanes.enqueue("beta 1", "", pid=13, mark="m", project="beta")
+    moment.on(1)
+    sched.step()
+    found = lanes.bookings()
+    assert (found[alpha.id].state, found[beta.id].state) == (book.HELD, book.WAITING)
+
+
+def test_two_slots_freed_in_one_tick_go_to_two_projects(tmp_path):   # review of 8dfcc24
+    """alpha was served before beta; three waiters of equal priority, two of alpha's first in line, and room for
+    two: alpha's first and beta's start - a turn taken counts before the next place is weighed."""
+    lanes, sched, moment = _one_run_lane(tmp_path, "fair", served=("alpha", "beta"), runs=2)
+    a1 = lanes.enqueue("alpha 1", "", pid=12, mark="m", project="alpha")
+    a2 = lanes.enqueue("alpha 2", "", pid=13, mark="m", project="alpha")
+    b1 = lanes.enqueue("beta 1", "", pid=14, mark="m", project="beta")
+    moment.on(20)
+    sched.step()
+    found = lanes.bookings()
+    assert [found[item.id].state for item in (a1, a2, b1)] == [book.HELD, book.WAITING, book.HELD]
+
+
+def test_the_share_is_read_again_each_tick(tmp_path):   # review of 8dfcc24
+    mode = {"now": "fifo"}
+    lanes, sched, moment = _one_run_lane(tmp_path, lambda: mode["now"])
+    alpha = lanes.enqueue("alpha 1", "", pid=12, mark="m", project="alpha")
+    moment.on(1)
+    beta = lanes.enqueue("beta 1", "", pid=13, mark="m", project="beta")
+    moment.on(20)
+    mode["now"] = "fair"   # the person changed machine.toml while the daemon ran
+    sched.step()
+    found = lanes.bookings()
+    assert (found[alpha.id].state, found[beta.id].state) == (book.WAITING, book.HELD)
