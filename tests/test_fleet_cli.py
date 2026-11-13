@@ -9,7 +9,7 @@ from flotilla.posts import install_templates
 from ledgerkit import commit, git, repo_with_origin
 
 PROFILE = {"schema": 1, "trunk": {"branch": "main"}, "flow": {"mode": "pr"}, "review": {"depth": "every"},
-           "permissions": {"mode": "auto"}, "fleet": {"default": {"main": 1, "review": 1}, "model": "one"}}
+           "permissions": {"mode": "auto"}, "fleet": {"default": {"main": 1, "review": 1}, "model": "opus"}}
 
 
 @pytest.fixture(autouse=True)
@@ -498,3 +498,42 @@ def test_a_dry_run_reads_a_held_sender_as_holding_its_one_copy(tmp_path, monkeyp
     root, fake = held_world(tmp_path, monkeypatch, counts={"sender": 1})
     code, out = run_cli("spawn", "-s", "1", "--dry-run", "--root", str(root))
     assert code == 2 and "writes one-copy resources" in out and "alive here: sender 1" in out, out
+
+
+def _with_model(root, value):
+    profile = {**PROFILE, "fleet": {**PROFILE["fleet"], "model": value}}
+    (root / ".flotilla" / "project.toml").write_text(render_toml(profile), encoding="utf-8")
+    git(root, "add", ".flotilla")
+    commit(root, "model")
+    git(root, "push", "-q", "origin", "main")
+
+
+@pytest.mark.parametrize("word", ["one", "reviewer-strongest", ""])
+def test_spawn_refuses_while_the_fleets_model_is_not_named(tmp_path, monkeypatch, word):
+    """Fleet model design 5.1: a fleet once ran for hours on a model Claude Code had saved for one task."""
+    root = onboarded(tmp_path, monkeypatch)
+    _with_model(root, word)
+    code, out = run_cli("spawn", "--default", "--dry-run", "--root", str(root))
+    assert code == 2 and "! flotilla fleet model <name>" in out, out
+    assert "main session 1" not in out
+
+
+def test_a_dry_run_prints_the_launch_with_its_model(tmp_path, monkeypatch):
+    root = onboarded(tmp_path, monkeypatch)
+    code, out = run_cli("spawn", "--default", "--dry-run", "--root", str(root))
+    assert code == 0, out
+    assert "model: opus (from profile)" in out
+    block = seat_block(out, "main session 1")
+    assert "--model opus" in block and "--append-system-prompt '<...>'" in block
+
+
+def test_the_persons_note_answers_until_trunk_names_a_model(tmp_path, monkeypatch):
+    import datetime as dt
+    from flotilla.fleet import model
+    root = onboarded(tmp_path, monkeypatch)
+    _with_model(root, "one")
+    model.write_note(tmp_path / "state", root, "sonnet", replaced="one", now=dt.datetime.now(dt.timezone.utc))
+    code, out = run_cli("spawn", "--default", "--dry-run", "--root", str(root))
+    assert code == 0, out
+    assert "model: sonnet (from local note (not on trunk yet))" in out
+    assert "--model sonnet" in seat_block(out, "main session 1")

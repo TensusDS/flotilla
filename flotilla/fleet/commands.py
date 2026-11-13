@@ -156,6 +156,19 @@ def _gaps(ledger, counts: dict) -> list[str]:
     return lines
 
 
+def _fleet_profile(ledger) -> tuple[dict, str]:
+    """The profile with the fleet's model named, and the line saying which and from where (fleet model design 5.1);
+    refused when no model is named."""
+    from flotilla.fleet import model as fleet_model
+    main = launch.main_checkout(ledger.root, run=ledger.run)
+    try:
+        profile = fleet_model.resolved(ledger.profile, state=paths.state_dir(), main=main)
+    except fleet_model.ModelUnnamed as err:
+        raise MoveRefused(str(err)) from err
+    name, source = fleet_model.default(ledger.profile, state=paths.state_dir(), main=main)
+    return profile, f"model: {name} (from {source})"
+
+
 def _spawn(ledger, args) -> int:
     from flotilla.ledger.commands import fleet_note
     said = fleet_note(ledger.root, ledger.profile)
@@ -163,6 +176,8 @@ def _spawn(ledger, args) -> int:
         print(f"note: {said}")
     if getattr(args, "lead", False):
         return _lead(ledger, args)
+    profile, model_line = _fleet_profile(ledger)   # before anything is counted: a fleet's model is named
+    print(model_line)
     counts = counts_from(args, ledger.profile)
     recommended = getattr(args, "recommended", False)
     if (args.tasks is not None or args.tasks_file) and not recommended:
@@ -221,12 +236,9 @@ def _spawn(ledger, args) -> int:
                 print(f"note: {said}")
         for seat in seats:
             post = ledger.posts[seat.post]
-            model = launch.model_for(ledger.profile, post)
-            effort = launch.effort_for(ledger.profile, post)
             print(f"{seat.name}  ({seat.post})  tree {seat.tree}  branch {seat.branch}")
-            print(f"    claude --bg -n \"{seat.name}\" --add-dir {seat.tree} --permission-mode "
-                  f"{launch.permission_mode(ledger.profile, post)}" + (f" --model {model}" if model else "") + (f" --effort {effort}" if effort else "")
-                  + f"  (from {main})")
+            command = launch.argv(seat, post, profile, main=main, settings_json=narrow.settings_json(post))
+            print(f"    {launch.shown(command)}  (from {main})")   # the command `raise_seat` runs, not a copy
             off = ", ".join(narrow.turned_off(post)) or "none"
             print(f"    turns off: {off if narrow.entries is not None else 'unknown, ' + plugins.NOT_NARROWED}")
         print(f"dry run: {len(seats)} session(s) planned; nothing was changed")

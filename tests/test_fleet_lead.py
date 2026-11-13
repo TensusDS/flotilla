@@ -103,7 +103,7 @@ def _onboarded_with(tmp_path, monkeypatch, default):
     monkeypatch.setenv("FLOTILLA_NO_CENSUS", "1")
     root = repo_with_origin(tmp_path)
     (root / ".flotilla").mkdir()
-    profile = {**PROFILE, "fleet": {"default": default, "model": "one"}}
+    profile = {**PROFILE, "fleet": {"default": default, "model": "opus"}}
     (root / ".flotilla" / "project.toml").write_text(render_toml(profile), encoding="utf-8")
     install_templates(root)
     git(root, "add", ".flotilla")

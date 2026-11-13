@@ -87,7 +87,7 @@ def test_the_ledger_reads_posts_under_the_profiles_fleet_name(tmp_path, monkeypa
     monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
     root = repo_with_origin(tmp_path)
     (root / ".flotilla").mkdir()
-    profile = {**PROFILE, "fleet": {"name": "beta", "default": {"main": 1}}}
+    profile = {**PROFILE, "fleet": {"name": "beta", "default": {"main": 1}, "model": "opus"}}
     (root / ".flotilla" / "project.toml").write_text(render_toml(profile), encoding="utf-8")
     install_templates(root)
     git(root, "add", ".flotilla")
@@ -163,7 +163,7 @@ def test_spawn_says_when_the_fleet_name_was_taken(tmp_path, monkeypatch):
     project_name.resolve(LocalLogStore(tmp_path / "state" / "fleet"), "another-repo", "app")
     root = repo_with_origin(tmp_path)
     (root / ".flotilla").mkdir()
-    profile = {**PROFILE, "fleet": {"name": "app", "default": {"main": 1}}}
+    profile = {**PROFILE, "fleet": {"name": "app", "default": {"main": 1}, "model": "opus"}}
     (root / ".flotilla" / "project.toml").write_text(render_toml(profile), encoding="utf-8")
     install_templates(root)
     git(root, "add", ".flotilla")

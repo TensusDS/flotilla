@@ -3,7 +3,8 @@
 import subprocess
 from pathlib import Path
 
-PROFILE = {"schema": 1, "trunk": {"branch": "main"}, "flow": {"mode": "pr"}, "review": {"depth": "every"}}
+PROFILE = {"schema": 1, "trunk": {"branch": "main"}, "flow": {"mode": "pr"}, "review": {"depth": "every"},
+           "fleet": {"model": "opus"}}
 DEFAULT_LIVE = ("main session 1", "minor session 1", "review session 1", "review session 2", "sender 1",
                 "orchestrator 1", "acceptance judge 1")
 

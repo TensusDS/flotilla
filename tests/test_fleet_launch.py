@@ -37,15 +37,21 @@ def test_a_posts_own_permission_mode_wins():
 
 
 def test_the_strongest_reviewer_answer_reaches_every_post_that_may_accept():
-    profile = {"fleet": {"model": "reviewer-strongest"}}
+    profile = {"fleet": {"model": "sonnet", "reviewers": "opus"}}
     assert launch.model_for(profile, POSTS["reviewer"]) == "opus"
-    assert launch.model_for(profile, POSTS["main"]) == ""
-    assert launch.model_for({"fleet": {"model": "one"}}, POSTS["reviewer"]) == ""
+    assert launch.model_for(profile, POSTS["main"]) == "sonnet"
+    assert launch.model_for({"fleet": {"model": "reviewer-strongest"}}, POSTS["reviewer"]) == "opus"   # unresolved
+
+
+def test_a_posts_own_model_beats_the_reviewers_model():   # fleet model design 5.1: the post's own model first
+    import dataclasses
+    own = dataclasses.replace(POSTS["reviewer"], model="haiku")
+    assert launch.model_for({"fleet": {"model": "sonnet", "reviewers": "opus"}}, own) == "haiku"
 
 
 def test_the_argv_names_the_session_its_tree_and_its_post():
     seat = launch.seat_for(MAIN, POSTS["reviewer"], "review session 3")
-    argv = launch.argv(seat, POSTS["reviewer"], {"permissions": {"mode": "auto"}}, main=MAIN)
+    argv = launch.argv(seat, POSTS["reviewer"], {"permissions": {"mode": "auto"}, "fleet": {"model": "opus"}}, main=MAIN)
     assert argv[:8] == ["claude", "--bg", "-n", "review session 3", "--add-dir", "/work/app-reviewer-3",
                         "--permission-mode", "auto"]
     prompt = argv[argv.index("--append-system-prompt") + 1]
@@ -63,16 +69,41 @@ def test_a_named_fleet_model_runs_every_post_without_its_own():
     assert launch.model_for({"fleet": {"model": "sonnet"}}, own) == "opus"
 
 
-def test_one_for_all_still_inherits():
+def test_an_unresolved_profile_names_no_model():
     assert launch.model_for({"fleet": {"model": "one"}}, POSTS["main"]) == ""
     assert launch.model_for({}, POSTS["main"]) == ""
+
+
+def test_argv_always_has_the_model():   # fleet model design 5.1: no seat inherits what Claude Code last saved
+    import dataclasses
+    seat = launch.seat_for(MAIN, POSTS["main"], "main session 1")
+    profile = {"fleet": {"model": "opus"}}
+    argv = launch.argv(seat, POSTS["main"], profile, main=MAIN)
+    assert argv[argv.index("--model") + 1] == "opus"
+    own = dataclasses.replace(POSTS["main"], model="sonnet")
+    argv = launch.argv(seat, own, profile, main=MAIN)
+    assert argv[argv.index("--model") + 1] == "sonnet"
+
+
+def test_argv_refuses_a_profile_that_names_no_model():
+    seat = launch.seat_for(MAIN, POSTS["main"], "main session 1")
+    with pytest.raises(launch.LaunchError, match="flotilla fleet model"):
+        launch.argv(seat, POSTS["main"], {"fleet": {"model": "one"}}, main=MAIN)
+
+
+def test_shown_hides_the_long_values():
+    seat = launch.seat_for(MAIN, POSTS["main"], "main session 1")
+    argv = launch.argv(seat, POSTS["main"], {"fleet": {"model": "opus"}}, main=MAIN, settings_json='{"a": 1}')
+    text = launch.shown(argv)
+    assert "--model opus" in text and "--settings '<...>'" in text and "--append-system-prompt '<...>'" in text
+    assert launch.FIRST_PROMPT not in text and text.endswith("'<...>'")
 
 
 def test_the_argv_carries_the_plugin_settings_as_one_element():
     import json
     seat = launch.seat_for(MAIN, POSTS["reviewer"], "review session 3")
     settings = json.dumps({"enabledPlugins": {'odd"id@m': False, "pdf@m": False}})
-    argv = launch.argv(seat, POSTS["reviewer"], {"permissions": {"mode": "auto"}}, main=MAIN,
+    argv = launch.argv(seat, POSTS["reviewer"], {"permissions": {"mode": "auto"}, "fleet": {"model": "opus"}}, main=MAIN,
                        settings_json=settings)
     assert argv[argv.index("--settings") + 1] == settings
     assert json.loads(argv[argv.index("--settings") + 1]) == {"enabledPlugins": {'odd"id@m': False, "pdf@m": False}}
@@ -81,8 +112,8 @@ def test_the_argv_carries_the_plugin_settings_as_one_element():
 
 def test_no_plugin_settings_means_no_settings_flag():
     seat = launch.seat_for(MAIN, POSTS["reviewer"], "review session 3")
-    assert "--settings" not in launch.argv(seat, POSTS["reviewer"], {}, main=MAIN)
-    assert "--settings" not in launch.argv(seat, POSTS["reviewer"], {}, main=MAIN, settings_json="")
+    assert "--settings" not in launch.argv(seat, POSTS["reviewer"], {"fleet": {"model": "opus"}}, main=MAIN)
+    assert "--settings" not in launch.argv(seat, POSTS["reviewer"], {"fleet": {"model": "opus"}}, main=MAIN, settings_json="")
 
 
 def test_a_post_may_narrow_the_profiles_permission_mode_never_widen_it():
@@ -133,13 +164,13 @@ def test_a_posts_effort_reaches_the_launch():
     import dataclasses
     seat = launch.seat_for(MAIN, POSTS["reviewer"], "review session 3")
     post = dataclasses.replace(POSTS["reviewer"], effort="max")
-    argv = launch.argv(seat, post, {"permissions": {"mode": "auto"}}, main=MAIN)
+    argv = launch.argv(seat, post, {"permissions": {"mode": "auto"}, "fleet": {"model": "opus"}}, main=MAIN)
     assert argv[argv.index("--effort") + 1] == "max"
 
 
 def test_no_effort_named_passes_no_flag():
     seat = launch.seat_for(MAIN, POSTS["main"], "main session 3")
-    assert "--effort" not in launch.argv(seat, POSTS["main"], {"permissions": {"mode": "auto"}}, main=MAIN)
+    assert "--effort" not in launch.argv(seat, POSTS["main"], {"permissions": {"mode": "auto"}, "fleet": {"model": "opus"}}, main=MAIN)
 
 
 def test_the_profile_names_an_effort_per_post_and_a_posts_own_wins():
