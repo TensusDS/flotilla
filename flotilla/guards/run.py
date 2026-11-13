@@ -410,13 +410,40 @@ def allowance(command: str, cwd, root, *, session_id: str = "", run=subprocess.r
     return "", ""
 
 
+class _TooLong(Exception):
+    """The command is past MAX_READ."""
+
+
+#: The longest command the guards read: some readings grow with the square of a line, and a hook killed at its
+#: timeout lets the line run - the real move first, then a crafted tail (the review of 5c6b31d). At this length every
+#: reading together takes a few seconds; an ordinary command is under 2000 characters, and a long script or message
+#: goes in a file the command names.
+MAX_READ = 16_000
+
+
+def too_long(command: str) -> Finding:
+    """A command past MAX_READ, unread: refused when it may push, as on any failure to read; else the person's."""
+    refuse = on_failure(command, RuntimeError("too long to read")).refuse
+    head = (f"flotilla: this command is {len(command)} characters, more than the guards read in time ({MAX_READ}), "
+            "so it was not read")
+    if refuse:
+        return Finding("size", True, head + "; a command that may push is refused unread - the person runs it "
+                                            "themselves, with `!` in front or in a terminal.")
+    return Finding("size", False, head + "; the person decides whether it runs. A long script or message goes in a "
+                                         "file the command names.", ask=True)
+
+
 def guard_hook(command: str, cwd, root, out, *, env=os.environ, run=subprocess.run, mode: str = "",
                session_id: str = "", tool_input: dict | None = None) -> int:
     try:
+        if len(command) > MAX_READ:
+            raise _TooLong
         from flotilla.guards import push
         # asked even of a call that carries no id: its process still runs under the session that made it
         findings = evaluate(command, cwd, root, env=env, run=run, who=lambda: push.callers(session_id),
                             session_id=session_id)
+    except _TooLong:
+        findings = [too_long(command)]
     except Exception as err:  # noqa: BLE001 - decided by reversibility: a command that may push is refused
         findings = [on_failure(command, err)]
     refusals = [finding.text for finding in findings if finding.refuse]

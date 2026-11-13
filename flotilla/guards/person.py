@@ -235,9 +235,10 @@ def _names_fleet_model(words: list[str]) -> bool:
                 space = _parser().parse_args(words[at + 1:])
         except SystemExit:   # a line the parser refuses runs nothing; read its plain words all the same
             plain = [item for item in after if not item.startswith("-")]
-            if any(_is(item, "fleet") and any(_is(later, "model") and plain[spot + 1:][index + 1:]
-                                              for index, later in enumerate(plain[spot + 1:]))
-                   for spot, item in enumerate(plain)):
+            spot = next((index for index, item in enumerate(plain) if _is(item, "fleet")), None)
+            named = None if spot is None else next(
+                (index for index in range(spot + 1, len(plain)) if _is(plain[index], "model")), None)
+            if named is not None and named + 1 < len(plain):   # linear: the first fleet, then a model and a word
                 return True
             continue
         if getattr(space, "command", "") == "fleet" and getattr(space, "action", "") == "model" \
@@ -439,8 +440,8 @@ WRAPPED_ASK = ("flotilla: this line hands flotilla commands to an interpreter as
                "which the guard cannot read move by move, so the person decides whether it runs. Written out as "
                "plain flotilla commands, one per call, it needs no one's yes.")
 UNREADABLE_MOVE_ASK = ("flotilla: this code spells a move only the person makes (`work approve`, `rig enable`, "
-                       "`attention digest`...) through a program the guard cannot name, so the person decides "
-                       "whether it runs.")
+                       "`attention digest`, `fleet model <name>`...) through a program the guard cannot name, so the "
+                       "person decides whether it runs.")
 
 
 def _judge(text: str, *, ask_on_flotilla: bool) -> Finding | None:

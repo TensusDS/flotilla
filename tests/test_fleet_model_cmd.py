@@ -172,9 +172,10 @@ def test_a_name_from_a_variable_or_xargs_is_refused(tmp_path, monkeypatch, line)
     assert answer and answer["permissionDecision"] == "deny", answer
 
 
-def test_inherit_is_not_a_models_name(tmp_path, monkeypatch):   # review M7
+@pytest.mark.parametrize("word", ["inherit", "INHERIT", "One"])
+def test_inherit_is_not_a_models_name(tmp_path, monkeypatch, word):   # review M7
     root = project(tmp_path, monkeypatch)
-    code, out = run_cli("fleet", "model", "INHERIT", "--root", str(root))
+    code, out = run_cli("fleet", "model", word, "--root", str(root))
     assert code == 2 and "not a model's name" in out
 
 
@@ -210,3 +211,43 @@ def test_reading_crafted_text_stays_quick():   # commit security review of bbf74
         started = time.perf_counter()
         person._judge("flotilla " + text, ask_on_flotilla=True)
         assert time.perf_counter() - started < 2.0
+
+
+@pytest.mark.parametrize("line, decision", [
+    ("python3 -c 'from flotilla.fleet import model'", "deny"),
+    ("python3 -c 'print(\"the fleet runs one model\")'", "ask"),
+])
+def test_a_read_of_the_model_inside_an_interpreter_is_never_passed_silently(tmp_path, monkeypatch, line, decision):
+    """The safe side, on purpose (5c6b31d): a reading that let reads through let names through too."""
+    root = project(tmp_path, monkeypatch)
+    answer = ask(root, line, monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == decision, answer
+    if decision == "ask":
+        assert "fleet model" in answer["permissionDecisionReason"]
+
+
+def test_a_line_too_long_to_read_in_time_is_put_to_the_person(tmp_path, monkeypatch):
+    """Review of 5c6b31d: some readings grow with the square of a line, and a hook past its timeout lets the line
+    run - the real move first, then a crafted tail. Past the length the guards read in time, the person decides."""
+    import time
+    root = project(tmp_path, monkeypatch)
+    for tail in ("python3 -c 'flotilla " + "rig " * 25000 + "'", "echo " + "flotilla " * 4000,
+                 "echo flotilla " + "fleet " * 25000 + "model"):
+        started = time.perf_counter()
+        answer = ask(root, f"{CLI} status; " + tail, monkeypatch, tmp_path)
+        assert time.perf_counter() - started < 5.0
+        assert answer and answer["permissionDecision"] in ("ask", "deny"), answer
+    answer = ask(root, "git push origin main # " + "x" * 20000, monkeypatch, tmp_path)
+    assert answer["permissionDecision"] == "deny"   # a push unread is refused, as on any failure to read
+
+
+def test_a_line_just_under_the_cap_is_still_read_in_time(tmp_path, monkeypatch):
+    import time
+    from flotilla.guards import run
+    root = project(tmp_path, monkeypatch)
+    room = run.MAX_READ - len(f"{CLI} fleet model opus; echo ")
+    for tail in ("flotilla " * (room // 9), "rig " * (room // 4), "fleet " * (room // 6)):
+        started = time.perf_counter()
+        answer = ask(root, f"{CLI} fleet model opus; echo " + tail, monkeypatch, tmp_path)
+        assert time.perf_counter() - started < 10.0
+        assert answer["permissionDecision"] == "deny"
