@@ -414,23 +414,30 @@ class _TooLong(Exception):
     """The command is past MAX_READ."""
 
 
-#: The longest command the guards read: some readings grow with the square of a line, and a hook killed at its
-#: timeout lets the line run - the real move first, then a crafted tail (the review of 5c6b31d). At this length every
-#: reading together takes a few seconds; an ordinary command is under 2000 characters, and a long script or message
-#: goes in a file the command names.
+#: The longest command the guards read: some readings grow with the square of a line, or faster (the review of
+#: 5c6b31d). The cap alone does not bound them - the review of e05669f measured readings under it that run past a
+#: minute - so the hook also reads within a deadline (`flotilla.hooks.GUARD_DEADLINE`). An ordinary command is under
+#: 2000 characters, and a long script or message goes in a file the command names.
 MAX_READ = 16_000
 
 
-def too_long(command: str) -> Finding:
-    """A command past MAX_READ, unread: refused when it may push, as on any failure to read; else the person's."""
-    refuse = on_failure(command, RuntimeError("too long to read")).refuse
-    head = (f"flotilla: this command is {len(command)} characters, more than the guards read in time ({MAX_READ}), "
-            "so it was not read")
+def unread(command: str, why: str) -> Finding:
+    """A command no guard read: refused when it holds a push word, as on any failure to read; else the person's -
+    never let through silently, since a crafted tail may be what kept it unread."""
+    refuse = on_failure(command, RuntimeError(why)).refuse
+    head = f"flotilla: {why}, so no guard read it"
     if refuse:
-        return Finding("size", True, head + "; a command that may push is refused unread - the person runs it "
-                                            "themselves, with `!` in front or in a terminal.")
+        return Finding("size", True, head + "; it holds `push` or `gh` (as a word or a part of one), and a line "
+                                            "holding them is refused unread. A long script or message goes in a "
+                                            "file the command names; or the person runs the line themselves, with "
+                                            "`!` in front or in a terminal.")
     return Finding("size", False, head + "; the person decides whether it runs. A long script or message goes in a "
                                          "file the command names.", ask=True)
+
+
+def too_long(command: str) -> Finding:
+    """A command past MAX_READ, unread."""
+    return unread(command, f"this command is {len(command)} characters, more than the guards read ({MAX_READ})")
 
 
 def guard_hook(command: str, cwd, root, out, *, env=os.environ, run=subprocess.run, mode: str = "",

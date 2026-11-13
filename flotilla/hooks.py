@@ -9,6 +9,7 @@ not block on what it could not ask.
 from __future__ import annotations
 
 import datetime as dt
+import io
 import json
 import os
 import re
@@ -25,6 +26,11 @@ HOOK_CHECK_TIMEOUT = 3
 EVENTS = ("session-start", "prompt", "stop", "guard", "permission", "ask", "edit")
 CLI = Path(__file__).resolve().parent.parent / "bin" / "flotilla"
 PEERS_SHOWN = 8
+#: Seconds the guards may read one Bash command. Claude Code discards the output of a PreToolUse hook that reaches
+#: its timeout (30, in hooks/hooks.json) and lets the call go on through the normal permission flow
+#: (code.claude.com/docs/en/hooks, Timeouts), so the hook cuts a reading short itself, with room left for Python's
+#: start: some readings grow faster than a line, under the guards' length cap too (review of e05669f).
+GUARD_DEADLINE = 20
 #: A Bash command naming none of these reaches no guard, so the hook answers before looking anything up. The last
 #: group lets a long run reach the lane guard: the lane's default run patterns and the launchers that run them. A
 #: tier whose program is none of these (`make test`, `./run-tests.sh`) is not warned about unless the line names one.
@@ -84,7 +90,7 @@ def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime
         if not _names_a_guarded_word(command):
             return 0
         try:   # an exception here exits non-zero, which Claude Code does not read as a refusal: the push would run
-            return _guard(command, cwd, payload, out, now)
+            return _guard_in_time(command, cwd, payload, out, now)
         except Exception as err:  # noqa: BLE001 - the guards' own rule for a failure, decided here when they fell
             return _guard_failed(command, err, out)
 
@@ -155,6 +161,81 @@ def _guard(command: str, cwd: Path, payload: dict, out, now) -> int:
     tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else None
     return guard_hook(command, cwd, root, out, mode=str(payload.get("permission_mode") or ""),
                       session_id=str(payload.get("session_id") or ""), tool_input=tool_input)
+
+
+#: What a reading that finished writes before its answer: an empty answer lets the line run, a reading that died
+#: before it is a failure to read.
+_READ = b"\x00"
+
+
+def _guard_in_time(command: str, cwd: Path, payload: dict, out, now) -> int:
+    """`_guard`, in a child process the hook waits for up to GUARD_DEADLINE. Not a thread or an alarm: a regular
+    expression holds the interpreter until it is done. Past the deadline the child and every program it started (its
+    own process group) are killed, and the line gets the answer a line no guard read gets."""
+    import select
+    import signal
+    read, write = os.pipe()
+    pid = os.fork()
+    if pid == 0:   # the reading; it leaves only through os._exit, so nothing of the parent's runs twice
+        status = 1
+        try:
+            os.close(read)
+            os.setpgid(0, 0)
+            buffer = io.StringIO()
+            try:
+                _guard(command, cwd, payload, buffer, now)
+            except Exception as err:  # noqa: BLE001 - as in run_hook: the guards' own rule for a failure
+                _guard_failed(command, err, buffer)
+            left = memoryview(_READ + buffer.getvalue().encode())
+            while left:
+                left = left[os.write(write, left):]
+            status = 0
+        finally:
+            os._exit(status)
+    os.close(write)
+    try:
+        os.setpgid(pid, pid)   # either side may set it first; the kill below needs it set before it runs
+    except OSError:
+        pass
+    chunks, finished, end = [], False, time.monotonic() + GUARD_DEADLINE
+    try:
+        while (left := end - time.monotonic()) > 0:
+            if not select.select([read], [], [], left)[0]:
+                continue
+            chunk = os.read(read, 65536)
+            if not chunk:
+                finished = True
+                break
+            chunks.append(chunk)
+    finally:
+        os.close(read)
+        try:
+            os.killpg(pid, signal.SIGKILL)   # a git still running is the reading's, finished or not
+        except OSError:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except OSError:
+                pass
+        os.waitpid(pid, 0)
+    data = b"".join(chunks)
+    if not finished:
+        return _unread(command, f"the guards did not finish reading this command in {GUARD_DEADLINE} seconds", out)
+    if not data.startswith(_READ):
+        return _guard_failed(command, RuntimeError("the guards' reading ended without an answer"), out)
+    out.write(data[len(_READ):].decode())
+    return 0
+
+
+def _unread(command: str, why: str, out) -> int:
+    try:
+        from flotilla.guards.run import unread
+        finding = unread(command, why)
+    except Exception:  # noqa: BLE001 - the guards' last-resort rule for a failure
+        return _guard_failed(command, RuntimeError(why), out)
+    body = {"hookEventName": "PreToolUse", "permissionDecision": "deny" if finding.refuse else "ask",
+            "permissionDecisionReason": finding.text}
+    print(json.dumps({"hookSpecificOutput": body}), file=out)
+    return 0
 
 
 #: `flotilla.guards.PUSH_WORDS`, for a failure in which even that module cannot be imported (a test keeps them equal)

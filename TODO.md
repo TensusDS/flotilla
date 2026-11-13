@@ -69,6 +69,25 @@ command that every guard shares, not one more reading.
   `work adopt` do it by hand. *(checked 2026-11-13 on 0.32.0: open - docs/specs/2026-11-13-fleet-model-design.md,
   non-goals)*
 
+## From the reviews of 0.32.0 (2026-11-13, the fleet's model)
+
+The guard hook now answers within its deadline, so what is left costs time and asks the person more often - it
+lets nothing through unread.
+
+- **The person guard reads `--` prefixes once per `flotilla` word**, with a CLI parse each time: a line of 4 900
+  characters made of `flotilla --` takes 33 seconds (measured 2026-11-13), and the deadline answers it with a
+  question to the person. One parse of the line is refactor item 2 (`ParsedCommand`). *(checked 2026-11-13 on
+  0.32.0: open - flotilla/guards/person.py check, _local)*
+- **The push guard asks origin for every push in a line**: `origin_trunk` runs `ls-remote` and up to three more git
+  calls per push segment, with no cache within one reading, so a line of many pushes on a slow network reaches the
+  deadline and is refused unread. *(checked 2026-11-13 on 0.32.0: open - flotilla/guards/push.py origin_trunk and
+  its three callers)*
+- **A failure to read refuses on `gh` inside any word** (`through`): `on_failure` looks for the push words as text.
+  The refusal now says so and names the file to put a long part in. *(checked 2026-11-13 on 0.32.0: open, kept on
+  the safe side - flotilla/guards/__init__.py on_failure)*
+- **Smaller readings that grow faster than a line**: the de-duplication in `flotilla/guards/shell.py` (about line
+  265) is quadratic, and `_judge` runs once per interpreter segment. *(checked 2026-11-13 on 0.32.0: open)*
+
 ## From the reviews of 0.31.5 (2026-11-13, the daemon applies the fair share)
 
 Four review rounds; what is left changes no start the daemon makes on the fleets known.
