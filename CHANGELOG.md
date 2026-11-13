@@ -3,7 +3,23 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
-## 0.31.5 - 2026-11-13
+## 0.32.0 - 2026-11-13
+
+A field fleet ran for hours on a costlier model switched for one analysis - Claude Code saves a `/model` choice as
+its default for new sessions - until the model's weekly limit stopped every seat. This release closes the cause.
+
+- **Every seat runs on the model the profile names.** `spawn` launches each seat with `--model`: the post's own
+  model, else `[fleet] reviewers` for a post that may accept work, else `[fleet] model`. What Claude Code was last
+  switched to no longer reaches a seat. `flotilla fleet` shows the model each seat runs on, and a dry run prints the
+  very command a launch runs.
+- **The person names the model, once, after the update.** A profile that names no model (`one`, the old "whichever
+  Claude Code runs") raises no seat: the orchestrator puts the question to the person, the person's queue holds it,
+  `flotilla doctor` names it, and `spawn` says the line - `! flotilla fleet model <name>`. That line is the
+  person's own (a session's tool call is refused); it writes the profile, to be landed, and holds on the machine
+  until trunk names a model. A strongest-reviewer profile keeps its reviewers on Opus, now named
+  (`reviewers = "opus"`), so a newer, costlier model never reaches them unasked.
+- **Onboarding asks for a model by name:** Opus, Sonnet, or Sonnet with reviewers on Opus, or one typed.
+
 
 - **`lane_share = "fair"` works again under the lane daemon.** Since 0.31.0 the daemon decides who starts, and it
   never read the setting: waiters of equal priority went first come, first served whatever `machine.toml` said,

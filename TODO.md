@@ -58,6 +58,17 @@ command that every guard shares, not one more reading.
   quotes not read. A false refusal, met while reading the guards. *(checked 2026-11-10 on 0.31.2: open -
   flotilla/guards/person.py check)*
 
+## From the fleet's model (2026-11-13, 0.32.0 and the design's later releases)
+
+- **Choosing a model per task on the fly** (the person's idea): the plugin describes classes of task, their weight
+  and the model each is pinned to, and the orchestrator picks the model for a seat's task from them - more room for
+  the orchestrator than one default and a borrowed seat. *(checked 2026-11-13 on 0.32.0: open, an idea - design
+  first)*
+- **Moving a whole fleet to another model in one command**, keeping its rows and resending its letters (a field
+  report's ask): with seats pinned it is needed only when the default model itself is limited; retire, spawn and
+  `work adopt` do it by hand. *(checked 2026-11-13 on 0.32.0: open - docs/specs/2026-11-13-fleet-model-design.md,
+  non-goals)*
+
 ## From the reviews of 0.31.5 (2026-11-13, the daemon applies the fair share)
 
 Four review rounds; what is left changes no start the daemon makes on the fleets known.
