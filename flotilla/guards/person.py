@@ -347,9 +347,10 @@ def check(segment) -> Finding | None:
                                     "move it runs cannot be read before it runs. " + PLAINLY)
     built = (braces or any("$" in word or "`" in word for word in rest)) and any(word in GUARDED for word in rest)
     named = built or any(_may_be(word, "rig") or _may_be(word, "work") or _may_be(word, "attention")
-                         for word in rest)
+                         or _may_be(word, "fleet") for word in rest)
     if (words and _opaque(words[0]) and named) or any(
-            _opaque(command) or ((_is(command, "rig") or _is(command, "work")) and _opaque(move))
+            _opaque(command) or ((_is(command, "rig") or _is(command, "work") or _is(command, "fleet"))
+                                 and _opaque(move))
             for command, move in _reads(words)):
         return Finding(GUARD, True, "flotilla: the program, command or move here is a variable or a substitution, so "
                                     "what it runs cannot be read before it runs - and some flotilla moves are the "
@@ -386,7 +387,7 @@ _INTERPRETER = re.compile(r"(?:sh|bash|zsh|dash|ksh|fish|python(?:\d+(?:\.\d+)?)
 _PERSONS_MOVE = re.compile(r"\bwork\b[\s'\",\[\]+]+approve\b"
                            r"|\brig\b[\s'\",\[\]+]+(?:enable|disable|open|close|allow-image|unshare|share)\b"
                            r"|\battention\b[\s'\",\[\]+]+(?:all|digest)\b"
-                           r"|\bfleet\b[\s'\",\[\]+]+model\b[\s'\",\[\]+]+[A-Za-z0-9]")
+                           r"|\bfleet\b[\s\S]*?\bmodel\b[\s'\",\[\]+]+[A-Za-z0-9]")
 #: The same moves' words anywhere in the code - a command built in pieces - judged only where flotilla is named too.
 #: `share` is a common word (`--why 'share gpu'`, `grep share`): anywhere after `rig` it counts only as a quoted token
 #: of its own - an argv element (`cmd.append('share')`) - so a command built in code, on standard input too, is still
@@ -398,7 +399,7 @@ _SHARE_WORD, _RIG_WORD = re.compile(r"\b(?:unshare|share)\b"), re.compile(r"\bri
 _MOVE_WORDS = re.compile(r"\bapprove\b|\brig\b[\s\S]*?\b(?:enable|disable|open|close|allow-image)\b"
                          r"|\brig\b[\s\S]*?['\"](?:unshare|share)['\"]"
                          r"|\battention\b[\s\S]*?\b(?:all|digest)\b"
-                         r"|\bfleet\b[\s'\",\[\]+]+model\b[\s'\",\[\]+]+[A-Za-z0-9]")
+                         r"|\bfleet\b[\s\S]*?\bmodel\b[\s'\",\[\]+]+[A-Za-z0-9]")
 #: flotilla as the program a line runs - `flotilla`, `.../bin/flotilla`, `flotilla.cli`, `-m flotilla` - never a path
 #: or a name it is part of (`flotilla-field`, `.flotilla/`, `~/.config/flotilla`): those are reads, not runs.
 _FLOTILLA = re.compile(r"(?:^|[\s'\"(\[,;|&`=])(?:\S*/bin/)?flotilla(?![\w./-])|\bflotilla\.cli\b"
@@ -409,9 +410,9 @@ _FLOTILLA_ANY = re.compile(r"(?:^|[\s'\"(\[,;|&`=])(?:\S*/)?flotilla(?![\w./-])|
                            r"|-m[\s'\",]+flotilla\b|\b(?:from|import)\s+flotilla\b")
 WRAPPED_REFUSAL = ("flotilla: this line hands code to an interpreter (`bash -c`, `python3 -c`, a pipe, a heredoc or a "
                    "here-string), and that code runs a move only the person makes - approving work, turning rented "
-                   "machines on or off or spending on them, how the person is asked, or the fleet's model. A Claude tool call never runs "
-                   "it, wrapped or not: show the person the line; they type it with `!` in front in their own Claude "
-                   "Code session, or run it in a terminal.")
+                   "machines on or off or spending on them, how the person is asked, or the fleet's model. A Claude "
+                   "tool call never runs it, wrapped or not: show the person the line; they type it with `!` in front "
+                   "in their own Claude Code session, or run it in a terminal.")
 WRAPPED_ASK = ("flotilla: this line hands flotilla commands to an interpreter as text (`bash -c`, `python3 -c`), "
                "which the guard cannot read move by move, so the person decides whether it runs. Written out as "
                "plain flotilla commands, one per call, it needs no one's yes.")

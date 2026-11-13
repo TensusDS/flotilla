@@ -121,3 +121,11 @@ def test_wrapped_naming_is_refused(tmp_path, monkeypatch):
     root = project(tmp_path, monkeypatch)
     answer = ask(root, f"bash -c '{CLI} fleet model opus'", monkeypatch, tmp_path)
     assert answer and answer["permissionDecision"] == "deny"
+
+
+@pytest.mark.parametrize("line", ["{cli} fleet $A opus", "{cli} fleet m*del opus", "{cli} fleet `echo model` opus",
+                                  "bash -c '{cli} fleet --root . model opus'"])
+def test_a_naming_the_guard_cannot_read_is_refused(tmp_path, monkeypatch, line):   # commit security review
+    root = project(tmp_path, monkeypatch)
+    answer = ask(root, line.format(cli=CLI), monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny", answer
