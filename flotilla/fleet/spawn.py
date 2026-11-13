@@ -451,7 +451,8 @@ def raise_seat(ledger, seat: launch.Seat, *, caller: str, census, wait: float = 
                 raise MoveRefused(rival)
             row = s.append(actor, next_row_id(s.rows), "reserve", "reserved",
                            fields={"branch": seat.branch, "owner": seat.name, "tree": str(seat.tree),
-                                   **(fields or {})})
+                                   **(fields or {})},
+                           evidence={"model": launch.model_for(profile, post)})
     except MoveRefused as err:
         _take_back_git(ledger, seat)
         raise SpawnRefused(f"the post row for {seat.name} was refused: {err}; the tree and branch were taken "

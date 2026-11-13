@@ -330,7 +330,8 @@ def _fleet(ledger, args) -> int:
         tree = item["tree"] if item["tree_exists"] else f"{item['tree']} (missing)"
         lock = "locked" if item["locked"] else "not locked"
         work = ", ".join(f"{row.branch} ({row.state})" for row in item["work"]) or "no open work"
-        print(f"{item['name']}  ({item['post'] or 'no post'})  {live}\n    tree {tree}{dirty}, {lock}; {work}")
+        model = f"model {item.get('model') or 'unknown'}"
+        print(f"{item['name']}  ({item['post'] or 'no post'})  {live}, {model}\n    tree {tree}{dirty}, {lock}; {work}")
     import datetime as _dt
     from flotilla.core import paths as _paths
     from flotilla.rig import surface

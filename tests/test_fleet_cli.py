@@ -195,6 +195,7 @@ def test_the_fleet_names_a_stranger_in_a_seat_tree(tmp_path, monkeypatch):
     assert f"{tree.name}-3  not a fleet session (started in {tree}): most often a seat's subagent or fork" in out
     assert "nothing to do" in out and "second writer" in out
     assert out.count("main session 1") == 1
+    assert "model opus" in out   # fleet model design 5.1: the census of seats names each seat's model
 
 
 def _a_session(name, cwd):

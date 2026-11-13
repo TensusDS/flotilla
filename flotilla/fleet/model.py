@@ -115,6 +115,16 @@ def reviewers(profile: dict) -> str:
     return STRONGEST_REVIEWERS if fleet.get("model") == "reviewer-strongest" else ""
 
 
+def recorded(row) -> str:
+    """The model a seat's post row says it was raised on: its `reserve` event's evidence (fleet model design 5.4);
+    "" for a seat raised before 0.32."""
+    for event in row.history:
+        if event.get("move") == "reserve":
+            value = (event.get("evidence") or {}).get("model")
+            return value if isinstance(value, str) else ""
+    return ""
+
+
 def unnamed_message() -> str:
     return ("the fleet's model is not named: flotilla no longer lets seats inherit the model Claude Code last saved "
             "(a /model switch for one task would carry every seat with it). The person names it: "
