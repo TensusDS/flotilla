@@ -193,3 +193,12 @@ def test_a_name_goes_only_with_model(tmp_path, monkeypatch, action):   # review 
     root = project(tmp_path, monkeypatch, fleet={"name": "app", "model": "opus", "default": {"main": 1}})
     code, out = run_cli("fleet", action, "opus", "--root", str(root))
     assert code == 2 and "only with `fleet model`" in out
+
+
+@pytest.mark.parametrize("line", ["bash -c 'echo opus | xargs {cli} fleet model'",
+                                  "bash -c 'xargs -a names.txt {cli} fleet model'",
+                                  "echo 'echo opus | parallel {cli} fleet model' | bash"])
+def test_wrapped_code_feeding_the_name_by_xargs_is_refused(tmp_path, monkeypatch, line):   # security review, c8afd84
+    root = project(tmp_path, monkeypatch)
+    answer = ask(root, line.format(cli=CLI), monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny", answer

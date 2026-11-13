@@ -394,8 +394,9 @@ def check(segment) -> Finding | None:
 #: Programs that run code handed to them as text, on their command line or on their standard input.
 _INTERPRETER = re.compile(r"(?:sh|bash|zsh|dash|ksh|fish|python(?:\d+(?:\.\d+)?)?|perl|ruby|node)")
 #: `fleet model` and then a name: options and punctuation may stand between, never only the two words (a read).
-_FLEET_NAMING = (r"\bfleet\b[\s\S]*?\bmodel\b(?:[\s'\",\[\]+]+(?:-\S*|[^\sA-Za-z0-9$`]\S*))*"
-                 r"[\s'\",\[\]+]+[A-Za-z0-9$`]")
+#: Behind xargs or parallel the name comes from their input, so the two words are enough (security review, c8afd84).
+_FLEET_NAMING = (r"(?:\bfleet\b[\s\S]*?\bmodel\b(?:[\s'\",\[\]+]+(?:-\S*|[^\sA-Za-z0-9$`]\S*))*"
+                 r"[\s'\",\[\]+]+[A-Za-z0-9$`]|\b(?:xargs|parallel)\b[\s\S]*?\bfleet\b[\s\S]*?\bmodel\b)")
 #: A move only the person makes, spelled as the CLI reads it - in a command line or an argv list (`'rig', 'open'`).
 #: `approve` alone is not one: `gh pr review --approve` and a grep for the word are ordinary work (review of bebab1b).
 _PERSONS_MOVE = re.compile(r"\bwork\b[\s'\",\[\]+]+approve\b"
