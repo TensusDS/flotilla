@@ -212,13 +212,25 @@ def test_a_reading_orphaned_by_a_hard_kill_ends_by_itself(tmp_path):
         "payload = {'cwd': '/', 'tool_input': {'command': 'git push origin main'}}\n"
         "hooks.run_hook('guard', io.StringIO(json.dumps(payload)))\n")
     hook = subprocess.Popen([sys.executable, "-I", str(script)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    for _ in range(100):
-        if marker.exists() and marker.read_text():
-            break
-        time.sleep(0.05)
-    hook.send_signal(signal.SIGKILL)
-    hook.communicate(timeout=10)
-    assert gone(int(marker.read_text()), within=15)
+    try:
+        for _ in range(100):
+            if marker.exists() and marker.read_text():
+                break
+            time.sleep(0.05)
+        hook.send_signal(signal.SIGKILL)
+        hook.communicate(timeout=10)
+        pid = int(marker.read_text())
+        ended = gone(pid, within=15)
+        if not ended:   # a failing run leaves no busy loop behind; only a reading known alive is killed
+            try:
+                os.killpg(pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+        assert ended
+    finally:
+        if hook.poll() is None:
+            hook.kill()
+            hook.wait()
 
 
 def test_a_reading_that_cannot_get_a_pipe_is_answered_unread(tmp_path, monkeypatch):

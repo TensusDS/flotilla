@@ -170,8 +170,9 @@ _READ = b"\x00"
 
 def _guard_in_time(command: str, cwd: Path, payload: dict, out, now) -> int:
     """`_guard`, in a child process the hook waits for up to GUARD_DEADLINE. Not a thread or a Python signal handler:
-    a regular expression holds the interpreter until it is done. Past the deadline the child and the programs it started are
-    killed, and the line gets the answer a line no guard read gets; so does a reading that ended before its answer."""
+    a regular expression holds the interpreter until it is done. Past the deadline the child and the programs it
+    started are killed, and the line gets the answer a line no guard read gets; so does a reading that ended before
+    its answer."""
     import signal
     reading: list[int] = []   # the reading's pid, while there is one to end
 

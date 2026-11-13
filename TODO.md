@@ -87,6 +87,16 @@ lets nothing through unread.
   the safe side - flotilla/guards/__init__.py on_failure)*
 - **Smaller readings that grow faster than a line**: the de-duplication in `flotilla/guards/shell.py` (about line
   265) is quadratic, and `_judge` runs once per interpreter segment. *(checked 2026-11-13 on 0.32.0: open)*
+- **A git the reading started outlives a hook killed outright**: the reading's alarm ends the reading alone, so a
+  `git ls-remote` or `git fetch` from the push guard runs on until it ends by itself (an ssh to a host that never
+  answers may not). Only when Claude Code kills the hook (SIGKILL), which the deadline is there to prevent; a small
+  watchdog in the reading's session could `killpg` it. Also bounded by that alarm: a SIGTERM in the few bytecodes
+  between the fork and the pid's recording leaves the reading 5 seconds more. *(checked 2026-11-13 on 0.32.0: open -
+  flotilla/hooks.py _read_in_time)*
+- **Whether to set `onFailure: "block"` on the Bash guard hook** (Claude Code blocks the call when the hook fails or
+  times out): a second line behind the deadline, at the price of every Bash call in a session refused when the hook
+  cannot run at all (no Python, a plugin copy gone). On this machine's transcripts: 1 cancelled of about 115 000
+  Bash hook runs. The person's to decide. *(checked 2026-11-13 on 0.32.0: open - hooks/hooks.json)*
 
 ## From the reviews of 0.31.5 (2026-11-13, the daemon applies the fair share)
 
