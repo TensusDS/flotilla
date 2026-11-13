@@ -75,8 +75,9 @@ def movers(row, profile: dict, live: set[str], post_of, rows: dict | None = None
 def owed_items(found) -> list[Item]:
     """A decision an update owes the person (`flotilla.onboard.owed`): the orchestrator puts it to them, and it
     waits in their queue until answered."""
-    return [Item(OWED, "", f"{item.question} The person answers with `{item.answer}`.", "", who=item.id)
-            for item in found]
+    return [Item(OWED, "", f"decision owed to the person: {item.what} - ask them (AskUserQuestion); they run "
+                           f"`{item.answer}`. {item.question}", "", who=item.id)
+            for item in found]   # what to do first: a shown line is cut at 200 characters (branch review, I3)
 
 
 def fleet(rows: dict, profile: dict, sessions, *, post_of, former_of=None, breaks=(), asking=(), claimers=frozenset(),

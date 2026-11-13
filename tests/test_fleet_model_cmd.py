@@ -138,3 +138,58 @@ def test_a_naming_hidden_by_options_or_splitting_is_refused(tmp_path, monkeypatc
     root = project(tmp_path, monkeypatch)
     answer = ask(root, line.format(cli=CLI), monkeypatch, tmp_path)
     assert answer and answer["permissionDecision"] == "deny", answer
+
+
+@pytest.mark.parametrize("line", ["$CLI fleet model opus", 'bash -c "$CLI fleet model opus"',
+                                  "~/.local/bin/flot* fleet model opus", "~/.local/bin/flot[i]lla fleet model opus",
+                                  "$(ls ~/.local/bin/flot*) fleet model opus"])
+def test_a_naming_without_the_word_flotilla_still_reaches_the_guard(tmp_path, monkeypatch, line):   # review I1
+    root = project(tmp_path, monkeypatch)
+    answer = ask(root, line, monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny", answer
+
+
+def test_the_last_resort_asks_about_a_fleet_line():   # review I1: the guard failing on a model naming
+    from flotilla import guards
+    assert "fleet" in guards.PERSON_WORDS and hooks.LAST_RESORT_PERSON_WORDS == guards.PERSON_WORDS
+
+
+def test_a_profile_it_cannot_edit_safely_is_left_alone(tmp_path, monkeypatch):   # review I2
+    text = ('fleet = { name = "app", model = "one", default = { main = 1 } }\nschema = 1\n[trunk]\nbranch = "main"\n'
+            '[flow]\nmode = "pr"\n[review]\ndepth = "every"\n[permissions]\nmode = "auto"\n')
+    root = project(tmp_path, monkeypatch, text=text)
+    code, out = run_cli("fleet", "model", "sonnet", "--root", str(root))
+    assert code == 2 and 'model = \\"sonnet\\"' not in out and 'model = "sonnet"' in out, out
+    assert (root / ".flotilla" / "project.toml").read_text(encoding="utf-8") == text
+    assert model.note_for(tmp_path / "state", root) is None
+
+
+@pytest.mark.parametrize("line", ["python3 -m flotilla.cli fleet model",
+                                  "{cli} fleet 2>&1 | python3 -c 'import sys; "
+                                  "print(sys.stdin.read().count(\"model\"))'",
+                                  "bash -c 'echo the fleet runs one model; {cli} status'"])
+def test_a_read_inside_an_interpreter_is_not_refused(tmp_path, monkeypatch, line):   # review M1
+    root = project(tmp_path, monkeypatch)
+    answer = ask(root, line.format(cli=CLI), monkeypatch, tmp_path)
+    assert not answer or answer.get("permissionDecision") != "deny", answer
+
+
+@pytest.mark.parametrize("line", ["bash -c '{cli} fleet model $X'", "echo opus | xargs {cli} fleet model",
+                                  "xargs -a names.txt {cli} fleet model"])
+def test_a_name_from_a_variable_or_xargs_is_refused(tmp_path, monkeypatch, line):   # review M1, M2
+    root = project(tmp_path, monkeypatch)
+    answer = ask(root, line.format(cli=CLI), monkeypatch, tmp_path)
+    assert answer and answer["permissionDecision"] == "deny", answer
+
+
+def test_inherit_is_not_a_models_name(tmp_path, monkeypatch):   # review M7
+    root = project(tmp_path, monkeypatch)
+    code, out = run_cli("fleet", "model", "inherit", "--root", str(root))
+    assert code == 2 and "not a model's name" in out
+
+
+@pytest.mark.parametrize("action", ["down", "clean", "size"])
+def test_a_name_goes_only_with_model(tmp_path, monkeypatch, action):   # review M8
+    root = project(tmp_path, monkeypatch, fleet={"name": "app", "model": "opus", "default": {"main": 1}})
+    code, out = run_cli("fleet", action, "opus", "--root", str(root))
+    assert code == 2 and "only with `fleet model`" in out

@@ -37,7 +37,7 @@ GUARD_TRIGGERS = ("checkout", "restore", "reset", "clean", "switch", "sed", "pus
 #: The person's words that are too common as parts of other words (`origin`) to look for as text. As whole words -
 #: or as parts, in a line that holds `$` or a backtick, where bash says where a word begins - they let code handed
 #: to an interpreter (`bash -c 'x rig open'`) reach the guard that reads it.
-GUARD_TRIGGER_PARTS = ("rig", "attention")
+GUARD_TRIGGER_PARTS = ("rig", "attention", "fleet")
 GUARD_TRIGGER_WORDS = re.compile(r"\b(?:%s)\b" % "|".join(GUARD_TRIGGER_PARTS))
 _QUOTING = {ord(sign): None for sign in "'\"\\"}
 
@@ -160,7 +160,7 @@ def _guard(command: str, cwd: Path, payload: dict, out, now) -> int:
 #: `flotilla.guards.PUSH_WORDS`, for a failure in which even that module cannot be imported (a test keeps them equal)
 LAST_RESORT_PUSH_WORDS = ("push", "gh")
 #: `flotilla.guards.PERSON_WORDS`, kept equal the same way
-LAST_RESORT_PERSON_WORDS = ("approve", "rig", "attention")
+LAST_RESORT_PERSON_WORDS = ("approve", "rig", "attention", "fleet")
 
 
 def _guard_failed(command: str, err: Exception, out) -> int:

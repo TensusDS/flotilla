@@ -9,7 +9,7 @@ MINIMUM = (3, 11)
 #: flotilla.guards.PUSH_WORDS, for a guard hook that fails before flotilla can be imported (a test keeps them equal)
 PUSH_WORDS = ("push", "gh")
 #: flotilla.guards.PERSON_WORDS, kept equal the same way
-PERSON_WORDS = ("approve", "rig", "attention")
+PERSON_WORDS = ("approve", "rig", "attention", "fleet")
 
 
 def guard_answer(data, why):
@@ -42,8 +42,8 @@ def guard_answer(data, why):
         "a command that may push is refused on failure. Knowingly: the person runs the command themselves - "
         "with `!` in front, or in a terminal. Where flotilla's pre-push hook is installed, it judges a "
         "`git push` again" if refuse
-        else "this line may hold a move only the person makes (`work approve`, a `rig` move, `attention`) and "
-             "it could not be read, so the person decides whether it runs" if ask
+        else "this line may hold a move only the person makes (`work approve`, a `rig` move, `attention`, "
+             "`fleet model <name>`) and it could not be read, so the person decides whether it runs" if ask
         else "the command runs unchecked")
     if refuse:
         body = {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": text}

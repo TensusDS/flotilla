@@ -30,9 +30,9 @@ class Finding:
 
 PUSH_WORDS = ("push", "gh")
 #: Beside `flotilla` in a line, the words a move only the person makes is spelled with: `work approve`, every
-#: `rig` move, `attention`. A text check, wider than the moves themselves - it decides only what is asked of the
-#: person when no guard could read the line.
-PERSON_WORDS = ("approve", "rig", "attention")
+#: `rig` move, `attention`, `fleet model <name>`. A text check, wider than the moves themselves - it decides only
+#: what is asked of the person when no guard could read the line.
+PERSON_WORDS = ("approve", "rig", "attention", "fleet")
 
 #: How a push the guards could not judge goes through: by the person's own hand alone. Judged, an override waives a
 #: missing receipt and is recorded; here nothing was judged, so an override - in the command's text or in the
@@ -40,7 +40,8 @@ PERSON_WORDS = ("approve", "rig", "attention")
 #: person's ruling on 0.31.3).
 KNOWINGLY = ("the person runs the command themselves - with `!` in front, or in a terminal. Where flotilla's "
              "pre-push hook is installed, it judges a `git push` again")
-PERSONS_UNREAD = ("this line may hold a move only the person makes (`work approve`, a `rig` move, `attention`) "
+PERSONS_UNREAD = ("this line may hold a move only the person makes (`work approve`, a `rig` move, `attention`, "
+                  "`fleet model <name>`) "
                   "and it could not be read, so the person decides whether it runs")
 
 

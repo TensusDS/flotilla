@@ -76,3 +76,53 @@ def test_resolved_names_the_default_and_the_reviewers(tmp_path):
 def test_resolved_refuses_without_a_default(tmp_path):
     with pytest.raises(model.ModelUnnamed, match="flotilla fleet model"):
         model.resolved({"fleet": {"model": "one"}}, state=tmp_path, main=tmp_path / "p")
+
+
+import tomllib
+
+
+BASE = 'schema = 1\n[trunk]\nbranch = "main"\n'
+
+
+@pytest.mark.parametrize("fleet", [
+    '[fleet] # the fleet\nname = "app"\nmodel = "one"\n',
+    '[ fleet ]\nname = "app"\nmodel = "one"\n',
+    '[fleet]\nname = "app"\n"model" = "one"\n',
+    "[fleet]\nname = 'app'\nmodel = 'reviewer-strongest'\n",
+    '[fleet]\nname = "app"\nmodel = "one"\ntags = [\n["a"],\n]\n',
+    '[fleet]\nname = "app"\nmodel = "one"\nnote = """\n[x]\n"""\n',
+])
+def test_with_model_writes_valid_toml_or_refuses(fleet):   # review of the 0.32 branch, I2
+    text = BASE + fleet
+    before = tomllib.loads(text)
+    try:
+        out = model.with_model(text, "sonnet")
+    except model.ProfileEdit:
+        return   # refused: the person makes the one-line edit
+    after = tomllib.loads(out)
+    assert after["fleet"]["model"] == "sonnet"
+    rest = {key: value for key, value in after["fleet"].items() if key not in ("model", "reviewers")}
+    assert rest == {key: value for key, value in before["fleet"].items() if key != "model"}
+    assert {key: value for key, value in after.items() if key != "fleet"} == \
+        {key: value for key, value in before.items() if key != "fleet"}
+    if before["fleet"]["model"] == "reviewer-strongest":
+        assert after["fleet"]["reviewers"] == "opus"
+
+
+@pytest.mark.parametrize("text", ['fleet = { model = "one" }\n' + BASE, 'fleet.model = "one"\n' + BASE,
+                                  BASE + '[[fleet]]\nmodel = "one"\n'])
+def test_with_model_refuses_what_it_cannot_edit_safely(text):
+    with pytest.raises(model.ProfileEdit, match='model = "sonnet"'):
+        model.with_model(text, "sonnet")
+
+
+def test_with_model_keeps_crlf():
+    text = (BASE + '[fleet]\nname = "app"\nmodel = "one"\n').replace("\n", "\r\n")
+    out = model.with_model(text, "sonnet")
+    assert "\r\n" in out and "\n" not in out.replace("\r\n", "")
+    assert tomllib.loads(out)["fleet"]["model"] == "sonnet"
+
+
+def test_family_of_an_older_id_with_its_version_first():   # review M9
+    assert model.family("claude-3-5-sonnet-20241022") == "sonnet"
+    assert model.same("claude-3-5-sonnet-20241022", "sonnet")

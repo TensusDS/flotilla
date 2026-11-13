@@ -26,6 +26,8 @@ LEGACY = ("one", "reviewer-strongest", "")
 #: The model the strongest-reviewer choice gave reviewers before it was named (`launch.STRONGEST` until 0.32).
 STRONGEST_REVIEWERS = "opus"
 NOTE = "fleet-model.json"
+#: Model families an id may name in any of its parts (`claude-3-5-sonnet-20241022`).
+FAMILIES = ("opus", "sonnet", "haiku", "fable")
 FROM_PROFILE, FROM_NOTE = "profile", "local note (not on trunk yet)"
 ANSWER = "! flotilla fleet model <name>"
 
@@ -37,9 +39,10 @@ class ModelUnnamed(LaunchError):
 def family(name: str) -> str:
     """`claude-opus-5-5`, `opus[1m]`, `opusplan` -> `opus`; a name of no known shape is itself."""
     base = re.sub(r"\[[^\]]*\]$", "", name.strip().lower())
-    found = re.fullmatch(r"claude-([a-z]+)(?:-.*)?", base)
-    if found:
-        return found.group(1)
+    if base.startswith("claude-"):   # `claude-opus-5-5`, and an older id with its version first
+        parts = base.split("-")[1:]
+        known = [part for part in parts if part in FAMILIES]
+        return known[0] if known else parts[0]
     if base.endswith("plan") and base[:-4]:
         return base[:-4]
     return base
@@ -115,24 +118,65 @@ def reviewers(profile: dict) -> str:
     return STRONGEST_REVIEWERS if fleet.get("model") == "reviewer-strongest" else ""
 
 
+class ProfileEdit(RuntimeError):
+    """The profile could not be edited safely; the message gives the one-line edit for the person to make."""
+
+
+_HEADER = re.compile(r"""^\s*\[\s*fleet\s*\]\s*(?:#.*)?$""")
+#: A table header of any name - `[a]`, `[a.b]`, `[[a]]`, quoted parts - with nothing after it but a comment.
+_ANY_TABLE = re.compile(r"""^\s*\[\[?\s*[A-Za-z0-9_\-"'. ]+\s*\]\]?\s*(?:#.*)?$""")
+_KEY = r"""^\s*(?:%s|"%s"|'%s')\s*="""
+
+
 def with_model(text: str, name: str) -> str:
-    """The profile's text with `[fleet] model = "<name>"`, every other line kept as written. A strongest-reviewer
-    profile gets `reviewers = "opus"` beside it, so its reviewers stay where they were."""
-    lines = text.splitlines()
-    start = next((i for i, line in enumerate(lines) if line.strip() == "[fleet]"), None)
+    """The profile's text with `[fleet] model = "<name>"`, every other line kept as written, line endings too. A
+    strongest-reviewer profile gets `reviewers = "opus"` beside it, so its reviewers stay where they were. The result
+    is parsed before it is returned: an edit that would change anything else, or not parse, is refused with the
+    line for the person to write (the branch review of 0.32, I2)."""
+    import tomllib
     entry = f'model = "{name}"'
+    try:
+        before = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as err:
+        raise ProfileEdit(_by_hand(name, f"the profile does not parse ({err})")) from err
+    fleet_before = before.get("fleet", {})
+    if not isinstance(fleet_before, dict):
+        raise ProfileEdit(_by_hand(name, "`fleet` is not a plain table here"))
+    strongest = fleet_before.get("model") == "reviewer-strongest" and "reviewers" not in fleet_before
+    extra = [f'reviewers = "{STRONGEST_REVIEWERS}"'] if strongest else []
+    newline = "\r\n" if "\r\n" in text else "\n"
+    lines = text.replace("\r\n", "\n").split("\n")
+    start = next((i for i, line in enumerate(lines) if _HEADER.match(line)), None)
     if start is None:
-        return text.rstrip("\n") + f"\n\n[fleet]\n{entry}\n"
-    end = next((i for i in range(start + 1, len(lines)) if lines[i].lstrip().startswith("[")), len(lines))
-    at = next((i for i in range(start + 1, end) if re.match(r"\s*model\s*=", lines[i])), None)
-    strongest = at is not None and re.match(r'\s*model\s*=\s*"reviewer-strongest"', lines[at])
-    has_reviewers = any(re.match(r"\s*reviewers\s*=", lines[i]) for i in range(start + 1, end))
-    extra = [f'reviewers = "{STRONGEST_REVIEWERS}"'] if strongest and not has_reviewers else []
-    if at is None:
-        lines[start + 1:start + 1] = [entry]
+        if "fleet" in before:   # an inline table, dotted keys or an array of tables: not a line to edit
+            raise ProfileEdit(_by_hand(name, "`fleet` is not written as a `[fleet]` table"))
+        out = text.rstrip("\r\n") + newline * 2 + newline.join(["[fleet]", entry, *extra]) + newline
     else:
-        lines[at:at + 1] = [entry, *extra]
-    return "\n".join(lines) + "\n"
+        end = next((i for i in range(start + 1, len(lines)) if _ANY_TABLE.match(lines[i])), len(lines))
+        at = next((i for i in range(start + 1, end) if re.match(_KEY % (("model",) * 3), lines[i])), None)
+        if at is None:
+            lines[start + 1:start + 1] = [entry, *extra]
+        else:
+            lines[at:at + 1] = [entry, *extra]
+        out = newline.join(lines)
+    try:
+        after = tomllib.loads(out)
+    except tomllib.TOMLDecodeError as err:
+        raise ProfileEdit(_by_hand(name, f"the edit would not parse ({err})")) from err
+    fleet_after = after.get("fleet") if isinstance(after.get("fleet"), dict) else {}
+    kept = {key: value for key, value in fleet_after.items() if key not in ("model", "reviewers")} == \
+        {key: value for key, value in fleet_before.items() if key not in ("model", "reviewers")}
+    others = {key: value for key, value in after.items() if key != "fleet"} == \
+        {key: value for key, value in before.items() if key != "fleet"}
+    reviewers = fleet_after.get("reviewers") == (STRONGEST_REVIEWERS if strongest else fleet_before.get("reviewers"))
+    if fleet_after.get("model") != name or not (kept and others and reviewers):
+        raise ProfileEdit(_by_hand(name, "the edit would change more than the model"))
+    return out
+
+
+def _by_hand(name: str, why: str) -> str:
+    return (f"{why}; nothing was written. Edit `.flotilla/project.toml` by hand: under `[fleet]`, `model = \"{name}\"`"
+            " (and `reviewers = \"opus\"` if it said `reviewer-strongest`), then run this again to note it here")
 
 
 def recorded(row) -> str:

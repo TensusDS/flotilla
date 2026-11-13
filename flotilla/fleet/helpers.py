@@ -60,6 +60,10 @@ def raise_helper(ledger, actor: Actor, branch: str, *, task: str, census, store,
     try:   # before a name is reserved: what the launch would refuse (review of 0.18.0, I1)
         launch.efforts(ledger.profile, ledger.posts)
         launch.permission_mode(ledger.profile, post)
+        from flotilla.core import paths
+        from flotilla.fleet import model as fleet_model
+        fleet_model.resolved(ledger.profile, state=paths.state_dir(),
+                             main=launch.main_checkout(ledger.root, run=ledger.run))   # a named model (0.32)
     except launch.LaunchError as err:
         raise MoveRefused(str(err)) from err
     full = spawn.disk_short(ledger)

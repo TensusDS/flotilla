@@ -316,18 +316,22 @@ def _model(ledger, args) -> int:
               f"model: not named; the person names it: `{fleet_model.ANSWER}`")
         return 0
     name = args.name.strip()
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._\[\]-]*", name) or name in fleet_model.LEGACY:
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._\[\]-]*", name) or name in (*fleet_model.LEGACY, "inherit"):
         raise MoveRefused(f"`{name}` is not a model's name; name one, such as `opus` or `sonnet`")
     refused = caller.person_refusal("names the fleet's model")
     if refused:
         raise MoveRefused(refused)
     path = Path(main) / ".flotilla" / "project.toml"
     try:
-        text = path.read_text(encoding="utf-8")
-    except OSError as err:
+        text = path.read_bytes().decode("utf-8")   # as written: CRLF stays CRLF
+    except (OSError, UnicodeDecodeError) as err:
         raise MoveRefused(f"the profile could not be read ({path}): {err}") from err
     was = str((ledger.profile.get("fleet") or {}).get("model") or "")
-    path.write_text(fleet_model.with_model(text, name), encoding="utf-8")
+    try:   # parsed before it is written: a hand-written profile is never left broken (branch review, I2)
+        edited = fleet_model.with_model(text, name)
+    except fleet_model.ProfileEdit as err:
+        raise MoveRefused(str(err)) from err
+    path.write_bytes(edited.encode("utf-8"))
     fleet_model.write_note(paths.state_dir(), main, name, replaced=was,
                            now=_dt.datetime.now(_dt.timezone.utc))
     print(f"model: {name} - written in {path}, and noted on this machine so seats raised here run on it now")
@@ -339,6 +343,8 @@ def _model(ledger, args) -> int:
 def _fleet(ledger, args) -> int:
     if getattr(args, "action", None) == "model":
         return _model(ledger, args)
+    if getattr(args, "name", None):
+        raise MoveRefused(f"`{args.name}`: a name goes only with `fleet model`")
     if getattr(args, "action", None) == "down":
         return _down(ledger)
     if getattr(args, "action", None) == "clean":

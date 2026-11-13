@@ -227,6 +227,9 @@ def _names_fleet_model(words: list[str]) -> bool:
         after = words[at + 1:]
         if any(_is(item, "fleet") for item in after) and any(_opaque(item) for item in after):
             return True
+        fed = any(os.path.basename(item) in ("xargs", "parallel") for item in words[:at])
+        if fed and any(_is(item, "fleet") for item in after) and any(_is(item, "model") for item in after):
+            return True   # the name comes after the line the guard reads (branch review, M2)
         try:
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 space = _parser().parse_args(words[at + 1:])
@@ -390,12 +393,15 @@ def check(segment) -> Finding | None:
 
 #: Programs that run code handed to them as text, on their command line or on their standard input.
 _INTERPRETER = re.compile(r"(?:sh|bash|zsh|dash|ksh|fish|python(?:\d+(?:\.\d+)?)?|perl|ruby|node)")
+#: `fleet model` and then a name: options and punctuation may stand between, never only the two words (a read).
+_FLEET_NAMING = (r"\bfleet\b[\s\S]*?\bmodel\b(?:[\s'\",\[\]+]+(?:-\S*|[^\sA-Za-z0-9$`]\S*))*"
+                 r"[\s'\",\[\]+]+[A-Za-z0-9$`]")
 #: A move only the person makes, spelled as the CLI reads it - in a command line or an argv list (`'rig', 'open'`).
 #: `approve` alone is not one: `gh pr review --approve` and a grep for the word are ordinary work (review of bebab1b).
 _PERSONS_MOVE = re.compile(r"\bwork\b[\s'\",\[\]+]+approve\b"
                            r"|\brig\b[\s'\",\[\]+]+(?:enable|disable|open|close|allow-image|unshare|share)\b"
                            r"|\battention\b[\s'\",\[\]+]+(?:all|digest)\b"
-                           r"|\bfleet\b[\s\S]*?\bmodel\b")
+                           r"|" + _FLEET_NAMING)
 #: The same moves' words anywhere in the code - a command built in pieces - judged only where flotilla is named too.
 #: `share` is a common word (`--why 'share gpu'`, `grep share`): anywhere after `rig` it counts only as a quoted token
 #: of its own - an argv element (`cmd.append('share')`) - so a command built in code, on standard input too, is still
@@ -407,7 +413,7 @@ _SHARE_WORD, _RIG_WORD = re.compile(r"\b(?:unshare|share)\b"), re.compile(r"\bri
 _MOVE_WORDS = re.compile(r"\bapprove\b|\brig\b[\s\S]*?\b(?:enable|disable|open|close|allow-image)\b"
                          r"|\brig\b[\s\S]*?['\"](?:unshare|share)['\"]"
                          r"|\battention\b[\s\S]*?\b(?:all|digest)\b"
-                         r"|\bfleet\b[\s\S]*?\bmodel\b")
+                         r"|" + _FLEET_NAMING)
 #: flotilla as the program a line runs - `flotilla`, `.../bin/flotilla`, `flotilla.cli`, `-m flotilla` - never a path
 #: or a name it is part of (`flotilla-field`, `.flotilla/`, `~/.config/flotilla`): those are reads, not runs.
 _FLOTILLA = re.compile(r"(?:^|[\s'\"(\[,;|&`=])(?:\S*/bin/)?flotilla(?![\w./-])|\bflotilla\.cli\b"

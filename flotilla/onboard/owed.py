@@ -18,6 +18,7 @@ from pathlib import Path
 class Owed:
     id: str
     blocks_spawn: bool
+    what: str       # the decision in a few words: the head of every line that shows it (cut at 200 characters)
     question: str   # what changed and why, in plain words, ending with what the person decides
     answer: str     # the line the person runs to answer
 
@@ -41,9 +42,10 @@ def owed(profile: dict, *, state: Path, main: Path, settings_model: str = "") ->
         seen = (f" Claude Code's settings name `{settings_model}` now; that is not preselected - it may be a model "
                 "switched for one task." if settings_model else "")
         found.append(Owed(
-            "fleet-model", True,
+            "fleet-model", True, "the fleet's model is not named, so no seat is raised",
             "flotilla no longer lets the fleet inherit the model Claude Code last saved: a fleet once ran for hours "
             "on a model switched with /model for one task, until that model's limit stopped every seat. Which "
-            f"model should this project's fleet run on by default?{seen} Until it is named, no seat is raised.",
+            f"model should this project's fleet run on by default - such as opus, or sonnet, which costs less?{seen} "
+            "Until it is named, no seat is raised.",
             model.ANSWER))
     return found

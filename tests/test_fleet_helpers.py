@@ -177,3 +177,12 @@ def test_a_helper_is_not_raised_with_no_room(tmp_path, monkeypatch):
     monkeypatch.setattr(spawn, "disk_usage", lambda path: namedtuple("U", "total used free")(2**40, 0, 2**30))
     with pytest.raises(MoveRefused, match=r"under the 2048 MB floor"):
         raise_one(ledger, fake, anyway=True)
+
+
+def test_a_helper_is_refused_before_its_name_is_taken_when_no_model_is_named(tmp_path):   # review M5
+    root, ledger, fake, row, tip = world(tmp_path, profile={**PROFILE, "permissions": {"mode": "auto"},
+                                                            "fleet": {"model": "one"}})
+    with pytest.raises(MoveRefused, match="fleet model"):
+        raise_one(ledger, fake)
+    ledger.profile = {**ledger.profile, "fleet": {"model": "opus"}}
+    assert raise_one(ledger, fake).seat.name == "helper 1"   # the refused raise took no name
