@@ -3,7 +3,7 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
-## 0.32.0 - 2026-11-13
+## 0.32.0 - 2026-11-14
 
 A field fleet ran for hours on a costlier model switched for one analysis - Claude Code saves a `/model` choice as
 its default for new sessions - until the model's weekly limit stopped every seat. This release closes the cause.
@@ -26,6 +26,7 @@ its default for new sessions - until the model's weekly limit stopped every seat
   not start, and a command over 16 000 characters, which is not read at all; a long script or message goes in a file
   the command names.
 
+## 0.31.5 - 2026-11-13
 
 - **`lane_share = "fair"` works again under the lane daemon.** Since 0.31.0 the daemon decides who starts, and it
   never read the setting: waiters of equal priority went first come, first served whatever `machine.toml` said,
