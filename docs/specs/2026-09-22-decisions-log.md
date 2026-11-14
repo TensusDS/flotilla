@@ -1859,6 +1859,13 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    pinned to the model it gave (Opus), so a newer model never reaches reviewers unasked. Design:
    `docs/specs/2026-11-13-fleet-model-design.md`; the limited state, borrowed seats and the override note follow.
 
+253. **The Bash guard hook does not block on its own failure** (the person, 2026-11-14; 0.32.0). Claude Code lets a
+   command run when a PreToolUse hook fails or times out, unless the hook sets `onFailure: "block"`. Since 0.32.0
+   the hook answers within its own 20-second deadline, so a timeout no longer lets a line pass unread; what
+   `block` would add is a refusal of every Bash call when the hook cannot run at all (no Python, a plugin copy
+   gone) - for a background fleet, a stall nobody sees. Over the maintainer's transcripts, 1 hook run was cancelled
+   of about 115 000. The person kept the hook without it.
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
