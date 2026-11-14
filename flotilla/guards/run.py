@@ -410,13 +410,47 @@ def allowance(command: str, cwd, root, *, session_id: str = "", run=subprocess.r
     return "", ""
 
 
+class _TooLong(Exception):
+    """The command is past MAX_READ."""
+
+
+#: The longest command the guards read: some readings grow with the square of a line, or faster (the review of
+#: 5c6b31d). The cap alone does not bound them - the review of e05669f measured readings under it that run past a
+#: minute - so the hook also reads within a deadline (`flotilla.hooks.GUARD_DEADLINE`). An ordinary command is under
+#: 2000 characters, and a long script or message goes in a file the command names.
+MAX_READ = 16_000
+
+
+def unread(command: str, why: str, hint: str = "") -> Finding:
+    """A command no guard read: refused when it holds a push word, as on any failure to read; else the person's -
+    never let through silently, since a crafted tail may be what kept it unread."""
+    refuse = on_failure(command, RuntimeError(why)).refuse
+    head = f"flotilla: {why}, so no guard read it"
+    hint = f" {hint}" if hint else ""
+    if refuse:
+        return Finding("unread", True, head + "; it holds `push` or `gh` as text (a part of a word counts, quotes "
+                                              f"aside), and a line holding them is refused unread.{hint} Or the "
+                                              "person runs the line themselves, with `!` in front or in a terminal.")
+    return Finding("unread", False, head + f"; the person decides whether it runs.{hint}", ask=True)
+
+
+def too_long(command: str) -> Finding:
+    """A command past MAX_READ, unread."""
+    return unread(command, f"this command is {len(command)} characters, more than the guards read ({MAX_READ})",
+                  "A long script or message goes in a file the command names.")
+
+
 def guard_hook(command: str, cwd, root, out, *, env=os.environ, run=subprocess.run, mode: str = "",
                session_id: str = "", tool_input: dict | None = None) -> int:
     try:
+        if len(command) > MAX_READ:
+            raise _TooLong
         from flotilla.guards import push
         # asked even of a call that carries no id: its process still runs under the session that made it
         findings = evaluate(command, cwd, root, env=env, run=run, who=lambda: push.callers(session_id),
                             session_id=session_id)
+    except _TooLong:
+        findings = [too_long(command)]
     except Exception as err:  # noqa: BLE001 - decided by reversibility: a command that may push is refused
         findings = [on_failure(command, err)]
     refusals = [finding.text for finding in findings if finding.refuse]

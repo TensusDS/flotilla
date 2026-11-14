@@ -37,7 +37,7 @@ def test_quick_answers_every_question_that_applies_with_its_recommendation(proje
     assert answers["flow"] == "direct"            # a remote that is not GitHub: no pull requests to open
     assert answers["merge_auth"] == "sender" and answers["review"] == "every" and answers["permissions"] == "auto"
     assert answers["tiers"] == [t["name"] for t in det["tests"]] and answers["tiers"]
-    assert sorted(answers["guards"]) == ["line_edit", "push_receipt", "revert"] and answers["model"] == "one"
+    assert sorted(answers["guards"]) == ["line_edit", "push_receipt", "revert"] and answers["model"] == "opus"
     for question in all_questions(det, answers):   # every recommendation is an answer its question accepts
         validate_answer(question, answers[question["id"]] if isinstance(answers[question["id"]], list)
                         else [answers[question["id"]]])
@@ -483,3 +483,14 @@ def test_publish_lets_through_only_a_profile_commit_holding_the_profile_it_publi
     _git(project, "commit", "-q", "-am", "chore: tweak it back")
     code, out = run_cli("onboard", "publish", "--root", str(project))
     assert code == 2 and "tweak a post" in out
+
+
+def test_the_model_question_names_models(project):
+    """Fleet model design 5.1: "one model, whichever Claude Code runs" is gone - a /model switch for one task once
+    carried a whole fleet with it."""
+    det = detect(project)
+    question = next(q for q in all_questions(det, {}) if q["id"] == "model")
+    assert [option["value"] for option in question["options"]] == ["opus", "sonnet", "sonnet-opus-reviewers"]
+    for word in ("one", "reviewer-strongest"):
+        with pytest.raises(AnswerError, match="model"):
+            validate_answer(question, [word])

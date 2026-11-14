@@ -1848,6 +1848,17 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    ahead of its equals. The daemon's tick and each waiter's own look read one replay. The audit asked whether to
    drop the feature instead; the person kept it.
 
+252. **The fleet's model is named, never inherited** (the person, 2026-11-13; a field fleet, 0.32.0). With `[fleet]
+   model = "one"` a seat got no `--model` and ran on whatever Claude Code had last saved; a `/model` switch for one
+   analysis saved itself as Claude Code's default, and every seat raised afterwards ran on that costlier model until
+   its weekly limit stopped the fleet with no alarm. The person's rule: a single session takes Claude Code's own
+   setting; the work of a fleet takes the model the plugin's settings name. Every launch now carries `--model`; a
+   profile naming none raises nothing until the person names one, which is the first of "decisions an update owes
+   the person" - asked by the orchestrator, never answered by a session. The default is the project's (the person):
+   the answer writes the profile and holds on the machine until trunk names it. The strongest-reviewer choice is
+   pinned to the model it gave (Opus), so a newer model never reaches reviewers unasked. Design:
+   `docs/specs/2026-11-13-fleet-model-design.md`; the limited state, borrowed seats and the override note follow.
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

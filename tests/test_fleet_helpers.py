@@ -61,7 +61,7 @@ def test_a_row_past_its_work_gets_no_helper(tmp_path):
 
 def test_the_helper_limit_and_the_memory_floor_hold(tmp_path, monkeypatch):
     root, ledger, fake, row, tip = world(tmp_path, {**PROFILE, "permissions": {"mode": "auto"},
-                                                    "fleet": {"helpers_per_seat": 1}})
+                                                    "fleet": {"helpers_per_seat": 1, "model": "opus"}})
     raise_one(ledger, fake)
     with pytest.raises(MoveRefused, match="already has 1 live helper"):
         raise_one(ledger, fake)
@@ -165,7 +165,7 @@ def test_a_helper_number_whose_tree_an_earlier_fleet_left_is_skipped(tmp_path):
 
 def test_a_helper_with_an_effort_the_profile_cannot_mean_reserves_no_name(tmp_path):
     root, ledger, fake, row, tip = world(tmp_path, {**PROFILE, "permissions": {"mode": "auto"},
-                                                    "fleet": {"effort": {"helper": "hight"}}})
+                                                    "fleet": {"effort": {"helper": "hight"}, "model": "opus"}})
     with pytest.raises(MoveRefused, match="fleet.effort.helper"):
         raise_one(ledger, fake)
     assert fake.launched == [] and not any(r.owner == "helper 1" for r in ledger.rows().values())
@@ -177,3 +177,12 @@ def test_a_helper_is_not_raised_with_no_room(tmp_path, monkeypatch):
     monkeypatch.setattr(spawn, "disk_usage", lambda path: namedtuple("U", "total used free")(2**40, 0, 2**30))
     with pytest.raises(MoveRefused, match=r"under the 2048 MB floor"):
         raise_one(ledger, fake, anyway=True)
+
+
+def test_a_helper_is_refused_before_its_name_is_taken_when_no_model_is_named(tmp_path):   # review M5
+    root, ledger, fake, row, tip = world(tmp_path, profile={**PROFILE, "permissions": {"mode": "auto"},
+                                                            "fleet": {"model": "one"}})
+    with pytest.raises(MoveRefused, match="fleet model"):
+        raise_one(ledger, fake)
+    ledger.profile = {**ledger.profile, "fleet": {"model": "opus"}}
+    assert raise_one(ledger, fake).seat.name == "helper 1"   # the refused raise took no name

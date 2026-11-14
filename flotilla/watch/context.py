@@ -99,7 +99,20 @@ class Context:
         except OSError:
             collector = []
         return surface.items(_paths.state_dir(), _dt.datetime.now(_dt.timezone.utc),
-                             project=self.ledger.repo_key) + found + collector
+                             project=self.ledger.repo_key) + self.owed() + found + collector
+
+    def owed(self) -> list:
+        """The decisions an update owes the person, as fleet items (fleet model design 5.2)."""
+        from flotilla.core import paths as _paths
+        from flotilla.fleet import launch
+        from flotilla.onboard import owed
+        from flotilla.watch import fleet
+        try:
+            main = launch.main_checkout(self.ledger.root, run=self.ledger.run)
+        except Exception:  # noqa: BLE001 - a hook never fails on a question it could not ask
+            main = self.ledger.root
+        return fleet.owed_items(owed.owed(self.profile, state=_paths.state_dir(), main=main,
+                                          settings_model=owed.settings_model()))
 
 
 def this_session(sessions, session_id: str, *, parent_of=None, start_pid: int | None = None):

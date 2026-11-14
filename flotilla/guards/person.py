@@ -216,6 +216,37 @@ def _parsed(words: list[str]) -> list[tuple[str, str]]:
     return found
 
 
+def _names_fleet_model(words: list[str]) -> bool:
+    """`flotilla fleet model <name>`, as the CLI's parser reads it or as the plain words after flotilla read. A fleet
+    line holding any word bash decides at run time counts too: a variable, a substitution or a glob may become the
+    move or its name, and an unquoted variable is split into words - `model --root $A` with A=". opus" names opus
+    (the commit security reviews of 578779b and 6604e9e)."""
+    for at, word in enumerate(words):
+        if not _runs_flotilla(word, words[at - 1] if at else ""):
+            continue
+        after = words[at + 1:]
+        if any(_is(item, "fleet") for item in after) and any(_opaque(item) for item in after):
+            return True
+        fed = any(os.path.basename(item) in ("xargs", "parallel") for item in words[:at])
+        if fed and any(_is(item, "fleet") for item in after) and any(_is(item, "model") for item in after):
+            return True   # the name comes after the line the guard reads (branch review, M2)
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                space = _parser().parse_args(words[at + 1:])
+        except SystemExit:   # a line the parser refuses runs nothing; read its plain words all the same
+            plain = [item for item in after if not item.startswith("-")]
+            spot = next((index for index, item in enumerate(plain) if _is(item, "fleet")), None)
+            named = None if spot is None else next(
+                (index for index in range(spot + 1, len(plain)) if _is(plain[index], "model")), None)
+            if named is not None and named + 1 < len(plain):   # linear: the first fleet, then a model and a word
+                return True
+            continue
+        if getattr(space, "command", "") == "fleet" and getattr(space, "action", "") == "model" \
+                and getattr(space, "name", None):
+            return True
+    return False
+
+
 def _rig_move(words: list[str]) -> str:
     for command, move in _reads(words) + _parsed(words):
         if _is(command, "rig") and any(_is(move, name) for name in RIG_MOVES):
@@ -328,9 +359,10 @@ def check(segment) -> Finding | None:
                                     "move it runs cannot be read before it runs. " + PLAINLY)
     built = (braces or any("$" in word or "`" in word for word in rest)) and any(word in GUARDED for word in rest)
     named = built or any(_may_be(word, "rig") or _may_be(word, "work") or _may_be(word, "attention")
-                         for word in rest)
+                         or _may_be(word, "fleet") for word in rest)
     if (words and _opaque(words[0]) and named) or any(
-            _opaque(command) or ((_is(command, "rig") or _is(command, "work")) and _opaque(move))
+            _opaque(command) or ((_is(command, "rig") or _is(command, "work") or _is(command, "fleet"))
+                                 and _opaque(move))
             for command, move in _reads(words)):
         return Finding(GUARD, True, "flotilla: the program, command or move here is a variable or a substitution, so "
                                     "what it runs cannot be read before it runs - and some flotilla moves are the "
@@ -348,6 +380,11 @@ def check(segment) -> Finding | None:
                                     "own choice, and a Claude tool call is never the person's. Show the person the "
                                     "command; they type it with `!` in front in their own Claude Code session, or run "
                                     "it in a terminal.")
+    if _names_fleet_model(words):
+        return Finding(GUARD, True, "flotilla: the model the fleet runs on is the person's own choice (`fleet model "
+                                    "<name>`), and a Claude tool call is never the person's. Show the person the "
+                                    "command; they type it with `!` in front in their own Claude Code session, or run "
+                                    "it in a terminal.")
     if _move(words) != "approve":
         return None
     return Finding(GUARD, True, "flotilla: approving work for trunk is the person's own move, and a Claude tool call "
@@ -357,6 +394,19 @@ def check(segment) -> Finding | None:
 
 #: Programs that run code handed to them as text, on their command line or on their standard input.
 _INTERPRETER = re.compile(r"(?:sh|bash|zsh|dash|ksh|fish|python(?:\d+(?:\.\d+)?)?|perl|ruby|node)")
+#: `fleet` and then `model`, anywhere after. Wider than the move - a read of the model inside an interpreter is
+#: refused too - on purpose: a reading that wanted a name after `model` let `\opus`, `{opus,}`, a glob or a name built
+#: in Python through, and its nested repetition ran past the hook's timeout on crafted text (the review and the
+#: commit security review of c8afd84).
+_FLEET_WORD, _MODEL_WORD = re.compile(r"\bfleet\b"), re.compile(r"\bmodel\b")
+
+
+def _fleet_naming(text: str) -> bool:
+    """`model` anywhere after a `fleet`: two linear searches, never a regex gap that backtracks."""
+    first = _FLEET_WORD.search(text)
+    return first is not None and _MODEL_WORD.search(text, first.end()) is not None
+
+
 #: A move only the person makes, spelled as the CLI reads it - in a command line or an argv list (`'rig', 'open'`).
 #: `approve` alone is not one: `gh pr review --approve` and a grep for the word are ordinary work (review of bebab1b).
 _PERSONS_MOVE = re.compile(r"\bwork\b[\s'\",\[\]+]+approve\b"
@@ -383,15 +433,15 @@ _FLOTILLA_ANY = re.compile(r"(?:^|[\s'\"(\[,;|&`=])(?:\S*/)?flotilla(?![\w./-])|
                            r"|-m[\s'\",]+flotilla\b|\b(?:from|import)\s+flotilla\b")
 WRAPPED_REFUSAL = ("flotilla: this line hands code to an interpreter (`bash -c`, `python3 -c`, a pipe, a heredoc or a "
                    "here-string), and that code runs a move only the person makes - approving work, turning rented "
-                   "machines on or off or spending on them, or how the person is asked. A Claude tool call never runs "
-                   "it, wrapped or not: show the person the line; they type it with `!` in front in their own Claude "
-                   "Code session, or run it in a terminal.")
+                   "machines on or off or spending on them, how the person is asked, or the fleet's model. A Claude "
+                   "tool call never runs it, wrapped or not: show the person the line; they type it with `!` in front "
+                   "in their own Claude Code session, or run it in a terminal.")
 WRAPPED_ASK = ("flotilla: this line hands flotilla commands to an interpreter as text (`bash -c`, `python3 -c`), "
                "which the guard cannot read move by move, so the person decides whether it runs. Written out as "
                "plain flotilla commands, one per call, it needs no one's yes.")
 UNREADABLE_MOVE_ASK = ("flotilla: this code spells a move only the person makes (`work approve`, `rig enable`, "
-                       "`attention digest`...) through a program the guard cannot name, so the person decides "
-                       "whether it runs.")
+                       "`attention digest`, `fleet model <name>`...) through a program the guard cannot name, so the "
+                       "person decides whether it runs.")
 
 
 def _judge(text: str, *, ask_on_flotilla: bool) -> Finding | None:
@@ -399,11 +449,11 @@ def _judge(text: str, *, ask_on_flotilla: bool) -> Finding | None:
     move's words anywhere in code that names flotilla (a command built in pieces). Asked: such a move through a
     program the guard cannot name, or - on a command line's code - flotilla run as a program."""
     anywhere = bool(_FLOTILLA_ANY.search(text))
-    if _PERSONS_MOVE.search(text):
+    if _PERSONS_MOVE.search(text) or _fleet_naming(text):
         if anywhere or "$" in text or "`" in text:
             return Finding(GUARD, True, WRAPPED_REFUSAL)
         return Finding(GUARD, False, UNREADABLE_MOVE_ASK, ask=True)   # review of bebab1b: never a silent pass
-    if anywhere and _MOVE_WORDS.search(text):
+    if anywhere and (_MOVE_WORDS.search(text) or _fleet_naming(text)):
         return Finding(GUARD, True, WRAPPED_REFUSAL)
     if anywhere and _SHARE_WORD.search(text) and _RIG_WORD.search(text):   # `share` in a longer string: not refused, never silently passed
         return Finding(GUARD, False, UNREADABLE_MOVE_ASK, ask=True)

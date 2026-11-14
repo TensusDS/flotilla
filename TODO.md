@@ -58,6 +58,46 @@ command that every guard shares, not one more reading.
   quotes not read. A false refusal, met while reading the guards. *(checked 2026-11-10 on 0.31.2: open -
   flotilla/guards/person.py check)*
 
+## From the fleet's model (2026-11-13, 0.32.0 and the design's later releases)
+
+- **Choosing a model per task on the fly** (the person's idea): the plugin describes classes of task, their weight
+  and the model each is pinned to, and the orchestrator picks the model for a seat's task from them - more room for
+  the orchestrator than one default and a borrowed seat. *(checked 2026-11-13 on 0.32.0: open, an idea - design
+  first)*
+- **Moving a whole fleet to another model in one command**, keeping its rows and resending its letters (a field
+  report's ask): with seats pinned it is needed only when the default model itself is limited; retire, spawn and
+  `work adopt` do it by hand. *(checked 2026-11-13 on 0.32.0: open - docs/specs/2026-11-13-fleet-model-design.md,
+  non-goals)*
+
+## From the reviews of 0.32.0 (2026-11-13, the fleet's model)
+
+The guard hook now answers within its deadline, so what is left costs time and asks the person more often - it
+lets nothing through unread.
+
+- **The person guard reads `--` prefixes once per `flotilla` word**, with a CLI parse each time: a line of 4 900
+  characters made of `flotilla --` takes 33 seconds (measured 2026-11-13), and the deadline answers it with a
+  question to the person. One parse of the line is refactor item 2 (`ParsedCommand`). *(checked 2026-11-13 on
+  0.32.0: open - flotilla/guards/person.py check, _local)*
+- **The push guard asks origin for every push in a line**: `origin_trunk` runs `ls-remote` and up to three more git
+  calls per push segment, with no cache within one reading, so a line of many pushes on a slow network reaches the
+  deadline and is refused unread. *(checked 2026-11-13 on 0.32.0: open - flotilla/guards/push.py origin_trunk and
+  its three callers)*
+- **A failure to read refuses on `gh` inside any word** (`through`): `on_failure` looks for the push words as text.
+  The refusal now says so and names the file to put a long part in. *(checked 2026-11-13 on 0.32.0: open, kept on
+  the safe side - flotilla/guards/__init__.py on_failure)*
+- **Smaller readings that grow faster than a line**: the de-duplication in `flotilla/guards/shell.py` (about line
+  265) is quadratic, and `_judge` runs once per interpreter segment. *(checked 2026-11-13 on 0.32.0: open)*
+- **A git the reading started outlives a hook killed outright**: the reading's alarm ends the reading alone, so a
+  `git ls-remote` or `git fetch` from the push guard runs on until it ends by itself (an ssh to a host that never
+  answers may not). Only when Claude Code kills the hook (SIGKILL), which the deadline is there to prevent; a small
+  watchdog in the reading's session could `killpg` it. Also bounded by that alarm: a SIGTERM in the few bytecodes
+  between the fork and the pid's recording leaves the reading 5 seconds more. *(checked 2026-11-13 on 0.32.0: open -
+  flotilla/hooks.py _read_in_time)*
+- **Whether to set `onFailure: "block"` on the Bash guard hook** (Claude Code blocks the call when the hook fails or
+  times out): a second line behind the deadline, at the price of every Bash call in a session refused when the hook
+  cannot run at all (no Python, a plugin copy gone). On this machine's transcripts: 1 cancelled of about 115 000
+  Bash hook runs. The person's to decide. *(checked 2026-11-13 on 0.32.0: open - hooks/hooks.json)*
+
 ## From the reviews of 0.31.5 (2026-11-13, the daemon applies the fair share)
 
 Four review rounds; what is left changes no start the daemon makes on the fleets known.

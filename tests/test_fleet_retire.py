@@ -1,7 +1,7 @@
 import pytest
 
 from flotilla.core.storage import LocalLogStore
-from flotilla.fleet import retire, spawn
+from flotilla.fleet import model, retire, spawn
 from flotilla.ledger import core
 from fleetkit import FakeClaude
 from ledgerkit import PROFILE, actor, commit, git, make_ledger, repo_with_origin
@@ -483,3 +483,20 @@ def test_a_seat_held_on_a_start_up_question_is_alive_to_the_fleet_and_stopped_by
                                  sleep=lambda s: None)
     assert fake.stopped == ["000001"] and "retired main session 1 (stopped 000001)" in lines
     assert [s for s in fake.sessions if s.name == "main session 1"] == []
+
+
+def test_the_fleet_view_names_each_seats_model(tmp_path):
+    fake = FakeClaude()
+    root, ledger, seat = raised_world(tmp_path, fake)
+    row = next(iter(ledger.rows().values()))
+    assert model.recorded(row) == "opus"
+    assert retire.fleet_view(ledger, fake.census())[0]["model"] == "opus"
+
+
+def test_seat_without_recorded_model_reads_unknown(tmp_path):
+    """A seat raised by a flotilla before 0.32 has no model in its reserve event: unknown, never an error."""
+    fake = FakeClaude()
+    root, ledger, seat = raised_world(tmp_path, fake)
+    row = next(iter(ledger.rows().values()))
+    row.history[0]["evidence"] = {}
+    assert model.recorded(row) == ""

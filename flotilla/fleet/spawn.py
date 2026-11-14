@@ -20,6 +20,7 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
+from flotilla.core import paths
 from flotilla.core.census import CensusUnavailable
 from flotilla.fleet import compose, launch, names, plugins
 from flotilla.ledger import core, gitq
@@ -126,6 +127,12 @@ NO_AUTO_SEEN = ("haiku",)
 
 
 def _auto_unavailable(ledger, wanted) -> list[str]:
+    from flotilla.fleet import model as fleet_model
+    try:
+        profile = fleet_model.resolved(ledger.profile, state=paths.state_dir(),
+                                       main=launch.main_checkout(ledger.root, run=ledger.run))
+    except fleet_model.ModelUnnamed:
+        return []   # the spawn refuses before any seat for that
     lines = []
     for post_name in wanted:
         post = ledger.posts[post_name]
@@ -133,7 +140,7 @@ def _auto_unavailable(ledger, wanted) -> list[str]:
             mode = launch.permission_mode(ledger.profile, post)
         except launch.LaunchError:
             continue
-        model = launch.model_for(ledger.profile, post)
+        model = launch.model_for(profile, post)
         if mode == "auto" and any(word in model.lower() for word in NO_AUTO_SEEN):
             lines.append(f"post `{post_name}` would run auto mode on `{model}`, for which Claude Code has said "
                          "\"auto mode unavailable for this model\"; pick another model or permission mode")
@@ -416,7 +423,12 @@ def raise_seat(ledger, seat: launch.Seat, *, caller: str, census, wait: float = 
     main = launch.main_checkout(ledger.root, run=ledger.run)
     if settings_json is None:
         settings_json = plugins.narrowing(ledger.run, main).settings_json(post)
-    command = launch.argv(seat, post, ledger.profile, main=main, settings_json=settings_json, first_prompt=prompt)
+    from flotilla.fleet import model as fleet_model
+    try:   # never what Claude Code last saved: the fleet's named model (fleet model design 5.1)
+        profile = fleet_model.resolved(ledger.profile, state=paths.state_dir(), main=main)
+        command = launch.argv(seat, post, profile, main=main, settings_json=settings_json, first_prompt=prompt)
+    except launch.LaunchError as err:
+        raise SpawnRefused(f"{seat.name} was not raised: {err}") from err
     base = base or gitq.trunk_ref(ledger.root, ledger.trunk, run=ledger.run)
     if seat.tree.exists() or seat.tree.is_symlink():
         raise SpawnRefused(f"{seat.tree} already exists; {seat.name} was not raised and nothing there was touched")
@@ -439,7 +451,8 @@ def raise_seat(ledger, seat: launch.Seat, *, caller: str, census, wait: float = 
                 raise MoveRefused(rival)
             row = s.append(actor, next_row_id(s.rows), "reserve", "reserved",
                            fields={"branch": seat.branch, "owner": seat.name, "tree": str(seat.tree),
-                                   **(fields or {})})
+                                   **(fields or {})},
+                           evidence={"model": launch.model_for(profile, post)})
     except MoveRefused as err:
         _take_back_git(ledger, seat)
         raise SpawnRefused(f"the post row for {seat.name} was refused: {err}; the tree and branch were taken "

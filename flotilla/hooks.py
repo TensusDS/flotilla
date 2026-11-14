@@ -9,6 +9,7 @@ not block on what it could not ask.
 from __future__ import annotations
 
 import datetime as dt
+import io
 import json
 import os
 import re
@@ -25,6 +26,11 @@ HOOK_CHECK_TIMEOUT = 3
 EVENTS = ("session-start", "prompt", "stop", "guard", "permission", "ask", "edit")
 CLI = Path(__file__).resolve().parent.parent / "bin" / "flotilla"
 PEERS_SHOWN = 8
+#: Seconds the guards may read one Bash command. Claude Code discards the output of a PreToolUse hook that reaches
+#: its timeout (30, in hooks/hooks.json) and lets the call go on through the normal permission flow
+#: (code.claude.com/docs/en/hooks, Timeouts), so the hook cuts a reading short itself, with room left for Python's
+#: start: some readings grow faster than a line, under the guards' length cap too (review of e05669f).
+GUARD_DEADLINE = 20
 #: A Bash command naming none of these reaches no guard, so the hook answers before looking anything up. The last
 #: group lets a long run reach the lane guard: the lane's default run patterns and the launchers that run them. A
 #: tier whose program is none of these (`make test`, `./run-tests.sh`) is not warned about unless the line names one.
@@ -37,7 +43,7 @@ GUARD_TRIGGERS = ("checkout", "restore", "reset", "clean", "switch", "sed", "pus
 #: The person's words that are too common as parts of other words (`origin`) to look for as text. As whole words -
 #: or as parts, in a line that holds `$` or a backtick, where bash says where a word begins - they let code handed
 #: to an interpreter (`bash -c 'x rig open'`) reach the guard that reads it.
-GUARD_TRIGGER_PARTS = ("rig", "attention")
+GUARD_TRIGGER_PARTS = ("rig", "attention", "fleet")
 GUARD_TRIGGER_WORDS = re.compile(r"\b(?:%s)\b" % "|".join(GUARD_TRIGGER_PARTS))
 _QUOTING = {ord(sign): None for sign in "'\"\\"}
 
@@ -84,7 +90,7 @@ def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime
         if not _names_a_guarded_word(command):
             return 0
         try:   # an exception here exits non-zero, which Claude Code does not read as a refusal: the push would run
-            return _guard(command, cwd, payload, out, now)
+            return _guard_in_time(command, cwd, payload, out, now)
         except Exception as err:  # noqa: BLE001 - the guards' own rule for a failure, decided here when they fell
             return _guard_failed(command, err, out)
 
@@ -157,10 +163,135 @@ def _guard(command: str, cwd: Path, payload: dict, out, now) -> int:
                       session_id=str(payload.get("session_id") or ""), tool_input=tool_input)
 
 
+#: What a reading writes after its whole answer: an empty answer lets the line run, and a reading that ended before
+#: the mark - killed halfway through its answer too - did not answer (review of 6d195ca).
+_READ = b"\x00"
+
+
+def _guard_in_time(command: str, cwd: Path, payload: dict, out, now) -> int:
+    """`_guard`, in a child process the hook waits for up to GUARD_DEADLINE. Not a thread or a Python signal handler:
+    a regular expression holds the interpreter until it is done. Past the deadline the child and the programs it
+    started are killed, and the line gets the answer a line no guard read gets; so does a reading that ended before
+    its answer."""
+    import signal
+    reading: list[int] = []   # the reading's pid, while there is one to end
+
+    def ended(*_):   # Claude Code ending the hook ends its reading too (review of 6d195ca)
+        if reading:
+            _end_reading(reading.pop())
+        os._exit(143)
+    try:   # before the fork: no moment in which a SIGTERM leaves a reading behind
+        before = signal.signal(signal.SIGTERM, ended)
+    except ValueError:   # not the main thread: nothing installed, nothing to restore
+        return _read_in_time(command, cwd, payload, out, now, reading)
+    try:
+        return _read_in_time(command, cwd, payload, out, now, reading)
+    finally:
+        signal.signal(signal.SIGTERM, signal.SIG_DFL if before is None else before)
+
+
+def _read_in_time(command: str, cwd: Path, payload: dict, out, now, reading: list[int]) -> int:
+    import math
+    import select
+    import signal
+    try:
+        read, write = os.pipe()
+        try:
+            pid = os.fork()
+        except OSError:
+            os.close(read)
+            os.close(write)
+            raise
+    except OSError as err:   # the process or file limit: a reading here would have no deadline (security review)
+        return _unread(command, f"the guards could not start a reading ({err})", out)
+    if pid == 0:   # the reading; it leaves only through os._exit, so nothing of the parent's runs twice
+        status = 1
+        try:
+            signal.signal(signal.SIGTERM, signal.SIG_DFL)
+            # the kernel ends it a little past the deadline, in the middle of a regular expression too, should the
+            # hook be killed outright and never end it (review of ab4af81)
+            signal.signal(signal.SIGALRM, signal.SIG_DFL)
+            signal.alarm(math.ceil(GUARD_DEADLINE) + 5)
+            os.close(read)
+            # its own session: one kill ends the reading and every git it started, and with no terminal a git or
+            # ssh cannot stop to prompt; its own streams: the hook's are not held past the hook
+            os.setsid()
+            quiet = os.open(os.devnull, os.O_RDWR)
+            for stream in (0, 1, 2):
+                os.dup2(quiet, stream)
+            buffer = io.StringIO()
+            try:
+                _guard(command, cwd, payload, buffer, now)
+            except Exception as err:  # noqa: BLE001 - as in run_hook: the guards' own rule for a failure
+                _guard_failed(command, err, buffer)
+            left = memoryview(buffer.getvalue().encode() + _READ)
+            while left:
+                left = left[os.write(write, left):]
+            status = 0
+        finally:
+            os._exit(status)
+    reading.append(pid)
+    os.close(write)
+    chunks, finished, end = [], False, time.monotonic() + GUARD_DEADLINE
+    try:
+        while (left := end - time.monotonic()) > 0:
+            if not select.select([read], [], [], left)[0]:
+                continue
+            chunk = os.read(read, 65536)
+            if not chunk:
+                finished = True
+                break
+            chunks.append(chunk)
+    finally:
+        os.close(read)
+        if reading:   # taken first: a SIGTERM from here on kills no pid this hook has reaped
+            _end_reading(reading.pop())
+    data = b"".join(chunks)
+    if not finished:
+        return _unread(command, f"the guards did not finish reading this command in {GUARD_DEADLINE} seconds", out)
+    if not data.endswith(_READ):
+        return _unread(command, "the guards' reading ended before its answer", out)
+    out.write(data[:-len(_READ)].decode())
+    return 0
+
+
+def _end_reading(pid: int) -> None:
+    """Kill the reading's session - a git still running is the reading's, finished or not - and reap it if it goes
+    within a second. Killed before it is reaped, so its pid cannot have passed to another process; one stuck where
+    no signal reaches (a hung network mount) is left to init rather than holding the answer back."""
+    import signal
+    try:
+        os.killpg(pid, signal.SIGKILL)
+    except OSError:   # before its setsid: no group of its own yet, and nothing started
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+    for _ in range(100):
+        try:
+            if os.waitpid(pid, os.WNOHANG)[0]:
+                return
+        except ChildProcessError:
+            return
+        time.sleep(0.01)
+
+
+def _unread(command: str, why: str, out) -> int:
+    try:
+        from flotilla.guards.run import unread
+        finding = unread(command, why)
+    except Exception:  # noqa: BLE001 - the guards' last-resort rule for a failure
+        return _guard_failed(command, RuntimeError(why), out)
+    body = {"hookEventName": "PreToolUse", "permissionDecision": "deny" if finding.refuse else "ask",
+            "permissionDecisionReason": finding.text}
+    print(json.dumps({"hookSpecificOutput": body}), file=out)
+    return 0
+
+
 #: `flotilla.guards.PUSH_WORDS`, for a failure in which even that module cannot be imported (a test keeps them equal)
 LAST_RESORT_PUSH_WORDS = ("push", "gh")
 #: `flotilla.guards.PERSON_WORDS`, kept equal the same way
-LAST_RESORT_PERSON_WORDS = ("approve", "rig", "attention")
+LAST_RESORT_PERSON_WORDS = ("approve", "rig", "attention", "fleet")
 
 
 def _guard_failed(command: str, err: Exception, out) -> int:
@@ -184,8 +315,8 @@ def _guard_failed(command: str, err: Exception, out) -> int:
             "a command that may push is refused on failure. Knowingly: the person runs the command themselves - "
             "with `!` in front, or in a terminal. Where flotilla's pre-push hook is installed, it judges a "
             "`git push` again" if refuse
-            else "this line may hold a move only the person makes (`work approve`, a `rig` move, `attention`) and "
-                 "it could not be read, so the person decides whether it runs" if ask
+            else "this line may hold a move only the person makes (`work approve`, a `rig` move, `attention`, "
+                 "`fleet model <name>`) and it could not be read, so the person decides whether it runs" if ask
             else "the command runs unchecked")
     body = ({"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": text}
             if refuse else {"hookEventName": "PreToolUse", "permissionDecision": "ask",

@@ -156,6 +156,23 @@ def _gaps(ledger, counts: dict) -> list[str]:
     return lines
 
 
+def _fleet_profile(ledger) -> tuple[dict, str]:
+    """The profile with the fleet's model named, and the line saying which and from where (fleet model design 5.1);
+    refused when no model is named."""
+    from flotilla.fleet import model as fleet_model
+    from flotilla.onboard import owed
+    main = launch.main_checkout(ledger.root, run=ledger.run)
+    blocking = [item for item in owed.owed(ledger.profile, state=paths.state_dir(), main=main) if item.blocks_spawn]
+    if blocking:   # a decision an update owes the person (fleet model design 5.2): no seat until it is made
+        raise MoveRefused(" ".join(f"{item.question} The person answers with `{item.answer}`." for item in blocking))
+    try:
+        profile = fleet_model.resolved(ledger.profile, state=paths.state_dir(), main=main)
+    except fleet_model.ModelUnnamed as err:
+        raise MoveRefused(str(err)) from err
+    name, source = fleet_model.default(ledger.profile, state=paths.state_dir(), main=main)
+    return profile, f"model: {name} (from {source})"
+
+
 def _spawn(ledger, args) -> int:
     from flotilla.ledger.commands import fleet_note
     said = fleet_note(ledger.root, ledger.profile)
@@ -163,6 +180,8 @@ def _spawn(ledger, args) -> int:
         print(f"note: {said}")
     if getattr(args, "lead", False):
         return _lead(ledger, args)
+    profile, model_line = _fleet_profile(ledger)   # before anything is counted: a fleet's model is named
+    print(model_line)
     counts = counts_from(args, ledger.profile)
     recommended = getattr(args, "recommended", False)
     if (args.tasks is not None or args.tasks_file) and not recommended:
@@ -221,12 +240,9 @@ def _spawn(ledger, args) -> int:
                 print(f"note: {said}")
         for seat in seats:
             post = ledger.posts[seat.post]
-            model = launch.model_for(ledger.profile, post)
-            effort = launch.effort_for(ledger.profile, post)
             print(f"{seat.name}  ({seat.post})  tree {seat.tree}  branch {seat.branch}")
-            print(f"    claude --bg -n \"{seat.name}\" --add-dir {seat.tree} --permission-mode "
-                  f"{launch.permission_mode(ledger.profile, post)}" + (f" --model {model}" if model else "") + (f" --effort {effort}" if effort else "")
-                  + f"  (from {main})")
+            command = launch.argv(seat, post, profile, main=main, settings_json=narrow.settings_json(post))
+            print(f"    {launch.shown(command)}  (from {main})")   # the command `raise_seat` runs, not a copy
             off = ", ".join(narrow.turned_off(post)) or "none"
             print(f"    turns off: {off if narrow.entries is not None else 'unknown, ' + plugins.NOT_NARROWED}")
         print(f"dry run: {len(seats)} session(s) planned; nothing was changed")
@@ -286,7 +302,49 @@ def _leaders(ledger, sessions, listed: set) -> list[str]:
     return lines
 
 
+def _model(ledger, args) -> int:
+    """`fleet model [<name>]`: where the fleet's model is read, or - the person's move - name it (fleet model design
+    5.2): the main checkout's profile changes, to be landed, and a local note answers for `spawn` meanwhile."""
+    import datetime as _dt
+    import re
+    from flotilla.core import caller
+    from flotilla.fleet import model as fleet_model
+    main = launch.main_checkout(ledger.root, run=ledger.run)
+    if not args.name:
+        name, source = fleet_model.default(ledger.profile, state=paths.state_dir(), main=main)
+        print(f"model: {name} (from {source})" if name else
+              f"model: not named; the person names it: `{fleet_model.ANSWER}`")
+        return 0
+    name = args.name.strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._\[\]-]*", name) or name.lower() in (*fleet_model.LEGACY, "inherit"):
+        raise MoveRefused(f"`{name}` is not a model's name; name one, such as `opus` or `sonnet`")
+    refused = caller.person_refusal("names the fleet's model")
+    if refused:
+        raise MoveRefused(refused)
+    path = Path(main) / ".flotilla" / "project.toml"
+    try:
+        text = path.read_bytes().decode("utf-8")   # as written: CRLF stays CRLF
+    except (OSError, UnicodeDecodeError) as err:
+        raise MoveRefused(f"the profile could not be read ({path}): {err}") from err
+    was = str((ledger.profile.get("fleet") or {}).get("model") or "")
+    try:   # parsed before it is written: a hand-written profile is never left broken (branch review, I2)
+        edited = fleet_model.with_model(text, name)
+    except fleet_model.ProfileEdit as err:
+        raise MoveRefused(str(err)) from err
+    path.write_bytes(edited.encode("utf-8"))
+    fleet_model.write_note(paths.state_dir(), main, name, replaced=was,
+                           now=_dt.datetime.now(_dt.timezone.utc))
+    print(f"model: {name} - written in {path}, and noted on this machine so seats raised here run on it now")
+    print("land the profile change for every machine: `flotilla onboard publish`, or the project's own flow; "
+          "until trunk names a model, `spawn` here takes the noted one")
+    return 0
+
+
 def _fleet(ledger, args) -> int:
+    if getattr(args, "action", None) == "model":
+        return _model(ledger, args)
+    if getattr(args, "name", None):
+        raise MoveRefused(f"`{args.name}`: a name goes only with `fleet model`")
     if getattr(args, "action", None) == "down":
         return _down(ledger)
     if getattr(args, "action", None) == "clean":
@@ -318,7 +376,8 @@ def _fleet(ledger, args) -> int:
         tree = item["tree"] if item["tree_exists"] else f"{item['tree']} (missing)"
         lock = "locked" if item["locked"] else "not locked"
         work = ", ".join(f"{row.branch} ({row.state})" for row in item["work"]) or "no open work"
-        print(f"{item['name']}  ({item['post'] or 'no post'})  {live}\n    tree {tree}{dirty}, {lock}; {work}")
+        model = f"model {item.get('model') or 'unknown'}"
+        print(f"{item['name']}  ({item['post'] or 'no post'})  {live}, {model}\n    tree {tree}{dirty}, {lock}; {work}")
     import datetime as _dt
     from flotilla.core import paths as _paths
     from flotilla.rig import surface

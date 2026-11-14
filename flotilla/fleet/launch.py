@@ -71,18 +71,36 @@ def permission_mode(profile: dict, post) -> str:
     return post.permission_mode
 
 
-#: `fleet.model` values that name no model: the session inherits the one Claude Code was launched with.
+#: `fleet.model` values of an older profile that name no model (`flotilla.fleet.model.LEGACY`).
 FLEET_MODEL_WORDS = ("one", "reviewer-strongest", "")
 
 
 def model_for(profile: dict, post) -> str:
-    """A post's own model wins; else a model the fleet names runs every post (F5); else inherit."""
-    fleet_model = str((profile.get("fleet") or {}).get("model") or "")
-    if fleet_model == "reviewer-strongest" and "accept" in post.may:
-        return STRONGEST
+    """A post's own model; else the reviewers' model for a post that may accept; else the fleet's default (fleet
+    model design 5.1). "" only for a profile not resolved by `flotilla.fleet.model.resolved`, which names no model."""
+    fleet = profile.get("fleet") or {}
+    fleet_model = str(fleet.get("model") or "")
     if post.model != "inherit":
         return post.model
+    reviewers = str(fleet.get("reviewers") or "") or (STRONGEST if fleet_model == "reviewer-strongest" else "")
+    if reviewers and "accept" in post.may:
+        return reviewers
     return "" if fleet_model in FLEET_MODEL_WORDS else fleet_model
+
+
+#: The values `shown` leaves out: long, and not what a person checks in a dry run.
+HIDDEN = ("--settings", "--append-system-prompt")
+
+
+def shown(command: list[str]) -> str:
+    """A launch command as a dry run prints it: every flag, the long values and the first prompt as `<...>`."""
+    import shlex
+    out, hide = [], False
+    for index, word in enumerate(command):
+        last = index == len(command) - 1
+        out.append("<...>" if hide or (last and index and command[index - 1] not in HIDDEN) else word)
+        hide = word in HIDDEN
+    return shlex.join(out)
 
 
 def efforts(profile: dict, posts: dict | None) -> dict[str, str]:
@@ -141,8 +159,10 @@ def argv(seat: Seat, post, profile: dict, *, main: Path, settings_json: str = ""
     command = ["claude", "--bg", "-n", seat.name, "--add-dir", str(seat.tree), "--permission-mode",
                permission_mode(profile, post)]
     model = model_for(profile, post)
-    if model:
-        command += ["--model", model]
+    if not model:   # a seat never inherits what Claude Code last saved (fleet model design, 1 and 5.1)
+        from flotilla.fleet.model import ModelUnnamed, unnamed_message
+        raise ModelUnnamed(unnamed_message())
+    command += ["--model", model]
     effort = effort_for(profile, post)
     if effort:
         command += ["--effort", effort]

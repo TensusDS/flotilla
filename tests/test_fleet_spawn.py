@@ -267,7 +267,7 @@ def test_the_floor_comes_from_the_profile_and_unknown_memory_does_not_refuse(tmp
     monkeypatch.setattr(spawn, "available_mb", lambda: 1400)   # one seat at 800 MB leaves 600, over 500
     assert spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False)[0]
     monkeypatch.setattr(spawn, "available_mb", lambda: None)
-    ledger.profile = {**ledger.profile, "fleet": {"memory_floor_mb": 99999}}
+    ledger.profile = {**ledger.profile, "fleet": {"memory_floor_mb": 99999, "model": "opus"}}
     assert spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False)[0]
 
 
@@ -486,7 +486,7 @@ def test_an_effort_the_profile_cannot_mean_raises_no_seat_at_all(tmp_path, effor
     the main seat's typo stopped the spawn as a plain refusal; and a key naming no post was silently ignored."""
     fake = FakeClaude()
     root, ledger, store = world(tmp_path, fake, {**PROFILE, "permissions": {"mode": "auto"},
-                                                 "fleet": {"effort": effort}})
+                                                 "fleet": {"effort": effort, "model": "opus"}})
     with pytest.raises(spawn.SpawnRefused, match=said) as refused:
         run(ledger, store, fake, {"main": 1, "review": 1})
     assert "nothing was raised" in str(refused.value) and not isinstance(refused.value, spawn.SpawnStopped)
@@ -497,7 +497,7 @@ def test_the_effort_table_takes_the_composition_alias(tmp_path):
     """`[fleet.default] review = 1` stands in the same profile; `review = "max"` beside it means the reviewer."""
     fake = FakeClaude()
     root, ledger, store = world(tmp_path, fake, {**PROFILE, "permissions": {"mode": "auto"},
-                                                 "fleet": {"effort": {"review": "max"}}})
+                                                 "fleet": {"effort": {"review": "max"}, "model": "opus"}})
     run(ledger, store, fake, {"review": 1})
     launched = fake.launched[0]
     assert launched[launched.index("--effort") + 1] == "max"

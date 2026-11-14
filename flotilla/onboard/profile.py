@@ -120,8 +120,11 @@ def build_profile(det: dict, answers: dict) -> dict:
                            "tag": "v{version}", "annotated": True}
     from flotilla.fleet.project_name import clean
     # the word every seat name starts with (`beta-orchestrator 1`): numbers then run per project (W11)
+    chosen = answers.get("model", "opus")
     data["fleet"] = {"name": clean(Path(det["root"]).name), "default": suggest_composition(answers),
-                     "model": answers.get("model", "one")}
+                     "model": "sonnet" if chosen == "sonnet-opus-reviewers" else chosen}
+    if chosen == "sonnet-opus-reviewers":   # named, so a newer model never reaches reviewers unasked (design 5.1)
+        data["fleet"]["reviewers"] = "opus"
     effort = _effort(answers.get("effort", "default"), det)
     if effort:   # one level per post, so the person reads what each seat runs at and edits one line to change it
         data["fleet"]["effort"] = effort
@@ -237,6 +240,11 @@ def plain_words(data: dict) -> list[str]:
                     "(`/flotilla:guard`), which asks your own git pushes too (never a `gh pr merge`)")
     elif any(guards.get(name) for name in GUARDS):
         said.append(f"guards: the command guards judge {judged}; what you type yourself after `!` is not asked")
+    fleet = data.get("fleet") or {}
+    if fleet.get("model") and fleet.get("model") not in ("one", "reviewer-strongest"):
+        said.append(f"every seat runs on {fleet['model']}, whatever Claude Code itself was last switched to"
+                     + (f"; posts that accept work run on {fleet['reviewers']}" if fleet.get("reviewers") else "")
+                     + "; a post's own `model` sets one post apart")
     effort = (data.get("fleet") or {}).get("effort") or {}
     if isinstance(effort, dict) and effort:   # a higher effort costs tokens: said before the yes, never when unset
         said.append("effort: " + ", ".join(f"{name} at {level}" for name, level in effort.items())

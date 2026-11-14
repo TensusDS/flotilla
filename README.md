@@ -71,10 +71,10 @@ fleet.
 **Pin a release** instead, to choose when you move: name a tag on the first line (the tags are listed in
 [CHANGELOG.md](CHANGELOG.md)):
 
-    claude plugin marketplace add TensusDS/flotilla#v0.31.5 --scope project
+    claude plugin marketplace add TensusDS/flotilla#v0.32.0 --scope project
     claude plugin install flotilla@flotilla --scope project
 
-That writes `"ref": "v0.31.5"` into the project's settings and installs that release; `claude plugin update` stays on
+That writes `"ref": "v0.32.0"` into the project's settings and installs that release; `claude plugin update` stays on
 it. A machine keeps one marketplace of a name for all its projects, so give the projects on one machine the same
 channel or pin; `/flotilla:doctor` names a pin the machine does not follow. And a tag can be moved on GitHub, so a pin
 chooses when you move, not who can change what the tag names.
@@ -124,7 +124,7 @@ and then asks one question: **quick or custom**.
 - **Quick** takes what it found and the recommended answer to everything else: every branch reviewed by another
   session, Claude Code's auto mode for background sessions (its classifier decides each call; no question waits on
   you),
-  every guard on, one model for every seat. It says in plain words what that means - who merges into trunk, what is
+  every guard on, every seat on Opus. It says in plain words what that means - who merges into trunk, what is
   reviewed, what you are asked - shows every shell command the profile will run, and asks for one yes.
 - **Custom** asks the few things it cannot read, one at a time: how work reaches trunk (pull requests, direct push, or
   local only), who authorizes a merge, how much work is reviewed, how background sessions get permission for their
@@ -416,9 +416,15 @@ That the sender alone writes trunk is checked, not only written here: where the 
 push to trunk or a tag, and a pull-request merge, from any seat whose post lacks `land` ([Guards](#guards)).
 
 Every post may also `reserve` its home branch. A post's file is yours to edit: change its instructions, its `model`,
-the `plugins` it keeps, or narrow its permission mode (a post can narrow the profile's mode, never widen it). One
-exception to a post's own `model`: when onboarding chose the strongest model for reviewers, every post that may accept
-runs on it, whatever its file says.
+the `plugins` it keeps, or narrow its permission mode (a post can narrow the profile's mode, never widen it).
+
+**The fleet's model.** The profile names it (`[fleet] model`), and every seat is launched on it with `--model`,
+whatever Claude Code itself was last switched to: a `/model` switch for one task saves itself as Claude Code's
+default, and must not carry the fleet with it. `[fleet] reviewers` names the model the posts that may accept work run
+on; a post's own `model` wins over both. `flotilla fleet model` says which model the fleet runs on and where that is
+read; `! flotilla fleet model <name>` is your line to name it - it writes the profile, for you to land, and holds on
+this machine until trunk names it. A profile from before 0.32 that names no model (`one`) raises no seat until you
+name one: the orchestrator puts the question to you, and `flotilla fleet` shows the model each seat runs on.
 
 A post may also say `effort:` - `low`, `medium`, `high`, `xhigh` or `max` - and its seats start with
 `claude --effort` at that level; a higher level thinks longer and costs more tokens. Without the key a seat takes

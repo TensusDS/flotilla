@@ -138,11 +138,12 @@ def all_questions(det: dict, answers: dict) -> list[dict]:
         ("push_receipt", "Push receipt", "Refuses a push or merge without a green run over that exact revision."),
         ("none", "No guards", "Every guard stays off; turn them on later in project.toml."),
     ], multi=True))
-    out.append(_q("model", "Models", "Which model runs the fleet? A post's own `model` still wins.", [
-        ("one", "One for all", "Every session uses the model you launch Claude Code with."),
-        ("reviewer-strongest", "Strongest reviewer", "Reviewers run on the most capable model; others on yours."),
-        ("sonnet", "Sonnet", "Every post runs on Sonnet."),
-        ("opus", "Opus", "Every post runs on Opus."),
+    out.append(_q("model", "Models", "Which model does the fleet run on? Every seat is launched on it, whatever "
+                  "Claude Code itself was last switched to; a post's own `model` still wins.", [
+        ("opus", "Opus", "Every seat runs on Opus."),
+        ("sonnet", "Sonnet", "Every seat runs on Sonnet: it costs less, and has a usage limit of its own."),
+        ("sonnet-opus-reviewers", "Sonnet, reviewers on Opus",
+         "Seats run on Sonnet; the posts that accept work run on Opus."),
     ], free_text=True))
     effort = _q("effort", "Effort", "How hard does each post think? A post's own `effort` still wins. Type your "
                   "own as post=level pairs, such as reviewer=max, main=high.", [
@@ -203,7 +204,7 @@ GUARDS = ["revert", "line_edit", "push_receipt"]
 #: second service (a gate command, a tracker, a deployed build for a judge).
 QUICK = {"merge_auth": "sender", "review": "every", "permissions": "auto", "ci_where": "cloud", "gate_command": "later",
          "tracker": "nowhere", "repos": "this-first", "release": "none", "deploy": "none", "shared": "reserve",
-         "sequential": "claim", "guards": GUARDS, "model": "one",
+         "sequential": "claim", "guards": GUARDS, "model": "opus",
          "effort": "default"}
 
 
@@ -269,7 +270,8 @@ def validate_answer(question: dict, values: list[str]):
         if has_hidden(value):   # it is printed back before it runs: nothing in it may hide what follows
             raise AnswerError(f"{question['id']}: \"{visible(value)}\" holds a control or hidden character; type "
                               "it plainly")
-        if question["id"] == "model" and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._\[\]-]*", value):
+        if question["id"] == "model" and (value in ("one", "reviewer-strongest")
+                                          or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._\[\]-]*", value)):
             raise AnswerError(f"model: {value!r} is not a model name; pick an option, or type one name such as "
                               "claude-opus-5-5 - a post's own `model` sets one post apart")   # field test W3
         if question["id"] == "effort":
