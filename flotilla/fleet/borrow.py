@@ -31,14 +31,18 @@ FOR_LONGEST = 200
 NOT_LENT = ("orchestrator", spawn.HELPER)
 
 
-def checked(*, model: str, for_task: str, brief: str, own: str, post: str = "") -> tuple[str, str, str]:
+def checked(*, model: str, for_task: str, brief: str, own: str, post: str = "",
+            may=frozenset({"claim"})) -> tuple[str, str, str]:
     """The model, the task and the brief as given, or the refusal that names what is missing. `own` is the model
-    a seat of the post runs on without --model: the post's own, or the fleet's."""
+    a seat of the post runs on without --model: the post's own, or the fleet's; `may` the post's moves. Only a
+    working post is lent - one that may claim, whose claims a borrowed seat is refused: a borrowed reviewer, judge
+    or sender would do its post's ordinary work on the costlier model, and a sender is one copy (re-review of
+    61483de)."""
     from flotilla.core.text import has_hidden
     model, for_task, brief = model.strip(), for_task.strip(), brief.strip()
-    if post in NOT_LENT:
-        raise MoveRefused(f"a seat of the `{post}` post is never raised on a borrowed model; lend it to a seat that "
-                          "works, such as `main`")
+    if post in NOT_LENT or "claim" not in may:
+        raise MoveRefused(f"a seat of the `{post}` post is never raised on a borrowed model; lend it to a working "
+                          "seat, a post that may claim, such as `main`")
     if not fleet_model.valid(model):
         raise MoveRefused(f"`{model}` is not a model's name; name one, such as `fable` or `sonnet`")
     if fleet_model.same(model, own):
@@ -136,7 +140,8 @@ def raise_borrowed(ledger, post_name: str, *, model: str, for_task: str, brief: 
     default, _ = fleet_model.default(ledger.profile, state=paths.state_dir(), main=main)
     own = launch.model_for(fleet_model.resolved(ledger.profile, state=paths.state_dir(), main=main),
                            ledger.posts[post_name])
-    model, for_task, brief = checked(model=model, for_task=for_task, brief=brief, own=own, post=post_name)
+    model, for_task, brief = checked(model=model, for_task=for_task, brief=brief, own=own, post=post_name,
+                                     may=ledger.posts[post_name].may)
     if not anyway:
         from flotilla import __version__
         split = spawn.release_split(ledger, running=__version__)

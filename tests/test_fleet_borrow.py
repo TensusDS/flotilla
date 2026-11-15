@@ -289,3 +289,45 @@ def test_a_finished_borrowed_seat_still_running_is_listed(tmp_path):
     view = {item["name"]: item for item in retire.fleet_view(ledger, fake.census())}
     item = view[raised.seat.name]
     assert item["finished"] and item["model"] == "fable" and item["borrowed_for"] == "feat/x" and item["live"]
+
+
+def test_a_seat_that_said_done_cannot_reserve_its_way_out(tmp_path):
+    """Security review of 61483de: after `helper done`, a `work reserve` of its own made its latest seat row an
+    ordinary one, and the claim refusal let go."""
+    from flotilla.ledger.model import lent_to
+    root, ledger, fake, row, tip = world(tmp_path)
+    raised, _ = lend(ledger, fake)
+    name = raised.seat.name
+    helpers.done(ledger, actor(ledger, name), summary="found it")
+    with pytest.raises(MoveRefused, match="takes no other work"):
+        core.reserve(ledger, actor(ledger, name), "fleet/elsewhere")
+    with ledger.session() as s:   # a later seat row written all the same does not undo it
+        s.append(actor(ledger, name), core.next_row_id(s.rows), "reserve", "reserved",
+                 fields={"branch": "fleet/elsewhere", "owner": name, "tree": ""})
+    assert lent_to(ledger.rows(), name)["for"] == "feat/x"
+    git(root, "branch", "feat/other")
+    with pytest.raises(MoveRefused, match="takes no other work"):
+        core.claim(ledger, actor(ledger, name), "feat/other")
+
+
+@pytest.mark.parametrize("post", ["reviewer", "sender", "judge"])
+def test_only_a_working_post_is_lent(tmp_path, post):
+    """Re-review of 61483de: a borrowed reviewer, sender or judge does its post's ordinary work on the costlier
+    model, and a sender is one copy."""
+    root, ledger, fake, row, tip = world(tmp_path)
+    with pytest.raises(MoveRefused, match="a post that may claim"):
+        borrow.raise_borrowed(ledger, post, model="fable", for_task="q", brief="b", by="orchestrator 1",
+                              census=fake.census, store=LocalLogStore(ledger.state_dir / "fleet"), caller="x",
+                              wait=0.1, poll=0.05, sleep=lambda s: None)
+    assert fake.launched == []
+
+
+def test_a_lent_seat_reads_nobodys_work(tmp_path):
+    from flotilla.ledger import handover, reading
+    from flotilla.ledger.actor import Actor
+    root, ledger, fake, row, tip = world(tmp_path)
+    raised, _ = lend(ledger, fake)
+    handover.hand(ledger, actor(ledger, OWNER), "feat/x")
+    reviewer = Actor(raised.seat.name, ledger.posts["reviewer"], "as")   # a reader's moves, under its name
+    with pytest.raises(MoveRefused, match="takes no other work"):
+        reading.take(ledger, reviewer, "feat/x")

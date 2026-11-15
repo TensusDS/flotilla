@@ -13,9 +13,10 @@ A stronger model can be lent to one task without moving the fleet onto it (fleet
   its owner; the brief is its first prompt. Its subagents are held to the fleet's model (Claude Code's
   `CLAUDE_CODE_SUBAGENT_MODEL`, forced), and `spawn` warns when Claude Code is too old for that, or its version
   cannot be read. Only the orchestrator or the person may raise it; the model its post runs on anyway, a missing
-  `--for` or brief, the orchestrator's post, and a model a live seat is limited on are refused.
-- **It takes no other work**: a claim, `tree cut` or `tree switch` by it, an adoption to it and a reading assigned
-  to it are refused, the watch never calls it idle or offers it the next row, and `spawn --fill` does not count it
+  `--for` or brief, a post that may not claim (the orchestrator, a reviewer, the sender, the judge), and a model a
+  live seat is limited on are refused.
+- **It takes no other work**: a claim, `tree cut`, `tree switch` or `work reserve` by it, a reading it takes,
+  fixes or accepts, an adoption to it and a reading assigned to it are refused, the watch never calls it idle or offers it the next row, and `spawn --fill` does not count it
   as holding its post - so it never runs ordinary work on the costlier model.
 - **While it is up, the person's line counts it** - "1 seat on fable for <task>" - on its own, never as something
   that waits on them; `flotilla fleet` shows `borrowed for <task>` beside its model, and keeps listing it - as a

@@ -1896,8 +1896,11 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    It takes no other work (review of 5ef2dd7): every claim (claim, `tree cut`, `tree switch`), an adoption to it and
    a reading assigned to it are refused, the watch neither calls it idle nor offers it the next row, and it does
    not hold its post for `spawn --fill` - a seat that took ordinary rows would run them on the costlier model,
-   the failure this release exists to prevent. The orchestrator post is never lent: a borrowed orchestrator could
-   lend models by its own choice. "Borrowed" is measured against what a seat of the post runs on anyway, its own
+   the failure this release exists to prevent; so are its own `work reserve` and a reader's take, fix and accept,
+   and the refusal holds by any seat row the name ever held, not its latest (security review of 61483de). Only a
+   working post is lent, one that may claim: a borrowed orchestrator could lend models by its own choice, and a
+   borrowed reviewer, judge or sender would do its post's ordinary work on the costlier model (a sender is also
+   one copy). "Borrowed" is measured against what a seat of the post runs on anyway, its own
    model or the fleet's, so a post on sonnet in a fleet on opus may be lent opus. The census itself (`claude
    agents`) does not mark the seat; `flotilla fleet` and the person's line do.
 

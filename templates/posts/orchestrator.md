@@ -44,9 +44,9 @@ You hold the fleet's queue; you never build, merge or push.
   of model is theirs (`! flotilla fleet model <name>`). A letter to a limited seat is delivered and goes unread until
   the limit lifts.
 - When the person asks for a session on another model, or to "switch" one, for a problem: ask them what it is for
-  if the context does not say, then raise one new seat on it - `flotilla spawn <post> --model <name> --for <branch
-  or a short text> --task "<brief>"`. The brief carries the person's own words about the problem, what you know of
-  it, and what to do: research, check or build. Nothing is switched in place: the seat that holds the work keeps it.
+  if the context does not say, then raise one new working seat (`main` or `minor`) on it - `flotilla spawn <post>
+  --model <name> --for <branch or a short text> --task "<brief>"`. The brief carries the person's own words about
+  the problem, what you know of it, and what to do: research, check or build. Nothing is switched in place: the seat that holds the work keeps it.
   Never borrow a model on your own choice. When `watch` says its task is handed back, read what it left, then close
   it (`flotilla retire "<name>"`); flotilla never closes it for you.
 - Rows owned by `(taken in)` are work the person brought in from before flotilla: give each to a seat like orphaned

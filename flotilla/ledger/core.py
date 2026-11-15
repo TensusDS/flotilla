@@ -268,6 +268,9 @@ def append_claim(s: LedgerSession, actor: Actor, branch: str, *, tree: str, base
 def reserve(ledger: Ledger, actor: Actor, branch: str, *, tree: str = "") -> Row:
     require_may(actor, "reserve", ledger.posts)
     with ledger.session() as s:
+        from flotilla.ledger.model import lent_refusal
+        if lent_refusal(s.rows, actor.name):
+            raise MoveRefused(lent_refusal(s.rows, actor.name))
         held = [row for row in s.rows.values() if row.is_open and row.state == "reserved" and row.owner == actor.name]
         if held:
             raise MoveRefused(f"{actor.name} already holds a post row ({held[0].id}, `{held[0].branch}`)")

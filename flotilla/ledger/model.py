@@ -168,11 +168,16 @@ def borrowed(row) -> dict:
 
 
 def lent_to(rows: dict, name: str) -> dict:
-    """What `name` was lent for when its latest seat row is a seat on a borrowed model's - open, or released by
-    `helper done` while it still runs; {} for any other session."""
-    seats = [row for row in rows.values()
-             if row.owner == name and row.history and row.history[0].get("move") == "reserve"]
-    return borrowed(seats[-1]) if seats else {}
+    """What `name` was lent for when any seat row it ever held is a seat on a borrowed model's - open, or released
+    by `helper done` while it still runs; {} for any other session. Any, not the latest: a seat that reserved a row
+    of its own afterwards is still the one lent (security review of 61483de). Names are never reissued, so another
+    session never inherits it."""
+    for row in rows.values():
+        if row.owner == name and row.history and row.history[0].get("move") == "reserve":
+            found = borrowed(row)
+            if found:
+                return found
+    return {}
 
 
 def lent_refusal(rows: dict, name: str) -> str:

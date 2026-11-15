@@ -302,7 +302,8 @@ def _borrow(ledger, args, profile: dict) -> int:
         raise MoveRefused(str(err)) from err
     default = str(profile["fleet"]["model"])
     model, for_task, brief = borrow.checked(model=args.model, for_task=args.for_task or "", brief=args.brief or "",
-                                            own=launch.model_for(profile, ledger.posts[post_name]), post=post_name)
+                                            own=launch.model_for(profile, ledger.posts[post_name]), post=post_name,
+                                            may=ledger.posts[post_name].may)
     try:
         sessions = census()
     except CensusUnavailable as err:
