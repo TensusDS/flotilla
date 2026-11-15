@@ -23,7 +23,7 @@ STARTED = time.monotonic()
 #: Seconds per external call inside a hook. The calls plus a margin must fit inside the timeouts declared in
 #: hooks/hooks.json, or Claude Code kills the hook before it can say "unknown".
 HOOK_CHECK_TIMEOUT = 3
-EVENTS = ("session-start", "prompt", "stop", "guard", "permission", "ask", "edit")
+EVENTS = ("session-start", "prompt", "stop", "stop-failure", "guard", "permission", "ask", "edit")
 CLI = Path(__file__).resolve().parent.parent / "bin" / "flotilla"
 PEERS_SHOWN = 8
 #: Seconds the guards may read one Bash command. Claude Code discards the output of a PreToolUse hook that reaches
@@ -101,6 +101,10 @@ def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime
             _copy_note(cwd, out)
         return 0
     _trace(event, payload, root, now)
+    if event in ("stop", "stop-failure"):   # before the census and the ledger: neither is needed, and either may fail
+        _limit(event, payload, now)
+        if event == "stop-failure":
+            return 0
 
     try:
         if gather is None:
@@ -528,6 +532,23 @@ def _stop(ctx, payload, out, now) -> int:
         fleet.record_break(ctx.ledger.state_dir, ctx.ledger.repo_key, ctx.me.name, verdict.breaks,
                            at=now_iso(now))
     return 0
+
+
+def _limit(event: str, payload: dict, now: dt.datetime | None) -> None:
+    """A turn that ended on a usage limit is recorded for the session (fleet model design 5.6); the session's next
+    turn that ends normally clears it. Claude Code ignores what a `StopFailure` hook says, so it says nothing."""
+    try:
+        from flotilla.core import paths
+        from flotilla.fleet import limits
+        if event == "stop":
+            limits.clear(paths.state_dir(), str(payload.get("session_id") or ""))
+            return
+        found = limits.parse(payload, at=now or dt.datetime.now(dt.timezone.utc))
+        if found is not None:
+            limits.record(paths.state_dir(), found)
+    except Exception as err:  # noqa: BLE001 - a record that cannot be kept costs the session nothing
+        print(f"flotilla: the usage limit this turn ended on could not be recorded or cleared: {err}",
+              file=sys.stderr)
 
 
 def _permission(ctx, payload, out, now) -> int:

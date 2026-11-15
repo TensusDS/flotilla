@@ -112,8 +112,15 @@ def test_every_hook_event_is_declared():
     commands = {h["command"].rsplit(" ", 1)[-1]: name for name, groups in declared.items()
                 for group in groups for h in group["hooks"]}
     assert commands == {"session-start": "SessionStart", "prompt": "UserPromptSubmit", "stop": "Stop",
-                        "guard": "PreToolUse", "permission": "PermissionRequest", "ask": "PreToolUse",
-                        "edit": "PreToolUse"}
+                        "stop-failure": "StopFailure", "guard": "PreToolUse", "permission": "PermissionRequest",
+                        "ask": "PreToolUse", "edit": "PreToolUse"}
+
+
+def test_the_failure_hook_hears_only_a_rate_limit():
+    """The matcher is the error type, matched exactly when it holds only letters, digits, `_` and `|`
+    (code.claude.com/docs/en/hooks, matchers): a seat is not marked limited by an overloaded server."""
+    declared = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]["StopFailure"]
+    assert [group["matcher"] for group in declared] == ["rate_limit"]
 
 
 def call(event, tmp_path, ctx, payload=None, now=NOW):
@@ -199,6 +206,54 @@ def test_stop_lets_a_session_with_a_task_in_flight_stop(tmp_path):
     assert call("stop", tmp_path, context(tmp_path, me=sess("review session 1"), rows_=HANDED), payload=busy) == ""
     cron = {"background_tasks": [], "session_crons": [{"id": "c1", "schedule": "*/5 * * * *"}]}
     assert call("stop", tmp_path, context(tmp_path, me=sess("review session 1"), rows_=HANDED), payload=cron) == ""
+
+
+FABLE = "You've hit your Fable limit · resets Sep 30, 6pm (UTC)"
+
+
+def no_context(root, sid):
+    raise AssertionError("a limit is recorded and cleared without the census or the ledger")
+
+
+def stopped_on(tmp_path, error="rate_limit", text=FABLE):
+    onboarded(tmp_path)
+    body = {"cwd": str(tmp_path), "session_id": "seat-1", "error": error, "last_assistant_message": text}
+    out = io.StringIO()
+    assert hooks.run_hook("stop-failure", io.StringIO(json.dumps(body)), out=out, gather=no_context, now=NOW) == 0
+    return out.getvalue()
+
+
+def test_a_turn_ended_on_a_usage_limit_is_recorded(tmp_path):
+    from flotilla.core import paths
+    from flotilla.fleet import limits
+    assert stopped_on(tmp_path) == ""   # Claude Code ignores this hook's output: it says nothing
+    found = limits.current(paths.state_dir(), NOW)
+    assert list(found) == ["seat-1"] and found["seat-1"].scope == "model:fable"
+    assert found["seat-1"].reset == "2026-09-30T18:00:00+00:00"
+
+
+def test_a_turn_ended_on_another_error_records_nothing(tmp_path):
+    from flotilla.core import paths
+    from flotilla.fleet import limits
+    assert stopped_on(tmp_path, error="overloaded", text="API Error: overloaded") == ""
+    assert limits.current(paths.state_dir(), NOW) == {}
+
+
+def test_the_next_normal_stop_clears_the_limit(tmp_path):
+    from flotilla.core import paths
+    from flotilla.fleet import limits
+    stopped_on(tmp_path)
+    call("stop", tmp_path, context(tmp_path, me=sess("review session 1", sid="seat-1"), rows_=HANDED))
+    assert limits.current(paths.state_dir(), NOW) == {}
+
+
+def test_a_stop_whose_context_fails_still_clears_the_limit(tmp_path):
+    from flotilla.core import paths
+    from flotilla.fleet import limits
+    stopped_on(tmp_path)
+    body = {"cwd": str(tmp_path), "session_id": "seat-1"}
+    assert hooks.run_hook("stop", io.StringIO(json.dumps(body)), out=io.StringIO(), gather=no_context, now=NOW) == 0
+    assert limits.current(paths.state_dir(), NOW) == {}
 
 
 def test_stop_lets_through_when_the_registry_is_unreachable(tmp_path):
