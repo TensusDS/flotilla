@@ -79,11 +79,12 @@ command that every guard shares, not one more reading.
 - **`limits.parse`'s comment** names a session window or a week as the cap; a limit of no known scope gets a month.
   Wording. *(checked 2026-11-15 on 0.32.2: open - flotilla/fleet/limits.py parse)*
 
-- **Whether `StopFailure` fires for a `claude --bg` seat was never measured**, nor whether the usage-limit line is
-  what `last_assistant_message` carries: the docs say neither. If either is not so, the feature shows nothing (it
-  breaks nothing). A one-off check: a scratch project, a `claude --bg` launch on a model name that does not exist
-  (`model_not_found`, no usage spent), and a hook that writes its input to a file. *(checked 2026-11-15 on 0.32.2:
-  open - offered to the person, not answered)*
+- **Whether the usage-limit line is what `last_assistant_message` carries was never measured**: the docs do not
+  say, and only a real limit shows it. If it is not so, a limited seat reads with no reset (the fallback expiry),
+  nothing breaks. That `StopFailure` fires for a `claude --bg` seat is measured: Claude Code 2.1.325, a scratch
+  project, `--model` naming no model; the hook got `session_id`, `transcript_path`, `cwd`, `prompt_id`, `effort`,
+  `error: "model_not_found"` and `last_assistant_message` (the rendered error text), with no `error_details` and no
+  `model`. *(checked 2026-11-15 on 0.32.2: open - the limit line half)*
 - **A letter's receiver line does not name the limit** (design 5.6, last point): `flotilla status` marks the rows
   waiting on a limited seat, the letter itself still reads "delivered". *(checked 2026-11-15 on 0.32.2: open -
   flotilla/ledger letters)*
