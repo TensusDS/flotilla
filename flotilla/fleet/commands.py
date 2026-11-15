@@ -259,9 +259,9 @@ def _spawn(ledger, args) -> int:
         raise spawn.SpawnRefused(f"spawning needs the census to check names, and it could not be asked: "
                                  f"{err}") from err
     refused, limited = _limited(ledger, profile, counts, sessions)
-    if refused:
+    if refused and not args.anyway:
         raise spawn.SpawnRefused(refused)
-    for line in limited:
+    for line in ([f"raised under --anyway: {refused}"] if refused else []) + limited:
         print(f"warning: {line}")
     gaps = _gaps(ledger, counts)   # asked before the launch: a seat just raised may not be in the census yet
     try:
@@ -400,13 +400,9 @@ def _limited(ledger, profile: dict, counts: dict, sessions) -> tuple[str, list[s
     import datetime as _dt
     from flotilla.fleet import limits
     from flotilla.fleet import model as fleet_model
-    try:
-        found = limits.of_sessions(paths.state_dir(), sessions, _dt.datetime.now(_dt.timezone.utc))
-    except Exception as err:  # noqa: BLE001 - a hint that cannot be read refuses nothing, and says so
-        return "", [f"the usage limits seats stopped on could not be read ({err})"]
     families = {post: fleet_model.family(launch.model_for(profile, ledger.posts[post]))
                 for post, count in counts.items() if count and post in ledger.posts}
-    return limits.refusal(found, families)
+    return limits.for_raise(paths.state_dir(), sessions, families, _dt.datetime.now(_dt.timezone.utc))
 
 
 def live_text(item: dict, limit=None) -> str:

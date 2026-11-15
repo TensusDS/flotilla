@@ -27,7 +27,7 @@ def payload(text=None, error="rate_limit", **extra):
 def test_rate_limit_payload_records(tmp_path):
     found = limits.parse(payload("You've hit your Fable limit · resets Nov 18, 6pm (UTC)"), at=AT)
     assert found == limits.Limit("seat-1", AT.isoformat(timespec="seconds"), "2026-11-18T18:00:00+00:00",
-                                 "model:fable")
+                                 "model:fable", "2026-11-18T18:00:00+00:00")
     limits.record(tmp_path, found)
     assert limits.current(tmp_path, AT) == {"seat-1": found}
 
@@ -86,14 +86,30 @@ def test_a_payload_without_text_records_a_limit_of_unknown_scope_and_reset():
 
 @pytest.mark.parametrize("text, reset", [
     ("You've hit your session limit · resets 10pm (UTC)", "2026-11-13T22:00:00+00:00"),       # later today
-    ("You've hit your session limit · resets 4:30pm (UTC)", "2026-11-14T16:30:00+00:00"),     # past today: tomorrow
-    ("You've hit your session limit · resets 12am (UTC)", "2026-11-14T00:00:00+00:00"),
-    ("You've hit your session limit · resets 12pm (UTC)", "2026-11-14T12:00:00+00:00"),
+    ("You've hit your weekly limit · resets 4:30pm (UTC)", "2026-11-14T16:30:00+00:00"),      # past today: tomorrow
+    ("You've hit your weekly limit · resets 12am (UTC)", "2026-11-14T00:00:00+00:00"),
+    ("You've hit your weekly limit · resets 12pm (UTC)", "2026-11-14T12:00:00+00:00"),
     ("You've hit your weekly limit · resets Nov 18, 6:15pm (Europe/Berlin)", "2026-11-18T17:15:00+00:00"),
-    ("You've hit your weekly limit · resets Jan 2, 2027, 9am (UTC)", "2027-01-02T09:00:00+00:00"),  # year shown
+    ("You've hit your session limit · resets 5:02pm (UTC)", "2026-11-13T17:06:00+00:00"),   # as it lifts
 ])
 def test_the_reset_is_read_in_the_zone_it_names(text, reset):
     assert limits.parse(payload(text), at=AT).reset == reset
+
+
+def test_a_reset_in_another_year_names_it():
+    at = dt.datetime(2026, 12, 30, 10, 0, tzinfo=UTC)
+    found = limits.parse(payload("You've hit your weekly limit · resets Jan 2, 2027, 9am (UTC)"), at=at)
+    assert found.reset == "2027-01-02T09:00:00+00:00"
+
+
+@pytest.mark.parametrize("text", [
+    "You've hit your session limit · resets 11pm (UTC)",              # six hours off: no session window lasts so
+    "You've hit your weekly limit · resets Nov 18, 2099, 6pm (UTC)",  # nor any week
+    "You've hit your Fable limit · resets Dec 1, 6pm (UTC)",
+])
+def test_a_reset_beyond_the_window_it_names_is_not_trusted(text):
+    found = limits.parse(payload(text), at=AT)
+    assert found.reset is None and found.scope != "unknown"
 
 
 @pytest.mark.parametrize("text", [
@@ -137,28 +153,69 @@ def test_a_limit_past_its_reset_is_dropped(tmp_path):
     assert limits.current(tmp_path, dt.datetime(2026, 11, 13, 22, 0, tzinfo=UTC)) == {}
 
 
-def test_a_limit_with_no_reset_is_dropped_after_a_week(tmp_path):
-    """No limit Claude Code names lasts longer than its weekly window; a seat retired while limited never stops
-    again, so its record would otherwise stay for good."""
-    found = limits.parse(payload("API Error: Rate limit reached"), at=AT)
+@pytest.mark.parametrize("text, kept", [
+    ("You've hit your session limit", dt.timedelta(hours=5)),
+    ("You've hit your 5-hour limit · progress saved", dt.timedelta(hours=5)),
+    ("You've hit your weekly limit", dt.timedelta(days=7)),
+    ("You've hit your Opus limit", dt.timedelta(days=7)),
+    ("API Error: Rate limit reached", dt.timedelta(hours=1)),   # mostly a burst of 429s: a quiet seat again soon
+])
+def test_a_limit_with_no_reset_is_kept_as_long_as_its_window(tmp_path, text, kept):
+    """Review of 747c754: a week for every limit kept a session limit's refusal, or a 429's mark, for days."""
+    found = limits.parse(payload(text), at=AT)
     limits.record(tmp_path, found)
-    assert limits.current(tmp_path, AT + dt.timedelta(days=6, hours=23)) == {"seat-1": found}
-    assert limits.current(tmp_path, AT + dt.timedelta(days=7)) == {}
+    assert limits.current(tmp_path, AT + kept - dt.timedelta(minutes=1)) == {"seat-1": found}
+    assert limits.current(tmp_path, AT + kept) == {}
+
+
+def test_a_text_that_ends_after_its_opening_is_a_limit_of_unknown_scope():
+    found = limits.parse(payload("You've hit your "), at=AT)
+    assert (found.scope, found.reset) == ("unknown", None)
+
+
+def test_a_session_id_no_session_has_records_nothing():
+    assert limits.parse(payload("You've hit your weekly limit", session_id="x" * 201), at=AT) is None
+
+
+def test_the_census_decides_whose_limit_is_shown(tmp_path):
+    """A seat no census lists - retired while limited - refuses nothing; one the census sees working had its
+    limit lifted, and the end of its turn clears the record."""
+    from types import SimpleNamespace
+    for sid in ("seat-1", "seat-2", "seat-3"):
+        limits.record(tmp_path, limits.parse(payload("You've hit your weekly limit", session_id=sid), at=AT))
+    sessions = [SimpleNamespace(name="a", session_id="seat-1", state="blocked"),
+                SimpleNamespace(name="b", session_id="seat-2", state="working")]
+    assert list(limits.of_sessions(tmp_path, sessions, AT)) == ["a"]
 
 
 def test_a_record_keeps_the_log_short(tmp_path):
     """Each write rewrites the log with only the records still current: it does not grow with every limit."""
-    for hour in range(30):
-        at = AT + dt.timedelta(days=hour)
+    for day in range(30):
+        at = AT + dt.timedelta(days=day)
         limits.record(tmp_path, limits.parse(payload("You've hit your session limit · resets 10pm (UTC)",
-                                                     session_id=f"seat-{hour}"), at=at))
+                                                     session_id=f"seat-{day}"), at=at))
     lines = (tmp_path / limits.DIRECTORY / f"{limits.KEY}.jsonl").read_text().splitlines()
     assert len(lines) == 1
 
 
-def test_a_torn_or_foreign_line_is_skipped(tmp_path):
+def test_a_foreign_line_or_scope_is_skipped(tmp_path):
     found = limits.parse(payload("You've hit your Fable limit · resets Nov 18, 6pm (UTC)"), at=AT)
     limits.record(tmp_path, found)
     log = tmp_path / limits.DIRECTORY / f"{limits.KEY}.jsonl"
-    log.write_text(log.read_text() + '{"session_id": 3}\n{"kind": "other"}\n')
+    log.write_text(log.read_text() + '{"session_id": 3}\n{"kind": "other"}\n'
+                   '{"session_id": "s", "at": "2026-11-13T17:05:00+00:00", "reset": null, "scope": "\\u001b[31m"}\n')
     assert limits.current(tmp_path, AT) == {"seat-1": found}
+
+
+def test_a_damaged_log_is_written_anew_by_the_next_record(tmp_path):
+    """Review of 747c754: one damaged line stopped every later record and clear, with nothing said."""
+    log = tmp_path / limits.DIRECTORY / f"{limits.KEY}.jsonl"
+    log.parent.mkdir(parents=True)
+    log.write_text("{not json\n")
+    assert limits.current(tmp_path, AT) == {}
+    found = limits.parse(payload("You've hit your weekly limit"), at=AT)
+    limits.record(tmp_path, found)
+    assert limits.current(tmp_path, AT) == {"seat-1": found}
+    log.write_text("{not json\n")
+    limits.clear(tmp_path, "seat-1")
+    assert limits.current(tmp_path, AT) == {} and log.read_text() == ""

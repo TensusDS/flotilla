@@ -429,10 +429,12 @@ name one: the orchestrator puts the question to you, and `flotilla fleet` shows 
 **A seat stopped on a usage limit** reads `limited until <time>` in `flotilla fleet` and `flotilla watch`, not
 idle: a hook records the limit when Claude Code ends a seat's turn on it, and the seat's next normal turn clears it.
 `flotilla status` marks the rows waiting on such a seat, and when every seat of the fleet is limited the
-orchestrator's watch puts one urgent item in your queue - wait for the reset, or name another model. `spawn` refuses
-a seat that would stop at once: on any model under the account's session or weekly limit, on the limited model under
-a model's limit. The limit's model and reset are read from Claude Code's own message; when that message says neither,
-the seat reads `limited, reset unknown` and `spawn` only warns.
+orchestrator's watch puts one urgent item in your queue - wait for the reset, or name another model. `spawn` and
+`helper raise` refuse a seat that would stop at once - on any model under the account's session or weekly limit, on
+the limited model under a model's limit - unless you pass `--anyway`. The limit's model and reset are read from
+Claude Code's own message. With no reset in it, the mark lasts as long as the window the message names (five hours
+for a session limit, a week for a weekly or a model's limit); a limit the message does not name at all only warns,
+and is forgotten after an hour - mostly a burst of rate-limited requests, after which the seat is just quiet.
 
 A post may also say `effort:` - `low`, `medium`, `high`, `xhigh` or `max` - and its seats start with
 `claude --effort` at that level; a higher level thinks longer and costs more tokens. Without the key a seat takes

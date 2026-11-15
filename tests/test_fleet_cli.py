@@ -549,7 +549,7 @@ def _limited_world(tmp_path, monkeypatch, scope):
     seat = _a_session("review session 1", root)
     monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [seat])
     limits.record(paths.state_dir(), limits.Limit(seat.session_id, "2026-11-13T17:05:00+00:00",
-                                                  "2099-11-18T18:00:00+00:00", scope))
+                                                  "2099-11-18T18:00:00+00:00", scope, "2099-11-18T18:00:00+00:00"))
     return root
 
 
@@ -575,7 +575,14 @@ def test_spawn_refused_on_account_limit(tmp_path, monkeypatch):
     root = _limited_world(tmp_path, monkeypatch, "account")
     code, out = run_cli("spawn", "-M", "1", "--root", str(root))
     assert code == 2 and "the account's session or weekly limit, every model" in out, out
-    assert "would stop at once on any model" in out
+    assert "would stop at once on any model" in out and "`--anyway` raises the seat all the same" in out
+    assert not (tmp_path / "app-main-1").exists()
+
+
+def test_spawn_anyway_passes_a_limit_and_says_so(tmp_path, monkeypatch):
+    root = _limited_world(tmp_path, monkeypatch, "account")
+    code, out = run_cli("spawn", "-M", "1", "--anyway", "--root", str(root))
+    assert "warning: raised under --anyway: review session 1 stopped on the account's" in out, out
 
 
 def test_spawn_warns_on_unknown_scope(tmp_path, monkeypatch):

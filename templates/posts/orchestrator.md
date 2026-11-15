@@ -40,7 +40,7 @@ You hold the fleet's queue; you never build, merge or push.
   the adopt move hands it to a live owner.
 - A seat stopped on a usage limit is not gone: `flotilla fleet` and `flotilla watch` name it `limited until <time>`
   (or `limited, reset unknown`). Do not retire it, and do not raise a replacement on the same model - it would stop
-  at once, and `spawn` refuses it. Tell the person which seats are limited, on which limit and until when; a change
+  at once; `spawn` refuses it, or warns when the limit's scope is unknown. Tell the person which seats are limited, on which limit and until when; a change
   of model is theirs (`! flotilla fleet model <name>`). A letter to a limited seat is delivered and goes unread until
   the limit lifts.
 - Rows owned by `(taken in)` are work the person brought in from before flotilla: give each to a seat like orphaned

@@ -69,6 +69,26 @@ command that every guard shares, not one more reading.
   `work adopt` do it by hand. *(checked 2026-11-13 on 0.32.0: open - docs/specs/2026-11-13-fleet-model-design.md,
   non-goals)*
 
+## From the reviews of 0.32.2 (2026-11-15, a seat stopped on a usage limit)
+
+- **Whether `StopFailure` fires for a `claude --bg` seat was never measured**, nor whether the usage-limit line is
+  what `last_assistant_message` carries: the docs say neither. If either is not so, the feature shows nothing (it
+  breaks nothing). A one-off check: a scratch project, a `claude --bg` launch on a model name that does not exist
+  (`model_not_found`, no usage spent), and a hook that writes its input to a file. *(checked 2026-11-15 on 0.32.2:
+  open - offered to the person, not answered)*
+- **A letter's receiver line does not name the limit** (design 5.6, last point): `flotilla status` marks the rows
+  waiting on a limited seat, the letter itself still reads "delivered". *(checked 2026-11-15 on 0.32.2: open -
+  flotilla/ledger letters)*
+- **Several Claude Code accounts on one machine** (`CLAUDE_CONFIG_DIR`): limit records are the machine's, so a
+  limited seat of another account refuses spawns here. Right for one account. *(checked 2026-11-15 on 0.32.2: open -
+  flotilla/fleet/limits.py of_sessions)*
+- **`opusplan` against a Sonnet limit**: `family("opusplan")` is opus, so a Sonnet limit does not refuse a post on
+  `opusplan`, which runs Sonnet when it executes. *(checked 2026-11-15 on 0.32.2: open - flotilla/fleet/limits.py
+  refusal)*
+- **One session can mark another limited** by running `flotilla hook stop-failure` with a crafted payload naming a
+  live seat's session id; it could already write the state directory, so no new privilege, and the reset is capped
+  by the window it names. *(checked 2026-11-15 on 0.32.2: open, accepted - flotilla/hooks.py _limit)*
+
 ## From the reviews of 0.32.0 (2026-11-13, the fleet's model)
 
 The guard hook now answers within its deadline, so what is left costs time and asks the person more often - it

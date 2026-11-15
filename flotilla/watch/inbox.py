@@ -109,7 +109,8 @@ def _row_entry(ctx, row, rows: dict, must_approve) -> Entry | None:
 def _item_entry(item) -> Entry | None:
     from flotilla.watch.fleet import ALL_LIMITED, OWED, PERSON, QUESTION
     if item.kind == ALL_LIMITED:   # the whole fleet stands still on its limit: wait it out or change the model
-        return Entry(f"limited:{item.since}", "other", "", visible(item.text), item.since, "", True, True)
+        # one entry while the same seats stay limited: a seat limited again gives it a new time, not a new question
+        return Entry(f"limited:{item.who}", "other", "", visible(item.text), item.since, "", True, True)
     if item.kind == OWED:   # the fleet stands still until the person answers: urgent, and a blocker
         return Entry(f"owed:{item.who}", "question", "", visible(item.text), item.since, "", True, True)
     if item.kind == QUESTION:

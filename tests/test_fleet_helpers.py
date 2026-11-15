@@ -186,3 +186,18 @@ def test_a_helper_is_refused_before_its_name_is_taken_when_no_model_is_named(tmp
         raise_one(ledger, fake)
     ledger.profile = {**ledger.profile, "fleet": {"model": "opus"}}
     assert raise_one(ledger, fake).seat.name == "helper 1"   # the refused raise took no name
+
+
+def test_a_helper_on_a_limited_model_is_refused(tmp_path):
+    """Review of 747c754: a helper raised on the model a live seat stopped on would stop at once, as a seat would."""
+    from flotilla.core import paths
+    from flotilla.fleet import limits
+    root, ledger, fake, row, tip = world(tmp_path)
+    first = raise_one(ledger, fake)
+    limits.record(paths.state_dir(), limits.Limit(f"sid-{first.short_id}", "2026-11-13T17:05:00+00:00",
+                                                  "2099-11-18T18:00:00+00:00", "model:opus", "2099-11-18T18:00:00+00:00"))
+    launched = len(fake.launched)
+    with pytest.raises(MoveRefused, match="helper 1 stopped on the opus model's limit"):
+        raise_one(ledger, fake)
+    assert len(fake.launched) == launched
+    assert raise_one(ledger, fake, anyway=True).seat.name == "helper 2"

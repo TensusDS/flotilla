@@ -165,4 +165,4 @@ def test_every_seat_limited_is_the_persons_urgent_blocker():
     one = Item(LIMITED, "", "a is limited", "2026-11-13T17:05:00+00:00", who="a")
     found = collect(fleet_items=[every, one])
     assert [(entry.key, entry.urgent, entry.blocker) for entry in found] == [
-        ("limited:2026-11-13T17:05:00+00:00", True, True)]
+        ("limited:a,b", True, True)]
