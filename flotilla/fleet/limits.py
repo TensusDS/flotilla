@@ -33,6 +33,8 @@ SESSION_LIMITS = ("session limit", "5-hour limit")
 ACCOUNT_LIMITS = SESSION_LIMITS + ("weekly limit",)
 SESSION_WINDOW = dt.timedelta(hours=5)
 WEEK_WINDOW = dt.timedelta(days=7)
+#: The furthest reset trusted for a limit Claude Code did not name: a credit or spend limit lifts with the month.
+MONTH_WINDOW = dt.timedelta(days=31)
 #: How long a limit Claude Code did not name is kept: long enough to say why a seat went quiet, short enough that a
 #: burst of 429s does not hide a dropped ball or refuse a spawn for days.
 UNNAMED_KEPT = dt.timedelta(hours=1)
@@ -69,9 +71,10 @@ def parse(payload: dict, *, at: dt.datetime) -> Limit | None:
     # the longest a limit of this name lasts: a session window, else a week - a reset Claude Code wrote for a limit
     # it did not name is still its own (second review of 747c754)
     window = SESSION_WINDOW if name in SESSION_LIMITS else WEEK_WINDOW
+    furthest = MONTH_WINDOW if _scope(name) == UNKNOWN else window   # a monthly credit limit (third review)
     reset = _reset(when, at)
-    slack = WINDOW_SLACK if window == WEEK_WINDOW else JUST_PASSED   # a session window crosses no clock change
-    if reset is not None and dt.datetime.fromisoformat(reset) > at + window + slack:
+    slack = JUST_PASSED if furthest == SESSION_WINDOW else WINDOW_SLACK   # a session window crosses no clock change
+    if reset is not None and dt.datetime.fromisoformat(reset) > at + furthest + slack:
         reset = None   # further off than the window it names can last: misread, not trusted (review of 747c754)
     fallback = window if _scope(name) != UNKNOWN else UNNAMED_KEPT
     expires = dt.datetime.fromisoformat(reset) if reset else at + fallback

@@ -103,6 +103,13 @@ def test_a_reset_written_for_a_limit_of_no_known_scope_is_kept():
                                                          "2026-11-18T00:00:00+00:00")
 
 
+def test_a_monthly_reset_of_a_limit_of_no_known_scope_is_kept():
+    """Third review of 747c754: a credit limit lifting on the first of the month is more than a week off."""
+    found = limits.parse(payload("You've hit your usage credit limit · resets Dec 1, 12am (UTC)"), at=AT)
+    assert (found.scope, found.reset) == ("unknown", "2026-12-01T00:00:00+00:00")
+    assert limits.parse(payload("You've hit your usage limit · resets Dec 20, 12am (UTC)"), at=AT).reset is None
+
+
 def test_a_weeks_reset_across_a_change_of_daylight_saving_time_is_trusted():
     at = dt.datetime(2026, 10, 20, 16, 0, tzinfo=UTC)   # 18:00 in Berlin, summer time
     found = limits.parse(payload("You've hit your weekly limit · resets Oct 27, 6pm (Europe/Berlin)"), at=at)

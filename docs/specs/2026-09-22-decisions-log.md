@@ -1875,7 +1875,9 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    A record without a reset lasts as long as the window it names (five hours, or a week), one with neither a name
    nor a reset an hour: a burst of 429s must not hide a quiet seat or refuse spawns for days (reviews of 747c754).
    `--anyway` passes the refusal. `helper raise` is not refused: a helper is raised by a seat that is working, on the
-   same account, so a record seen then is stale. Records are the machine's: a limit of a seat in another project on this machine refuses here too, which
+   same account, so an account's limit seen then is stale, and so is a limit of the raising seat's own model; a
+   limit of another model the helper post runs on is real and is not caught (accepted: rare, and the helper's
+   first turn says so). Records are the machine's: a limit of a seat in another project on this machine refuses here too, which
    is right for one account and wrong for several (`CLAUDE_CONFIG_DIR`) - not handled.
    Whether the hook fires for a `claude --bg` seat is not documented and was not measured before release.
 
