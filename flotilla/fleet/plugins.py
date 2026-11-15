@@ -112,6 +112,14 @@ class Narrowing:
         return lines
 
 
+def with_env(settings_json: str, env: dict[str, str]) -> str:
+    """The `--settings` JSON with `env` added: what a seat on a borrowed model carries to hold its subagents to the
+    fleet's model (fleet model design 5.3)."""
+    data = json.loads(settings_json) if settings_json else {}
+    data["env"] = {**(data.get("env") or {}), **env}
+    return json.dumps(data)
+
+
 def kept_by(post) -> tuple[tuple, str]:
     """The plugins a seat of this post keeps, and a note when they are not the post's own words. A project post
     that predates the `plugins:` key (its `template_version` is older than the shipped template's, and it does not

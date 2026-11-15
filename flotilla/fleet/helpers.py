@@ -95,15 +95,18 @@ def raise_helper(ledger, actor: Actor, branch: str, *, task: str, census, store,
 
 
 def done(ledger, actor: Actor, *, summary: str) -> tuple[Row, str]:
-    """Record what the helper did and release its seat; the letter goes to the session that raised it."""
+    """Record what the helper - or a seat on a borrowed model (fleet model design 5.3) - did and release its seat;
+    the letter goes to the session that raised it."""
+    from flotilla.fleet.model import borrowed
     summary = summary.strip()
     if not summary:
         raise MoveRefused("say what you did, or why it could not be done (--summary)")
     with ledger.session() as s:
-        seat = next((row for row in s.rows.values()
-                     if row.owner == actor.name and row.is_open and row.state == "reserved" and row.helper_of), None)
+        seat = next((row for row in s.rows.values() if row.owner == actor.name and row.is_open
+                     and row.state == "reserved" and (row.helper_of or borrowed(row))), None)
         if seat is None:
-            raise MoveRefused(f"{actor.name} is not a helper with an open seat; `helper done` ends a helper's work")
+            raise MoveRefused(f"{actor.name} is not a helper, nor a seat on a borrowed model, with an open seat; "
+                              "`helper done` ends their work")
         if seat.tree:
             listed = ledger.run(["git", "-C", seat.tree, "status", "--porcelain"], capture_output=True, text=True,
                                 check=False)
@@ -112,9 +115,19 @@ def done(ledger, actor: Actor, *, summary: str) -> tuple[Row, str]:
             if dirty:
                 raise MoveRefused(f"{dirty} uncommitted in {seat.tree}: commit the work you keep (or remove what you "
                                   "do not), so the session you help gets all of it")
-        parent = s.rows.get(seat.helper_of)
         tip = gitq.branch_tip(ledger.root, seat.branch, run=ledger.run) or ""
         state = s.next_state(seat, "release")
+        lent = borrowed(seat)
+        if lent and not seat.helper_of:
+            released = s.append(actor, seat.id, "release", state,
+                                evidence={"why": f"done with {lent['for']}: {summary}", "borrowed_for": lent["for"],
+                                          "tip": tip, "summary": summary})
+            by = lent["by"] if lent["by"] and lent["by"] != "the person" else "the orchestrator"
+            return released, (f"letter for {by} - send it with SendMessage; an idle background session is woken only "
+                              f"by a message:\n  {actor.name} is done with {lent['for']}: {summary} (tip "
+                              f"{tip[:7] or 'unknown'}, on {seat.branch}).\n  Read it, take what you keep from "
+                              f"{seat.branch}, then `flotilla retire \"{actor.name}\"`.")
+        parent = s.rows.get(seat.helper_of)
         released = s.append(actor, seat.id, "release", state,
                             evidence={"why": f"helped: {summary}", "helped": seat.helper_of, "tip": tip,
                                       "summary": summary})

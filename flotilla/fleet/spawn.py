@@ -414,10 +414,11 @@ def release_split(ledger, *, running: str, env=os.environ, home: Path | None = N
 
 def raise_seat(ledger, seat: launch.Seat, *, caller: str, census, wait: float = 30.0, poll: float = 1.0,
                sleep=time.sleep, base: str = "", fields: dict | None = None, prompt: str = "",
-               settings_json: str | None = None) -> Raised:
-    """Cut the seat's tree (from `base`, else trunk), reserve its post row (with any extra `fields`), launch it
-    (with `prompt` as its first prompt, else the fleet's). `settings_json` None asks the plugin list here, so a
-    seat raised by any caller is narrowed (H49); "" is an explicit choice not to narrow."""
+               settings_json: str | None = None, model: str = "", evidence: dict | None = None) -> Raised:
+    """Cut the seat's tree (from `base`, else trunk), reserve its post row (with any extra `fields`, and any extra
+    `evidence` beside the model), launch it (with `prompt` as its first prompt, else the fleet's; on `model`, else
+    its post's). `settings_json` None asks the plugin list here, so a seat raised by any caller is narrowed (H49);
+    "" is an explicit choice not to narrow."""
     post = ledger.posts[seat.post]
     actor = Actor(seat.name, post, "spawn", caller)
     main = launch.main_checkout(ledger.root, run=ledger.run)
@@ -426,7 +427,8 @@ def raise_seat(ledger, seat: launch.Seat, *, caller: str, census, wait: float = 
     from flotilla.fleet import model as fleet_model
     try:   # never what Claude Code last saved: the fleet's named model (fleet model design 5.1)
         profile = fleet_model.resolved(ledger.profile, state=paths.state_dir(), main=main)
-        command = launch.argv(seat, post, profile, main=main, settings_json=settings_json, first_prompt=prompt)
+        command = launch.argv(seat, post, profile, main=main, settings_json=settings_json, first_prompt=prompt,
+                              model=model)
     except launch.LaunchError as err:
         raise SpawnRefused(f"{seat.name} was not raised: {err}") from err
     base = base or gitq.trunk_ref(ledger.root, ledger.trunk, run=ledger.run)
@@ -452,7 +454,7 @@ def raise_seat(ledger, seat: launch.Seat, *, caller: str, census, wait: float = 
             row = s.append(actor, next_row_id(s.rows), "reserve", "reserved",
                            fields={"branch": seat.branch, "owner": seat.name, "tree": str(seat.tree),
                                    **(fields or {})},
-                           evidence={"model": launch.model_for(profile, post)})
+                           evidence={"model": model or launch.model_for(profile, post), **(evidence or {})})
     except MoveRefused as err:
         _take_back_git(ledger, seat)
         raise SpawnRefused(f"the post row for {seat.name} was refused: {err}; the tree and branch were taken "

@@ -48,6 +48,11 @@ def family(name: str) -> str:
     return base
 
 
+def valid(name: str) -> bool:
+    """A model's name as Claude Code's `--model` takes it: an alias, a full id, a variant in brackets."""
+    return bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._\[\]-]*", name)) and name.lower() not in (*LEGACY, "inherit")
+
+
 def same(a: str, b: str) -> bool:
     a, b = a.strip().lower(), b.strip().lower()
     if a.startswith("claude-") and b.startswith("claude-"):
@@ -187,6 +192,19 @@ def recorded(row) -> str:
             value = (event.get("evidence") or {}).get("model")
             return value if isinstance(value, str) else ""
     return ""
+
+
+def borrowed(row) -> dict:
+    """What a seat on a borrowed model was raised for, from its `reserve` event (fleet model design 5.4): {"for":
+    the task, "row": the row it named or "", "by": who raised it}; {} for any other seat."""
+    for event in row.history:
+        if event.get("move") == "reserve":
+            evidence = event.get("evidence") or {}
+            if evidence.get("borrowed") is True and isinstance(evidence.get("for"), str):
+                return {"for": evidence["for"], "row": str(evidence.get("for_row") or ""),
+                        "by": str(evidence.get("by") or "")}
+            return {}
+    return {}
 
 
 def unnamed_message() -> str:

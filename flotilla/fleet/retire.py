@@ -17,7 +17,7 @@ from pathlib import Path
 
 from flotilla.core.census import CensusUnavailable
 from flotilla.fleet import cleanup, leftovers, strangers
-from flotilla.fleet.model import recorded
+from flotilla.fleet.model import borrowed, recorded
 from flotilla.ledger import core
 from flotilla.ledger.actor import Actor
 from flotilla.ledger.errors import MoveRefused
@@ -78,7 +78,7 @@ def fleet_view(ledger, sessions: list | None) -> list[dict]:
             "state": found.state if found else "", "short_id": (found.short_id or "") if found else "",
             "session_id": found.session_id if found else "",
             "held_on": found.held_on if found else None,
-            "dirty": _dirty(row.tree), "model": recorded(row),
+            "dirty": _dirty(row.tree), "model": recorded(row), "borrowed_for": borrowed(row).get("for", ""),
             "work": [other for other in rows.values()
                      if other.is_open and other.owner == row.owner and other.state != "reserved"],
             "stranger": "",

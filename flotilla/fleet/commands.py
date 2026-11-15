@@ -74,7 +74,8 @@ def _lead(ledger, args) -> int:
     interactive session, so flotilla can only issue the name - from the journal, never reissued (review of 0.5.0, I3)."""
     from flotilla.core import caller
     from flotilla.ledger import project
-    if counts_from(args, {}) or args.default or args.fill or getattr(args, "recommended", False) or args.dry_run:
+    if counts_from(args, {}) or args.default or args.fill or getattr(args, "recommended", False) or args.dry_run \
+            or getattr(args, "model", None) or getattr(args, "borrow_post", None):
         raise MoveRefused("--lead takes nothing else: it names this session the orchestrator; "
                           "`flotilla spawn --fill` raises the rest afterwards")
     refused = caller.person_refusal("leads the fleet from their own session")
@@ -182,6 +183,8 @@ def _spawn(ledger, args) -> int:
         return _lead(ledger, args)
     profile, model_line = _fleet_profile(ledger)   # before anything is counted: a fleet's model is named
     print(model_line)
+    if any(getattr(args, key, None) for key in ("borrow_post", "model", "for_task", "brief")):
+        return _borrow(ledger, args, profile)
     counts = counts_from(args, ledger.profile)
     recommended = getattr(args, "recommended", False)
     if (args.tasks is not None or args.tasks_file) and not recommended:
@@ -281,6 +284,66 @@ def _spawn(ledger, args) -> int:
     return 0
 
 
+def _borrow(ledger, args, profile: dict) -> int:
+    """`spawn <post> --model <name> --for <task> --task "<brief>"`: one seat lent another model for one task (fleet
+    model design 5.3)."""
+    from flotilla.fleet import borrow
+    if not args.borrow_post or not args.model:
+        raise MoveRefused("a seat on another model is raised one at a time: `flotilla spawn <post> --model <name> "
+                          "--for <task> --task \"<brief>\"`")
+    if counts_from(args, {}) or args.default or args.fill or getattr(args, "recommended", False) \
+            or args.tasks is not None or args.tasks_file:
+        raise MoveRefused("a seat on another model is raised alone: no counts, --default, --fill or --recommended "
+                          "beside it")
+    try:
+        post_name = next(iter(compose.normalise({args.borrow_post: 1}, ledger.posts)))
+    except compose.CompositionError as err:
+        raise MoveRefused(str(err)) from err
+    default = str(profile["fleet"]["model"])
+    model, for_task, brief = borrow.checked(model=args.model, for_task=args.for_task or "", brief=args.brief or "",
+                                            default=default)
+    try:
+        sessions = census()
+    except CensusUnavailable as err:
+        raise spawn.SpawnRefused(f"a seat on another model needs the census to tell who asks for it ({err})") from err
+    by, refused = borrow.caller_refusal(ledger.posts, calling_session(sessions))
+    if refused:
+        raise MoveRefused(refused)
+    limit, unnamed = _limited(ledger, profile, {post_name: 1}, sessions, model=model)
+    if limit and not args.anyway and not args.dry_run:
+        raise spawn.SpawnRefused(limit)
+    said = "passed under --anyway" if args.anyway else "a launch now is refused"
+    for line in ([f"{said}: {limit}"] if limit else []) + unnamed:
+        print(f"warning: {line}")
+    store = LocalLogStore(paths.state_dir() / "fleet")
+    print(f"borrowed: {model} for {for_task}, raised by {by}; its subagents run on {default}")
+    if args.dry_run:
+        main = launch.main_checkout(ledger.root, run=ledger.run)
+        seats, warnings = spawn.plan(ledger, {post_name: 1}, census=census_for(ledger), store=store, reserve=False,
+                                     strict=False)
+        base, row = borrow.base_for(ledger, for_task)
+        narrow = plugins.narrowing(ledger.run, main)
+        post = ledger.posts[post_name]
+        for line in warnings + narrow.warnings([post]) + [w for w in (borrow.cap_warning(ledger.run),) if w]:
+            print(f"warning: {line}")
+        seat = seats[0]
+        cut = f"the tip of {row.branch} (row {row.id})" if row is not None else "trunk"
+        print(f"{seat.name}  ({seat.post})  tree {seat.tree}  branch {seat.branch}, cut from {cut}")
+        command = launch.argv(seat, post, profile, main=main, model=model,
+                              settings_json=borrow.settings(narrow.settings_json(post), default), first_prompt=brief)
+        print(f"    {launch.shown(command)}  (from {main})")
+        print("dry run: 1 session planned; nothing was changed")
+        return 0
+    raised, warnings = borrow.raise_borrowed(ledger, post_name, model=model, for_task=for_task, brief=brief, by=by,
+                                             census=census_for(ledger), store=store,
+                                             caller=f"spawn {caller_line(sessions)}", anyway=args.anyway)
+    for line in warnings:
+        print(f"warning: {line}")
+    _print_raised([raised])
+    print(f"it finishes with `flotilla helper done`; then retire it: `flotilla retire \"{raised.seat.name}\"`")
+    return 0
+
+
 def _print_raised(raised) -> None:
     for item in raised:
         address = f"claude attach {item.short_id}" if item.short_id else "no id yet"
@@ -316,7 +379,6 @@ def _model(ledger, args) -> int:
     """`fleet model [<name>]`: where the fleet's model is read, or - the person's move - name it (fleet model design
     5.2): the main checkout's profile changes, to be landed, and a local note answers for `spawn` meanwhile."""
     import datetime as _dt
-    import re
     from flotilla.core import caller
     from flotilla.fleet import model as fleet_model
     main = launch.main_checkout(ledger.root, run=ledger.run)
@@ -326,7 +388,7 @@ def _model(ledger, args) -> int:
               f"model: not named; the person names it: `{fleet_model.ANSWER}`")
         return 0
     name = args.name.strip()
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._\[\]-]*", name) or name.lower() in (*fleet_model.LEGACY, "inherit"):
+    if not fleet_model.valid(name):
         raise MoveRefused(f"`{name}` is not a model's name; name one, such as `opus` or `sonnet`")
     refused = caller.person_refusal("names the fleet's model")
     if refused:
@@ -386,6 +448,8 @@ def _fleet(ledger, args) -> int:
         lock = "locked" if item["locked"] else "not locked"
         work = ", ".join(f"{row.branch} ({row.state})" for row in item["work"]) or "no open work"
         model = f"model {item.get('model') or 'unknown'}"
+        if item.get("borrowed_for"):   # fleet model design 5.3: lent for one task, closed when it is done
+            model += f" (borrowed for {item['borrowed_for']})"
         print(f"{item['name']}  ({item['post'] or 'no post'})  {live}, {model}\n    tree {tree}{dirty}, {lock}; {work}")
     import datetime as _dt
     from flotilla.core import paths as _paths
@@ -395,13 +459,14 @@ def _fleet(ledger, args) -> int:
     return 0
 
 
-def _limited(ledger, profile: dict, counts: dict, sessions) -> tuple[str, list[str]]:
+def _limited(ledger, profile: dict, counts: dict, sessions, *, model: str = "") -> tuple[str, list[str]]:
     """A refusal when a live seat stopped on a usage limit the seats to raise would stop on at once, and the
-    warnings of limits whose scope Claude Code did not name (fleet model design 5.6)."""
+    warnings of limits whose scope Claude Code did not name (fleet model design 5.6). `model`: the seats' borrowed
+    model, in place of their posts'."""
     import datetime as _dt
     from flotilla.fleet import limits
     from flotilla.fleet import model as fleet_model
-    families = {post: fleet_model.family(launch.model_for(profile, ledger.posts[post]))
+    families = {post: fleet_model.family(model or launch.model_for(profile, ledger.posts[post]))
                 for post, count in counts.items() if count and post in ledger.posts}
     return limits.for_raise(paths.state_dir(), sessions, families, _dt.datetime.now(_dt.timezone.utc))
 

@@ -590,3 +590,59 @@ def test_spawn_warns_on_unknown_scope(tmp_path, monkeypatch):
     code, out = run_cli("spawn", "-M", "1", "--dry-run", "--root", str(root))
     assert code == 0 and "warning: review session 1 stopped on a rate limit Claude Code did not name" in out, out
     assert "refused" not in out
+
+
+def _borrow_world(tmp_path, monkeypatch, caller_name="orchestrator 1", person=""):
+    """A fleet on opus; the call comes from `caller_name` (None: no session), and the person check answers
+    `person` ("" for a person)."""
+    root = onboarded(tmp_path, monkeypatch)
+    me = _a_session(caller_name, root) if caller_name else None
+    monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [me] if me else [])
+    monkeypatch.setattr("flotilla.fleet.commands.calling_session", lambda sessions: me)
+    monkeypatch.setattr("flotilla.core.caller.person_refusal", lambda what: person and f"{person}; only a person {what}")
+    return root
+
+
+def test_model_needs_for(tmp_path, monkeypatch):
+    """Fleet model design 5.3: a costlier model is lent to one task, named."""
+    root = _borrow_world(tmp_path, monkeypatch)
+    code, out = run_cli("spawn", "main", "--model", "fable", "--task", "look", "--dry-run", "--root", str(root))
+    assert code == 2 and "name it with --for" in out, out
+    code, out = run_cli("spawn", "--model", "fable", "--for", "q", "--task", "look", "--root", str(root))
+    assert code == 2 and "one at a time" in out, out
+    code, out = run_cli("spawn", "main", "-M", "1", "--model", "fable", "--for", "q", "--task", "l", "--root", str(root))
+    assert code == 2 and "raised alone" in out, out
+
+
+def test_borrow_refused_to_non_orchestrator(tmp_path, monkeypatch):
+    root = _borrow_world(tmp_path, monkeypatch, caller_name="main session 2",
+                         person="`main session 2` is a background session")
+    code, out = run_cli("spawn", "main", "--model", "fable", "--for", "q", "--task", "look", "--dry-run",
+                        "--root", str(root))
+    assert code == 2 and "the orchestrator's move, or the person's" in out and "background session" in out, out
+
+
+def test_the_person_and_the_orchestrator_may_borrow(tmp_path, monkeypatch):
+    root = _borrow_world(tmp_path, monkeypatch, caller_name=None)
+    code, out = run_cli("spawn", "main", "--model", "fable", "--for", "why the cache misses", "--task", "look",
+                        "--dry-run", "--root", str(root))
+    assert code == 0 and "raised by the person" in out, out
+    block = seat_block(out, "main session 1")
+    assert "cut from trunk" in block and "--model fable" in block and "--settings '<...>'" in block
+
+
+def test_a_borrow_on_a_limited_model_is_refused(tmp_path, monkeypatch):
+    from flotilla.core import paths
+    from flotilla.fleet import limits
+    root = _borrow_world(tmp_path, monkeypatch)
+    seat = _a_session("review session 1", root)
+    me = _a_session("orchestrator 1", root)
+    monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [me, seat])
+    limits.record(paths.state_dir(), limits.Limit(seat.session_id, "2026-11-13T17:05:00+00:00",
+                                                  "2099-11-18T18:00:00+00:00", "model:fable",
+                                                  "2099-11-18T18:00:00+00:00"))
+    code, out = run_cli("spawn", "main", "--model", "fable", "--for", "q", "--task", "look", "--root", str(root))
+    assert code == 2 and "fable" in out and "stopped on" in out, out
+    code, out = run_cli("spawn", "main", "--model", "sonnet", "--for", "q", "--task", "look", "--dry-run",
+                        "--root", str(root))
+    assert code == 0 and "stopped on" not in out, out
