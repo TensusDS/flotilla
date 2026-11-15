@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from flotilla.core import config, paths, repo
 from flotilla.core import platform as plat
 from flotilla.core.census import CensusUnavailable, read_census
+from flotilla.core.text import visible
 from flotilla.core.identity import find_calling_session
 from flotilla.core.storage import LocalLogStore, StorageCorrupt
 from flotilla.fleet import compose, launch, names, plugins, retire, spawn, strangers
@@ -75,7 +76,7 @@ def _lead(ledger, args) -> int:
     from flotilla.core import caller
     from flotilla.ledger import project
     if counts_from(args, {}) or args.default or args.fill or getattr(args, "recommended", False) or args.dry_run \
-            or getattr(args, "model", None) or getattr(args, "borrow_post", None):
+            or any(getattr(args, key, None) for key in ("model", "borrow_post", "for_task", "brief")):
         raise MoveRefused("--lead takes nothing else: it names this session the orchestrator; "
                           "`flotilla spawn --fill` raises the rest afterwards")
     refused = caller.person_refusal("leads the fleet from their own session")
@@ -301,7 +302,7 @@ def _borrow(ledger, args, profile: dict) -> int:
         raise MoveRefused(str(err)) from err
     default = str(profile["fleet"]["model"])
     model, for_task, brief = borrow.checked(model=args.model, for_task=args.for_task or "", brief=args.brief or "",
-                                            default=default)
+                                            own=launch.model_for(profile, ledger.posts[post_name]), post=post_name)
     try:
         sessions = census()
     except CensusUnavailable as err:
@@ -329,8 +330,10 @@ def _borrow(ledger, args, profile: dict) -> int:
         seat = seats[0]
         cut = f"the tip of {row.branch} (row {row.id})" if row is not None else "trunk"
         print(f"{seat.name}  ({seat.post})  tree {seat.tree}  branch {seat.branch}, cut from {cut}")
+        prompt = borrow.prompt_for(seat.name, seat.post, model=model, default=default, by=by, for_task=for_task,
+                                   row=row, brief=brief, tree=seat.tree)   # the command the raise runs (review)
         command = launch.argv(seat, post, profile, main=main, model=model,
-                              settings_json=borrow.settings(narrow.settings_json(post), default), first_prompt=brief)
+                              settings_json=borrow.settings(narrow.settings_json(post), default), first_prompt=prompt)
         print(f"    {launch.shown(command)}  (from {main})")
         print("dry run: 1 session planned; nothing was changed")
         return 0
@@ -449,7 +452,9 @@ def _fleet(ledger, args) -> int:
         work = ", ".join(f"{row.branch} ({row.state})" for row in item["work"]) or "no open work"
         model = f"model {item.get('model') or 'unknown'}"
         if item.get("borrowed_for"):   # fleet model design 5.3: lent for one task, closed when it is done
-            model += f" (borrowed for {item['borrowed_for']})"
+            model += f" (borrowed for {visible(item['borrowed_for'])})"
+        if item.get("finished"):   # `helper done`, still running on its model until retired
+            work = f"finished; close it: `flotilla retire \"{item['name']}\"`"
         print(f"{item['name']}  ({item['post'] or 'no post'})  {live}, {model}\n    tree {tree}{dirty}, {lock}; {work}")
     import datetime as _dt
     from flotilla.core import paths as _paths

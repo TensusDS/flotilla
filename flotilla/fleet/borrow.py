@@ -26,17 +26,27 @@ FORCE_SINCE = (2, 1, 257)
 FOR_LONGEST = 200
 
 
-def checked(*, model: str, for_task: str, brief: str, default: str) -> tuple[str, str, str]:
-    """The model, the task and the brief as given, or the refusal that names what is missing."""
+#: Posts never lent another model: the orchestrator routes the fleet and may borrow, so a borrowed one could lend
+#: models by its own choice (review of 5ef2dd7, M2); a helper is raised by the seat it helps.
+NOT_LENT = ("orchestrator", spawn.HELPER)
+
+
+def checked(*, model: str, for_task: str, brief: str, own: str, post: str = "") -> tuple[str, str, str]:
+    """The model, the task and the brief as given, or the refusal that names what is missing. `own` is the model
+    a seat of the post runs on without --model: the post's own, or the fleet's."""
+    from flotilla.core.text import has_hidden
     model, for_task, brief = model.strip(), for_task.strip(), brief.strip()
+    if post in NOT_LENT:
+        raise MoveRefused(f"a seat of the `{post}` post is never raised on a borrowed model; lend it to a seat that "
+                          "works, such as `main`")
     if not fleet_model.valid(model):
         raise MoveRefused(f"`{model}` is not a model's name; name one, such as `fable` or `sonnet`")
-    if fleet_model.same(model, default):
-        raise MoveRefused(f"`{model}` is the fleet's model already ({default}); raise the seat without --model")
+    if fleet_model.same(model, own):
+        raise MoveRefused(f"`{model}` is what a seat of this post runs on already ({own}); raise it without --model")
     if not for_task:
         raise MoveRefused("a seat on a borrowed model is lent to one task: name it with --for, a row's branch or a "
                           "short text for a question with no row")
-    if "\n" in for_task or len(for_task) > FOR_LONGEST:
+    if has_hidden(for_task) or len(for_task) > FOR_LONGEST:   # shown on the person's screen (review, M1)
         raise MoveRefused(f"--for names the task in one line of at most {FOR_LONGEST} characters; the brief goes "
                           "with --task")
     if not brief:
@@ -124,7 +134,9 @@ def raise_borrowed(ledger, post_name: str, *, model: str, for_task: str, brief: 
     """Raise one seat of `post_name` on `model` for `for_task`, with `brief` as its first prompt."""
     main = launch.main_checkout(ledger.root, run=ledger.run)
     default, _ = fleet_model.default(ledger.profile, state=paths.state_dir(), main=main)
-    model, for_task, brief = checked(model=model, for_task=for_task, brief=brief, default=default)
+    own = launch.model_for(fleet_model.resolved(ledger.profile, state=paths.state_dir(), main=main),
+                           ledger.posts[post_name])
+    model, for_task, brief = checked(model=model, for_task=for_task, brief=brief, own=own, post=post_name)
     if not anyway:
         from flotilla import __version__
         split = spawn.release_split(ledger, running=__version__)

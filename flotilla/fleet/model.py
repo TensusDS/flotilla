@@ -19,6 +19,7 @@ import re
 from pathlib import Path
 
 from flotilla.fleet.launch import LaunchError
+from flotilla.ledger.model import borrowed, lent_to  # noqa: F401 - read here by the fleet
 
 #: Words an older profile used for "no model named": inherit what Claude Code runs (`one`, or nothing), or that and
 #: the strongest model for reviewers.
@@ -192,19 +193,6 @@ def recorded(row) -> str:
             value = (event.get("evidence") or {}).get("model")
             return value if isinstance(value, str) else ""
     return ""
-
-
-def borrowed(row) -> dict:
-    """What a seat on a borrowed model was raised for, from its `reserve` event (fleet model design 5.4): {"for":
-    the task, "row": the row it named or "", "by": who raised it}; {} for any other seat."""
-    for event in row.history:
-        if event.get("move") == "reserve":
-            evidence = event.get("evidence") or {}
-            if evidence.get("borrowed") is True and isinstance(evidence.get("for"), str):
-                return {"for": evidence["for"], "row": str(evidence.get("for_row") or ""),
-                        "by": str(evidence.get("by") or "")}
-            return {}
-    return {}
 
 
 def unnamed_message() -> str:

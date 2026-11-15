@@ -81,8 +81,8 @@ def test_a_question_with_no_row_is_cut_from_trunk(tmp_path):
     ({"for_task": ""}, "name it with --for"),
     ({"for_task": "a\nb"}, "one line"),
     ({"brief": " "}, "--task"),
-    ({"model": "opus"}, "the fleet's model already"),
-    ({"model": "claude-opus-5-5"}, "the fleet's model already"),
+    ({"model": "opus"}, "runs on already"),
+    ({"model": "claude-opus-5-5"}, "runs on already"),
     ({"model": "inherit"}, "not a model's name"),
 ])
 def test_what_a_borrowed_seat_needs(tmp_path, given, said):
@@ -208,3 +208,84 @@ def test_the_fleet_view_names_what_a_seat_was_lent_for(tmp_path):
     raised, _ = lend(ledger, fake)
     view = {item["name"]: item for item in retire.fleet_view(ledger, fake.census())}
     assert (view[raised.seat.name]["model"], view[raised.seat.name]["borrowed_for"]) == ("fable", "feat/x")
+
+
+def test_a_borrowed_seat_takes_no_other_work(tmp_path):
+    """Review of 5ef2dd7, I1: a seat lent for one task that claims ordinary rows runs them on the costlier model -
+    the 2026-11-13 failure this release exists to prevent."""
+    from flotilla.ledger import reading, steering
+    root, ledger, fake, row, tip = world(tmp_path)
+    raised, _ = lend(ledger, fake)
+    name = raised.seat.name
+    git(root, "branch", "feat/other")
+    with pytest.raises(MoveRefused, match="lent for feat/x: it takes no other work"):
+        core.claim(ledger, actor(ledger, name), "feat/other")
+    helpers.done(ledger, actor(ledger, name), summary="found it")   # done, still running on fable until retired
+    with pytest.raises(MoveRefused, match="takes no other work"):
+        core.claim(ledger, actor(ledger, name), "feat/other")
+    fake.sessions = [s for s in fake.sessions if s.name != OWNER]   # the owner is gone: its row is to adopt
+    ledger.census = fake.census
+    with pytest.raises(MoveRefused, match="takes no other work"):
+        steering.adopt(ledger, actor(ledger, "orchestrator 1"), "feat/x", to=name)
+
+
+def test_the_watch_never_hands_a_borrowed_seat_a_row(tmp_path):
+    import datetime as dt
+    from flotilla.watch import fleet
+    root, ledger, fake, row, tip = world(tmp_path)
+    raised, _ = lend(ledger, fake)
+    for index in range(3):   # the owner piles three rows
+        git(root, "branch", f"feat/p{index}")
+        core.claim(ledger, actor(ledger, OWNER), f"feat/p{index}")
+    rows, live = ledger.rows(), {OWNER, raised.seat.name}
+    later = dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=3)
+    post_of = lambda name: "main" if name.startswith("main") else ""  # noqa: E731
+    assert fleet.idle_seats(rows, ledger.profile, live, post_of, {"main"}, later) == []
+    assert fleet.piled(rows, ledger.profile, live, post_of, {"main"}) == []
+
+
+def test_a_borrowed_seat_does_not_hold_its_post(tmp_path):
+    from flotilla.fleet import spawn
+    root, ledger, fake, row, tip = world(tmp_path)
+    raised, _ = lend(ledger, fake)
+    assert spawn._live_posts(ledger, fake.census())["main"] == 0
+
+
+def test_a_row_released_and_claimed_again_is_not_handed_back(tmp_path):
+    root, ledger, fake, row, tip = world(tmp_path)
+    raised, _ = lend(ledger, fake)
+    with ledger.session() as s:
+        s.append(actor(ledger, OWNER), row.id, "release", "released", evidence={"why": "to another seat"})
+    core.claim(ledger, actor(ledger, "main session 7"), "feat/x")
+    assert _close_items(ledger, {raised.seat.name, "main session 7"}) == []
+
+
+@pytest.mark.parametrize(("post", "given", "said"), [
+    ("orchestrator", {}, "never raised on a borrowed model"),
+    ("main", {"for_task": "a\x1b[2Jb"}, "one line"),
+    ("main", {"for_task": "a\rb"}, "one line"),
+])
+def test_what_is_never_lent(tmp_path, post, given, said):
+    root, ledger, fake, row, tip = world(tmp_path)
+    with pytest.raises(MoveRefused, match=said):
+        borrow.raise_borrowed(ledger, post, model="fable", for_task=given.get("for_task", "q"), brief="b",
+                              by="orchestrator 1", census=fake.census, store=LocalLogStore(ledger.state_dir / "fleet"),
+                              caller="x", wait=0.1, poll=0.05, sleep=lambda s: None)
+    assert fake.launched == []
+
+
+def test_a_post_with_its_own_model_borrows_the_fleets(tmp_path):
+    """Review of 5ef2dd7, M5: a minor post on sonnet in a fleet on opus may be lent opus."""
+    assert borrow.checked(model="opus", for_task="q", brief="b", own="sonnet", post="minor") == ("opus", "q", "b")
+    with pytest.raises(MoveRefused, match="runs on already"):
+        borrow.checked(model="sonnet", for_task="q", brief="b", own="sonnet", post="minor")
+
+
+def test_a_finished_borrowed_seat_still_running_is_listed(tmp_path):
+    from flotilla.fleet import retire
+    root, ledger, fake, row, tip = world(tmp_path)
+    raised, _ = lend(ledger, fake)
+    helpers.done(ledger, actor(ledger, raised.seat.name), summary="found it")
+    view = {item["name"]: item for item in retire.fleet_view(ledger, fake.census())}
+    item = view[raised.seat.name]
+    assert item["finished"] and item["model"] == "fable" and item["borrowed_for"] == "feat/x" and item["live"]

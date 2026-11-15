@@ -12,10 +12,14 @@ A stronger model can be lent to one task without moving the fleet onto it (fleet
   row's branch or a short question. Its tree is cut from the row's tip (trunk for a question); the row stays with
   its owner; the brief is its first prompt. Its subagents are held to the fleet's model (Claude Code's
   `CLAUDE_CODE_SUBAGENT_MODEL`, forced), and `spawn` warns when Claude Code is too old for that, or its version
-  cannot be read. Only the orchestrator or the person may raise it; the fleet's own model, a missing `--for` or
-  brief, and a model a live seat is limited on are refused.
+  cannot be read. Only the orchestrator or the person may raise it; the model its post runs on anyway, a missing
+  `--for` or brief, the orchestrator's post, and a model a live seat is limited on are refused.
+- **It takes no other work**: a claim, `tree cut` or `tree switch` by it, an adoption to it and a reading assigned
+  to it are refused, the watch never calls it idle or offers it the next row, and `spawn --fill` does not count it
+  as holding its post - so it never runs ordinary work on the costlier model.
 - **While it is up, the person's line counts it** - "1 seat on fable for <task>" - on its own, never as something
-  that waits on them; `flotilla fleet` shows `borrowed for <task>` beside its model.
+  that waits on them; `flotilla fleet` shows `borrowed for <task>` beside its model, and keeps listing it - as a
+  finished helper too - after `helper done` until it is retired.
 - **When its task is handed back** - it ran `flotilla helper done`, whose letter goes to whoever raised it, or the
   row it is for closed - the orchestrator's watch says to close it with `flotilla retire`. flotilla never retires
   it by itself.

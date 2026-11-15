@@ -36,6 +36,9 @@ def adopt(ledger: Ledger, actor: Actor, branch: str, *, to: str) -> Row:
             raise MoveRefused(f"{row.owner} is alive; adoption is for work whose owner is gone, so ask them")
         if heir not in live:
             raise MoveRefused(f"{heir} is not alive in the census; adopt to a live session")
+        from flotilla.ledger.model import lent_refusal
+        if lent_refusal(s.rows, heir):
+            raise MoveRefused(lent_refusal(s.rows, heir))
         if post is None or ("claim" not in post.may and post.name != ledger.owner_post(row)):
             raise MoveRefused(f"{heir} holds no post that owns this work")
         trail = f"{row.owner} <- {row.adopted_from}" if row.adopted_from else row.owner

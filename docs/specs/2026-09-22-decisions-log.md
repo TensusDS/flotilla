@@ -1893,6 +1893,13 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    it owns no work in progress, so the "helper on the default model" rule holds by construction. The person's line
    counts it while it is up - also after `helper done`, until retired, since it still runs on that model - and the
    line comes again when the set of such seats changes, like any change of what it says.
+   It takes no other work (review of 5ef2dd7): every claim (claim, `tree cut`, `tree switch`), an adoption to it and
+   a reading assigned to it are refused, the watch neither calls it idle nor offers it the next row, and it does
+   not hold its post for `spawn --fill` - a seat that took ordinary rows would run them on the costlier model,
+   the failure this release exists to prevent. The orchestrator post is never lent: a borrowed orchestrator could
+   lend models by its own choice. "Borrowed" is measured against what a seat of the post runs on anyway, its own
+   model or the fleet's, so a post on sonnet in a fleet on opus may be lent opus. The census itself (`claude
+   agents`) does not mark the seat; `flotilla fleet` and the person's line do.
 
 ## Open questions (for the foundation spec)
 

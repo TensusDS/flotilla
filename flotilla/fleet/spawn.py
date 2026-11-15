@@ -110,8 +110,14 @@ def _live(census) -> list:
 
 
 def _live_posts(ledger, sessions) -> Counter:
+    """The posts live sessions hold. A seat on a borrowed model holds none: it is lent for one task, and the fleet
+    still needs its post on the fleet's model (review of 5ef2dd7, I1)."""
+    from flotilla.ledger.model import lent_to
     held: Counter = Counter()
+    rows = ledger.rows()
     for item in sessions:
+        if item.name and lent_to(rows, item.name):
+            continue
         try:
             post = post_for_session(ledger.posts, item.name) if item.name else None
         except PostError:

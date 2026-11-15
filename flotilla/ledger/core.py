@@ -254,6 +254,10 @@ def claim(ledger: Ledger, actor: Actor, branch: str, *, tree: str = "", ref: str
 
 def append_claim(s: LedgerSession, actor: Actor, branch: str, *, tree: str, base: str, ref: str, ids: list,
                  also: str, after=()) -> Row:
+    from flotilla.ledger.model import lent_refusal
+    lent = lent_refusal(s.rows, actor.name)   # every claim comes here: claim, tree cut, tree switch
+    if lent:
+        raise MoveRefused(lent)
     fields = {"branch": branch, "owner": actor.name, "tree": tree, "base": base, "ref": ref, "requires": ids}
     if after:
         fields["after"] = list(after)   # written only when given: a claim without it carries no new field

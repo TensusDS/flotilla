@@ -139,6 +139,9 @@ def assign(ledger: Ledger, actor: Actor, branch: str, *, reader: str) -> tuple[R
             raise MoveRefused(f"{reader} is not alive in the census; assign a live reader")
         if reader_post is None or "accept" not in reader_post.may:
             raise MoveRefused(f"{reader} holds no post that may accept")
+        from flotilla.ledger.model import lent_refusal
+        if lent_refusal(s.rows, reader):
+            raise MoveRefused(lent_refusal(s.rows, reader))
         new = s.append(actor, row.id, "assign", state, fields={"reader": reader, "taken": False})
     return new, letter(new, read_from(ledger, new))
 

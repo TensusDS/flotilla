@@ -152,3 +152,34 @@ def fold(records) -> dict[str, Row]:
 
 def next_row_id(rows: dict[str, Row]) -> str:
     return f"r{len(rows) + 1}"
+
+
+def borrowed(row) -> dict:
+    """What a seat on a borrowed model was raised for, from its `reserve` event (fleet model design 5.4): {"for":
+    the task, "row": the row it named or "", "by": who raised it}; {} for any other seat."""
+    for event in row.history:
+        if event.get("move") == "reserve":
+            evidence = event.get("evidence") or {}
+            if evidence.get("borrowed") is True and isinstance(evidence.get("for"), str):
+                return {"for": evidence["for"], "row": str(evidence.get("for_row") or ""),
+                        "by": str(evidence.get("by") or "")}
+            return {}
+    return {}
+
+
+def lent_to(rows: dict, name: str) -> dict:
+    """What `name` was lent for when its latest seat row is a seat on a borrowed model's - open, or released by
+    `helper done` while it still runs; {} for any other session."""
+    seats = [row for row in rows.values()
+             if row.owner == name and row.history and row.history[0].get("move") == "reserve"]
+    return borrowed(seats[-1]) if seats else {}
+
+
+def lent_refusal(rows: dict, name: str) -> str:
+    """Why `name` takes no work of the ledger, or "": a seat on a borrowed model works on the one task it was lent
+    for (fleet model design 5.3); anything more would run ordinary work on the costlier model."""
+    lent = lent_to(rows, name)
+    if not lent:
+        return ""
+    return (f"{name} is a seat on a borrowed model, lent for {lent['for']}: it takes no other work - give it to a "
+            "seat on the fleet's model")

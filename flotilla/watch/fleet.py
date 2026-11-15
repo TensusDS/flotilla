@@ -186,8 +186,9 @@ def idle_seats(rows: dict, profile: dict, live: set[str], post_of, claimers, now
     minutes = (profile.get("watch") or {}).get("idle_seat_minutes", IDLE_SEAT_MINUTES)
     now = now or dt.datetime.now(dt.timezone.utc)
     items = []
+    from flotilla.ledger.model import lent_to
     for name in sorted(live):
-        if post_of(name) not in claimers:
+        if post_of(name) not in claimers or lent_to(rows, name):   # lent for one task, owning no row by design
             continue
         mine = [row for row in rows.values() if row.owner == name]
         busy = any(row.is_open and row.state != "reserved" for row in mine) or \
@@ -212,6 +213,7 @@ def piled(rows: dict, profile: dict, live: set[str], post_of, claimers, census: 
     speed (alpha, 2026-10-03: three rows in fixing on one main session, another with nothing to move). Only work
     in its author's hands counts - claimed, or returned for fixes - and nobody's work is taken from a live session
     (`adopt` refuses), so this only names the pile to the orchestrator."""
+    from flotilla.ledger.model import lent_to
     own: dict[str, list] = {}
     for row in rows.values():
         if not row.is_open or row.state not in views.WORKING or row.held_until or _waits(row, rows, census):
@@ -223,7 +225,8 @@ def piled(rows: dict, profile: dict, live: set[str], post_of, claimers, census: 
     for name in sorted(own):
         if len(own[name]) < PILE_MOVES:
             continue
-        free = sorted(peer for peer in live if peer != name and post_of(peer) == post_of(name) and not own.get(peer))
+        free = sorted(peer for peer in live if peer != name and post_of(peer) == post_of(name) and not own.get(peer)
+                      and not lent_to(rows, peer))   # a seat on a borrowed model takes no next row
         if not free:
             continue
         branches = ", ".join(row.branch for row in own[name])
@@ -331,8 +334,9 @@ def borrowed_done(rows: dict, live: set[str]) -> list[Item]:
             why, since = "said it is done", seat.updated_at
         else:
             row = rows.get(lent["row"]) if lent["row"] else None
-            if row is None or row.is_open:
-                continue
+            if row is None or row.is_open or any(other.is_open and other.branch == row.branch
+                                                 and other.state != "reserved" for other in rows.values()):
+                continue   # open, or released and claimed again: the task goes on
             why, since = f"the row it was lent for is {row.state}", row.updated_at
         items.append(Item(BORROWED, seat.branch, f"{name}, on {recorded(seat) or 'a borrowed model'} for "
                                                  f"{lent['for']}, {why}: read what it left on {seat.branch}, then "
