@@ -171,9 +171,11 @@ def lent_to(rows: dict, name: str) -> dict:
     """What `name` was lent for when any seat row it ever held is a seat on a borrowed model's - open, or released
     by `helper done` while it still runs; {} for any other session. Any, not the latest: a seat that reserved a row
     of its own afterwards is still the one lent (security review of 61483de). Names are never reissued, so another
-    session never inherits it."""
+    session never inherits it - nor a row that came to it by adoption: only the seat that was raised on it is
+    lent (re-review of 7b6a919)."""
     for row in rows.values():
-        if row.owner == name and row.history and row.history[0].get("move") == "reserve":
+        if row.owner == name and row.history and row.history[0].get("move") == "reserve" \
+                and row.history[0].get("by") == name:
             found = borrowed(row)
             if found:
                 return found

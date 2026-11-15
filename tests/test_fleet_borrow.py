@@ -331,3 +331,21 @@ def test_a_lent_seat_reads_nobodys_work(tmp_path):
     reviewer = Actor(raised.seat.name, ledger.posts["reviewer"], "as")   # a reader's moves, under its name
     with pytest.raises(MoveRefused, match="takes no other work"):
         reading.take(ledger, reviewer, "feat/x")
+
+
+def test_a_lent_seats_row_is_not_adopted_and_lends_nobody_else(tmp_path):
+    """Re-review of 7b6a919: adopting a dead lent seat's seat row made a live ordinary seat lent for good."""
+    from flotilla.ledger import steering
+    from flotilla.ledger.model import lent_to
+    root, ledger, fake, row, tip = world(tmp_path)
+    raised, _ = lend(ledger, fake)
+    fake.sessions = [s for s in fake.sessions if s.name != raised.seat.name] + \
+        [__import__("fleetkit").session("main session 7", "abc777")]
+    ledger.census = fake.census
+    with pytest.raises(MoveRefused, match="not work to adopt"):
+        steering.adopt(ledger, actor(ledger, "orchestrator 1"), raised.seat.branch, to="main session 7")
+    with ledger.session() as s:   # a row that reached it some other way still lends nobody but its own seat
+        seat_row = next(r for r in s.rows.values() if r.owner == raised.seat.name)
+        s.append(actor(ledger, "orchestrator 1"), seat_row.id, "adopt", "reserved",
+                 fields={"owner": "main session 7", "adopted_from": raised.seat.name})
+    assert lent_to(ledger.rows(), "main session 7") == {}
