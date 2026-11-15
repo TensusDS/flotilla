@@ -13,13 +13,14 @@ replaced two seats on the same model, which stopped at once. This release makes 
   `rate_limit`) records the limit when Claude Code ends a seat's turn on it; the seat's next normal turn clears it.
   The limit's name and reset are read from Claude Code's own message ("You've hit your Fable limit · resets Nov 18,
   6pm (UTC)"); with no reset in it, the mark lasts as long as the window it names (five hours for a session
-  limit, a week for a weekly or a model's limit), and a limit it does not name is forgotten after an hour.
+  limit, a week for a weekly or a model's limit), and a limit it names neither the scope nor the reset of is
+  forgotten after an hour.
   `flotilla fleet` shows it in place of `alive (...)`, and `flotilla status` marks the rows whose next move is a
   limited seat's.
 - **The orchestrator's watch names each limited seat once**, instead of a dropped ball or an idle seat, and when
   every live seat is limited it puts one urgent item in the person's queue: the fleet does nothing until the reset
   or a change of model.
-- **`spawn` and `helper raise` refuse a seat that would stop at once**: on any model while a live seat is under the
+- **`spawn` refuses a seat that would stop at once**: on any model while a live seat is under the
   account's session or weekly limit, on the limited model under a model's limit. The refusal names the reset and
   the ways past it, `--anyway` among them; a limit whose scope the message does not name only warns.
 - **The orchestrator post says** a limited seat is not gone: do not retire it or replace it on the same model, and

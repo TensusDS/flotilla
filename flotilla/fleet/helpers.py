@@ -62,24 +62,10 @@ def raise_helper(ledger, actor: Actor, branch: str, *, task: str, census, store,
         launch.permission_mode(ledger.profile, post)
         from flotilla.core import paths
         from flotilla.fleet import model as fleet_model
-        profile = fleet_model.resolved(ledger.profile, state=paths.state_dir(),
-                                       main=launch.main_checkout(ledger.root, run=ledger.run))   # a named model (0.32)
+        fleet_model.resolved(ledger.profile, state=paths.state_dir(),
+                             main=launch.main_checkout(ledger.root, run=ledger.run))   # a named model (0.32)
     except launch.LaunchError as err:
         raise MoveRefused(str(err)) from err
-    if not anyway:   # a helper on a limited model stops at once, as a seat would (review of 747c754)
-        import datetime as dt
-
-        from flotilla.core.census import CensusUnavailable
-        from flotilla.fleet import limits
-        try:
-            sessions = census()
-        except CensusUnavailable:
-            sessions = []
-        refused, _ = limits.for_raise(paths.state_dir(), sessions,
-                                      {post.name: fleet_model.family(launch.model_for(profile, post))},
-                                      dt.datetime.now(dt.timezone.utc))
-        if refused:
-            raise MoveRefused(refused)
     full = spawn.disk_short(ledger)
     if full:
         raise MoveRefused(full)

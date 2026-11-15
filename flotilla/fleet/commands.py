@@ -229,7 +229,8 @@ def _spawn(ledger, args) -> int:
             print(f"census: unknown ({err}); names may collide with live sessions")
             live, probe, listed = set(), (lambda: []), []  # noqa: E731
         refused, limited = _limited(ledger, profile, counts, listed)
-        for line in ([f"a launch now is refused: {refused}"] if refused else []) + limited:
+        said = "passed under --anyway" if args.anyway else "a launch now is refused"
+        for line in ([f"{said}: {refused}"] if refused else []) + limited:
             print(f"warning: {line}")
         seats, warnings = spawn.plan(ledger, counts, census=probe, store=store, reserve=False, strict=False)
         main = launch.main_checkout(ledger.root, run=ledger.run)
@@ -410,7 +411,7 @@ def live_text(item: dict, limit=None) -> str:
     recorded (fleet model design 5.6) - alive too, and answering nothing until the limit lifts."""
     from flotilla.fleet import limits
     attach = f"claude attach {item['short_id']}" if item["short_id"] else "no id in the census"
-    if item["live"] and limit is not None:
+    if item["live"] and limit is not None and item.get("state") != "working":   # working: its limit lifted
         return f"{limits.label(limit)}, {attach}"
     return {True: f"alive ({item['state'] or 'no state'}), {attach}",
             False: "not running", None: "liveness unknown"}[item["live"]]

@@ -38,6 +38,9 @@ WEEK_WINDOW = dt.timedelta(days=7)
 UNNAMED_KEPT = dt.timedelta(hours=1)
 #: A reset Claude Code wrote a minute or so before the turn ended is the one lifting now, not tomorrow's.
 JUST_PASSED = dt.timedelta(minutes=5)
+#: How far past its window a written reset may lie and still be trusted: a week's reset across a change of
+#: daylight saving time is a week and an hour away (second review of 747c754).
+WINDOW_SLACK = dt.timedelta(hours=1, minutes=5)
 #: A session id longer than this is no Claude Code session's.
 LONGEST_ID = 200
 _OPENING = re.compile(r"You[’']ve hit your ")
@@ -63,11 +66,15 @@ def parse(payload: dict, *, at: dt.datetime) -> Limit | None:
         return None
     text = payload.get("last_assistant_message")
     name, when = _read(text if isinstance(text, str) else "")
-    window = SESSION_WINDOW if name in SESSION_LIMITS else WEEK_WINDOW if _scope(name) != UNKNOWN else UNNAMED_KEPT
+    # the longest a limit of this name lasts: a session window, else a week - a reset Claude Code wrote for a limit
+    # it did not name is still its own (second review of 747c754)
+    window = SESSION_WINDOW if name in SESSION_LIMITS else WEEK_WINDOW
     reset = _reset(when, at)
-    if reset is not None and dt.datetime.fromisoformat(reset) > at + window + JUST_PASSED:
+    slack = WINDOW_SLACK if window == WEEK_WINDOW else JUST_PASSED   # a session window crosses no clock change
+    if reset is not None and dt.datetime.fromisoformat(reset) > at + window + slack:
         reset = None   # further off than the window it names can last: misread, not trusted (review of 747c754)
-    expires = dt.datetime.fromisoformat(reset) if reset else at + window
+    fallback = window if _scope(name) != UNKNOWN else UNNAMED_KEPT
+    expires = dt.datetime.fromisoformat(reset) if reset else at + fallback
     return Limit(session, at.isoformat(timespec="seconds"), reset, _scope(name),
                  expires.astimezone(dt.timezone.utc).isoformat(timespec="seconds"))
 

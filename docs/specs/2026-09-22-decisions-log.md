@@ -1872,9 +1872,10 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    Those are read from the text in the form Claude Code writes it ("You've hit your <name>[ · resets <time>]"),
    with Claude Code's own split of names into the session, weekly and model windows; anything else reads as scope
    and reset unknown, which only warns. The person chose this over waiting for a measured limit in the field.
-   A record without a reset lasts as long as the window it names (five hours, or a week), one with no name an hour:
-   a burst of 429s must not hide a quiet seat or refuse spawns for days (review of 747c754). `--anyway` passes the
-   refusal. Records are the machine's: a limit of a seat in another project on this machine refuses here too, which
+   A record without a reset lasts as long as the window it names (five hours, or a week), one with neither a name
+   nor a reset an hour: a burst of 429s must not hide a quiet seat or refuse spawns for days (reviews of 747c754).
+   `--anyway` passes the refusal. `helper raise` is not refused: a helper is raised by a seat that is working, on the
+   same account, so a record seen then is stale. Records are the machine's: a limit of a seat in another project on this machine refuses here too, which
    is right for one account and wrong for several (`CLAUDE_CONFIG_DIR`) - not handled.
    Whether the hook fires for a `claude --bg` seat is not documented and was not measured before release.
 

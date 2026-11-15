@@ -48,6 +48,7 @@ def test_fleet_shows_limited(tmp_path):
     unknown = limits.Limit(item["session_id"], "2026-11-13T17:05:00+00:00", None, "unknown")
     assert commands.live_text(item, unknown).startswith("limited, reset unknown (a rate limit Claude Code did not")
     assert commands.live_text({**item, "live": False}, limit) == "not running"
+    assert commands.live_text({**item, "state": "working"}, limit).startswith("alive (working)")   # lifted
 
 
 def test_status_marks_rows_of_limited_seat(tmp_path, monkeypatch):

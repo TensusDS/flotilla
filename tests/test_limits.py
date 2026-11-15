@@ -96,6 +96,19 @@ def test_the_reset_is_read_in_the_zone_it_names(text, reset):
     assert limits.parse(payload(text), at=AT).reset == reset
 
 
+def test_a_reset_written_for_a_limit_of_no_known_scope_is_kept():
+    """Second review of 747c754: the hour kept for a burst of 429s cut a reset Claude Code wrote itself."""
+    found = limits.parse(payload("You've hit your usage credit limit · resets Nov 18, 12am (UTC)"), at=AT)
+    assert (found.scope, found.reset, found.expires) == ("unknown", "2026-11-18T00:00:00+00:00",
+                                                         "2026-11-18T00:00:00+00:00")
+
+
+def test_a_weeks_reset_across_a_change_of_daylight_saving_time_is_trusted():
+    at = dt.datetime(2026, 10, 20, 16, 0, tzinfo=UTC)   # 18:00 in Berlin, summer time
+    found = limits.parse(payload("You've hit your weekly limit · resets Oct 27, 6pm (Europe/Berlin)"), at=at)
+    assert found.reset == "2026-10-27T17:00:00+00:00"
+
+
 def test_a_reset_in_another_year_names_it():
     at = dt.datetime(2026, 12, 30, 10, 0, tzinfo=UTC)
     found = limits.parse(payload("You've hit your weekly limit · resets Jan 2, 2027, 9am (UTC)"), at=at)
