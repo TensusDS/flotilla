@@ -381,6 +381,12 @@ def _session_start(ctx, payload, out, now) -> int:
     from flotilla.core import paths
     from flotilla.guards.githooks import refresh_link
     refresh_link(paths.state_dir(), CLI)
+    try:   # the model it starts on (measured in the payload on 2.1.325; documented as not always there)
+        from flotilla.fleet import override
+        override.record_session_model(paths.state_dir(), str(payload.get("session_id") or ""),
+                                      str(payload.get("model") or ""), now=now)
+    except Exception:  # noqa: BLE001 - a hint (fleet model design 5.5), never a reason to fail the start
+        pass
     from flotilla import doctor
     from flotilla.watch import render
     try:
@@ -458,6 +464,11 @@ def _prompt(ctx, payload, out, now) -> int:
     state = ctx.ledger.state_dir if ctx.ledger is not None else paths.state_dir()
     shown_line = _persons_line(ctx, payload, entries, now) if ctx.ledger is not None and ctx.me is not None else ""
     model_line = inbox.model_line(entries) if ctx.is_orchestrator else ""
+    told_override, shown_override = _override(ctx, payload, now)
+    if told_override:
+        model_line = "\n".join(part for part in (model_line, f"flotilla: {told_override}") if part)
+    if shown_override:
+        shown_line = "\n".join(part for part in (shown_line, f"flotilla: {shown_override}") if part)
     if title:   # the person's own session leads the fleet: it takes the orchestrator's name now (W9)
         unseen = lead.offered(LocalLogStore(paths.state_dir() / "fleet"),
                               str(payload.get("session_id"))) > lead.ASK_AFTER
@@ -484,6 +495,28 @@ def _prompt(ctx, payload, out, now) -> int:
         answer["hookSpecificOutput"] = {"hookEventName": "UserPromptSubmit", "additionalContext": told}
     print(json.dumps(answer), file=out)
     return 0
+
+
+def _override(ctx, payload, now) -> tuple[str, str]:
+    """The fleet's work on a model other than its default (fleet model design 5.5): the note for the orchestrator's
+    context and the line for the person's screen, each at most once an hour; ("", "") when not due. A note that
+    cannot be worked out is never a failure of the prompt."""
+    if ctx.ledger is None or ctx.me is None or ctx.sessions is None:
+        return "", ""
+    from flotilla.core import paths
+    from flotilla.fleet import override
+    from flotilla.watch.shown import persons_prompt
+    persons = getattr(ctx.me, "kind", "") == "interactive" and persons_prompt(payload.get("prompt"))
+    if not (ctx.is_orchestrator or persons):
+        return "", ""
+    try:
+        text = override.current(ctx.ledger, ctx.sessions)
+        state, repo = paths.state_dir(), ctx.ledger.repo_key
+        told = text if ctx.is_orchestrator and override.due(state, repo, override.NOTE, text, now=now) else ""
+        shown = text if persons and override.due(state, repo, override.LINE, text, now=now) else ""
+    except Exception:  # noqa: BLE001 - a hint, never a reason to lose the prompt's other output
+        return "", ""
+    return told, shown
 
 
 def _persons_line(ctx, payload, entries, now) -> str:

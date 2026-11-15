@@ -230,6 +230,9 @@ def _names_fleet_model(words: list[str]) -> bool:
         fed = any(os.path.basename(item) in ("xargs", "parallel") for item in words[:at])
         if fed and any(_is(item, "fleet") for item in after) and any(_is(item, "model") for item in after):
             return True   # the name comes after the line the guard reads (branch review, M2)
+        if any(_is(item, "fleet") for item in after) and any(_is(item, "model") for item in after) \
+                and any(item == "--mute" or item.startswith("--mute=") or item.startswith("--mu") for item in after):
+            return True   # the mute is the person's too (fleet model design 5.5)
         try:
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 space = _parser().parse_args(words[at + 1:])
@@ -242,7 +245,7 @@ def _names_fleet_model(words: list[str]) -> bool:
                 return True
             continue
         if getattr(space, "command", "") == "fleet" and getattr(space, "action", "") == "model" \
-                and getattr(space, "name", None):
+                and (getattr(space, "name", None) or getattr(space, "mute", None) is not None):
             return True
     return False
 
@@ -381,10 +384,10 @@ def check(segment) -> Finding | None:
                                     "command; they type it with `!` in front in their own Claude Code session, or run "
                                     "it in a terminal.")
     if _names_fleet_model(words):
-        return Finding(GUARD, True, "flotilla: the model the fleet runs on is the person's own choice (`fleet model "
-                                    "<name>`), and a Claude tool call is never the person's. Show the person the "
-                                    "command; they type it with `!` in front in their own Claude Code session, or run "
-                                    "it in a terminal.")
+        return Finding(GUARD, True, "flotilla: the model the fleet runs on, and muting the note about it, are the "
+                                    "person's own choice (`fleet model <name>`, `fleet model --mute <hours>`), and a "
+                                    "Claude tool call is never the person's. Show the person the command; they type "
+                                    "it with `!` in front in their own Claude Code session, or run it in a terminal.")
     if _move(words) != "approve":
         return None
     return Finding(GUARD, True, "flotilla: approving work for trunk is the person's own move, and a Claude tool call "

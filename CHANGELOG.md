@@ -3,6 +3,21 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.33.1 - 2026-11-15
+
+The last part of the fleet model design (scenario C): a `/model` switch made for one task becomes Claude Code's
+default for every new session, the orchestrator's among them, and nothing said so.
+
+- **The fleet's work on another model is noticed.** While an orchestrator lives, flotilla compares the fleet's
+  model with Claude Code's own `model` setting (read, never written) and with the model the orchestrator started on
+  - kept from its start, or said with `flotilla fleet model --running <name>`, which its post now asks for. When one
+  differs, the orchestrator's context and the person's line say so at most once an hour, with three ways out: make
+  it the default, mute the note, or `/model <default>` in the orchestrator's session.
+- **`flotilla fleet model --mute <hours>`** (1 to 168) is the person's move, refused from a tool call like naming
+  the model; a mute ends early when what differs changes.
+- A seat on a borrowed model is not an override: it stays counted on the person's line, never noted.
+- The orchestrator post asks it to say its model at start and to pass the note on (template 32).
+
 ## 0.33.0 - 2026-11-15
 
 A stronger model can be lent to one task without moving the fleet onto it (fleet model design, scenario A): the

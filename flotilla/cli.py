@@ -276,6 +276,11 @@ def build_parser() -> argparse.ArgumentParser:
                              "is read")
     fleet_.add_argument("name", nargs="?", default=None,
                         help="with model: name the fleet's default model - the person's own move")
+    fleet_.add_argument("--mute", type=int, default=None, metavar="HOURS",
+                        help="with model: mute the note that the fleet's work runs on another model - the person's "
+                             "own move; it ends early when that model changes")
+    fleet_.add_argument("--running", default=None, metavar="NAME",
+                        help="with model: the model the calling session runs on (the orchestrator says it at start)")
     fleet_.add_argument("--tasks", type=int, default=None, metavar="N", help="with size: tasks you named")
     fleet_.add_argument("--tasks-file", default=None, metavar="PATH", help="with size: those tasks, one per line")
     fleet_.add_argument("--json", action="store_true", help="with size: the recommendation as JSON")
