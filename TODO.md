@@ -71,6 +71,14 @@ command that every guard shares, not one more reading.
 
 ## From the reviews of 0.32.2 (2026-11-15, a seat stopped on a usage limit)
 
+- **A rig-run test fails when the lane freezes the suite for a minute**:
+  `tests/test_rig_run.py::test_a_name_the_census_does_not_confirm_stops_nothing_but_the_persons` runs a child that
+  sleeps 20 s under a 60 s timeout (27 s alone), and the full suite through the lane at a914d67 went red on it "after
+  a freeze of 1 min"; green at 733be1e. A test bound by wall time is not freeze-proof. *(checked 2026-11-15 on
+  0.32.2: open - tests/test_rig_run.py)*
+- **`limits.parse`'s comment** names a session window or a week as the cap; a limit of no known scope gets a month.
+  Wording. *(checked 2026-11-15 on 0.32.2: open - flotilla/fleet/limits.py parse)*
+
 - **Whether `StopFailure` fires for a `claude --bg` seat was never measured**, nor whether the usage-limit line is
   what `last_assistant_message` carries: the docs say neither. If either is not so, the feature shows nothing (it
   breaks nothing). A one-off check: a scratch project, a `claude --bg` launch on a model name that does not exist
