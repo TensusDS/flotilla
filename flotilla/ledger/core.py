@@ -254,6 +254,10 @@ def claim(ledger: Ledger, actor: Actor, branch: str, *, tree: str = "", ref: str
 
 def append_claim(s: LedgerSession, actor: Actor, branch: str, *, tree: str, base: str, ref: str, ids: list,
                  also: str, after=()) -> Row:
+    from flotilla.ledger.model import lent_refusal
+    lent = lent_refusal(s.rows, actor.name)   # every claim comes here: claim, tree cut, tree switch
+    if lent:
+        raise MoveRefused(lent)
     fields = {"branch": branch, "owner": actor.name, "tree": tree, "base": base, "ref": ref, "requires": ids}
     if after:
         fields["after"] = list(after)   # written only when given: a claim without it carries no new field
@@ -264,6 +268,9 @@ def append_claim(s: LedgerSession, actor: Actor, branch: str, *, tree: str, base
 def reserve(ledger: Ledger, actor: Actor, branch: str, *, tree: str = "") -> Row:
     require_may(actor, "reserve", ledger.posts)
     with ledger.session() as s:
+        from flotilla.ledger.model import lent_refusal
+        if lent_refusal(s.rows, actor.name):
+            raise MoveRefused(lent_refusal(s.rows, actor.name))
         held = [row for row in s.rows.values() if row.is_open and row.state == "reserved" and row.owner == actor.name]
         if held:
             raise MoveRefused(f"{actor.name} already holds a post row ({held[0].id}, `{held[0].branch}`)")

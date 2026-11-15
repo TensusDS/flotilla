@@ -256,6 +256,14 @@ def build_parser() -> argparse.ArgumentParser:
                         help="reserve the orchestrator's name for your own session (you type /rename); raises nothing")
     spawn_.add_argument("--dry-run", action="store_true", help="show names, trees and commands; change nothing")
     spawn_.add_argument("--anyway", action="store_true", help="raise even under the memory floor")
+    spawn_.add_argument("borrow_post", nargs="?", default=None, metavar="POST",
+                        help="with --model: raise one seat of this post on another model, for one task")
+    spawn_.add_argument("--model", default=None, metavar="NAME",
+                        help="the borrowed model of one seat (with POST, --for and --task)")
+    spawn_.add_argument("--for", dest="for_task", default=None, metavar="TASK",
+                        help="the task a borrowed seat is lent for: a row's branch, or a short text")
+    spawn_.add_argument("--task", dest="brief", default=None, metavar="BRIEF",
+                        help="a borrowed seat's first prompt: the problem in the person's words, and what to do")
     spawn_.add_argument("--root", default=".")
     retire_ = sub.add_parser("retire", help="stop a session and release its post; its work stays")
     retire_.add_argument("name")
@@ -284,7 +292,8 @@ def build_parser() -> argparse.ArgumentParser:
     helper_raise.add_argument("--anyway", action="store_true", help="raise even under the memory floor")
     helper_raise.add_argument("--as", dest="as_name", default=None, help=argparse.SUPPRESS)
     helper_raise.add_argument("--root", default=".")
-    helper_done = helper_sub.add_parser("done", help="record what you did as a helper and release your seat")
+    helper_done = helper_sub.add_parser("done", help="record what you did as a helper, or a seat on a borrowed "
+                                                      "model, and release your seat")
     helper_done.add_argument("--summary", required=True)
     helper_done.add_argument("--as", dest="as_name", default=None, help=argparse.SUPPRESS)
     helper_done.add_argument("--root", default=".")

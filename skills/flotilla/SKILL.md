@@ -76,6 +76,10 @@ session that raised you when something is unclear, and finish with `flotilla hel
 - never stop without it. The session that raised you merges your branch, then retires you. Reading and research
 need no helper: an in-session subagent does it without a seat.
 
+A seat raised on a borrowed model for one task (`flotilla spawn <post> --model <name> --for <task>`, the
+orchestrator's move) works the same way: it owns no row, works in its own tree, reports to whoever raised it, and
+finishes with `flotilla helper done --summary "<what you found or did>"`; the orchestrator then retires it.
+
 ## Whose move it is
 
 `flotilla status` names, for every open row, whose move it is. If it is yours, make it or record why you wait:

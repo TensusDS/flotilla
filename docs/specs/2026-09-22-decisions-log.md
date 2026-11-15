@@ -1880,6 +1880,29 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    first turn says so). Records are the machine's: a limit of a seat in another project on this machine refuses here too, which
    is right for one account and wrong for several (`CLAUDE_CONFIG_DIR`) - not handled.
    Whether the hook fires for a `claude --bg` seat is not documented and was not measured before release.
+   Measured after it (2026-11-15, Claude Code 2.1.325, a scratch project): it does fire.
+
+255. **A seat on a borrowed model is a seat of its post that owns no row, and finishes like a helper** (0.33.0;
+   fleet model design 5.3, the builder's calls). `spawn <post> --model <name> --for <task> --task "<brief>"`: every
+   `--model` other than the fleet's is borrowed, since flotilla knows no order between models, and the fleet's own
+   is refused rather than read as a plain seat. Who may raise it is read from the calling session's post (the
+   orchestrator) or a person, not from `may:` - a project's orchestrator post written before 0.33 would otherwise
+   refuse it until updated. Its record is the `reserve` evidence (`borrowed`, `for`, `for_row`, `by`). It finishes
+   with `flotilla helper done`, not a command of its own: one "I am done" for every seat lent to a task, and the
+   finished-helper paths (retire, `fleet down`, the dead-seat collector) take it as they are. It raises no helper:
+   it owns no work in progress, so the "helper on the default model" rule holds by construction. The person's line
+   counts it while it is up - also after `helper done`, until retired, since it still runs on that model - and the
+   line comes again when the set of such seats changes, like any change of what it says.
+   It takes no other work (review of 5ef2dd7): every claim (claim, `tree cut`, `tree switch`), an adoption to it and
+   a reading assigned to it are refused, the watch neither calls it idle nor offers it the next row, and it does
+   not hold its post for `spawn --fill` - a seat that took ordinary rows would run them on the costlier model,
+   the failure this release exists to prevent; so are its own `work reserve` and a reader's take, fix and accept,
+   and the refusal holds by any seat row the name ever held, not its latest (security review of 61483de). Only a
+   working post is lent, one that may claim: a borrowed orchestrator could lend models by its own choice, and a
+   borrowed reviewer, judge or sender would do its post's ordinary work on the costlier model (a sender is also
+   one copy). "Borrowed" is measured against what a seat of the post runs on anyway, its own
+   model or the fleet's, so a post on sonnet in a fleet on opus may be lent opus. The census itself (`claude
+   agents`) does not mark the seat; `flotilla fleet` and the person's line do.
 
 ## Open questions (for the foundation spec)
 

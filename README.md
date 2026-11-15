@@ -71,10 +71,10 @@ fleet.
 **Pin a release** instead, to choose when you move: name a tag on the first line (the tags are listed in
 [CHANGELOG.md](CHANGELOG.md)):
 
-    claude plugin marketplace add TensusDS/flotilla#v0.32.2 --scope project
+    claude plugin marketplace add TensusDS/flotilla#v0.33.0 --scope project
     claude plugin install flotilla@flotilla --scope project
 
-That writes `"ref": "v0.32.2"` into the project's settings and installs that release; `claude plugin update` stays on
+That writes `"ref": "v0.33.0"` into the project's settings and installs that release; `claude plugin update` stays on
 it. A machine keeps one marketplace of a name for all its projects, so give the projects on one machine the same
 channel or pin; `/flotilla:doctor` names a pin the machine does not follow. And a tag can be moved on GitHub, so a pin
 chooses when you move, not who can change what the tag names.
@@ -436,6 +436,15 @@ Claude Code's own message. With no reset in it, the mark lasts as long as the wi
 for a session limit, a week for a weekly or a model's limit); a limit the message does not name only warns, and with
 no reset either it is forgotten after an hour - mostly a burst of rate-limited requests, after which the seat is just
 quiet.
+
+**A model lent to one task.** Ask the orchestrator for a session on another model - a stronger one for a hard
+problem - and it raises one new seat on it: `flotilla spawn <post> --model <name> --for <task> --task "<brief>"`,
+where the task is a row's branch or a short text, and the brief is your words about the problem and what to do. The
+seat works beside the row in a tree cut from its tip (from trunk for a question), owns no row, and its subagents
+run on the fleet's model. Only the orchestrator or you may raise it. While it is up, your line counts it ("1 seat on
+fable for <task>"); `flotilla fleet` shows it `borrowed for <task>`. When it says it is done (`flotilla helper
+done`), or the row it is for closes, the orchestrator's watch tells it to close the seat; flotilla never closes it
+by itself.
 
 A post may also say `effort:` - `low`, `medium`, `high`, `xhigh` or `max` - and its seats start with
 `claude --effort` at that level; a higher level thinks longer and costs more tokens. Without the key a seat takes

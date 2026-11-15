@@ -15,6 +15,15 @@ from flotilla.ledger.model import Row
 from flotilla.posts import PostError, post_for_session
 
 
+def _not_lent(rows: dict, actor: Actor) -> None:
+    """A seat on a borrowed model reads nobody's work: it works only on the task it was lent for (fleet model design
+    5.3; security review of 61483de - `assign` was refused to it, a reader's own moves were not)."""
+    from flotilla.ledger.model import lent_refusal
+    refused = lent_refusal(rows, actor.name)
+    if refused:
+        raise MoveRefused(refused)
+
+
 def _not_the_author(row: Row, actor: Actor, doing: str) -> None:
     if actor.name == row.owner:
         raise MoveRefused(f"`{row.branch}` is {actor.name}'s own work; an author never {doing} it")
@@ -92,6 +101,7 @@ def letter(row: Row, read: tuple[str, str] | None = None) -> str:
 def take(ledger: Ledger, actor: Actor, branch: str) -> Row:
     require_may(actor, "take", ledger.posts)
     with ledger.session() as s:
+        _not_lent(s.rows, actor)
         row = s.need_open_row(branch)
         _not_the_author(row, actor, "reads")
         _not_assigned_elsewhere(row, actor)
@@ -114,6 +124,7 @@ def fix(ledger: Ledger, actor: Actor, branch: str, *, why: str) -> Row:
     if not why.strip():
         raise MoveRefused("a return names what must change (--why)")
     with ledger.session() as s:
+        _not_lent(s.rows, actor)
         row = s.need_open_row(branch)
         _not_the_author(row, actor, "returns")
         _not_assigned_elsewhere(row, actor)
@@ -139,6 +150,9 @@ def assign(ledger: Ledger, actor: Actor, branch: str, *, reader: str) -> tuple[R
             raise MoveRefused(f"{reader} is not alive in the census; assign a live reader")
         if reader_post is None or "accept" not in reader_post.may:
             raise MoveRefused(f"{reader} holds no post that may accept")
+        from flotilla.ledger.model import lent_refusal
+        if lent_refusal(s.rows, reader):
+            raise MoveRefused(lent_refusal(s.rows, reader))
         new = s.append(actor, row.id, "assign", state, fields={"reader": reader, "taken": False})
     return new, letter(new, read_from(ledger, new))
 
@@ -146,6 +160,7 @@ def assign(ledger: Ledger, actor: Actor, branch: str, *, reader: str) -> tuple[R
 def accept(ledger: Ledger, actor: Actor, branch: str, *, reviewed: str) -> Row:
     require_may(actor, "accept", ledger.posts)
     with ledger.session() as s:
+        _not_lent(s.rows, actor)
         row = s.need_open_row(branch)
         _not_the_author(row, actor, "accepts")
         _not_assigned_elsewhere(row, actor)

@@ -17,7 +17,7 @@ from pathlib import Path
 
 from flotilla.core.census import CensusUnavailable
 from flotilla.fleet import cleanup, leftovers, strangers
-from flotilla.fleet.model import recorded
+from flotilla.fleet.model import borrowed, recorded
 from flotilla.ledger import core
 from flotilla.ledger.actor import Actor
 from flotilla.ledger.errors import MoveRefused
@@ -34,8 +34,9 @@ def post_rows(ledger) -> list[Row]:
 
 
 def finished_helper_seat(ledger, name: str) -> Row | None:
-    """A helper that ran `helper done` released its seat but still runs until retired: its latest seat row."""
-    seats = [row for row in ledger.rows().values() if row.owner == name and row.helper_of]
+    """A helper - or a seat on a borrowed model - that ran `helper done` released its seat but still runs until
+    retired: its latest seat row."""
+    seats = [row for row in ledger.rows().values() if row.owner == name and (row.helper_of or borrowed(row))]
     return seats[-1] if seats and not seats[-1].is_open else None
 
 
@@ -78,11 +79,24 @@ def fleet_view(ledger, sessions: list | None) -> list[dict]:
             "state": found.state if found else "", "short_id": (found.short_id or "") if found else "",
             "session_id": found.session_id if found else "",
             "held_on": found.held_on if found else None,
-            "dirty": _dirty(row.tree), "model": recorded(row),
+            "dirty": _dirty(row.tree), "model": recorded(row), "borrowed_for": borrowed(row).get("for", ""),
             "work": [other for other in rows.values()
                      if other.is_open and other.owner == row.owner and other.state != "reserved"],
             "stranger": "",
         })
+    listed = {item["name"] for item in view}
+    for name in sorted({item.name for item in sessions or [] if item.name} - listed):
+        row = finished_helper_seat(ledger, name)   # said done, still running: listed until retired (review, M4)
+        if row is not None:
+            found = _running(sessions, name)
+            view.append({
+                "name": name, "post": _post_name(ledger, name), "tree": row.tree,
+                "tree_exists": bool(row.tree) and Path(row.tree).is_dir(),
+                "locked": bool(row.tree) and str(Path(row.tree).resolve()) in locked, "live": True,
+                "state": found.state if found else "", "short_id": (found.short_id or "") if found else "",
+                "session_id": found.session_id if found else "", "held_on": found.held_on if found else None,
+                "dirty": _dirty(row.tree), "model": recorded(row), "borrowed_for": borrowed(row).get("for", ""),
+                "work": [], "stranger": "", "finished": True})
     for session, tree in strangers.in_seat_trees(sessions or [], rows, lambda name: _post_name(ledger, name)):
         view.append({"name": session.name, "post": "", "stranger": tree, "short_id": session.short_id or "",
                      "started": strangers.started_by(session)})

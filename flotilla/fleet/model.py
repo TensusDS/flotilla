@@ -19,6 +19,7 @@ import re
 from pathlib import Path
 
 from flotilla.fleet.launch import LaunchError
+from flotilla.ledger.model import borrowed, lent_to  # noqa: F401 - read here by the fleet
 
 #: Words an older profile used for "no model named": inherit what Claude Code runs (`one`, or nothing), or that and
 #: the strongest model for reviewers.
@@ -46,6 +47,11 @@ def family(name: str) -> str:
     if base.endswith("plan") and base[:-4]:
         return base[:-4]
     return base
+
+
+def valid(name: str) -> bool:
+    """A model's name as Claude Code's `--model` takes it: an alias, a full id, a variant in brackets."""
+    return bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._\[\]-]*", name)) and name.lower() not in (*LEGACY, "inherit")
 
 
 def same(a: str, b: str) -> bool:

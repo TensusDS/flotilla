@@ -153,12 +153,14 @@ REFUSAL = ("When a call is refused to you and only the person can allow it - aut
            "approve is never yours to propose: say the batch waits for the person's yes.")
 
 
-def argv(seat: Seat, post, profile: dict, *, main: Path, settings_json: str = "", first_prompt: str = "") -> list[str]:
+def argv(seat: Seat, post, profile: dict, *, main: Path, settings_json: str = "", first_prompt: str = "",
+         model: str = "") -> list[str]:
     """`settings_json` (from `flotilla.fleet.plugins`) turns off the MCP plugins the post does not keep; it rides as
-    one argv element, never through a shell. `first_prompt` replaces the fleet's first prompt (a helper's task)."""
+    one argv element, never through a shell. `first_prompt` replaces the fleet's first prompt (a helper's task).
+    `model` replaces the post's model: a seat on a borrowed model (fleet model design 5.3)."""
     command = ["claude", "--bg", "-n", seat.name, "--add-dir", str(seat.tree), "--permission-mode",
                permission_mode(profile, post)]
-    model = model_for(profile, post)
+    model = model or model_for(profile, post)
     if not model:   # a seat never inherits what Claude Code last saved (fleet model design, 1 and 5.1)
         from flotilla.fleet.model import ModelUnnamed, unnamed_message
         raise ModelUnnamed(unnamed_message())

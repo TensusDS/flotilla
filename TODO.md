@@ -69,6 +69,17 @@ command that every guard shares, not one more reading.
   `work adopt` do it by hand. *(checked 2026-11-13 on 0.32.0: open - docs/specs/2026-11-13-fleet-model-design.md,
   non-goals)*
 
+## From the reviews of 0.33.0 (2026-11-15, a seat on a borrowed model)
+
+- **Whether Claude Code honours `env` inside `--settings` for `CLAUDE_CODE_SUBAGENT_MODEL[_FORCE]` was never
+  measured**, nor `cap_warning`'s reading of a real `claude --version`: both need a launched seat. If the env does
+  not take, a borrowed seat's subagents run on its borrowed model - the cost the cap is there to hold. A one-off
+  check in a scratch project: a `--bg` seat with that `--settings`, a subagent asked its model. *(checked
+  2026-11-15 on 0.33.0: open - flotilla/fleet/borrow.py settings)*
+- **A project's own post that may claim and writes one-copy resources** could be lent, and a lent seat is not
+  counted as holding its post, so a second copy could be raised beside it. No shipped post is like that.
+  *(checked 2026-11-15 on 0.33.0: open, cosmetic - flotilla/fleet/spawn.py _live_posts)*
+
 ## From the reviews of 0.32.2 (2026-11-15, a seat stopped on a usage limit)
 
 - **A rig-run test fails when the lane freezes the suite for a minute**:

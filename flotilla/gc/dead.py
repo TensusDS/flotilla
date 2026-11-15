@@ -130,7 +130,9 @@ def dead_seats(ledger, sessions, *, proc_root=None, data: dict | None = None, no
     live = {item.name for item in sessions if item.name}
     locks = trees.locks(ledger)
     rows = retire.post_rows(ledger)
-    helpers_seen = sorted({row.owner for row in ledger.rows().values() if row.helper_of and row.owner})
+    from flotilla.fleet.model import borrowed
+    helpers_seen = sorted({row.owner for row in ledger.rows().values()
+                           if (row.helper_of or borrowed(row)) and row.owner})
     rows += [seat for seat in (retire.finished_helper_seat(ledger, name) for name in helpers_seen) if seat]
     found = []
     for row in sorted(rows, key=lambda item: item.owner):
