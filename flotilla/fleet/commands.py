@@ -223,10 +223,15 @@ def _spawn(ledger, args) -> int:
     if args.dry_run:
         try:
             probe = census_for(ledger)   # a held seat's name is taken (review of 14c5ff8)
-            live = {item.name for item in probe() if item.name}
+            listed = probe()
+            live = {item.name for item in listed if item.name}
         except CensusUnavailable as err:
             print(f"census: unknown ({err}); names may collide with live sessions")
-            live, probe = set(), (lambda: [])  # noqa: E731
+            live, probe, listed = set(), (lambda: []), []  # noqa: E731
+        refused, limited = _limited(ledger, profile, counts, listed)
+        said = "passed under --anyway" if args.anyway else "a launch now is refused"
+        for line in ([f"{said}: {refused}"] if refused else []) + limited:
+            print(f"warning: {line}")
         seats, warnings = spawn.plan(ledger, counts, census=probe, store=store, reserve=False, strict=False)
         main = launch.main_checkout(ledger.root, run=ledger.run)
         narrow = plugins.narrowing(ledger.run, main)
@@ -254,6 +259,11 @@ def _spawn(ledger, args) -> int:
     except CensusUnavailable as err:
         raise spawn.SpawnRefused(f"spawning needs the census to check names, and it could not be asked: "
                                  f"{err}") from err
+    refused, limited = _limited(ledger, profile, counts, sessions)
+    if refused and not args.anyway:
+        raise spawn.SpawnRefused(refused)
+    for line in ([f"raised under --anyway: {refused}"] if refused else []) + limited:
+        print(f"warning: {line}")
     gaps = _gaps(ledger, counts)   # asked before the launch: a seat just raised may not be in the census yet
     try:
         raised, warnings = spawn.spawn(ledger, counts, census=census_for(ledger), store=store,
@@ -357,6 +367,7 @@ def _fleet(ledger, args) -> int:
         sessions = None
         print(f"census: unknown ({err}); liveness is not asserted")
     view = retire.fleet_view(ledger, sessions)
+    limited = _limits_now()
     leaders = _leaders(ledger, sessions, {item["name"] for item in view}) if sessions is not None else []
     for line in leaders:
         print(line)
@@ -367,9 +378,7 @@ def _fleet(ledger, args) -> int:
             stop = f"; `claude stop {item['short_id']}` stops it" if item["short_id"] else ""
             print(f"{item['name']}  {strangers.label(item['stranger'], item.get('started', ''))}{stop}")
             continue
-        attach = f"claude attach {item['short_id']}" if item["short_id"] else "no id in the census"
-        live = {True: f"alive ({item['state'] or 'no state'}), {attach}",
-                False: "not running", None: "liveness unknown"}[item["live"]]
+        live = live_text(item, limited.get(item.get("session_id") or ""))
         if item.get("held_on") is not None:
             live = "has not started: " + spawn.held_note(SimpleNamespace(**item), item["name"])
         dirty = {None: ", its state unknown", 0: ""}.get(item["dirty"], f", {item['dirty']} uncommitted")
@@ -384,6 +393,38 @@ def _fleet(ledger, args) -> int:
     for line in surface.lines(_paths.state_dir(), _dt.datetime.now(_dt.timezone.utc)):
         print(line)
     return 0
+
+
+def _limited(ledger, profile: dict, counts: dict, sessions) -> tuple[str, list[str]]:
+    """A refusal when a live seat stopped on a usage limit the seats to raise would stop on at once, and the
+    warnings of limits whose scope Claude Code did not name (fleet model design 5.6)."""
+    import datetime as _dt
+    from flotilla.fleet import limits
+    from flotilla.fleet import model as fleet_model
+    families = {post: fleet_model.family(launch.model_for(profile, ledger.posts[post]))
+                for post, count in counts.items() if count and post in ledger.posts}
+    return limits.for_raise(paths.state_dir(), sessions, families, _dt.datetime.now(_dt.timezone.utc))
+
+
+def live_text(item: dict, limit=None) -> str:
+    """How a seat of `flotilla fleet` is: alive with the census's state, or stopped on a usage limit its hook
+    recorded (fleet model design 5.6) - alive too, and answering nothing until the limit lifts."""
+    from flotilla.fleet import limits
+    attach = f"claude attach {item['short_id']}" if item["short_id"] else "no id in the census"
+    if item["live"] and limit is not None and item.get("state") != "working":   # working: its limit lifted
+        return f"{limits.label(limit)}, {attach}"
+    return {True: f"alive ({item['state'] or 'no state'}), {attach}",
+            False: "not running", None: "liveness unknown"}[item["live"]]
+
+
+def _limits_now() -> dict:
+    """Every session's usage limit in force, by session id; none when the record cannot be read."""
+    import datetime as _dt
+    from flotilla.fleet import limits
+    try:
+        return limits.current(paths.state_dir(), _dt.datetime.now(_dt.timezone.utc))
+    except Exception:  # noqa: BLE001 - a listing never fails on a hint
+        return {}
 
 
 def _size(ledger, args) -> int:

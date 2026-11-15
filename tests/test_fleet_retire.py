@@ -33,6 +33,47 @@ def test_the_fleet_view_lists_each_post_row_with_its_session(tmp_path):
     assert retire.fleet_view(ledger, None)[0]["live"] is None
 
 
+def test_fleet_shows_limited(tmp_path):
+    """Fleet model design 5.6: a seat its hook recorded as stopped on a usage limit reads limited, not `alive
+    (blocked)` - the line that sent the 2026-11-13 orchestrator to replace seats on the same model."""
+    from flotilla.fleet import commands, limits
+    fake = FakeClaude()
+    root, ledger, seat = raised_world(tmp_path, fake)
+    item = retire.fleet_view(ledger, fake.census())[0]
+    assert item["session_id"] == f"sid-{seat.short_id}"
+    assert commands.live_text(item).startswith("alive (")
+    limit = limits.Limit(item["session_id"], "2026-11-13T17:05:00+00:00", "2026-11-18T18:00:00+00:00", "model:fable")
+    assert commands.live_text(item, limit) == (f"limited until 2026-11-18 18:00 UTC (the fable model's limit), "
+                                               f"claude attach {seat.short_id}")
+    unknown = limits.Limit(item["session_id"], "2026-11-13T17:05:00+00:00", None, "unknown")
+    assert commands.live_text(item, unknown).startswith("limited, reset unknown (a rate limit Claude Code did not")
+    assert commands.live_text({**item, "live": False}, limit) == "not running"
+    assert commands.live_text({**item, "state": "working"}, limit).startswith("alive (working)")   # lifted
+
+
+def test_status_marks_rows_of_limited_seat(tmp_path, monkeypatch):
+    """`flotilla status` says why a row does not move: its mover is a seat stopped on a usage limit (fleet model
+    design 5.6) - so a letter delivered to it is not read as acted on."""
+    import io
+    from contextlib import redirect_stdout
+    from types import SimpleNamespace
+    from flotilla.core import paths
+    from flotilla.fleet import limits
+    from flotilla.ledger import commands as ledger_commands
+    monkeypatch.setenv("FLOTILLA_STATE_DIR", str(tmp_path / "state"))
+    fake = FakeClaude()
+    root, ledger, seat = raised_world(tmp_path, fake)
+    core.claim(ledger, actor(ledger, "main session 1"), "feat/x")
+    limits.record(paths.state_dir(), limits.Limit(f"sid-{seat.short_id}", "2026-11-13T17:05:00+00:00",
+                                                  "2099-11-18T18:00:00+00:00", "account"))
+    out = io.StringIO()
+    with redirect_stdout(out):
+        ledger_commands._status(ledger, SimpleNamespace(stalled=None))
+    line = next(line for line in out.getvalue().splitlines() if "feat/x: claimed" in line)
+    assert ("-> main session 1 (main session 1 is limited until 2099-11-18 18:00 UTC (the account's session or "
+            "weekly limit, every model))") in line, line
+
+
 def test_retire_stops_the_session_unlocks_the_tree_and_releases_the_post_row(tmp_path):
     fake = FakeClaude()
     root, ledger, seat = raised_world(tmp_path, fake)

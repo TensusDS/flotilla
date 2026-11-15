@@ -87,7 +87,7 @@ class Context:
             post_of=self.post_of, former_of=self.post_or_former, breaks=breaks,
             asking={asked.session for asked in questions},
             claimers={post.name for post in (self.ledger.posts or {}).values() if "claim" in post.may},
-            census={session.name for session in self.sessions if session.name})
+            census={session.name for session in self.sessions if session.name}, limited=self.limited())
         import datetime as _dt
         from flotilla.core import paths as _paths
         from flotilla.rig import surface
@@ -100,6 +100,17 @@ class Context:
             collector = []
         return surface.items(_paths.state_dir(), _dt.datetime.now(_dt.timezone.utc),
                              project=self.ledger.repo_key) + self.owed() + found + collector
+
+    def limited(self) -> dict:
+        """The usage limit each census session stopped on, by name (fleet model design 5.6); none when the record
+        cannot be read - a view never fails on it."""
+        import datetime as _dt
+        from flotilla.core import paths as _paths
+        from flotilla.fleet import limits
+        try:
+            return limits.of_sessions(_paths.state_dir(), self.sessions, _dt.datetime.now(_dt.timezone.utc))
+        except Exception:  # noqa: BLE001 - the record is a hint; the census still says who is alive
+            return {}
 
     def owed(self) -> list:
         """The decisions an update owes the person, as fleet items (fleet model design 5.2)."""

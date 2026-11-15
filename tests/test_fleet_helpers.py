@@ -186,3 +186,4 @@ def test_a_helper_is_refused_before_its_name_is_taken_when_no_model_is_named(tmp
         raise_one(ledger, fake)
     ledger.profile = {**ledger.profile, "fleet": {"model": "opus"}}
     assert raise_one(ledger, fake).seat.name == "helper 1"   # the refused raise took no name
+

@@ -539,3 +539,54 @@ def test_the_persons_note_answers_until_trunk_names_a_model(tmp_path, monkeypatc
     assert code == 0, out
     assert "model: sonnet (from local note (not on trunk yet))" in out
     assert "--model sonnet" in seat_block(out, "main session 1")
+
+
+def _limited_world(tmp_path, monkeypatch, scope):
+    """A live seat whose `StopFailure` hook recorded a usage limit of `scope`; the fleet runs on opus."""
+    from flotilla.core import paths
+    from flotilla.fleet import limits
+    root = onboarded(tmp_path, monkeypatch)
+    seat = _a_session("review session 1", root)
+    monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [seat])
+    limits.record(paths.state_dir(), limits.Limit(seat.session_id, "2026-11-13T17:05:00+00:00",
+                                                  "2099-11-18T18:00:00+00:00", scope, "2099-11-18T18:00:00+00:00"))
+    return root
+
+
+def test_spawn_refused_on_limited_model(tmp_path, monkeypatch):
+    """Fleet model design 5.6: the 2026-11-13 orchestrator replaced limited seats on the same model, and the new
+    seats stopped at once. A seat on the limited model is refused, with the ways past it named."""
+    root = _limited_world(tmp_path, monkeypatch, "model:opus")
+    code, out = run_cli("spawn", "-M", "1", "--root", str(root))
+    assert code == 2 and "review session 1 stopped on the opus model's limit" in out, out
+    assert "it lifts at 2099-11-18 18:00 UTC" in out and "`! flotilla fleet model <name>`" in out
+    assert "message it" in out and not (tmp_path / "app-main-1").exists()
+    code, out = run_cli("spawn", "-M", "1", "--dry-run", "--root", str(root))
+    assert code == 0 and "warning: a launch now is refused: review session 1 stopped on the opus" in out
+
+
+def test_a_limit_on_another_model_refuses_nothing(tmp_path, monkeypatch):
+    root = _limited_world(tmp_path, monkeypatch, "model:fable")
+    code, out = run_cli("spawn", "-M", "1", "--dry-run", "--root", str(root))
+    assert code == 0 and "refused" not in out and "stopped on" not in out, out
+
+
+def test_spawn_refused_on_account_limit(tmp_path, monkeypatch):
+    root = _limited_world(tmp_path, monkeypatch, "account")
+    code, out = run_cli("spawn", "-M", "1", "--root", str(root))
+    assert code == 2 and "the account's session or weekly limit, every model" in out, out
+    assert "would stop at once on any model" in out and "`--anyway` raises the seat all the same" in out
+    assert not (tmp_path / "app-main-1").exists()
+
+
+def test_spawn_anyway_passes_a_limit_and_says_so(tmp_path, monkeypatch):
+    root = _limited_world(tmp_path, monkeypatch, "account")
+    code, out = run_cli("spawn", "-M", "1", "--anyway", "--root", str(root))
+    assert "warning: raised under --anyway: review session 1 stopped on the account's" in out, out
+
+
+def test_spawn_warns_on_unknown_scope(tmp_path, monkeypatch):
+    root = _limited_world(tmp_path, monkeypatch, "unknown")
+    code, out = run_cli("spawn", "-M", "1", "--dry-run", "--root", str(root))
+    assert code == 0 and "warning: review session 1 stopped on a rate limit Claude Code did not name" in out, out
+    assert "refused" not in out

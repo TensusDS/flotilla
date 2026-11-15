@@ -61,6 +61,22 @@ def test_the_orchestrator_sees_live_questions_first(tmp_path):
     assert lines[0].startswith("  main session 1: asks Bash \"touch x")
 
 
+def test_the_orchestrator_sees_a_seat_stopped_on_its_limit(tmp_path):
+    """The record the seat's `StopFailure` hook wrote reaches the orchestrator's watch through the census session's
+    id; the seat holding a move is named limited, not a dropped ball."""
+    import datetime as dt
+    from flotilla.core import paths
+    from flotilla.fleet import limits
+    me = sess("orchestrator 1", state="working")
+    seat = sess("review session 1", sid="seat-1")
+    later = (dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=2)).replace(microsecond=0)
+    limits.record(paths.state_dir(), limits.Limit("seat-1", dt.datetime.now(dt.timezone.utc).isoformat(
+        timespec="seconds"), later.isoformat(), "model:fable"))
+    ctx = make_context(tmp_path, me=me, sessions=[me, seat],
+                       rows_=rows(row(state="handed", reader="review session 1")))
+    assert [(item.kind, item.who) for item in ctx.fleet()] == [("limited", "review session 1")]   # one still works
+
+
 def test_gather_narrows_the_fleet_to_this_projects_sessions(tmp_path):
     import dataclasses
     from ledgerkit import repo_with_origin

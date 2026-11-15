@@ -3,6 +3,29 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.32.2 - 2026-11-15
+
+On 2026-11-13 every seat of a field fleet hit a model's weekly limit; `flotilla fleet` showed them `alive
+(blocked)`, the watch called them idle, the person's yes to land a batch was never acted on, and the orchestrator
+replaced two seats on the same model, which stopped at once. This release makes a limited seat visible.
+
+- **A seat stopped on a usage limit reads `limited until <time>`.** A new `StopFailure` hook (matcher
+  `rate_limit`) records the limit when Claude Code ends a seat's turn on it; the seat's next normal turn clears it.
+  The limit's name and reset are read from Claude Code's own message ("You've hit your Fable limit · resets Nov 18,
+  6pm (UTC)"); with no reset in it, the mark lasts as long as the window it names (five hours for a session
+  limit, a week for a weekly or a model's limit), and a limit it names neither the scope nor the reset of is
+  forgotten after an hour.
+  `flotilla fleet` shows it in place of `alive (...)`, and `flotilla status` marks the rows whose next move is a
+  limited seat's.
+- **The orchestrator's watch names each limited seat once**, instead of a dropped ball or an idle seat, and when
+  every live seat is limited it puts one urgent item in the person's queue: the fleet does nothing until the reset
+  or a change of model.
+- **`spawn` refuses a seat that would stop at once**: on any model while a live seat is under the
+  account's session or weekly limit, on the limited model under a model's limit. The refusal names the reset and
+  the ways past it, `--anyway` among them; a limit whose scope the message does not name only warns.
+- **The orchestrator post says** a limited seat is not gone: do not retire it or replace it on the same model, and
+  tell the person (template 30).
+
 ## 0.32.1 - 2026-11-15
 
 - **The Bash guard lets go of a reading it cannot end within a second, on any clock.** A reading stuck where no

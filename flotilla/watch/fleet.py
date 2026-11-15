@@ -22,6 +22,7 @@ DEVIATION, DROPPED, NOBODY, BREAK, QUESTION, PERSON = ("deviation", "dropped", "
 IDLE, DONE, HELPER, STRANGER, PILE = "idle", "done", "helper", "stranger", "pile"
 COLLECTOR, DISK = "collector", "disk"
 OWED = "owed"
+LIMITED, ALL_LIMITED = "limited", "all-limited"
 IDLE_SEAT_MINUTES = 60
 PILE_MOVES = 3   # this many moves of one seat nobody waits on, while a peer of its post holds none
 SEATS = "seats"
@@ -72,6 +73,21 @@ def movers(row, profile: dict, live: set[str], post_of, rows: dict | None = None
     return set()
 
 
+def limited_moves(rows: dict, profile: dict, live: set[str], post_of, limited: dict) -> dict:
+    """The open rows whose next move is a limited seat's, with that seat's name and limit: the move a named session holds,
+    or a post's move when every live session of the post is limited (fleet model design 5.6). A row that waits on
+    something else is waiting already."""
+    found = {}
+    for row in rows.values():
+        if not row.is_open or row.state == "reserved" or row.waiting_on or row.held_until:
+            continue
+        named = movers(row, profile, live, post_of, rows) & live
+        if named and named <= set(limited):
+            first = sorted(named)[0]
+            found[row.id] = (first, limited[first])
+    return found
+
+
 def owed_items(found) -> list[Item]:
     """A decision an update owes the person (`flotilla.onboard.owed`): the orchestrator puts it to them, and it
     waits in their queue until answered."""
@@ -81,12 +97,14 @@ def owed_items(found) -> list[Item]:
 
 
 def fleet(rows: dict, profile: dict, sessions, *, post_of, former_of=None, breaks=(), asking=(), claimers=frozenset(),
-          now: dt.datetime | None = None, census: set[str] | None = None) -> list[Item]:
+          now: dt.datetime | None = None, census: set[str] | None = None, limited: dict | None = None) -> list[Item]:
+    """`limited` is the usage limit each live session stopped on, by name (`flotilla.fleet.limits.of_sessions`)."""
     outside = strangers.in_seat_trees(sessions, rows, post_of)   # in a seat's tree, holding no post (H7)
     by_name = {session.name: session for session in sessions if session.name}
     for session, _ in outside:
         by_name.pop(session.name, None)   # counted nowhere a seat is counted
     live = set(by_name)
+    limited = {name: found for name, found in (limited or {}).items() if name in live}
     everyone = census if census is not None else live   # waits are asked of the whole census, not the project
     found_all = views.deviations(rows, profile, live, post_of=post_of, former_of=former_of, census=everyone)
     items = [Item(DEVIATION, found["branch"], f"{found['kind']}: {found['why']}", since_of(rows, found["branch"]),
@@ -109,8 +127,8 @@ def fleet(rows: dict, profile: dict, sessions, *, post_of, former_of=None, break
             items.append(Item(NOBODY, row.branch, f"the move is {mover}'s, and no live session holds the "
                                                   f"`{POST_OF_MOVER[mover]}` post", row.updated_at, who=mover))
         for name in sorted(named):
-            if name in asking:
-                continue   # its question is in the queue: the move waits on the person, not on the session
+            if name in asking or name in limited:
+                continue   # its question is in the queue, or it waits on its limit: named once, below
             if not_working(by_name[name]):
                 items.append(Item(DROPPED, row.branch, f"{name} holds the move ({row.state}) and is not working "
                                                        f"(census: {_census_word(by_name[name])}); message them",
@@ -122,18 +140,39 @@ def fleet(rows: dict, profile: dict, sessions, *, post_of, former_of=None, break
             continue
         dropped = any(item.kind == DROPPED and item.who == name for item in items)
         if session.status == "waiting" and name not in asking and post_of(name) and not dropped \
-                and session.kind != "interactive":   # the person is in front of it: waiting on them is normal (W17)
+                and session.kind != "interactive" and name not in limited:   # the person is in front of it: waiting on them is normal (W17)
             # a question open in its own session that no row records (H42); one in the queue is a QUESTION item,
             # and a holder of a move already reads as DROPPED with its prompt named
             items.append(Item(PERSON, "", f"{name} waits on the person (census: waiting); answer it in its session",
                               "", who=name))
     items.extend(Item(STRANGER, "", f"{session.name}: {strangers.label(tree)}", "", who=session.name)
                  for session, tree in outside if not strangers.started_by(session))   # a hook's review: no alarm (W6)
+    items.extend(limited_items(limited, by_name, post_of))
     items.extend(breaks)
-    items.extend(idle_seats(rows, profile, live, post_of, claimers, now))
+    items.extend(idle_seats(rows, profile, live - set(limited), post_of, claimers, now))
     items.extend(piled(rows, profile, live, post_of, claimers, everyone))
     items.extend(drained(rows, live))
     items.extend(helpers(rows, live))
+    return items
+
+
+def limited_items(limited: dict, by_name: dict, post_of) -> list[Item]:
+    """One item per seat stopped on a usage limit, and one more when every live seat of the fleet is: then nothing
+    moves until a reset or a change of model, and only the person can choose (fleet model design 5.6)."""
+    from flotilla.fleet import limits
+    items = [Item(LIMITED, "", f"{name} is {limits.label(found)}: it answers nothing until then. A limited seat is "
+                               "not gone: do not retire or replace it on the same model; tell the person",
+                  found.at, who=name)
+             for name, found in sorted(limited.items())]
+    seats = {name for name, session in by_name.items() if session.kind != "interactive" and post_of(name)}
+    if seats and seats <= set(limited):
+        resets = sorted(found.reset for name, found in limited.items() if name in seats and found.reset)
+        first = limits.label(limits.Limit("", "", resets[0], "")).split(" (")[0] if resets else ""
+        when = f"the first reset ({first.removeprefix('limited ')})" if resets else "a reset nobody could read"
+        items.append(Item(ALL_LIMITED, "", f"every live seat is stopped on a usage limit ({', '.join(sorted(seats))}): "
+                                           f"the fleet does nothing until {when}, or until seats run on a model "
+                                           f"not limited - `! flotilla fleet model <name>`, or a post's own model",
+                          min(limited[name].at for name in seats), who=",".join(sorted(seats))))
     return items
 
 

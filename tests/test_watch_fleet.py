@@ -470,3 +470,53 @@ def test_a_seat_held_on_a_start_up_question_waits_on_the_person():
                        "server found in this project: mint»; answer it with `claude attach 0204d254`"),
         (fleet.PERSON, "review session 1 has not started a minute after its launch; `claude attach 77aa0011` shows "
                        "what it waits on")]
+
+
+def _limit(scope="model:fable", reset="2026-11-18T18:00:00+00:00", sid="id"):
+    from flotilla.fleet.limits import Limit
+    return Limit(sid, "2026-11-13T17:05:00+00:00", reset, scope)
+
+
+def test_one_limited_seat_one_item():
+    """Fleet model design 5.6: a seat stopped on a usage limit is named as limited - not a dropped ball, and not
+    gone - once, whatever it holds."""
+    held = rows(row(state="handed", reader="review session 1"))
+    found = fleet.fleet(held, PR, [sess("review session 1"), sess("main session 1", state="working")],
+                        post_of=post_of, limited={"review session 1": _limit()})
+    assert [(item.kind, item.who) for item in found] == [(fleet.LIMITED, "review session 1")]
+    assert "limited until 2026-11-18 18:00 UTC (the fable model's limit)" in found[0].text
+    assert "do not retire or replace it on the same model" in found[0].text
+
+
+def test_all_limited_one_blocker():
+    """Every live seat limited: the fleet does nothing until a reset or a change of model - one item for that,
+    beside the seats' own."""
+    sessions = [sess("review session 1"), sess("main session 1"), sess("orchestrator 1", kind="interactive")]
+    limited = {"review session 1": _limit(), "main session 1": _limit(scope="account", reset=None)}
+    found = fleet.fleet(rows(), PR, sessions, post_of=post_of, limited=limited)
+    assert sorted((item.kind, item.who) for item in found) == [
+        (fleet.ALL_LIMITED, "main session 1,review session 1"), (fleet.LIMITED, "main session 1"),
+        (fleet.LIMITED, "review session 1")]
+    blocker = next(item for item in found if item.kind == fleet.ALL_LIMITED)
+    assert "every live seat" in blocker.text and "2026-11-18 18:00 UTC" in blocker.text
+
+
+def test_one_seat_still_working_is_no_blocker():
+    found = fleet.fleet(rows(), PR, [sess("review session 1"), sess("main session 1", state="working")],
+                        post_of=post_of, limited={"review session 1": _limit()})
+    assert [item.kind for item in found] == [fleet.LIMITED]
+
+
+def test_the_moves_a_limited_seat_holds_are_named():
+    """A row is stopped on a limit when every live session that could move it is limited; a row that records a
+    wait is waiting already, and a post's move with one holder still working is not stopped."""
+    held = rows(row("r1", state="handed", reader="review session 1"),
+                row("r2", branch="feat/y", state="accepted"),
+                row("r3", branch="feat/z", state="handed", reader="review session 1", waiting_on="the person",
+                    note="asked"))
+    live = {"review session 1", "sender 1"}
+    limit = _limit()
+    assert fleet.limited_moves(held, PR, live, post_of, {"review session 1": limit}) == {
+        "r1": ("review session 1", limit)}
+    both = fleet.limited_moves(held, PR, live, post_of, {"review session 1": limit, "sender 1": limit})
+    assert both == {"r1": ("review session 1", limit), "r2": ("sender 1", limit)}

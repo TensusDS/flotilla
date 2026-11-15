@@ -1866,6 +1866,21 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    gone) - for a background fleet, a stall nobody sees. Over the maintainer's transcripts, 1 hook run was cancelled
    of about 115 000. The person kept the hook without it.
 
+254. **A seat stopped on a usage limit is read from its own hook, and the limit's scope from Claude Code's message**
+   (the person, 2026-11-15; 0.32.2; fleet model design 5.6). The `StopFailure` payload documents the error type
+   (`error`, `rate_limit`) and the rendered error text (`last_assistant_message`), not the limit's model or reset.
+   Those are read from the text in the form Claude Code writes it ("You've hit your <name>[ · resets <time>]"),
+   with Claude Code's own split of names into the session, weekly and model windows; anything else reads as scope
+   and reset unknown, which only warns. The person chose this over waiting for a measured limit in the field.
+   A record without a reset lasts as long as the window it names (five hours, or a week), one with neither a name
+   nor a reset an hour: a burst of 429s must not hide a quiet seat or refuse spawns for days (reviews of 747c754).
+   `--anyway` passes the refusal. `helper raise` is not refused: a helper is raised by a seat that is working, on the
+   same account, so an account's limit seen then is stale, and so is a limit of the raising seat's own model; a
+   limit of another model the helper post runs on is real and is not caught (accepted: rare, and the helper's
+   first turn says so). Records are the machine's: a limit of a seat in another project on this machine refuses here too, which
+   is right for one account and wrong for several (`CLAUDE_CONFIG_DIR`) - not handled.
+   Whether the hook fires for a `claude --bg` seat is not documented and was not measured before release.
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
