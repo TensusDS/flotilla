@@ -20,6 +20,7 @@ from flotilla.watch.whose import POST_OF_MOVER, Item, holds_move, since_of
 DEVIATION, DROPPED, NOBODY, BREAK, QUESTION, PERSON = ("deviation", "dropped", "nobody", "break", "question",
                                                      "person")
 IDLE, DONE, HELPER, STRANGER, PILE = "idle", "done", "helper", "stranger", "pile"
+BORROWED = "borrowed-done"
 COLLECTOR, DISK = "collector", "disk"
 OWED = "owed"
 LIMITED, ALL_LIMITED = "limited", "all-limited"
@@ -153,6 +154,7 @@ def fleet(rows: dict, profile: dict, sessions, *, post_of, former_of=None, break
     items.extend(piled(rows, profile, live, post_of, claimers, everyone))
     items.extend(drained(rows, live))
     items.extend(helpers(rows, live))
+    items.extend(borrowed_done(rows, live))
     return items
 
 
@@ -310,6 +312,32 @@ def collector_items(state_dir, repo_key: str, root, profile: dict, *, now: float
         items.append(Item(DISK, "", f"the disk is low: {found.text}" + (f"; {disk.refusal(found)}" if found.no_room
                                                                          else "; the daily pass shrinks idle trees"),
                           "", who="disk"))
+    return items
+
+
+def borrowed_done(rows: dict, live: set[str]) -> list[Item]:
+    """A seat on a borrowed model whose task is handed back - it said it is done, or the row it was lent for closed
+    - and which still runs: the orchestrator closes it (fleet model design 5.3). flotilla never retires it itself;
+    once it is retired it is not live, and the item is gone."""
+    from flotilla.fleet.model import borrowed, recorded
+    items = []
+    for name in sorted(live):
+        seats = [row for row in rows.values() if row.owner == name and borrowed(row)]
+        if not seats:
+            continue
+        seat = seats[-1]
+        lent = borrowed(seat)
+        if not seat.is_open:
+            why, since = "said it is done", seat.updated_at
+        else:
+            row = rows.get(lent["row"]) if lent["row"] else None
+            if row is None or row.is_open:
+                continue
+            why, since = f"the row it was lent for is {row.state}", row.updated_at
+        items.append(Item(BORROWED, seat.branch, f"{name}, on {recorded(seat) or 'a borrowed model'} for "
+                                                 f"{lent['for']}, {why}: read what it left on {seat.branch}, then "
+                                                 f"close it - `flotilla retire \"{name}\"`",
+                          since, who=f"{name} borrowed done"))
     return items
 
 

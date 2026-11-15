@@ -34,8 +34,9 @@ def post_rows(ledger) -> list[Row]:
 
 
 def finished_helper_seat(ledger, name: str) -> Row | None:
-    """A helper that ran `helper done` released its seat but still runs until retired: its latest seat row."""
-    seats = [row for row in ledger.rows().values() if row.owner == name and row.helper_of]
+    """A helper - or a seat on a borrowed model - that ran `helper done` released its seat but still runs until
+    retired: its latest seat row."""
+    seats = [row for row in ledger.rows().values() if row.owner == name and (row.helper_of or borrowed(row))]
     return seats[-1] if seats and not seats[-1].is_open else None
 
 

@@ -495,25 +495,27 @@ def _persons_line(ctx, payload, entries, now) -> str:
     if not shown.persons_prompt(payload.get("prompt")):
         return ""
     state, repo = ctx.ledger.state_dir, ctx.ledger.repo_key
+    seats = inbox.lent(ctx.rows, ctx.project_live)   # a seat on a borrowed model: its own line (fleet model 5.3)
+    marks = list(entries) + inbox.lent_marks(seats)
     interactive = getattr(ctx.me, "kind", "") == "interactive"
     # the person's windows share one line per project; a background session keeps its own, so a seat's launch
     # prompt or a firing nobody reads never uses up the person's line (final review of 0.26.0, I1)
     throttle = repo if interactive else f"{repo}\x00{ctx.session_id}"
     try:
         mode, every = attention.mode(paths.state_dir())
-        due = shown.line_due(shown.load(state, throttle), entries, mode=mode, every=every, now=now)
+        due = shown.line_due(shown.load(state, throttle), marks, mode=mode, every=every, now=now)
     except Exception:  # noqa: BLE001 - a schedule that cannot be read shows the line rather than hiding it
-        due = bool(entries)
+        due = bool(marks)
     try:
-        if not entries:
+        if not marks:
             shown.clear_line(state, throttle)
         shown.hold_turn(state, ctx.session_id, {
             "repo": repo, "throttle": throttle, "interactive": interactive, "at": now.isoformat(timespec="seconds"),
             "prompt_id": str(payload.get("prompt_id") or ""),
-            "line": shown.line_record(entries) if due else None})
+            "line": shown.line_record(marks) if due else None})
     except Exception:  # noqa: BLE001 - security review of 5f65ad5, I1: a record that fails never drops the line
         pass
-    return inbox.person_line(entries) if due else ""
+    return inbox.person_line(entries, seats) if due else ""
 
 
 def _stop(ctx, payload, out, now) -> int:

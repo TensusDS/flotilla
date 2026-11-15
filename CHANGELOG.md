@@ -3,6 +3,25 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.33.0 - 2026-11-15
+
+A stronger model can be lent to one task without moving the fleet onto it (fleet model design, scenario A): the
+2026-11-13 fleet ran for hours on a model switched for one problem, until its weekly limit stopped every seat.
+
+- **`flotilla spawn <post> --model <name> --for <task> --task "<brief>"`** raises one seat on that model, for a
+  row's branch or a short question. Its tree is cut from the row's tip (trunk for a question); the row stays with
+  its owner; the brief is its first prompt. Its subagents are held to the fleet's model (Claude Code's
+  `CLAUDE_CODE_SUBAGENT_MODEL`, forced), and `spawn` warns when Claude Code is too old for that, or its version
+  cannot be read. Only the orchestrator or the person may raise it; the fleet's own model, a missing `--for` or
+  brief, and a model a live seat is limited on are refused.
+- **While it is up, the person's line counts it** - "1 seat on fable for <task>" - on its own, never as something
+  that waits on them; `flotilla fleet` shows `borrowed for <task>` beside its model.
+- **When its task is handed back** - it ran `flotilla helper done`, whose letter goes to whoever raised it, or the
+  row it is for closed - the orchestrator's watch says to close it with `flotilla retire`. flotilla never retires
+  it by itself.
+- **The orchestrator post says** how to borrow: ask what for, brief the seat with the person's words, never borrow
+  on its own choice, close it when done (template 31).
+
 ## 0.32.2 - 2026-11-15
 
 On 2026-11-13 every seat of a field fleet hit a model's weekly limit; `flotilla fleet` showed them `alive

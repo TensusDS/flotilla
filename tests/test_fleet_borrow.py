@@ -141,3 +141,70 @@ def test_argv_takes_a_borrowed_model_over_the_posts(tmp_path):
     seat = launch.Seat("main", "main session 3", 3, tmp_path / "t", "fleet/main-3")
     command = launch.argv(seat, post, {**PROFILE, "permissions": {"mode": "auto"}}, main=tmp_path, model="fable")
     assert command[command.index("--model") + 1] == "fable"
+
+
+def _close_items(ledger, live):
+    from flotilla.watch import fleet
+    return [item for item in fleet.borrowed_done(ledger.rows(), live) if item.kind == fleet.BORROWED]
+
+
+def test_close_item_only_after_done(tmp_path):
+    """Plan review focus 5: the "close it" item never fires while the task is open, nor twice."""
+    root, ledger, fake, row, tip = world(tmp_path)
+    raised, _ = lend(ledger, fake)
+    name = raised.seat.name
+    assert _close_items(ledger, {name, OWNER}) == []
+    helpers.done(ledger, actor(ledger, name), summary="found it")
+    items = _close_items(ledger, {name, OWNER})
+    assert len(items) == 1 and "said it is done" in items[0].text and f"flotilla retire \"{name}\"" in items[0].text
+    assert items == _close_items(ledger, {name, OWNER})   # the same item on the next pass: shown once by its key
+
+
+def test_close_item_when_for_row_closes(tmp_path):
+    root, ledger, fake, row, tip = world(tmp_path)
+    raised, _ = lend(ledger, fake)
+    with ledger.session() as s:   # the row it was lent for is closed by its owner
+        s.append(actor(ledger, OWNER), row.id, "close", "closed", evidence={"why": "not needed"})
+    items = _close_items(ledger, {raised.seat.name, OWNER})
+    assert len(items) == 1 and "the row it was lent for is closed" in items[0].text
+
+
+def test_no_close_item_after_retire(tmp_path):
+    from flotilla.fleet import retire
+    root, ledger, fake, row, tip = world(tmp_path)
+    raised, _ = lend(ledger, fake)
+    helpers.done(ledger, actor(ledger, raised.seat.name), summary="found it")
+    retire.retire(ledger, raised.seat.name, caller="test", census=fake.census, wait=0.1, poll=0.05,
+                  sleep=lambda s: None)
+    live = {item.name for item in fake.census()}
+    assert raised.seat.name not in live and _close_items(ledger, live) == []
+
+
+def test_a_question_seat_has_no_row_to_close(tmp_path):
+    root, ledger, fake, row, tip = world(tmp_path)
+    raised, _ = lend(ledger, fake, for_task="why does the cache miss")
+    assert _close_items(ledger, {raised.seat.name}) == []
+
+
+def test_person_line_counts_borrowed(tmp_path):
+    from flotilla.watch import inbox
+    root, ledger, fake, row, tip = world(tmp_path)
+    raised, _ = lend(ledger, fake)
+    seats = inbox.lent(ledger.rows(), {raised.seat.name, OWNER})
+    assert seats == [(raised.seat.name, "fable", "feat/x")]
+    assert inbox.person_line([], seats) == ("flotilla: 1 seat on fable for feat/x - the orchestrator closes it once "
+                                            "its task is done")
+    entry = inbox.Entry("row:1@t", "question", "feat/y", "why", "", "main session 1", False, False)
+    line = inbox.person_line([entry], seats)
+    assert line.startswith("flotilla: 1 waits on you (1 a question)") and line.endswith("also 1 seat on fable for feat/x")
+    assert inbox.person_line([], []) == "" and inbox.lent(ledger.rows(), set()) == []
+    two = seats + [("main session 9", "sonnet", "a question")]
+    assert inbox.lent_text(two) == "2 seats on borrowed models (fable for feat/x; sonnet for a question)"
+
+
+def test_the_fleet_view_names_what_a_seat_was_lent_for(tmp_path):
+    from flotilla.fleet import retire
+    root, ledger, fake, row, tip = world(tmp_path)
+    raised, _ = lend(ledger, fake)
+    view = {item["name"]: item for item in retire.fleet_view(ledger, fake.census())}
+    assert (view[raised.seat.name]["model"], view[raised.seat.name]["borrowed_for"]) == ("fable", "feat/x")

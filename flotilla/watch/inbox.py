@@ -167,12 +167,41 @@ def _breakdown(entries) -> str:
     return f"{counted['urgent']} urgent; {text}" if counted["urgent"] else text
 
 
-def person_line(entries) -> str:
-    """The line flotilla puts on the person's own screen; "" when nothing waits on them."""
-    if not entries:
+def lent(rows: dict, live) -> list[tuple[str, str, str]]:
+    """The seats on a borrowed model that are up, (name, model, task) - one that said it is done too, until it is
+    retired: it runs on that model all the same (fleet model design 5.3)."""
+    from flotilla.fleet.model import borrowed, recorded
+    found = []
+    for name in sorted(live or ()):
+        seats = [row for row in rows.values() if row.owner == name and borrowed(row)]
+        if seats:
+            found.append((name, recorded(seats[-1]) or "another model", borrowed(seats[-1])["for"]))
+    return found
+
+
+def lent_text(seats) -> str:
+    if not seats:
         return ""
+    if len(seats) == 1:
+        return f"1 seat on {seats[0][1]} for {visible(seats[0][2])}"
+    return f"{len(seats)} seats on borrowed models ({'; '.join(f'{m} for {visible(t)}' for _, m, t in seats)})"
+
+
+def lent_marks(seats) -> list[Entry]:
+    """The seats on a borrowed model as the shown line's record sees them: the line comes again when they change.
+    Never entries of the queue: nothing waits on the person for them."""
+    return [Entry(f"lent:{name}:{task}", "other", "", "", "", "", False, False) for name, _, task in seats]
+
+
+def person_line(entries, seats=()) -> str:
+    """The line flotilla puts on the person's own screen; "" when nothing waits on them and no seat runs on a
+    borrowed model. Such a seat is counted on a line of its own, never as something that waits on them."""
+    lent_said = lent_text(seats)
+    if not entries:
+        return f"flotilla: {lent_said} - the orchestrator closes it once its task is done" if lent_said else ""
     verb = "waits" if len(entries) == 1 else "wait"
-    return f"flotilla: {len(entries)} {verb} on you ({_breakdown(entries)}) - `flotilla inbox` lists them by number"
+    line = f"flotilla: {len(entries)} {verb} on you ({_breakdown(entries)}) - `flotilla inbox` lists them by number"
+    return f"{line}; also {lent_said}" if lent_said else line
 
 
 def model_line(entries) -> str:
