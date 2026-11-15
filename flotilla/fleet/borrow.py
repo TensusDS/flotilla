@@ -113,8 +113,9 @@ def settings(narrowed: str, default: str) -> str:
 def prompt_for(name: str, post: str, *, model: str, default: str, by: str, for_task: str, row, brief: str,
                tree) -> str:
     if row is not None:
-        where = (f"it was cut from the tip of `{row.branch}` (row {row.id}). That row stays with {row.owner or 'its '
-                 'owner'}: you own no row, and you do not hand, merge or close it")
+        owner = row.owner or "its owner"   # one line per f-string expression: Python 3.11 refuses a break in one
+        where = (f"it was cut from the tip of `{row.branch}` (row {row.id}). That row stays with {owner}: you own no "
+                 "row, and you do not hand, merge or close it")
         task = f"the work of `{row.branch}`"
     else:
         where = "it was cut from trunk. You own no row of the ledger"
