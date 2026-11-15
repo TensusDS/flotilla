@@ -6,8 +6,8 @@ because the repository's root is the plugin's root, where `claude plugin validat
 
 - **English only**, in code, docs and commit messages. **No private names**: the repository is public, so no names
   of the projects a field test ran on, no people's names, no home directories in anything git tracks.
-- **Run the full suite through the lane** (`bin/flotilla lane run --for <branch> -- ...`), in a tree nobody is
-  editing, and read the verdict from its last line.
+- **Run the full suite through the lane on Python 3.11**, the lowest supported (`bin/flotilla lane run --for
+  <branch> -- uv run --python 3.11 ...`), in a tree nobody is editing, and read the verdict from its last line.
 - **Never touch the real Claude Code settings or install records of this machine** (`~/.claude/`, a project's
   `.claude/settings*.json`) to try something: use a scratch project. When a change there is the person's to make,
   give them the exact command to run with `!`.

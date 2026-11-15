@@ -28,8 +28,12 @@ GIT_CONFIG_GLOBAL=/dev/null uv run --with pytest python -m pytest -p no:cachepro
 share the machine, run it through the lane, so it waits for room instead of starving theirs:
 
 ```bash
-bin/flotilla lane run --for <branch> -- uv run --with pytest python -m pytest -p no:cacheprovider tests/
+bin/flotilla lane run --for <branch> -- uv run --python 3.11 --with pytest python -m pytest -p no:cacheprovider tests/
 ```
+
+**The verdict a change ships on is the suite on Python 3.11**, the lowest the plugin supports: a newer default
+Python accepts grammar 3.11 refuses (an f-string expression split across lines, PEP 701), and 0.33.0's merge ran
+green on 3.13 and stopped at collection on 3.11 in CI. CI runs 3.12 and 3.13 besides.
 
 **Run a full suite in a tree nobody is editing.** A suite run while files change under it measures a mix of two
 revisions; a commit, then a run in a separate worktree at that commit, gives a verdict about one.
