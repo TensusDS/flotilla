@@ -3,6 +3,12 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.32.1 - 2026-11-15
+
+- **The Bash guard lets go of a reading it cannot end within a second, on any clock.** A reading stuck where no
+  signal reaches (a hung network mount) is left behind after a second, as 0.32.0 meant; the wait counted a hundred
+  short sleeps, which on a macOS CI runner held the answer five seconds. It is now bounded by the clock.
+
 ## 0.32.0 - 2026-11-14
 
 A field fleet ran for hours on a costlier model switched for one analysis - Claude Code saves a `/model` choice as

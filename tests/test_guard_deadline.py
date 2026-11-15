@@ -101,6 +101,28 @@ def test_a_reading_that_cannot_be_reaped_does_not_hold_the_answer(tmp_path, monk
     assert time.monotonic() - started < 5
 
 
+def test_a_reading_that_cannot_be_reaped_is_waited_for_a_second_on_a_coarse_clock(tmp_path, monkeypatch):
+    """CI on macOS: a short sleep there lasts about 50 ms, so a hundred tries at reaping held the answer five seconds
+    rather than the one second they stand for. The wait is bounded by the clock, not by a count of tries."""
+    real_waitpid, real_sleep = os.waitpid, time.sleep
+
+    def waitpid(pid, flags):
+        if flags & os.WNOHANG:
+            return 0, 0
+        real_sleep(60)
+        return real_waitpid(pid, flags)
+
+    def coarse(seconds):   # short sleeps only; the reading's own sleep is the real one, and it is killed anyway
+        real_sleep(seconds + 0.04 if seconds < 0.1 else seconds)
+    monkeypatch.setattr(hooks, "GUARD_DEADLINE", 0.5)
+    monkeypatch.setattr(hooks, "_guard", lambda *args: real_sleep(30))
+    monkeypatch.setattr(hooks.os, "waitpid", waitpid)
+    monkeypatch.setattr(hooks.time, "sleep", coarse)
+    started = time.monotonic()
+    assert answer(tmp_path, "git push origin main")["permissionDecision"] == "deny"
+    assert time.monotonic() - started < 2.5
+
+
 @pytest.mark.parametrize("command, decision", [("git push origin main", "deny"), ("git checkout main", "ask")])
 def test_without_a_fork_the_line_is_answered_unread(tmp_path, monkeypatch, command, decision):
     """Review of 6d195ca, M6, and the security review of ab4af81: a reading in the hook itself has no deadline, so a

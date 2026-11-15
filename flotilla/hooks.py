@@ -267,11 +267,14 @@ def _end_reading(pid: int) -> None:
             os.kill(pid, signal.SIGKILL)
         except OSError:
             pass
-    for _ in range(100):
+    until = time.monotonic() + 1   # by the clock: a short sleep lasts about 50 ms on a macOS CI runner
+    while True:
         try:
             if os.waitpid(pid, os.WNOHANG)[0]:
                 return
         except ChildProcessError:
+            return
+        if time.monotonic() >= until:
             return
         time.sleep(0.01)
 
