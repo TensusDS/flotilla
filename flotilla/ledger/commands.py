@@ -527,12 +527,15 @@ def _finished(ledger: core.Ledger, row: Row) -> bool:
 
 def _status(ledger: core.Ledger, args) -> int:
     rows = ledger.rows()
+    sessions = []
     try:
-        live = ledger.live_names()
+        sessions = ledger.live_sessions()
+        live = {session.name for session in sessions if session.name}
         print(f"census: {len(live)} live session(s)")
     except MoveRefused as err:
         live = None
         print(f"census: unknown ({err}); liveness is not asserted")
+    limited = _limited_moves(ledger, rows, live, sessions)
     if live is not None:   # a seat held on a start-up question is not orphaned (S3)
         try:
             held = ledger.held_names({row.owner for row in rows.values()
@@ -567,7 +570,8 @@ def _status(ledger: core.Ledger, args) -> int:
         wait = f" (waiting on {row.waiting_on}: {row.note})" if row.waiting_on else ""
         held = f" (held until {row.held_until}: {row.held_why})" if row.held_until else ""
         ran = f" (last run: {strip_ansi(row.last_run)})" if row.last_run else ""
-        print(f"  {row.id} {row.branch}: {row.state} -> {mover}{wait}{held}{ran}")
+        stuck = f" ({limited[row.id]})" if row.id in limited else ""
+        print(f"  {row.id} {row.branch}: {row.state} -> {mover}{stuck}{wait}{held}{ran}")
     from flotilla.posts import post_or_former
     for title, items in (("deviations", views.deviations(rows, ledger.profile, live,
                                                          finished=lambda row: _finished(ledger, row),
@@ -589,6 +593,21 @@ def _status(ledger: core.Ledger, args) -> int:
         for row in late:
             print(f"  {row.id} {row.branch}: {row.state} since {row.updated_at}")
     return 0
+
+
+def _limited_moves(ledger: core.Ledger, rows: dict, live: set[str] | None, sessions: list) -> dict[str, str]:
+    """Row id -> what stops its next move: a seat stopped on a usage limit (fleet model design 5.6), so a
+    delivered letter is not read as acted on. Nothing when the census or the record cannot be read."""
+    from flotilla.fleet import limits
+    from flotilla.watch import fleet
+    if not live:
+        return {}
+    try:
+        by_name = limits.of_sessions(paths.state_dir(), sessions, dt.datetime.now(dt.timezone.utc))
+        found = fleet.limited_moves(rows, ledger.profile, live, lambda name: _strict_post(ledger, name), by_name)
+    except Exception:  # noqa: BLE001 - a view never fails on a hint
+        return {}
+    return {row_id: f"{name} is {limits.label(limit)}" for row_id, (name, limit) in found.items()}
 
 
 def _brief(ledger: core.Ledger, args) -> int:

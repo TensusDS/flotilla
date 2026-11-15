@@ -71,10 +71,10 @@ fleet.
 **Pin a release** instead, to choose when you move: name a tag on the first line (the tags are listed in
 [CHANGELOG.md](CHANGELOG.md)):
 
-    claude plugin marketplace add TensusDS/flotilla#v0.32.1 --scope project
+    claude plugin marketplace add TensusDS/flotilla#v0.32.2 --scope project
     claude plugin install flotilla@flotilla --scope project
 
-That writes `"ref": "v0.32.1"` into the project's settings and installs that release; `claude plugin update` stays on
+That writes `"ref": "v0.32.2"` into the project's settings and installs that release; `claude plugin update` stays on
 it. A machine keeps one marketplace of a name for all its projects, so give the projects on one machine the same
 channel or pin; `/flotilla:doctor` names a pin the machine does not follow. And a tag can be moved on GitHub, so a pin
 chooses when you move, not who can change what the tag names.
@@ -425,6 +425,14 @@ on; a post's own `model` wins over both. `flotilla fleet model` says which model
 read; `! flotilla fleet model <name>` is your line to name it - it writes the profile, for you to land, and holds on
 this machine until trunk names it. A profile from before 0.32 that names no model (`one`) raises no seat until you
 name one: the orchestrator puts the question to you, and `flotilla fleet` shows the model each seat runs on.
+
+**A seat stopped on a usage limit** reads `limited until <time>` in `flotilla fleet` and `flotilla watch`, not
+idle: a hook records the limit when Claude Code ends a seat's turn on it, and the seat's next normal turn clears it.
+`flotilla status` marks the rows waiting on such a seat, and when every seat of the fleet is limited the
+orchestrator's watch puts one urgent item in your queue - wait for the reset, or name another model. `spawn` refuses
+a seat that would stop at once: on any model under the account's session or weekly limit, on the limited model under
+a model's limit. The limit's model and reset are read from Claude Code's own message; when that message says neither,
+the seat reads `limited, reset unknown` and `spawn` only warns.
 
 A post may also say `effort:` - `low`, `medium`, `high`, `xhigh` or `max` - and its seats start with
 `claude --effort` at that level; a higher level thinks longer and costs more tokens. Without the key a seat takes

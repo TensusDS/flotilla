@@ -213,7 +213,7 @@ def test_resolved_refuses_without_a_default(tmp_path):
   to another model, each with its `*(checked ...)*` line. Orchestrator post template: after an update, put owed
   decisions to the person with AskUserQuestion. Commit, review, fix pass, full suite, merge.
 
-## Release 2 (0.32.1): a seat stopped on a usage limit
+## Release 2 (0.32.2; 0.32.1 went to a guard fix): a seat stopped on a usage limit
 
 ### Task 2.1: the `StopFailure` hook records the limit
 

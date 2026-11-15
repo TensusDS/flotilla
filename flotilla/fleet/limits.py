@@ -138,6 +138,56 @@ def current(state: Path, now: dt.datetime) -> dict[str, Limit]:
     return _current({found.session_id: found for found in _limits(_store(state).read(KEY).records)}, now)
 
 
+def of_sessions(state: Path, sessions, now: dt.datetime) -> dict[str, Limit]:
+    """The limits of the census sessions still in force, by session name. A session no census lists is left out: a
+    seat retired while limited says nothing of the seats that run now."""
+    found = current(state, now)
+    return {session.name: found[session.session_id] for session in sessions or ()
+            if session.name and session.session_id in found}
+
+
+def label(limit: Limit) -> str:
+    """`limited until 2026-11-18 18:00 UTC (the fable model's limit)`, or `limited, reset unknown (...)`."""
+    when = _moment(limit.reset)
+    head = f"limited until {when:%Y-%m-%d %H:%M} UTC" if when is not None else "limited, reset unknown"
+    return f"{head} ({whose(limit)})"
+
+
+def refusal(limited: dict[str, Limit], families: dict[str, str]) -> tuple[str, list[str]]:
+    """Whether raising seats of these posts (post -> the model family each would run on) is refused because a live
+    seat stopped on a limit they would stop on at once (fleet model design 5.6): the account's limit refuses every
+    model, a model's limit that model; a limit of unknown scope only warns. Each refusal names what it waits for and
+    the line that frees it."""
+    warnings = []
+    for name, found in sorted(limited.items()):
+        when = f"it lifts at {label(found).split(' (')[0].removeprefix('limited until ')}" if found.reset \
+            else "its reset could not be read"
+        sooner = (f"the record goes sooner once {name} ends a turn normally - message it after the limit is "
+                  "raised or bought")
+        if found.scope == ACCOUNT:
+            return (f"{name} stopped on {whose(found)}: a seat raised now would stop at once on any model; {when}, "
+                    f"and {sooner}"), warnings
+        if found.scope.startswith("model:"):
+            family = found.scope[len("model:"):]
+            posts = sorted(post for post, its in families.items() if its == family)
+            if posts:
+                return (f"{name} stopped on {whose(found)}, and {', '.join(posts)} would run on {family}: a seat "
+                        f"raised now would stop at once; {when}, or run the post on another model - the `model` of "
+                        f"its post file, or `! flotilla fleet model <name>` for the fleet's default; {sooner}"), \
+                    warnings
+            continue
+        warnings.append(f"{name} stopped on {whose(found)} ({label(found)}): a seat raised now may stop at once")
+    return "", warnings
+
+
+def whose(limit: Limit) -> str:
+    if limit.scope.startswith("model:"):
+        return f"the {limit.scope[len('model:'):]} model's limit"
+    if limit.scope == ACCOUNT:
+        return "the account's session or weekly limit, every model"
+    return "a rate limit Claude Code did not name"
+
+
 def _current(limits: dict[str, Limit], now: dt.datetime | None) -> dict[str, Limit]:
     if now is None:
         return limits

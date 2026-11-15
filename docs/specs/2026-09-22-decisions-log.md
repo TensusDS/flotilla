@@ -1866,6 +1866,14 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    gone) - for a background fleet, a stall nobody sees. Over the maintainer's transcripts, 1 hook run was cancelled
    of about 115 000. The person kept the hook without it.
 
+254. **A seat stopped on a usage limit is read from its own hook, and the limit's scope from Claude Code's message**
+   (the person, 2026-11-15; 0.32.2; fleet model design 5.6). The `StopFailure` payload documents the error type
+   (`error`, `rate_limit`) and the rendered error text (`last_assistant_message`), not the limit's model or reset.
+   Those are read from the text in the form Claude Code writes it ("You've hit your <name>[ · resets <time>]"),
+   with Claude Code's own split of names into the session, weekly and model windows; anything else reads as scope
+   and reset unknown, which only warns. The person chose this over waiting for a measured limit in the field.
+   Whether the hook fires for a `claude --bg` seat is not documented and was not measured before release.
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

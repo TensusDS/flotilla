@@ -155,3 +155,14 @@ def test_approvals_and_merges_are_not_blockers_unless_urgent():
     approve = collect(row(id="r1", state="accepted", tip="abc1234"), profile=HUMAN, must_approve=lambda r: True)[0]
     merge = collect(row(id="r2", state="queued"), profile={**PR, "pr": {"merged_by": "human"}})[0]
     assert not approve.blocker and not merge.blocker
+
+
+def test_every_seat_limited_is_the_persons_urgent_blocker():
+    """Fleet model design 5.6: the fleet does nothing until a reset or a change of model, and only the person can
+    change the model or wait it out. One seat limited is the orchestrator's to carry, not the person's queue."""
+    from flotilla.watch.fleet import ALL_LIMITED, LIMITED
+    every = Item(ALL_LIMITED, "", "every live seat is limited", "2026-11-13T17:05:00+00:00", who="a,b")
+    one = Item(LIMITED, "", "a is limited", "2026-11-13T17:05:00+00:00", who="a")
+    found = collect(fleet_items=[every, one])
+    assert [(entry.key, entry.urgent, entry.blocker) for entry in found] == [
+        ("limited:2026-11-13T17:05:00+00:00", True, True)]
