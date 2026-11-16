@@ -392,6 +392,13 @@ def _model(ledger, args) -> int:
         name, source = fleet_model.default(ledger.profile, state=paths.state_dir(), main=main)
         print(f"model: {name} (from {source})" if name else
               f"model: not named; the person names it: `{fleet_model.ANSWER}`")
+        try:   # the person's line points here for the ways out (fleet model design 5.5)
+            from flotilla.fleet import override
+            notice = override.current(ledger, census())
+        except Exception:  # noqa: BLE001 - a reading never fails on the hint
+            notice = None
+        if notice is not None and notice.text:
+            print(f"note: {notice.text}")
         return 0
     name = args.name.strip()
     if not fleet_model.valid(name):

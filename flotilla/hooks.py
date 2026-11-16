@@ -512,7 +512,7 @@ def _override(ctx, payload, now):
     try:
         notice = override.current(ctx.ledger, ctx.sessions, rows=ctx.rows, members=ctx.project)
         muted, due = override.observe(paths.state_dir(), ctx.ledger.repo_key, notice.what, now=now,
-                                      note=ctx.is_orchestrator)
+                                      note=ctx.is_orchestrator, settled=notice.lead and not notice.what)
     except Exception:  # noqa: BLE001 - a hint, never a reason to lose the prompt's other output
         return "", override.Notice()
     return (notice.text if due else ""), (override.Notice() if muted else notice)
@@ -529,13 +529,22 @@ def _persons_line(ctx, payload, entries, now, notice=None) -> str:
     state, repo = ctx.ledger.state_dir, ctx.ledger.repo_key
     seats = inbox.lent(ctx.rows, ctx.project_live)   # a seat on a borrowed model: its own line (fleet model 5.3)
     marks = list(entries) + inbox.lent_marks(seats)
-    said = notice.text if notice is not None else ""   # the fleet's work on another model (fleet model 5.5)
-    if said:
-        marks.append(inbox.Entry(f"override:{notice.what}", "other", "", "", "", "", False, False))
     interactive = getattr(ctx.me, "kind", "") == "interactive"
     # the person's windows share one line per project; a background session keeps its own, so a seat's launch
     # prompt or a firing nobody reads never uses up the person's line (final review of 0.26.0, I1)
     throttle = repo if interactive else f"{repo}\x00{ctx.session_id}"
+    said = notice.text if notice is not None else ""   # the fleet's work on another model (fleet model 5.5)
+    if said:
+        from flotilla.fleet import override
+        key = f"override:{notice.what}"
+        marks.append(inbox.Entry(key, "other", "", "", "", "", False, False))
+        try:   # the full notice when new to the line or an hour old there, else a short tag (re-review, C)
+            last = shown.load(state, throttle).get("line") or {}
+            at = dt.datetime.fromisoformat(str(last.get("at") or ""))
+            if key in (last.get("keys") or []) and now - at < dt.timedelta(hours=1):
+                said = override.short(notice)
+        except (ValueError, TypeError, OSError):
+            pass
     try:
         mode, every = attention.mode(paths.state_dir())
         due = shown.line_due(shown.load(state, throttle), marks, mode=mode, every=every, now=now)

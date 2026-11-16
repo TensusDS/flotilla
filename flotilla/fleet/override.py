@@ -33,6 +33,7 @@ NOT_A_MODEL = ("default",)
 class Notice:
     text: str = ""   # what is said; "" when nothing differs or no lead lives
     what: str = ""   # the models that differ, as a mute and the hourly clock compare them
+    lead: bool = False   # a lead was found and compared: only then does "nothing differs" end a mute
 
 
 def _model_word(value) -> str:
@@ -58,15 +59,46 @@ def _load(state: Path) -> dict:
     return data if isinstance(data, dict) else {}
 
 
+#: How long a writer waits for another's lock before giving up: a hook must answer within its budget.
+LOCK_WAIT = 2.0
+
+
+class Busy(RuntimeError):
+    """The file stayed locked past LOCK_WAIT; nothing was read or written."""
+
+
+def _prune(data: dict) -> None:
+    repos = data.get("repos")
+    if isinstance(repos, dict):
+        for key in [key for key, value in repos.items() if not value]:
+            repos.pop(key)
+    for key in [key for key in ("repos", "sessions") if not data.get(key)]:
+        data.pop(key, None)
+
+
 @contextlib.contextmanager
 def _edit(state: Path):
-    """The file, read and written back under a lock: hooks of many sessions write it at once."""
+    """The file, read and written back under a lock - hooks of many sessions write it at once - and written only
+    when it changed. A lock held past LOCK_WAIT raises Busy rather than hold a hook past its budget."""
     import fcntl
+    import time
     Path(state).mkdir(parents=True, exist_ok=True)
     with open(Path(state) / LOCK, "a+", encoding="utf-8") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        deadline = time.monotonic() + LOCK_WAIT
+        while True:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise Busy(f"{Path(state) / FILE} stayed locked for {LOCK_WAIT:g} s") from None
+                time.sleep(0.02)
         data = _load(state)
+        before = json.dumps(data, sort_keys=True)
         yield data
+        _prune(data)
+        if json.dumps(data, sort_keys=True) == before:
+            return
         path = Path(state) / FILE
         tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
         tmp.write_text(json.dumps(data, indent=1, sort_keys=True) + "\n", encoding="utf-8")
@@ -82,28 +114,26 @@ def _table(data: dict, key: str) -> dict:
 
 
 def record_session_model(state: Path, session_id: str, model, *, now: dt.datetime, said: bool = False) -> None:
-    """The model a session started on, or - `said` - the one it says it runs on; both are kept."""
+    """The model a session runs on, as it last told: its start (and a resume, `/clear` or compaction) or - `said` -
+    its own word. The latest wins, so a switch back clears the note (re-review of 781fde3: keeping both left a
+    switched-back orchestrator noted for life); `by` says which told it."""
     model = _model_word(model)
     if not session_id or not model:
         return
     with _edit(state) as data:
         sessions = _table(data, "sessions")
-        entry = sessions.get(session_id) if isinstance(sessions.get(session_id), dict) else {}
-        entry["said" if said else "start"] = model
-        entry["at"] = now.isoformat(timespec="seconds")
-        sessions[session_id] = entry
+        sessions[session_id] = {"model": model, "by": "word" if said else "start",
+                                "at": now.isoformat(timespec="seconds")}
         if len(sessions) > KEPT_SESSIONS:
             newest = sorted(sessions.items(), key=lambda item: str((item[1] or {}).get("at", "")))[-KEPT_SESSIONS:]
             data["sessions"] = dict(newest)
 
 
 def session_models(state: Path, session_id: str) -> list[str]:
-    """The models a session started on and said it runs on, each once."""
+    """The model a session last told it runs on, as a list ([] when none was told)."""
     found = (_load(state).get("sessions") or {}).get(session_id)
-    if not isinstance(found, dict):
-        return []
-    return list(dict.fromkeys(word for word in (_model_word(found.get("start")), _model_word(found.get("said")))
-                              if word))
+    word = _model_word(found.get("model")) if isinstance(found, dict) else ""
+    return [word] if word else []
 
 
 def _visible(text: str) -> str:
@@ -123,7 +153,7 @@ def check(default: str, *, lead_live: bool, settings_model: str = "", lead_model
     settings_off = settings_model if settings_model and not fleet_model.same(settings_model, default) else ""
     lead_off = next((name for name in lead_models if name and not fleet_model.same(name, expected)), "")
     if not (settings_off or lead_off):
-        return Notice()
+        return Notice(lead=True)
     who = _visible(lead_name) or "the orchestrator"
     where, back = [], []
     if settings_off:
@@ -139,7 +169,7 @@ def check(default: str, *, lead_live: bool, settings_model: str = "", lead_model
     text = (f"the fleet's default model is {_visible(default)}; {'; '.join(where)}. Ways out: make it the default "
             f"(`! flotilla fleet model {other}`); mute this note (`! flotilla fleet model --mute <hours>`); or switch "
             f"back - {'; and '.join(back)}.")
-    return Notice(text, what)
+    return Notice(text, what, True)
 
 
 def _when(value) -> dt.datetime | None:
@@ -149,14 +179,19 @@ def _when(value) -> dt.datetime | None:
         return None
 
 
-def observe(state: Path, repo: str, what: str, *, now: dt.datetime, note: bool) -> tuple[bool, bool]:
-    """(muted, the orchestrator's note due now) for the models that differ. Nothing differing ends a mute and the
-    clock; another set of models differing ends a mute at once. The note is recorded as said when due."""
+def observe(state: Path, repo: str, what: str, *, now: dt.datetime, note: bool,
+            settled: bool | None = None) -> tuple[bool, bool]:
+    """(muted, the orchestrator's note due now) for the models that differ. Nothing differing while a lead was
+    compared (`settled`, by default: nothing differs) ends a mute and the clock - a gap with no lead leaves them be
+    (re-review of 781fde3, B); another set of models differing ends a mute at once. The note is recorded as said
+    when due."""
+    settled = (not what) if settled is None else settled
     with _edit(state) as data:
         mine = _table(_table(data, "repos"), repo)
         if not what:
-            mine.pop("mute", None)
-            mine.pop("note", None)
+            if settled:
+                mine.pop("mute", None)
+                mine.pop("note", None)
             return False, False
         mute = mine.get("mute") if isinstance(mine.get("mute"), dict) else {}
         until = _when(mute.get("until"))
@@ -171,6 +206,11 @@ def observe(state: Path, repo: str, what: str, *, now: dt.datetime, note: bool) 
             return muted, False
         mine["note"] = {"at": now.isoformat(timespec="seconds"), "what": what}
         return muted, True
+
+
+def short(notice: Notice) -> str:
+    """What the person's line carries between full notices: the models, and where the ways out are."""
+    return f"the fleet's work runs on {notice.what}, not its default - `flotilla fleet model` gives the ways out"
 
 
 def mute(state: Path, repo: str, what: str, *, hours: int, now: dt.datetime) -> dt.datetime:
@@ -214,4 +254,4 @@ def current(ledger, sessions, *, rows: dict | None = None, members: list | None 
     found = [check(default, lead_live=True, settings_model=setting, lead_models=session_models(state, item.session_id),
                    lead_name=item.name, lead_expected=launch.model_for(resolved, post))
              for item in members if item.name and leads(item.name)]
-    return next((notice for notice in found if notice.what), Notice())
+    return next((notice for notice in found if notice.what), found[0] if found else Notice())

@@ -42,11 +42,11 @@ def test_note_when_lead_reports_other():
 
 def test_family_match_is_no_note():
     assert override.check("opus", lead_live=True, settings_model="claude-opus-5-5",
-                          lead_models=["opus[1m]"]) == override.Notice()
+                          lead_models=["opus[1m]"]) == override.Notice(lead=True)
 
 
 def test_a_post_with_its_own_model_is_compared_with_it():   # review of 78c8be7, 8
-    assert override.check("opus", lead_live=True, lead_models=["sonnet"], lead_expected="sonnet") == override.Notice()
+    assert override.check("opus", lead_live=True, lead_models=["sonnet"], lead_expected="sonnet").text == ""
     assert "runs on opus" in override.check("opus", lead_live=True, lead_models=["opus"], lead_expected="sonnet").text
 
 
@@ -95,11 +95,14 @@ def test_the_mute_is_keyed_on_models_not_on_who():   # review of 78c8be7, 4
     assert a.what == b.what == "fable"
 
 
-def test_session_models_keep_start_and_word(tmp_path):   # review of 78c8be7, 5
-    override.record_session_model(tmp_path, "sid-1", "fable", now=NOW)
-    override.record_session_model(tmp_path, "sid-1", "opus", now=NOW, said=True)
+def test_a_switch_back_clears_the_orchestrators_piece(tmp_path):   # re-review of 781fde3, A
+    override.record_session_model(tmp_path, "sid-1", "claude-fable-5-2", now=NOW)
+    override.record_session_model(tmp_path, "sid-1", "opus", now=NOW, said=True)   # `/model opus`, then its word
+    assert override.session_models(tmp_path, "sid-1") == ["opus"]
+    assert override.check("opus", lead_live=True, lead_models=override.session_models(tmp_path, "sid-1")).what == ""
+    override.record_session_model(tmp_path, "sid-1", "fable", now=NOW)   # a resume on fable tells again
+    assert override.session_models(tmp_path, "sid-1") == ["fable"]
     override.record_session_model(tmp_path, "sid-2", {"id": "x"}, now=NOW)   # not a string: nothing recorded
-    assert override.session_models(tmp_path, "sid-1") == ["fable", "opus"]
     assert override.session_models(tmp_path, "sid-2") == []
 
 
@@ -128,7 +131,7 @@ def test_borrowed_seat_is_not_an_override(tmp_path, monkeypatch):
                    status="idle", state="idle", cwd=str(root), started_at_ms=None)
     override.record_session_model(tmp_path / "state", "sid-seat", "fable", now=NOW)
     override.record_session_model(tmp_path / "state", "sid-lead", "opus", now=NOW)
-    assert override.current(open_ledger(root), [lead, seat]) == override.Notice()
+    assert override.current(open_ledger(root), [lead, seat]).text == ""
     override.record_session_model(tmp_path / "state", "sid-lead", "fable", now=NOW, said=True)
     assert "app-orchestrator 1 runs on fable" in override.current(open_ledger(root), [lead, seat]).text
     assert override.current(open_ledger(root), [seat]) == override.Notice()   # no lead lives: nothing is said
@@ -238,3 +241,54 @@ def test_a_seats_own_prompt_pays_for_no_notice(tmp_path, monkeypatch):
     ledger = open_ledger(root)
     ctx = Context(root=root, session_id="sid-seat", sessions=[lead, seat], me=seat, ledger=ledger, rows=ledger.rows())
     assert hooks._override(ctx, {"prompt": "go on"}, NOW) == ("", override.Notice())
+
+
+def test_a_gap_with_no_lead_keeps_the_mute(tmp_path):   # re-review of 781fde3, B
+    override.mute(tmp_path, "repo", "fable", hours=8, now=NOW)
+    assert override.observe(tmp_path, "repo", "", now=NOW + dt.timedelta(hours=1), note=True,
+                            settled=False) == (False, False)   # the orchestrator restarts: no lead for a moment
+    assert override.observe(tmp_path, "repo", "fable", now=NOW + dt.timedelta(hours=1, minutes=1),
+                            note=True) == (True, False)
+
+
+def test_the_file_is_written_only_when_it_changes_and_a_held_lock_gives_up(tmp_path, monkeypatch):
+    import fcntl
+    override.observe(tmp_path, "repo", "", now=NOW, note=True)
+    assert not (tmp_path / override.FILE).exists()   # nothing to keep: nothing written
+    monkeypatch.setattr(override, "LOCK_WAIT", 0.1)
+    with open(tmp_path / override.LOCK, "a+", encoding="utf-8") as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        with pytest.raises(override.Busy):
+            override.observe(tmp_path, "repo", "fable", now=NOW, note=True)
+
+
+def _entry(key, group="other"):
+    from flotilla.watch.inbox import Entry
+    return Entry(key, group, "", "", "", "", False, False)
+
+
+def test_the_persons_line_carries_the_full_notice_hourly_and_a_tag_between(tmp_path, monkeypatch):
+    """Re-review of 781fde3, C: a busy queue re-shows the line often; the ways out need not ride every time."""
+    from flotilla.ledger.commands import open_ledger
+    from flotilla.watch import shown
+    from flotilla.watch.context import Context
+    root, lead = _lead_world(tmp_path, monkeypatch)
+    ledger = open_ledger(root)
+    ctx = Context(root=root, session_id="sid-lead", sessions=[lead], me=lead, ledger=ledger, rows=ledger.rows())
+    notice = override.check("opus", lead_live=True, settings_model="fable")
+    first = hooks._persons_line(ctx, {"prompt": "hi", "prompt_id": "p1"}, [], NOW, notice)
+    assert "Ways out" in first
+    data = shown.load(ledger.state_dir, ledger.repo_key)   # the line as the Stop hook settles it, shown at NOW
+    data["line"] = {**shown.line_record([_entry("override:fable")]), "at": NOW.isoformat()}
+    shown._save(ledger.state_dir, ledger.repo_key, data)
+    later = hooks._persons_line(ctx, {"prompt": "hi", "prompt_id": "p2"}, [_entry("row:1@t", "question")],
+                                NOW + dt.timedelta(minutes=20), notice)
+    assert "`flotilla fleet model` gives the ways out" in later and "Ways out" not in later
+
+
+def test_reading_the_model_repeats_the_notice(tmp_path, monkeypatch):
+    root, lead = _lead_world(tmp_path, monkeypatch)
+    settings(tmp_path / "home", {"model": "fable"})
+    monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [lead])
+    code, out = run_cli("fleet", "model", "--root", str(root))
+    assert code == 0 and "model: opus" in out and "note: the fleet's default model is opus" in out, out
