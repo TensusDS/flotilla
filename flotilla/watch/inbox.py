@@ -193,15 +193,21 @@ def lent_marks(seats) -> list[Entry]:
     return [Entry(f"lent:{name}:{task}", "other", "", "", "", "", False, False) for name, _, task in seats]
 
 
-def person_line(entries, seats=()) -> str:
-    """The line flotilla puts on the person's own screen; "" when nothing waits on them and no seat runs on a
-    borrowed model. Such a seat is counted on a line of its own, never as something that waits on them."""
+def person_line(entries, seats=(), override: str = "") -> str:
+    """The line flotilla puts on the person's own screen; "" when nothing waits on them, no seat runs on a borrowed
+    model and the fleet's work runs on its model. Such a seat is counted, and another model noted (fleet model design
+    5.5), on lines of their own, never as something that waits on them."""
     lent_said = lent_text(seats)
-    if not entries:
-        return f"flotilla: {lent_said} - the orchestrator closes it once its task is done" if lent_said else ""
-    verb = "waits" if len(entries) == 1 else "wait"
-    line = f"flotilla: {len(entries)} {verb} on you ({_breakdown(entries)}) - `flotilla inbox` lists them by number"
-    return f"{line}; also {lent_said}" if lent_said else line
+    lines = []
+    if entries:
+        verb = "waits" if len(entries) == 1 else "wait"
+        line = f"flotilla: {len(entries)} {verb} on you ({_breakdown(entries)}) - `flotilla inbox` lists them by number"
+        lines.append(f"{line}; also {lent_said}" if lent_said else line)
+    elif lent_said:
+        lines.append(f"flotilla: {lent_said} - the orchestrator closes it once its task is done")
+    if override:
+        lines.append(f"flotilla: {override}")
+    return "\n".join(lines)
 
 
 def model_line(entries) -> str:

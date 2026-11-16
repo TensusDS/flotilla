@@ -71,10 +71,10 @@ fleet.
 **Pin a release** instead, to choose when you move: name a tag on the first line (the tags are listed in
 [CHANGELOG.md](CHANGELOG.md)):
 
-    claude plugin marketplace add TensusDS/flotilla#v0.33.0 --scope project
+    claude plugin marketplace add TensusDS/flotilla#v0.33.1 --scope project
     claude plugin install flotilla@flotilla --scope project
 
-That writes `"ref": "v0.33.0"` into the project's settings and installs that release; `claude plugin update` stays on
+That writes `"ref": "v0.33.1"` into the project's settings and installs that release; `claude plugin update` stays on
 it. A machine keeps one marketplace of a name for all its projects, so give the projects on one machine the same
 channel or pin; `/flotilla:doctor` names a pin the machine does not follow. And a tag can be moved on GitHub, so a pin
 chooses when you move, not who can change what the tag names.
@@ -445,6 +445,15 @@ run on the fleet's model. Only the orchestrator or you may raise it. While it is
 fable for <task>"); `flotilla fleet` shows it `borrowed for <task>`. When it says it is done (`flotilla helper
 done`), or the row it is for closes, the orchestrator's watch tells it to close the seat; flotilla never closes it
 by itself.
+
+**A switch noticed.** Claude Code saves a `/model` choice as the model every new session starts on. While a fleet
+works, flotilla reads - never writes - Claude Code's `model` setting and the model the orchestrator started on (or
+says it runs on, `flotilla fleet model --running <name>`). When either is not the fleet's model, the orchestrator and
+your line say so, at most once an hour, with three ways out: make it the fleet's model (`! flotilla fleet model
+<name>`), mute the note (`! flotilla fleet model --mute <hours>`, until what differs changes), or switch back with
+`/model <default>` in the orchestrator's session (`s` in the picker keeps it to that session). With no orchestrator
+alive nothing is said: a session outside the fleet takes Claude Code's own setting. Only the user settings are
+read: a project's `.claude/settings.json` `model` or `ANTHROPIC_MODEL` is not seen.
 
 A post may also say `effort:` - `low`, `medium`, `high`, `xhigh` or `max` - and its seats start with
 `claude --effort` at that level; a higher level thinks longer and costs more tokens. Without the key a seat takes

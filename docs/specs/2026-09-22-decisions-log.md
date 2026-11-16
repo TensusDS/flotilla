@@ -1904,6 +1904,20 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    model or the fleet's, so a post on sonnet in a fleet on opus may be lent opus. The census itself (`claude
    agents`) does not mark the seat; `flotilla fleet` and the person's line do.
 
+256. **The fleet's work on another model is read from Claude Code's setting and the lead's own start, and said
+   hourly** (0.33.1; fleet model design 5.5, the builder's calls). flotilla reads the user settings' `model` (in
+   `CLAUDE_CONFIG_DIR` when set) and the SessionStart payload's `model` (present on 2.1.325, measured in a scratch
+   project; documented as not always there), plus the orchestrator's own word (`fleet model --running`), and writes
+   none of Claude Code's files. Nothing is said without a live session of the orchestrator post in the project: a
+   person keeping Claude Code on another model for solo work is not noted. The orchestrator's context gets it at
+   most once an hour, and again at once when the models that differ change; the person's line carries it under that
+   line's own rule, so a `/loop` or scheduled prompt never spends it (review of 78c8be7). The lead is compared with
+   the orchestrator post's model (its own, else the default), the setting with the default; the start model and the
+   orchestrator's word are both kept, either may differ. The mute is the person's (guarded like naming the model),
+   1 to 168 hours, keyed on the models that differ, and gone once nothing differs. `default` in the settings is no
+   model. Only the lead is compared, not every seat: seats are pinned by `--model` since 0.32.0, and a borrowed
+   seat is counted (decision 255).
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

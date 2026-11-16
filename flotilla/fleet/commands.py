@@ -386,10 +386,19 @@ def _model(ledger, args) -> int:
     from flotilla.core import caller
     from flotilla.fleet import model as fleet_model
     main = launch.main_checkout(ledger.root, run=ledger.run)
+    if getattr(args, "mute", None) is not None or getattr(args, "running", None):
+        return _model_note(ledger, args)
     if not args.name:
         name, source = fleet_model.default(ledger.profile, state=paths.state_dir(), main=main)
         print(f"model: {name} (from {source})" if name else
               f"model: not named; the person names it: `{fleet_model.ANSWER}`")
+        try:   # the person's line points here for the ways out (fleet model design 5.5)
+            from flotilla.fleet import override
+            notice = override.current(ledger, census())
+        except Exception:  # noqa: BLE001 - a reading never fails on the hint
+            notice = None
+        if notice is not None and notice.text:
+            print(f"note: {notice.text}")
         return 0
     name = args.name.strip()
     if not fleet_model.valid(name):
@@ -416,11 +425,58 @@ def _model(ledger, args) -> int:
     return 0
 
 
+def _model_note(ledger, args) -> int:
+    """`fleet model --running <name>`: the calling session says the model it runs on - the orchestrator at its
+    start, so a switch kept to its session is seen. `fleet model --mute <hours>`: the person mutes the note that the
+    fleet's work runs on another model, until that changes (fleet model design 5.5)."""
+    import datetime as _dt
+    from flotilla.core import caller
+    from flotilla.fleet import model as fleet_model
+    from flotilla.fleet import override
+    if args.name or (args.mute is not None and args.running):
+        raise MoveRefused("`fleet model` takes one of a name, --mute or --running")
+    now = _dt.datetime.now(_dt.timezone.utc)
+    try:
+        sessions = census()
+    except CensusUnavailable as err:
+        raise MoveRefused(f"the census could not be asked ({err})") from err
+    if args.running:
+        name = args.running.strip()
+        if not fleet_model.valid(name):
+            raise MoveRefused(f"`{name}` is not a model's name")
+        me = calling_session(sessions)
+        if me is None or not me.session_id:
+            raise MoveRefused("flotilla could not tell which session runs this; run it from the session whose model "
+                              "it is")
+        try:
+            override.record_session_model(paths.state_dir(), me.session_id, name, now=now, said=True)
+        except override.Busy as err:
+            raise MoveRefused(f"{err}; nothing was noted - run it again") from err
+        print(f"noted: {me.name or me.short_id} runs on {name}")
+        return 0
+    if args.mute < 1 or args.mute > 24 * 7:
+        raise MoveRefused("--mute takes whole hours, 1 to 168")
+    refused = caller.person_refusal("mutes the note on the fleet's model")
+    if refused:
+        raise MoveRefused(refused)
+    notice = override.current(ledger, sessions)
+    if not notice.what:
+        print("nothing to mute: the fleet's work runs on its default model, or no lead lives")
+        return 0
+    try:
+        until = override.mute(paths.state_dir(), ledger.repo_key, notice.what, hours=args.mute, now=now)
+    except override.Busy as err:
+        raise MoveRefused(f"{err}; nothing was muted - run it again") from err
+    print(f"muted until {until:%Y-%m-%d %H:%M} UTC, or until the models that differ change ({notice.what}); once "
+          "nothing differs the mute is gone")
+    return 0
+
+
 def _fleet(ledger, args) -> int:
     if getattr(args, "action", None) == "model":
         return _model(ledger, args)
-    if getattr(args, "name", None):
-        raise MoveRefused(f"`{args.name}`: a name goes only with `fleet model`")
+    if getattr(args, "name", None) or getattr(args, "mute", None) is not None or getattr(args, "running", None):
+        raise MoveRefused("a name, --mute and --running go only with `fleet model`")
     if getattr(args, "action", None) == "down":
         return _down(ledger)
     if getattr(args, "action", None) == "clean":

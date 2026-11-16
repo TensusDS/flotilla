@@ -381,6 +381,12 @@ def _session_start(ctx, payload, out, now) -> int:
     from flotilla.core import paths
     from flotilla.guards.githooks import refresh_link
     refresh_link(paths.state_dir(), CLI)
+    try:   # the model it starts on (measured in the payload on 2.1.325; documented as not always there)
+        from flotilla.fleet import override
+        override.record_session_model(paths.state_dir(), str(payload.get("session_id") or ""),
+                                      payload.get("model"), now=now)
+    except Exception:  # noqa: BLE001 - a hint (fleet model design 5.5), never a reason to fail the start
+        pass
     from flotilla import doctor
     from flotilla.watch import render
     try:
@@ -456,8 +462,12 @@ def _prompt(ctx, payload, out, now) -> int:
             ([f"standing|{standing}"] if standing else [])
     keys = keys or blocks
     state = ctx.ledger.state_dir if ctx.ledger is not None else paths.state_dir()
-    shown_line = _persons_line(ctx, payload, entries, now) if ctx.ledger is not None and ctx.me is not None else ""
+    told_override, notice = _override(ctx, payload, now)
+    shown_line = _persons_line(ctx, payload, entries, now, notice) if ctx.ledger is not None and ctx.me is not None \
+        else ""
     model_line = inbox.model_line(entries) if ctx.is_orchestrator else ""
+    if told_override:
+        model_line = "\n".join(part for part in (model_line, f"flotilla: {told_override}") if part)
     if title:   # the person's own session leads the fleet: it takes the orchestrator's name now (W9)
         unseen = lead.offered(LocalLogStore(paths.state_dir() / "fleet"),
                               str(payload.get("session_id"))) > lead.ASK_AFTER
@@ -486,7 +496,29 @@ def _prompt(ctx, payload, out, now) -> int:
     return 0
 
 
-def _persons_line(ctx, payload, entries, now) -> str:
+def _override(ctx, payload, now):
+    """The fleet's work on a model other than its default (fleet model design 5.5): the note for the orchestrator's
+    context, at most once an hour, and the notice the person's line carries unless muted - shown by that line's own
+    rule, on a prompt a person typed (review of 78c8be7, 1). A notice that cannot be worked out is never a failure
+    of the prompt."""
+    from flotilla.fleet import override
+    if ctx.ledger is None or ctx.me is None or ctx.sessions is None:
+        return "", override.Notice()
+    from flotilla.core import paths
+    from flotilla.watch.shown import persons_prompt
+    persons = getattr(ctx.me, "kind", "") == "interactive" and persons_prompt(payload.get("prompt"))
+    if not (ctx.is_orchestrator or persons):   # a seat's own prompts pay for no git call here
+        return "", override.Notice()
+    try:
+        notice = override.current(ctx.ledger, ctx.sessions, rows=ctx.rows, members=ctx.project)
+        muted, due = override.observe(paths.state_dir(), ctx.ledger.repo_key, notice.what, now=now,
+                                      note=ctx.is_orchestrator, settled=notice.lead and not notice.what)
+    except Exception:  # noqa: BLE001 - a hint, never a reason to lose the prompt's other output
+        return "", override.Notice()
+    return (notice.text if due else ""), (override.Notice() if muted else notice)
+
+
+def _persons_line(ctx, payload, entries, now, notice=None) -> str:
     """The person's line when it is due on this prompt (`watch/shown.py`). Nothing is counted here: the turn is left
     pending and the Stop hook counts it only if the transcript records the prompt as typed by a human. A record that
     cannot be written never costs the person the line."""
@@ -501,6 +533,19 @@ def _persons_line(ctx, payload, entries, now) -> str:
     # the person's windows share one line per project; a background session keeps its own, so a seat's launch
     # prompt or a firing nobody reads never uses up the person's line (final review of 0.26.0, I1)
     throttle = repo if interactive else f"{repo}\x00{ctx.session_id}"
+    said = notice.text if notice is not None else ""   # the fleet's work on another model (fleet model 5.5)
+    if said:
+        from flotilla.fleet import override
+        key = f"override:{notice.what}"
+        marks.append(inbox.Entry(key, "other", "", "", "", "", False, False))
+        try:   # the full notice when new to the line or an hour old there, else a short tag (re-review, C)
+            last = shown.load(state, throttle).get("line") or {}
+            at = dt.datetime.fromisoformat(str(last.get("at") or ""))
+            # as the Stop hook settles a shown line: its signature, "<key>|<group>" (re-review of 30a5438)
+            if f"{key}|other" in (last.get("signature") or []) and now - at < dt.timedelta(hours=1):
+                said = override.short(notice)
+        except (ValueError, TypeError, OSError):
+            pass
     try:
         mode, every = attention.mode(paths.state_dir())
         due = shown.line_due(shown.load(state, throttle), marks, mode=mode, every=every, now=now)
@@ -515,7 +560,7 @@ def _persons_line(ctx, payload, entries, now) -> str:
             "line": shown.line_record(marks) if due else None})
     except Exception:  # noqa: BLE001 - security review of 5f65ad5, I1: a record that fails never drops the line
         pass
-    return inbox.person_line(entries, seats) if due else ""
+    return inbox.person_line(entries, seats, said) if due else ""
 
 
 def _stop(ctx, payload, out, now) -> int:
