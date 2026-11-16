@@ -98,8 +98,13 @@ class Context:
                                               usage=self.disk_usage)
         except OSError:
             collector = []
+        from flotilla.lane import report
+        try:   # the lane's word on this project's runs: hung, or cut short (field notes 2026-11-16)
+            lane = report.items(_paths.state_dir(), self.ledger.repo_key, _dt.datetime.now(_dt.timezone.utc))
+        except Exception:  # noqa: BLE001 - a hint; the fleet's other items never wait on it
+            lane = []
         return surface.items(_paths.state_dir(), _dt.datetime.now(_dt.timezone.utc),
-                             project=self.ledger.repo_key) + self.owed() + found + collector
+                             project=self.ledger.repo_key) + self.owed() + found + collector + lane
 
     def limited(self) -> dict:
         """The usage limit each census session stopped on, by name (fleet model design 5.6); none when the record

@@ -67,6 +67,8 @@ class Heartbeat:
     why: dict
     groups: dict
     over: dict
+    hung: dict = dataclasses.field(default_factory=dict)   # held runs that look hung (`Scheduler._hung`); absent
+                                                           # from an older daemon's beat
 
 
 def _read_regular(path: Path, limit: int = 1_000_000) -> bytes | None:
@@ -114,7 +116,8 @@ def heartbeat(root: Path) -> Heartbeat | None:
         finite = False
     if not 2 <= data["pid"] <= PID_MAX or not finite:
         return None   # NaN, infinity or out of range: read as present for ever, or raising, by any comparison (sixth review)
-    return Heartbeat(**{key: data[key] for key in types})
+    hung = data.get("hung") if isinstance(data.get("hung"), dict) else {}
+    return Heartbeat(**{key: data[key] for key in types}, hung=hung)
 
 
 def _version(text) -> tuple:
@@ -444,7 +447,7 @@ def _fallback(root: Path, lanes, why: str) -> str:
 def _write_beat(root: Path, pid: int, mark: str, picture: dict, tick: float) -> None:
     data = {"pid": pid, "mark": mark, "copy": str(claude_state.running_root()), "release": __version__,
             "protocol": PROTOCOL, "tick": tick, "beat": time.time(), "why": picture.get("why", {}),
-            "groups": picture.get("groups", {}), "over": picture.get("over", {})}
+            "groups": picture.get("groups", {}), "over": picture.get("over", {}), "hung": picture.get("hung", {})}
     tmp = Path(root) / f".{BEAT}.{pid}"
     with contextlib.suppress(FileNotFoundError):
         tmp.unlink()   # a link left here is removed, never written through (final review M7)

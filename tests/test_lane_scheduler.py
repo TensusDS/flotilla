@@ -387,3 +387,71 @@ def test_the_share_is_read_again_each_tick(tmp_path):   # review of 8dfcc24
     sched.step()
     found = lanes.bookings()
     assert (found[alpha.id].state, found[beta.id].state) == (book.WAITING, book.HELD)
+
+
+class SomeGone(Procs):
+    def __init__(self, gone):
+        self.gone = set(gone)
+
+    def alive(self, pid, mark):
+        return pid not in self.gone
+
+
+def test_a_held_run_whose_client_is_gone_is_ended_as_killed(tmp_path, monkeypatch):
+    """Field notes 2026-11-16: Claude Code killed lane clients under memory pressure; their bookings stayed held,
+    their runs left no verdict and no trace, and their commands ran on outside the lane."""
+    lanes = book.Book(LocalLogStore(tmp_path), SomeGone({12}))
+    sched = scheduler.Scheduler(lanes, value_of(), signer=(4242, "m9"), groups_io=FakeGroups(), clock=Clock(),
+                                default_floor=2000, total_mb=lambda: 15603)
+    ended = []
+    monkeypatch.setattr(freeze, "end_booking", lambda booking, unit="", **kw: ended.append((booking, unit)) or 1)
+    held = lanes.enqueue("main session 3", "unity tests", pid=12, mark="m")
+    unit = f"{freeze.UNIT_PREFIX}{held.id}-12-1.scope"
+    raw(lanes, booking=held.id, state=book.HELD, started=lanes._now(), unit=unit)
+    waiting = lanes.enqueue("main session 4", "dotnet", pid=12, mark="m")
+    live = lanes.enqueue("main session 5", "fine", pid=13, mark="m")
+    sched.step()
+    found = lanes.bookings()
+    assert (found[held.id].state, found[held.id].cut, found[held.id].verdict) == (book.RELEASED, True, "killed")
+    assert found[held.id].why == scheduler.LOST
+    assert found[waiting.id].state == book.LEFT and not found[waiting.id].cut
+    assert found[live.id].state != book.RELEASED
+    assert ended == [(held.id, unit)]   # its command no longer runs outside the lane
+
+
+def _hung_world(tmp_path, monkeypatch, *, cores_used, estimate_s=58.0, ran_min=120):
+    """A held run of pid 21 that started `ran_min` ago, using `cores_used` of a core; steps 15 s apart."""
+    lanes = book.Book(LocalLogStore(tmp_path), Procs())
+    clock = Clock()
+    sched = scheduler.Scheduler(lanes, value_of(), signer=(4242, "m9"), groups_io=FakeGroups(), clock=clock,
+                                default_floor=2000, total_mb=lambda: 15603)
+    item = lanes.enqueue("sender 13", "python3 tools/unity_tests.py", pid=21, mark="m", project="p1",
+                         run_for="fix/x")
+    began = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=ran_min)).isoformat(timespec="seconds")
+    raw(lanes, booking=item.id, state=book.HELD, started=began, since=began)
+    monkeypatch.setattr(scheduler, "_estimate_s", lambda item, hist: estimate_s)
+    box = {"cpu": 10.0}
+    monkeypatch.setattr(scheduler, "_cpu_table", lambda: ({21: (1, 21, 100), 22: (21, 21, 100)},
+                                                         {21: 1.0, 22: box["cpu"]}))
+    pictures = []
+    for _ in range(45):   # 11 minutes
+        _actions, picture = sched.step()
+        pictures.append(picture)
+        clock.t += 15
+        box["cpu"] += cores_used * 15
+    return item, pictures
+
+
+def test_a_long_quiet_run_is_marked_hung(tmp_path, monkeypatch):
+    item, pictures = _hung_world(tmp_path, monkeypatch, cores_used=0.001)
+    assert item.id not in pictures[30]["hung"]   # under 10 minutes watched: no word yet
+    hung = pictures[-1]["hung"][item.id]
+    assert hung["estimate_s"] == 58 and hung["ran_s"] >= 7000 and hung["cores"] < scheduler.HUNG_CORES
+    assert (hung["who"], hung["project"], hung["run_for"]) == ("sender 13", "p1", "fix/x")
+
+
+def test_a_working_run_or_a_young_one_is_not_hung(tmp_path, monkeypatch):
+    item, pictures = _hung_world(tmp_path, monkeypatch, cores_used=0.5)
+    assert item.id not in pictures[-1]["hung"]
+    item, pictures = _hung_world(tmp_path / "young", monkeypatch, cores_used=0.0, estimate_s=600.0, ran_min=60)
+    assert item.id not in pictures[-1]["hung"]   # 60 min < 10 x its 10-minute estimate

@@ -869,8 +869,9 @@ class Book:
         return self._end(booking_id, RELEASED, why,
                          **{k: v for k, v in (measured or {}).items() if k in MEASURED and v is not None})
 
-    def sweep(self, gone=None) -> list[Booking]:
-        """End bookings whose process is not alive; with `gone`, only those it also says are gone."""
+    def sweep(self, gone=None, why: str = "no process behind it") -> list[Booking]:
+        """End bookings whose process is not alive; with `gone`, only those it also says are gone. A held one is a
+        run cut short: released `cut`, its verdict `killed` - it has none (field notes 2026-11-16)."""
         swept = []
         with self.store.transaction(KEY) as tx:
             found = self._found(tx)
@@ -880,6 +881,6 @@ class Book:
                 state = RELEASED if item.state == HELD else LEFT
                 if item.frozen == "frozen" and not _thaw_command(item, self.procs):
                     continue   # kept: a frozen command must not stay in swap for ever, so the next look tries again
-                cut = {"cut": True} if state == RELEASED else {}   # a run cut short measures nothing; never dropped
-                swept.append(self._write(tx, item.id, state, why="no process behind it", **cut))
+                cut = {"cut": True, "verdict": "killed"} if state == RELEASED else {}   # measures nothing; kept
+                swept.append(self._write(tx, item.id, state, why=why, **cut))
         return swept

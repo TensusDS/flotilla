@@ -1918,6 +1918,20 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    model. Only the lead is compared, not every seat: seats are pinned by `--model` since 0.32.0, and a borrowed
    seat is counted (decision 255).
 
+257. **A hung run is marked and told, a run cut short is closed and told; the lane stops neither by its own
+   judgement** (the person, 2026-11-16; 0.33.2; field notes of that night). The 7-hour hold was no missing timer:
+   the ceiling fired at 30 minutes, but `lane run` read the command's output to its end, and a child that had left
+   the group held it open. The reader now stops waiting once the group is gone (a few seconds' grace), and on
+   Linux `lane run` makes itself the child subreaper so such a child is found and ended - in `lane run` only: a
+   longer-lived caller would collect every orphan of its other children. A run long past its estimate computing
+   nothing is only marked (`flotilla lane`) and told to its project's orchestrator: a run waiting on a network or a
+   licence looks the same, and stopping it for its owner is the costlier mistake (the person chose this over an
+   automatic stop). A booking whose client is gone - killed, usually by Claude Code under memory pressure - is
+   released by the daemon on its next tick as `cut`, verdict `killed`, its scope's and its booking's processes
+   ended (they hold no booking any more and nobody reads their verdict), and the orchestrator is told until the
+   same work is booked again or for six hours. What memory the sessions themselves take, and admission against it,
+   stays open (TODO).
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.

@@ -21,7 +21,7 @@ jobs:
         python: ["3.11", "3.12", "3.13"]
     runs-on: ${{ matrix.os }}
     # The macOS legs take 11-15 minutes (v0.15.0: 14:51 on 3.12; v0.14.0 ran out on 3.13).
-    timeout-minutes: 25
+    timeout-minutes: 40   # the suite takes 23-24 min on a macOS runner at 0.33.1 (5155 tests)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

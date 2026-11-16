@@ -236,6 +236,43 @@ def carries(pid: int, booking: str, *, proc_root: Path = Path("/proc"), run=subp
     return named == booking
 
 
+def booking_pids(booking: str, *, proc_root: Path = Path("/proc")) -> set[int]:
+    """The processes that run under `booking` by their own environment (Linux: /proc; elsewhere none are found)."""
+    found: set[int] = set()
+    if not booking or not proc_root.is_dir():
+        return found
+    want = f"{BOOKING_ENV}={booking}".encode()
+    for entry in proc_root.iterdir():
+        if not entry.name.isdigit() or int(entry.name) == os.getpid():
+            continue
+        try:
+            if want in (entry / "environ").read_bytes().split(b"\0"):
+                found.add(int(entry.name))
+        except OSError:
+            continue
+    return found
+
+
+def end_booking(booking: str, unit: str = "", *, run=subprocess.run, root: Path = CGROUP_ROOT,
+                proc_root: Path = Path("/proc")) -> int:
+    """SIGKILL what is left of a run whose client is gone - nobody reads its verdict, and it holds no booking any
+    more: the processes of its scope and those that carry its booking. How many were found."""
+    pids = booking_pids(booking, proc_root=proc_root)
+    cgroup = _cgroup_of(unit, run, root) if unit else None
+    if cgroup is not None:
+        try:
+            pids |= {int(word) for word in (cgroup / "cgroup.procs").read_text(encoding="utf-8").split()
+                     if word.isdigit()}
+        except (OSError, ValueError):
+            pass
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            continue
+    return len(pids)
+
+
 def _state(proc_root: Path, pid: int) -> str | None:
     try:
         stat = (proc_root / str(int(pid)) / "stat").read_text(encoding="utf-8", errors="replace")

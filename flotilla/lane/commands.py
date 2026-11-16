@@ -40,7 +40,26 @@ def verdict_line(result) -> str:
     frozen = getattr(result, "frozen_s", 0.0) or 0.0
     if result.verdict == "red" and frozen > 0:
         line += f" (red after a freeze of {max(1, round(frozen / 60))} min)"
+    orphans = getattr(result, "orphans", 0)
+    if orphans is None:
+        line += ("; its output stayed open after the command ended, held by a process this machine could not find "
+                 "- it may still run")
+    elif orphans:
+        line += f"; ended {orphans} process(es) it left running outside its group"
     return line
+
+
+def hung_text(beat, booking: str) -> str:
+    """The daemon's word that a held run looks hung (`Scheduler._hung`), or ""."""
+    found = (getattr(beat, "hung", None) or {}).get(booking) if beat is not None else None
+    if not isinstance(found, dict):
+        return ""
+    minutes = round(float(found.get("ran_s") or 0) / 60)
+    estimate = found.get("estimate_s")
+    quiet = round(float(found.get("quiet_s") or 0) / 60)
+    told = f" against an estimate of {estimate} s" if estimate else ", with no estimate"
+    return (f"; LOOKS HUNG: {minutes} min{told}, and next to no CPU for {quiet} min - its owner stops it "
+            "(`flotilla lane stop`) or says why it waits")
 
 
 def capacity() -> int:
@@ -538,7 +557,7 @@ def _status_by_value(lanes, found, held, waiting, reading, now, hist, profile, m
         worth = f"; {value_of(by_id[item.id], item, m, now)}" if item.id in by_id else ""
         print(f"  {item.id} {size} {item.who} ({item.note or 'no note'}) since {item.since}"
               f"{_for_how_long(item.since)}{target}; {by}; {state}; {describe_estimate(item, hist)}{worth}"
-              f"{_groups_text(beat, item)}{_older(item)}")
+              f"{_groups_text(beat, item)}{_older(item)}{hung_text(beat, item.id)}")
     for proc in reading.computing:
         print("  " + _foreign(lanes.procs, proc, " (foreign: its memory is simply not free)"))
     if mode == "fair":
@@ -679,7 +698,7 @@ def _run(args) -> int:
             limit = args.max if args.max else ceiling_for(args.tree, _profile(args.tree)[0])
             began = time.monotonic()
             try:
-                result = runner.execute(command, cwd=args.tree, ceiling=limit)
+                result = runner.execute(command, cwd=args.tree, ceiling=limit, reap_orphans=True)
             except BaseException:   # stopped: it held the lane all the same, and says so on release
                 grant.measured.update({"seconds": round(time.monotonic() - began, 2), "verdict": "killed"})
                 raise

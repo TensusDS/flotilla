@@ -15,7 +15,32 @@ import dataclasses
 import datetime as dt
 import time
 
-from flotilla.lane import admission, book, estimate, groups, policy, tick
+from flotilla.lane import admission, book, estimate, freeze, groups, peak, policy, tick
+
+#: Why a booking whose client process is gone is ended by the daemon (field notes 2026-11-16: Claude Code killed
+#: lane clients under memory pressure, and their runs vanished with no trace on the row).
+LOST = ("its client process was gone before it released the booking - killed, most often by Claude Code under "
+        "memory pressure or by its session ending; no verdict")
+#: A held run "looks hung" (the person's ruling, 2026-11-16: marked and told, never stopped by the lane) when it has
+#: run HUNG_TIMES its estimate, and at least HUNG_FLOOR_S, and used under HUNG_CORES of a core for HUNG_QUIET_S.
+HUNG_TIMES, HUNG_FLOOR_S, HUNG_QUIET_S, HUNG_CORES = 10, 600.0, 600.0, 0.05
+#: How often the daemon reads the held runs' CPU time: a /proc listing each time.
+CPU_EVERY_S = 15.0
+
+
+def _estimate_s(item, hist) -> float | None:
+    """What the run is estimated to take, in seconds, or None when nothing estimates it."""
+    return estimate.for_booking(item, hist).seconds
+
+
+def _cpu_table():
+    """(pid -> (ppid, pgrp, kB), pid -> CPU seconds), or (None, None) where there is no /proc to read."""
+    from pathlib import Path
+    proc = Path("/proc")
+    if not proc.is_dir():
+        return None, None
+    cpu: dict = {}
+    return peak._proc_table(proc, peak._page_kb(), cpu, peak._tick()), cpu
 
 GROWTH_WINDOW_S = 60.0
 
@@ -100,6 +125,9 @@ class Scheduler:
         # it will be written (`_written`).
         self.ceilings: dict[str, int | None] = {}
         self.squeezed: set[str] = set()
+        self.cpu_seen: dict[str, collections.deque] = {}   # a held run's (clock, CPU seconds), HUNG_QUIET_S of them
+        self._cpu_at: float | None = None
+        self.hung: dict[str, dict] = {}
 
     def _path(self, item):
         key = (item.id, item.unit)
@@ -116,6 +144,13 @@ class Scheduler:
         with lanes.store.transaction(book.KEY) as tx:
             lanes._rescue(tx, lanes._found(tx), value)
         found = lanes.bookings()
+        if any(item.state in (book.HELD, book.WAITING) and item.pid is not None and not lanes.live(item)
+               for item in found.values()):
+            units = {item.id: item.unit for item in found.values() if item.state == book.HELD}   # gone once ended
+            for item in lanes.sweep(why=LOST):   # its client was killed: nobody releases it, nobody reads its verdict
+                if item.state == book.RELEASED:
+                    freeze.end_booking(item.id, units.get(item.id, ""))
+            found = lanes.bookings()
         now, moment = self.clock(), lanes._moment()
         live = {item.id: item for item in found.values() if item.state in (book.HELD, book.WAITING)
                 and lanes.live(item)}
@@ -125,8 +160,9 @@ class Scheduler:
         available = value.available_mb()
         value = dataclasses.replace(value, available_mb=lambda: available, floor_mb=floor)
         share = self.share() if callable(self.share) else self.share
-        runs, machine = admission.view(found, estimate.history(found, now=moment), value, now=moment,
-                                       live=lanes.live, mine="", share=share)
+        hist = estimate.history(found, now=moment)
+        runs, machine = admission.view(found, hist, value, now=moment, live=lanes.live, mine="", share=share)
+        self.hung = self._hung(found, runs, hist, now)
         paths, readings, enriched = {}, {}, []
         for run in runs:
             item = found[run.id]
@@ -187,5 +223,43 @@ class Scheduler:
                            "pressed": pressed.get(b, False)}
                        for b in readings if readings[b] is not None and b in after},
             "over": {"mb": floor - available, "s": machine.over_s, "nothing": actions.over_mb} if under else {},
+            "hung": {b: found_ for b, found_ in self.hung.items() if b in after and after[b].state == book.HELD},
         }
         return actions, picture
+
+    def _hung(self, found, runs, hist, now: float) -> dict[str, dict]:
+        """The held runs that look hung: long past their estimate and computing next to nothing. Read every
+        CPU_EVERY_S; between, the last finding stands."""
+        held = {run.id: run for run in runs if found[run.id].state == book.HELD and found[run.id].pid}
+        for gone in set(self.cpu_seen) - set(held):
+            self.cpu_seen.pop(gone, None)
+        if self._cpu_at is not None and now - self._cpu_at < CPU_EVERY_S:
+            return {b: v for b, v in self.hung.items() if b in held}
+        self._cpu_at = now
+        table, cpu = _cpu_table() if held else (None, None)
+        if table is None:
+            return {}
+        out = {}
+        for booking, run in held.items():
+            item = found[booking]
+            members = peak._tree(table, item.pid) if item.pid in table else set()
+            if not members or item.frozen == "frozen":
+                self.cpu_seen.pop(booking, None)   # gone from the table, or frozen: its quiet is no hang
+                continue
+            used = sum(cpu.get(pid, 0.0) for pid in members)
+            samples = self.cpu_seen.setdefault(booking, collections.deque())
+            samples.append((now, used))
+            while len(samples) > 1 and now - samples[1][0] >= HUNG_QUIET_S:
+                samples.popleft()
+            first_at, first_used = samples[0]
+            quiet_s = now - first_at
+            if quiet_s < HUNG_QUIET_S:
+                continue
+            rate = max(0.0, used - first_used) / quiet_s
+            seconds = _estimate_s(item, hist)
+            floor = max(HUNG_FLOOR_S, HUNG_TIMES * seconds if seconds else 0.0)
+            if run.ran_s >= floor and rate < HUNG_CORES:
+                out[booking] = {"ran_s": round(run.ran_s), "estimate_s": round(seconds) if seconds else None,
+                                "cores": round(rate, 3), "quiet_s": round(quiet_s), "who": item.who,
+                                "note": item.note, "run_for": item.run_for, "project": item.project}
+        return out

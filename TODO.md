@@ -60,7 +60,9 @@ the lane code of 0.33.0.
   - The workaround the orchestrator used: one run at a time across the whole project, in a fixed order, with each seat passing "your turn" to the next and checking `free -m` before booking. It works, but it is manual, slow and chatty.
   - Main session 27's reading at 07:00 UTC, a hypothesis not yet verified: Claude Code's memory reaper kills the *background shells of idle sessions*. A seat that books `flotilla lane run` in the background and goes idle loses the shell, and the lane run with it, queued or running. Kills that night: three queued bookings, a MakeGolden run, and the sender's Godot run. A foreground lane call, with the session blocked, may not count as idle; it was being tried for small runs. If this is so, `lane run` waiting in a background shell is the weak point, and a lane that owned its runs apart from the booking shell would survive the reaper.
 
-  *(checked 2026-11-16 on 0.31.0 CLI / lane 0.33.1: B - measure; lane admission, flotilla spawn, flotilla fleet size)*
+  *(checked 2026-11-16 on 0.33.2: point 2 done - a run whose `lane run` was killed is released as killed, what is
+  left of it ended, and its orchestrator told; points 1 and 3, the sessions' own memory in admission and in spawn
+  and `fleet size`, open - B, measure; the background-shell hypothesis not measured)*
 - **A heavy head of the line can wait for hours behind another project's fair share.**
   - A game-fleet run of a few seconds, estimated at 3.88 cores, headed that project's line from 21:32 UTC on 2026-11-15. The second fleet's turns held heavy cores at about 7.6 of 12, so it did not fit; six runs waited behind it.
   - The sender reported 2.5 h of stall; part of that was a stale reading, because the run had in fact gone at about 00:06.
@@ -83,7 +85,11 @@ the lane code of 0.33.0.
   - a run far past its estimate, with near-zero CPU, is a hang the lane could flag or stop itself;
   - watch could name a held run at 10× or more of its estimate as a dropped ball for its project's orchestrator.
 
-  *(checked 2026-11-16 on lane 0.33.1: B - measure; the lane's ceiling and its "immortal" state)*
+  *(checked 2026-11-16 on 0.33.2: done - the ceiling did fire at 30 min; `lane run` then read the output the
+  re-parented editor held open. It now lets the run go once the group is gone and, on Linux, ends such orphans;
+  a run long past its estimate with no CPU is marked LOOKS HUNG and told to its orchestrator (decision 257).
+  "immortal" means only never frozen. Left: macOS cannot find such an orphan - the run is let go, the orphan
+  may run on)*
 
 ## From the reviews of 0.31.2 (2026-11-10, what reaches the guards and what they answer on a failure)
 

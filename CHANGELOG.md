@@ -3,6 +3,26 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.33.2 - 2026-11-16
+
+From a night of two fleets on one machine (2026-11-15..16): a run held the lane for 7 hours past its 30-minute
+ceiling, and runs killed under memory pressure vanished with no trace.
+
+- **A run past its ceiling is let go though something outside it holds its output.** A child that left the run's
+  process group (a Unity editor in a session of its own) kept the run's output open; after the ceiling stopped the
+  command, `lane run` went on reading for 7 hours. Now, once the command and its group are gone, the output gets a
+  few seconds; then on Linux the processes still holding it are ended (`lane run` is their reaper now, and a
+  scope's members count too), and the run is let go either way. Its verdict line says what was ended, or that
+  something it could not find may still run.
+- **A run cut short is closed and told.** When a `lane run` is killed (Claude Code under memory pressure, a session
+  ending), the lane daemon now releases its booking at once as killed with no verdict - before, it stayed held until
+  someone ran `flotilla lane` - ends what is left of its command, and the orchestrator of its project gets an item to
+  have it booked again, until it is or for six hours.
+- **A run that looks hung is marked and told, never stopped.** Held ten times its estimate (at least ten minutes)
+  with next to no CPU for ten minutes: `flotilla lane` says `LOOKS HUNG` on its line, and the project's orchestrator
+  gets an item. Stopping it stays its owner's move (the person's ruling).
+- CI's test jobs may take 40 minutes: on macOS the suite took 23-24 of the 25 allowed.
+
 ## 0.33.1 - 2026-11-15
 
 The last part of the fleet model design (scenario C): a `/model` switch made for one task becomes Claude Code's
