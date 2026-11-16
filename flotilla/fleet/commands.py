@@ -441,7 +441,7 @@ def _model_note(ledger, args) -> int:
         if me is None or not me.session_id:
             raise MoveRefused("flotilla could not tell which session runs this; run it from the session whose model "
                               "it is")
-        override.record_session_model(paths.state_dir(), me.session_id, name, now=now)
+        override.record_session_model(paths.state_dir(), me.session_id, name, now=now, said=True)
         print(f"noted: {me.name or me.short_id} runs on {name}")
         return 0
     if args.mute < 1 or args.mute > 24 * 7:
@@ -449,12 +449,13 @@ def _model_note(ledger, args) -> int:
     refused = caller.person_refusal("mutes the note on the fleet's model")
     if refused:
         raise MoveRefused(refused)
-    text = override.current(ledger, sessions)
-    if not text:
+    notice = override.current(ledger, sessions)
+    if not notice.what:
         print("nothing to mute: the fleet's work runs on its default model, or no lead lives")
         return 0
-    until = override.mute(paths.state_dir(), ledger.repo_key, text, hours=args.mute, now=now)
-    print(f"muted until {until:%Y-%m-%d %H:%M} UTC, or until what differs changes: {text.split(' - ')[0]}")
+    until = override.mute(paths.state_dir(), ledger.repo_key, notice.what, hours=args.mute, now=now)
+    print(f"muted until {until:%Y-%m-%d %H:%M} UTC, or until the models that differ change ({notice.what}); once "
+          "nothing differs the mute is gone")
     return 0
 
 

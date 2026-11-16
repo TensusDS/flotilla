@@ -452,7 +452,8 @@ says it runs on, `flotilla fleet model --running <name>`). When either is not th
 your line say so, at most once an hour, with three ways out: make it the fleet's model (`! flotilla fleet model
 <name>`), mute the note (`! flotilla fleet model --mute <hours>`, until what differs changes), or switch back with
 `/model <default>` in the orchestrator's session (`s` in the picker keeps it to that session). With no orchestrator
-alive nothing is said: a session outside the fleet takes Claude Code's own setting.
+alive nothing is said: a session outside the fleet takes Claude Code's own setting. Only the user settings are
+read: a project's `.claude/settings.json` `model` or `ANTHROPIC_MODEL` is not seen.
 
 A post may also say `effort:` - `low`, `medium`, `high`, `xhigh` or `max` - and its seats start with
 `claude --effort` at that level; a higher level thinks longer and costs more tokens. Without the key a seat takes

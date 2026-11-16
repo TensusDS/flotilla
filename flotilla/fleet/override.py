@@ -1,28 +1,43 @@
 """The fleet's work on a model other than its default, noticed (fleet model design 5.5, scenario C).
 
 Claude Code's `/model` saves its choice as the default every later session starts on, so a switch made for one task
-quietly becomes the model the person's sessions - the orchestrator's among them - run on. flotilla reads two things
-and writes neither: the `model` key of Claude Code's user settings, and the model a session reported at its start
-(the SessionStart hook's `model`, or the orchestrator's own word, `flotilla fleet model --running <name>`). While a
-lead lives and either names a model other than the fleet's default, the orchestrator and the person are told at
-most once an hour, with three ways out: make it the default, mute the note, or switch back. A mute ends early when
-what differs changes. A seat on a borrowed model (5.3) is not an override: it is counted, not noted. A switch kept
-to one session after it started is not seen - flotilla reads no transcript - unless the orchestrator says so.
+quietly becomes the model the person's sessions - the orchestrator's among them - run on. flotilla reads and never
+writes: the `model` key of Claude Code's user settings, and the model the orchestrator started on (the SessionStart
+hook's `model`) or says it runs on (`flotilla fleet model --running <name>`) - both kept, either may differ. While a
+session of the orchestrator post lives and one of them is not what it should be (the fleet's default; the
+orchestrator post's own model, when it names one), the orchestrator is told at most once an hour, and the person's
+line carries it - shown, like the rest of that line, on a prompt a person typed. The ways out fit the cause: make it
+the default, mute the note, or switch back. A mute lasts its hours, or until the models that differ change; once
+nothing differs, it is gone. A seat on a borrowed model (5.3) is not an override: it is counted, not noted.
 """
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 import json
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 from flotilla.fleet import model as fleet_model
 
-FILE = "override.json"
+FILE, LOCK = "override.json", "override.lock"
 EVERY = dt.timedelta(hours=1)
-KEPT_SESSIONS = 200   # the newest session models kept; a session's start is what is read, never its history
-NOTE, LINE = "note", "line"   # the orchestrator's context, and the person's screen: one clock each
+KEPT_SESSIONS = 1000   # the newest session models kept; resume, /clear and compaction write a session's again
+#: Words Claude Code's settings may hold that name no model of their own (an alias that moves with Claude Code).
+NOT_A_MODEL = ("default",)
+
+
+@dataclass(frozen=True)
+class Notice:
+    text: str = ""   # what is said; "" when nothing differs or no lead lives
+    what: str = ""   # the models that differ, as a mute and the hourly clock compare them
+
+
+def _model_word(value) -> str:
+    value = value.strip() if isinstance(value, str) else ""
+    return value if fleet_model.valid(value) and value.lower() not in NOT_A_MODEL else ""
 
 
 def settings_model(env=os.environ, home: Path | None = None) -> str:
@@ -32,8 +47,7 @@ def settings_model(env=os.environ, home: Path | None = None) -> str:
         data = json.loads((config_dir(env, home) / "settings.json").read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, ValueError):
         return ""
-    value = data.get("model") if isinstance(data, dict) else None
-    return value.strip() if isinstance(value, str) and fleet_model.valid(value.strip()) else ""
+    return _model_word(data.get("model")) if isinstance(data, dict) else ""
 
 
 def _load(state: Path) -> dict:
@@ -44,62 +58,88 @@ def _load(state: Path) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def _save(state: Path, data: dict) -> None:
-    path = Path(state) / FILE
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
-    tmp.write_text(json.dumps(data, indent=1, sort_keys=True) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
+@contextlib.contextmanager
+def _edit(state: Path):
+    """The file, read and written back under a lock: hooks of many sessions write it at once."""
+    import fcntl
+    Path(state).mkdir(parents=True, exist_ok=True)
+    with open(Path(state) / LOCK, "a+", encoding="utf-8") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        data = _load(state)
+        yield data
+        path = Path(state) / FILE
+        tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(data, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+        os.replace(tmp, path)
 
 
 def _table(data: dict, key: str) -> dict:
     found = data.get(key)
-    return found if isinstance(found, dict) else {}
-
-
-def record_session_model(state: Path, session_id: str, model: str, *, now: dt.datetime) -> None:
-    """The model a session runs on, as its start or its own word says; the newest KEPT_SESSIONS are kept."""
-    model = (model or "").strip()
-    if not session_id or not fleet_model.valid(model):
-        return
-    data = _load(state)
-    sessions = _table(data, "sessions")
-    sessions[session_id] = {"model": model, "at": now.isoformat(timespec="seconds")}
-    newest = sorted(sessions.items(), key=lambda item: str((item[1] or {}).get("at", "")))[-KEPT_SESSIONS:]
-    data["sessions"] = dict(newest)
-    _save(state, data)
-
-
-def session_model(state: Path, session_id: str) -> str:
-    found = _table(_load(state), "sessions").get(session_id)
-    value = found.get("model") if isinstance(found, dict) else None
-    return value if isinstance(value, str) and fleet_model.valid(value) else ""
-
-
-def differing(default: str, *, lead_live: bool, settings: str, lead: str, lead_name: str = "") -> list[str]:
-    """Where the fleet's work runs on a model other than `default`, one phrase each; [] when nothing differs (by
-    family) or no lead lives - without one, the person's sessions take Claude Code's own setting, by their rule."""
-    if not lead_live or not default:
-        return []
-    found = []
-    if settings and not fleet_model.same(settings, default):
-        found.append(f"Claude Code's own setting (`model` in its settings.json) is {settings}")
-    if lead and not fleet_model.same(lead, default):
-        found.append(f"{lead_name or 'the orchestrator'} runs on {lead}")
+    if not isinstance(found, dict):
+        found = {}
+        data[key] = found
     return found
 
 
-def check(default: str, *, lead_live: bool, settings_model: str, lead_model: str, lead_name: str = "") -> str:
-    """The note's text, "" when nothing differs or no lead lives."""
-    where = differing(default, lead_live=lead_live, settings=settings_model, lead=lead_model, lead_name=lead_name)
-    if not where:
-        return ""
-    other = next((name for name in (lead_model, settings_model) if name and not fleet_model.same(name, default)), "")
-    return (f"the fleet's default model is {default}; {'; '.join(where)} - work of the fleet may run on it. Three "
-            f"ways out: make it the default (`! flotilla fleet model {other}`); mute this note (`! flotilla fleet "
-            f"model --mute <hours>`); or switch back - type `/model {default}` in the orchestrator's session and "
-            "press `s` in the picker to keep it to that session (otherwise Claude Code saves it as its default for "
-            "every new session).")
+def record_session_model(state: Path, session_id: str, model, *, now: dt.datetime, said: bool = False) -> None:
+    """The model a session started on, or - `said` - the one it says it runs on; both are kept."""
+    model = _model_word(model)
+    if not session_id or not model:
+        return
+    with _edit(state) as data:
+        sessions = _table(data, "sessions")
+        entry = sessions.get(session_id) if isinstance(sessions.get(session_id), dict) else {}
+        entry["said" if said else "start"] = model
+        entry["at"] = now.isoformat(timespec="seconds")
+        sessions[session_id] = entry
+        if len(sessions) > KEPT_SESSIONS:
+            newest = sorted(sessions.items(), key=lambda item: str((item[1] or {}).get("at", "")))[-KEPT_SESSIONS:]
+            data["sessions"] = dict(newest)
+
+
+def session_models(state: Path, session_id: str) -> list[str]:
+    """The models a session started on and said it runs on, each once."""
+    found = (_load(state).get("sessions") or {}).get(session_id)
+    if not isinstance(found, dict):
+        return []
+    return list(dict.fromkeys(word for word in (_model_word(found.get("start")), _model_word(found.get("said")))
+                              if word))
+
+
+def _visible(text: str) -> str:
+    from flotilla.core.text import visible
+    return visible(text)
+
+
+def check(default: str, *, lead_live: bool, settings_model: str = "", lead_models=(), lead_name: str = "",
+          lead_expected: str = "") -> Notice:
+    """What to say, when anything differs and a lead lives. `lead_expected` is the model the orchestrator post runs
+    on (its own, else the default); `lead_models` what its session started on or said."""
+    if not lead_live or not default:
+        return Notice()
+    expected = lead_expected or default
+    if isinstance(lead_models, str):
+        lead_models = [lead_models] if lead_models else []
+    settings_off = settings_model if settings_model and not fleet_model.same(settings_model, default) else ""
+    lead_off = next((name for name in lead_models if name and not fleet_model.same(name, expected)), "")
+    if not (settings_off or lead_off):
+        return Notice()
+    who = _visible(lead_name) or "the orchestrator"
+    where, back = [], []
+    if settings_off:
+        where.append(f"Claude Code's own setting (`model` in its settings.json) is {settings_off}, so every new "
+                     "session starts on it")
+        back.append(f"type `/model {_visible(default)}` in any session - Claude Code saves it as its default again")
+    if lead_off:
+        where.append(f"{who} runs on {lead_off}")
+        back.append(f"type `/model {_visible(expected)}` in {who}'s session (press `s` in the picker to keep it to "
+                    "that session)")
+    other = settings_off or lead_off
+    what = ",".join(sorted({fleet_model.family(name) for name in (settings_off, lead_off) if name}))
+    text = (f"the fleet's default model is {_visible(default)}; {'; '.join(where)}. Ways out: make it the default "
+            f"(`! flotilla fleet model {other}`); mute this note (`! flotilla fleet model --mute <hours>`); or switch "
+            f"back - {'; and '.join(back)}.")
+    return Notice(text, what)
 
 
 def _when(value) -> dt.datetime | None:
@@ -109,68 +149,69 @@ def _when(value) -> dt.datetime | None:
         return None
 
 
-def due(state: Path, repo: str, audience: str, text: str, *, now: dt.datetime) -> bool:
-    """Whether the note is said to `audience` now: never while muted for the same thing, at most once an hour.
-    Saying it is recorded here: the caller says it when this answers True."""
-    if not text:
-        return False
-    data = _load(state)
-    mine = _table(_table(data, "repos"), repo)
-    mute = _table(mine, "mute")
-    until = _when(mute.get("until"))
-    if until is not None and now < until and mute.get("what") == _what(text):
-        return False
-    said = _when(_table(mine, audience).get("at"))
-    if said is not None and now - said < EVERY and _table(mine, audience).get("what") == _what(text):
-        return False
-    repos = _table(data, "repos")
-    mine[audience] = {"at": now.isoformat(timespec="seconds"), "what": _what(text)}
-    repos[repo] = mine
-    data["repos"] = repos
-    _save(state, data)
-    return True
+def observe(state: Path, repo: str, what: str, *, now: dt.datetime, note: bool) -> tuple[bool, bool]:
+    """(muted, the orchestrator's note due now) for the models that differ. Nothing differing ends a mute and the
+    clock; another set of models differing ends a mute at once. The note is recorded as said when due."""
+    with _edit(state) as data:
+        mine = _table(_table(data, "repos"), repo)
+        if not what:
+            mine.pop("mute", None)
+            mine.pop("note", None)
+            return False, False
+        mute = mine.get("mute") if isinstance(mine.get("mute"), dict) else {}
+        until = _when(mute.get("until"))
+        muted = until is not None and now < until and mute.get("what") == what
+        if mute and not muted:
+            mine.pop("mute", None)
+        if not note or muted:
+            return muted, False
+        said = mine.get("note") if isinstance(mine.get("note"), dict) else {}
+        last = _when(said.get("at"))
+        if last is not None and now - last < EVERY and said.get("what") == what:
+            return muted, False
+        mine["note"] = {"at": now.isoformat(timespec="seconds"), "what": what}
+        return muted, True
 
 
-def _what(text: str) -> str:
-    """What the note is about, as a mute compares it: the text up to its ways out."""
-    return text.split(" - work of the fleet", 1)[0]
-
-
-def mute(state: Path, repo: str, text: str, *, hours: int, now: dt.datetime) -> dt.datetime:
-    """The person's move: no note about this same difference for `hours`; a new difference speaks at once."""
-    data = _load(state)
-    repos = _table(data, "repos")
-    mine = _table(repos, repo)
+def mute(state: Path, repo: str, what: str, *, hours: int, now: dt.datetime) -> dt.datetime:
+    """The person's move: nothing said about these same models for `hours`."""
     until = now + dt.timedelta(hours=hours)
-    mine["mute"] = {"until": until.isoformat(timespec="seconds"), "what": _what(text)}
-    repos[repo] = mine
-    data["repos"] = repos
-    _save(state, data)
+    with _edit(state) as data:
+        _table(_table(data, "repos"), repo)["mute"] = {"until": until.isoformat(timespec="seconds"), "what": what}
     return until
 
 
-def current(ledger, sessions, *, env=os.environ, home: Path | None = None) -> str:
-    """The note for this project now: its default, its live lead (a session of the orchestrator post) and the model
-    that lead reported, and Claude Code's setting. "" when nothing differs, no lead lives, or the default is not
-    named (spawn asks for it then)."""
+def current(ledger, sessions, *, rows: dict | None = None, members: list | None = None, env=os.environ,
+            home: Path | None = None) -> Notice:
+    """The notice for this project now: its default, its live leads (sessions of the orchestrator post), the models
+    they started on or said, and Claude Code's setting. Empty when nothing differs, no lead lives, or the default
+    is not named (spawn asks for it then). `rows` and `members` spare a hook what it already read."""
     from flotilla.core import paths
     from flotilla.fleet import launch
     from flotilla.ledger import project
     from flotilla.posts import PostError, post_for_session
+    post = ledger.posts.get("orchestrator")
+    if post is None:
+        return Notice()
     try:
         main = launch.main_checkout(ledger.root, run=ledger.run)
-    except launch.LaunchError:
-        return ""
-    default, _ = fleet_model.default(ledger.profile, state=paths.state_dir(), main=main)
+        resolved = fleet_model.resolved(ledger.profile, state=paths.state_dir(), main=main)
+    except launch.LaunchError:   # ModelUnnamed among them
+        return Notice()
+    default = str(resolved["fleet"]["model"])
 
     def leads(name: str) -> bool:
         try:
-            post = post_for_session(ledger.posts, name)
+            found = post_for_session(ledger.posts, name)
         except PostError:
             return False
-        return post is not None and post.name == "orchestrator"
-    mine = project.members(list(sessions or []), ledger.rows(), project.roots(ledger.root, run=ledger.run))
-    lead = next((item for item in mine if item.name and leads(item.name)), None)
-    return check(default, lead_live=lead is not None, settings_model=settings_model(env, home),
-                 lead_model=session_model(paths.state_dir(), lead.session_id) if lead is not None else "",
-                 lead_name=lead.name if lead is not None else "")
+        return found is not None and found.name == "orchestrator"
+    if members is None:
+        members = project.members(list(sessions or []), rows if rows is not None else ledger.rows(),
+                                  project.roots(ledger.root, run=ledger.run))
+    state = paths.state_dir()
+    setting = settings_model(env, home)
+    found = [check(default, lead_live=True, settings_model=setting, lead_models=session_models(state, item.session_id),
+                   lead_name=item.name, lead_expected=launch.model_for(resolved, post))
+             for item in members if item.name and leads(item.name)]
+    return next((notice for notice in found if notice.what), Notice())

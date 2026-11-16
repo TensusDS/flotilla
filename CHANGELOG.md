@@ -11,10 +11,11 @@ default for every new session, the orchestrator's among them, and nothing said s
 - **The fleet's work on another model is noticed.** While an orchestrator lives, flotilla compares the fleet's
   model with Claude Code's own `model` setting (read, never written) and with the model the orchestrator started on
   - kept from its start, or said with `flotilla fleet model --running <name>`, which its post now asks for. When one
-  differs, the orchestrator's context and the person's line say so at most once an hour, with three ways out: make
-  it the default, mute the note, or `/model <default>` in the orchestrator's session.
+  differs, the orchestrator's context says so at most once an hour and the person's line carries it, with the
+  ways out that fit the cause: make it the default, mute the note, or switch back (`/model <default>` in any
+  session for the setting, in the orchestrator's session for its own model).
 - **`flotilla fleet model --mute <hours>`** (1 to 168) is the person's move, refused from a tool call like naming
-  the model; a mute ends early when what differs changes.
+  the model; a mute ends early when the models that differ change, and is gone once nothing differs.
 - A seat on a borrowed model is not an override: it stays counted on the person's line, never noted.
 - The orchestrator post asks it to say its model at start and to pass the note on (template 32).
 

@@ -1909,10 +1909,14 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    `CLAUDE_CONFIG_DIR` when set) and the SessionStart payload's `model` (present on 2.1.325, measured in a scratch
    project; documented as not always there), plus the orchestrator's own word (`fleet model --running`), and writes
    none of Claude Code's files. Nothing is said without a live session of the orchestrator post in the project: a
-   person keeping Claude Code on another model for solo work is not noted. Two clocks, the orchestrator's context
-   and the person's screen, each at most once an hour, and again at once when what differs changes. The mute is the
-   person's (guarded like naming the model), 1 to 168 hours, keyed on what differs. Only the lead is compared, not
-   every seat: seats are pinned by `--model` since 0.32.0, and a borrowed seat is counted (decision 255).
+   person keeping Claude Code on another model for solo work is not noted. The orchestrator's context gets it at
+   most once an hour, and again at once when the models that differ change; the person's line carries it under that
+   line's own rule, so a `/loop` or scheduled prompt never spends it (review of 78c8be7). The lead is compared with
+   the orchestrator post's model (its own, else the default), the setting with the default; the start model and the
+   orchestrator's word are both kept, either may differ. The mute is the person's (guarded like naming the model),
+   1 to 168 hours, keyed on the models that differ, and gone once nothing differs. `default` in the settings is no
+   model. Only the lead is compared, not every seat: seats are pinned by `--model` since 0.32.0, and a borrowed
+   seat is counted (decision 255).
 
 ## Open questions (for the foundation spec)
 
