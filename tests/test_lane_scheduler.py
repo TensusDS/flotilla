@@ -390,33 +390,57 @@ def test_the_share_is_read_again_each_tick(tmp_path):   # review of 8dfcc24
 
 
 class SomeGone(Procs):
-    def __init__(self, gone):
+    def __init__(self, gone=()):
         self.gone = set(gone)
 
     def alive(self, pid, mark):
+        return pid not in self.gone
+
+    def exists(self, pid):
         return pid not in self.gone
 
 
 def test_a_held_run_whose_client_is_gone_is_ended_as_killed(tmp_path, monkeypatch):
     """Field notes 2026-11-16: Claude Code killed lane clients under memory pressure; their bookings stayed held,
     their runs left no verdict and no trace, and their commands ran on outside the lane."""
-    lanes = book.Book(LocalLogStore(tmp_path), SomeGone({12}))
+    procs = SomeGone({14})
+    lanes = book.Book(LocalLogStore(tmp_path), procs)
     sched = scheduler.Scheduler(lanes, value_of(), signer=(4242, "m9"), groups_io=FakeGroups(), clock=Clock(),
                                 default_floor=2000, total_mb=lambda: 15603)
     ended = []
-    monkeypatch.setattr(freeze, "end_booking", lambda booking, unit="", **kw: ended.append((booking, unit)) or 1)
+    monkeypatch.setattr(freeze, "end_booking", lambda booking, pid, mark, root, procs, **kw:
+                        ended.append((booking, pid, mark)) or 1)
     held = lanes.enqueue("main session 3", "unity tests", pid=12, mark="m")
-    unit = f"{freeze.UNIT_PREFIX}{held.id}-12-1.scope"
-    raw(lanes, booking=held.id, state=book.HELD, started=lanes._now(), unit=unit)
-    waiting = lanes.enqueue("main session 4", "dotnet", pid=12, mark="m")
+    raw(lanes, booking=held.id, state=book.HELD, started=lanes._now())
+    waiting = lanes.enqueue("main session 4", "dotnet", pid=14, mark="m")   # its client already gone
     live = lanes.enqueue("main session 5", "fine", pid=13, mark="m")
+    sched.step()   # the daemon sees the run live
+    procs.gone.add(12)   # then its client is killed
     sched.step()
     found = lanes.bookings()
     assert (found[held.id].state, found[held.id].cut, found[held.id].verdict) == (book.RELEASED, True, "killed")
     assert found[held.id].why == scheduler.LOST
     assert found[waiting.id].state == book.LEFT and not found[waiting.id].cut
     assert found[live.id].state != book.RELEASED
-    assert ended == [(held.id, unit)]   # its command no longer runs outside the lane
+    assert ended == [(held.id, 12, "m")]   # what is left of it, by its own word (freeze.end_booking)
+
+
+def test_a_forged_line_neither_kills_nor_ends_a_live_run(tmp_path, monkeypatch):
+    """Review of dba1899, 2: a journal line any session appends - a mark that no longer matches - made a live run
+    read as gone, and the daemon SIGKILLed its processes. Gone is the process table's word, and nothing is ended
+    for a run the daemon did not see live with that very client."""
+    procs = SomeGone()
+    lanes = book.Book(LocalLogStore(tmp_path), procs)
+    sched = scheduler.Scheduler(lanes, value_of(), signer=(4242, "m9"), groups_io=FakeGroups(), clock=Clock(),
+                                default_floor=2000, total_mb=lambda: 15603)
+    ended = []
+    monkeypatch.setattr(freeze, "end_booking", lambda *a, **kw: ended.append(a) or 1)
+    old = lanes.enqueue("main session 3", "old run", pid=30, mark="m")
+    raw(lanes, booking=old.id, state=book.RELEASED)
+    raw(lanes, booking=old.id, state=book.HELD, pid=31, mark="m")   # forged: an old booking held again
+    procs.gone.add(31)
+    sched.step()
+    assert lanes.bookings()[old.id].state == book.RELEASED and ended == []   # released; nothing it never saw live
 
 
 def _hung_world(tmp_path, monkeypatch, *, cores_used, estimate_s=58.0, ran_min=120):
@@ -431,8 +455,9 @@ def _hung_world(tmp_path, monkeypatch, *, cores_used, estimate_s=58.0, ran_min=1
     raw(lanes, booking=item.id, state=book.HELD, started=began, since=began)
     monkeypatch.setattr(scheduler, "_estimate_s", lambda item, hist: estimate_s)
     box = {"cpu": 10.0}
-    monkeypatch.setattr(scheduler, "_cpu_table", lambda: ({21: (1, 21, 100), 22: (21, 21, 100)},
-                                                         {21: 1.0, 22: box["cpu"]}))
+    monkeypatch.setattr(scheduler, "_cpu_table", lambda: ({21: (1, 21, 0), 22: (21, 21, 0)},
+                                                         {21: 50.0 + clock.t * 0.08, 22: box["cpu"]},
+                                                         {21: 0.0, 22: 0.0}))   # the client polls: not counted
     pictures = []
     for _ in range(45):   # 11 minutes
         _actions, picture = sched.step()

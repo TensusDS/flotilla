@@ -51,14 +51,12 @@ def verdict_line(result) -> str:
 
 def hung_text(beat, booking: str) -> str:
     """The daemon's word that a held run looks hung (`Scheduler._hung`), or ""."""
+    from flotilla.lane import report
     found = (getattr(beat, "hung", None) or {}).get(booking) if beat is not None else None
     if not isinstance(found, dict):
         return ""
-    minutes = round(float(found.get("ran_s") or 0) / 60)
-    estimate = found.get("estimate_s")
-    quiet = round(float(found.get("quiet_s") or 0) / 60)
-    told = f" against an estimate of {estimate} s" if estimate else ", with no estimate"
-    return (f"; LOOKS HUNG: {minutes} min{told}, and next to no CPU for {quiet} min - its owner stops it "
+    minutes, told, quiet = report.hung_words(found)
+    return (f"; LOOKS HUNG: {minutes} min held ({told}), next to no CPU for {quiet} min - its owner stops it "
             "(`flotilla lane stop`) or says why it waits")
 
 
@@ -698,7 +696,7 @@ def _run(args) -> int:
             limit = args.max if args.max else ceiling_for(args.tree, _profile(args.tree)[0])
             began = time.monotonic()
             try:
-                result = runner.execute(command, cwd=args.tree, ceiling=limit, reap_orphans=True)
+                result = runner.execute(command, cwd=args.tree, ceiling=limit)
             except BaseException:   # stopped: it held the lane all the same, and says so on release
                 grant.measured.update({"seconds": round(time.monotonic() - began, 2), "verdict": "killed"})
                 raise

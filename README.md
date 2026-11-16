@@ -614,13 +614,15 @@ turns slowed about twofold as sessions' contexts grew. So flotilla spends the la
   minutes; for any other run, at least half an hour; `[lane] max_run_seconds` in the profile or `--max` for one run
   set another. Past it the run is stopped with every process it started and recorded as killed. `flotilla lane stop`
   stops your own run sooner. A process that left the run's group and still holds its output - an editor started in
-  a session of its own - is ended too once the command is gone (on Linux; elsewhere the run is let go and says so);
-- **a run that looks hung is named** - held ten times its estimate (and at least ten minutes) while its processes
-  used next to no CPU for ten minutes: `flotilla lane` marks it, and the orchestrator of its project is told. It is
-  its owner's to stop - a run waiting on a network or a licence computes nothing either;
+  a session of its own - is ended too once the command is gone (Linux; elsewhere the run is let go and says that
+  something may still run). A server the run started that closed its output is left alone;
+- **a run that looks hung is named** (Linux) - held ten times its estimate (and at least ten minutes) while its
+  processes used next to no CPU for ten minutes: `flotilla lane` marks it, and the orchestrator of its project is
+  told. It is its owner's to stop - a run waiting on a network or a licence computes nothing either;
 - **a run cut short is named** - when its `lane run` was killed (Claude Code ends background shells under memory
-  pressure), the lane daemon releases its booking as killed with no verdict, ends what is left of its command, and
-  the orchestrator of its project is told to have it booked again, for six hours or until it is;
+  pressure), the lane daemon releases its booking as killed with no verdict, and the orchestrator of its project is
+  told to have it booked again, for six hours or until it is. On Linux the daemon also ends what is left of its
+  command - only processes whose own environment names that run and its client, never on a journal's word;
 - **a fresh tree is set up once** - the profile's `tests.setup_command` (`npm ci` beside a `package-lock.json`, found
   at onboarding) runs before a tree's first receipt and again only when its lockfile changes.
 

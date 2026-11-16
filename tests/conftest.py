@@ -85,16 +85,6 @@ def the_machines_installs_do_not_split_a_test_fleet(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def the_test_process_is_never_a_subreaper(monkeypatch):
-    """`lane run` makes its process the reaper of its command's orphans, for the rest of that process's life. A CLI
-    test running it in this process would make the test process one: every later test's dead grandchild became its
-    zombie, still there to `kill(pid, 0)`, and four lane tests failed in a row. tests/test_lane_orphan_output.py runs
-    the reaper in a process of its own."""
-    from flotilla.lane import run
-    monkeypatch.setattr(run, "_subreaper", lambda: False)
-
-
-@pytest.fixture(autouse=True)
 def memory_is_not_asked(monkeypatch):
     """No test depends on this machine's free memory; the tests of the floor set it themselves."""
     from flotilla.fleet import spawn

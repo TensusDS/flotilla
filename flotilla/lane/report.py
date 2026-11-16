@@ -28,6 +28,24 @@ def _when(value) -> dt.datetime | None:
     return found if found is None or found.tzinfo else found.replace(tzinfo=dt.timezone.utc)
 
 
+def number(value) -> float | None:
+    """A finite number from the daemon's beat, or None: the beat is a file, and a malformed one must not break a
+    listing or a prompt (review of dba1899, 11)."""
+    import math
+    try:
+        found = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return found if math.isfinite(found) else None
+
+
+def hung_words(hung: dict) -> tuple[int, str, int]:
+    """(minutes held, how the estimate reads, minutes quiet) of a beat's hung entry."""
+    estimate = number(hung.get("estimate_s"))
+    told = f"its estimate {round(estimate)} s" if estimate else "no estimate"
+    return round((number(hung.get("ran_s")) or 0) / 60), told, round((number(hung.get("quiet_s")) or 0) / 60)
+
+
 def _what(who: str, note: str, run_for: str) -> str:
     target = f" for `{visible(run_for)}`" if run_for else ""
     return f"{visible(who) or 'a session'}'s run ({visible(note) or 'no note'}){target}"
@@ -41,18 +59,17 @@ def items(state: Path, project: str, now: dt.datetime) -> list[Item]:
     if not root.is_dir() or not project:
         return []
     found: list[Item] = []
-    beat = daemon.heartbeat(root)
+    beat = None if daemon.gone(root) else daemon.heartbeat(root)   # a dead daemon's last beat is no news
     for booking, hung in sorted((beat.hung if beat is not None else {}).items()):
         if not isinstance(hung, dict) or hung.get("project") != project:
             continue
-        estimate = hung.get("estimate_s")
-        told = f"its estimate {estimate} s" if estimate else "no estimate"
-        found.append(Item(HUNG, str(hung.get("run_for") or ""),
-                          f"{_what(str(hung.get('who') or ''), str(hung.get('note') or ''), str(hung.get('run_for') or ''))} "
-                          f"looks hung: {round(float(hung.get('ran_s') or 0) / 60)} min held ({told}), next to no "
-                          f"CPU for {round(float(hung.get('quiet_s') or 0) / 60)} min - ask its owner to stop it "
-                          f"(`flotilla lane stop`) and look for what it waits on; `flotilla lane` shows {visible(booking)}",
-                          "", who=f"{booking} hung"))
+        held, told, quiet = hung_words(hung)
+        run_for = str(hung.get("run_for") or "")
+        found.append(Item(HUNG, visible(run_for),
+                          f"{_what(str(hung.get('who') or ''), str(hung.get('note') or ''), run_for)} looks hung: "
+                          f"{held} min held ({told}), next to no CPU for {quiet} min - ask its owner to stop it "
+                          f"(`flotilla lane stop`) and look for what it waits on; `flotilla lane` shows "
+                          f"{visible(str(booking))}", "", who=f"{booking} hung"))
     try:
         bookings = book.Book(LocalLogStore(root), None).bookings()
     except (StorageCorrupt, OSError, ValueError):

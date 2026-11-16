@@ -128,6 +128,18 @@ command that every guard shares, not one more reading.
   `work adopt` do it by hand. *(checked 2026-11-13 on 0.32.0: open - docs/specs/2026-11-13-fleet-model-design.md,
   non-goals)*
 
+## From the reviews of 0.33.2 (2026-11-16, a hung run and a run cut short)
+
+- **A signal to a reused process group**: after the leader is reaped, a `lane stop` during the output's grace still
+  signals `killpg(leader pid)`; with pid wrap-around that could reach another group. *(checked 2026-11-16 on
+  0.33.2: open, theoretical - flotilla/lane/run.py _stop)*
+- **The orchestrator's lane items read the whole lane journal on every prompt** (0.14 s for 3.4 MB, measured by
+  the reviewer); a cached `Book` would read on from its offset. *(checked 2026-11-16 on 0.33.2: open, cosmetic -
+  flotilla/lane/report.py items)*
+- **On macOS neither a hang nor an orphan is found**, and what is left of a run cut short is not ended: all three
+  read /proc. The run is let go and says so. *(checked 2026-11-16 on 0.33.2: open - flotilla/lane/run.py,
+  scheduler.py, freeze.py)*
+
 ## From the reviews of 0.33.1 (2026-11-16, the fleet's work on another model noticed)
 
 - **With a busy queue, the full notice comes back only after the person's line goes an hour unshown**: the hour

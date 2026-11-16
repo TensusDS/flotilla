@@ -1921,15 +1921,19 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
 257. **A hung run is marked and told, a run cut short is closed and told; the lane stops neither by its own
    judgement** (the person, 2026-11-16; 0.33.2; field notes of that night). The 7-hour hold was no missing timer:
    the ceiling fired at 30 minutes, but `lane run` read the command's output to its end, and a child that had left
-   the group held it open. The reader now stops waiting once the group is gone (a few seconds' grace), and on
-   Linux `lane run` makes itself the child subreaper so such a child is found and ended - in `lane run` only: a
-   longer-lived caller would collect every orphan of its other children. A run long past its estimate computing
+   the group held it open. The reader now stops waiting once the group is gone, or past help after the ceiling (a
+   few seconds' grace), and on Linux ends the processes that hold the output pipe open, found by their descriptors -
+   not every descendant (a server that closed its output is no orphan), and with no subreaper, which made the
+   caller the reaper of every orphan and its zombies a hang of their own (review of dba1899). A run long past its estimate computing
    nothing is only marked (`flotilla lane`) and told to its project's orchestrator: a run waiting on a network or a
    licence looks the same, and stopping it for its owner is the costlier mistake (the person chose this over an
    automatic stop). A booking whose client is gone - killed, usually by Claude Code under memory pressure - is
-   released by the daemon on its next tick as `cut`, verdict `killed`, its scope's and its booking's processes
-   ended (they hold no booking any more and nobody reads their verdict), and the orchestrator is told until the
-   same work is booked again or for six hours. What memory the sessions themselves take, and admission against it,
+   released by the daemon on its next tick as `cut`, verdict `killed` - "gone" is the process table's word (pid
+   absent, or another start mark), never a failed look - and the orchestrator is told until the same work is
+   booked again or for six hours. What is left of it is SIGKILLed only where a process's own environment names its
+   booking, its client and this lane (`FLOTILLA_LANE_CLIENT`), that client is provably gone, and this daemon saw the
+   run live with that client: a journal line, which any session appends, can neither choose a victim nor declare a
+   client dead (review of dba1899: as first written, one forged line killed a live run's processes). Linux only. What memory the sessions themselves take, and admission against it,
    stays open (TODO).
 
 ## Open questions (for the foundation spec)

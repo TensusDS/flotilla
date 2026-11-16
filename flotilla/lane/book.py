@@ -663,7 +663,7 @@ class Book:
             if not _thaw_command(item, self.procs):
                 continue
             if dead:
-                self._write(tx, item.id, RELEASED, why="no process behind it", cut=True, frozen="")
+                self._write(tx, item.id, RELEASED, why="no process behind it", cut=True, frozen="", verdict="killed")
             else:
                 self._write(tx, item.id, HELD, frozen="", unanswered=True, started=self._now(),
                             frozen_s=_frozen_for(item, now))

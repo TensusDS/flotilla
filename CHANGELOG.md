@@ -10,16 +10,18 @@ ceiling, and runs killed under memory pressure vanished with no trace.
 
 - **A run past its ceiling is let go though something outside it holds its output.** A child that left the run's
   process group (a Unity editor in a session of its own) kept the run's output open; after the ceiling stopped the
-  command, `lane run` went on reading for 7 hours. Now, once the command and its group are gone, the output gets a
-  few seconds; then on Linux the processes still holding it are ended (`lane run` is their reaper now, and a
-  scope's members count too), and the run is let go either way. Its verdict line says what was ended, or that
-  something it could not find may still run.
+  command, `lane run` went on reading for 7 hours. Now, once the command and its group are gone - or past help after
+  the ceiling - the output gets a few seconds; then on Linux the processes still holding the output open are ended
+  (found by their open descriptors; a server the run started that closed its output is left alone), and the run is
+  let go either way. Its verdict line says what was ended, or that something it could not find may still run.
 - **A run cut short is closed and told.** When a `lane run` is killed (Claude Code under memory pressure, a session
   ending), the lane daemon now releases its booking at once as killed with no verdict - before, it stayed held until
-  someone ran `flotilla lane` - ends what is left of its command, and the orchestrator of its project gets an item to
-  have it booked again, until it is or for six hours.
-- **A run that looks hung is marked and told, never stopped.** Held ten times its estimate (at least ten minutes)
-  with next to no CPU for ten minutes: `flotilla lane` says `LOOKS HUNG` on its line, and the project's orchestrator
+  someone ran `flotilla lane` - and the orchestrator of its project gets an item to have it booked again, until it is
+  or for six hours. On Linux it ends what is left of the command: only processes whose own environment names that
+  run and its client, once the client is provably gone - a line in the lane's journal, which any session writes,
+  decides nothing here. A frozen run whose client was killed is ended the same way.
+- **A run that looks hung is marked and told, never stopped** (Linux). Held ten times its estimate (at least ten
+  minutes), its processes - the `lane run` itself left out - using next to no CPU for ten minutes: `flotilla lane` says `LOOKS HUNG` on its line, and the project's orchestrator
   gets an item. Stopping it stays its owner's move (the person's ruling).
 - CI's test jobs may take 40 minutes: on macOS the suite took 23-24 of the 25 allowed.
 

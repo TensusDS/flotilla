@@ -34,13 +34,28 @@ def _estimate_s(item, hist) -> float | None:
 
 
 def _cpu_table():
-    """(pid -> (ppid, pgrp, kB), pid -> CPU seconds), or (None, None) where there is no /proc to read."""
-    from pathlib import Path
-    proc = Path("/proc")
-    if not proc.is_dir():
-        return None, None
-    cpu: dict = {}
-    return peak._proc_table(proc, peak._page_kb(), cpu, peak._tick()), cpu
+    """(pid -> (ppid, pgrp, 0), pid -> its own CPU seconds, pid -> its reaped children's), or (None, None, None)
+    where there is no /proc to read. Own and children's apart: a run's client is counted by its children only, so
+    its own sampling and polling never hide a hang (review of dba1899, 8)."""
+    import os
+    proc = "/proc"
+    if not os.path.isdir(proc):
+        return None, None, None
+    tick = peak._tick()
+    table, own, kids = {}, {}, {}
+    for name in os.listdir(proc):
+        if not name.isdigit():
+            continue
+        try:
+            with open(f"{proc}/{name}/stat", encoding="utf-8", errors="replace") as handle:
+                fields = handle.read().rsplit(")", 1)[1].split()
+            pid = int(name)
+            table[pid] = (int(fields[1]), int(fields[2]), 0)
+            own[pid] = (int(fields[11]) + int(fields[12])) / tick
+            kids[pid] = (int(fields[13]) + int(fields[14])) / tick
+        except (OSError, IndexError, ValueError):
+            continue
+    return table, own, kids
 
 GROWTH_WINDOW_S = 60.0
 
@@ -126,6 +141,7 @@ class Scheduler:
         self.ceilings: dict[str, int | None] = {}
         self.squeezed: set[str] = set()
         self.cpu_seen: dict[str, collections.deque] = {}   # a held run's (clock, CPU seconds), HUNG_QUIET_S of them
+        self.watched: dict[str, tuple[int, str]] = {}   # held runs this daemon saw live: their client's pid and mark
         self._cpu_at: float | None = None
         self.hung: dict[str, dict] = {}
 
@@ -142,15 +158,12 @@ class Scheduler:
         lanes = self.lanes
         value = self.value_of(None)
         with lanes.store.transaction(book.KEY) as tx:
-            lanes._rescue(tx, lanes._found(tx), value)
+            lanes._rescue(tx, lanes._found(tx), value)   # a dead frozen holder: thawed, released cut, killed
         found = lanes.bookings()
-        if any(item.state in (book.HELD, book.WAITING) and item.pid is not None and not lanes.live(item)
-               for item in found.values()):
-            units = {item.id: item.unit for item in found.values() if item.state == book.HELD}   # gone once ended
-            for item in lanes.sweep(why=LOST):   # its client was killed: nobody releases it, nobody reads its verdict
-                if item.state == book.RELEASED:
-                    freeze.end_booking(item.id, units.get(item.id, ""))
+        if any(item.state in (book.HELD, book.WAITING) and self._gone(item) for item in found.values()):
+            lanes.sweep(gone=self._gone, why=LOST)   # its client was killed: nobody releases it, reads its verdict
             found = lanes.bookings()
+        self._end_lost(found)
         now, moment = self.clock(), lanes._moment()
         live = {item.id: item for item in found.values() if item.state in (book.HELD, book.WAITING)
                 and lanes.live(item)}
@@ -227,6 +240,37 @@ class Scheduler:
         }
         return actions, picture
 
+    def _gone(self, item) -> bool:
+        """Whether a booking's client is provably gone - no longer there, or another process under its pid. A look
+        that cannot answer is no proof: `flotilla lane` keeps the same rule, so one failed look never releases a
+        live holder (review of dba1899, 10)."""
+        if item.pid is None or not item.mark:
+            return False
+        procs = self.lanes.procs
+        if not hasattr(procs, "exists") or not hasattr(procs, "start_mark"):
+            return False   # a table that cannot say: no proof
+        there = procs.exists(item.pid)
+        if there is False:
+            return True
+        mark = procs.start_mark(item.pid) if there else None
+        return bool(there) and mark is not None and mark != item.mark
+
+    def _end_lost(self, found) -> None:
+        """End what is left of the runs this daemon saw live and that are now released cut - by the sweep or by the
+        rescue of a frozen one (review of dba1899, 3) - by the processes' own word (`freeze.end_booking`); and
+        remember the live ones. A run released before this daemon saw it live is not ended: a journal line could
+        have made it look so."""
+        root = getattr(self.lanes.store, "root", "")
+        for booking, (pid, mark) in list(self.watched.items()):
+            item = found.get(booking)
+            if item is None or item.state != book.HELD:
+                self.watched.pop(booking, None)
+                if item is not None and item.state == book.RELEASED and item.cut:
+                    freeze.end_booking(booking, pid, mark, root, self.lanes.procs)
+        for booking, item in found.items():
+            if item.state == book.HELD and item.pid is not None and item.mark and self.lanes.live(item):
+                self.watched.setdefault(booking, (item.pid, item.mark))
+
     def _hung(self, found, runs, hist, now: float) -> dict[str, dict]:
         """The held runs that look hung: long past their estimate and computing next to nothing. Read every
         CPU_EVERY_S; between, the last finding stands."""
@@ -236,7 +280,7 @@ class Scheduler:
         if self._cpu_at is not None and now - self._cpu_at < CPU_EVERY_S:
             return {b: v for b, v in self.hung.items() if b in held}
         self._cpu_at = now
-        table, cpu = _cpu_table() if held else (None, None)
+        table, own, kids = _cpu_table() if held else (None, None, None)
         if table is None:
             return {}
         out = {}
@@ -246,7 +290,8 @@ class Scheduler:
             if not members or item.frozen == "frozen":
                 self.cpu_seen.pop(booking, None)   # gone from the table, or frozen: its quiet is no hang
                 continue
-            used = sum(cpu.get(pid, 0.0) for pid in members)
+            used = kids.get(item.pid, 0.0) + sum(own.get(pid, 0.0) + kids.get(pid, 0.0)
+                                                 for pid in members if pid != item.pid)
             samples = self.cpu_seen.setdefault(booking, collections.deque())
             samples.append((now, used))
             while len(samples) > 1 and now - samples[1][0] >= HUNG_QUIET_S:

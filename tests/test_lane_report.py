@@ -24,15 +24,25 @@ HUNG = {"ran_s": 25000, "estimate_s": 58, "cores": 0.001, "quiet_s": 900, "who":
         "note": "python3 tools/unity_tests.py", "run_for": "fix/x", "project": "p1"}
 
 
-def test_a_hung_run_is_its_projects_item_and_marked_in_the_lane(tmp_path):
+def test_a_hung_run_is_its_projects_item_and_marked_in_the_lane(tmp_path, monkeypatch):
+    monkeypatch.setattr(daemon, "gone", lambda root, **kw: False)
     root = lane_root(tmp_path)
     daemon._write_beat(root, 4242, "m", {"hung": {"b7": HUNG, "b8": {**HUNG, "project": "p2"}}}, 1.0)
     found = report.items(tmp_path, "p1", NOW)
     assert [(item.kind, item.branch, item.who) for item in found] == [(report.HUNG, "fix/x", "b7 hung")]
     assert "looks hung: 417 min held (its estimate 58 s)" in found[0].text and "`flotilla lane stop`" in found[0].text
     beat = daemon.heartbeat(root)
-    assert "LOOKS HUNG: 417 min against an estimate of 58 s" in commands.hung_text(beat, "b7")
+    assert "LOOKS HUNG: 417 min held (its estimate 58 s)" in commands.hung_text(beat, "b7")
     assert commands.hung_text(beat, "b9") == ""
+
+
+def test_a_malformed_or_stale_beat_breaks_nothing(tmp_path, monkeypatch):
+    root = lane_root(tmp_path)
+    bad = {**HUNG, "ran_s": "NaN", "estimate_s": "x", "quiet_s": None}
+    daemon._write_beat(root, 4242, "m", {"hung": {"b7": bad}}, 1.0)
+    assert "LOOKS HUNG: 0 min held (no estimate)" in commands.hung_text(daemon.heartbeat(root), "b7")
+    monkeypatch.setattr(daemon, "gone", lambda root, **kw: True)
+    assert report.items(tmp_path, "p1", NOW) == []   # a dead daemon's last word is not repeated
 
 
 def test_an_older_daemons_beat_without_hung_still_reads(tmp_path):

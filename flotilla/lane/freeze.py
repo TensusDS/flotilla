@@ -273,6 +273,44 @@ def end_booking(booking: str, unit: str = "", *, run=subprocess.run, root: Path 
     return len(pids)
 
 
+def _environ(proc_root: Path, pid: int) -> set[bytes] | None:
+    try:
+        return set((proc_root / str(pid) / "environ").read_bytes().split(b"\0"))
+    except OSError:
+        return None
+
+
+def end_booking(booking: str, client_pid: int, client_mark: str, root, procs, *,
+                proc_root: Path = Path("/proc")) -> int:
+    """SIGKILL what is left of a run whose client is gone - it holds no booking any more and nobody reads its
+    verdict. Only a process whose own environment names this booking and this client (`acquire.CLIENT_ENV`) is
+    ended, and only once that client is provably gone - no longer there, or another process under its pid. The
+    journal says nothing here: a line any session appends can neither choose a victim nor declare a client dead
+    (review of dba1899). Linux only (/proc); elsewhere nothing is ended. How many were ended."""
+    from flotilla.lane.acquire import CLIENT_ENV, client_word
+    if not booking or not client_mark or not proc_root.is_dir():
+        return 0
+    there = procs.exists(client_pid)
+    mark = procs.start_mark(client_pid) if there else None
+    if not (there is False or (there and mark is not None and mark != client_mark)):
+        return 0   # the client may still be there: nothing is ended on a doubt
+    want = {f"{BOOKING_ENV}={booking}".encode(),
+            f"{CLIENT_ENV}={client_word(client_pid, client_mark, root)}".encode()}
+    ended = 0
+    for entry in proc_root.iterdir():
+        if not entry.name.isdigit() or int(entry.name) == os.getpid():
+            continue
+        found = _environ(proc_root, int(entry.name))
+        if found is None or not want <= found:
+            continue
+        try:
+            os.kill(int(entry.name), signal.SIGKILL)
+            ended += 1
+        except (ProcessLookupError, PermissionError):
+            continue
+    return ended
+
+
 def _state(proc_root: Path, pid: int) -> str | None:
     try:
         stat = (proc_root / str(int(pid)) / "stat").read_text(encoding="utf-8", errors="replace")

@@ -484,3 +484,39 @@ def test_a_freeze_that_fails_is_not_counted(tmp_path, monkeypatch):   # review o
     with pytest.raises(OSError):
         s.freeze(512)
     assert s.freezes == 0 and not s.frozen()   # nothing froze: neither counted nor left saying frozen
+
+
+class _Table:
+    def __init__(self, there, mark="m"):
+        self.there, self.mark = there, mark
+
+    def exists(self, pid):
+        return self.there
+
+    def start_mark(self, pid):
+        return self.mark if self.there else None
+
+
+def test_what_is_left_of_a_lost_run_is_ended_only_by_its_own_word(tmp_path, monkeypatch):
+    """Review of dba1899, 1, 2, 13: the journal, which any session writes, must never choose what the daemon kills.
+    A process is ended only when its own environment names the booking, the client and this lane, and that client
+    is provably gone."""
+    from flotilla.lane.acquire import CLIENT_ENV, ENV
+    killed = []
+    monkeypatch.setattr(freeze.os, "kill", lambda pid, sig: killed.append(pid))
+    proc = tmp_path / "proc"
+    environs = {100: [f"{ENV}=b7", f"{CLIENT_ENV}=12:m:/lane"],            # the run's orphan
+                101: [f"{ENV}=b7", f"{CLIENT_ENV}=12:m:/another-lane"],    # b7 of another state dir
+                102: [f"{ENV}=b7", f"{CLIENT_ENV}=13:m:/lane"],            # b7 under another client
+                103: [f"{ENV}=b8", f"{CLIENT_ENV}=12:m:/lane"],            # another booking
+                104: ["HOME=/x"]}
+    for pid, env in environs.items():
+        (proc / str(pid)).mkdir(parents=True)
+        (proc / str(pid) / "environ").write_bytes(b"\0".join(item.encode() for item in env) + b"\0")
+    assert freeze.end_booking("b7", 12, "m", "/lane", _Table(False), proc_root=proc) == 1 and killed == [100]
+    killed.clear()
+    assert freeze.end_booking("b7", 12, "m", "/lane", _Table(True, "other"), proc_root=proc) == 1   # pid reused
+    killed.clear()
+    assert freeze.end_booking("b7", 12, "m", "/lane", _Table(True, "m"), proc_root=proc) == 0   # client alive
+    assert freeze.end_booking("b7", 12, "m", "/lane", _Table(None), proc_root=proc) == 0   # cannot say: no proof
+    assert killed == []

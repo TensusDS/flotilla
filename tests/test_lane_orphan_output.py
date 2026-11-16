@@ -23,21 +23,23 @@ ORPHAN = ("import subprocess, sys, time\n"
           "print('started', flush=True)\n"
           "time.sleep(0 if sys.argv[2] == 'exit' else 60)\n")
 
-#: `execute` in a process of its own: it makes that process the reaper of the command's orphans, which must not
-#: stay true of the test process. Prints the result as JSON.
+#: `execute` in a process of its own, as `flotilla lane run` runs it. Prints the result as JSON.
 DRIVER = ("import json, sys\n"
           "from flotilla.lane import run\n"
+          "if sys.argv[4] == 'no-proc':\n"
+          "    run._pipe_holders = lambda inode, proc='/proc': None\n"
+          "if sys.argv[4] == 'stuck':   # a member SIGKILL cannot end: its group reads as there for ever\n"
+          "    run._group_left = lambda process: True\n"
           "result = run.execute([sys.executable, '-c', sys.argv[1], sys.argv[2], sys.argv[3]],\n"
-          "                     out=open('/dev/null', 'w'), ceiling=float(sys.argv[5]),\n"
-          "                     reap_orphans=sys.argv[4] == 'reaper')\n"
+          "                     out=open('/dev/null', 'w'), ceiling=float(sys.argv[5]))\n"
           "print(json.dumps({'verdict': result.verdict, 'at_ceiling': result.at_ceiling,\n"
           "                  'orphans': result.orphans}))\n")
 
 
-def drive(tmp_path, *, ending: str, reaper: str = "reaper", ceiling: float = 1.0):
+def drive(tmp_path, *, ending: str, holders: str = "proc", ceiling: float = 1.0):
     pid_file = tmp_path / "orphan.pid"
     began = time.monotonic()
-    done = subprocess.run([sys.executable, "-c", DRIVER, ORPHAN, str(pid_file), ending, reaper, str(ceiling)],
+    done = subprocess.run([sys.executable, "-c", DRIVER, ORPHAN, str(pid_file), ending, holders, str(ceiling)],
                           cwd=ROOT, capture_output=True, text=True, timeout=40,
                           env={**os.environ, "PYTHONPATH": str(ROOT)})
     took = time.monotonic() - began
@@ -58,7 +60,7 @@ def finish(pid):
         os.kill(pid, 9)
 
 
-@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="a child subreaper is Linux's")
+@pytest.mark.skipif(not os.path.isdir("/proc"), reason="the output's holders are read from /proc")
 def test_a_ceiling_ends_the_run_though_an_orphan_holds_its_output(tmp_path):
     result, took, orphan = drive(tmp_path, ending="sleep")
     try:
@@ -70,7 +72,7 @@ def test_a_ceiling_ends_the_run_though_an_orphan_holds_its_output(tmp_path):
         finish(orphan)
 
 
-@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="a child subreaper is Linux's")
+@pytest.mark.skipif(not os.path.isdir("/proc"), reason="the output's holders are read from /proc")
 def test_a_command_that_ends_with_an_orphan_holding_its_output_is_let_go(tmp_path):
     result, took, orphan = drive(tmp_path, ending="exit", ceiling=60)
     try:
@@ -80,8 +82,9 @@ def test_a_command_that_ends_with_an_orphan_holding_its_output_is_let_go(tmp_pat
 
 
 def test_an_orphan_that_cannot_be_found_still_lets_the_run_go(tmp_path):
-    """Where this process cannot be the orphans' reaper (macOS), the run is let go and says what it could not end."""
-    result, took, orphan = drive(tmp_path, ending="exit", reaper="no-reaper", ceiling=60)
+    """Where the output's holders cannot be read (no /proc, as on macOS), the run is let go and says what it could
+    not end."""
+    result, took, orphan = drive(tmp_path, ending="exit", holders="no-proc", ceiling=60)
     try:
         assert took < 20 and result["verdict"] == "green" and result["orphans"] is None
     finally:
@@ -96,19 +99,49 @@ def test_the_verdict_line_names_what_was_ended_or_left():
     assert commands.verdict_line(runner.RunResult(**base)) == "lane run: green - 3 passed"
 
 
-#: The ceiling test of test_lane_run.py, under the reaper: a grandchild in the command's own group, which dies with
-#: it and is re-parented to the lane process first - a zombie there must not keep the group "left" for ever.
+#: A grandchild in the command's own group, which the ceiling ends with it: nothing is left to end as an orphan.
 GRANDCHILD = ("import subprocess, sys, time\n"
               "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
               "print('started', flush=True)\n"
               "time.sleep(0 if sys.argv[2] == 'exit' else 60)\n")
 
 
-@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="a child subreaper is Linux's")
-def test_under_the_reaper_a_dead_member_does_not_hold_the_run(tmp_path):
+@pytest.mark.skipif(not os.path.isdir("/proc"), reason="the output's holders are read from /proc")
+def test_a_member_ended_with_its_group_is_no_orphan(tmp_path):
     began = time.monotonic()
-    done = subprocess.run([sys.executable, "-c", DRIVER, GRANDCHILD, str(tmp_path / "x"), "sleep", "reaper", "1"],
+    done = subprocess.run([sys.executable, "-c", DRIVER, GRANDCHILD, str(tmp_path / "x"), "sleep", "proc", "1"],
                           cwd=ROOT, capture_output=True, text=True, timeout=40,
                           env={**os.environ, "PYTHONPATH": str(ROOT)})
     result = json.loads(done.stdout.strip().splitlines()[-1])
     assert time.monotonic() - began < 20 and result["at_ceiling"] and result["orphans"] == 0, done.stderr
+
+
+#: A server the command starts in a session of its own with its output closed, then the command ends: the server
+#: holds nothing of the run, and is left running (review of dba1899, 5: a gradle daemon or sccache is no orphan).
+SERVER = ("import subprocess, sys, time\n"
+          "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'], start_new_session=True,\n"
+          "                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)\n"
+          "open(sys.argv[1], 'w').write(str(child.pid))\n"
+          "print('started', flush=True)\n")
+
+
+@pytest.mark.skipif(not os.path.isdir("/proc"), reason="the output's holders are read from /proc")
+def test_a_server_that_closed_its_output_is_left_running(tmp_path):
+    pid_file = tmp_path / "server.pid"
+    done = subprocess.run([sys.executable, "-c", DRIVER, SERVER, str(pid_file), "exit", "proc", "60"], cwd=ROOT,
+                          capture_output=True, text=True, timeout=40, env={**os.environ, "PYTHONPATH": str(ROOT)})
+    server = int(pid_file.read_text())
+    try:
+        result = json.loads(done.stdout.strip().splitlines()[-1])
+        assert result["verdict"] == "green" and result["orphans"] == 0 and alive(server)
+    finally:
+        finish(server)
+
+
+def test_a_member_that_cannot_be_ended_does_not_hold_the_run_past_its_ceiling(tmp_path):
+    """Review of dba1899, 4: a member in D state, or of another user after sudo, stays "there" after SIGKILL."""
+    result, took, orphan = drive(tmp_path, ending="sleep", holders="stuck", ceiling=1.0)
+    try:
+        assert took < 30 and result["at_ceiling"], result
+    finally:
+        finish(orphan)
