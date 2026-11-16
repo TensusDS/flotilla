@@ -480,3 +480,36 @@ def test_a_working_run_or_a_young_one_is_not_hung(tmp_path, monkeypatch):
     assert item.id not in pictures[-1]["hung"]
     item, pictures = _hung_world(tmp_path / "young", monkeypatch, cores_used=0.0, estimate_s=600.0, ran_min=60)
     assert item.id not in pictures[-1]["hung"]   # 60 min < 10 x its 10-minute estimate
+
+
+def test_a_forged_cut_after_a_normal_release_ends_nothing(tmp_path, monkeypatch):
+    """Review of 972db77, D: a "released, cut" line any session appends right after a run ended normally must not
+    make the daemon end the servers that run left running."""
+    procs = SomeGone()
+    lanes = book.Book(LocalLogStore(tmp_path), procs)
+    sched = scheduler.Scheduler(lanes, value_of(), signer=(4242, "m9"), groups_io=FakeGroups(), clock=Clock(),
+                                default_floor=2000, total_mb=lambda: 15603)
+    ended = []
+    monkeypatch.setattr(freeze, "end_booking", lambda *a, **kw: ended.append(a) or 1)
+    run = lanes.enqueue("main session 3", "build", pid=40, mark="m")
+    raw(lanes, booking=run.id, state=book.HELD, started=lanes._now())
+    sched.step()   # seen live
+    lanes.release(run.id)
+    procs.gone.add(40)   # its client exited normally
+    raw(lanes, booking=run.id, state=book.RELEASED, cut=True)   # forged
+    sched.step()
+    assert ended == [] and run.id not in sched.watched
+
+
+def test_a_zombie_client_is_gone():
+    class Zombie:
+        def exists(self, pid):
+            return True
+
+        def start_mark(self, pid):
+            return "m"
+
+        def alive(self, pid, mark):
+            return False   # Z: ended, not yet reaped
+    assert scheduler.client_gone(Zombie(), 5, "m")
+    assert not scheduler.client_gone(SomeGone(), 5, "m")   # alive and the same: not gone

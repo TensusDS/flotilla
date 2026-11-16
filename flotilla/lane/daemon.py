@@ -272,7 +272,7 @@ def _spawn(where: Path, root: Path, handover: bool = False) -> None:
     if freeze.backend(setting=True)[0] == freeze.SCOPE:
         argv = ["systemd-run", "--user", "--scope", "--quiet", "--collect",
                 f"--unit=flotilla-daemon-{os.getpid()}-{time.time_ns()}.scope", "--", *argv]
-    env = {key: value for key, value in os.environ.items() if key != acquire.ENV}
+    env = {key: value for key, value in os.environ.items() if key not in (acquire.ENV, acquire.CLIENT_ENV)}
     Path(root).mkdir(parents=True, exist_ok=True)
     fd = os.open(Path(root) / LOG, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NONBLOCK
                  | getattr(os, "O_NOFOLLOW", 0), 0o600)

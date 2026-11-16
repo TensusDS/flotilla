@@ -236,43 +236,6 @@ def carries(pid: int, booking: str, *, proc_root: Path = Path("/proc"), run=subp
     return named == booking
 
 
-def booking_pids(booking: str, *, proc_root: Path = Path("/proc")) -> set[int]:
-    """The processes that run under `booking` by their own environment (Linux: /proc; elsewhere none are found)."""
-    found: set[int] = set()
-    if not booking or not proc_root.is_dir():
-        return found
-    want = f"{BOOKING_ENV}={booking}".encode()
-    for entry in proc_root.iterdir():
-        if not entry.name.isdigit() or int(entry.name) == os.getpid():
-            continue
-        try:
-            if want in (entry / "environ").read_bytes().split(b"\0"):
-                found.add(int(entry.name))
-        except OSError:
-            continue
-    return found
-
-
-def end_booking(booking: str, unit: str = "", *, run=subprocess.run, root: Path = CGROUP_ROOT,
-                proc_root: Path = Path("/proc")) -> int:
-    """SIGKILL what is left of a run whose client is gone - nobody reads its verdict, and it holds no booking any
-    more: the processes of its scope and those that carry its booking. How many were found."""
-    pids = booking_pids(booking, proc_root=proc_root)
-    cgroup = _cgroup_of(unit, run, root) if unit else None
-    if cgroup is not None:
-        try:
-            pids |= {int(word) for word in (cgroup / "cgroup.procs").read_text(encoding="utf-8").split()
-                     if word.isdigit()}
-        except (OSError, ValueError):
-            pass
-    for pid in pids:
-        try:
-            os.kill(pid, signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
-            continue
-    return len(pids)
-
-
 def _environ(proc_root: Path, pid: int) -> set[bytes] | None:
     try:
         return set((proc_root / str(pid) / "environ").read_bytes().split(b"\0"))
@@ -290,9 +253,8 @@ def end_booking(booking: str, client_pid: int, client_mark: str, root, procs, *,
     from flotilla.lane.acquire import CLIENT_ENV, client_word
     if not booking or not client_mark or not proc_root.is_dir():
         return 0
-    there = procs.exists(client_pid)
-    mark = procs.start_mark(client_pid) if there else None
-    if not (there is False or (there and mark is not None and mark != client_mark)):
+    from flotilla.lane.scheduler import client_gone
+    if not client_gone(procs, client_pid, client_mark):
         return 0   # the client may still be there: nothing is ended on a doubt
     want = {f"{BOOKING_ENV}={booking}".encode(),
             f"{CLIENT_ENV}={client_word(client_pid, client_mark, root)}".encode()}

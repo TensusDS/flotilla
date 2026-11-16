@@ -1933,7 +1933,9 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    booked again or for six hours. What is left of it is SIGKILLed only where a process's own environment names its
    booking, its client and this lane (`FLOTILLA_LANE_CLIENT`), that client is provably gone, and this daemon saw the
    run live with that client: a journal line, which any session appends, can neither choose a victim nor declare a
-   client dead (review of dba1899: as first written, one forged line killed a live run's processes). Linux only. What memory the sessions themselves take, and admission against it,
+   client dead (review of dba1899: as first written, one forged line killed a live run's processes); and only a
+   run this daemon itself released, that tick. So a lost run this daemon never saw live - killed while no daemon
+   ran, across a handover, within its first tick - is released and told, not ended: it fails safe. Linux only. What memory the sessions themselves take, and admission against it,
    stays open (TODO).
 
 ## Open questions (for the foundation spec)

@@ -136,6 +136,12 @@ command that every guard shares, not one more reading.
 - **The orchestrator's lane items read the whole lane journal on every prompt** (0.14 s for 3.4 MB, measured by
   the reviewer); a cached `Book` would read on from its offset. *(checked 2026-11-16 on 0.33.2: open, cosmetic -
   flotilla/lane/report.py items)*
+- **A lost run's leftovers are found by their environment only**: one that scrubbed it (`env -i`, sudo, a
+  container) outlives its run; its scope is no longer a route, since the journal names it. And a lost run this
+  daemon never saw live (a handover, a restart) is released and told, not ended. *(checked 2026-11-16 on 0.33.2:
+  open, fails safe - flotilla/lane/freeze.py end_booking, scheduler.py _end_lost)*
+- **A leader in D state** holds `_stop`'s `process.wait()` in the keeper, and the run with it; existed before
+  0.33.2. *(checked 2026-11-16 on 0.33.2: open, narrow - flotilla/lane/run.py)*
 - **On macOS neither a hang nor an orphan is found**, and what is left of a run cut short is not ended: all three
   read /proc. The run is let go and says so. *(checked 2026-11-16 on 0.33.2: open - flotilla/lane/run.py,
   scheduler.py, freeze.py)*

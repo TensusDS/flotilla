@@ -646,6 +646,7 @@ class Book:
         thaw it (the person's ruling, 2026-11-06). A thaw that fails is tried again by the next grant."""
         from flotilla.lane import admission
         now = self._moment()
+        self.rescued = []   # the dead holders this rescue released: the daemon ends what is left of them
         for item in [item for item in found.values() if item.state != HELD and item.frozen == "frozen"]:
             # ended still frozen: an older flotilla's sweep released a dead holder without thawing its command
             if _thaw_command(item, self.procs):
@@ -664,6 +665,7 @@ class Book:
                 continue
             if dead:
                 self._write(tx, item.id, RELEASED, why="no process behind it", cut=True, frozen="", verdict="killed")
+                self.rescued.append(item.id)
             else:
                 self._write(tx, item.id, HELD, frozen="", unanswered=True, started=self._now(),
                             frozen_s=_frozen_for(item, now))

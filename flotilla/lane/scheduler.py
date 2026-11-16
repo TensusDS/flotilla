@@ -28,6 +28,22 @@ HUNG_TIMES, HUNG_FLOOR_S, HUNG_QUIET_S, HUNG_CORES = 10, 600.0, 600.0, 0.05
 CPU_EVERY_S = 15.0
 
 
+def client_gone(procs, pid: int, mark: str) -> bool:
+    """Whether a lane client is provably gone: no process under its pid, another process there (another start
+    mark), or a zombie of it. A look that cannot answer is no proof."""
+    if not hasattr(procs, "exists") or not hasattr(procs, "start_mark"):
+        return False   # a table that cannot say
+    there = procs.exists(pid)
+    if there is False:
+        return True
+    if not there:
+        return False
+    if hasattr(procs, "alive") and procs.alive(pid, mark) is False and procs.start_mark(pid) == mark:
+        return True   # its own process, ended and not yet reaped (review of 972db77, C)
+    found = procs.start_mark(pid)
+    return found is not None and found != mark
+
+
 def _estimate_s(item, hist) -> float | None:
     """What the run is estimated to take, in seconds, or None when nothing estimates it."""
     return estimate.for_booking(item, hist).seconds
@@ -159,11 +175,13 @@ class Scheduler:
         value = self.value_of(None)
         with lanes.store.transaction(book.KEY) as tx:
             lanes._rescue(tx, lanes._found(tx), value)   # a dead frozen holder: thawed, released cut, killed
+        released = set(getattr(lanes, "rescued", ()))
         found = lanes.bookings()
         if any(item.state in (book.HELD, book.WAITING) and self._gone(item) for item in found.values()):
-            lanes.sweep(gone=self._gone, why=LOST)   # its client was killed: nobody releases it, reads its verdict
+            # its client was killed: nobody releases it, nobody reads its verdict
+            released |= {item.id for item in lanes.sweep(gone=self._gone, why=LOST) if item.state == book.RELEASED}
             found = lanes.bookings()
-        self._end_lost(found)
+        self._end_lost(found, released)
         now, moment = self.clock(), lanes._moment()
         live = {item.id: item for item in found.values() if item.state in (book.HELD, book.WAITING)
                 and lanes.live(item)}
@@ -247,25 +265,20 @@ class Scheduler:
         if item.pid is None or not item.mark:
             return False
         procs = self.lanes.procs
-        if not hasattr(procs, "exists") or not hasattr(procs, "start_mark"):
-            return False   # a table that cannot say: no proof
-        there = procs.exists(item.pid)
-        if there is False:
-            return True
-        mark = procs.start_mark(item.pid) if there else None
-        return bool(there) and mark is not None and mark != item.mark
+        return client_gone(procs, item.pid, item.mark)
 
-    def _end_lost(self, found) -> None:
-        """End what is left of the runs this daemon saw live and that are now released cut - by the sweep or by the
+    def _end_lost(self, found, released: set) -> None:
+        """End what is left of the runs this daemon saw live and itself released this tick - by the sweep or by the
         rescue of a frozen one (review of dba1899, 3) - by the processes' own word (`freeze.end_booking`); and
-        remember the live ones. A run released before this daemon saw it live is not ended: a journal line could
-        have made it look so."""
+        remember the live ones. Neither a run this daemon never saw live nor one released by a journal line is
+        ended: a forged "cut" right after a normal release would end the servers that run left (review of 972db77,
+        D). A lost run first seen by a new daemon - a handover, a restart - is released and told, not ended."""
         root = getattr(self.lanes.store, "root", "")
         for booking, (pid, mark) in list(self.watched.items()):
             item = found.get(booking)
             if item is None or item.state != book.HELD:
                 self.watched.pop(booking, None)
-                if item is not None and item.state == book.RELEASED and item.cut:
+                if booking in released:
                     freeze.end_booking(booking, pid, mark, root, self.lanes.procs)
         for booking, item in found.items():
             if item.state == book.HELD and item.pid is not None and item.mark and self.lanes.live(item):
