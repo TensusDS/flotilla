@@ -140,6 +140,9 @@ command that every guard shares, not one more reading.
   container) outlives its run; its scope is no longer a route, since the journal names it. And a lost run this
   daemon never saw live (a handover, a restart) is released and told, not ended. *(checked 2026-11-16 on 0.33.2:
   open, fails safe - flotilla/lane/freeze.py end_booking, scheduler.py _end_lost)*
+- **`client_gone` lives in scheduler.py** and freeze imports it at call time; it belongs in procs.py. On macOS it
+  may ask `ps` three times per booking per tick. *(checked 2026-11-16 on 0.33.2: open, cosmetic -
+  flotilla/lane/scheduler.py client_gone)*
 - **A leader in D state** holds `_stop`'s `process.wait()` in the keeper, and the run with it; existed before
   0.33.2. *(checked 2026-11-16 on 0.33.2: open, narrow - flotilla/lane/run.py)*
 - **On macOS neither a hang nor an orphan is found**, and what is left of a run cut short is not ended: all three

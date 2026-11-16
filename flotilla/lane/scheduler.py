@@ -38,8 +38,8 @@ def client_gone(procs, pid: int, mark: str) -> bool:
         return True
     if not there:
         return False
-    if hasattr(procs, "alive") and procs.alive(pid, mark) is False and procs.start_mark(pid) == mark:
-        return True   # its own process, ended and not yet reaped (review of 972db77, C)
+    if hasattr(procs, "zombie") and procs.zombie(pid) is True and procs.start_mark(pid) == mark:
+        return True   # its own process, ended and not yet reaped - read, never inferred from a failed look
     found = procs.start_mark(pid)
     return found is not None and found != mark
 

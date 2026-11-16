@@ -509,7 +509,12 @@ def test_a_zombie_client_is_gone():
         def start_mark(self, pid):
             return "m"
 
-        def alive(self, pid, mark):
-            return False   # Z: ended, not yet reaped
+        def zombie(self, pid):
+            return True   # Z: ended, not yet reaped
+
+    class FailedLook(Zombie):
+        def zombie(self, pid):
+            return None   # the read did not answer: no proof
     assert scheduler.client_gone(Zombie(), 5, "m")
+    assert not scheduler.client_gone(FailedLook(), 5, "m")
     assert not scheduler.client_gone(SomeGone(), 5, "m")   # alive and the same: not gone
