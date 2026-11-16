@@ -32,6 +32,59 @@ into the user's settings from a command to get around it. Checked against the ch
 is non-UTF-8 or holds a NUL byte, and none of the four points at something to fix outside the directory.
 *(checked 2026-11-09 on 0.31.0: open, waiting on Anthropic - hooks/hooks.json, bin/, skills/*/SKILL.md)*
 
+## From a game project's fleet's field notes (2026-11-15..16, CLI 0.31.0, lane daemon 0.33.1)
+
+The person asked for these to reach flotilla's developer as an important finding. They were written by the
+game fleet's orchestrator from that night's state. Numbers are as read then, not measured over time. The "lane
+daemon 0.33.1" was a development copy - a branch's worktree whose lane run had started the machine's daemon - with
+the lane code of 0.33.0.
+
+- **The machine runs out of RAM, and the lane neither sees it nor prevents it.**
+  - The machine has 15 GB RAM and 8 cores, shared by two fleets: the game fleet with 7 seats and an orchestrator, and a second fleet with several seats and helpers.
+  - At about 03:30 UTC on 2026-11-16 there were 40 Claude Code processes on the box, 7.8 GB RSS together. The lane could give runs only 4.8 GB (2.5 GB free).
+  - Claude Code itself then stopped background tasks in three seats within minutes ("the system is running low on memory"). It stopped a Unity PlayMode re-run, a hand-over receipt, a full Godot+Unity run, and a small `dotnet test --filter` that had only been queued in the lane since 02:25. None got a verdict.
+  - Each seat then held its row and waited for the orchestrator, because Claude Code tells a session not to restart such a run on its own. Rows stalled until the orchestrator set an order by hand: small dotnet runs first, then Unity, then narrowed runs.
+
+  What went wrong, as seen from the fleet:
+  1. Lane admission counts its runs' memory, not the sessions'. Forty agent processes eat most of the box before any run starts, and the lane's "squeeze, freeze, never kill" promise does not cover a kill that Claude Code makes.
+  2. A run killed this way leaves no trace on the row. It is not in the lane and not recorded as killed, and `flotilla status` and watch said nothing, while the person had just been told the fleet would work overnight.
+  3. `flotilla spawn` raised two more seats that evening on a box this size without a word about memory. `fleet size` recommends by work, not by RAM.
+
+  Ideas, not a design:
+  - count live session RSS, of every project on the machine, in the lane's budget;
+  - have `spawn` and `fleet size` warn or refuse past a per-machine session-memory ceiling;
+  - record a run that vanished from under the lane as killed by the host, with the time, so watch flags the stalled row;
+  - give a seat a rule the orchestrator doesn't have to send by hand: after a host kill, rebook narrower, one run at a time.
+
+  - It happened again at 04:20 UTC. The lane was holding the second fleet's hand-over receipt (estimate up to 7.0 GB) that ran a headless Chromium (Playwright smoke run, one renderer at 3.0 GB RSS). That came on top of 38 Claude Code processes at 7.0 GB. Claude Code then killed two more of the game fleet's bookings that were still only queued: review 20's reader run and main 28's red run. So the lane admitted a 7 GB run against a 4.4 GB heavy budget that the sessions had already shrunk. Whether the receipt's estimate or its real use is what the lane checks against `available` was not checked.
+  - The workaround the orchestrator used: one run at a time across the whole project, in a fixed order, with each seat passing "your turn" to the next and checking `free -m` before booking. It works, but it is manual, slow and chatty.
+  - Main session 27's reading at 07:00 UTC, a hypothesis not yet verified: Claude Code's memory reaper kills the *background shells of idle sessions*. A seat that books `flotilla lane run` in the background and goes idle loses the shell, and the lane run with it, queued or running. Kills that night: three queued bookings, a MakeGolden run, and the sender's Godot run. A foreground lane call, with the session blocked, may not count as idle; it was being tried for small runs. If this is so, `lane run` waiting in a background shell is the weak point, and a lane that owned its runs apart from the booking shell would survive the reaper.
+
+  *(checked 2026-11-16 on 0.31.0 CLI / lane 0.33.1: B - measure; lane admission, flotilla spawn, flotilla fleet size)*
+- **A heavy head of the line can wait for hours behind another project's fair share.**
+  - A game-fleet run of a few seconds, estimated at 3.88 cores, headed that project's line from 21:32 UTC on 2026-11-15. The second fleet's turns held heavy cores at about 7.6 of 12, so it did not fit; six runs waited behind it.
+  - The sender reported 2.5 h of stall; part of that was a stale reading, because the run had in fact gone at about 00:06.
+  - The reason printed ("heavy runs' cores: 7.58 of 12") was true but gave no estimate of when.
+  - Related, filed earlier in the fleet's notes (2026-11-11): an estimate above the whole heavy budget waits forever.
+
+  *(checked 2026-11-16 on lane 0.33.1: measure - the daemon's fair share and its "waits because" text)*
+- **A hung run with a 58 s estimate held the lane for 7 hours, and nothing stopped it.**
+  - On 2026-11-16, the game fleet's sender 13's `python3 tools/unity_tests.py` (b12428, a plain command, not systemd-run) was held from 07:21 to about 14:30 UTC. Its estimate was 58 s and its exact-match history 10 runs.
+  - Its Unity editor hung in batch mode: the UnityAutoQuitter child was defunct, and the editor used 0.1 GB and almost no CPU.
+  - The lane line showed it as "immortal from …". Neither the run's ceiling (at least half an hour, or 10× the measured time) nor watch stopped it. The second fleet's hand-over receipt waited behind it until one of its sessions told the person.
+  - It ended when the orchestrator, told by the person, asked the owner to `flotilla lane stop`.
+
+  - The sender's account afterwards: `flotilla lane stop` recorded b12428 as "killed - stopped by a signal … no verdict", but the Unity editor (996289) SURVIVED the stop. It had been re-parented to init (PPID 1), so it sat outside what the stop ended. So did its children (Licensing.Client, PackageManager, ILPP.Runner, a second AutoQuitter), while the first AutoQuitter and a dotnet child were defunct. The sender ended those five pids by hand.
+  - The editor's log stops after "Loading mode Default", before any test, and then shows only the shutdown at 14:30. A guess, not checked: this run started at 07:21, inside the hour when Claude Code's memory reaper was killing processes (the note above). A reaper kill of the booking shell or of a Unity helper could have orphaned the editor, which then waited forever outside the lane's scope.
+
+  What to look at:
+  - why the ceiling did not apply ("immortal");
+  - how a child re-parented to init escapes the run's scope, and whether the lane can find and end such orphans by the run's cgroup or session;
+  - a run far past its estimate, with near-zero CPU, is a hang the lane could flag or stop itself;
+  - watch could name a held run at 10× or more of its estimate as a dropped ball for its project's orchestrator.
+
+  *(checked 2026-11-16 on lane 0.33.1: B - measure; the lane's ceiling and its "immortal" state)*
+
 ## From the reviews of 0.31.2 (2026-11-10, what reaches the guards and what they answer on a failure)
 
 Four review rounds. What is left belongs to one cause: the guards read a command with a matcher and bash reads it
@@ -68,6 +121,16 @@ command that every guard shares, not one more reading.
   report's ask): with seats pinned it is needed only when the default model itself is limited; retire, spawn and
   `work adopt` do it by hand. *(checked 2026-11-13 on 0.32.0: open - docs/specs/2026-11-13-fleet-model-design.md,
   non-goals)*
+
+## From the reviews of 0.33.1 (2026-11-16, the fleet's work on another model noticed)
+
+- **With a busy queue, the full notice comes back only after the person's line goes an hour unshown**: the hour
+  is measured from the line's last showing, not the full notice's. Between, the short tag names the models that
+  differ and points at `flotilla fleet model`, which prints the full notice. A record of the last full notice
+  would give it back hourly. *(checked 2026-11-16 on 0.33.1: open, cosmetic - flotilla/hooks.py _persons_line)*
+- **Two live orchestrator sessions, both off the default on different models**: the first in census order is
+  noted; if that order flips, the mute and the clock flip with it. *(checked 2026-11-16 on 0.33.1: open, rare -
+  flotilla/fleet/override.py current)*
 
 ## From the reviews of 0.33.0 (2026-11-15, a seat on a borrowed model)
 
