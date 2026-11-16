@@ -387,3 +387,134 @@ def test_the_share_is_read_again_each_tick(tmp_path):   # review of 8dfcc24
     sched.step()
     found = lanes.bookings()
     assert (found[alpha.id].state, found[beta.id].state) == (book.WAITING, book.HELD)
+
+
+class SomeGone(Procs):
+    def __init__(self, gone=()):
+        self.gone = set(gone)
+
+    def alive(self, pid, mark):
+        return pid not in self.gone
+
+    def exists(self, pid):
+        return pid not in self.gone
+
+
+def test_a_held_run_whose_client_is_gone_is_ended_as_killed(tmp_path, monkeypatch):
+    """Field notes 2026-11-16: Claude Code killed lane clients under memory pressure; their bookings stayed held,
+    their runs left no verdict and no trace, and their commands ran on outside the lane."""
+    procs = SomeGone({14})
+    lanes = book.Book(LocalLogStore(tmp_path), procs)
+    sched = scheduler.Scheduler(lanes, value_of(), signer=(4242, "m9"), groups_io=FakeGroups(), clock=Clock(),
+                                default_floor=2000, total_mb=lambda: 15603)
+    ended = []
+    monkeypatch.setattr(freeze, "end_booking", lambda booking, pid, mark, root, procs, **kw:
+                        ended.append((booking, pid, mark)) or 1)
+    held = lanes.enqueue("main session 3", "unity tests", pid=12, mark="m")
+    raw(lanes, booking=held.id, state=book.HELD, started=lanes._now())
+    waiting = lanes.enqueue("main session 4", "dotnet", pid=14, mark="m")   # its client already gone
+    live = lanes.enqueue("main session 5", "fine", pid=13, mark="m")
+    sched.step()   # the daemon sees the run live
+    procs.gone.add(12)   # then its client is killed
+    sched.step()
+    found = lanes.bookings()
+    assert (found[held.id].state, found[held.id].cut, found[held.id].verdict) == (book.RELEASED, True, "killed")
+    assert found[held.id].why == scheduler.LOST
+    assert found[waiting.id].state == book.LEFT and not found[waiting.id].cut
+    assert found[live.id].state != book.RELEASED
+    assert ended == [(held.id, 12, "m")]   # what is left of it, by its own word (freeze.end_booking)
+
+
+def test_a_forged_line_neither_kills_nor_ends_a_live_run(tmp_path, monkeypatch):
+    """Review of dba1899, 2: a journal line any session appends - a mark that no longer matches - made a live run
+    read as gone, and the daemon SIGKILLed its processes. Gone is the process table's word, and nothing is ended
+    for a run the daemon did not see live with that very client."""
+    procs = SomeGone()
+    lanes = book.Book(LocalLogStore(tmp_path), procs)
+    sched = scheduler.Scheduler(lanes, value_of(), signer=(4242, "m9"), groups_io=FakeGroups(), clock=Clock(),
+                                default_floor=2000, total_mb=lambda: 15603)
+    ended = []
+    monkeypatch.setattr(freeze, "end_booking", lambda *a, **kw: ended.append(a) or 1)
+    old = lanes.enqueue("main session 3", "old run", pid=30, mark="m")
+    raw(lanes, booking=old.id, state=book.RELEASED)
+    raw(lanes, booking=old.id, state=book.HELD, pid=31, mark="m")   # forged: an old booking held again
+    procs.gone.add(31)
+    sched.step()
+    assert lanes.bookings()[old.id].state == book.RELEASED and ended == []   # released; nothing it never saw live
+
+
+def _hung_world(tmp_path, monkeypatch, *, cores_used, estimate_s=58.0, ran_min=120):
+    """A held run of pid 21 that started `ran_min` ago, using `cores_used` of a core; steps 15 s apart."""
+    lanes = book.Book(LocalLogStore(tmp_path), Procs())
+    clock = Clock()
+    sched = scheduler.Scheduler(lanes, value_of(), signer=(4242, "m9"), groups_io=FakeGroups(), clock=clock,
+                                default_floor=2000, total_mb=lambda: 15603)
+    item = lanes.enqueue("sender 13", "python3 tools/unity_tests.py", pid=21, mark="m", project="p1",
+                         run_for="fix/x")
+    began = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=ran_min)).isoformat(timespec="seconds")
+    raw(lanes, booking=item.id, state=book.HELD, started=began, since=began)
+    monkeypatch.setattr(scheduler, "_estimate_s", lambda item, hist: estimate_s)
+    box = {"cpu": 10.0}
+    monkeypatch.setattr(scheduler, "_cpu_table", lambda: ({21: (1, 21, 0), 22: (21, 21, 0)},
+                                                         {21: 50.0 + clock.t * 0.08, 22: box["cpu"]},
+                                                         {21: 0.0, 22: 0.0}))   # the client polls: not counted
+    pictures = []
+    for _ in range(45):   # 11 minutes
+        _actions, picture = sched.step()
+        pictures.append(picture)
+        clock.t += 15
+        box["cpu"] += cores_used * 15
+    return item, pictures
+
+
+def test_a_long_quiet_run_is_marked_hung(tmp_path, monkeypatch):
+    item, pictures = _hung_world(tmp_path, monkeypatch, cores_used=0.001)
+    assert item.id not in pictures[30]["hung"]   # under 10 minutes watched: no word yet
+    hung = pictures[-1]["hung"][item.id]
+    assert hung["estimate_s"] == 58 and hung["ran_s"] >= 7000 and hung["cores"] < scheduler.HUNG_CORES
+    assert (hung["who"], hung["project"], hung["run_for"]) == ("sender 13", "p1", "fix/x")
+
+
+def test_a_working_run_or_a_young_one_is_not_hung(tmp_path, monkeypatch):
+    item, pictures = _hung_world(tmp_path, monkeypatch, cores_used=0.5)
+    assert item.id not in pictures[-1]["hung"]
+    item, pictures = _hung_world(tmp_path / "young", monkeypatch, cores_used=0.0, estimate_s=600.0, ran_min=60)
+    assert item.id not in pictures[-1]["hung"]   # 60 min < 10 x its 10-minute estimate
+
+
+def test_a_forged_cut_after_a_normal_release_ends_nothing(tmp_path, monkeypatch):
+    """Review of 972db77, D: a "released, cut" line any session appends right after a run ended normally must not
+    make the daemon end the servers that run left running."""
+    procs = SomeGone()
+    lanes = book.Book(LocalLogStore(tmp_path), procs)
+    sched = scheduler.Scheduler(lanes, value_of(), signer=(4242, "m9"), groups_io=FakeGroups(), clock=Clock(),
+                                default_floor=2000, total_mb=lambda: 15603)
+    ended = []
+    monkeypatch.setattr(freeze, "end_booking", lambda *a, **kw: ended.append(a) or 1)
+    run = lanes.enqueue("main session 3", "build", pid=40, mark="m")
+    raw(lanes, booking=run.id, state=book.HELD, started=lanes._now())
+    sched.step()   # seen live
+    lanes.release(run.id)
+    procs.gone.add(40)   # its client exited normally
+    raw(lanes, booking=run.id, state=book.RELEASED, cut=True)   # forged
+    sched.step()
+    assert ended == [] and run.id not in sched.watched
+
+
+def test_a_zombie_client_is_gone():
+    class Zombie:
+        def exists(self, pid):
+            return True
+
+        def start_mark(self, pid):
+            return "m"
+
+        def zombie(self, pid):
+            return True   # Z: ended, not yet reaped
+
+    class FailedLook(Zombie):
+        def zombie(self, pid):
+            return None   # the read did not answer: no proof
+    assert scheduler.client_gone(Zombie(), 5, "m")
+    assert not scheduler.client_gone(FailedLook(), 5, "m")
+    assert not scheduler.client_gone(SomeGone(), 5, "m")   # alive and the same: not gone

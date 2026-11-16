@@ -646,6 +646,7 @@ class Book:
         thaw it (the person's ruling, 2026-11-06). A thaw that fails is tried again by the next grant."""
         from flotilla.lane import admission
         now = self._moment()
+        self.rescued = []   # the dead holders this rescue released: the daemon ends what is left of them
         for item in [item for item in found.values() if item.state != HELD and item.frozen == "frozen"]:
             # ended still frozen: an older flotilla's sweep released a dead holder without thawing its command
             if _thaw_command(item, self.procs):
@@ -663,7 +664,8 @@ class Book:
             if not _thaw_command(item, self.procs):
                 continue
             if dead:
-                self._write(tx, item.id, RELEASED, why="no process behind it", cut=True, frozen="")
+                self._write(tx, item.id, RELEASED, why="no process behind it", cut=True, frozen="", verdict="killed")
+                self.rescued.append(item.id)
             else:
                 self._write(tx, item.id, HELD, frozen="", unanswered=True, started=self._now(),
                             frozen_s=_frozen_for(item, now))
@@ -869,8 +871,9 @@ class Book:
         return self._end(booking_id, RELEASED, why,
                          **{k: v for k, v in (measured or {}).items() if k in MEASURED and v is not None})
 
-    def sweep(self, gone=None) -> list[Booking]:
-        """End bookings whose process is not alive; with `gone`, only those it also says are gone."""
+    def sweep(self, gone=None, why: str = "no process behind it") -> list[Booking]:
+        """End bookings whose process is not alive; with `gone`, only those it also says are gone. A held one is a
+        run cut short: released `cut`, its verdict `killed` - it has none (field notes 2026-11-16)."""
         swept = []
         with self.store.transaction(KEY) as tx:
             found = self._found(tx)
@@ -880,6 +883,6 @@ class Book:
                 state = RELEASED if item.state == HELD else LEFT
                 if item.frozen == "frozen" and not _thaw_command(item, self.procs):
                     continue   # kept: a frozen command must not stay in swap for ever, so the next look tries again
-                cut = {"cut": True} if state == RELEASED else {}   # a run cut short measures nothing; never dropped
-                swept.append(self._write(tx, item.id, state, why="no process behind it", **cut))
+                cut = {"cut": True, "verdict": "killed"} if state == RELEASED else {}   # measures nothing; kept
+                swept.append(self._write(tx, item.id, state, why=why, **cut))
         return swept

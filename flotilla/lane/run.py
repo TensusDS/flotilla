@@ -37,6 +37,8 @@ class RunResult:
     at_ceiling: bool = False     # stopped at the ceiling: its time is a lower bound, not a full run
     frozen_s: float = 0.0        # how long it stood frozen for a higher run (lane shared machine)
     freezes: int = 0
+    orphans: int | None = 0      # processes outside the command's group still holding its output, ended by the
+                                 # lane; None: the output stayed open and what held it could not be found
 
 
 def summarize(lines) -> str:
@@ -96,6 +98,54 @@ def _stop(process) -> None:
     process.wait()
 
 
+#: How long the output may stay open once the command's group is gone: a child that left the group (a Unity
+#: editor started in a session of its own) can hold it for ever, and a reader waiting on it held a run in the lane
+#: for 7 hours past its ceiling (field notes, 2026-11-16).
+OUTPUT_GRACE_S = 3.0
+
+
+def _pipe_holders(inode: int, proc: str = "/proc") -> set[int] | None:
+    """The processes other than this one that hold the pipe `inode` open - the run's output - read from their
+    descriptors (`/proc/<pid>/fd`, this user's processes); None where there is no /proc to read (macOS)."""
+    if not os.path.isdir(proc):
+        return None
+    want, found = f"pipe:[{inode}]", set()
+    for name in os.listdir(proc):
+        if not name.isdigit() or int(name) == os.getpid():
+            continue
+        try:
+            for fd in os.listdir(f"{proc}/{name}/fd"):
+                if os.readlink(f"{proc}/{name}/fd/{fd}") == want:
+                    found.add(int(name))
+                    break
+        except OSError:   # gone meanwhile, or not ours to read
+            continue
+    return found
+
+
+def end_orphans(inode: int, *, grace: float = 5.0, proc: str = "/proc") -> int | None:
+    """End the processes outside the command's group that still hold its output: only those - a server the run
+    started and that closed its output is left alone. SIGTERM, then SIGKILL after `grace`. How many there were;
+    None where they cannot be found."""
+    first = _pipe_holders(inode, proc)
+    if first is None:
+        return None
+    for pid in first:
+        try:
+            os.kill(pid, signals.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            pass
+    end = time.monotonic() + grace
+    while time.monotonic() < end and (_pipe_holders(inode, proc) or set()) & first:
+        time.sleep(0.05)
+    for pid in (_pipe_holders(inode, proc) or set()) & first:
+        try:
+            os.kill(pid, signals.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+    return len(first)
+
+
 def execute(command: list[str], *, cwd=None, popen=subprocess.Popen, out=None, ceiling: float | None = None) -> RunResult:
     """Run `command` in its own process group. Past `ceiling` seconds the group is stopped and the run has no verdict
     (beta field test W21: one looping test held the machine's lane for 28 minutes)."""
@@ -139,15 +189,54 @@ def execute(command: list[str], *, cwd=None, popen=subprocess.Popen, out=None, c
     if keeper is not None:
         keeper.start()
     try:
-        for line in process.stdout:
-            out.write(line)
-            out.flush()
-            tail.append(line.rstrip("\n"))
-            if not first:
-                first.append(line)
-        status = process.wait()   # inside: a command that closed its output is waited for here, and a signal
-    except BaseException:         # meanwhile must stop its group as one during the reading does
+        inode = os.fstat(process.stdout.fileno()).st_ino   # the output pipe: an orphan holding it is found by it
+    except (OSError, AttributeError, ValueError):
+        inode = None
+    eof, forward = threading.Event(), threading.Event()
+    forward.set()   # cleared once the run is let go: an orphan's later output is not the run's
+    failed: list[BaseException] = []   # the reader's own failure (the output's reader gone): it stops the run
+
+    def read():
+        try:
+            for line in process.stdout:
+                if not forward.is_set():
+                    continue
+                out.write(line)
+                out.flush()
+                tail.append(line.rstrip("\n"))
+                if not first:
+                    first.append(line)
+        except BaseException as err:  # noqa: BLE001 - handed to the main thread, which stops the command and raises it
+            failed.append(err)
+        finally:
+            eof.set()
+
+    def check():
+        if failed:
+            raise failed[0]
+    reader = threading.Thread(target=read, daemon=True)
+    reader.start()
+    orphans: int | None = 0
+    try:
+        while process.poll() is None:   # a signal meanwhile (`lane stop`) stops the group, as the ceiling does
+            check()
+            time.sleep(0.05)
+        status = process.returncode
+        while not eof.wait(0.2) and _group_left(process):
+            check()   # the group's own members may still write: they are the lane's to wait for, and the ceiling's
+            if over.is_set() and keeper is not None and not keeper.is_alive():
+                break   # stopped at the ceiling and still "there": a member SIGKILL cannot end (D state, another user)
+        if not eof.wait(OUTPUT_GRACE_S):   # its group is gone or past help, and its output still open
+            orphans = end_orphans(inode) if inode is not None else None
+            if not eof.wait(OUTPUT_GRACE_S):
+                orphans = None   # held by what could not be found or ended here; the run is let go all the same
+        forward.clear()
+        check()
+    except BaseException:
         _stop(process)   # the booking is about to be released; the command must not go on computing under it
+        forward.clear()
+        if inode is not None:
+            end_orphans(inode)
         measurer.__exit__(None, None, None)
         raise
     finally:
@@ -165,13 +254,13 @@ def execute(command: list[str], *, cwd=None, popen=subprocess.Popen, out=None, c
         out.flush()
         return execute(asked, cwd=cwd, popen=popen, out=out, ceiling=ceiling)
     usage = measurer.usage
-    summary = summarize(tail)
+    summary = summarize(list(tail))
     frozen = round(frozen_since(), 2)
     freezes = getattr(held, "freezes", 0) - freezes_before
     if over.is_set():
         return RunResult(code if code else 124, "killed",
                          f"stopped at the ceiling of {ceiling:g} s - no verdict (last line: {summary})", signal_number,
-                         usage, True, frozen, freezes)
+                         usage, True, frozen, freezes, orphans)
     if verdict == "killed":
         summary = f"killed by signal {signal_number} - no verdict (last line: {summary})"
-    return RunResult(code, verdict, summary, signal_number, usage, False, frozen, freezes)
+    return RunResult(code, verdict, summary, signal_number, usage, False, frozen, freezes, orphans)

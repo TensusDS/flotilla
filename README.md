@@ -71,10 +71,10 @@ fleet.
 **Pin a release** instead, to choose when you move: name a tag on the first line (the tags are listed in
 [CHANGELOG.md](CHANGELOG.md)):
 
-    claude plugin marketplace add TensusDS/flotilla#v0.33.1 --scope project
+    claude plugin marketplace add TensusDS/flotilla#v0.33.2 --scope project
     claude plugin install flotilla@flotilla --scope project
 
-That writes `"ref": "v0.33.1"` into the project's settings and installs that release; `claude plugin update` stays on
+That writes `"ref": "v0.33.2"` into the project's settings and installs that release; `claude plugin update` stays on
 it. A machine keeps one marketplace of a name for all its projects, so give the projects on one machine the same
 channel or pin; `/flotilla:doctor` names a pin the machine does not follow. And a tag can be moved on GitHub, so a pin
 chooses when you move, not who can change what the tag names.
@@ -613,7 +613,16 @@ turns slowed about twofold as sessions' contexts grew. So flotilla spends the la
 - **a run has a ceiling** - for a receipt, ten times the slowest tier measured on this machine and at least ten
   minutes; for any other run, at least half an hour; `[lane] max_run_seconds` in the profile or `--max` for one run
   set another. Past it the run is stopped with every process it started and recorded as killed. `flotilla lane stop`
-  stops your own run sooner;
+  stops your own run sooner. A process that left the run's group and still holds its output - an editor started in
+  a session of its own - is ended too once the command is gone (Linux; elsewhere the run is let go and says that
+  something may still run). A server the run started that closed its output is left alone;
+- **a run that looks hung is named** (Linux) - held ten times its estimate (and at least ten minutes) while its
+  processes used next to no CPU for ten minutes: `flotilla lane` marks it, and the orchestrator of its project is
+  told. It is its owner's to stop - a run waiting on a network or a licence computes nothing either;
+- **a run cut short is named** - when its `lane run` was killed (Claude Code ends background shells under memory
+  pressure), the lane daemon releases its booking as killed with no verdict, and the orchestrator of its project is
+  told to have it booked again, for six hours or until it is. On Linux the daemon also ends what is left of its
+  command - only processes whose own environment names that run and its client, never on a journal's word;
 - **a fresh tree is set up once** - the profile's `tests.setup_command` (`npm ci` beside a `package-lock.json`, found
   at onboarding) runs before a tree's first receipt and again only when its lockfile changes.
 

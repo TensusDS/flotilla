@@ -150,6 +150,15 @@ class ProcessTable:
             return False
         return self.start_mark(pid) == mark
 
+    def zombie(self, pid: int) -> bool | None:
+        """True only when a read that answered shows the process ended and not yet reaped (Z or X); False when it
+        shows another state; None when nothing could be read - never a guess."""
+        if self.source == "procfs":
+            fields = self._stat(pid)
+            return (fields[0] in ("Z", "X")) if fields else None
+        state = self._ps(pid, "stat")
+        return state.startswith("Z") if state else None
+
     def cpu_seconds(self, pid) -> float | None:
         if self.source == "procfs":
             fields = self._stat(pid)

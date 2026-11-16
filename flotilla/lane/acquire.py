@@ -26,6 +26,14 @@ FAIR_GRACE = 2 * POLL
 #: Answers that hold the lane whatever the capacity: CI on this machine, memory under the floor, no room on the disk.
 OUTRIGHT = ("ci", "memory", "disk")
 ENV = "FLOTILLA_LANE_BOOKING"   # set for a booked command, so a booking inside it reuses the one it runs under
+#: Set beside it: "<client pid>:<its start mark>:<the lane's directory>". What is left of a run is ended only where
+#: a process's own environment names its booking and its client, and that client is provably gone (review of
+#: dba1899: the journal, which any session writes, must never choose what the daemon kills).
+CLIENT_ENV = "FLOTILLA_LANE_CLIENT"
+
+
+def client_word(pid: int, mark: str, root) -> str:
+    return f"{pid}:{mark}:{root}"
 
 
 class LaneRefused(RuntimeError):
@@ -217,8 +225,9 @@ def held(lanes, read_machine, *, who: str, note: str, capacity: int | Callable[[
                     kind=kind, pinned=pinned, scheduler=scheduler, floor_mb=floor_mb)
     if grant.booking is None:
         raise LaneRefused(grant.why)
-    previous = os.environ.get(ENV)
+    previous, previous_client = os.environ.get(ENV), os.environ.get(CLIENT_ENV)
     os.environ[ENV] = grant.booking.id
+    os.environ[CLIENT_ENV] = client_word(pid, table.start_mark(pid) or "", getattr(lanes.store, "root", ""))
     watcher = None
     if value is not None and grant.booking.path.startswith("value") and not grant.booking.pinned:
         from flotilla.lane import freeze, watch
@@ -234,3 +243,7 @@ def held(lanes, read_machine, *, who: str, note: str, capacity: int | Callable[[
             os.environ.pop(ENV, None)
         else:
             os.environ[ENV] = previous
+        if previous_client is None:
+            os.environ.pop(CLIENT_ENV, None)
+        else:
+            os.environ[CLIENT_ENV] = previous_client
