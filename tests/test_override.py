@@ -278,12 +278,26 @@ def test_the_persons_line_carries_the_full_notice_hourly_and_a_tag_between(tmp_p
     notice = override.check("opus", lead_live=True, settings_model="fable")
     first = hooks._persons_line(ctx, {"prompt": "hi", "prompt_id": "p1"}, [], NOW, notice)
     assert "Ways out" in first
-    data = shown.load(ledger.state_dir, ledger.repo_key)   # the line as the Stop hook settles it, shown at NOW
-    data["line"] = {**shown.line_record([_entry("override:fable")]), "at": NOW.isoformat()}
-    shown._save(ledger.state_dir, ledger.repo_key, data)
+    transcript = tmp_path / "transcript.jsonl"   # the Stop hook settles the line: a human typed that prompt
+    transcript.write_text(json.dumps({"type": "user", "promptId": "p1", "promptSource": "typed",
+                                      "turnOrigin": "human"}) + "\n", encoding="utf-8")
+    shown.settle(ledger.state_dir, "sid-lead", str(transcript), "p1")
+    assert shown.load(ledger.state_dir, ledger.repo_key)["line"]["signature"] == ["override:fable|other"]
     later = hooks._persons_line(ctx, {"prompt": "hi", "prompt_id": "p2"}, [_entry("row:1@t", "question")],
                                 NOW + dt.timedelta(minutes=20), notice)
     assert "`flotilla fleet model` gives the ways out" in later and "Ways out" not in later
+
+
+def test_a_busy_file_refuses_the_mute_plainly(tmp_path, monkeypatch):
+    root, lead = _lead_world(tmp_path, monkeypatch)
+    settings(tmp_path / "home", {"model": "fable"})
+    monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [lead])
+
+    def busy(*args, **kwargs):
+        raise override.Busy("override.json stayed locked for 2 s")
+    monkeypatch.setattr(override, "mute", busy)
+    code, out = run_cli("fleet", "model", "--mute", "2", "--root", str(root))
+    assert code == 2 and "nothing was muted - run it again" in out, out
 
 
 def test_reading_the_model_repeats_the_notice(tmp_path, monkeypatch):

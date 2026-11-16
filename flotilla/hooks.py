@@ -541,7 +541,8 @@ def _persons_line(ctx, payload, entries, now, notice=None) -> str:
         try:   # the full notice when new to the line or an hour old there, else a short tag (re-review, C)
             last = shown.load(state, throttle).get("line") or {}
             at = dt.datetime.fromisoformat(str(last.get("at") or ""))
-            if key in (last.get("keys") or []) and now - at < dt.timedelta(hours=1):
+            # as the Stop hook settles a shown line: its signature, "<key>|<group>" (re-review of 30a5438)
+            if f"{key}|other" in (last.get("signature") or []) and now - at < dt.timedelta(hours=1):
                 said = override.short(notice)
         except (ValueError, TypeError, OSError):
             pass
