@@ -344,14 +344,14 @@ def test_every_bound_that_holds_a_heavy_run_is_named_not_only_the_first():   # f
 
 
 def test_a_heavy_behind_one_that_waits_for_an_empty_lane_is_told_so():   # field test 2026-11-11
-    runs = [run("other", RUNNING, 800), run("big", WAITING, 7500, True, 2, order=1, waited_s=600),
+    runs = [run("other", RUNNING, 800), run("big", WAITING, 7500, True, 2, order=1, waited_s=300),
             run("b3", WAITING, 2000, True, 2, order=2)]
     d = decide(runs, machine(free=8000), "b3")
     assert not d.start and "behind heavy big, which starts only when the lane is empty" in d.why
 
 
 def test_a_heavy_behind_one_that_only_lacks_room_is_told_just_that():
-    runs = [run("h", RUNNING, 3000, True, 6), run("b2", WAITING, 5000, True, 4, order=2, waited_s=600),
+    runs = [run("h", RUNNING, 3000, True, 6), run("b2", WAITING, 5000, True, 4, order=2, waited_s=590),
             run("b3", WAITING, 1900, True, 2, order=3)]
     d = decide(runs, machine(free=4000), "b3")
     assert d.why == "behind heavy b2"
@@ -428,7 +428,7 @@ def test_a_turn_taken_weighs_both_the_runs_held_and_the_service():   # review of
 def _behind_a_heavy():
     """A heavy push that does not fit blocks the heavy runs behind it; alpha is due, and its first waiter is heavy."""
     return [run("g", RUNNING, 100, order=0, project="gamma", fair=(1, HALF)),
-            run("h", WAITING, 20_000, True, 8, kind="push", waited_s=900, order=1, project="gamma", fair=(1, HALF)),
+            run("h", WAITING, 20_000, True, 8, kind="push", waited_s=590, order=1, project="gamma", fair=(1, HALF)),
             _with(_equal("a1", "alpha", NINE, 2), heavy=True), _equal("b1", "beta", HALF, 3),
             _equal("a2", "alpha", NINE, 4)]
 
@@ -444,3 +444,63 @@ def test_the_tick_starts_what_the_fair_replay_admits():   # review of dcf78ca: t
     runs = _behind_a_heavy()
     one = machine(free=1000, max_runs=2, available_mb=10_000, floor_mb=1500)
     assert [start[0] for start in tick.tick(runs, one).starts] == ["a2"]
+
+
+# The drain (the person's ruling, 2026-11-17): a heavy waiter that has waited DRAIN_AFTER_S and does not fit stops
+# every new start behind it, light ones too, until the runs ahead of it end and it fits.
+
+def _drain(waited):
+    return [run("h", RUNNING, 4000, True, 8, order=0), run("big", WAITING, 5000, True, 6, order=1, waited_s=waited),
+            run("light", WAITING, 300, order=2), run("heavy2", WAITING, 1000, True, 1, order=3)]
+
+
+def test_before_the_drain_a_light_run_passes_a_heavy_that_does_not_fit():
+    assert decide(_drain(590), machine(free=8000), "light").start
+
+
+def test_a_heavy_that_waited_ten_minutes_stops_every_new_start_behind_it():
+    runs = _drain(600)
+    for mine in ("light", "heavy2"):
+        d = decide(runs, machine(free=8000), mine)
+        assert not d.start and d.why == ("behind heavy big, which has waited 10 min: the lane starts no new run until "
+                                         "it fits")
+    d = decide(runs, machine(free=8000), "big")
+    assert not d.start and "heavy runs' cores: 8 of 12" in d.why and "starts no new run until this one fits" in d.why
+
+
+def test_the_drained_heavy_starts_once_the_run_ahead_ends_and_the_lane_opens_again():
+    runs = [r for r in _drain(900) if r.id != "h"]
+    assert decide(runs, machine(free=8000), "big").start
+    started = [r if r.id != "big" else run("big", RUNNING, 5000, True, 6, order=1) for r in runs]
+    assert decide(started, machine(free=3000), "light").start
+
+
+def test_a_run_ahead_of_the_drained_heavy_in_line_still_starts():
+    runs = [run("h", RUNNING, 4000, True, 8, order=0), run("push", WAITING, 300, kind="push", waited_s=600, order=5),
+            run("big", WAITING, 5000, True, 6, order=1, waited_s=600)]
+    assert decide(runs, machine(free=8000), "push").start   # higher priority: offered before the heavy
+
+
+def test_a_frozen_run_behind_the_drain_is_not_held_by_it():
+    runs = _drain(600) + [run("cold", FROZEN, 200, order=4)]
+    d = decide(runs, machine(free=8000), "cold")
+    assert "the lane starts no new run" not in d.why
+
+
+def test_the_drain_names_a_heavy_that_starts_only_alone():
+    runs = [run("other", RUNNING, 800), run("big", WAITING, 7500, True, 2, order=1, waited_s=600),
+            run("b3", WAITING, 200, order=2)]
+    d = decide(runs, machine(free=8000), "b3")
+    assert d.why == ("behind heavy big, which has waited 10 min, and starts only when the lane is empty: the lane "
+                     "starts no new run until it fits")
+
+
+def test_the_heavy_budget_is_the_persons_where_set():
+    runs = [run("h", RUNNING, 4000, True, 2), run("b2", WAITING, 3500, True, 2)]
+    d = decide(runs, machine(free=5000), "b2")   # 0.8 * 9000 = 7200: no room for 3500 beside 4000
+    assert not d.start and "reserve 1800 MB for light runs" in d.why
+    assert decide(runs, machine(free=5000, heavy_mb=8000), "b2").start
+    d = decide(runs, machine(free=5000, heavy_mb=6000), "b2")
+    assert not d.start and "heavy runs' memory set to 6000 MB (lane_heavy_mb)" in d.why
+    d = decide(runs, machine(free=3000, heavy_mb=20_000), "b2")   # a budget never gives memory the machine lacks
+    assert not d.start and "3000 MB of room" in d.why

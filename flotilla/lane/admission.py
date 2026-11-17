@@ -46,6 +46,7 @@ class Value:
     foreign: int = 0
     freeze_ceiling_s: float = 600.0                 # no freeze outlasts this, whatever holds its room
     freeze_total_s: float = 600.0                   # no booking stands frozen longer in all, whoever froze it
+    heavy_mb: int | None = None                     # machine.toml `lane_heavy_mb`; None: the light reserve decides
 
 
 def default_mb(found: dict) -> int:
@@ -162,7 +163,8 @@ def view(found: dict, hist, value: Value, *, now: dt.datetime, live, mine: str, 
             # taken by hand: the heavy room and every core, never frozen; held, its memory is promised and not yet
             # seen, so it is kept from the runs that come after it - only the light reserve stays theirs
             heavy, par, pinned = True, value.cpus, True
-            mem = round((1 - value.light_reserve) * give) if give is not None else expected
+            share = policy.heavy_share(give, value.light_reserve, value.heavy_mb)
+            mem = share if share is not None else expected
         if older:
             pinned = True
         runs.append(policy.Run(
@@ -182,5 +184,5 @@ def view(found: dict, hist, value: Value, *, now: dt.datetime, live, mine: str, 
         swap_free_mb=swap[0] if swap else None, swap_total_mb=swap[1] if swap else None,
         swap_pending_mb=sum(item.reclaim_mb or 0 for item in held if item.frozen == "ordered"),
         cpu_factor=value.cpu_factor, light_reserve=value.light_reserve, immortal_s=value.immortal_s,
-        max_runs=value.max_runs, freeze=value.freeze != freeze.OFF)
+        max_runs=value.max_runs, freeze=value.freeze != freeze.OFF, heavy_mb=value.heavy_mb)
     return runs, machine

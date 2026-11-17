@@ -97,6 +97,17 @@ def light_reserve() -> float:
     return float(_number("lane_light_reserve", LIGHT_RESERVE, LIGHT_RESERVE_BOUNDS))
 
 
+#: machine.toml `lane_heavy_mb`: whole MB, at least 256 and at most a terabyte; anything else is unset.
+HEAVY_MB_BOUNDS = (256, 1 << 20)
+
+
+def heavy_mb() -> int | None:
+    """machine.toml `lane_heavy_mb`: the most memory the heavy runs take together, set by the person; None (unset or
+    out of bounds): the share of what the lane can give that `lane_light_reserve` leaves (the person's ruling,
+    2026-11-17)."""
+    return _number("lane_heavy_mb", None, HEAVY_MB_BOUNDS, whole=True)
+
+
 def immortal_minutes() -> float:
     """machine.toml `lane_immortal_minutes`: the run time after which a run is never frozen (section 2.8)."""
     return _number("lane_immortal_minutes", IMMORTAL_MINUTES, IMMORTAL_BOUNDS)
@@ -167,6 +178,7 @@ def value_for(profile: dict):
     cpus, floor = machine.cpus(), machine.floor_here(profile)
     kind = freeze.backend(setting=freeze_on())[0]
     reserve, immortal, cap, factor = light_reserve(), immortal_minutes() * 60.0, max_runs(), cpu_factor()
+    heavy = heavy_mb()
     ceiling, total = freeze_ceiling_minutes() * 60.0, freeze_total_minutes() * 60.0
     root = paths.state_dir() / "lane"
 
@@ -176,7 +188,7 @@ def value_for(profile: dict):
                                swap_mb=freeze.swap_mb, tree_mb=peak.tree_rss_mb,
                                beat_age_s=lambda booking: admission.beat_age(root, booking),
                                foreign=len(reading.computing) if reading is not None else 0,
-                               freeze_ceiling_s=ceiling, freeze_total_s=total)
+                               freeze_ceiling_s=ceiling, freeze_total_s=total, heavy_mb=heavy)
     return make
 
 
@@ -549,10 +561,11 @@ def _status_by_value(lanes, found, held, waiting, reading, now, hist, profile, m
           f"freezing: {kind or 'off'} ({why})")
     print(sessions_line(value.floor_mb))
     heavies = [run for run in runs if run.heavy and run.state in (policy.RUNNING, policy.ORDERED)]
-    room = None if m.give_mb is None else (1 - m.light_reserve) * m.give_mb
+    room = policy.heavy_share(m.give_mb, m.light_reserve, m.heavy_mb)
+    budget = "lane_heavy_mb" if m.heavy_mb else f"light reserve {round(m.light_reserve * 100)} %"
     print(f"heavy runs: {sum(run.par for run in heavies):g} of {m.cpu_factor * m.cpus:g} cores in use "
           f"(lane_cpu_factor {m.cpu_factor:g}), {_gb(sum(run.mem_mb for run in heavies))} of {_gb(room)} GB "
-          f"(light reserve {round(m.light_reserve * 100)} %); at most {m.max_runs} runs at once")
+          f"({budget}); at most {m.max_runs} runs at once")
     over = beat.over if beat is not None and isinstance(beat.over, dict) else {}
     if isinstance(over.get("mb"), (int, float)):
         print(f"machine: over its floor by {round(over['mb'])} MB for {round(over.get('s') or 0)} s")

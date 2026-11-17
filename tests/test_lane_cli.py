@@ -715,6 +715,22 @@ def test_settings_fall_back_to_their_defaults(monkeypatch):
     assert (commands.light_reserve(), commands.max_runs(), commands.immortal_minutes()) == (0.3, 4, 30)
 
 
+def test_the_heavy_budget_is_read_from_machine_toml_and_reaches_the_machine(monkeypatch):
+    from flotilla.lane import admission, commands
+    from flotilla.lane.machine import Reading
+    for bad in ({"lane_heavy_mb": 100}, {"lane_heavy_mb": "8000"}, {"lane_heavy_mb": 7.5}, {"lane_heavy_mb": True},
+                {"lane_heavy_mb": 2 << 20}, {}):
+        monkeypatch.setattr(commands, "_machine", lambda bad=bad: bad)
+        assert commands.heavy_mb() is None
+    monkeypatch.setattr(commands, "_machine", lambda: {"lane_heavy_mb": 8000})
+    assert commands.heavy_mb() == 8000
+    value = commands.value_for({})(Reading([], [], []))
+    assert value.heavy_mb == 8000
+    value = admission.Value(**{**value.__dict__, "available_mb": lambda: 9000})
+    _runs, machine = admission.view({}, {}, value, now=None, live=lambda item: True, mine="")
+    assert machine.heavy_mb == 8000
+
+
 def test_lane_freeze_false_turns_freezing_off(monkeypatch):
     from flotilla.lane import commands
     for setting, on in (({"lane_freeze": False}, False), ({"lane_freeze": "false"}, True), ({}, True),
