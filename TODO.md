@@ -91,6 +91,8 @@ the lane code of 0.33.0.
   "immortal" means only never frozen. Left: macOS cannot find such an orphan - the run is let go, the orphan
   may run on)*
 
+  - **It came back on 2026-11-17, because the daemon went back to 0.31.0.** Review 19's Unity run b13000 (`--max 900`) hung from 09:39:50 UTC in editor start-up and held 7 heavy cores for about 94 min, shown as "immortal; no ceiling". After `flotilla lane stop`, its editor survived as an orphan and was ended by pid. At 11:15 `flotilla lane` showed `lane daemon: running, pid 3715391, 0.31.0`. The daemon the person started on 11-16 was pid 1359770, 0.33.x. So a later start came from the project's pinned 0.31.0 CLI, and the 0.33.2 fixes (ceiling, orphan cleanup, LOOKS HUNG) are not running. What to look at: an older CLI can start or replace a newer lane daemon. Should a daemon refuse to be started by a CLI older than the one that last ran it, or say so loudly? *(observed 2026-11-17, not yet checked who started 3715391)*
+
 ## From the reviews of 0.31.2 (2026-11-10, what reaches the guards and what they answer on a failure)
 
 Four review rounds. What is left belongs to one cause: the guards read a command with a matcher and bash reads it
