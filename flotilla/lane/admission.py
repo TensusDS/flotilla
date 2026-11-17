@@ -47,7 +47,8 @@ class Value:
     freeze_ceiling_s: float = 600.0                 # no freeze outlasts this, whatever holds its room
     freeze_total_s: float = 600.0                   # no booking stands frozen longer in all, whoever froze it
     heavy_mb: int | None = None                     # machine.toml `lane_heavy_mb`; None: the light reserve decides
-    sessions_mb: Callable[[], int | None] | None = None   # Claude Code's sessions' memory, MB; None: unread
+    sessions_mb: Callable[[], int | None] | None = None   # what retiring Claude Code's sessions could free, MB;
+                                                          # None: unread
 
 
 def default_mb(found: dict) -> int:

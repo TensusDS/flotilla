@@ -1958,7 +1958,8 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    of it may take the room first - beside its reason and not in it: the reason, which holds no running count, is
    what a waiting `lane run` reprints. An empty lane no longer takes a heavy run whatever the memory: it waits until
    its memory is free, unless it is larger than what retiring Claude Code's sessions could free - the lane's
-   `give_mb` plus their memory - which no wait cures (not `give_mb` alone, which shrinks as the sessions grow, nor
+   `give_mb` plus their memory less two sessions' average, the orchestrator's and the waiting seat's, which never
+   leave (the person's ruling) - which no wait cures (not `give_mb` alone, which shrinks as the sessions grow, nor
    the machine's total, part of which never leaves: reviews of f16df11 and 5edc98d). And a heavy waiter an empty
    lane would not hold either drains nothing - the memory is held outside the lane, and a drain would stop every
    project for nothing: the lane stays open, it stays first among the heavy runs, and its orchestrator is told (the

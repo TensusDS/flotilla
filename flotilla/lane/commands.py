@@ -172,9 +172,15 @@ def pinned_for(profile: dict, purpose: str, will_run) -> bool:
 
 
 def _sessions_mb() -> int | None:
+    """What retiring Claude Code's sessions could free, MB: all their memory but two sessions' average - the
+    orchestrator's and the seat whose run waits never leave, and resident memory counts shared pages in each (the
+    person's ruling, 2026-11-17, on review of 0ff3a22, R2); None where they cannot be read."""
     from flotilla.core import resources
     found = resources.claude_memory()
-    return found[1] if found else None
+    if not found:
+        return None
+    count, mb = found
+    return max(0, mb - 2 * mb // count) if count > 0 else 0
 
 
 def value_for(profile: dict):

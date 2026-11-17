@@ -1113,3 +1113,13 @@ def test_lane_stop_words_a_withdrawal_by_where_the_booking_ended(monkeypatch):  
     # granted and run, then stopped: it did start
     code, out, _lane = _stop_racing(monkeypatch, dataclasses.replace(waiting, state=book.RELEASED))
     assert code == 0 and "stopped b2" in out and "granted as the stop landed" in out and "never" not in out, out
+
+
+
+def test_what_retiring_the_sessions_frees_keeps_two_sessions(monkeypatch):
+    """The person's ruling, 2026-11-17: the orchestrator's session and the waiting seat's never leave."""
+    from flotilla.core import resources
+    from flotilla.lane import commands
+    for found, freed in (((10, 10000), 8000), ((2, 3000), 0), ((1, 900), 0), ((0, 0), 0), (None, None)):
+        monkeypatch.setattr(resources, "claude_memory", lambda found=found, **kw: found)
+        assert commands._sessions_mb() == freed, found

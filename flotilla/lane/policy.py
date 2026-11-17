@@ -110,8 +110,9 @@ class Machine:
     over_s: float = 0.0               # how long MemAvailable has stood below the floor
     heavy_mb: int | None = None       # machine.toml `lane_heavy_mb`: the heavy runs' memory, set by the person; None:
                                       # the share of `give_mb` the light reserve leaves
-    capacity_mb: int | None = None    # the room an empty lane would have with Claude Code's sessions gone too:
-                                      # `give_mb` plus their memory; None: not read, or no heavy waiter needs it
+    capacity_mb: int | None = None    # the room an empty lane would have with Claude Code's sessions retired too:
+                                      # `give_mb` plus what they could free, the orchestrator's and the waiting
+                                      # seat's kept; None: not read, or no heavy waiter needs it
 
 
 @dataclass(frozen=True)
@@ -238,7 +239,7 @@ def _replay(runs: list[Run], machine: Machine, mine: str) -> _Replay:
                     # sessions, most often - and a drain would stop every project for nothing. The lane stays open,
                     # it stays first among the heavy runs, and its orchestrator is told (the person's ruling,
                     # 2026-11-17)
-                    out.outside[r.id] = {"need_mb": r.mem_mb, "room_mb": machine.give_mb}
+                    out.outside[r.id] = {"need_mb": r.mem_mb, "room_mb": machine.give_mb + _by_hand_mb(pool)}
                     if pool:   # in an empty lane its reason says so already
                         failed = (f"{failed}; no drain for it: it would not fit in an empty lane either - the memory "
                                   "is held outside the lane")
