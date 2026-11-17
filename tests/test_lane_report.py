@@ -98,3 +98,13 @@ def test_memory_item_names_six_runs_and_counts_the_rest():
     order = [NS(id=f"b{n}", project="p", state=book.WAITING, who=f"main {n}") for n in range(9)]
     text = report.memory_items(order, "p", 100, 1638, 2150)[0].text
     assert "b5 main 5" in text and "b6" not in text and "and 3 more" in text
+
+
+def test_the_beat_carries_the_wait_estimates_and_a_malformed_one_reads_as_none(tmp_path):
+    root = lane_root(tmp_path)
+    daemon._write_beat(root, 4242, "m", {"eta": {"b3": 240}}, 1.0)
+    assert daemon.heartbeat(root).eta == {"b3": 240}
+    daemon._write_beat(root, 4242, "m", {"eta": [1, 2]}, 1.0)
+    assert daemon.heartbeat(root).eta == {}
+    daemon._write_beat(root, 4242, "m", {}, 1.0)
+    assert daemon.heartbeat(root).eta == {}

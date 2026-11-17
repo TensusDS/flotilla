@@ -162,7 +162,9 @@ def acquire(lanes, read_machine, *, who: str, note: str, capacity: int | Callabl
                 lanes.expire(mine.id, why if lasting else f"waited {wait:g} s; {why}")
                 return Grant(None, reading, why)
             if say is not None and why != said:
-                say(f"waiting for the lane: {why}")
+                # the estimate as of now, said with each new reason only: the reason is what reprints the line
+                eta = _daemon_eta(lanes, mine.id) if answer == "" and not gates else ""
+                say(f"waiting for the lane: {why}" + (f" ({eta})" if eta else ""))
                 said = why
             # never past the next look at the machine: a wake that reused the last one must not push it back
             _nap(lanes, min(poll + jitter(), max(1.0, read_at + poll - clock())), remaining, clock=clock,
@@ -185,6 +187,21 @@ def _daemon_why(lanes, booking: str) -> str:
         return "the lane daemon has not looked at this run yet"
     from flotilla.core.text import visible
     return visible(said[:300])   # a file any session can write, said into every waiting session (final review M3)
+
+
+def _daemon_eta(lanes, booking: str) -> str:
+    """The daemon's wait estimate for this waiter at its last tick, in words; "" when it has none."""
+    import json
+    from pathlib import Path
+
+    from flotilla.lane import policy, report
+    root = getattr(lanes.store, "root", None)
+    try:
+        found = json.loads((Path(root) / "daemon.json").read_text(encoding="utf-8")).get("eta", {}).get(booking)
+    except (OSError, ValueError, TypeError, AttributeError):
+        return ""
+    seconds = report.number(found)   # a file any session can write: a number or nothing
+    return policy.eta_words(seconds) if seconds is not None and seconds >= 0 else ""
 
 
 def _nap(lanes, poll: float, remaining: float, *, clock, sleep, stamp=None) -> None:

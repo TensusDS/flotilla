@@ -87,6 +87,7 @@ class Run:
     held_freezes: int = 0           # its freezes for an overload or a pressure
     reclaimed_mb: int = 0           # what its freeze moved to swap, to fault back on a thaw
     rule: int = 5                   # its booking's rule: the daemon starts only rule 5 and later
+    expected_s: float | None = None  # its measured estimate in seconds; None: never measured (the wait estimate)
 
 
 @dataclass(frozen=True)
@@ -173,6 +174,7 @@ class _Replay:
     done: Decision | None = None   # decided in the loop: `mine` started, or waits behind a heavy run
     why: str = ""
     about: str = ""
+    behind: str = ""               # the heavy waiter `mine` waits behind, when that decided it
 
 
 def _replay(runs: list[Run], machine: Machine, mine: str) -> _Replay:
@@ -194,6 +196,7 @@ def _replay(runs: list[Run], machine: Machine, mine: str) -> _Replay:
                 out.done = Decision(False, (), f"behind heavy {drain.id}, which has waited "
                                                f"{round(drain.waited_s / 60)} min{alone}: the lane starts no new run "
                                                "until it fits")
+                out.behind = drain.id
                 return out
             continue
         if r.heavy and blocker is not None:
@@ -201,6 +204,7 @@ def _replay(runs: list[Run], machine: Machine, mine: str) -> _Replay:
                 alone = alone_only(by_id[blocker], machine)
                 out.done = Decision(False, (), f"behind heavy {blocker}"
                                     + (", which starts only when the lane is empty" if alone else ""))
+                out.behind = blocker
                 return out
             continue
         failed, kind = _fits(r, pool, None if out.free is None else out.free - out.kept, machine)
@@ -228,6 +232,43 @@ def _replay(runs: list[Run], machine: Machine, mine: str) -> _Replay:
         if kind == FREE:
             out.unfit_ahead.append(r)
     return out
+
+
+def eta_s(runs: list[Run], machine: Machine, mine: str, _depth: int = 0) -> float | None:
+    """By the estimates of the runs ahead, in how many seconds `mine` fits: the runs in its way end one by one in the
+    order their estimates say, and the first moment it fits is the answer (field notes 2026-11-16: "heavy runs'
+    cores: 7.58 of 12" was true and said nothing of when). Behind a heavy waiter, that heavy run's moment. None when
+    it fits only once a run without an estimate ends, or never by these runs. An estimate is not a promise: a run past
+    its estimate is taken to end now."""
+    seen = _replay(runs, machine, mine)
+    if seen.done is not None:
+        if seen.done.start:
+            return 0.0
+        return eta_s(runs, machine, seen.behind, _depth + 1) if seen.behind and _depth < 8 else None
+    me = next((r for r in runs if r.id == mine), None)
+    if me is None or not seen.why:
+        return None
+    pool = list(seen.pool)
+    room = None if seen.free is None else seen.free - seen.kept
+    ends = sorted(((max(0.0, r.expected_s - r.ran_s), r) for r in pool if r.expected_s),
+                  key=lambda pair: (pair[0], pair[1].order))
+    for left, r in ends:
+        pool.remove(r)
+        room = None if room is None else room + r.mem_mb
+        if not _fits(me, pool, room, machine)[0]:
+            return left
+    return None
+
+
+def eta_words(seconds: float | None) -> str:
+    """The wait estimate as a waiter's line says it; "" when there is none."""
+    if seconds is None:
+        return ""
+    if seconds < 30:
+        return "by their estimates the runs ahead should end about now"
+    minutes = max(1, round(seconds / 60))
+    when = f"~{minutes} min" if minutes < 90 else f"~{minutes / 60:.1f} h"
+    return f"by the estimates of the runs ahead it fits in {when}"
 
 
 def line(runs: list[Run], machine: Machine) -> list[Run]:

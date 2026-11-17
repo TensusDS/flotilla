@@ -1,7 +1,7 @@
 import pytest
 
 from flotilla.lane.policy import (FROZEN, ORDERED, RECLAIM_MARGIN_MB, RUNNING, WAITING, Decision, Machine, Run,
-                                  decide, immortal, is_heavy, priority)
+                                  decide, eta_s, eta_words, immortal, is_heavy, priority)
 
 SERVER = Machine(cpus=8, give_mb=9000, free_mb=9000, swap_free_mb=8000, swap_total_mb=8000)
 
@@ -504,3 +504,39 @@ def test_the_heavy_budget_is_the_persons_where_set():
     assert not d.start and "heavy runs' memory set to 6000 MB (lane_heavy_mb)" in d.why
     d = decide(runs, machine(free=3000, heavy_mb=20_000), "b2")   # a budget never gives memory the machine lacks
     assert not d.start and "3000 MB of room" in d.why
+
+
+# The wait estimate (field notes 2026-11-16): when the runs ahead free what the waiter needs, by their estimates.
+
+def test_the_wait_estimate_is_when_enough_runs_ahead_end():
+    runs = [run("a", RUNNING, 3000, True, 4, expected_s=600, ran_s=100, order=0),
+            run("b", RUNNING, 3000, True, 4, expected_s=300, ran_s=60, order=1),
+            run("w", WAITING, 3000, True, 6, order=2)]
+    # cores: 8 of 12 held, 6 more needed - the first to end (b, 240 s left) leaves 4 + 6 = 10: it fits then
+    assert eta_s(runs, machine(free=8000), "w") == 240
+    assert eta_words(240) == "by the estimates of the runs ahead it fits in ~4 min"
+    big = [*runs[:2], run("w", WAITING, 3000, True, 10, order=2)]   # 10 cores: both must end
+    assert eta_s(big, machine(free=8000), "w") == 500
+
+
+def test_a_run_without_an_estimate_in_the_way_gives_none():
+    runs = [run("a", RUNNING, 3000, True, 8, order=0), run("w", WAITING, 3000, True, 6, order=1)]
+    assert eta_s(runs, machine(free=8000), "w") is None and eta_words(None) == ""
+
+
+def test_a_run_past_its_estimate_is_taken_to_end_now():
+    runs = [run("a", RUNNING, 3000, True, 8, expected_s=60, ran_s=900, order=0), run("w", WAITING, 3000, True, 6,
+                                                                                     order=1)]
+    assert eta_s(runs, machine(free=8000), "w") == 0
+    assert eta_words(0) == "by their estimates the runs ahead should end about now"
+    assert eta_words(7200) == "by the estimates of the runs ahead it fits in ~2.0 h"
+
+
+def test_behind_a_heavy_the_estimate_is_that_heavy_runs():
+    runs = [run("a", RUNNING, 3000, True, 8, expected_s=600, ran_s=0, order=0),
+            run("big", WAITING, 3000, True, 6, order=1, waited_s=600), run("l", WAITING, 100, order=2)]
+    assert eta_s(runs, machine(free=8000), "l") == 600 == eta_s(runs, machine(free=8000), "big")
+
+
+def test_a_run_that_starts_now_has_no_wait():
+    assert eta_s([run("w", WAITING, 100)], machine(free=8000), "w") == 0

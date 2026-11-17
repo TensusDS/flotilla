@@ -443,3 +443,22 @@ def test_the_daemons_why_is_cleaned_before_it_is_said(lanes, tmp_path):   # fina
     by_daemon(lanes, wait=20.0, clock=clock, sleep=sleep, said=said)
     spoken = [line for line in said if "x" * 50 in line]
     assert spoken and all("\x1b" not in line and "\x07" not in line and len(line) < 400 for line in spoken)
+
+
+def test_a_waiter_says_the_daemons_wait_estimate_with_each_new_reason_only(lanes, tmp_path):
+    """Field notes 2026-11-16: "heavy runs' cores: 7.58 of 12" was true and said nothing of when. The estimate rides
+    with a new reason; a changed estimate alone prints nothing (it moves every minute)."""
+    said, clock = [], Clock()
+
+    def sleep(seconds):
+        clock.sleep(seconds)
+        mine = next(iter(lanes.waiters()), None)
+        if mine is None:
+            return
+        eta = 720 - 60 * len(said) if len(said) < 3 else "lots"
+        why = "heavy runs' cores: 7.58 of 12" if clock.now < 20 else "behind heavy b9"
+        (tmp_path / "daemon.json").write_text(json.dumps({"why": {mine.id: why}, "eta": {mine.id: eta}}))
+    by_daemon(lanes, wait=40.0, clock=clock, sleep=sleep, said=said)
+    cores = [line for line in said if "7.58 of 12" in line]
+    assert len(cores) == 1 and cores[0].endswith("(by the estimates of the runs ahead it fits in ~11 min)")
+    assert said[-1].startswith("waiting for the lane: waits because: behind heavy b9")

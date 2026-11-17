@@ -247,8 +247,17 @@ class Scheduler:
         self.squeezed &= held | applied
         pressed = {r.id: r.pressed_s >= tick.PRESSED_S for r in enriched}
         under = available is not None and available < floor
+        etas = {}
+        for booking in dict(actions.why):
+            try:
+                found_eta = policy.eta_s(enriched, machine, booking)
+            except Exception:  # noqa: BLE001 - an estimate is a hint; a tick never fails on it
+                found_eta = None
+            if found_eta is not None:
+                etas[booking] = round(found_eta)
         picture = {
             "why": dict(actions.why),
+            "eta": etas,
             "groups": {b: {"ceiling_mb": self.ceilings.get(b), "current_mb": readings[b].current_mb,
                            "pressure": readings[b].pressure, "squeezed": b in self.squeezed,
                            "pressed": pressed.get(b, False)}

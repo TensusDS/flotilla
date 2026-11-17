@@ -604,6 +604,9 @@ def _status_by_value(lanes, found, held, waiting, reading, now, hist, profile, m
             because = "next to start" if decided.start else decided.why
             if holding and not decided.start:
                 because += f"; held by {holding}"
+            eta = "" if decided.start else policy.eta_words(policy.eta_s(runs, m, item.id))
+            if eta:
+                because += f"; {eta}"
             size = "heavy" if by_id[item.id].heavy else "light"
             print(f"  {item.id} {size} {item.who} ({item.note or 'no note'}) since {item.since}{gone}; "
                   f"{describe_estimate(item, hist)}; {value_of(by_id[item.id], item, m, now)}; "
