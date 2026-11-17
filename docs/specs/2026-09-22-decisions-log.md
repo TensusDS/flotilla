@@ -1957,8 +1957,9 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    1241703). A waiter is told when it should fit at the earliest by the estimates of the runs ahead - waiters ahead
    of it may take the room first - beside its reason and not in it: the reason, which holds no running count, is
    what a waiting `lane run` reprints. An empty lane no longer takes a heavy run whatever the memory: it waits until
-   its memory is free, unless it is larger than the machine's memory less the floor, which no wait cures (not
-   the lane's `give_mb`: that shrinks as the sessions grow - review of f16df11). And a heavy waiter an empty
+   its memory is free, unless it is larger than what retiring Claude Code's sessions could free - the lane's
+   `give_mb` plus their memory - which no wait cures (not `give_mb` alone, which shrinks as the sessions grow, nor
+   the machine's total, part of which never leaves: reviews of f16df11 and 5edc98d). And a heavy waiter an empty
    lane would not hold either drains nothing - the memory is held outside the lane, and a drain would stop every
    project for nothing: the lane stays open, it stays first among the heavy runs, and its orchestrator is told (the
    person's ruling, 2026-11-17, over keeping the lane closed until the orchestrator frees the memory).

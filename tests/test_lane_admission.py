@@ -1,7 +1,6 @@
 """The grant by value: bookings to the policy's picture, freeze orders, thawing, the older-flotilla fallback, and a
 frozen command that never stays frozen once its holder is dead or silent (lane shared machine design, 2-4 and 7)."""
 
-import dataclasses
 import datetime as dt
 
 import pytest
@@ -540,12 +539,18 @@ def test_a_run_carries_its_own_reservation_only_in_its_first_half_minute(lane): 
 
 
 
-def test_the_machines_capacity_is_its_total_less_the_floor(lane):
-    """Review of f16df11, 1: `give_mb` shrinks as the sessions grow; what a run too large for the machine is told by
-    is fixed."""
+def test_the_sessions_memory_is_read_only_for_a_heavy_waiter_an_empty_lane_would_not_hold(lane):
+    """Review of 5edc98d, 1: what counts as curable is what retiring the sessions frees - `give_mb` plus their
+    memory - not the machine's total, part of which never leaves."""
     lanes, _procs, _later = lane
-    _runs, found = admission.view(lanes.bookings(), {}, dataclasses.replace(value(total_mb=16000), floor_mb=2150), now=T0,
+    lanes.enqueue("main session 2", "x", pid=12, mark="m")   # never measured: 1024 MB
+    reads = []
+
+    def sessions():
+        reads.append(1)
+        return 8000
+    _runs, found = admission.view(lanes.bookings(), {}, value(sessions_mb=sessions), now=T0, live=lanes.live, mine="")
+    assert found.capacity_mb is None and reads == []   # it fits an empty lane: nothing read
+    _runs, found = admission.view(lanes.bookings(), {}, value(available=500, sessions_mb=sessions), now=T0,
                                   live=lanes.live, mine="")
-    assert found.capacity_mb == 13850
-    _runs, found = admission.view(lanes.bookings(), {}, value(), now=T0, live=lanes.live, mine="")
-    assert found.capacity_mb is None
+    assert found.capacity_mb == 8500 and reads == [1]

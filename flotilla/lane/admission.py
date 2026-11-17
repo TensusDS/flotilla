@@ -47,7 +47,7 @@ class Value:
     freeze_ceiling_s: float = 600.0                 # no freeze outlasts this, whatever holds its room
     freeze_total_s: float = 600.0                   # no booking stands frozen longer in all, whoever froze it
     heavy_mb: int | None = None                     # machine.toml `lane_heavy_mb`; None: the light reserve decides
-    total_mb: int | None = None                     # MemTotal, or the container's limit where smaller; None: unread
+    sessions_mb: Callable[[], int | None] | None = None   # Claude Code's sessions' memory, MB; None: unread
 
 
 def default_mb(found: dict) -> int:
@@ -179,6 +179,10 @@ def view(found: dict, hist, value: Value, *, now: dt.datetime, live, mine: str, 
             admitted_mb=int(expected) if item.state == book.HELD and item.pid is not None else 0,
             reserved_mb=own_reserve, expected_s=own.seconds if own is not None else None, by_hand=taken))
     swap = value.swap_mb()
+    sessions = None
+    if give is not None and value.sessions_mb is not None and any(
+            r.heavy and r.state in (policy.WAITING, policy.FROZEN) and r.mem_mb > give for r in runs):
+        sessions = value.sessions_mb()   # read only for a heavy run an empty lane would not hold
     from flotilla.lane import freeze
     machine = policy.Machine(
         cpus=value.cpus, give_mb=give, free_mb=None if available is None else available - value.floor_mb - reserved,
@@ -186,5 +190,5 @@ def view(found: dict, hist, value: Value, *, now: dt.datetime, live, mine: str, 
         swap_pending_mb=sum(item.reclaim_mb or 0 for item in held if item.frozen == "ordered"),
         cpu_factor=value.cpu_factor, light_reserve=value.light_reserve, immortal_s=value.immortal_s,
         max_runs=value.max_runs, freeze=value.freeze != freeze.OFF, heavy_mb=value.heavy_mb,
-        capacity_mb=None if value.total_mb is None else value.total_mb - value.floor_mb)
+        capacity_mb=None if sessions is None else give + sessions)
     return runs, machine

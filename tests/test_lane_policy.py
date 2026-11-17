@@ -625,3 +625,23 @@ def test_no_drain_for_a_heavy_run_an_empty_lane_would_not_hold():
               run("light", WAITING, 300, order=2)]
     assert held_outside(larger, roomy(2000, 2300)) == {}   # larger than the machine: it drains, then starts alone
     assert "behind heavy big" in decide(larger, roomy(2000, 2300), "light").why
+
+
+
+def test_a_run_taken_by_hand_is_named_not_read_as_memory_outside_the_lane():
+    """Review of 5edc98d, M1: a run taken by hand has no process tree in `give_mb`; the heavy waiter it keeps out is
+    told so, and its orchestrator is not told to retire seats."""
+    runs = [run("hand", RUNNING, 4000, True, 8, order=0, by_hand=True),
+            run("big", WAITING, 5000, True, 6, order=1, waited_s=900), run("light", WAITING, 300, order=2)]
+    d = decide(runs, roomy(1000, 1000), "big")
+    assert "no drain for it while hand holds the lane (hung or taken by hand)" in d.why
+    assert held_outside(runs, roomy(1000, 1000)) == {}
+
+
+def test_a_run_held_outside_the_lane_orders_no_freeze():
+    """Review of 5edc98d, M2: with `lane_heavy_mb` above `give_mb` its reason can read as free memory; no freeze lets
+    it in all the same."""
+    runs = [run("l", RUNNING, 5000, order=0, since_start_s=600), run("h", WAITING, 5000, True, 4, order=1,
+                                                                      waited_s=900)]
+    d = decide(runs, roomy(1000, 3000, heavy_mb=6000), "h")
+    assert not d.start and d.freeze == ()

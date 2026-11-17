@@ -171,6 +171,12 @@ def pinned_for(profile: dict, purpose: str, will_run) -> bool:
     return any(tier.get("freeze") is False for tier in tiers_for(profile, purpose) if tier.get("name") in names)
 
 
+def _sessions_mb() -> int | None:
+    from flotilla.core import resources
+    found = resources.claude_memory()
+    return found[1] if found else None
+
+
 def value_for(profile: dict):
     """What a grant by value reads, built from each poll's reading: settings read once here, memory and swap read
     when the grant decides, inside the journal's lock."""
@@ -181,7 +187,6 @@ def value_for(profile: dict):
     reserve, immortal, cap, factor = light_reserve(), immortal_minutes() * 60.0, max_runs(), cpu_factor()
     heavy = heavy_mb()
     ceiling, total = freeze_ceiling_minutes() * 60.0, freeze_total_minutes() * 60.0
-    memtotal = machine._memtotal()
     root = paths.state_dir() / "lane"
 
     def make(reading=None):
@@ -191,7 +196,7 @@ def value_for(profile: dict):
                                beat_age_s=lambda booking: admission.beat_age(root, booking),
                                foreign=len(reading.computing) if reading is not None else 0,
                                freeze_ceiling_s=ceiling, freeze_total_s=total, heavy_mb=heavy,
-                               total_mb=memtotal // 1024 if memtotal else None)
+                               sessions_mb=_sessions_mb)
     return make
 
 

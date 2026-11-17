@@ -141,6 +141,14 @@ command that every guard shares, not one more reading.
   `work adopt` do it by hand. *(checked 2026-11-13 on 0.32.0: open - docs/specs/2026-11-13-fleet-model-design.md,
   non-goals)*
 
+## From the reviews of 0.33.3 (2026-11-17, the lane under Claude Code's line)
+
+- **A heavy run held outside the lane flickers near its need**: whether it is outside follows MemAvailable, so a
+  need within its jitter of the empty-lane room makes the orchestrator's item come and go; an item that appears
+  ends one orchestrator wait. No start is lost and nothing repeats within a wait; a margin before it stops being
+  outside would steady it. *(checked 2026-11-17 on 0.33.3: open, cosmetic - flotilla/lane/policy.py outside_lane,
+  flotilla/lane/report.py outside_items)*
+
 ## From the reviews of 0.33.2 (2026-11-16, a hung run and a run cut short)
 
 - **A signal to a reused process group**: after the leader is reaped, a `lane stop` during the output's grace still

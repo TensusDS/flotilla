@@ -110,8 +110,8 @@ class Machine:
     over_s: float = 0.0               # how long MemAvailable has stood below the floor
     heavy_mb: int | None = None       # machine.toml `lane_heavy_mb`: the heavy runs' memory, set by the person; None:
                                       # the share of `give_mb` the light reserve leaves
-    capacity_mb: int | None = None    # the room with nothing else running: MemTotal (or the container's limit) less
-                                      # the floor; None: not read
+    capacity_mb: int | None = None    # the room an empty lane would have with Claude Code's sessions gone too:
+                                      # `give_mb` plus their memory; None: not read, or no heavy waiter needs it
 
 
 @dataclass(frozen=True)
@@ -233,7 +233,12 @@ def _replay(runs: list[Run], machine: Machine, mine: str) -> _Replay:
                 endless = [p for p in pool if p.state in (RUNNING, ORDERED) and (p.hung or p.by_hand)]
                 room_after = None if out.free is None else \
                     out.free - out.kept + sum(p.mem_mb for p in pool if p not in endless)
-                if outside_lane(r, machine):
+                if endless and _fits(r, endless, room_after, machine)[0]:
+                    # first: a run taken by hand has no process tree in `give_mb`, and would read as outside
+                    # (review of 5edc98d, M1)
+                    failed = (f"{failed}; no drain for it while {', '.join(p.id for p in endless)} holds the lane "
+                              "(hung or taken by hand)")
+                elif outside_lane(r, machine):
                     # it would not fit in an empty lane either: the memory is held outside the lane - Claude Code's
                     # sessions, most often - and a drain would stop every project for nothing. The lane stays open,
                     # it stays first among the heavy runs, and its orchestrator is told (the person's ruling,
@@ -242,9 +247,6 @@ def _replay(runs: list[Run], machine: Machine, mine: str) -> _Replay:
                     if pool:   # in an empty lane its reason says so already
                         failed = (f"{failed}; no drain for it: it would not fit in an empty lane either - the memory "
                                   "is held outside the lane")
-                elif endless and _fits(r, endless, room_after, machine)[0]:
-                    failed = (f"{failed}; no drain for it while {', '.join(p.id for p in endless)} holds the lane "
-                              "(hung or taken by hand)")
                 else:
                     drain = r
                     failed = (f"{failed}; waited over {round(DRAIN_AFTER_S / 60)} min: the lane starts no new run "
@@ -301,8 +303,9 @@ def outside_lane(r: Run, machine: Machine) -> bool:
     """Whether heavy `r` would not fit even with every lane run ended, yet would on this machine with nothing else
     running: the memory it lacks is held outside the lane - Claude Code's sessions, most often - and no wait for the
     lane's runs cures that. `give_mb` is that empty-lane room: MemAvailable less the floor, plus what the held runs
-    take, frozen ones too. It shrinks as the sessions grow, so a run too large for the machine is told by
-    `capacity_mb` (review of f16df11, 1)."""
+    take, frozen ones too. Only what retiring sessions can free counts as curable (`capacity_mb`): a run larger than
+    that - the kernel, the services, the orchestrator's own session never leave - starts alone in an empty lane, as
+    no wait would let it in (reviews of f16df11, 1, and 5edc98d, 1)."""
     return (r.heavy and machine.give_mb is not None and machine.capacity_mb is not None
             and machine.give_mb < r.mem_mb <= machine.capacity_mb)
 
@@ -583,6 +586,8 @@ def decide(runs: list[Run], machine: Machine, mine: str, *, may_freeze: bool = T
     memory_known = machine.give_mb is not None and free is not None
     if not memory_known or me.state == FROZEN or not may_freeze or about != FREE:
         return Decision(False, (), why, about)   # a frozen run comes back when it fits, never by an order (2.8)
+    if outside_lane(me, machine):   # what it lacks is held outside the lane: no freeze of a run lets it in (review
+        return Decision(False, (), why, about)   # of 5edc98d, M2: with `lane_heavy_mb` set, the reason can be FREE)
     if not machine.freeze:
         return Decision(False, (), f"{why}; freezing is off")
     if me.holds:   # its orders are out and their memory not yet free: ordering more would freeze runs for nothing
