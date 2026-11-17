@@ -133,7 +133,7 @@ def view(found: dict, hist, value: Value, *, now: dt.datetime, live, mine: str, 
     served = book.last_served(found, now) if share == "fair" else {}
     reserved, runs = 0, []
     for item in [*held, *waiting]:
-        own_reserve = 0
+        own_reserve, taken = 0, False
         own = _own(item, hist, value.cpus)
         expected = own.peak_mb if own is not None and own.peak_mb is not None else fallback
         par = (own.peak_cores or own.cores) if own is not None and (own.peak_cores or own.cores) else value.cpus / 2
@@ -162,7 +162,7 @@ def view(found: dict, hist, value: Value, *, now: dt.datetime, live, mine: str, 
         if (item.state == book.HELD and item.pid is None) or item.id == by_hand:
             # taken by hand: the heavy room and every core, never frozen; held, its memory is promised and not yet
             # seen, so it is kept from the runs that come after it - only the light reserve stays theirs
-            heavy, par, pinned = True, value.cpus, True
+            heavy, par, pinned, taken = True, value.cpus, True, True
             share = policy.heavy_share(give, value.light_reserve, value.heavy_mb)
             mem = share if share is not None else expected
         if older:
@@ -176,7 +176,7 @@ def view(found: dict, hist, value: Value, *, now: dt.datetime, live, mine: str, 
             refused_for=item.refused_by if _fresh(now, item.refused_at) else "",
             start_mb=own.typical_mb if own is not None and own.peak_mb is not None else None,
             admitted_mb=int(expected) if item.state == book.HELD and item.pid is not None else 0,
-            reserved_mb=own_reserve, expected_s=own.seconds if own is not None else None))
+            reserved_mb=own_reserve, expected_s=own.seconds if own is not None else None, by_hand=taken))
     swap = value.swap_mb()
     from flotilla.lane import freeze
     machine = policy.Machine(

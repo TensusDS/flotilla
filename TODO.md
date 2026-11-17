@@ -240,7 +240,9 @@ lets nothing through unread.
 
 Four review rounds; what is left changes no start the daemon makes on the fleets known.
 
-- **`flotilla lane` replays a waiter its own checks hold back; the daemon does not.** The status view builds its runs
+- **`flotilla lane` replays a waiter its own checks hold back; the daemon does not.** Since 0.33.3 a gate-held
+  heavy waiter of ten minutes shows every waiter behind it as drained in `flotilla lane` while the daemon starts
+  them (review of 1241703, 8). The status view builds its runs
   without the scheduler's `held_back` filter, so under `fair` such a waiter can take its project's turn in the
   status's replay and the "waits because" line of the next waiter can differ from what the daemon does. *(checked
   2026-11-13 on 0.31.5: open - flotilla/lane/commands.py status by value, flotilla/lane/scheduler.py step)*

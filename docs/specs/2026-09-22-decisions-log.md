@@ -1944,15 +1944,19 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    stops the background commands of a session idle 30 minutes, under critical memory pressure, once MemAvailable is
    under 10 % of MemTotal and under 4 GiB - 1.6 GB on that 16 GB machine, while the lane's floor was 1500 MB, so the
    lane admitted runs down into the kill, and its waiting bookings, which hold no memory, died first. The default
-   floor is the line plus 512 MB on the host (never under a container's limit, which binds first); a floor the
-   person set under it is kept and named. Claude Code's stopping stays on - its last guard - and the orchestrator is
+   floor is the line plus 512 MB on the host - not drawn where a container's limit binds well before the host can
+   reach the line, which would close a small container's lane for ever; a floor the person set under it is kept
+   and named. Claude Code's stopping stays on - its last guard - and the orchestrator is
    told of it in its post and by `watch` while memory is under the floor (the person: so it is no surprise to the
    work it planned). `spawn` counts the lane's floor and the handover run's peak. The night's journal showed one
    heavy run at a time, the 7 GB ones admitted alone by the empty-lane rule against a 4.4 GB heavy budget. The heavy
    budget is now the person's to set (`lane_heavy_mb`), and a heavy waiter that has waited ten minutes (its wait
    priority full) and does not fit stops every new start behind it, light ones too, until it fits: before, lighter
-   runs and another project's turns kept its room taken for hours. A waiter is told when it should fit by the
-   estimates of the runs ahead, beside its reason and not in it - the reason is what a waiting `lane run` reprints.
+   runs and another project's turns kept its room taken for hours. No drain while a run the daemon reads as hung,
+   or one taken by hand, holds the lane: no wait ends those, and the whole lane would stop behind them (review of
+   1241703). A waiter is told when it should fit at the earliest by the estimates of the runs ahead - waiters ahead
+   of it may take the room first - beside its reason and not in it: the reason, which holds no running count, is
+   what a waiting `lane run` reprints.
 
 ## Open questions (for the foundation spec)
 

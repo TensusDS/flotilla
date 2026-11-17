@@ -16,12 +16,13 @@ of memory, and a heavy run headed its project's line for hours with no word of w
 - **The orchestrator knows that rule.** Its post says it, and `watch` tells it, while free memory is under the
   lane's floor, which of its project's runs Claude Code would stop if their seats sit idle. Claude Code's own
   stopping stays on (the person's ruling).
-- **`flotilla spawn` keeps room for the project's runs.** It refuses under the higher of its floor and the lane's,
-  after the seats it raises and the handover run's measured peak, as `fleet size` already counted.
+- **`flotilla spawn` and `fleet size` keep room for the project's runs.** Both count the higher of the fleet's floor
+  and the lane's; spawn also counts the handover run's measured peak, as the size already did.
 - **A heavy run that has waited ten minutes drains the lane**: nothing new starts behind it, light runs neither,
-  until it fits. **The memory heavy runs take together can be set**: `lane_heavy_mb` in `machine.toml`.
-- **A waiter is told when it should fit**, by the estimates of the runs ahead: on its line in `flotilla lane`, and
-  with each new reason a waiting `lane run` prints.
+  until it fits - unless what keeps it out is a run that looks hung or one taken by hand, which no wait ends.
+  **The memory heavy runs take together can be set**: `lane_heavy_mb` in `machine.toml`.
+- **A waiter is told when it should fit at the earliest**, by the estimates of the runs ahead: on its line in
+  `flotilla lane`, and with each new reason a waiting `lane run` prints.
 - The orchestrator's post is template 33.
 
 ## 0.33.2 - 2026-11-16

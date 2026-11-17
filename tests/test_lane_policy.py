@@ -462,10 +462,25 @@ def test_a_heavy_that_waited_ten_minutes_stops_every_new_start_behind_it():
     runs = _drain(600)
     for mine in ("light", "heavy2"):
         d = decide(runs, machine(free=8000), mine)
-        assert not d.start and d.why == ("behind heavy big, which has waited 10 min: the lane starts no new run until "
-                                         "it fits")
+        assert not d.start and d.why == ("behind heavy big, which has waited over 10 min: the lane starts no new run "
+                                         "until it fits")
     d = decide(runs, machine(free=8000), "big")
     assert not d.start and "heavy runs' cores: 8 of 12" in d.why and "starts no new run until this one fits" in d.why
+    # the reason is what a waiting `lane run` reprints: it holds no running count (review of 1241703, 1)
+    later = _drain(4000)
+    assert [decide(later, machine(free=8000), i).why for i in ("light", "big")] == \
+        [decide(runs, machine(free=8000), i).why for i in ("light", "big")]
+
+
+def test_no_drain_behind_a_run_that_never_ends_by_itself():
+    """Review of 1241703, 2: behind a hung run, or one taken by hand, a drain would stop the whole lane for as long
+    as it is held; light runs pass as before, and the heavy run says why it does not drain."""
+    for endless in ({"hung": True}, {"by_hand": True}):
+        runs = [run("h", RUNNING, 4000, True, 8, order=0, **endless),
+                run("big", WAITING, 5000, True, 6, order=1, waited_s=900), run("light", WAITING, 300, order=2)]
+        assert decide(runs, machine(free=8000), "light").start
+        d = decide(runs, machine(free=8000), "big")
+        assert not d.start and "no drain for it while h holds the lane (hung or taken by hand)" in d.why
 
 
 def test_the_drained_heavy_starts_once_the_run_ahead_ends_and_the_lane_opens_again():
@@ -491,8 +506,8 @@ def test_the_drain_names_a_heavy_that_starts_only_alone():
     runs = [run("other", RUNNING, 800), run("big", WAITING, 7500, True, 2, order=1, waited_s=600),
             run("b3", WAITING, 200, order=2)]
     d = decide(runs, machine(free=8000), "b3")
-    assert d.why == ("behind heavy big, which has waited 10 min, and starts only when the lane is empty: the lane "
-                     "starts no new run until it fits")
+    assert d.why == ("behind heavy big, which has waited over 10 min, and starts only when the lane is empty: the "
+                     "lane starts no new run until it fits")
 
 
 def test_the_heavy_budget_is_the_persons_where_set():
@@ -514,7 +529,7 @@ def test_the_wait_estimate_is_when_enough_runs_ahead_end():
             run("w", WAITING, 3000, True, 6, order=2)]
     # cores: 8 of 12 held, 6 more needed - the first to end (b, 240 s left) leaves 4 + 6 = 10: it fits then
     assert eta_s(runs, machine(free=8000), "w") == 240
-    assert eta_words(240) == "by the estimates of the runs ahead it fits in ~4 min"
+    assert eta_words(240) == "by the estimates of the runs ahead it fits in ~4 min at the earliest"
     big = [*runs[:2], run("w", WAITING, 3000, True, 10, order=2)]   # 10 cores: both must end
     assert eta_s(big, machine(free=8000), "w") == 500
 
@@ -529,7 +544,14 @@ def test_a_run_past_its_estimate_is_taken_to_end_now():
                                                                                      order=1)]
     assert eta_s(runs, machine(free=8000), "w") == 0
     assert eta_words(0) == "by their estimates the runs ahead should end about now"
-    assert eta_words(7200) == "by the estimates of the runs ahead it fits in ~2.0 h"
+    assert eta_words(7200) == "by the estimates of the runs ahead it fits in ~2.0 h at the earliest"
+    assert eta_words(8 * 86400) == "" and eta_words(1e300) == ""   # a week out is no estimate
+
+
+def test_a_hung_run_ends_by_no_estimate():
+    runs = [run("a", RUNNING, 3000, True, 8, expected_s=60, ran_s=9000, order=0, hung=True),
+            run("w", WAITING, 3000, True, 6, order=1)]
+    assert eta_s(runs, machine(free=8000), "w") is None
 
 
 def test_behind_a_heavy_the_estimate_is_that_heavy_runs():
@@ -538,5 +560,5 @@ def test_behind_a_heavy_the_estimate_is_that_heavy_runs():
     assert eta_s(runs, machine(free=8000), "l") == 600 == eta_s(runs, machine(free=8000), "big")
 
 
-def test_a_run_that_starts_now_has_no_wait():
-    assert eta_s([run("w", WAITING, 100)], machine(free=8000), "w") == 0
+def test_a_run_the_replay_starts_has_no_estimate():   # review of 1241703, 4: what holds it is not the runs ahead
+    assert eta_s([run("w", WAITING, 100)], machine(free=8000), "w") is None

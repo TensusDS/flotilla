@@ -97,6 +97,8 @@ def memory_is_not_this_machines(monkeypatch):
     monkeypatch.setattr("flotilla.lane.machine._meminfo", lambda: None)
     monkeypatch.setattr("flotilla.lane.machine._memtotal", lambda: None)
     monkeypatch.setattr("flotilla.lane.machine._host_total", lambda: None)   # Claude Code's line: drawn by the tests
+    monkeypatch.setattr("flotilla.lane.report._available", lambda: None)
+    monkeypatch.setattr("flotilla.core.resources.CLAUDE_PROC_ROOT", Path("/nonexistent-proc"))   # nor this /proc
 
 
 @pytest.fixture(autouse=True)

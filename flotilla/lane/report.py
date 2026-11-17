@@ -51,7 +51,7 @@ def _what(who: str, note: str, run_for: str) -> str:
     return f"{visible(who) or 'a session'}'s run ({visible(note) or 'no note'}){target}"
 
 
-def items(state: Path, project: str, now: dt.datetime) -> list[Item]:
+def items(state: Path, project: str, now: dt.datetime, profile: dict | None = None) -> list[Item]:
     """The lane's items for `project` (a repo key): its held runs that look hung, and its runs cut short."""
     from flotilla.core.storage import LocalLogStore, StorageCorrupt
     from flotilla.lane import book, daemon
@@ -75,7 +75,7 @@ def items(state: Path, project: str, now: dt.datetime) -> list[Item]:
     except (StorageCorrupt, OSError, ValueError):
         return found
     order = list(bookings.values())   # the journal's order: a booking made later stands after it
-    found.extend(memory_items(order, project, _available(), *_line_and_floor()))
+    found.extend(memory_items(order, project, _available(), *_line_and_floor(profile or {}), live=_live()))
     for place, item in enumerate(order):
         ended = _when(item.ended or item.since)
         if (item.project != project or item.state != book.RELEASED or not item.cut or ended is None
@@ -98,24 +98,36 @@ def _available() -> int | None:
     return resources.available_mb()
 
 
-def _line_and_floor() -> tuple[int | None, int]:
+def _line_and_floor(profile: dict) -> tuple[int | None, int]:
     from flotilla.lane import machine
-    return machine.reap_line_mb(machine._host_total()), machine.floor_here({})
+    return machine.reap_line_mb(machine._host_total()), machine.floor_here(profile)
 
 
-def memory_items(order, project: str, available: int | None, line: int | None, floor: int) -> list[Item]:
+def _live():
+    """Whether a booking's process lives, by the process table: a booking whose process is gone loses nothing."""
+    from flotilla.lane.procs import ProcessTable
+    try:
+        table = ProcessTable.for_machine()
+    except OSError:
+        return lambda item: True
+    return lambda item: table.alive(item.pid, item.mark) if item.pid else True
+
+
+def memory_items(order, project: str, available: int | None, line: int | None, floor: int, *,
+                 live=lambda item: True) -> list[Item]:
     """One item while the machine's free memory is under the lane's floor and Claude Code's line can be drawn: the
     project's runs booked now are the ones Claude Code stops if their seats sit idle (its rule: idle 30 min, free
     memory under a tenth and under 4 GiB). Nothing while the project books nothing: there is nothing of it to lose."""
     from flotilla.lane import book
     if available is None or line is None or available >= floor:
         return []
-    live = [item for item in order if item.project == project and item.state in (book.HELD, book.WAITING)]
-    if not live:
+    booked = [item for item in order if item.project == project and item.state in (book.HELD, book.WAITING)
+              and live(item)]
+    if not booked:
         return []
     named = ", ".join(f"{item.id} {visible(item.who) or 'a session'} "
-                      f"({'running' if item.state == book.HELD else 'waiting'})" for item in live[:6])
-    more = f" and {len(live) - 6} more" if len(live) > 6 else ""
+                      f"({'running' if item.state == book.HELD else 'waiting'})" for item in booked[:6])
+    more = f" and {len(booked) - 6} more" if len(booked) > 6 else ""
     return [Item(MEMORY, "", f"memory is short: {available} MB free, under the {floor} MB the lane keeps; under "
                              f"{line} MB Claude Code stops the background commands of seats idle 30 min, and this "
                              f"project's lane runs with them: {named}{more}. Retire idle seats now, or keep these "

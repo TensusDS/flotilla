@@ -457,8 +457,10 @@ def test_a_waiter_says_the_daemons_wait_estimate_with_each_new_reason_only(lanes
             return
         eta = 720 - 60 * len(said) if len(said) < 3 else "lots"
         why = "heavy runs' cores: 7.58 of 12" if clock.now < 20 else "behind heavy b9"
-        (tmp_path / "daemon.json").write_text(json.dumps({"why": {mine.id: why}, "eta": {mine.id: eta}}))
+        from flotilla.lane import daemon
+        daemon._write_beat(tmp_path, 4242, "m", {"why": {mine.id: why}, "eta": {mine.id: eta}}, 1.0)
     by_daemon(lanes, wait=40.0, clock=clock, sleep=sleep, said=said)
     cores = [line for line in said if "7.58 of 12" in line]
-    assert len(cores) == 1 and cores[0].endswith("(by the estimates of the runs ahead it fits in ~11 min)")
+    assert len(cores) == 1 and cores[0].endswith("(by the estimates of the runs ahead it fits in ~11 min at the "
+                                                 "earliest)")
     assert said[-1].startswith("waiting for the lane: waits because: behind heavy b9")

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 import contextlib
 import datetime as dt
 import os
@@ -553,6 +555,8 @@ def _status_by_value(lanes, found, held, waiting, reading, now, hist, profile, m
     from flotilla.lane import admission, freeze, policy
     value = value_for(profile)(reading)
     runs, m = admission.view(found, hist, value, now=now, live=lanes.live, mine="", share=mode)
+    hung = beat.hung if beat is not None and isinstance(beat.hung, dict) else {}
+    runs = [dataclasses.replace(run, hung=run.id in hung) for run in runs]   # as the daemon decides
     by_id = {run.id: run for run in runs}
     kind, why = freeze.backend(setting=freeze_on())
     swap = value.swap_mb()

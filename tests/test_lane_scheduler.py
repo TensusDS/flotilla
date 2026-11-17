@@ -518,3 +518,23 @@ def test_a_zombie_client_is_gone():
     assert scheduler.client_gone(Zombie(), 5, "m")
     assert not scheduler.client_gone(FailedLook(), 5, "m")
     assert not scheduler.client_gone(SomeGone(), 5, "m")   # alive and the same: not gone
+
+
+def test_the_picture_carries_each_waiters_wait_estimate(lane, monkeypatch):
+    """The daemon's beat says when each waiter should fit (`eta`); an estimate that fails is left out, the tick
+    never fails on it."""
+    from flotilla.lane import policy
+    lanes, sched, clock, fake, values = lane
+    holder = lanes.enqueue("h", "", pid=11, mark="m")
+    raw(lanes, booking=holder.id, state=book.HELD, started=lanes._now())
+    one = lanes.enqueue("w1", "", pid=12, mark="m")
+    two = lanes.enqueue("w2", "", pid=13, mark="m")
+
+    def eta(runs, machine, mine, _depth=0):
+        if mine == two.id:
+            raise ValueError("a broken estimate")
+        return 299.6
+    monkeypatch.setattr(policy, "eta_s", eta)
+    monkeypatch.setattr(policy, "decide", lambda *a, **kw: policy.Decision(False, (), "held for the test"))
+    _actions, picture = sched.step()
+    assert picture["eta"] == {one.id: 300}

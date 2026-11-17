@@ -88,6 +88,8 @@ class Run:
     reclaimed_mb: int = 0           # what its freeze moved to swap, to fault back on a thaw
     rule: int = 5                   # its booking's rule: the daemon starts only rule 5 and later
     expected_s: float | None = None  # its measured estimate in seconds; None: never measured (the wait estimate)
+    hung: bool = False               # the daemon reads it as hung (`Scheduler._hung`): its estimate says nothing
+    by_hand: bool = False            # taken by hand: held until released, no estimate ends it
 
 
 @dataclass(frozen=True)
@@ -193,8 +195,8 @@ def _replay(runs: list[Run], machine: Machine, mine: str) -> _Replay:
         if drain is not None and r.state == WAITING:   # a frozen run holds its slot already; it comes back as before
             if r.id == mine:
                 alone = ", and starts only when the lane is empty" if alone_only(drain, machine) else ""
-                out.done = Decision(False, (), f"behind heavy {drain.id}, which has waited "
-                                               f"{round(drain.waited_s / 60)} min{alone}: the lane starts no new run "
+                out.done = Decision(False, (), f"behind heavy {drain.id}, which has waited over "
+                                               f"{round(DRAIN_AFTER_S / 60)} min{alone}: the lane starts no new run "
                                                "until it fits")
                 out.behind = drain.id
                 return out
@@ -221,9 +223,15 @@ def _replay(runs: list[Run], machine: Machine, mine: str) -> _Replay:
         if r.heavy:
             blocker = r.id
             if r.state == WAITING and r.waited_s >= DRAIN_AFTER_S:
-                drain = r
-                failed = (f"{failed}; waited {round(r.waited_s / 60)} min: the lane starts no new run until this one "
-                          "fits")
+                # the reason holds no running count: it is what a waiting `lane run` reprints (review of 1241703, 1)
+                endless = [p.id for p in pool if p.state in (RUNNING, ORDERED) and (p.hung or p.by_hand)]
+                if endless:   # draining behind a run that never ends stops the whole lane for nothing (review, 2)
+                    failed = (f"{failed}; no drain for it while {', '.join(endless)} holds the lane (hung or taken "
+                              "by hand)")
+                else:
+                    drain = r
+                    failed = (f"{failed}; waited over {round(DRAIN_AFTER_S / 60)} min: the lane starts no new run "
+                              "until this one fits")
         if r.id == mine:
             out.why, out.about = failed, kind
             return out
@@ -242,16 +250,16 @@ def eta_s(runs: list[Run], machine: Machine, mine: str, _depth: int = 0) -> floa
     its estimate is taken to end now."""
     seen = _replay(runs, machine, mine)
     if seen.done is not None:
-        if seen.done.start:
-            return 0.0
+        if seen.done.start:   # the replay starts it: whatever holds it is not the runs ahead (review of 1241703, 4)
+            return None
         return eta_s(runs, machine, seen.behind, _depth + 1) if seen.behind and _depth < 8 else None
     me = next((r for r in runs if r.id == mine), None)
     if me is None or not seen.why:
         return None
     pool = list(seen.pool)
     room = None if seen.free is None else seen.free - seen.kept
-    ends = sorted(((max(0.0, r.expected_s - r.ran_s), r) for r in pool if r.expected_s),
-                  key=lambda pair: (pair[0], pair[1].order))
+    ends = sorted(((max(0.0, r.expected_s - r.ran_s), r) for r in pool if r.expected_s and not r.hung
+                   and not r.by_hand), key=lambda pair: (pair[0], pair[1].order))
     for left, r in ends:
         pool.remove(r)
         room = None if room is None else room + r.mem_mb
@@ -262,13 +270,14 @@ def eta_s(runs: list[Run], machine: Machine, mine: str, _depth: int = 0) -> floa
 
 def eta_words(seconds: float | None) -> str:
     """The wait estimate as a waiter's line says it; "" when there is none."""
-    if seconds is None:
+    if seconds is None or seconds > 7 * 86400:   # a week out is no estimate (a forged beat, say)
         return ""
     if seconds < 30:
         return "by their estimates the runs ahead should end about now"
     minutes = max(1, round(seconds / 60))
     when = f"~{minutes} min" if minutes < 90 else f"~{minutes / 60:.1f} h"
-    return f"by the estimates of the runs ahead it fits in {when}"
+    # the waiters ahead of it may take the room first: the runs' ends are its earliest (review of 1241703, 5)
+    return f"by the estimates of the runs ahead it fits in {when} at the earliest"
 
 
 def line(runs: list[Run], machine: Machine) -> list[Run]:

@@ -180,11 +180,16 @@ def _is_claude(argv0: str, second: str = "") -> bool:
             or "@anthropic-ai/claude-code/" in second)
 
 
-def claude_memory(*, proc_root: Path = Path("/proc")) -> tuple[int, int] | None:
-    """(how many Claude Code processes run on this machine, their resident memory in MB), every project's, or None
-    where /proc cannot be read (macOS). Their own memory only: a run a session started is the lane's to count, and an
-    MCP server is its own process."""
+CLAUDE_PROC_ROOT = Path("/proc")
+
+
+def claude_memory(*, proc_root: Path | None = None) -> tuple[int, int] | None:
+    """(how many of this user's Claude Code processes run on this machine, their resident memory in MB), every
+    project's, or None where /proc cannot be read (macOS). Their own memory only: a run a session started is the
+    lane's to count, and an MCP server is its own process. Resident memory counts shared pages in each process: an
+    upper bound."""
     import os
+    proc_root = CLAUDE_PROC_ROOT if proc_root is None else proc_root
     try:
         entries = list(proc_root.iterdir())
     except OSError:
@@ -197,6 +202,8 @@ def claude_memory(*, proc_root: Path = Path("/proc")) -> tuple[int, int] | None:
         try:
             # a process that sets its own title writes the whole line into its first word: its first word then
             # ends at a space
+            if entry.stat().st_uid != os.getuid():
+                continue   # another user's sessions: not this person's fleets
             words = (entry / "cmdline").read_bytes().split(b"\0", 2)
             first = words[0].decode("utf-8", "replace")
             argv0 = first.split(" ", 1)[0]

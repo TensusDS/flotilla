@@ -218,7 +218,8 @@ class Scheduler:
                 peak_mb=seen.get("peak_mb", 0), squeezed=run.id in self.squeezed,
                 cause=item.order_cause or (policy.WAITER if item.order_by else ""),
                 frozen_s=_seconds_since(item.frozen_at, moment) if frozen else 0.0, held_freezes=item.held_freezes,
-                reclaimed_mb=(item.reclaim_mb or 0) if frozen else 0, rule=item.rule or 0))
+                reclaimed_mb=(item.reclaim_mb or 0) if frozen else 0, rule=item.rule or 0,
+                hung=run.id in self.hung))
         machine = dataclasses.replace(machine, available_mb=available, floor_mb=floor,
                                       over_s=self.history.machine(now, available, floor))
         self.last_machine = machine

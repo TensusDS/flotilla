@@ -575,8 +575,9 @@ at 15):
 
 A light run passes a heavy one that does not fit; no heavy run passes a higher heavy one that does not fit. A heavy
 run that has waited ten minutes and still does not fit **drains the lane**: no new run starts behind it, light ones
-neither, until the runs ahead of it end and it fits. Each waiter's reason says, where the runs ahead of it have
-estimates, when it should fit by them ("it fits in ~12 min").
+neither, until the runs ahead of it end and it fits - but not while a run that looks hung, or one taken by hand,
+holds the lane, since no wait ends those. Each waiter's reason says, where the runs ahead of it have estimates, when
+it should fit by them at the earliest ("it fits in ~12 min at the earliest").
 
 **A younger run is frozen, never killed.** When a run of higher priority does not fit, the lane may freeze a lower
 one to make room: never one in its first minute, never one that has run 15 minutes, never a heavy run for a heavy

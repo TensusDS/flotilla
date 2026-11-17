@@ -122,13 +122,19 @@ def _memtotal() -> int | None:
 
 
 def _host_total() -> int | None:
-    """The host's MemTotal in kB when it is what binds this process - no smaller container limit - else None. Claude
-    Code's line is drawn on the host's figures: under a container's limit the limit binds first, and a line drawn
-    from the host would close a small container's lane for ever."""
+    """The host's MemTotal in kB when the host can reach Claude Code's line, else None. The line is drawn on the
+    host's figures: a container's limit that binds well before it - leaving the host more than the line and its
+    margin free - makes it moot, and a line drawn from the host would close a small container's lane for ever; a
+    limit near the host's size (a user slice at 90 %) does not (review of 1241703, 6)."""
     from flotilla.core import resources
     host = read_meminfo(MEMINFO, "MemTotal")
+    if host is None:
+        return None
     limit = resources.cgroup_limit_mb()
-    return None if host is None or (limit is not None and limit * 1024 < host) else host
+    line = reap_line_mb(host) or 0
+    if limit is not None and limit * 1024 < host - (line + REAP_MARGIN_MB) * 1024:
+        return None
+    return host
 
 
 def reap_line_mb(host_kb: int | None) -> int | None:
@@ -149,7 +155,8 @@ def memory_floor(profile: dict, total_kb: int | None = None, host_kb: int | None
     line = reap_line_mb(host_kb)
     if line is not None:
         default = max(default, line + REAP_MARGIN_MB)
-    lane = profile.get("lane") or {}
+    lane = profile.get("lane") if isinstance(profile, dict) else None
+    lane = lane if isinstance(lane, dict) else {}   # a `lane` that is not a table sets nothing (review, cosmetic)
     if "memory_floor_mb" not in lane:
         return default, ""
     floor, note = whole_number(lane["memory_floor_mb"], default, "[lane] memory_floor_mb")

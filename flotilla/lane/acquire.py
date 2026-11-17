@@ -191,14 +191,16 @@ def _daemon_why(lanes, booking: str) -> str:
 
 def _daemon_eta(lanes, booking: str) -> str:
     """The daemon's wait estimate for this waiter at its last tick, in words; "" when it has none."""
-    import json
     from pathlib import Path
 
-    from flotilla.lane import policy, report
+    from flotilla.lane import daemon, policy, report
     root = getattr(lanes.store, "root", None)
     try:
-        found = json.loads((Path(root) / "daemon.json").read_text(encoding="utf-8")).get("eta", {}).get(booking)
-    except (OSError, ValueError, TypeError, AttributeError):
+        beat = daemon.heartbeat(Path(root)) if root is not None else None
+    except (OSError, ValueError, TypeError):
+        return ""
+    found = beat.eta.get(booking) if beat is not None else None
+    if isinstance(found, bool):
         return ""
     seconds = report.number(found)   # a file any session can write: a number or nothing
     return policy.eta_words(seconds) if seconds is not None and seconds >= 0 else ""

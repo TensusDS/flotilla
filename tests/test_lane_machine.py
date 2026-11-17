@@ -470,3 +470,25 @@ def test_the_memory_answer_draws_the_line_from_the_host(tmp_path):
                            meminfo=lambda: 2000 * 1024, memtotal=lambda: 16 * 1024 * 1024)
     answer = next(a for a in reading.answers if a.question == "memory")
     assert answer.blocks is True and "floor 2150 MB" not in answer.text and "2150 MB" in answer.text
+
+
+
+def test_the_line_is_drawn_where_the_host_can_reach_it(monkeypatch):
+    """Review of 1241703, 6: a container's limit far under the host makes the line moot; a user slice near the
+    host's size does not."""
+    from flotilla.core import resources
+    spec_copy = __import__("importlib.util").util
+    spec = spec_copy.spec_from_file_location("lane_machine_line", machine.__file__)
+    copy = spec_copy.module_from_spec(spec)
+    import sys
+    monkeypatch.setitem(sys.modules, spec.name, copy)
+    spec.loader.exec_module(copy)
+    host = 16 * 1024 * 1024
+    monkeypatch.setattr(copy, "read_meminfo", lambda path=None, field="MemAvailable": host)
+    for limit, drawn in ((None, True), (15 * 1024, True), (14 * 1024, True), (8 * 1024, False), (2048, False)):
+        monkeypatch.setattr(resources, "cgroup_limit_mb", lambda limit=limit, **kw: limit)
+        assert (copy._host_total() == host) is drawn, limit
+    monkeypatch.setattr(resources, "cgroup_limit_mb", lambda **kw: None)
+    monkeypatch.setattr(copy, "_memtotal", lambda: host)
+    assert copy.floor_here({}) == 2150 and copy.floor_here({"lane": {"memory_floor_mb": 3000}}) == 3000
+    assert copy.floor_here({"lane": "not a table"}) == 2150
