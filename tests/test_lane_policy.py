@@ -645,3 +645,13 @@ def test_a_run_held_outside_the_lane_orders_no_freeze():
                                                                       waited_s=900)]
     d = decide(runs, roomy(1000, 3000, heavy_mb=6000), "h")
     assert not d.start and d.freeze == ()
+
+
+
+def test_a_small_hung_run_does_not_hide_memory_held_outside_the_lane():
+    """Review of 0ff3a22, 1: the hung run frees 200 MB when it ends, nowhere near what the heavy waiter lacks; its
+    orchestrator is told of the memory outside the lane, as without the hung run."""
+    runs = [run("hung", RUNNING, 200, order=0, hung=True), run("l1", RUNNING, 300, order=1),
+            run("big", WAITING, 5000, True, 6, order=2, waited_s=900), run("light", WAITING, 300, order=3)]
+    assert held_outside(runs, roomy(2000, 2500, 9000)) == {"big": {"need_mb": 5000, "room_mb": 2500}}
+    assert "it would not fit in an empty lane either" in decide(runs, roomy(2000, 2500, 9000), "big").why
