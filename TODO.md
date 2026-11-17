@@ -63,6 +63,10 @@ the lane code of 0.33.0.
   *(checked 2026-11-16 on 0.33.2: point 2 done - a run whose `lane run` was killed is released as killed, what is
   left of it ended, and its orchestrator told; points 1 and 3, the sessions' own memory in admission and in spawn
   and `fleet size`, open - B, measure; the background-shell hypothesis not measured)*
+  *(checked 2026-11-17 on 0.33.3: done - the hypothesis holds, read in Claude Code's code: it stops an idle
+  session's background commands under 10 % and 4 GiB free; the lane's floor now sits 512 MB above that line, the
+  orchestrator is told of it, `spawn` counts the lane's floor and the handover run. Sessions' memory was always in
+  admission through MemAvailable; `flotilla lane` now shows it (decision 258))*
 - **A heavy head of the line can wait for hours behind another project's fair share.**
   - A game-fleet run of a few seconds, estimated at 3.88 cores, headed that project's line from 21:32 UTC on 2026-11-15. The second fleet's turns held heavy cores at about 7.6 of 12, so it did not fit; six runs waited behind it.
   - The sender reported 2.5 h of stall; part of that was a stale reading, because the run had in fact gone at about 00:06.
@@ -70,6 +74,8 @@ the lane code of 0.33.0.
   - Related, filed earlier in the fleet's notes (2026-11-11): an estimate above the whole heavy budget waits forever.
 
   *(checked 2026-11-16 on lane 0.33.1: measure - the daemon's fair share and its "waits because" text)*
+  *(checked 2026-11-17 on 0.33.3: done - a heavy waiter of ten minutes drains the lane, and a waiter is told when it
+  should fit by the estimates of the runs ahead (decision 258))*
 - **A hung run with a 58 s estimate held the lane for 7 hours, and nothing stopped it.**
   - On 2026-11-16, the game fleet's sender 13's `python3 tools/unity_tests.py` (b12428, a plain command, not systemd-run) was held from 07:21 to about 14:30 UTC. Its estimate was 58 s and its exact-match history 10 runs.
   - Its Unity editor hung in batch mode: the UnityAutoQuitter child was defunct, and the editor used 0.1 GB and almost no CPU.
@@ -92,6 +98,11 @@ the lane code of 0.33.0.
   may run on)*
 
   - **It came back on 2026-11-17, because the daemon went back to 0.31.0.** Review 19's Unity run b13000 (`--max 900`) hung from 09:39:50 UTC in editor start-up and held 7 heavy cores for about 94 min, shown as "immortal; no ceiling". After `flotilla lane stop`, its editor survived as an orphan and was ended by pid. At 11:15 `flotilla lane` showed `lane daemon: running, pid 3715391, 0.31.0`. The daemon the person started on 11-16 was pid 1359770, 0.33.x. So a later start came from the project's pinned 0.31.0 CLI, and the 0.33.2 fixes (ceiling, orphan cleanup, LOOKS HUNG) are not running. What to look at: an older CLI can start or replace a newer lane daemon. Should a daemon refuse to be started by a CLI older than the one that last ran it, or say so loudly? *(observed 2026-11-17, not yet checked who started 3715391)*
+  *(checked 2026-11-17 on 0.33.2: not a fault of the code - the daemon is always the newest copy installed on the
+  machine, and none was newer than 0.31.0: a project pinned `"ref": "v0.31.0"`, and the machine keeps one
+  marketplace for all its projects. The 0.33 daemon of 11-16 ran from a development checkout, left when idle, and
+  the next client raised the newest installed copy. Updating the installs (`/flotilla:update`) is the fix; a
+  newer daemon cannot be asked for by an older client, which has no such code)*
 
 ## From the reviews of 0.31.2 (2026-11-10, what reaches the guards and what they answer on a failure)
 
