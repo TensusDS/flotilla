@@ -110,7 +110,6 @@ def test_the_beat_carries_the_wait_estimates_and_a_malformed_one_reads_as_none(t
     assert daemon.heartbeat(root).eta == {}
 
 
-
 def test_the_memory_item_is_read_from_the_journal_with_the_projects_floor(tmp_path, monkeypatch):
     from flotilla.lane import machine
     root = lane_root(tmp_path)
@@ -126,7 +125,6 @@ def test_the_memory_item_is_read_from_the_journal_with_the_projects_floor(tmp_pa
     assert gone.id not in found[0].text                                        # its process is gone: nothing to lose
     own = report.items(tmp_path, "p1", NOW, {"lane": {"memory_floor_mb": 1500}})
     assert [item for item in own if item.kind == report.MEMORY] == []          # the project's own floor: not short
-
 
 
 def test_flotilla_lane_marks_the_runs_the_daemon_reads_as_hung(tmp_path):

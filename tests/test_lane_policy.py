@@ -223,13 +223,11 @@ def test_a_lone_heavy_keeps_the_light_reserve_beside_light_runs():   # final rev
     assert decide([run("h", WAITING, 8000, True, 4)], machine(free=8500), "h").start   # an empty machine: it goes
 
 
-
 def test_a_run_that_just_refused_this_waiter_is_no_candidate():   # review of ed148e3, 1: back-off
     runs = [run("y", RUNNING, 2000, ran_s=90, since_start_s=90, refused_for="b2"),
             run("b2", WAITING, 1000, kind="push")]
     d = decide(runs, machine(free=0), "b2")
     assert d.freeze == () and "y refused an order a moment ago" in d.why
-
 
 
 def test_a_run_that_just_refused_any_waiter_is_no_candidate():   # review of the follow-up, I2
@@ -293,13 +291,11 @@ def test_daemon_reason_ignores_the_grace():   # ruling 5
     assert policy.daemon_reason(run("y", RUNNING, 1000, freezable=False), m)
 
 
-
 def test_a_floor_is_believed_up_to_a_quarter_of_the_machine():   # final review C2: any session writes floor_mb
     assert policy.clamp_floor(9_000_000, 15603) == 3900
     assert policy.clamp_floor(1000, 15603) == 1000
     assert policy.clamp_floor(1500, 4000) == 1500        # never under the default floor
     assert policy.clamp_floor(9_000_000, None) == 4096
-
 
 
 def test_a_negative_floor_is_no_floor():   # fix review R9
@@ -309,7 +305,6 @@ def test_a_negative_floor_is_no_floor():   # fix review R9
 def test_the_heavy_share_is_named_only_when_it_and_not_the_room_holds_a_heavy_run_back():   # review of B, finding 4
     d = decide([run("h", RUNNING, 4000, True, 2), run("b2", WAITING, 3500, True, 2)], machine(free=1000), "b2")
     assert "1000 MB of room" in d.why and "for heavy runs" not in d.why
-
 
 
 def test_a_run_no_ceiling_holds_keeps_its_admitted_memory_and_the_slack_promised():   # third review of B, 1 and 2
@@ -564,7 +559,6 @@ def test_a_run_the_replay_starts_has_no_estimate():   # review of 1241703, 4: wh
     assert eta_s([run("w", WAITING, 100)], machine(free=8000), "w") is None
 
 
-
 def test_a_small_endless_run_does_not_turn_off_a_drain_it_is_not_the_cause_of():
     """Review of 4cc2e8c, 1: a hung 100 MB light run turned off the drain of a heavy run that a normal heavy run kept
     out; once that one ends, the heavy fits beside the hung one, so it drains."""
@@ -572,3 +566,12 @@ def test_a_small_endless_run_does_not_turn_off_a_drain_it_is_not_the_cause_of():
             run("big", WAITING, 5000, True, 6, order=2, waited_s=900), run("light", WAITING, 300, order=3)]
     assert not decide(runs, machine(free=8000), "light").start
     assert "the lane starts no new run until this one fits" in decide(runs, machine(free=8000), "big").why
+
+
+def test_the_endless_check_counts_the_memory_the_other_runs_free():
+    """Review of 68a2194: memory, not cores, decides here - once the 6000 MB run ends, 5000 MB fits beside the hung
+    100 MB one, so the heavy waiter drains and the light one waits."""
+    runs = [run("tiny", RUNNING, 100, order=0, hung=True), run("h", RUNNING, 6000, True, 2, order=1),
+            run("big", WAITING, 5000, True, 2, order=2, waited_s=900), run("light", WAITING, 300, order=3)]
+    assert "the lane starts no new run until this one fits" in decide(runs, machine(free=1000), "big").why
+    assert not decide(runs, machine(free=1000), "light").start

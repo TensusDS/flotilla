@@ -472,7 +472,6 @@ def test_the_memory_answer_draws_the_line_from_the_host(tmp_path):
     assert answer.blocks is True and "floor 2150 MB" not in answer.text and "2150 MB" in answer.text
 
 
-
 def test_the_line_is_drawn_where_the_host_can_reach_it(monkeypatch):
     """Review of 1241703, 6: a container's limit far under the host makes the line moot; a user slice near the
     host's size does not."""

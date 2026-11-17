@@ -198,7 +198,6 @@ def test_slot_reports_its_scope(tmp_path):
     assert seen == [slot.unit] and slot.unit.startswith("flotilla-lane-b1-")
 
 
-
 def test_a_floor_out_of_reason_does_not_make_the_machine_over(lane):   # final review C2
     lanes, sched, clock, fake, values = lane
     victim = lanes.enqueue("v", "", pid=11, mark="m")
@@ -209,7 +208,6 @@ def test_a_floor_out_of_reason_does_not_make_the_machine_over(lane):   # final r
     clock.t = 12.0
     sched.step()
     assert sched.last_machine.floor_mb == 3900 and lanes.bookings()[victim.id].frozen == ""
-
 
 
 def test_a_squeeze_ends_in_the_daemons_record_though_the_journal_says_it_ended(lane):   # review of b6173cd, minor 1
@@ -241,7 +239,6 @@ def test_a_squeeze_ends_in_the_daemons_record_though_the_journal_says_it_ended(l
     assert item.id in actions.restored and item.id not in sched.squeezed
 
 
-
 def test_a_run_whose_group_does_not_read_the_decided_ceiling_is_not_bound(lane, monkeypatch):   # third review of B
     from flotilla.lane import tick as tick_module
     lanes, sched, clock, fake, values = lane
@@ -262,7 +259,6 @@ def test_a_run_whose_group_does_not_read_the_decided_ceiling_is_not_bound(lane, 
     sched.step()
     bound = [next(r for r in runs if r.id == item.id).bound for runs in seen]
     assert bound == [True, False]
-
 
 
 def test_a_ceiling_set_back_to_another_number_or_written_clamped_is_read_right(lane, monkeypatch):   # review a93e2cc
@@ -538,7 +534,6 @@ def test_the_picture_carries_each_waiters_wait_estimate(lane, monkeypatch):
     monkeypatch.setattr(policy, "decide", lambda *a, **kw: policy.Decision(False, (), "held for the test"))
     _actions, picture = sched.step()
     assert picture["eta"] == {one.id: 300}
-
 
 
 def test_the_daemon_marks_a_hung_run_for_the_policy(lane, monkeypatch):
