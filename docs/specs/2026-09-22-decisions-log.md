@@ -1956,7 +1956,11 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    or one taken by hand, holds the lane: no wait ends those, and the whole lane would stop behind them (review of
    1241703). A waiter is told when it should fit at the earliest by the estimates of the runs ahead - waiters ahead
    of it may take the room first - beside its reason and not in it: the reason, which holds no running count, is
-   what a waiting `lane run` reprints.
+   what a waiting `lane run` reprints. An empty lane no longer takes a heavy run whatever the memory: it waits until
+   its memory is free, unless it is larger than all the lane gives, which no wait cures. And a heavy waiter an empty
+   lane would not hold either drains nothing - the memory is held outside the lane, and a drain would stop every
+   project for nothing: the lane stays open, it stays first among the heavy runs, and its orchestrator is told (the
+   person's ruling, 2026-11-17, over keeping the lane closed until the orchestrator frees the memory).
 
 ## Open questions (for the foundation spec)
 

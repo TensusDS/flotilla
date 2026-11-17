@@ -11,7 +11,7 @@ Nothing here reads the machine or the journal: `admission.view` builds the pictu
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 WAITING, RUNNING, ORDERED, FROZEN = "waiting", "running", "ordered", "frozen"
 #: A run's purpose and its type value (section 2.5): set by meaning, not by the model.
@@ -177,6 +177,7 @@ class _Replay:
     why: str = ""
     about: str = ""
     behind: str = ""               # the heavy waiter `mine` waits behind, when that decided it
+    outside: dict = field(default_factory=dict)   # heavy waiters no drain can serve: {id: {need_mb, room_mb}}
 
 
 def _replay(runs: list[Run], machine: Machine, mine: str) -> _Replay:
@@ -228,9 +229,18 @@ def _replay(runs: list[Run], machine: Machine, mine: str) -> _Replay:
                 # when that run is what keeps it out: once every other run ahead has ended, would it fit beside the
                 # endless ones? (review of 4cc2e8c, 1: a small hung run turned every drain off)
                 endless = [p for p in pool if p.state in (RUNNING, ORDERED) and (p.hung or p.by_hand)]
-                room_after = None if out.free is None else \
-                    out.free - out.kept + sum(p.mem_mb for p in pool if p not in endless)
-                if endless and _fits(r, endless, room_after, machine)[0]:
+                spare = None if out.free is None else out.free - out.kept
+                room_after = None if spare is None else spare + sum(p.mem_mb for p in pool if p not in endless)
+                empty = None if spare is None else spare + sum(p.mem_mb for p in pool)
+                if empty is not None and _fits(r, [], empty, machine)[0]:
+                    # it would not fit in an empty lane either: the memory is held outside the lane - Claude Code's
+                    # sessions, most often - and a drain would stop every project for nothing. The lane stays open,
+                    # it stays first among the heavy runs, and its orchestrator is told (the person's ruling,
+                    # 2026-11-17)
+                    out.outside[r.id] = {"need_mb": r.mem_mb, "room_mb": empty}
+                    failed = (f"{failed}; no drain for it: it would not fit in an empty lane either - the memory is "
+                              "held outside the lane")
+                elif endless and _fits(r, endless, room_after, machine)[0]:
                     failed = (f"{failed}; no drain for it while {', '.join(p.id for p in endless)} holds the lane "
                               "(hung or taken by hand)")
                 else:
@@ -283,6 +293,12 @@ def eta_words(seconds: float | None) -> str:
     when = f"~{minutes} min" if minutes < 90 else f"~{minutes / 60:.1f} h"
     # the waiters ahead of it may take the room first: the runs' ends are its earliest (review of 1241703, 5)
     return f"by the estimates of the runs ahead it fits in {when} at the earliest"
+
+
+def held_outside(runs: list[Run], machine: Machine) -> dict[str, dict]:
+    """The heavy waiters past DRAIN_AFTER_S that would not fit even in an empty lane, with the memory each needs and
+    the room an empty lane would leave it (MB): the lane does not drain for them, their orchestrators are told."""
+    return _replay(runs, machine, "").outside
 
 
 def line(runs: list[Run], machine: Machine) -> list[Run]:
@@ -439,7 +455,12 @@ def _fits(r: Run, pool: list[Run], free: int | None, machine: Machine) -> tuple[
     held by the cores of the moment and by a size that never fits was told only of the cores (field test
     2026-11-11)."""
     if not pool:
-        return "", ""   # an empty machine takes its first run whatever its size (section 2.2)
+        # an empty machine takes its first run whatever its size (section 2.2) - a heavy one only once the memory it
+        # needs is free over the floor, where it ever can be: started into the memory Claude Code's sessions held,
+        # one took the machine down to their reap line (field notes 2026-11-17, the person's ruling)
+        if r.heavy and machine.give_mb is not None and free is not None and free < r.mem_mb <= machine.give_mb:
+            return _memory_why(r.mem_mb, free, machine), FREE
+        return "", ""
     failed = []
     if len(pool) >= machine.max_runs:
         failed.append(f"runs at once: {len(pool)} of {machine.max_runs}")

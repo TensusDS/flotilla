@@ -552,3 +552,19 @@ def test_the_daemon_marks_a_hung_run_for_the_policy(lane, monkeypatch):
     monkeypatch.setattr(tick_module, "tick", spy)
     sched.step()
     assert seen == {holder.id: True}
+
+
+
+def test_the_picture_carries_the_heavy_waiters_held_outside_the_lane(lane, monkeypatch):
+    """The beat lists them for the orchestrators (`outside`); a reading that fails is left out, the tick never fails
+    on it."""
+    from flotilla.lane import policy
+    lanes, sched, clock, fake, values = lane
+    lanes.enqueue("w1", "", pid=12, mark="m")
+    monkeypatch.setattr(policy, "held_outside", lambda runs, machine: {"x": {"need_mb": 7100, "room_mb": 4700}})
+    assert sched.step()[1]["outside"] == {"x": {"need_mb": 7100, "room_mb": 4700}}
+
+    def broken(runs, machine):
+        raise ValueError("a broken reading")
+    monkeypatch.setattr(policy, "held_outside", broken)
+    assert sched.step()[1]["outside"] == {}

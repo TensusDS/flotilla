@@ -15,7 +15,7 @@ from pathlib import Path
 from flotilla.core.text import visible
 from flotilla.watch.whose import Item
 
-HUNG, LOST, MEMORY = "lane-hung", "lane-lost", "lane-memory"
+HUNG, LOST, MEMORY, OUTSIDE = "lane-hung", "lane-lost", "lane-memory", "lane-outside"
 #: How long a run cut short stays an item, unless its owner books the same work again sooner.
 LOST_FOR = dt.timedelta(hours=6)
 
@@ -76,6 +76,7 @@ def items(state: Path, project: str, now: dt.datetime, profile: dict | None = No
         return found
     order = list(bookings.values())   # the journal's order: a booking made later stands after it
     found.extend(memory_items(order, project, _available(), *_line_and_floor(profile or {}), live=_live))
+    found.extend(outside_items(order, project, beat.outside if beat is not None else {}))
     for place, item in enumerate(order):
         ended = _when(item.ended or item.since)
         if (item.project != project or item.state != book.RELEASED or not item.cut or ended is None
@@ -91,6 +92,38 @@ def items(state: Path, project: str, now: dt.datetime, profile: dict | None = No
                           "or its session ending). Ask its owner to book it again - narrower, one run at a time while "
                           "memory is short", item.ended or item.since, who=f"{item.id} lost"))
     return found
+
+
+def outside_items(order, project: str, outside: dict, *, sessions=None) -> list[Item]:
+    """The project's heavy waiters the lane does not drain for, because the memory they need is held outside it:
+    drained empty, the lane would still not hold them. The person's ruling, 2026-11-17: the lane stays open to the
+    other runs, and the orchestrator is told what would let them in."""
+    from flotilla.lane import book
+    found: list[Item] = []
+    held = None
+    for item in order:
+        entry = outside.get(item.id)
+        if item.project != project or item.state != book.WAITING or not isinstance(entry, dict):
+            continue
+        need, room = number(entry.get("need_mb")), number(entry.get("room_mb"))
+        if need is None or room is None:
+            continue
+        if held is None:
+            held = (sessions or _sessions)() or ()
+        whose = (f" {held[0]} Claude Code process(es) hold {held[1] / 1024:.1f} GB." if len(held) == 2 else "")
+        found.append(Item(OUTSIDE, item.run_for,
+                          f"{_what(item.who, item.note, item.run_for)} ({visible(item.id)}) needs {round(need)} MB "
+                          f"and would not fit even with the lane empty: {max(0, round(room))} MB of room over the "
+                          f"lane's floor then.{whose} The lane lets other runs pass it rather than drain for nothing; "
+                          "it starts once that memory is free. Retire idle seats, or narrow the run", "",
+                          who=f"{item.id} outside"))
+    return found
+
+
+def _sessions():
+    """(Claude Code processes, their MB) on this machine, or None: what most often holds the memory a run lacks."""
+    from flotilla.core import resources
+    return resources.claude_memory()
 
 
 def _available() -> int | None:

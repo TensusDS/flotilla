@@ -70,6 +70,8 @@ class Heartbeat:
     hung: dict = dataclasses.field(default_factory=dict)   # held runs that look hung (`Scheduler._hung`); absent
                                                            # from an older daemon's beat
     eta: dict = dataclasses.field(default_factory=dict)    # a waiter's wait estimate in seconds (`policy.eta_s`)
+    outside: dict = dataclasses.field(default_factory=dict)   # heavy waiters held by memory outside the lane
+                                                              # (`policy.held_outside`)
 
 
 def _read_regular(path: Path, limit: int = 1_000_000) -> bytes | None:
@@ -119,7 +121,8 @@ def heartbeat(root: Path) -> Heartbeat | None:
         return None   # NaN, infinity or out of range: read as present for ever, or raising, by any comparison (sixth review)
     hung = data.get("hung") if isinstance(data.get("hung"), dict) else {}
     eta = data.get("eta") if isinstance(data.get("eta"), dict) else {}
-    return Heartbeat(**{key: data[key] for key in types}, hung=hung, eta=eta)
+    outside = data.get("outside") if isinstance(data.get("outside"), dict) else {}
+    return Heartbeat(**{key: data[key] for key in types}, hung=hung, eta=eta, outside=outside)
 
 
 def _version(text) -> tuple:
@@ -450,7 +453,7 @@ def _write_beat(root: Path, pid: int, mark: str, picture: dict, tick: float) -> 
     data = {"pid": pid, "mark": mark, "copy": str(claude_state.running_root()), "release": __version__,
             "protocol": PROTOCOL, "tick": tick, "beat": time.time(), "why": picture.get("why", {}),
             "groups": picture.get("groups", {}), "over": picture.get("over", {}), "hung": picture.get("hung", {}),
-            "eta": picture.get("eta", {})}
+            "eta": picture.get("eta", {}), "outside": picture.get("outside", {})}
     tmp = Path(root) / f".{BEAT}.{pid}"
     with contextlib.suppress(FileNotFoundError):
         tmp.unlink()   # a link left here is removed, never written through (final review M7)

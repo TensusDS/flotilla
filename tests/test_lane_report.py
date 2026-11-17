@@ -134,3 +134,23 @@ def test_flotilla_lane_marks_the_runs_the_daemon_reads_as_hung(tmp_path):
     runs = [policy.Run("b7", policy.RUNNING, 100, False, 1), policy.Run("b8", policy.RUNNING, 100, False, 1)]
     assert [r.hung for r in commands.mark_hung(runs, daemon.heartbeat(root))] == [True, False]
     assert [r.hung for r in commands.mark_hung(runs, None)] == [False, False]
+
+
+
+def test_a_heavy_waiter_held_by_memory_outside_the_lane_is_its_projects_item(tmp_path, monkeypatch):
+    """The person's ruling, 2026-11-17: the lane does not drain for it, and its orchestrator is told what holds it."""
+    monkeypatch.setattr(daemon, "gone", lambda root, **kw: False)
+    root = lane_root(tmp_path)
+    lanes = book.Book(LocalLogStore(root), None)
+    big = lanes.enqueue("main 3", "suite", pid=5, mark="m", project="p1", run_for="fix/x")
+    other = lanes.enqueue("main 4", "suite", pid=6, mark="m", project="p2")
+    entry = {"need_mb": 7100, "room_mb": 4700}
+    daemon._write_beat(root, 4242, "m", {"outside": {big.id: entry, other.id: entry, "gone": entry}}, 1.0)
+    assert daemon.heartbeat(root).outside[big.id] == entry
+    monkeypatch.setattr(report, "_sessions", lambda: (42, 8806))
+    found = [item for item in report.items(tmp_path, "p1", NOW) if item.kind == report.OUTSIDE]
+    assert [(item.branch, item.who) for item in found] == [("fix/x", f"{big.id} outside")]
+    assert ("needs 7100 MB and would not fit even with the lane empty: 4700 MB of room over the lane's floor then. "
+            "42 Claude Code process(es) hold 8.6 GB.") in found[0].text and "Retire idle seats" in found[0].text
+    daemon._write_beat(root, 4242, "m", {"outside": {big.id: {"need_mb": "x", "room_mb": None}}}, 1.0)
+    assert [item for item in report.items(tmp_path, "p1", NOW) if item.kind == report.OUTSIDE] == []

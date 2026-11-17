@@ -21,6 +21,9 @@ of memory, and a heavy run headed its project's line for hours with no word of w
 - **A heavy run that has waited ten minutes drains the lane**: nothing new starts behind it, light runs neither,
   until it fits - unless what keeps it out is a run that looks hung or one taken by hand, which no wait ends.
   **The memory heavy runs take together can be set**: `lane_heavy_mb` in `machine.toml`.
+- **A heavy run starts in an empty lane only once its memory is free.** One that would not fit even there - the
+  memory held outside the lane, by Claude Code's sessions most often - drains nothing: the other runs pass it, and
+  its orchestrator is told what it needs, the room it would have and what the sessions hold.
 - **A waiter is told when it should fit at the earliest**, by the estimates of the runs ahead: on its line in
   `flotilla lane`, and with each new reason a waiting `lane run` prints.
 - The orchestrator's post is template 33.

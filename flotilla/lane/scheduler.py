@@ -256,9 +256,14 @@ class Scheduler:
                 found_eta = None
             if found_eta is not None:
                 etas[booking] = round(found_eta)
+        try:
+            outside = policy.held_outside(enriched, machine)
+        except Exception:  # noqa: BLE001 - a hint to the orchestrator; a tick never fails on it
+            outside = {}
         picture = {
             "why": dict(actions.why),
             "eta": etas,
+            "outside": outside,
             "groups": {b: {"ceiling_mb": self.ceilings.get(b), "current_mb": readings[b].current_mb,
                            "pressure": readings[b].pressure, "squeezed": b in self.squeezed,
                            "pressed": pressed.get(b, False)}
