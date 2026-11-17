@@ -1,6 +1,7 @@
 """The grant by value: bookings to the policy's picture, freeze orders, thawing, the older-flotilla fallback, and a
 frozen command that never stays frozen once its holder is dead or silent (lane shared machine design, 2-4 and 7)."""
 
+import dataclasses
 import datetime as dt
 
 import pytest
@@ -536,3 +537,15 @@ def test_a_run_carries_its_own_reservation_only_in_its_first_half_minute(lane): 
     runs, _m = admission.view(lanes.bookings(), {}, value(tree={11: 100}), now=T0 + dt.timedelta(seconds=60),
                               live=lanes.live, mine="")
     assert next(r for r in runs if r.id == item.id).reserved_mb == 0
+
+
+
+def test_the_machines_capacity_is_its_total_less_the_floor(lane):
+    """Review of f16df11, 1: `give_mb` shrinks as the sessions grow; what a run too large for the machine is told by
+    is fixed."""
+    lanes, _procs, _later = lane
+    _runs, found = admission.view(lanes.bookings(), {}, dataclasses.replace(value(total_mb=16000), floor_mb=2150), now=T0,
+                                  live=lanes.live, mine="")
+    assert found.capacity_mb == 13850
+    _runs, found = admission.view(lanes.bookings(), {}, value(), now=T0, live=lanes.live, mine="")
+    assert found.capacity_mb is None

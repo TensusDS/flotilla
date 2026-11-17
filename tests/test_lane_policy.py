@@ -578,14 +578,31 @@ def test_the_endless_check_counts_the_memory_the_other_runs_free():
 
 
 
+def roomy(free, give, capacity=14000, **kw):
+    """The machine as admission.view builds it: `give` is the room with every lane run ended (free plus what the
+    held runs take), `capacity` the room with nothing else running."""
+    return Machine(cpus=8, give_mb=give, free_mb=free, swap_free_mb=8000, swap_total_mb=8000, capacity_mb=capacity,
+                   **kw)
+
+
 def test_a_heavy_run_starts_in_an_empty_lane_only_once_its_memory_is_free():
     """Field notes 2026-11-17: a 7 GB run started into an empty lane while the sessions held 8 GB, and the machine
-    went down to Claude Code's reap line. A light run, and a run larger than all the lane gives, start as before."""
-    d = decide([run("h", WAITING, 5000, True, 4)], machine(free=2000), "h")
-    assert not d.start and "memory: 5000 MB needed, 2000 MB of room" in d.why and d.freeze == ()
-    assert decide([run("h", WAITING, 5000, True, 4)], machine(free=5000), "h").start
-    assert decide([run("l", WAITING, 1500)], machine(free=1000), "l").start
-    assert decide([run("huge", WAITING, 12000, True, 4)], machine(free=1000), "huge").start   # never fits: alone
+    went down to Claude Code's reap line. A light run, and a run larger than the machine, start as before."""
+    d = decide([run("h", WAITING, 5000, True, 4)], roomy(2000, 2000), "h")
+    assert not d.start and d.freeze == ()
+    assert "memory: 5000 MB needed, 2000 MB with the lane empty: the rest is held outside the lane" in d.why
+    assert decide([run("h", WAITING, 5000, True, 4)], roomy(5000, 5000), "h").start
+    assert decide([run("l", WAITING, 1500)], roomy(1000, 1000), "l").start
+    assert decide([run("huge", WAITING, 15000, True, 4)], roomy(1000, 1000), "huge").start   # never fits: alone
+    assert decide([run("h", WAITING, 5000, True, 4)], roomy(2000, 2000, capacity=None), "h").start   # unread
+
+
+def test_a_heavy_run_whose_room_its_freeze_holds_starts_as_before():
+    """Review of f16df11, 3: the resident part of a run it froze is the lane's memory, not the sessions': the heavy
+    waiter starts once the lane is empty, and the frozen run does not thaw past it to be frozen again."""
+    runs = [run("f", FROZEN, 1000, order=0, since_start_s=600), run("h", WAITING, 5000, True, 4, order=1,
+                                                                     waited_s=900, holds=True)]
+    assert decide(runs, roomy(4500, 7000), "h").start
 
 
 def test_no_drain_for_a_heavy_run_an_empty_lane_would_not_hold():
@@ -593,13 +610,18 @@ def test_no_drain_for_a_heavy_run_an_empty_lane_would_not_hold():
     the lane - so the light runs pass, it stays first among the heavy ones, and it is listed for its orchestrator."""
     runs = [run("l1", RUNNING, 300, order=0), run("big", WAITING, 5000, True, 6, order=1, waited_s=900),
             run("light", WAITING, 300, order=2), run("heavy2", WAITING, 1000, True, 1, order=3)]
-    assert decide(runs, machine(free=2000), "light").start
-    d = decide(runs, machine(free=2000), "big")
+    assert decide(runs, roomy(2000, 2300), "light").start
+    d = decide(runs, roomy(2000, 2300), "big")
     assert not d.start and "no drain for it: it would not fit in an empty lane either" in d.why
-    assert decide(runs, machine(free=2000), "heavy2").why == "behind heavy big"
-    assert held_outside(runs, machine(free=2000)) == {"big": {"need_mb": 5000, "room_mb": 2300}}
-    # the room an empty lane would leave counts the light runs ahead of it ending: 4800 + 300 holds 5000, so it drains
-    assert held_outside(runs, machine(free=4800)) == {}
-    assert "behind heavy big, which has waited over 10 min" in decide(runs, machine(free=4800), "light").why
+    assert decide(runs, roomy(2000, 2300), "heavy2").why.startswith("behind heavy big")
+    assert held_outside(runs, roomy(2000, 2300)) == {"big": {"need_mb": 5000, "room_mb": 2300}}
+    # review of f16df11, 1: the room an empty lane leaves is `give`, whatever the free memory of the moment - the
+    # ceilings' headroom and the runs' own memory are the lane's, and a drain frees them
+    assert held_outside(runs, roomy(1000, 5100)) == {}
+    assert "behind heavy big, which has waited over 10 min" in decide(runs, roomy(1000, 5100), "light").why
     young = [run("big", WAITING, 5000, True, 6, order=1, waited_s=60), run("light", WAITING, 300, order=2)]
-    assert held_outside(young, machine(free=2000)) == {}   # before the drain's ten minutes: nobody is told
+    assert held_outside(young, roomy(2000, 2000)) == {}   # before the drain's ten minutes: nobody is told
+    larger = [run("l1", RUNNING, 300, order=0), run("big", WAITING, 15000, True, 6, order=1, waited_s=900),
+              run("light", WAITING, 300, order=2)]
+    assert held_outside(larger, roomy(2000, 2300)) == {}   # larger than the machine: it drains, then starts alone
+    assert "behind heavy big" in decide(larger, roomy(2000, 2300), "light").why

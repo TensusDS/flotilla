@@ -111,7 +111,7 @@ def outside_items(order, project: str, outside: dict, *, sessions=None) -> list[
         if held is None:
             held = (sessions or _sessions)() or ()
         whose = (f" {held[0]} Claude Code process(es) hold {held[1] / 1024:.1f} GB." if len(held) == 2 else "")
-        found.append(Item(OUTSIDE, item.run_for,
+        found.append(Item(OUTSIDE, visible(item.run_for),
                           f"{_what(item.who, item.note, item.run_for)} ({visible(item.id)}) needs {round(need)} MB "
                           f"and would not fit even with the lane empty: {max(0, round(room))} MB of room over the "
                           f"lane's floor then.{whose} The lane lets other runs pass it rather than drain for nothing; "

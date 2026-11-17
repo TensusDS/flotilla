@@ -181,6 +181,7 @@ def value_for(profile: dict):
     reserve, immortal, cap, factor = light_reserve(), immortal_minutes() * 60.0, max_runs(), cpu_factor()
     heavy = heavy_mb()
     ceiling, total = freeze_ceiling_minutes() * 60.0, freeze_total_minutes() * 60.0
+    memtotal = machine._memtotal()
     root = paths.state_dir() / "lane"
 
     def make(reading=None):
@@ -189,7 +190,8 @@ def value_for(profile: dict):
                                swap_mb=freeze.swap_mb, tree_mb=peak.tree_rss_mb,
                                beat_age_s=lambda booking: admission.beat_age(root, booking),
                                foreign=len(reading.computing) if reading is not None else 0,
-                               freeze_ceiling_s=ceiling, freeze_total_s=total, heavy_mb=heavy)
+                               freeze_ceiling_s=ceiling, freeze_total_s=total, heavy_mb=heavy,
+                               total_mb=memtotal // 1024 if memtotal else None)
     return make
 
 
