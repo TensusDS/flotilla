@@ -562,3 +562,13 @@ def test_behind_a_heavy_the_estimate_is_that_heavy_runs():
 
 def test_a_run_the_replay_starts_has_no_estimate():   # review of 1241703, 4: what holds it is not the runs ahead
     assert eta_s([run("w", WAITING, 100)], machine(free=8000), "w") is None
+
+
+
+def test_a_small_endless_run_does_not_turn_off_a_drain_it_is_not_the_cause_of():
+    """Review of 4cc2e8c, 1: a hung 100 MB light run turned off the drain of a heavy run that a normal heavy run kept
+    out; once that one ends, the heavy fits beside the hung one, so it drains."""
+    runs = [run("tiny", RUNNING, 100, order=0, hung=True), run("h", RUNNING, 4000, True, 8, order=1),
+            run("big", WAITING, 5000, True, 6, order=2, waited_s=900), run("light", WAITING, 300, order=3)]
+    assert not decide(runs, machine(free=8000), "light").start
+    assert "the lane starts no new run until this one fits" in decide(runs, machine(free=8000), "big").why

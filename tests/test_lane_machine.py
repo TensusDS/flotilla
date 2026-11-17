@@ -485,9 +485,15 @@ def test_the_line_is_drawn_where_the_host_can_reach_it(monkeypatch):
     spec.loader.exec_module(copy)
     host = 16 * 1024 * 1024
     monkeypatch.setattr(copy, "read_meminfo", lambda path=None, field="MemAvailable": host)
-    for limit, drawn in ((None, True), (15 * 1024, True), (14 * 1024, True), (8 * 1024, False), (2048, False)):
+    for limit, drawn in ((None, True), (15 * 1024, True), (14 * 1024, True), (8 * 1024, True), (7 * 1024, False),
+                         (2048, False)):
         monkeypatch.setattr(resources, "cgroup_limit_mb", lambda limit=limit, **kw: limit)
         assert (copy._host_total() == host) is drawn, limit
+    big = 64 * 1024 * 1024   # a user slice at 90 % of a 64 GB host keeps the line (review of 4cc2e8c, 2)
+    monkeypatch.setattr(copy, "read_meminfo", lambda path=None, field="MemAvailable": big)
+    monkeypatch.setattr(resources, "cgroup_limit_mb", lambda **kw: 58982)
+    assert copy._host_total() == big
+    monkeypatch.setattr(copy, "read_meminfo", lambda path=None, field="MemAvailable": host)
     monkeypatch.setattr(resources, "cgroup_limit_mb", lambda **kw: None)
     monkeypatch.setattr(copy, "_memtotal", lambda: host)
     assert copy.floor_here({}) == 2150 and copy.floor_here({"lane": {"memory_floor_mb": 3000}}) == 3000

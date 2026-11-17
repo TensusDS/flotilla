@@ -122,17 +122,16 @@ def _memtotal() -> int | None:
 
 
 def _host_total() -> int | None:
-    """The host's MemTotal in kB when the host can reach Claude Code's line, else None. The line is drawn on the
-    host's figures: a container's limit that binds well before it - leaving the host more than the line and its
-    margin free - makes it moot, and a line drawn from the host would close a small container's lane for ever; a
-    limit near the host's size (a user slice at 90 %) does not (review of 1241703, 6)."""
+    """The host's MemTotal in kB, unless a container's limit under half of it binds this process: the line is drawn
+    on the host's figures, and drawn from the host it would close a small container's lane for ever. A larger
+    limit - a user slice at 90 % - leaves the host what services outside it take to reach the line, so the line is
+    drawn (reviews of 1241703, 6, and 4cc2e8c, 2)."""
     from flotilla.core import resources
     host = read_meminfo(MEMINFO, "MemTotal")
     if host is None:
         return None
     limit = resources.cgroup_limit_mb()
-    line = reap_line_mb(host) or 0
-    if limit is not None and limit * 1024 < host - (line + REAP_MARGIN_MB) * 1024:
+    if limit is not None and limit * 1024 * 2 < host:
         return None
     return host
 

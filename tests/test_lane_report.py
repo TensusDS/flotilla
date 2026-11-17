@@ -120,9 +120,19 @@ def test_the_memory_item_is_read_from_the_journal_with_the_projects_floor(tmp_pa
     monkeypatch.setattr(report, "_available", lambda: 1800)
     monkeypatch.setattr(machine, "_host_total", lambda: 16 * 1024 * 1024)
     monkeypatch.setattr(machine, "_memtotal", lambda: 16 * 1024 * 1024)
-    monkeypatch.setattr(report, "_live", lambda: (lambda item: item.id != gone.id))
+    monkeypatch.setattr(report, "_live", lambda: (lambda item: item.id != gone.id))   # read as `live()`
     found = [item for item in report.items(tmp_path, "p1", NOW) if item.kind == report.MEMORY]
     assert len(found) == 1 and "under the 2150 MB" in found[0].text and waiting.id in found[0].text
     assert gone.id not in found[0].text                                        # its process is gone: nothing to lose
     own = report.items(tmp_path, "p1", NOW, {"lane": {"memory_floor_mb": 1500}})
     assert [item for item in own if item.kind == report.MEMORY] == []          # the project's own floor: not short
+
+
+
+def test_flotilla_lane_marks_the_runs_the_daemon_reads_as_hung(tmp_path):
+    from flotilla.lane import policy
+    root = lane_root(tmp_path)
+    daemon._write_beat(root, 4242, "m", {"hung": {"b7": HUNG}}, 1.0)
+    runs = [policy.Run("b7", policy.RUNNING, 100, False, 1), policy.Run("b8", policy.RUNNING, 100, False, 1)]
+    assert [r.hung for r in commands.mark_hung(runs, daemon.heartbeat(root))] == [True, False]
+    assert [r.hung for r in commands.mark_hung(runs, None)] == [False, False]

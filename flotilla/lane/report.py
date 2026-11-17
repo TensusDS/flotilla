@@ -75,7 +75,7 @@ def items(state: Path, project: str, now: dt.datetime, profile: dict | None = No
     except (StorageCorrupt, OSError, ValueError):
         return found
     order = list(bookings.values())   # the journal's order: a booking made later stands after it
-    found.extend(memory_items(order, project, _available(), *_line_and_floor(profile or {}), live=_live()))
+    found.extend(memory_items(order, project, _available(), *_line_and_floor(profile or {}), live=_live))
     for place, item in enumerate(order):
         ended = _when(item.ended or item.since)
         if (item.project != project or item.state != book.RELEASED or not item.cut or ended is None
@@ -114,15 +114,16 @@ def _live():
 
 
 def memory_items(order, project: str, available: int | None, line: int | None, floor: int, *,
-                 live=lambda item: True) -> list[Item]:
+                 live=None) -> list[Item]:
     """One item while the machine's free memory is under the lane's floor and Claude Code's line can be drawn: the
     project's runs booked now are the ones Claude Code stops if their seats sit idle (its rule: idle 30 min, free
     memory under a tenth and under 4 GiB). Nothing while the project books nothing: there is nothing of it to lose."""
     from flotilla.lane import book
     if available is None or line is None or available >= floor:
         return []
+    alive = live() if live is not None else (lambda item: True)   # the process table, read only when short
     booked = [item for item in order if item.project == project and item.state in (book.HELD, book.WAITING)
-              and live(item)]
+              and alive(item)]
     if not booked:
         return []
     named = ", ".join(f"{item.id} {visible(item.who) or 'a session'} "

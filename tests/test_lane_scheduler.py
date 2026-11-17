@@ -538,3 +538,22 @@ def test_the_picture_carries_each_waiters_wait_estimate(lane, monkeypatch):
     monkeypatch.setattr(policy, "decide", lambda *a, **kw: policy.Decision(False, (), "held for the test"))
     _actions, picture = sched.step()
     assert picture["eta"] == {one.id: 300}
+
+
+
+def test_the_daemon_marks_a_hung_run_for_the_policy(lane, monkeypatch):
+    """Review of 4cc2e8c, 3: the runs the daemon decides on carry its hung reading."""
+    from flotilla.lane import tick as tick_module
+    lanes, sched, clock, fake, values = lane
+    holder = lanes.enqueue("h", "", pid=11, mark="m")
+    raw(lanes, booking=holder.id, state=book.HELD, started=lanes._now())
+    monkeypatch.setattr(sched, "_hung", lambda *a, **kw: {holder.id: {"project": ""}})
+    seen = {}
+    real = tick_module.tick
+
+    def spy(runs, machine):
+        seen.update({r.id: r.hung for r in runs})
+        return real(runs, machine)
+    monkeypatch.setattr(tick_module, "tick", spy)
+    sched.step()
+    assert seen == {holder.id: True}

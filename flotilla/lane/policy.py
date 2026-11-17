@@ -224,10 +224,15 @@ def _replay(runs: list[Run], machine: Machine, mine: str) -> _Replay:
             blocker = r.id
             if r.state == WAITING and r.waited_s >= DRAIN_AFTER_S:
                 # the reason holds no running count: it is what a waiting `lane run` reprints (review of 1241703, 1)
-                endless = [p.id for p in pool if p.state in (RUNNING, ORDERED) and (p.hung or p.by_hand)]
-                if endless:   # draining behind a run that never ends stops the whole lane for nothing (review, 2)
-                    failed = (f"{failed}; no drain for it while {', '.join(endless)} holds the lane (hung or taken "
-                              "by hand)")
+                # draining behind a run that never ends stops the whole lane for nothing (review, 2) - but only
+                # when that run is what keeps it out: once every other run ahead has ended, would it fit beside the
+                # endless ones? (review of 4cc2e8c, 1: a small hung run turned every drain off)
+                endless = [p for p in pool if p.state in (RUNNING, ORDERED) and (p.hung or p.by_hand)]
+                room_after = None if out.free is None else \
+                    out.free - out.kept + sum(p.mem_mb for p in pool if p not in endless)
+                if endless and _fits(r, endless, room_after, machine)[0]:
+                    failed = (f"{failed}; no drain for it while {', '.join(p.id for p in endless)} holds the lane "
+                              "(hung or taken by hand)")
                 else:
                     drain = r
                     failed = (f"{failed}; waited over {round(DRAIN_AFTER_S / 60)} min: the lane starts no new run "
