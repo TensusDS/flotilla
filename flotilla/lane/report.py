@@ -15,7 +15,7 @@ from pathlib import Path
 from flotilla.core.text import visible
 from flotilla.watch.whose import Item
 
-HUNG, LOST = "lane-hung", "lane-lost"
+HUNG, LOST, MEMORY = "lane-hung", "lane-lost", "lane-memory"
 #: How long a run cut short stays an item, unless its owner books the same work again sooner.
 LOST_FOR = dt.timedelta(hours=6)
 
@@ -75,6 +75,7 @@ def items(state: Path, project: str, now: dt.datetime) -> list[Item]:
     except (StorageCorrupt, OSError, ValueError):
         return found
     order = list(bookings.values())   # the journal's order: a booking made later stands after it
+    found.extend(memory_items(order, project, _available(), *_line_and_floor()))
     for place, item in enumerate(order):
         ended = _when(item.ended or item.since)
         if (item.project != project or item.state != book.RELEASED or not item.cut or ended is None
@@ -90,3 +91,32 @@ def items(state: Path, project: str, now: dt.datetime) -> list[Item]:
                           "or its session ending). Ask its owner to book it again - narrower, one run at a time while "
                           "memory is short", item.ended or item.since, who=f"{item.id} lost"))
     return found
+
+
+def _available() -> int | None:
+    from flotilla.core import resources
+    return resources.available_mb()
+
+
+def _line_and_floor() -> tuple[int | None, int]:
+    from flotilla.lane import machine
+    return machine.reap_line_mb(machine._host_total()), machine.floor_here({})
+
+
+def memory_items(order, project: str, available: int | None, line: int | None, floor: int) -> list[Item]:
+    """One item while the machine's free memory is under the lane's floor and Claude Code's line can be drawn: the
+    project's runs booked now are the ones Claude Code stops if their seats sit idle (its rule: idle 30 min, free
+    memory under a tenth and under 4 GiB). Nothing while the project books nothing: there is nothing of it to lose."""
+    from flotilla.lane import book
+    if available is None or line is None or available >= floor:
+        return []
+    live = [item for item in order if item.project == project and item.state in (book.HELD, book.WAITING)]
+    if not live:
+        return []
+    named = ", ".join(f"{item.id} {visible(item.who) or 'a session'} "
+                      f"({'running' if item.state == book.HELD else 'waiting'})" for item in live[:6])
+    more = f" and {len(live) - 6} more" if len(live) > 6 else ""
+    return [Item(MEMORY, "", f"memory is short: {available} MB free, under the {floor} MB the lane keeps; under "
+                             f"{line} MB Claude Code stops the background commands of seats idle 30 min, and this "
+                             f"project's lane runs with them: {named}{more}. Retire idle seats now, or keep these "
+                             "seats busy until their runs end", "", who="memory near Claude Code's line")]

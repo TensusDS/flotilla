@@ -70,3 +70,31 @@ def test_a_run_cut_short_is_an_item_until_booked_again(tmp_path):
 
 def test_no_lane_no_items(tmp_path):
     assert report.items(tmp_path, "p1", NOW) == []
+
+
+def test_memory_near_claude_codes_line_names_the_projects_runs_at_risk():
+    from types import SimpleNamespace as NS
+
+    from flotilla.lane import book
+    order = [NS(id="b1", project="p", state=book.HELD, who="main 3"),
+             NS(id="b2", project="p", state=book.WAITING, who="review 2"),
+             NS(id="b3", project="other", state=book.WAITING, who="main 9"),
+             NS(id="b4", project="p", state=book.RELEASED, who="main 4")]
+    found = report.memory_items(order, "p", 1900, 1638, 2150)
+    assert len(found) == 1 and found[0].kind == report.MEMORY
+    text = found[0].text
+    assert "1900 MB free" in text and "2150 MB" in text and "1638 MB" in text
+    assert "b1 main 3 (running)" in text and "b2 review 2 (waiting)" in text and "b3" not in text and "b4" not in text
+    assert report.memory_items(order, "p", 2150, 1638, 2150) == []     # at the floor: not short
+    assert report.memory_items(order, "p", None, 1638, 2150) == []     # memory unread
+    assert report.memory_items(order, "p", 1000, None, 2150) == []     # no line drawn (a container, macOS)
+    assert report.memory_items(order, "quiet", 1000, 1638, 2150) == []  # nothing booked: nothing to lose
+
+
+def test_memory_item_names_six_runs_and_counts_the_rest():
+    from types import SimpleNamespace as NS
+
+    from flotilla.lane import book
+    order = [NS(id=f"b{n}", project="p", state=book.WAITING, who=f"main {n}") for n in range(9)]
+    text = report.memory_items(order, "p", 100, 1638, 2150)[0].text
+    assert "b5 main 5" in text and "b6" not in text and "and 3 more" in text
