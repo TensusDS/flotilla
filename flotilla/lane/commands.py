@@ -164,7 +164,7 @@ def value_for(profile: dict):
     when the grant decides, inside the journal's lock."""
     from flotilla.core import resources
     from flotilla.lane import admission, freeze, peak
-    cpus, floor = machine.cpus(), machine.memory_floor_mb(profile)
+    cpus, floor = machine.cpus(), machine.floor_here(profile)
     kind = freeze.backend(setting=freeze_on())[0]
     reserve, immortal, cap, factor = light_reserve(), immortal_minutes() * 60.0, max_runs(), cpu_factor()
     ceiling, total = freeze_ceiling_minutes() * 60.0, freeze_total_minutes() * 60.0
@@ -185,7 +185,7 @@ def room_for(profile: dict):
     available less the profile's floor (read when the grant decides, inside the lock), the foreign runs computing."""
     from flotilla.core import resources
     cpus = machine.cpus()
-    floor, factor = machine.memory_floor_mb(profile), cpu_factor()
+    floor, factor = machine.floor_here(profile), cpu_factor()
 
     def memory_left():
         available = resources.available_mb()
@@ -320,7 +320,7 @@ def booked(root, *, note: str, wait: float, run_for: str = "", as_name=None, com
                   ladder=ladder, will_run=list(will_run or []), project=project, room=room_for(profile),
                   value=value_for(profile), kind=kind_of(purpose, who, root),
                   pinned=pinned_for(profile, purpose, will_run), scheduler=scheduler_for(table, lanes),
-                  floor_mb=machine.memory_floor_mb(profile)) as grant:
+                  floor_mb=machine.floor_here(profile)) as grant:
         yield grant
 
 
@@ -476,7 +476,7 @@ def _status(args) -> int:
     memory = "memory cannot be read" if free is None else f"{max(free - reserved, 0)} MB of memory left after the " \
         f"holders' peaks"
     print(f"budget for light runs: {used:g} of {total:g} cores (lane_cpu_factor {room.factor:g}), {memory} "
-          f"(floor {machine.memory_floor_mb(profile)} MB); a run measured at <= {estimate.LIGHT_SECONDS:g} s and "
+          f"(floor {machine.floor_here(profile)} MB); a run measured at <= {estimate.LIGHT_SECONDS:g} s and "
           f"<= {estimate.LIGHT_CORES:g} cores is light and takes no place")
     print("held:" if held or reading.computing else "held: nobody")
     for item in held:
@@ -519,6 +519,22 @@ def _status(args) -> int:
     return 0
 
 
+_READ = object()
+
+
+def sessions_line(floor_mb: int, *, found=_READ, line_mb=_READ) -> str:
+    """What Claude Code's own processes hold, every project's, and the line under which it stops idle sessions'
+    background commands - beside the lane's floor, so a person sees why the lane gives what it gives."""
+    from flotilla.core import resources
+    found = resources.claude_memory() if found is _READ else found
+    line_mb = machine.reap_line_mb(machine._host_total()) if line_mb is _READ else line_mb
+    held = "not read on this platform" if not found else \
+        f"{found[0]} Claude Code process(es) hold {_gb(found[1])} GB (every project's)"
+    edge = "" if not line_mb else f"; under {line_mb} MB available Claude Code stops idle sessions' background " \
+        "commands"
+    return f"sessions: {held}{edge}; the lane keeps {floor_mb} MB free (its floor)"
+
+
 def _status_by_value(lanes, found, held, waiting, reading, now, hist, profile, mode, beat=None) -> int:
     """`flotilla lane` while every waiter goes by value: what the machine gives, each run's priority, and why each
     waiter waits (lane shared machine design, section 5)."""
@@ -531,6 +547,7 @@ def _status_by_value(lanes, found, held, waiting, reading, now, hist, profile, m
     print(f"machine: {m.cpus} cores shared by the kernel; memory the lane can give {_gb(m.give_mb)} GB, "
           f"{_gb(m.free_mb)} GB free now; swap {_gb(swap[0]) if swap else '?'} GB free; "
           f"freezing: {kind or 'off'} ({why})")
+    print(sessions_line(value.floor_mb))
     heavies = [run for run in runs if run.heavy and run.state in (policy.RUNNING, policy.ORDERED)]
     room = None if m.give_mb is None else (1 - m.light_reserve) * m.give_mb
     print(f"heavy runs: {sum(run.par for run in heavies):g} of {m.cpu_factor * m.cpus:g} cores in use "
@@ -605,7 +622,7 @@ def _take(args) -> int:
                         capacity=capacity, share=share, wait=args.wait, pid=pid, mark=table.start_mark(pid) or "",
                         by_hand=True, say=print, project=_project(args.root), room=room_for(profile),
                         value=value_for(profile), scheduler=scheduler_for(table, lanes),
-                        floor_mb=machine.memory_floor_mb(profile))
+                        floor_mb=machine.floor_here(profile))
     if grant.booking is None:
         print(f"refused: {grant.why}")
         return 2

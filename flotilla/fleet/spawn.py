@@ -93,13 +93,38 @@ def memory_short(ledger, seats: int = 1) -> str:
     seats under low memory, and a new seat takes the readers' place). Each seat is counted at its cost with its MCP
     servers (`fleet.seat_cost_mb`), not the free memory once."""
     floor, cost, _ = memory_settings(ledger)
-    free = available_mb()
-    left = None if free is None else free - seats * cost
-    if left is None or not floor or left >= floor:
+    if not floor:
         return ""
-    return (f"{free} MB of memory is available, and {seats} seat(s) at ~{cost} MB each (fleet.seat_cost_mb) "
-            f"leave {left} MB, under the {floor} MB floor (fleet.memory_floor_mb): a new seat here makes the daemon "
-            "retire idle ones, readers first; retire an idle seat first, raise fewer, or raise them with --anyway")
+    # the lane's floor sits above the line under which Claude Code stops idle sessions' runs: a seat raised under it
+    # is raised into that (field notes 2026-11-16); and a seat that cannot run the project's handover run beside the
+    # others is short the way the sizing counts it
+    from flotilla.lane import machine
+    lane_floor = machine.floor_here(ledger.profile)
+    run = _run_mb(ledger)
+    free = available_mb()
+    left = None if free is None else free - seats * cost - run
+    bar = max(floor, lane_floor)
+    if left is None or left >= bar:
+        return ""
+    which = (f"the {floor} MB floor (fleet.memory_floor_mb)" if floor >= lane_floor else
+             f"the lane's {lane_floor} MB floor (above the line where Claude Code stops idle sessions' runs)")
+    beside = f" and the project's handover run at {run} MB (its measured peak)" if run else ""
+    return (f"{free} MB of memory is available, and {seats} seat(s) at ~{cost} MB each (fleet.seat_cost_mb){beside} "
+            f"leave {left} MB, under {which}: a new seat here makes the daemon retire idle ones, readers first; "
+            "retire an idle seat first, raise fewer, or raise them with --anyway")
+
+
+def _run_mb(ledger) -> int:
+    """The project's handover run's measured peak in MB, as the sizing reads it; 0 when never measured or unread."""
+    try:
+        from flotilla.fleet.sizing import handover_cost
+        from flotilla.onboard.firstrun import load_measurements, load_peaks, measurements_problem
+        problem = measurements_problem(ledger.state_dir, ledger.repo_key)
+        _seconds, peak, _note = handover_cost(ledger.profile, load_measurements(ledger.state_dir, ledger.repo_key),
+                                              load_peaks(ledger.state_dir, ledger.repo_key), problem=problem)
+    except (OSError, ValueError, TypeError, AttributeError):
+        return 0
+    return int(peak or 0)
 
 
 def _live(census) -> list:

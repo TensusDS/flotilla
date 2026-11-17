@@ -263,7 +263,8 @@ def test_anyway_raises_under_the_floor_and_a_dry_run_only_warns(tmp_path, monkey
 def test_the_floor_comes_from_the_profile_and_unknown_memory_does_not_refuse(tmp_path, monkeypatch):
     fake = FakeClaude()
     root, ledger, store = world(tmp_path, fake)
-    ledger.profile = {**ledger.profile, "fleet": {**(ledger.profile.get("fleet") or {}), "memory_floor_mb": 500}}
+    ledger.profile = {**ledger.profile, "fleet": {**(ledger.profile.get("fleet") or {}), "memory_floor_mb": 500},
+                      "lane": {"memory_floor_mb": 500}}
     monkeypatch.setattr(spawn, "available_mb", lambda: 1400)   # one seat at 800 MB leaves 600, over 500
     assert spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False)[0]
     monkeypatch.setattr(spawn, "available_mb", lambda: None)
@@ -553,3 +554,35 @@ def test_a_held_seats_note_keeps_the_failed_launchs_text(tmp_path):   # review o
     raised, _ = run(ledger, store, fake, {"main": 1})
     assert "«New MCP server found in this project: mint»" in raised[0].note
     assert "`claude --bg` exited 1" in raised[0].note
+
+
+def test_spawn_keeps_the_lanes_floor_and_the_handover_runs_room(tmp_path, monkeypatch):
+    """Field notes 2026-11-16: a seat raised when memory looked free left the lane no room for the project's runs
+    above the line where Claude Code stops idle sessions' runs. The bar is the higher of the two floors, after a
+    seat and the handover run's measured peak."""
+    from flotilla.lane import machine
+    fake = FakeClaude()
+    root, ledger, store = world(tmp_path, fake)
+    monkeypatch.setattr(machine, "floor_here", lambda profile: 2150)
+    monkeypatch.setattr(spawn, "_run_mb", lambda ledger: 0)
+    monkeypatch.setattr(spawn, "available_mb", lambda: 3000)   # 3000 - 800 = 2200: over both floors
+    assert spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False)[0]
+    monkeypatch.setattr(spawn, "available_mb", lambda: 2900)   # 2100: over the fleet's 2000, under the lane's 2150
+    with pytest.raises(spawn.SpawnRefused, match=r"2100 MB, under the lane's 2150 MB floor.*Claude Code"):
+        spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False)
+    monkeypatch.setattr(spawn, "_run_mb", lambda ledger: 1500)
+    monkeypatch.setattr(spawn, "available_mb", lambda: 4000)   # 4000 - 800 - 1500 = 1700
+    with pytest.raises(spawn.SpawnRefused, match=r"handover run at 1500 MB.*1700 MB"):
+        spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False)
+    ledger.profile = {**ledger.profile, "fleet": {**(ledger.profile.get("fleet") or {}), "memory_floor_mb": 0}}
+    assert spawn.plan(ledger, {"main": 1}, census=fake.census, store=store, reserve=False)[0]   # 0: not asked
+
+
+def test_the_handover_runs_peak_is_read_as_the_sizing_reads_it(tmp_path, monkeypatch):
+    from flotilla.fleet import sizing
+    fake = FakeClaude()
+    root, ledger, store = world(tmp_path, fake)
+    monkeypatch.setattr(sizing, "handover_cost", lambda *a, **kw: (30.0, 1234, ""))
+    assert spawn._run_mb(ledger) == 1234
+    monkeypatch.setattr(sizing, "handover_cost", lambda *a, **kw: (None, None, "never"))
+    assert spawn._run_mb(ledger) == 0
