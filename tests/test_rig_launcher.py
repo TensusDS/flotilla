@@ -255,3 +255,21 @@ def test_a_pass_held_by_another_reaper_is_not_a_miss(tmp_path, monkeypatch):
         for _ in range(3):
             assert launcher.main(env, folder=folder, run_crontab=Crontab()) == 0
     assert not (folder / "misses").exists() and "101" in fake.instances
+
+
+def test_last_resort_runs_every_copied_adapter_whose_key_is_in_place(tmp_path, monkeypatch):
+    """A second service: the copy of its adapter finds this machine's GPU Droplet by its tag and deletes it, and
+    leaves another machine's and the person's own."""
+    from rigkit import FakeDigitalOcean
+    launcher = load()
+    fake = FakeDigitalOcean({"101": {"label": "flotilla:0123456789ab:m1", "gpu": True},
+                             "201": {"label": "flotilla:ffffffffffff:m1", "gpu": True},
+                             "301": {"tags": ["env:prod"]}, "302": {"gpu": True}})
+    folder, env = state_with_adapters(tmp_path, monkeypatch, launcher, fake)
+    assert sorted(path.name for path in (folder / "providers").glob("*.py")) == ["digitalocean.py", "vast.py"]
+    keys = Path(env["XDG_CONFIG_HOME"]) / "flotilla" / "rig"
+    (keys / "vast.key").rename(keys / "digitalocean.key")
+    code, clear = launcher.last_resort(folder, env)
+    assert set(fake.instances) == {"201", "301", "302"} and not clear
+    assert all(url.startswith("https://api.digitalocean.com/v2/droplets") for _, url, _ in fake.requests)
+    assert launcher.last_resort(folder, env) == (1, True)   # listed again, nothing of this machine's left

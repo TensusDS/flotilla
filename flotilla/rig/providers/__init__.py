@@ -10,7 +10,7 @@ from __future__ import annotations
 import importlib
 from pathlib import Path
 
-KNOWN = ("vast",)
+KNOWN = ("vast", "digitalocean")
 
 
 def load(name: str):

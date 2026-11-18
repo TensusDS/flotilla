@@ -21,6 +21,22 @@ def test_a_destroy_is_a_delete_of_that_instance(monkeypatch):
     assert fake.requests[0][:2] == ("DELETE", "https://console.vast.ai/api/v0/instances/101/")
 
 
+def test_a_destroy_vast_answers_404_to_is_an_error_not_a_success(monkeypatch):
+    """vast's 404 does not say the instance is gone; the contract suite leaves a 404 to each adapter."""
+    import pytest
+    monkeypatch.setattr(vast, "SEND", FakeVast({"101": {"label": "x"}}, destroy_status=404))
+    with pytest.raises(vast.AdapterError):
+        vast.destroy("k" * 12, "101")
+
+
+def test_a_credit_vast_gives_as_text_is_an_error(monkeypatch):
+    """vast answers a number; text that reads as one is not its answer (the contract leaves the type to the service)."""
+    import pytest
+    monkeypatch.setattr(vast, "SEND", FakeVast(credit="41.2"))
+    with pytest.raises(vast.AdapterError):
+        vast.credit("k" * 12)
+
+
 def test_a_redirect_is_never_followed_with_the_key():
     import urllib.request
     handler = vast._NoRedirect()

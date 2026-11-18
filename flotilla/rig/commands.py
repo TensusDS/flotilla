@@ -223,6 +223,15 @@ def _enable(state: Path, name: str) -> int:
     _install(state)
     print(f"rig is on, provider {name}; nothing is rented until the person opens a session")
     print("allowed images: " + ", ".join(rs.settings(state).images))
+    for text in found.notes():
+        print(f"note: {text}")
+    if found.key_at_create():   # the service takes ssh keys only from the account: the person needs the file now
+        try:
+            SSH_KEY()
+            print(f"the rig's public ssh key is {sshkey.paths()[1]}: add it to the account's SSH keys at {name} "
+                  "before the first machine is asked for")
+        except sshkey.KeyError_ as err:
+            print(f"but the rig's ssh key cannot be made yet: {err}")
     try:
         rs.read_key(found.key)
     except rs.KeyRefused as err:
@@ -817,14 +826,14 @@ def raise_machine(state: Path, settings: rs.RigSettings, *, who: str, why: str, 
             print(f"refused: no offer within the ceilings ({ceilings}); machine {machine.id} was never made and "
                   "holds nothing")
             return NO_OFFER if market else 2
-        SSH_KEY()   # a key that cannot be made fails before money is spent
+        public = SSH_KEY()   # a key that cannot be made fails before money is spent
         instance, gone = None, []
         for offer in offers:   # a stale ask lists but no longer rents (field report of 2026-10-14)
             try:
                 instance = found.create(offer.offer, image=wanted.image, disk_gb=wanted.disk_gb,
                                         env={"FLOTILLA_WATCHDOG_MINUTES": str(watchdog),
                                              "NVIDIA_DRIVER_CAPABILITIES": "all"},
-                                        onstart=found.onstart(), label=machine.label)
+                                        onstart=found.onstart(), label=machine.label, public_key=public)
                 break
             except provider.OfferGone as err:   # nothing was made: the next offer may be tried
                 gone.append(offer.offer)
@@ -834,7 +843,7 @@ def raise_machine(state: Path, settings: rs.RigSettings, *, who: str, why: str, 
             if not _never_made(rig, machine.id, f"{len(gone)} offers tried, all gone"):
                 _changed(machine.id)
                 return 2
-            print(f"refused: {len(gone)} offers tried, all gone - vast still listed them but no longer rents them "
+            print(f"refused: {len(gone)} offers tried, all gone - {settings.provider} still listed them but no longer rents them "
                   f"({ceilings}); machine {machine.id} was never made and holds nothing")
             return NO_OFFER if market else 2
     except (provider.ProviderError, sshkey.KeyError_) as err:

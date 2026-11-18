@@ -53,6 +53,7 @@ def test_when_every_offer_is_gone_the_refusal_counts_them_and_the_machine_frees_
     monkeypatch.setattr(vast_adapter, "SEND", stale(world["fake"], CHEAPEST, NEXT))
     code, out = up(world)
     assert code == 2 and "2 offers tried, all gone" in out and world["fake"].created == 0
+    assert "vast still listed them" in out                       # the service is named as the settings name it
     assert journal(world).machines()["m1"].state == j.GONE      # it never had an instance: nothing to reap
     monkeypatch.setattr(vast_adapter, "SEND", world["fake"])    # the market moved on
     code, out = up(world)
