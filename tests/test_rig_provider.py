@@ -74,6 +74,52 @@ def test_offers_and_create_go_through_the_wrapper(rented):
     assert fake.ssh_keys[instance] == ["ssh-ed25519 AAAA"]
 
 
+def test_every_known_services_key_file_is_named_by_it(tmp_path):
+    from flotilla.rig import providers
+    for name in providers.KNOWN:
+        assert pv.provider_for(name, env={"XDG_CONFIG_HOME": str(tmp_path)}).key == \
+            tmp_path / "flotilla" / "rig" / f"{name}.key"
+    with pytest.raises(pv.ProviderError, match="no provider `hetzner`.*vast, digitalocean"):
+        pv.provider_for("hetzner")
+
+
+@pytest.mark.parametrize("offer,kept", [("53776176", True), ("gpu-mi300x1-192gb@atl1", True), ("a" * 80, True),
+                                        ("a" * 81, False), ("", False), ("size@atl1/../x", False),
+                                        ("size atl1", False), ("-rf", False), ("size@atl1;id", False),
+                                        ("５３", False), ("size@atl1\n", False)])
+def test_an_offer_is_kept_only_under_a_name_safe_to_print_and_to_send(rented, monkeypatch, offer, kept):
+    """Digits on one service, a size in a region on another; never text that could be read as anything else."""
+    monkeypatch.setattr(vast, "offers", lambda key, want: [
+        {"offer": offer, "gpu": "x", "hourly": 0.1, "reliability": 0.99, "datacenter": True}])
+    assert [item.offer for item in rented(FakeVast()).offers({})] == ([offer] if kept else [])
+
+
+def test_the_public_key_goes_to_create_only_where_the_service_takes_keys_while_it_makes_the_machine(
+        tmp_path, monkeypatch):
+    from flotilla.rig.providers import digitalocean
+    from rigkit import PUBLIC_KEY, SIZES, FakeDigitalOcean
+    early, late = FakeDigitalOcean(offers=SIZES), FakeVast()
+    monkeypatch.setattr(digitalocean, "SEND", early)
+    monkeypatch.setattr(vast, "SEND", late)
+    words = {"disk_gb": 30, "env": {}, "onstart": "", "label": "l", "public_key": PUBLIC_KEY}
+    there = pv.Rented("digitalocean", key=fake_key(tmp_path, provider="digitalocean"))
+    instance = there.create("gpu-mi300x1-192gb@atl1", image="gpu-image-1", **words)
+    assert early.instances[instance]["payload"]["ssh_keys"] == [digitalocean.fingerprint(PUBLIC_KEY)]
+    there.attach_ssh(instance, PUBLIC_KEY)                       # asks nothing: the key is already on the machine
+    assert [method for method, *_ in early.requests] == ["GET", "POST"]
+    here = pv.Rented("vast", key=fake_key(tmp_path))
+    instance = here.create("53776176", image="img:1", **words)   # vast's create takes no key: it is attached after
+    assert "public_key" not in late.instances[instance]["payload"] and late.ssh_keys == {}
+    with pytest.raises(pv.ProviderError, match="public key"):    # and without one, nothing is asked of the service
+        there.create("gpu-mi300x1-192gb@atl1", image="gpu-image-1", **{**words, "public_key": ""})
+
+
+def test_a_services_notes_are_its_adapters_words_and_none_where_it_has_none(tmp_path):
+    assert pv.Rented("vast", key=fake_key(tmp_path)).notes() == ()
+    notes = pv.Rented("digitalocean", key=fake_key(tmp_path, provider="digitalocean")).notes()
+    assert any("powered off is billed until it is destroyed" in text for text in notes)
+
+
 def test_the_credit_is_read_through_the_wrapper(rented):
     assert rented(FakeVast(credit=41.2)).credit() == 41.2
 

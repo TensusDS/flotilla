@@ -129,7 +129,10 @@ not asked about again.
                                           the session's open and now, when the reaper last ran; each waiting run
                                           with why it waits and what it is estimated to take
     flotilla rig reap                     drain what should not run, verify it is gone (cron runs it every 5 min)
-    flotilla rig enable --provider vast   the person only: turn rented machines on (a Claude tool call is refused)
+    flotilla rig enable --provider NAME   the person only: turn rented machines on (a Claude tool call is refused);
+                                          NAME is vast or digitalocean (GPU Droplets, the AMD Developer Cloud's
+                                          MI300X among them - the README says what differs there); any other
+                                          name is refused, and the refusal lists these
     flotilla rig disable                  the person only: turn them off; the reaper drains what is still live
     flotilla rig open --hours H --budget USD (--why TEXT | --for rN)
                                           the person only: open a session that may spend; --for answers a request

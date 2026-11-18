@@ -13,7 +13,7 @@ import re
 from pathlib import Path
 
 from flotilla.core.storage import LocalLogStore, StorageCorrupt
-from flotilla.rig import health
+from flotilla.rig import health, providers
 from flotilla.rig import journal as j
 from flotilla.rig import settings as rs
 from flotilla.watch.whose import Item
@@ -30,6 +30,14 @@ IDLE_ALARM = dt.timedelta(minutes=2)
 #: A requester's name as the census names sessions; anything else - `--as` takes any text outside the census - is
 #: shown as "a session", so no text a session chose reaches the orchestrator's model as if it were the screen's.
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9 _.-]{0,59}")
+
+
+def _enable_line(settings: rs.RigSettings) -> str:
+    """The line that turns rig on: with the service this machine last used, ready to paste; with none known, the
+    names to choose from - never text that is not one of them, since the person pastes the line into a shell."""
+    if settings.provider in providers.KNOWN:
+        return f"`! flotilla rig enable --provider {settings.provider}`"
+    return f"`! flotilla rig enable --provider NAME` (NAME: {' or '.join(providers.KNOWN)})"
 
 
 def _who(name: str) -> str:
@@ -120,7 +128,7 @@ def items(state: Path, now: dt.datetime, project: str = "") -> list[Item]:
             continue
         else:
             line = rs.open_line(settings, request.id)
-            first = "" if on else "rig is off: the person runs `! flotilla rig enable --provider vast` first, then "
+            first = "" if on else f"rig is off: the person runs {_enable_line(settings)} first, then "
             text = (f"{_who(request.who)} asks for a machine; no session is open - {first}ask the person to paste: "
                     f"{line}")
         found.append(_item(text, request.since, f"rig:request:{request.id}"))

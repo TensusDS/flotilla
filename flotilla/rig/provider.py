@@ -6,12 +6,18 @@ from __future__ import annotations
 
 import math
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from flotilla.rig import providers
 from flotilla.rig.secrets import scrub, scrub_text
 from flotilla.rig.settings import KeyRefused, key_path, read_key
+
+
+#: An offer's name as a service gives it - digits (vast), or a size in a region (`gpu-mi300x1-192gb@atl1`): safe to
+#: print in a line and to put in a URL's path, whatever the adapter answered.
+OFFER_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9@._-]{0,79}", re.ASCII)
 
 
 class ProviderError(RuntimeError):
@@ -97,14 +103,18 @@ class Rented:
                                    float(row["reliability"]), bool(row["datacenter"])))
             except (KeyError, TypeError, ValueError):
                 continue
-        return [item for item in found if item.datacenter and item.offer.isascii() and item.offer.isdigit()]
+        return [item for item in found if item.datacenter and OFFER_ID.fullmatch(item.offer)]
 
-    def create(self, offer: str, *, image: str, disk_gb: float, env: dict, onstart: str, label: str) -> str:
+    def create(self, offer: str, *, image: str, disk_gb: float, env: dict, onstart: str, label: str,
+               public_key: str = "") -> str:
+        """`public_key` goes only to an adapter whose service puts ssh keys on a machine while it makes it
+        (`KEY_AT_CREATE`); for the others `attach_ssh` follows the create."""
         gone = getattr(self.adapter, "OfferGone", None)
         secret = self._secret()
+        early = {"public_key": public_key} if self.key_at_create() else {}
         try:
             found = self.adapter.create(secret, offer, image=image, disk_gb=disk_gb, env=env, onstart=onstart,
-                                        label=label)
+                                        label=label, **early)
         except self.adapter.AdapterError as err:
             said = scrub_text(str(err), [secret])
             raise (OfferGone(said) if gone is not None and isinstance(err, gone) else ProviderError(said)) from None
@@ -117,6 +127,15 @@ class Rented:
 
     def onstart(self) -> str:
         return self.adapter.onstart()
+
+    def key_at_create(self) -> bool:
+        """Whether the service puts ssh keys on a machine only while it makes it, from the keys the account holds."""
+        return getattr(self.adapter, "KEY_AT_CREATE", False) is True
+
+    def notes(self) -> tuple:
+        """What the person should know of this service before they rent from it, in the adapter's words."""
+        found = getattr(self.adapter, "NOTES", ())
+        return tuple(text for text in found if isinstance(text, str)) if isinstance(found, (tuple, list)) else ()
 
 
 def provider_for(name: str, *, env=os.environ) -> Rented:

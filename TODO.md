@@ -32,6 +32,31 @@ into the user's settings from a command to get around it. Checked against the ch
 is non-UTF-8 or holds a NUL byte, and none of the four points at something to fix outside the directory.
 *(checked 2026-11-09 on 0.31.0: open, waiting on Anthropic - hooks/hooks.json, bin/, skills/*/SKILL.md)*
 
+## From the second rental service, `digitalocean` (2026-11-18, 0.34.0, issue #1)
+
+Written from DigitalOcean's published API specification and its pages for the AMD Developer Cloud; nothing was run
+against the service. Each of these needs the person's live check, as vast had (rig design, section 12).
+
+- **The adapter has never met the service.** To measure in one short session: that a token made in an AMD
+  Developer Cloud team is taken by `api.digitalocean.com`; the scopes it needs in fact; that the listing with
+  `type=gpus` shows the Droplet and its tags; the time from create to `active` and to ssh answering; that the
+  start script ran; that a delete ends billing and how soon the listing agrees. *(measure)*
+- **What `gpu_info.model` says for the MI300X is not in the specification.** The filter also matches the size's
+  slug, which DigitalOcean's pages document, so `gpu = ["MI300X"]` holds either way; the model only changes what
+  `flotilla rig` shows as the GPU. *(measure - flotilla/rig/providers/digitalocean.py `_is`)*
+- **The service's words for a size it can no longer place are unknown, so no refused create is read as "the offer
+  is gone"** and no second region is tried. Once a refusal has been seen, an `OfferGone` for exactly those words
+  lets `rig up` try the next region. *(measure - flotilla/rig/providers/digitalocean.py `create`)*
+- **The balance may not show a promotional credit.** `credit` answers `month_to_date_balance` negated; whether an
+  AMD Developer Cloud grant is counted there the specification does not say. *(measure)*
+- **No layer 2 on this service.** Nothing on a Droplet can destroy it, so a field machine that dies leaves its
+  Droplet billing until the person acts. A second, independent reaper - another machine, or a scheduled function
+  at the service holding a token scoped to delete - would be the design to weigh. *(open, design)*
+- **Runs on an AMD card are packed without GPU memory**: the machine's readings use `nvidia-smi` only. *(checked
+  2026-11-18 on 0.34.0: still P - flotilla/rig/remote.py:166)*
+- **Issue #1's other two parts are open**: adapters loaded from a person-owned directory, and a "bring your own
+  machine" mode. *(open, design)*
+
 ## From a game project's fleet's field notes (2026-11-15..16, CLI 0.31.0, lane daemon 0.33.1)
 
 The person asked for these to reach flotilla's developer as an important finding. They were written by the

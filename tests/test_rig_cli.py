@@ -102,6 +102,45 @@ def test_enable_names_a_key_others_can_read(world, tmp_path):
 def test_enable_refuses_an_unknown_provider(world):
     code, out = run_cli("rig", "enable", "--provider", "hetzner")
     assert code == 2 and read_machine(world["state"]) is None
+    assert "this version knows vast, digitalocean" in out
+
+
+def test_enable_with_another_known_service_names_its_key_file_and_says_what_differs_there(world, monkeypatch):
+    made = []
+    monkeypatch.setattr(commands, "SSH_KEY", lambda: made.append(1) or "ssh-ed25519 AAAA flotilla rig")
+    code, out = run_cli("rig", "enable", "--provider", "digitalocean")
+    data = read_machine(world["state"])
+    assert code == 0 and (data["rig"], data["rig_provider"]) == ("on", "digitalocean")
+    assert made == [1] and "flotilla_rig_ed25519.pub: add it to the account's SSH keys at digitalocean" in out
+    assert "digitalocean.key" in out and "chmod 600" in out          # no key there yet: where it goes, and its mode
+    assert "note: digitalocean puts no key of its own on a Droplet" in out
+    assert "powered off is billed until it is destroyed" in out and "droplet:delete" in out
+    assert (world["state"] / "rig" / "providers" / "digitalocean.py").exists()   # the launcher's last resort has it
+    assert world["fake"].requests == []                               # turning rig on asks no service anything
+
+
+def test_enable_says_so_when_the_rigs_ssh_key_cannot_be_made_and_rig_is_on_all_the_same(world, monkeypatch):
+    from flotilla.rig import sshkey
+
+    def no_keygen():
+        raise sshkey.KeyError_("ssh-keygen could not be run")
+    monkeypatch.setattr(commands, "SSH_KEY", no_keygen)
+    code, out = run_cli("rig", "enable", "--provider", "digitalocean")
+    assert code == 0 and "the rig's ssh key cannot be made yet: ssh-keygen could not be run" in out
+    assert read_machine(world["state"])["rig"] == "on"
+
+
+def test_enable_with_vast_says_nothing_of_another_service_and_makes_no_key(world):
+    code, out = run_cli("rig", "enable", "--provider", "vast")   # the suite's SSH_KEY refuses: it was not called
+    assert code == 0 and "Droplet" not in out and "ssh key" not in out
+
+
+def test_the_help_of_enable_names_every_known_service(capsys):
+    from flotilla.rig import providers
+    with pytest.raises(SystemExit):
+        cli.main(["rig", "enable", "--help"])
+    shown = capsys.readouterr().out
+    assert all(name in shown for name in providers.KNOWN)
 
 
 def test_enable_is_refused_to_a_background_session(world, monkeypatch):
