@@ -444,6 +444,9 @@ def test_the_tick_starts_what_the_fair_replay_admits():   # review of dcf78ca: t
 # The drain (the person's ruling, 2026-11-17): a heavy waiter that has waited DRAIN_AFTER_S and does not fit stops
 # every new start behind it, light ones too, until the runs ahead of it end and it fits.
 
+GAP = " - a light run passes only if by its estimate it ends before then, or fits beside it then"
+
+
 def _drain(waited):
     return [run("h", RUNNING, 4000, True, 8, order=0), run("big", WAITING, 5000, True, 6, order=1, waited_s=waited),
             run("light", WAITING, 300, order=2), run("heavy2", WAITING, 1000, True, 1, order=3)]
@@ -455,10 +458,10 @@ def test_before_the_drain_a_light_run_passes_a_heavy_that_does_not_fit():
 
 def test_a_heavy_that_waited_ten_minutes_stops_every_new_start_behind_it():
     runs = _drain(600)
-    for mine in ("light", "heavy2"):
+    for mine, gap in (("light", GAP), ("heavy2", "")):
         d = decide(runs, machine(free=8000), mine)
         assert not d.start and d.why == ("behind heavy big, which has waited over 10 min: the lane starts no new run "
-                                         "until it fits")
+                                         "until it fits" + gap)
     d = decide(runs, machine(free=8000), "big")
     assert not d.start and "heavy runs' cores: 8 of 12" in d.why and "starts no new run until this one fits" in d.why
     # the reason is what a waiting `lane run` reprints: it holds no running count (review of 1241703, 1)
@@ -502,7 +505,7 @@ def test_the_drain_names_a_heavy_that_starts_only_alone():
             run("b3", WAITING, 200, order=2)]
     d = decide(runs, machine(free=8000), "b3")
     assert d.why == ("behind heavy big, which has waited over 10 min, and starts only when the lane is empty: the "
-                     "lane starts no new run until it fits")
+                     "lane starts no new run until it fits" + GAP)
 
 
 def test_the_heavy_budget_is_the_persons_where_set():
@@ -550,9 +553,11 @@ def test_a_hung_run_ends_by_no_estimate():
 
 
 def test_behind_a_heavy_the_estimate_is_that_heavy_runs():
-    runs = [run("a", RUNNING, 3000, True, 8, expected_s=600, ran_s=0, order=0),
-            run("big", WAITING, 3000, True, 6, order=1, waited_s=600), run("l", WAITING, 100, order=2)]
-    assert eta_s(runs, machine(free=8000), "l") == 600 == eta_s(runs, machine(free=8000), "big")
+    # `l` would take the room left beside `big` once that fits, and by its estimate ends later: it waits for `big`
+    runs = [run("a", RUNNING, 3000, True, 2, expected_s=600, ran_s=0, order=0),
+            run("big", WAITING, 6000, True, 2, order=1, waited_s=600),
+            run("l", WAITING, 2000, order=2, expected_s=6000)]
+    assert eta_s(runs, machine(free=4000), "l") == 600 == eta_s(runs, machine(free=4000), "big")
 
 
 def test_a_run_the_replay_starts_has_no_estimate():   # review of 1241703, 4: what holds it is not the runs ahead
@@ -670,3 +675,33 @@ def test_the_daemon_marks_each_waiter_it_can_judge():
     assert policy.starved_marks([big, light], roomy(1000, 3000, capacity=None)) == {"b2": (300, None)}
     small = dataclasses.replace(big, mem_mb=2000)
     assert policy.starved_marks([small], roomy(1000, 3000, capacity=None)) == {"b1": (2000, None)}
+
+
+
+def _gap(*lights, ahead_s=1200):
+    """`big` waits on the cores `h` holds, which by its estimate ends in `ahead_s`; then 9500 MB beside it."""
+    return [run("h", RUNNING, 4000, True, 8, order=0, expected_s=ahead_s),
+            run("big", WAITING, 5000, True, 6, order=1, waited_s=600), *lights]
+
+
+def test_a_light_run_that_ends_before_the_drained_heavy_fits_passes_it():
+    """The person's ruling, 2026-11-18: lights stopped behind a drain waited fifteen times longer in the model, for no
+    gain to the heavy run; one that by its estimate ends first takes none of its room."""
+    short = run("short", WAITING, 5000, order=2, expected_s=600)
+    long = run("long", WAITING, 5000, order=2, expected_s=3000)
+    unknown = run("unknown", WAITING, 5000, order=2)
+    assert decide(_gap(short), machine(free=5500), "short").start
+    for mine in (long, unknown):
+        d = decide(_gap(mine), machine(free=5500), mine.id)
+        assert not d.start and d.why.endswith(GAP), mine.id   # it would take what the heavy run needs then
+    assert not decide(_gap(short, ahead_s=None), machine(free=5500), "short").start   # no moment known: none passes
+
+
+def test_a_light_run_that_fits_beside_the_drained_heavy_passes_it_and_takes_that_room():
+    small = run("small", WAITING, 300, order=2)   # no estimate: it fits beside the heavy run once that one fits
+    assert decide(_gap(small), machine(free=5500), "small").start
+    first, second = run("l1", WAITING, 2500, order=2), run("l2", WAITING, 2500, order=3)
+    runs = _gap(first, second)
+    assert decide(runs, machine(free=5500), "l1").start
+    assert not decide(runs, machine(free=5500), "l2").start   # 4500 MB beside it then: the first took 2500
+    assert decide(runs, machine(free=5500), "big").why.endswith("until this one fits")

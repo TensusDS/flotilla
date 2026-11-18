@@ -22,7 +22,9 @@ WAIT_FULL_S = 600.0
 #: A heavy waiter that has waited this long and still does not fit drains the lane: no new run starts after it in
 #: line, light ones too, until the runs ahead of it end and it fits (the person's ruling, 2026-11-17: a heavy head
 #: of the line waited hours while lighter runs and the other project's turns kept its room taken). The wait part of
-#: its priority is full by then.
+#: its priority is full by then. A light run passes it through the gap only: when by its estimate it ends before the
+#: drained run, by the estimates of the runs ahead, would fit - so it takes none of the room the drain gathers (the
+#: person's ruling, 2026-11-18: lights stopped behind it waited fifteen times longer in the model for no gain).
 DRAIN_AFTER_S = WAIT_FULL_S
 #: A run in its first minute is never a candidate: freezing what has not started working buys nothing (section 2.8).
 GRACE_S = 60.0
@@ -183,6 +185,15 @@ class _Replay:
     outside: dict = field(default_factory=dict)   # heavy waiters no drain can serve: {id: {need_mb, room_mb}}
 
 
+@dataclass
+class _Gap:
+    """A drained run's moment by the estimates of the runs ahead: in how many seconds it fits, and the runs and the
+    room beside it then - a light run that would still fit beside it there takes none of its room."""
+    at_s: float
+    pool: list
+    room: int | None
+
+
 def _replay(runs: list[Run], machine: Machine, mine: str) -> _Replay:
     """Admission replayed in the line's order, as every waiter replays it, up to `mine` (to the end for "")."""
     by_id = {r.id: r for r in runs}
@@ -193,15 +204,19 @@ def _replay(runs: list[Run], machine: Machine, mine: str) -> _Replay:
     out = _Replay([], pool, machine.free_mb, 0, [])
     blocker = None
     drain = None   # a heavy waiter past DRAIN_AFTER_S that does not fit: no new run starts after it
+    gap = None   # when it fits by the estimates of the runs ahead, and beside what: the gap a light run takes
     turns: dict[str, int] = {}
     for r in _offered(runs, machine.immortal_s, turns):
         out.seen.append(r)
-        if drain is not None and r.state == WAITING:   # a frozen run holds its slot already; it comes back as before
+        # a frozen run holds its slot already, it comes back as before; a light one that ends in the gap passes
+        if drain is not None and r.state == WAITING and not _in_gap(r, drain, gap, pool, out, machine):
             if r.id == mine:
                 alone = ", and starts only when the lane is empty" if alone_only(drain, machine) else ""
+                light = "" if r.heavy else (" - a light run passes only if by its estimate it ends before then, or "
+                                            "fits beside it then")
                 out.done = Decision(False, (), f"behind heavy {drain.id}, which has waited over "
                                                f"{round(DRAIN_AFTER_S / 60)} min{alone}: the lane starts no new run "
-                                               "until it fits")
+                                               f"until it fits{light}")
                 out.behind = drain.id
                 return out
             continue
@@ -250,6 +265,7 @@ def _replay(runs: list[Run], machine: Machine, mine: str) -> _Replay:
                               "(hung or taken by hand)")
                 else:
                     drain = r
+                    gap = _fits_after(r, pool, None if out.free is None else out.free - out.kept, machine)
                     failed = (f"{failed}; waited over {round(DRAIN_AFTER_S / 60)} min: the lane starts no new run "
                               "until this one fits")
         if r.id == mine:
@@ -260,6 +276,22 @@ def _replay(runs: list[Run], machine: Machine, mine: str) -> _Replay:
         if kind == FREE:
             out.unfit_ahead.append(r)
     return out
+
+
+def _in_gap(r: Run, drain: Run, gap: _Gap | None, pool: list[Run], out: _Replay, machine: Machine) -> bool:
+    """Whether light waiter `r` passes a drain, as backfilling does: it fits now, and it takes none of the drained
+    run's room - by its estimate it ends before the drained run fits by the estimates of the runs ahead, or it would
+    still fit beside it then (and that room is counted taken). Behind a drained run with no moment by the estimates,
+    no light run passes: an end nobody knows may need the room."""
+    if r.heavy or gap is None or _fits(r, pool, None if out.free is None else out.free - out.kept, machine)[0]:
+        return False
+    if r.expected_s is not None and r.expected_s <= gap.at_s:
+        return True
+    room = None if gap.room is None else gap.room - r.mem_mb
+    if _fits(drain, [*gap.pool, r], room, machine)[0]:
+        return False
+    gap.pool, gap.room = [*gap.pool, r], room
+    return True
 
 
 def eta_s(runs: list[Run], machine: Machine, mine: str, _depth: int = 0) -> float | None:
@@ -276,15 +308,21 @@ def eta_s(runs: list[Run], machine: Machine, mine: str, _depth: int = 0) -> floa
     me = next((r for r in runs if r.id == mine), None)
     if me is None or not seen.why:
         return None
-    pool = list(seen.pool)
-    room = None if seen.free is None else seen.free - seen.kept
+    found = _fits_after(me, seen.pool, None if seen.free is None else seen.free - seen.kept, machine)
+    return found.at_s if found is not None else None
+
+
+def _fits_after(me: Run, pool: list[Run], room: int | None, machine: Machine) -> _Gap | None:
+    """When `me` fits beside `pool` with `room`, as the runs with estimates end one by one: in how many seconds, and
+    the runs and room left beside it then; None when no ending of theirs lets it in."""
+    pool = list(pool)
     ends = sorted(((max(0.0, r.expected_s - r.ran_s), r) for r in pool if r.expected_s and not r.hung
                    and not r.by_hand), key=lambda pair: (pair[0], pair[1].order))
     for left, r in ends:
         pool.remove(r)
         room = None if room is None else room + r.mem_mb
         if not _fits(me, pool, room, machine)[0]:
-            return left
+            return _Gap(left, pool, room)
     return None
 
 

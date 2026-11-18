@@ -1952,23 +1952,27 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    heavy run at a time, the 7 GB ones admitted alone by the empty-lane rule against a 4.4 GB heavy budget. The heavy
    budget is now the person's to set (`lane_heavy_mb`), and a heavy waiter that has waited ten minutes (its wait
    priority full) and does not fit stops every new start behind it, light ones too, until it fits: before, lighter
-   runs and another project's turns kept its room taken for hours. No drain while a run the daemon reads as hung,
-   or one taken by hand, holds the lane: no wait ends those, and the whole lane would stop behind them (review of
-   1241703). A waiter is told when it should fit at the earliest by the estimates of the runs ahead - waiters ahead
-   of it may take the room first - beside its reason and not in it: the reason, which holds no running count, is
-   what a waiting `lane run` reprints. An empty lane no longer takes a heavy run whatever the memory: it waits until
-   its memory is free, unless it is larger than what retiring Claude Code's sessions could free - the lane's
-   `give_mb` plus their memory less two sessions' average, the orchestrator's and the waiting seat's, which never
-   leave (the person's ruling) - which no wait cures (not `give_mb` alone, which shrinks as the sessions grow, nor
-   the machine's total, part of which never leaves: reviews of f16df11 and 5edc98d). And a heavy waiter an empty
-   lane would not hold either drains nothing - the memory is held outside the lane, and a drain would stop every
-   project for nothing: the lane stays open, it stays first among the heavy runs, and its orchestrator is told (the
-   person's ruling, 2026-11-17, over keeping the lane closed until the orchestrator frees the memory). A run
-   larger than that - short of memory with only the orchestrator's session and its own left - still starts
-   alone, and its booking carries what it needs and the most the machine could give it, written by the daemon in
-   the tick that judges it, so its orchestrator is told it may be killed whether it waited or started at once (the
-   person's ruling, 2026-11-18, over refusing it at once: a peak may be a one-off, and the work does not stop). No
-   daemon, no mark: the fallback starts runs only into an empty lane and judges no memory.
+   runs and another project's turns kept its room taken for hours. A light run still passes it the way backfilling
+   does, when it takes none of that room: by its estimate it ends before the heavy run fits by the estimates of
+   the runs ahead, or it fits beside it then (the person's ruling, 2026-11-18: lights stopped outright waited
+   80 min at the 95th percentile in the model's twenty queues against 5.5, the heavy runs no sooner; with the gap
+   both are as without a drain, and the model gives each run its ideal time as its estimate). No drain while a run
+   the daemon reads as hung, or one taken by hand, holds the lane: no wait ends those, and the whole lane would stop
+   behind them (review of 1241703). A waiter is told when it should fit at the earliest by the estimates of the runs
+   ahead - waiters ahead of it may take the room first - beside its reason and not in it: the reason, which holds no
+   running count, is what a waiting `lane run` reprints. An empty lane no longer takes a heavy run whatever the
+   memory: it waits until its memory is free, unless it is larger than what retiring Claude Code's sessions could
+   free - the lane's `give_mb` plus their memory less two sessions' average, the orchestrator's and the waiting
+   seat's, which never leave (the person's ruling) - which no wait cures (not `give_mb` alone, which shrinks as the
+   sessions grow, nor the machine's total, part of which never leaves: reviews of f16df11 and 5edc98d). And a heavy
+   waiter an empty lane would not hold either drains nothing - the memory is held outside the lane, and a drain
+   would stop every project for nothing: the lane stays open, it stays first among the heavy runs, and its
+   orchestrator is told (the person's ruling, 2026-11-17, over keeping the lane closed until the orchestrator frees
+   the memory). A run larger than that - short of memory with only the orchestrator's session and its own left -
+   still starts alone, and its booking carries what it needs and the most the machine could give it, written by the
+   daemon in the tick that judges it, so its orchestrator is told it may be killed whether it waited or started at
+   once (the person's ruling, 2026-11-18, over refusing it at once: a peak may be a one-off, and the work does not
+   stop). No daemon, no mark: the fallback starts runs only into an empty lane and judges no memory.
 
 ## Open questions (for the foundation spec)
 

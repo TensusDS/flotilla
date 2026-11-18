@@ -96,7 +96,7 @@ def _view(jobs: list[Job], now: float, order: dict[int, int]) -> tuple[list[poli
         runs.append(policy.Run(
             str(j.id), STATES[j.state], j.swapped if j.state == "frozen" else _mb(j), j.heavy, j.par,
             kind=KINDS[j.type], waited_s=(now - j.arrival) * 60, ran_s=j.run_time * 60,
-            since_start_s=j.since_start * 60, order=order[j.id],
+            since_start_s=j.since_start * 60, order=order[j.id], expected_s=j.total / j.par * 60,
             holds=j.id in holding and j.state != "running"))
     resident = sum(_mb(j) for j in jobs if j.state in ("running", "ordered")) + \
         sum(_mb(j) - j.swapped for j in jobs if j.state == "frozen")

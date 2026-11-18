@@ -18,9 +18,10 @@ of memory, and a heavy run headed its project's line for hours with no word of w
   stopping stays on (the person's ruling).
 - **`flotilla spawn` and `fleet size` keep room for the project's runs.** Both count the higher of the fleet's floor
   and the lane's; spawn also counts the handover run's measured peak, as the size already did.
-- **A heavy run that has waited ten minutes drains the lane**: nothing new starts behind it, light runs neither,
-  until it fits - unless what keeps it out is a run that looks hung or one taken by hand, which no wait ends.
-  **The memory heavy runs take together can be set**: `lane_heavy_mb` in `machine.toml`.
+- **A heavy run that has waited ten minutes drains the lane**: nothing new starts behind it until it fits, save a
+  light run that takes none of its room - one that by its estimate ends before the heavy run fits, or fits beside it
+  then - and unless what keeps it out is a run that looks hung or one taken by hand, which no wait ends. **The
+  memory heavy runs take together can be set**: `lane_heavy_mb` in `machine.toml`.
 - **A heavy run starts in an empty lane only once its memory is free.** One that would not fit even there - the
   memory held outside the lane, by Claude Code's sessions most often - drains nothing: the other runs pass it, and
   its orchestrator is told what it needs, the room it would have and what the sessions hold. One larger than the
