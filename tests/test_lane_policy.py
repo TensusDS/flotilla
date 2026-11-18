@@ -658,15 +658,15 @@ def test_a_small_hung_run_does_not_hide_memory_held_outside_the_lane():
 
 
 
-def test_a_run_larger_than_what_retiring_the_sessions_frees_is_starved():
-    """The person's ruling, 2026-11-18: no wait gives it the memory; it starts alone, and its orchestrator is told."""
+def test_the_daemon_marks_each_waiter_it_can_judge():
     import dataclasses
+    from flotilla.lane import policy
     big = policy.Run("b1", policy.WAITING, 9000, True, 1)
-    hand = policy.Run("b2", policy.RUNNING, 1500, True, 1, by_hand=True)
-    m = roomy(1000, 3000, capacity=8000)
-    assert policy.starved_room(big, [big], m) == 8000
-    assert policy.starved_room(big, [big, hand], m) is None   # what a run taken by hand holds it frees
-    assert policy.starved_room(dataclasses.replace(big, mem_mb=8000), [big], m) is None
-    assert policy.starved_room(dataclasses.replace(big, heavy=False), [big], m) is None
-    assert policy.starved_room(big, [big], roomy(1000, 3000, capacity=None)) is None
-    assert policy.decide([big], m, "b1").start   # an empty lane takes it, as before
+    light = policy.Run("b2", policy.WAITING, 300, False, 1)
+    hand = policy.Run("b3", policy.WAITING, 9000, True, 1, by_hand=True)
+    held = policy.Run("b4", policy.RUNNING, 1500, True, 1, by_hand=True)
+    marks = policy.starved_marks([big, light, hand, held], roomy(1000, 3000, capacity=8000))
+    assert marks == {"b1": (9000, 9500), "b2": (300, None), "b3": (9000, None)}
+    assert policy.starved_marks([big, light], roomy(1000, 3000, capacity=None)) == {"b2": (300, None)}
+    small = dataclasses.replace(big, mem_mb=2000)
+    assert policy.starved_marks([small], roomy(1000, 3000, capacity=None)) == {"b1": (2000, None)}

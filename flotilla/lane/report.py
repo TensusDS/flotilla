@@ -124,7 +124,7 @@ def outside_items(order, project: str, outside: dict, *, sessions=None) -> list[
 def starved_items(order, project: str) -> list[Item]:
     """The project's runs larger than this machine holds, waiting or running: no wait gives them the memory, so the
     lane starts each alone in an empty lane, and the orchestrator is told it may be killed (the person's ruling,
-    2026-11-18). Its mark is on the booking, written by its waiter (`book._starved`)."""
+    2026-11-18). Its mark is on the booking, written by the daemon (`book.Book.mark_starved`)."""
     from flotilla.lane import book
     found: list[Item] = []
     for item in order:

@@ -1965,9 +1965,10 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    project for nothing: the lane stays open, it stays first among the heavy runs, and its orchestrator is told (the
    person's ruling, 2026-11-17, over keeping the lane closed until the orchestrator frees the memory). A run
    larger than that - short of memory with only the orchestrator's session and its own left - still starts
-   alone, and its booking carries what it needs and the most the machine could give it, written by its waiter, so
-   its orchestrator is told it may be killed whether it waited or started at once (the person's ruling,
-   2026-11-18, over refusing it at once: a peak may be a one-off, and the work does not stop).
+   alone, and its booking carries what it needs and the most the machine could give it, written by the daemon in
+   the tick that judges it, so its orchestrator is told it may be killed whether it waited or started at once (the
+   person's ruling, 2026-11-18, over refusing it at once: a peak may be a one-off, and the work does not stop). No
+   daemon, no mark: the fallback starts runs only into an empty lane and judges no memory.
 
 ## Open questions (for the foundation spec)
 

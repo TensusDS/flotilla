@@ -1,5 +1,6 @@
 """The scheduler: one tick of the lane daemon - read, decide, apply (lane daemon design, 4.2)."""
 
+import dataclasses
 import datetime as dt
 from pathlib import Path
 
@@ -568,3 +569,21 @@ def test_the_picture_carries_the_heavy_waiters_held_outside_the_lane(lane, monke
         raise ValueError("a broken reading")
     monkeypatch.setattr(policy, "held_outside", broken)
     assert sched.step()[1]["outside"] == {}
+
+
+
+def test_a_run_larger_than_the_machine_starts_alone_and_its_booking_is_marked(tmp_path):
+    """The person's ruling, 2026-11-18: no wait gives it the memory, so an empty lane takes it, and its orchestrator
+    is told it may be killed - the daemon marks it in the very tick it starts it."""
+    lanes = book.Book(LocalLogStore(tmp_path), Procs())
+    base = value_of(available=2500)   # 500 MB over the floor
+
+    def values(reading=None):
+        return dataclasses.replace(base(reading), sessions_mb=lambda: 200)
+    sched = scheduler.Scheduler(lanes, values, signer=(4242, "m9"), groups_io=FakeGroups(), clock=Clock(),
+                                default_floor=2000, total_mb=lambda: 15603)
+    big = lanes.enqueue("w", "", pid=11, mark="m")   # never measured: 1024 MB
+    sched.step()
+    found = lanes.bookings()[big.id]
+    assert found.state == book.HELD
+    assert (found.starved_need_mb, found.starved_room_mb) == (1024, 700)

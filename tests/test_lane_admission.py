@@ -557,27 +557,34 @@ def test_the_sessions_memory_is_read_only_for_a_heavy_waiter_an_empty_lane_would
 
 
 
-def test_a_run_larger_than_the_machine_is_marked_on_its_booking_and_starts_alone(lane):
-    """The person's ruling, 2026-11-18: it starts alone in an empty lane, as before, and its booking carries what it
-    needs and the most the machine could give it - so a run started at once is told of too."""
-    lanes, _procs, later = lane
-    big = lanes.enqueue("main session 2", "x", pid=12, mark="m")   # never measured: 1024 MB
-    held = lanes.grant(big.id, slots=1, value=value(available=500, sessions_mb=lambda: 200))
-    assert held is not None and held.state == book.HELD
-    assert (held.starved_need_mb, held.starved_room_mb) == (1024, 700)
 
-
-def test_a_waiters_starved_mark_is_written_on_a_real_change_only(lane):
-    lanes, _procs, later = lane
-    holder(lanes, later, tree={11: 100})
+def test_a_starved_mark_is_written_on_a_real_change_only(lane):
+    """The person's ruling, 2026-11-18: the booking carries what a run larger than the machine needs and the most
+    the machine could give it; the room moves at every look, so only a real change is written."""
+    lanes, _procs, _later = lane
     big = lanes.enqueue("main session 2", "x", pid=12, mark="m")
-    v = value(tree={11: 100}, available=300, sessions_mb=lambda: 200)
-    assert lanes.grant(big.id, slots=1, value=v) is None
+
+    def lines():
+        return len(lanes.store.read(book.KEY).records)
+    assert lanes.mark_starved({big.id: (9000, 7000)}) == [big.id]
     first = lanes.bookings()[big.id]
-    assert (first.starved_need_mb, first.starved_room_mb) == (1024, 600)
-    lines = len(lanes.store.read(book.KEY).records)
-    lanes.grant(big.id, slots=1, value=value(tree={11: 100}, available=300, sessions_mb=lambda: 300))
-    assert len(lanes.store.read(book.KEY).records) == lines   # 100 MB more room: not written again
-    lanes.grant(big.id, slots=1, value=value(tree={11: 100}, available=300, sessions_mb=lambda: 2000))
+    assert (first.starved_need_mb, first.starved_room_mb, first.state) == (9000, 7000, book.WAITING)
+    before = lines()
+    assert lanes.mark_starved({big.id: (9000, 7200)}) == [] and lines() == before   # under the step
+    assert lanes.mark_starved({big.id: (9000, 9100)}) == [] and lines() == before   # just over the need: kept
+    assert lanes.mark_starved({big.id: (9000, 7400)}) == [big.id]
+    assert lanes.bookings()[big.id].starved_room_mb == 7400
+    assert lanes.mark_starved({big.id: (9000, 9300)}) == [big.id]   # the step over the need: cleared
     after = lanes.bookings()[big.id]
     assert (after.starved_need_mb, after.starved_room_mb) == (None, None) and after.since == first.since
+    assert lanes.mark_starved({big.id: (9000, None), "gone": (9000, 10)}) == []
+
+
+def test_a_starved_mark_stays_on_a_held_run_and_none_is_written_on_a_released_one(lane):
+    lanes, _procs, later = lane
+    held = holder(lanes, later)
+    assert lanes.mark_starved({held.id: (9000, 7000)}) == [held.id]
+    assert lanes.bookings()[held.id].state == book.HELD
+    with lanes.store.transaction(book.KEY) as tx:
+        lanes._write(tx, held.id, book.RELEASED)
+    assert lanes.mark_starved({held.id: (9500, 7000)}) == []

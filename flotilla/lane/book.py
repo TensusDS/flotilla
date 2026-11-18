@@ -223,24 +223,18 @@ class Booking:
     starved_room_mb: int | None = None               # most the machine could give it (`policy.starved_room`)
 
 
-def _starved(item: Booking, me, runs, machine) -> dict:
-    """The fields that bring a waiter's mark of a run larger than this machine up to date - what it needs and the
-    most the machine could give it, or both cleared - or {} when the mark stands, or the sessions were not read: the
-    lane's orchestrator item reads the mark on the booking, so a run started at once is told of too (the person's
-    ruling, 2026-11-18)."""
-    from flotilla.lane import policy
-    if machine.capacity_mb is not None:
-        room = policy.starved_room(me, runs, machine)
-    elif machine.give_mb is not None and me.mem_mb <= machine.give_mb:
-        room = None   # an empty lane holds it: the sessions were not read, as nothing needs them
-    else:
-        return {}
-    if room is None:
-        return {} if item.starved_room_mb is None else {"starved_need_mb": None, "starved_room_mb": None}
-    if (item.starved_need_mb == me.mem_mb and item.starved_room_mb is not None
-            and abs(item.starved_room_mb - room) < STARVED_STEP_MB):
-        return {}
-    return {"starved_need_mb": me.mem_mb, "starved_room_mb": room}
+def _starved(item: Booking, need: int, room: int | None) -> dict:
+    """The fields that bring a booking's mark of a run larger than this machine up to date - what it needs and the
+    most the machine could give it (`room`; None: an empty lane holds it), or both cleared - or {} when the mark
+    stands. The room moves at every look, so it is rewritten only past STARVED_STEP_MB, and a mark is cleared only
+    once the room is that much over the need: a need within the room's jitter would write on every tick."""
+    marked = item.starved_room_mb is not None
+    if room is None or need <= room - (STARVED_STEP_MB if marked else 0):
+        return {"starved_need_mb": None, "starved_room_mb": None} if marked else {}
+    if need > room and (not marked or item.starved_need_mb != need
+                        or abs(item.starved_room_mb - room) >= STARVED_STEP_MB):
+        return {"starved_need_mb": need, "starved_room_mb": room}
+    return {}
 
 
 def seal(key: bytes, booking: str, cause: str, ordered_at: str, order_by: str, pid, mark: str, reclaim_mb) -> str:
@@ -713,17 +707,13 @@ class Book:
                 self._write(tx, run.id, HELD, heavy=True)
         decision = policy.decide(runs, machine, booking_id)
         self.waits_for = decision.why
-        starved = _starved(found[booking_id], by_id[booking_id], runs, machine)
         if decision.start:
             me = by_id[booking_id]
             how = f"value: P {policy.priority(me, machine.immortal_s):.2f}, {'heavy' if me.heavy else 'light'}"
-            return self._write(tx, booking_id, HELD, path=how, started=self._now(), heavy=me.heavy, **fields,
-                               **starved)
+            return self._write(tx, booking_id, HELD, path=how, started=self._now(), heavy=me.heavy, **fields)
         for victim, reclaim in decision.freeze:
             self._write(tx, victim, HELD, frozen="ordered", order_by=booking_id, ordered_at=self._now(),
                         reclaim_mb=reclaim)
-        if starved:
-            self._write(tx, booking_id, WAITING, **starved)
         return None
 
     def frozen(self, booking_id: str, *, freeze_kind: str, unit: str, group: int | None,
@@ -811,6 +801,24 @@ class Book:
             item = self._found(tx).get(booking_id)
             if item is not None and item.state == WAITING and item.held_back != why:
                 self._write(tx, booking_id, WAITING, held_back=why)
+
+    def mark_starved(self, marks: dict) -> list[str]:
+        """The daemon's marks of the runs larger than this machine (`policy.starved_marks`: {id: (need, room)}),
+        written on the bookings that still wait or hold, a real change only - the lane's orchestrator item reads
+        them there, while the run waits and while it runs (the person's ruling, 2026-11-18). The lock is taken
+        only when a mark changes. The ids written."""
+        def changes(found):
+            return {booking: fields for booking, (need, room) in marks.items()
+                    if (item := found.get(booking)) is not None and item.state in (WAITING, HELD)
+                    and (fields := _starved(item, need, room))}
+        if not changes(self.bookings()):
+            return []
+        with self.store.transaction(KEY) as tx:
+            found = self._found(tx)
+            due = changes(found)
+            for booking, fields in due.items():
+                self._write(tx, booking, found[booking].state, **fields)
+            return list(due)
 
     def apply(self, actions, signer: tuple) -> list[str]:
         """The daemon's decisions of one tick, in one transaction, each checked against the booking as it stands in

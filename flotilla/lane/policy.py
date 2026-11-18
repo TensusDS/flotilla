@@ -312,16 +312,22 @@ def outside_lane(r: Run, machine: Machine, held_mb: int = 0) -> bool:
             and machine.give_mb + held_mb < r.mem_mb <= machine.capacity_mb + held_mb)
 
 
-def starved_room(r: Run, runs: list[Run], machine: Machine) -> int | None:
-    """The most this machine could give heavy `r`, MB, when `r` needs more: every lane run ended, what runs taken by
-    hand hold freed, Claude Code's sessions retired but the orchestrator's and the waiting seat's (`capacity_mb`). No
-    wait gives it that memory: it starts alone in an empty lane, as before, and its orchestrator is told it may be
-    killed - split or narrow it (the person's ruling, 2026-11-18). None when it is not short, or `capacity_mb` was not
-    read."""
-    if not r.heavy or machine.capacity_mb is None:
-        return None
-    room = machine.capacity_mb + _by_hand_mb([p for p in runs if p.id != r.id])
-    return room if r.mem_mb > room else None
+def starved_marks(runs: list[Run], machine: Machine) -> dict[str, tuple[int, int | None]]:
+    """For each waiter the daemon can judge: (what it needs, the most this machine could give it - None when an
+    empty lane holds it, or it is not one to mark). A run taken by hand is never marked: its figure is the heavy
+    budget it claims, not a need. Waiters it cannot judge - the sessions unread, on macOS - are left out, their
+    marks as they stand (`book.Book.mark_starved`)."""
+    marks: dict[str, tuple[int, int | None]] = {}
+    for r in runs:
+        if r.state != WAITING:
+            continue
+        if not r.heavy or r.by_hand:
+            marks[r.id] = (r.mem_mb, None)
+        elif machine.capacity_mb is not None:
+            marks[r.id] = (r.mem_mb, machine.capacity_mb + _by_hand_mb([p for p in runs if p.id != r.id]))
+        elif machine.give_mb is not None and r.mem_mb <= machine.give_mb:
+            marks[r.id] = (r.mem_mb, None)
+    return marks
 
 
 def _by_hand_mb(pool: list[Run]) -> int:
