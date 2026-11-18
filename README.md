@@ -580,9 +580,9 @@ holds the lane, since no wait ends those. Nor when it would not fit in an empty 
 held outside the lane, by Claude Code's sessions most often: the other runs pass it, and its orchestrator is told
 what it needs and what holds the memory. A heavy run starts in an empty lane only once its memory is free, or held
 by the lane's own runs (a run larger than what retiring the sessions could free still starts alone, and its
-orchestrator is told it may be killed - split or narrow it; where Claude Code's processes cannot be read, on macOS,
-the rule is off). Each waiter's reason says, where the runs ahead of it have estimates, when it should fit by them
-at the earliest ("it fits in ~12 min at the earliest").
+orchestrator is told it may be killed - split or narrow it - where a lane daemon runs; where Claude Code's processes
+cannot be read, on macOS, the rule is off). Each waiter's reason says, where the runs ahead of it have estimates,
+when it should fit by them at the earliest ("it fits in ~12 min at the earliest").
 
 **A younger run is frozen, never killed.** When a run of higher priority does not fit, the lane may freeze a lower
 one to make room: never one in its first minute, never one that has run 15 minutes, never a heavy run for a heavy

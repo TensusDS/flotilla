@@ -587,3 +587,19 @@ def test_a_run_larger_than_the_machine_starts_alone_and_its_booking_is_marked(tm
     found = lanes.bookings()[big.id]
     assert found.state == book.HELD
     assert (found.starved_need_mb, found.starved_room_mb) == (1024, 700)
+
+
+def test_a_waiter_its_own_gates_hold_back_is_marked_too(tmp_path):
+    """Review of bd3f459: the tick skips it, its mark does not go stale for that."""
+    lanes = book.Book(LocalLogStore(tmp_path), Procs())
+    base = value_of(available=2500)
+
+    def values(reading=None):
+        return dataclasses.replace(base(reading), sessions_mb=lambda: 200)
+    sched = scheduler.Scheduler(lanes, values, signer=(4242, "m9"), groups_io=FakeGroups(), clock=Clock(),
+                                default_floor=2000, total_mb=lambda: 15603)
+    big = lanes.enqueue("w", "", pid=11, mark="m")
+    lanes.hold_back(big.id, "CI: red")
+    sched.step()
+    found = lanes.bookings()[big.id]
+    assert found.state == book.WAITING and (found.starved_need_mb, found.starved_room_mb) == (1024, 700)

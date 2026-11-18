@@ -225,8 +225,9 @@ class Scheduler:
         self.last_machine = machine
         actions = tick.tick(enriched, machine)
         applied = set(lanes.apply(actions, self.signer))
-        try:   # judged by the view this tick started by: a run it started at once is marked with its start
-            lanes.mark_starved(policy.starved_marks(enriched, machine))
+        try:   # judged by the view this tick started by: a run it started at once is marked with its start, and
+            # a waiter its own gates hold back is judged too, though the tick skips it (review of bd3f459)
+            lanes.mark_starved(policy.starved_marks(runs, machine))
         except Exception:  # noqa: BLE001 - a hint to the orchestrator; a tick never fails on it
             pass
         for booking, mb in actions.ceilings:
