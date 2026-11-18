@@ -705,3 +705,22 @@ def test_a_light_run_that_fits_beside_the_drained_heavy_passes_it_and_takes_that
     assert decide(runs, machine(free=5500), "l1").start
     assert not decide(runs, machine(free=5500), "l2").start   # 4500 MB beside it then: the first took 2500
     assert decide(runs, machine(free=5500), "big").why.endswith("until this one fits")
+
+
+
+def test_a_frozen_run_back_behind_the_drain_takes_its_room_in_the_gap():
+    """Review of facc2c6, G1: a light frozen run comes back behind the drain; a light passing after it by "fits
+    beside it then" must count it, or the drained run no longer fits when the run ahead ends."""
+    runs = [run("r1", RUNNING, 3000, True, 2, order=0, expected_s=600),
+            run("d", WAITING, 5000, True, 2, order=1, waited_s=900),
+            run("f", FROZEN, 1500, order=2), run("l", WAITING, 800, order=3, expected_s=3000)]
+    assert decide(runs, machine(free=4000), "f").start   # the drain does not hold a frozen run
+    d = decide(runs, machine(free=4000), "l")
+    assert not d.start and d.why.endswith(GAP)   # 7000 - 1500 - 800 < 5000 then
+    small = [*runs[:3], run("l", WAITING, 400, order=3, expected_s=3000)]
+    assert decide(small, machine(free=4000), "l").start   # 7000 - 1500 - 400 still holds it
+
+
+def test_a_measured_estimate_of_nothing_is_no_estimate_in_the_gap():   # review of facc2c6, G3
+    zero = run("zero", WAITING, 5000, order=2, expected_s=0.0)
+    assert not decide(_gap(zero), machine(free=5500), "zero").start

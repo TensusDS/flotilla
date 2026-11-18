@@ -233,6 +233,8 @@ def _replay(runs: list[Run], machine: Machine, mine: str) -> _Replay:
             pool.append(r)
             if out.free is not None:
                 out.free -= r.mem_mb
+            if drain is not None and r.state != WAITING:   # back behind the drain: its room is taken in the gap
+                gap = _back_in_gap(r, drain, gap, machine)
             if r.state == WAITING:   # a frozen run holds its slot already: it is counted in its project's runs
                 turns[r.project] = turns.get(r.project, 0) + 1
             if r.id == mine:
@@ -285,13 +287,27 @@ def _in_gap(r: Run, drain: Run, gap: _Gap | None, pool: list[Run], out: _Replay,
     no light run passes: an end nobody knows may need the room."""
     if r.heavy or gap is None or _fits(r, pool, None if out.free is None else out.free - out.kept, machine)[0]:
         return False
-    if r.expected_s is not None and r.expected_s <= gap.at_s:
+    if r.expected_s and r.expected_s <= gap.at_s:   # a measured 0 is no estimate, as `_fits_after` reads it
         return True
     room = None if gap.room is None else gap.room - r.mem_mb
     if _fits(drain, [*gap.pool, r], room, machine)[0]:
         return False
     gap.pool, gap.room = [*gap.pool, r], room
     return True
+
+
+def _back_in_gap(r: Run, drain: Run, gap: _Gap | None, machine: Machine) -> _Gap | None:
+    """The gap once run `r` - a frozen one coming back behind the drain, which the drain does not hold - is back: its
+    room taken beside the drained run then, unless by its estimate it ends first; None, and no light passes after it,
+    when the drained run would no longer fit beside it then (review of facc2c6, G1)."""
+    if gap is None:
+        return None
+    if r.expected_s and r.expected_s - r.ran_s <= gap.at_s:
+        return gap
+    room = None if gap.room is None else gap.room - r.mem_mb
+    if _fits(drain, [*gap.pool, r], room, machine)[0]:
+        return None
+    return _Gap(gap.at_s, [*gap.pool, r], room)
 
 
 def eta_s(runs: list[Run], machine: Machine, mine: str, _depth: int = 0) -> float | None:
