@@ -71,10 +71,10 @@ fleet.
 **Pin a release** instead, to choose when you move: name a tag on the first line (the tags are listed in
 [CHANGELOG.md](CHANGELOG.md)):
 
-    claude plugin marketplace add TensusDS/flotilla#v0.33.2 --scope project
+    claude plugin marketplace add TensusDS/flotilla#v0.33.3 --scope project
     claude plugin install flotilla@flotilla --scope project
 
-That writes `"ref": "v0.33.2"` into the project's settings and installs that release; `claude plugin update` stays on
+That writes `"ref": "v0.33.3"` into the project's settings and installs that release; `claude plugin update` stays on
 it. A machine keeps one marketplace of a name for all its projects, so give the projects on one machine the same
 channel or pin; `/flotilla:doctor` names a pin the machine does not follow. And a tag can be moved on GitHub, so a pin
 chooses when you move, not who can change what the tag names.
@@ -239,8 +239,9 @@ sessions are delivered by name - so the project word (`[fleet] name`, set at onb
 on the machine: a second project that wants a word already taken gets `beta-2`, and flotilla says so. Plugins that bring MCP servers are turned
 off for a seat unless its post declares them, so a reviewer does not carry a browser it never uses; MCP servers you
 configured outside plugins still start in every seat. `flotilla spawn` refuses to raise seats when free
-memory would fall below `fleet.memory_floor_mb` (2000 MB by default), counting about 800 MB per seat it is about to
-raise; `--anyway` overrides.
+memory would fall below `fleet.memory_floor_mb` (2000 MB by default) or the lane's floor, whichever is higher,
+counting about 800 MB per seat it is about to raise and the project's handover run at its measured peak; `--anyway`
+overrides.
 
 **How big a fleet.** `flotilla fleet size` recommends one from this machine and this project, and names the cap that
 set it; `/flotilla:spawn` with no composition shows it and asks before raising anything:
@@ -554,6 +555,14 @@ holds it and who waits and why - an unbooked run computing is listed too, with i
 simply not free - low memory, and CI using this machine; a booking whose process is gone is swept when the lane is
 shown. The lane is a booking, not a lock: a run started outside it is not stopped - the command guard warns about it.
 
+**The lane keeps memory free above Claude Code's own line.** Claude Code stops the background commands of a session
+idle for 30 minutes once the machine's free memory is under a tenth of it and under 4 GiB - a lane run with them,
+waiting or running. The lane's floor (`[lane] memory_floor_mb` in the profile) is by default 512 MB above that line
+on the host (on a 16 GB machine about 2.1 GB; at least 1500 MB, or a quarter of a small machine); a floor you set
+under the line is kept, and `flotilla lane` says so. `flotilla lane` also shows what Claude Code's own processes
+hold, every project's, and when free memory falls under the floor the orchestrator of each project with a run booked
+is told which of its runs Claude Code would stop if their seats sit idle.
+
 **Runs share the machine by memory and priority** (0.30). A run starts when the memory it needs is free now: its
 history's peak, or, for a command never measured, the 75th percentile of the first runs measured on this machine
 (1 GB until 20 are). A run that needs a fifth or more of the memory the lane can give is heavy. Heavy runs together
@@ -564,7 +573,18 @@ at 15):
 
     P = 0.2 * purpose + 0.3 * wait + 0.5 * run time
 
-A light run passes a heavy one that does not fit; no heavy run passes a higher heavy one that does not fit.
+A light run passes a heavy one that does not fit; no heavy run passes a higher heavy one that does not fit. A heavy
+run that has waited ten minutes and still does not fit **drains the lane**: no new run starts behind it, light ones
+neither, until the runs ahead of it end and it fits - save a light run that takes none of its room: one that by its
+estimate ends before the heavy run fits, by the estimates of the runs ahead, or that fits beside it then (with no
+measured estimate in the way, none passes) - but not while a run that looks hung, or one taken by hand, holds the
+lane, since no wait ends those. Nor when it would not fit in an empty lane either - the memory it needs is held
+outside the lane, by Claude Code's sessions most often: the other runs pass it, and its orchestrator is told what it
+needs and what holds the memory. A heavy run starts in an empty lane only once its memory is free, or held by the
+lane's own runs (a run larger than what retiring the sessions could free still starts alone, and its orchestrator is
+told it may be killed - split or narrow it - where a lane daemon runs; where Claude Code's processes cannot be read,
+on macOS, the rule is off). Each waiter's reason says, where the runs ahead of it have estimates, when it should fit
+by them at the earliest ("it fits in ~12 min at the earliest").
 
 **A younger run is frozen, never killed.** When a run of higher priority does not fit, the lane may freeze a lower
 one to make room: never one in its first minute, never one that has run 15 minutes, never a heavy run for a heavy
@@ -580,6 +600,7 @@ than 80 % used. A frozen command never stays frozen for a wrapper that died or h
 |---|---|---|
 | `lane_cpu_factor` | 1.5 | heavy runs' combined cores, times the machine's cores (1-4) |
 | `lane_light_reserve` | 0.2 | the share of memory heavy runs leave to light ones (0-0.5) |
+| `lane_heavy_mb` | unset | the memory heavy runs take together, in MB (256 and up), in place of the share `lane_light_reserve` leaves; it never gives memory the machine lacks |
 | `lane_immortal_minutes` | 15 | run time after which a run is never frozen (1-240) |
 | `lane_freeze` | on | `false`: admission and order only, nothing is frozen; `flotilla doctor` recommends keeping it on |
 | `lane_max_runs` | 10 | runs holding the lane at once (1-64) |

@@ -295,8 +295,8 @@ def test_the_default_floor_scales_down_on_a_small_machine(tmp_path):
                                meminfo=lambda: available_kb, memtotal=lambda: total_kb)
         return next(a for a in reading.answers if a.question == "memory")
     two_gb = 2 * 1024 * 1024
-    assert answer(900000, two_gb).blocks is False                    # floor 512 MB: a quarter of 2 GB
-    assert answer(400000, two_gb).blocks is True and "512 MB" in answer(400000, two_gb).text
+    assert answer(900000, two_gb).blocks is False                    # floor 716 MB: Claude Code's line + 512
+    assert answer(400000, two_gb).blocks is True and "716 MB" in answer(400000, two_gb).text
     assert answer(900000, 16 * 1024 * 1024).blocks is True           # a large machine keeps 1500 MB
     assert answer(900000, None).blocks is True                       # total unknown: 1500 MB
     assert answer(900000, two_gb, {"lane": {"memory_floor_mb": 1000}}).blocks is True   # a set floor wins
@@ -438,3 +438,62 @@ def test_an_unknown_disk_does_not_hold_the_lane(tmp_path):
         raise OSError(5, "Input/output error")
     answer = disk(tmp_path, broken)
     assert answer.blocks is False and "could not be asked" in answer.text
+
+
+def test_the_default_floor_stays_above_the_line_where_claude_code_stops_idle_sessions_runs():
+    """Field notes 2026-11-16: on a 15 GB machine the 1500 MB floor sat under Claude Code's line (10 % of MemTotal,
+    at most 4 GiB) - the lane admitted runs into the kill. The default now keeps REAP_MARGIN_MB above it."""
+    gb = 1024 * 1024
+    assert machine.reap_line_mb(16 * gb) == 1638 and machine.memory_floor_mb({}, 16 * gb, 16 * gb) == 2150
+    assert machine.memory_floor_mb({}, 64 * gb, 64 * gb) == 4096 + 512        # the line is at most 4 GiB
+    assert machine.memory_floor_mb({}, 8 * gb, 8 * gb) == 1500                 # 819 + 512: the 1500 MB holds
+    assert machine.memory_floor_mb({}, 2 * gb, 2 * gb) == 716                  # 204 + 512, over a quarter's 512
+    assert machine.memory_floor_mb({}, 2 * gb, None) == 512                    # a container's limit binds: no line
+    assert machine.memory_floor_mb({}, None, None) == 1500                     # nothing read: as before
+    assert machine.reap_line_mb(None) is None
+
+
+def test_a_floor_set_under_the_line_is_kept_and_named():
+    gb = 1024 * 1024
+    floor, note = machine.memory_floor({"lane": {"memory_floor_mb": 1000}}, 16 * gb, 16 * gb)
+    assert floor == 1000 and "under the 1638 MB" in note and "Claude Code" in note
+    floor, note = machine.memory_floor({"lane": {"memory_floor_mb": 0}}, 16 * gb, 16 * gb)
+    assert floor == 0 and note == ""                                           # 0: memory not asked, said elsewhere
+    floor, note = machine.memory_floor({"lane": {"memory_floor_mb": 3000}}, 16 * gb, 16 * gb)
+    assert floor == 3000 and note == ""
+
+
+def test_the_memory_answer_draws_the_line_from_the_host(tmp_path):
+    table = Table([Proc(1, 0, "init")])
+    lanes = book.Book(LocalLogStore(tmp_path), table)
+    reading = machine.read(lanes, table, {}, own_pid=999, root=tmp_path, sleep=lambda s: None,
+                           meminfo=lambda: 2000 * 1024, memtotal=lambda: 16 * 1024 * 1024)
+    answer = next(a for a in reading.answers if a.question == "memory")
+    assert answer.blocks is True and "floor 2150 MB" not in answer.text and "2150 MB" in answer.text
+
+
+def test_the_line_is_drawn_where_the_host_can_reach_it(monkeypatch):
+    """Review of 1241703, 6: a container's limit far under the host makes the line moot; a user slice near the
+    host's size does not."""
+    from flotilla.core import resources
+    spec_copy = __import__("importlib.util").util
+    spec = spec_copy.spec_from_file_location("lane_machine_line", machine.__file__)
+    copy = spec_copy.module_from_spec(spec)
+    import sys
+    monkeypatch.setitem(sys.modules, spec.name, copy)
+    spec.loader.exec_module(copy)
+    host = 16 * 1024 * 1024
+    monkeypatch.setattr(copy, "read_meminfo", lambda path=None, field="MemAvailable": host)
+    for limit, drawn in ((None, True), (15 * 1024, True), (14 * 1024, True), (8 * 1024, True), (7 * 1024, False),
+                         (2048, False)):
+        monkeypatch.setattr(resources, "cgroup_limit_mb", lambda limit=limit, **kw: limit)
+        assert (copy._host_total() == host) is drawn, limit
+    big = 64 * 1024 * 1024   # a user slice at 90 % of a 64 GB host keeps the line (review of 4cc2e8c, 2)
+    monkeypatch.setattr(copy, "read_meminfo", lambda path=None, field="MemAvailable": big)
+    monkeypatch.setattr(resources, "cgroup_limit_mb", lambda **kw: 58982)
+    assert copy._host_total() == big
+    monkeypatch.setattr(copy, "read_meminfo", lambda path=None, field="MemAvailable": host)
+    monkeypatch.setattr(resources, "cgroup_limit_mb", lambda **kw: None)
+    monkeypatch.setattr(copy, "_memtotal", lambda: host)
+    assert copy.floor_here({}) == 2150 and copy.floor_here({"lane": {"memory_floor_mb": 3000}}) == 3000
+    assert copy.floor_here({"lane": "not a table"}) == 2150

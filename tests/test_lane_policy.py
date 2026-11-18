@@ -1,7 +1,7 @@
 import pytest
 
 from flotilla.lane.policy import (FROZEN, ORDERED, RECLAIM_MARGIN_MB, RUNNING, WAITING, Decision, Machine, Run,
-                                  decide, immortal, is_heavy, priority)
+                                  decide, eta_s, eta_words, held_outside, immortal, is_heavy, priority)
 
 SERVER = Machine(cpus=8, give_mb=9000, free_mb=9000, swap_free_mb=8000, swap_total_mb=8000)
 
@@ -223,13 +223,11 @@ def test_a_lone_heavy_keeps_the_light_reserve_beside_light_runs():   # final rev
     assert decide([run("h", WAITING, 8000, True, 4)], machine(free=8500), "h").start   # an empty machine: it goes
 
 
-
 def test_a_run_that_just_refused_this_waiter_is_no_candidate():   # review of ed148e3, 1: back-off
     runs = [run("y", RUNNING, 2000, ran_s=90, since_start_s=90, refused_for="b2"),
             run("b2", WAITING, 1000, kind="push")]
     d = decide(runs, machine(free=0), "b2")
     assert d.freeze == () and "y refused an order a moment ago" in d.why
-
 
 
 def test_a_run_that_just_refused_any_waiter_is_no_candidate():   # review of the follow-up, I2
@@ -293,13 +291,11 @@ def test_daemon_reason_ignores_the_grace():   # ruling 5
     assert policy.daemon_reason(run("y", RUNNING, 1000, freezable=False), m)
 
 
-
 def test_a_floor_is_believed_up_to_a_quarter_of_the_machine():   # final review C2: any session writes floor_mb
     assert policy.clamp_floor(9_000_000, 15603) == 3900
     assert policy.clamp_floor(1000, 15603) == 1000
     assert policy.clamp_floor(1500, 4000) == 1500        # never under the default floor
     assert policy.clamp_floor(9_000_000, None) == 4096
-
 
 
 def test_a_negative_floor_is_no_floor():   # fix review R9
@@ -309,7 +305,6 @@ def test_a_negative_floor_is_no_floor():   # fix review R9
 def test_the_heavy_share_is_named_only_when_it_and_not_the_room_holds_a_heavy_run_back():   # review of B, finding 4
     d = decide([run("h", RUNNING, 4000, True, 2), run("b2", WAITING, 3500, True, 2)], machine(free=1000), "b2")
     assert "1000 MB of room" in d.why and "for heavy runs" not in d.why
-
 
 
 def test_a_run_no_ceiling_holds_keeps_its_admitted_memory_and_the_slack_promised():   # third review of B, 1 and 2
@@ -344,14 +339,14 @@ def test_every_bound_that_holds_a_heavy_run_is_named_not_only_the_first():   # f
 
 
 def test_a_heavy_behind_one_that_waits_for_an_empty_lane_is_told_so():   # field test 2026-11-11
-    runs = [run("other", RUNNING, 800), run("big", WAITING, 7500, True, 2, order=1, waited_s=600),
+    runs = [run("other", RUNNING, 800), run("big", WAITING, 7500, True, 2, order=1, waited_s=300),
             run("b3", WAITING, 2000, True, 2, order=2)]
     d = decide(runs, machine(free=8000), "b3")
     assert not d.start and "behind heavy big, which starts only when the lane is empty" in d.why
 
 
 def test_a_heavy_behind_one_that_only_lacks_room_is_told_just_that():
-    runs = [run("h", RUNNING, 3000, True, 6), run("b2", WAITING, 5000, True, 4, order=2, waited_s=600),
+    runs = [run("h", RUNNING, 3000, True, 6), run("b2", WAITING, 5000, True, 4, order=2, waited_s=590),
             run("b3", WAITING, 1900, True, 2, order=3)]
     d = decide(runs, machine(free=4000), "b3")
     assert d.why == "behind heavy b2"
@@ -428,7 +423,7 @@ def test_a_turn_taken_weighs_both_the_runs_held_and_the_service():   # review of
 def _behind_a_heavy():
     """A heavy push that does not fit blocks the heavy runs behind it; alpha is due, and its first waiter is heavy."""
     return [run("g", RUNNING, 100, order=0, project="gamma", fair=(1, HALF)),
-            run("h", WAITING, 20_000, True, 8, kind="push", waited_s=900, order=1, project="gamma", fair=(1, HALF)),
+            run("h", WAITING, 20_000, True, 8, kind="push", waited_s=590, order=1, project="gamma", fair=(1, HALF)),
             _with(_equal("a1", "alpha", NINE, 2), heavy=True), _equal("b1", "beta", HALF, 3),
             _equal("a2", "alpha", NINE, 4)]
 
@@ -444,3 +439,288 @@ def test_the_tick_starts_what_the_fair_replay_admits():   # review of dcf78ca: t
     runs = _behind_a_heavy()
     one = machine(free=1000, max_runs=2, available_mb=10_000, floor_mb=1500)
     assert [start[0] for start in tick.tick(runs, one).starts] == ["a2"]
+
+
+# The drain (the person's ruling, 2026-11-17): a heavy waiter that has waited DRAIN_AFTER_S and does not fit stops
+# every new start behind it, light ones too, until the runs ahead of it end and it fits.
+
+GAP = " - a light run passes only if by its estimate it ends before then, or fits beside it then"
+
+
+def _drain(waited):
+    return [run("h", RUNNING, 4000, True, 8, order=0), run("big", WAITING, 5000, True, 6, order=1, waited_s=waited),
+            run("light", WAITING, 300, order=2), run("heavy2", WAITING, 1000, True, 1, order=3)]
+
+
+def test_before_the_drain_a_light_run_passes_a_heavy_that_does_not_fit():
+    assert decide(_drain(590), machine(free=8000), "light").start
+
+
+def test_a_heavy_that_waited_ten_minutes_stops_every_new_start_behind_it():
+    runs = _drain(600)
+    for mine, gap in (("light", GAP), ("heavy2", "")):
+        d = decide(runs, machine(free=8000), mine)
+        assert not d.start and d.why == ("behind heavy big, which has waited over 10 min: the lane starts no new run "
+                                         "until it fits" + gap)
+    d = decide(runs, machine(free=8000), "big")
+    assert not d.start and "heavy runs' cores: 8 of 12" in d.why and "starts no new run until this one fits" in d.why
+    # the reason is what a waiting `lane run` reprints: it holds no running count (review of 1241703, 1)
+    later = _drain(4000)
+    assert [decide(later, machine(free=8000), i).why for i in ("light", "big")] == \
+        [decide(runs, machine(free=8000), i).why for i in ("light", "big")]
+
+
+def test_no_drain_behind_a_run_that_never_ends_by_itself():
+    """Review of 1241703, 2: behind a hung run, or one taken by hand, a drain would stop the whole lane for as long
+    as it is held; light runs pass as before, and the heavy run says why it does not drain."""
+    for endless in ({"hung": True}, {"by_hand": True}):
+        runs = [run("h", RUNNING, 4000, True, 8, order=0, **endless),
+                run("big", WAITING, 5000, True, 6, order=1, waited_s=900), run("light", WAITING, 300, order=2)]
+        assert decide(runs, machine(free=8000), "light").start
+        d = decide(runs, machine(free=8000), "big")
+        assert not d.start and "no drain for it while h holds the lane (hung or taken by hand)" in d.why
+
+
+def test_the_drained_heavy_starts_once_the_run_ahead_ends_and_the_lane_opens_again():
+    runs = [r for r in _drain(900) if r.id != "h"]
+    assert decide(runs, machine(free=8000), "big").start
+    started = [r if r.id != "big" else run("big", RUNNING, 5000, True, 6, order=1) for r in runs]
+    assert decide(started, machine(free=3000), "light").start
+
+
+def test_a_run_ahead_of_the_drained_heavy_in_line_still_starts():
+    runs = [run("h", RUNNING, 4000, True, 8, order=0), run("push", WAITING, 300, kind="push", waited_s=600, order=5),
+            run("big", WAITING, 5000, True, 6, order=1, waited_s=600)]
+    assert decide(runs, machine(free=8000), "push").start   # higher priority: offered before the heavy
+
+
+def test_a_frozen_run_behind_the_drain_is_not_held_by_it():
+    runs = _drain(600) + [run("cold", FROZEN, 200, order=4)]
+    d = decide(runs, machine(free=8000), "cold")
+    assert "the lane starts no new run" not in d.why
+
+
+def test_the_drain_names_a_heavy_that_starts_only_alone():
+    runs = [run("other", RUNNING, 800), run("big", WAITING, 7500, True, 2, order=1, waited_s=600),
+            run("b3", WAITING, 200, order=2)]
+    d = decide(runs, machine(free=8000), "b3")
+    assert d.why == ("behind heavy big, which has waited over 10 min, and starts only when the lane is empty: the "
+                     "lane starts no new run until it fits" + GAP)
+
+
+def test_the_heavy_budget_is_the_persons_where_set():
+    runs = [run("h", RUNNING, 4000, True, 2), run("b2", WAITING, 3500, True, 2)]
+    d = decide(runs, machine(free=5000), "b2")   # 0.8 * 9000 = 7200: no room for 3500 beside 4000
+    assert not d.start and "reserve 1800 MB for light runs" in d.why
+    assert decide(runs, machine(free=5000, heavy_mb=8000), "b2").start
+    d = decide(runs, machine(free=5000, heavy_mb=6000), "b2")
+    assert not d.start and "heavy runs' memory set to 6000 MB (lane_heavy_mb)" in d.why
+    d = decide(runs, machine(free=3000, heavy_mb=20_000), "b2")   # a budget never gives memory the machine lacks
+    assert not d.start and "3000 MB of room" in d.why
+
+
+# The wait estimate (field notes 2026-11-16): when the runs ahead free what the waiter needs, by their estimates.
+
+def test_the_wait_estimate_is_when_enough_runs_ahead_end():
+    runs = [run("a", RUNNING, 3000, True, 4, expected_s=600, ran_s=100, order=0),
+            run("b", RUNNING, 3000, True, 4, expected_s=300, ran_s=60, order=1),
+            run("w", WAITING, 3000, True, 6, order=2)]
+    # cores: 8 of 12 held, 6 more needed - the first to end (b, 240 s left) leaves 4 + 6 = 10: it fits then
+    assert eta_s(runs, machine(free=8000), "w") == 240
+    assert eta_words(240) == "by the estimates of the runs ahead it fits in ~4 min at the earliest"
+    big = [*runs[:2], run("w", WAITING, 3000, True, 10, order=2)]   # 10 cores: both must end
+    assert eta_s(big, machine(free=8000), "w") == 500
+
+
+def test_a_run_without_an_estimate_in_the_way_gives_none():
+    runs = [run("a", RUNNING, 3000, True, 8, order=0), run("w", WAITING, 3000, True, 6, order=1)]
+    assert eta_s(runs, machine(free=8000), "w") is None and eta_words(None) == ""
+
+
+def test_a_run_past_its_estimate_is_taken_to_end_now():
+    runs = [run("a", RUNNING, 3000, True, 8, expected_s=60, ran_s=900, order=0), run("w", WAITING, 3000, True, 6,
+                                                                                     order=1)]
+    assert eta_s(runs, machine(free=8000), "w") == 0
+    assert eta_words(0) == "by their estimates the runs ahead should end about now"
+    assert eta_words(7200) == "by the estimates of the runs ahead it fits in ~2.0 h at the earliest"
+    assert eta_words(8 * 86400) == "" and eta_words(1e300) == ""   # a week out is no estimate
+
+
+def test_a_hung_run_ends_by_no_estimate():
+    runs = [run("a", RUNNING, 3000, True, 8, expected_s=60, ran_s=9000, order=0, hung=True),
+            run("w", WAITING, 3000, True, 6, order=1)]
+    assert eta_s(runs, machine(free=8000), "w") is None
+
+
+def test_behind_a_heavy_the_estimate_is_that_heavy_runs():
+    # `l` would take the room left beside `big` once that fits, and by its estimate ends later: it waits for `big`
+    runs = [run("a", RUNNING, 3000, True, 2, expected_s=600, ran_s=0, order=0),
+            run("big", WAITING, 6000, True, 2, order=1, waited_s=600),
+            run("l", WAITING, 2000, order=2, expected_s=6000)]
+    assert eta_s(runs, machine(free=4000), "l") == 600 == eta_s(runs, machine(free=4000), "big")
+
+
+def test_a_run_the_replay_starts_has_no_estimate():   # review of 1241703, 4: what holds it is not the runs ahead
+    assert eta_s([run("w", WAITING, 100)], machine(free=8000), "w") is None
+
+
+def test_a_small_endless_run_does_not_turn_off_a_drain_it_is_not_the_cause_of():
+    """Review of 4cc2e8c, 1: a hung 100 MB light run turned off the drain of a heavy run that a normal heavy run kept
+    out; once that one ends, the heavy fits beside the hung one, so it drains."""
+    runs = [run("tiny", RUNNING, 100, order=0, hung=True), run("h", RUNNING, 4000, True, 8, order=1),
+            run("big", WAITING, 5000, True, 6, order=2, waited_s=900), run("light", WAITING, 300, order=3)]
+    assert not decide(runs, machine(free=8000), "light").start
+    assert "the lane starts no new run until this one fits" in decide(runs, machine(free=8000), "big").why
+
+
+def test_the_endless_check_counts_the_memory_the_other_runs_free():
+    """Review of 68a2194: memory, not cores, decides here - once the 6000 MB run ends, 5000 MB fits beside the hung
+    100 MB one, so the heavy waiter drains and the light one waits."""
+    runs = [run("tiny", RUNNING, 100, order=0, hung=True), run("h", RUNNING, 6000, True, 2, order=1),
+            run("big", WAITING, 5000, True, 2, order=2, waited_s=900), run("light", WAITING, 300, order=3)]
+    assert "the lane starts no new run until this one fits" in decide(runs, machine(free=1000), "big").why
+    assert not decide(runs, machine(free=1000), "light").start
+
+
+
+def roomy(free, give, capacity=14000, **kw):
+    """The machine as admission.view builds it: `give` is the room with every lane run ended (free plus what the
+    held runs take), `capacity` the room with nothing else running."""
+    return Machine(cpus=8, give_mb=give, free_mb=free, swap_free_mb=8000, swap_total_mb=8000, capacity_mb=capacity,
+                   **kw)
+
+
+def test_a_heavy_run_starts_in_an_empty_lane_only_once_its_memory_is_free():
+    """Field notes 2026-11-17: a 7 GB run started into an empty lane while the sessions held 8 GB, and the machine
+    went down to Claude Code's reap line. A light run, and a run larger than the machine, start as before."""
+    d = decide([run("h", WAITING, 5000, True, 4)], roomy(2000, 2000), "h")
+    assert not d.start and d.freeze == ()
+    assert "memory: 5000 MB needed, 2000 MB with the lane empty: the rest is held outside the lane" in d.why
+    assert decide([run("h", WAITING, 5000, True, 4)], roomy(5000, 5000), "h").start
+    assert decide([run("l", WAITING, 1500)], roomy(1000, 1000), "l").start
+    assert decide([run("huge", WAITING, 15000, True, 4)], roomy(1000, 1000), "huge").start   # never fits: alone
+    assert decide([run("h", WAITING, 5000, True, 4)], roomy(2000, 2000, capacity=None), "h").start   # unread
+
+
+def test_a_heavy_run_whose_room_its_freeze_holds_starts_as_before():
+    """Review of f16df11, 3: the resident part of a run it froze is the lane's memory, not the sessions': the heavy
+    waiter starts once the lane is empty, and the frozen run does not thaw past it to be frozen again."""
+    runs = [run("f", FROZEN, 1000, order=0, since_start_s=600), run("h", WAITING, 5000, True, 4, order=1,
+                                                                     waited_s=900, holds=True)]
+    assert decide(runs, roomy(4500, 7000), "h").start
+
+
+def test_no_drain_for_a_heavy_run_an_empty_lane_would_not_hold():
+    """The person's ruling, 2026-11-17: drained empty, the lane would still not hold it - the memory is held outside
+    the lane - so the light runs pass, it stays first among the heavy ones, and it is listed for its orchestrator."""
+    runs = [run("l1", RUNNING, 300, order=0), run("big", WAITING, 5000, True, 6, order=1, waited_s=900),
+            run("light", WAITING, 300, order=2), run("heavy2", WAITING, 1000, True, 1, order=3)]
+    assert decide(runs, roomy(2000, 2300), "light").start
+    d = decide(runs, roomy(2000, 2300), "big")
+    assert not d.start and "no drain for it: it would not fit in an empty lane either" in d.why
+    assert decide(runs, roomy(2000, 2300), "heavy2").why.startswith("behind heavy big")
+    assert held_outside(runs, roomy(2000, 2300)) == {"big": {"need_mb": 5000, "room_mb": 2300}}
+    # review of f16df11, 1: the room an empty lane leaves is `give`, whatever the free memory of the moment - the
+    # ceilings' headroom and the runs' own memory are the lane's, and a drain frees them
+    assert held_outside(runs, roomy(1000, 5100)) == {}
+    assert "behind heavy big, which has waited over 10 min" in decide(runs, roomy(1000, 5100), "light").why
+    young = [run("big", WAITING, 5000, True, 6, order=1, waited_s=60), run("light", WAITING, 300, order=2)]
+    assert held_outside(young, roomy(2000, 2000)) == {}   # before the drain's ten minutes: nobody is told
+    larger = [run("l1", RUNNING, 300, order=0), run("big", WAITING, 15000, True, 6, order=1, waited_s=900),
+              run("light", WAITING, 300, order=2)]
+    assert held_outside(larger, roomy(2000, 2300)) == {}   # larger than the machine: it drains, then starts alone
+    assert "behind heavy big" in decide(larger, roomy(2000, 2300), "light").why
+
+
+
+def test_a_run_taken_by_hand_is_named_not_read_as_memory_outside_the_lane():
+    """Review of 5edc98d, M1: a run taken by hand has no process tree in `give_mb`; the heavy waiter it keeps out is
+    told so, and its orchestrator is not told to retire seats."""
+    runs = [run("hand", RUNNING, 4000, True, 8, order=0, by_hand=True),
+            run("big", WAITING, 5000, True, 6, order=1, waited_s=900), run("light", WAITING, 300, order=2)]
+    d = decide(runs, roomy(1000, 1000), "big")
+    assert "no drain for it while hand holds the lane (hung or taken by hand)" in d.why
+    assert held_outside(runs, roomy(1000, 1000)) == {}
+
+
+def test_a_run_held_outside_the_lane_orders_no_freeze():
+    """Review of 5edc98d, M2: with `lane_heavy_mb` above `give_mb` its reason can read as free memory; no freeze lets
+    it in all the same."""
+    runs = [run("l", RUNNING, 5000, order=0, since_start_s=600), run("h", WAITING, 5000, True, 4, order=1,
+                                                                      waited_s=900)]
+    d = decide(runs, roomy(1000, 3000, heavy_mb=6000), "h")
+    assert not d.start and d.freeze == ()
+
+
+
+def test_a_small_hung_run_does_not_hide_memory_held_outside_the_lane():
+    """Review of 0ff3a22, 1: the hung run frees 200 MB when it ends, nowhere near what the heavy waiter lacks; its
+    orchestrator is told of the memory outside the lane, as without the hung run."""
+    runs = [run("hung", RUNNING, 200, order=0, hung=True), run("l1", RUNNING, 300, order=1),
+            run("big", WAITING, 5000, True, 6, order=2, waited_s=900), run("light", WAITING, 300, order=3)]
+    assert held_outside(runs, roomy(2000, 2500, 9000)) == {"big": {"need_mb": 5000, "room_mb": 2500}}
+    assert "it would not fit in an empty lane either" in decide(runs, roomy(2000, 2500, 9000), "big").why
+
+
+
+def test_the_daemon_marks_each_waiter_it_can_judge():
+    import dataclasses
+    from flotilla.lane import policy
+    big = policy.Run("b1", policy.WAITING, 9000, True, 1)
+    light = policy.Run("b2", policy.WAITING, 300, False, 1)
+    hand = policy.Run("b3", policy.WAITING, 9000, True, 1, by_hand=True)
+    held = policy.Run("b4", policy.RUNNING, 1500, True, 1, by_hand=True)
+    marks = policy.starved_marks([big, light, hand, held], roomy(1000, 3000, capacity=8000))
+    assert marks == {"b1": (9000, 9500), "b2": (300, None), "b3": (9000, None)}
+    assert policy.starved_marks([big, light], roomy(1000, 3000, capacity=None)) == {"b2": (300, None)}
+    small = dataclasses.replace(big, mem_mb=2000)
+    assert policy.starved_marks([small], roomy(1000, 3000, capacity=None)) == {"b1": (2000, None)}
+
+
+
+def _gap(*lights, ahead_s=1200):
+    """`big` waits on the cores `h` holds, which by its estimate ends in `ahead_s`; then 9500 MB beside it."""
+    return [run("h", RUNNING, 4000, True, 8, order=0, expected_s=ahead_s),
+            run("big", WAITING, 5000, True, 6, order=1, waited_s=600), *lights]
+
+
+def test_a_light_run_that_ends_before_the_drained_heavy_fits_passes_it():
+    """The person's ruling, 2026-11-18: lights stopped behind a drain waited fifteen times longer in the model, for no
+    gain to the heavy run; one that by its estimate ends first takes none of its room."""
+    short = run("short", WAITING, 5000, order=2, expected_s=600)
+    long = run("long", WAITING, 5000, order=2, expected_s=3000)
+    unknown = run("unknown", WAITING, 5000, order=2)
+    assert decide(_gap(short), machine(free=5500), "short").start
+    for mine in (long, unknown):
+        d = decide(_gap(mine), machine(free=5500), mine.id)
+        assert not d.start and d.why.endswith(GAP), mine.id   # it would take what the heavy run needs then
+    assert not decide(_gap(short, ahead_s=None), machine(free=5500), "short").start   # no moment known: none passes
+
+
+def test_a_light_run_that_fits_beside_the_drained_heavy_passes_it_and_takes_that_room():
+    small = run("small", WAITING, 300, order=2)   # no estimate: it fits beside the heavy run once that one fits
+    assert decide(_gap(small), machine(free=5500), "small").start
+    first, second = run("l1", WAITING, 2500, order=2), run("l2", WAITING, 2500, order=3)
+    runs = _gap(first, second)
+    assert decide(runs, machine(free=5500), "l1").start
+    assert not decide(runs, machine(free=5500), "l2").start   # 4500 MB beside it then: the first took 2500
+    assert decide(runs, machine(free=5500), "big").why.endswith("until this one fits")
+
+
+
+def test_a_frozen_run_back_behind_the_drain_takes_its_room_in_the_gap():
+    """Review of facc2c6, G1: a light frozen run comes back behind the drain; a light passing after it by "fits
+    beside it then" must count it, or the drained run no longer fits when the run ahead ends."""
+    runs = [run("r1", RUNNING, 3000, True, 2, order=0, expected_s=600),
+            run("d", WAITING, 5000, True, 2, order=1, waited_s=900),
+            run("f", FROZEN, 1500, order=2), run("l", WAITING, 800, order=3, expected_s=3000)]
+    assert decide(runs, machine(free=4000), "f").start   # the drain does not hold a frozen run
+    d = decide(runs, machine(free=4000), "l")
+    assert not d.start and d.why.endswith(GAP)   # 7000 - 1500 - 800 < 5000 then
+    small = [*runs[:3], run("l", WAITING, 400, order=3, expected_s=3000)]
+    assert decide(small, machine(free=4000), "l").start   # 7000 - 1500 - 400 still holds it
+
+
+def test_a_measured_estimate_of_nothing_is_no_estimate_in_the_gap():   # review of facc2c6, G3
+    zero = run("zero", WAITING, 5000, order=2, expected_s=0.0)
+    assert not decide(_gap(zero), machine(free=5500), "zero").start

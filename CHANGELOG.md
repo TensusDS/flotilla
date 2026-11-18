@@ -3,6 +3,34 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.33.3 - 2026-11-18
+
+From the same night's notes: Claude Code stopped lane runs - most of them only waiting - when the machine ran short
+of memory, and a heavy run headed its project's line for hours with no word of when it would go.
+
+- **The lane keeps memory free above the line where Claude Code stops idle sessions' runs.** Claude Code (read in
+  its own code) stops the background commands of a session idle for 30 minutes once free memory is under a tenth of
+  the machine and under 4 GiB: about 1.6 GB on a 16 GB machine, where the lane's floor was 1500 MB. The floor is now
+  512 MB above that line by default; one set under it is kept and named. `flotilla lane` shows what Claude Code's
+  own processes hold, every project's.
+- **The orchestrator knows that rule.** Its post says it, and `watch` tells it, while free memory is under the
+  lane's floor, which of its project's runs Claude Code would stop if their seats sit idle. Claude Code's own
+  stopping stays on (the person's ruling).
+- **`flotilla spawn` and `fleet size` keep room for the project's runs.** Both count the higher of the fleet's floor
+  and the lane's; spawn also counts the handover run's measured peak, as the size already did.
+- **A heavy run that has waited ten minutes drains the lane**: nothing new starts behind it until it fits, save a
+  light run that takes none of its room - one that by its estimate ends before the heavy run fits, or fits beside it
+  then - and unless what keeps it out is a run that looks hung or one taken by hand, which no wait ends. **The
+  memory heavy runs take together can be set**: `lane_heavy_mb` in `machine.toml`.
+- **A heavy run starts in an empty lane only once its memory is free.** One that would not fit even there - the
+  memory held outside the lane, by Claude Code's sessions most often - drains nothing: the other runs pass it, and
+  its orchestrator is told what it needs, the room it would have and what the sessions hold. One larger than the
+  machine gives with every session retired but the orchestrator's and its own still starts alone in an empty
+  lane, and its orchestrator is told, while it waits and while it runs, that it may be killed: split or narrow it.
+- **A waiter is told when it should fit at the earliest**, by the estimates of the runs ahead: on its line in
+  `flotilla lane`, and with each new reason a waiting `lane run` prints.
+- The orchestrator's post is template 33.
+
 ## 0.33.2 - 2026-11-16
 
 From a night of two fleets on one machine (2026-11-15..16): a run held the lane for 7 hours past its 30-minute

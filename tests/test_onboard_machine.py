@@ -136,7 +136,7 @@ def test_every_key_the_measurement_writes_is_named_as_measured(tmp_path):
 def test_new_lane_keys_survive_a_machine_toml_rewrite(tmp_path):
     from flotilla.onboard.machine import PERSON_KEYS, read_machine, set_person_keys, write_machine
     keys = {"lane_cpu_factor": 2.0, "lane_share": "fair", "lane_light_reserve": 0.3, "lane_immortal_minutes": 20,
-            "lane_freeze": False, "lane_max_runs": 6}
+            "lane_freeze": False, "lane_max_runs": 6, "lane_heavy_mb": 8000}
     assert set(keys) <= set(PERSON_KEYS)
     set_person_keys(tmp_path, **keys)
     write_machine(tmp_path, {"cpu_count": 8})

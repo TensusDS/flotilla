@@ -21,7 +21,8 @@ def aged(id, p, mem=1000, **kw):
 
 def machine(available, floor=2000, swap_free=8000, swap_total=10000, **kw):
     kw.setdefault("free_mb", None if available is None else available - floor)
-    return Machine(cpus=8, give_mb=None if available is None else 12000, swap_free_mb=swap_free,
+    kw.setdefault("give_mb", None if available is None else 12000)
+    return Machine(cpus=8, swap_free_mb=swap_free,
                    swap_total_mb=swap_total, available_mb=available, floor_mb=floor, immortal_s=IMM, **kw)
 
 
@@ -341,3 +342,14 @@ def test_the_memory_reason_says_held_for_runs_started_or_ahead_and_no_room_when_
     why = dict(tick([*held, run("w", WAITING, 3112)], machine(2000 + 5000)).why)["w"]
     assert "memory: 3112 MB needed, no room (7000 MB available, less the 2000 MB floor and 5520 MB held for runs " \
            "started or ahead in line)" in why
+
+
+
+def test_a_ceilings_headroom_is_no_memory_outside_the_lane():
+    """Review of f16df11, 2: a capped run's promised headroom is the lane's - the heavy waiter of ten minutes drains
+    the lane for it, and the light waiter behind it does not start."""
+    capped = aged("l", 0.3, 900, ceiling_mb=3400, scoped=True)
+    runs = [capped, run("h", WAITING, 3500, True, 4, waited_s=900, order=1), run("w", WAITING, 300, order=2)]
+    a = tick(runs, machine(5000, floor=1000, give_mb=4900, capacity_mb=14000))
+    assert a.starts == () and "behind heavy h, which has waited over 10 min" in dict(a.why)["w"]
+    assert policy.held_outside(runs, machine(5000, floor=1000, give_mb=4900, capacity_mb=14000)) == {}

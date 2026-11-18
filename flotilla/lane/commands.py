@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import datetime as dt
 import os
 import shlex
@@ -97,6 +98,17 @@ def light_reserve() -> float:
     return float(_number("lane_light_reserve", LIGHT_RESERVE, LIGHT_RESERVE_BOUNDS))
 
 
+#: machine.toml `lane_heavy_mb`: whole MB, at least 256 and at most a terabyte; anything else is unset.
+HEAVY_MB_BOUNDS = (256, 1 << 20)
+
+
+def heavy_mb() -> int | None:
+    """machine.toml `lane_heavy_mb`: the most memory the heavy runs take together, set by the person; None (unset or
+    out of bounds): the share of what the lane can give that `lane_light_reserve` leaves (the person's ruling,
+    2026-11-17)."""
+    return _number("lane_heavy_mb", None, HEAVY_MB_BOUNDS, whole=True)
+
+
 def immortal_minutes() -> float:
     """machine.toml `lane_immortal_minutes`: the run time after which a run is never frozen (section 2.8)."""
     return _number("lane_immortal_minutes", IMMORTAL_MINUTES, IMMORTAL_BOUNDS)
@@ -159,14 +171,27 @@ def pinned_for(profile: dict, purpose: str, will_run) -> bool:
     return any(tier.get("freeze") is False for tier in tiers_for(profile, purpose) if tier.get("name") in names)
 
 
+def _sessions_mb() -> int | None:
+    """What retiring Claude Code's sessions could free, MB: all their memory but two sessions' average - the
+    orchestrator's and the seat whose run waits never leave, and resident memory counts shared pages in each (the
+    person's ruling, 2026-11-17, on review of 0ff3a22, R2); None where they cannot be read."""
+    from flotilla.core import resources
+    found = resources.claude_memory()
+    if not found:
+        return None
+    count, mb = found
+    return max(0, mb - 2 * mb // count) if count > 0 else 0
+
+
 def value_for(profile: dict):
     """What a grant by value reads, built from each poll's reading: settings read once here, memory and swap read
     when the grant decides, inside the journal's lock."""
     from flotilla.core import resources
     from flotilla.lane import admission, freeze, peak
-    cpus, floor = machine.cpus(), machine.memory_floor_mb(profile)
+    cpus, floor = machine.cpus(), machine.floor_here(profile)
     kind = freeze.backend(setting=freeze_on())[0]
     reserve, immortal, cap, factor = light_reserve(), immortal_minutes() * 60.0, max_runs(), cpu_factor()
+    heavy = heavy_mb()
     ceiling, total = freeze_ceiling_minutes() * 60.0, freeze_total_minutes() * 60.0
     root = paths.state_dir() / "lane"
 
@@ -176,7 +201,8 @@ def value_for(profile: dict):
                                swap_mb=freeze.swap_mb, tree_mb=peak.tree_rss_mb,
                                beat_age_s=lambda booking: admission.beat_age(root, booking),
                                foreign=len(reading.computing) if reading is not None else 0,
-                               freeze_ceiling_s=ceiling, freeze_total_s=total)
+                               freeze_ceiling_s=ceiling, freeze_total_s=total, heavy_mb=heavy,
+                               sessions_mb=_sessions_mb)
     return make
 
 
@@ -185,7 +211,7 @@ def room_for(profile: dict):
     available less the profile's floor (read when the grant decides, inside the lock), the foreign runs computing."""
     from flotilla.core import resources
     cpus = machine.cpus()
-    floor, factor = machine.memory_floor_mb(profile), cpu_factor()
+    floor, factor = machine.floor_here(profile), cpu_factor()
 
     def memory_left():
         available = resources.available_mb()
@@ -320,7 +346,7 @@ def booked(root, *, note: str, wait: float, run_for: str = "", as_name=None, com
                   ladder=ladder, will_run=list(will_run or []), project=project, room=room_for(profile),
                   value=value_for(profile), kind=kind_of(purpose, who, root),
                   pinned=pinned_for(profile, purpose, will_run), scheduler=scheduler_for(table, lanes),
-                  floor_mb=machine.memory_floor_mb(profile)) as grant:
+                  floor_mb=machine.floor_here(profile)) as grant:
         yield grant
 
 
@@ -476,7 +502,7 @@ def _status(args) -> int:
     memory = "memory cannot be read" if free is None else f"{max(free - reserved, 0)} MB of memory left after the " \
         f"holders' peaks"
     print(f"budget for light runs: {used:g} of {total:g} cores (lane_cpu_factor {room.factor:g}), {memory} "
-          f"(floor {machine.memory_floor_mb(profile)} MB); a run measured at <= {estimate.LIGHT_SECONDS:g} s and "
+          f"(floor {machine.floor_here(profile)} MB); a run measured at <= {estimate.LIGHT_SECONDS:g} s and "
           f"<= {estimate.LIGHT_CORES:g} cores is light and takes no place")
     print("held:" if held or reading.computing else "held: nobody")
     for item in held:
@@ -519,23 +545,48 @@ def _status(args) -> int:
     return 0
 
 
+def mark_hung(runs, beat) -> list:
+    """The runs with the daemon's hung reading on them, as its tick decides on them: no drain behind a hung run."""
+    hung = beat.hung if beat is not None and isinstance(beat.hung, dict) else {}
+    return [dataclasses.replace(run, hung=run.id in hung) for run in runs]
+
+
+_READ = object()
+
+
+def sessions_line(floor_mb: int, *, found=_READ, line_mb=_READ) -> str:
+    """What Claude Code's own processes hold, every project's, and the line under which it stops idle sessions'
+    background commands - beside the lane's floor, so a person sees why the lane gives what it gives."""
+    from flotilla.core import resources
+    found = resources.claude_memory() if found is _READ else found
+    line_mb = machine.reap_line_mb(machine._host_total()) if line_mb is _READ else line_mb
+    held = "not read on this platform" if not found else \
+        f"{found[0]} Claude Code process(es) hold {_gb(found[1])} GB (every project's)"
+    edge = "" if not line_mb else f"; under {line_mb} MB available Claude Code stops idle sessions' background " \
+        "commands"
+    return f"sessions: {held}{edge}; the lane keeps {floor_mb} MB free (its floor)"
+
+
 def _status_by_value(lanes, found, held, waiting, reading, now, hist, profile, mode, beat=None) -> int:
     """`flotilla lane` while every waiter goes by value: what the machine gives, each run's priority, and why each
     waiter waits (lane shared machine design, section 5)."""
     from flotilla.lane import admission, freeze, policy
     value = value_for(profile)(reading)
     runs, m = admission.view(found, hist, value, now=now, live=lanes.live, mine="", share=mode)
+    runs = mark_hung(runs, beat)   # as the daemon decides
     by_id = {run.id: run for run in runs}
     kind, why = freeze.backend(setting=freeze_on())
     swap = value.swap_mb()
     print(f"machine: {m.cpus} cores shared by the kernel; memory the lane can give {_gb(m.give_mb)} GB, "
           f"{_gb(m.free_mb)} GB free now; swap {_gb(swap[0]) if swap else '?'} GB free; "
           f"freezing: {kind or 'off'} ({why})")
+    print(sessions_line(value.floor_mb))
     heavies = [run for run in runs if run.heavy and run.state in (policy.RUNNING, policy.ORDERED)]
-    room = None if m.give_mb is None else (1 - m.light_reserve) * m.give_mb
+    room = policy.heavy_share(m.give_mb, m.light_reserve, m.heavy_mb)
+    budget = "lane_heavy_mb" if m.heavy_mb else f"light reserve {round(m.light_reserve * 100)} %"
     print(f"heavy runs: {sum(run.par for run in heavies):g} of {m.cpu_factor * m.cpus:g} cores in use "
           f"(lane_cpu_factor {m.cpu_factor:g}), {_gb(sum(run.mem_mb for run in heavies))} of {_gb(room)} GB "
-          f"(light reserve {round(m.light_reserve * 100)} %); at most {m.max_runs} runs at once")
+          f"({budget}); at most {m.max_runs} runs at once")
     over = beat.over if beat is not None and isinstance(beat.over, dict) else {}
     if isinstance(over.get("mb"), (int, float)):
         print(f"machine: over its floor by {round(over['mb'])} MB for {round(over.get('s') or 0)} s")
@@ -574,6 +625,9 @@ def _status_by_value(lanes, found, held, waiting, reading, now, hist, profile, m
             because = "next to start" if decided.start else decided.why
             if holding and not decided.start:
                 because += f"; held by {holding}"
+            eta = "" if decided.start else policy.eta_words(policy.eta_s(runs, m, item.id))
+            if eta:
+                because += f"; {eta}"
             size = "heavy" if by_id[item.id].heavy else "light"
             print(f"  {item.id} {size} {item.who} ({item.note or 'no note'}) since {item.since}{gone}; "
                   f"{describe_estimate(item, hist)}; {value_of(by_id[item.id], item, m, now)}; "
@@ -605,7 +659,7 @@ def _take(args) -> int:
                         capacity=capacity, share=share, wait=args.wait, pid=pid, mark=table.start_mark(pid) or "",
                         by_hand=True, say=print, project=_project(args.root), room=room_for(profile),
                         value=value_for(profile), scheduler=scheduler_for(table, lanes),
-                        floor_mb=machine.memory_floor_mb(profile))
+                        floor_mb=machine.floor_here(profile))
     if grant.booking is None:
         print(f"refused: {grant.why}")
         return 2

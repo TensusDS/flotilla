@@ -715,6 +715,22 @@ def test_settings_fall_back_to_their_defaults(monkeypatch):
     assert (commands.light_reserve(), commands.max_runs(), commands.immortal_minutes()) == (0.3, 4, 30)
 
 
+def test_the_heavy_budget_is_read_from_machine_toml_and_reaches_the_machine(monkeypatch):
+    from flotilla.lane import admission, commands
+    from flotilla.lane.machine import Reading
+    for bad in ({"lane_heavy_mb": 100}, {"lane_heavy_mb": "8000"}, {"lane_heavy_mb": 7.5}, {"lane_heavy_mb": True},
+                {"lane_heavy_mb": 2 << 20}, {}):
+        monkeypatch.setattr(commands, "_machine", lambda bad=bad: bad)
+        assert commands.heavy_mb() is None
+    monkeypatch.setattr(commands, "_machine", lambda: {"lane_heavy_mb": 8000})
+    assert commands.heavy_mb() == 8000
+    value = commands.value_for({})(Reading([], [], []))
+    assert value.heavy_mb == 8000
+    value = admission.Value(**{**value.__dict__, "available_mb": lambda: 9000})
+    _runs, machine = admission.view({}, {}, value, now=None, live=lambda item: True, mine="")
+    assert machine.heavy_mb == 8000
+
+
 def test_lane_freeze_false_turns_freezing_off(monkeypatch):
     from flotilla.lane import commands
     for setting, on in (({"lane_freeze": False}, False), ({"lane_freeze": "false"}, True), ({}, True),
@@ -1097,3 +1113,13 @@ def test_lane_stop_words_a_withdrawal_by_where_the_booking_ended(monkeypatch):  
     # granted and run, then stopped: it did start
     code, out, _lane = _stop_racing(monkeypatch, dataclasses.replace(waiting, state=book.RELEASED))
     assert code == 0 and "stopped b2" in out and "granted as the stop landed" in out and "never" not in out, out
+
+
+
+def test_what_retiring_the_sessions_frees_keeps_two_sessions(monkeypatch):
+    """The person's ruling, 2026-11-17: the orchestrator's session and the waiting seat's never leave."""
+    from flotilla.core import resources
+    from flotilla.lane import commands
+    for found, freed in (((10, 10000), 8000), ((2, 3000), 0), ((1, 900), 0), ((0, 0), 0), (None, None)):
+        monkeypatch.setattr(resources, "claude_memory", lambda found=found, **kw: found)
+        assert commands._sessions_mb() == freed, found

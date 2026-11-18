@@ -70,3 +70,110 @@ def test_a_run_cut_short_is_an_item_until_booked_again(tmp_path):
 
 def test_no_lane_no_items(tmp_path):
     assert report.items(tmp_path, "p1", NOW) == []
+
+
+def test_memory_near_claude_codes_line_names_the_projects_runs_at_risk():
+    from types import SimpleNamespace as NS
+
+    from flotilla.lane import book
+    order = [NS(id="b1", project="p", state=book.HELD, who="main 3"),
+             NS(id="b2", project="p", state=book.WAITING, who="review 2"),
+             NS(id="b3", project="other", state=book.WAITING, who="main 9"),
+             NS(id="b4", project="p", state=book.RELEASED, who="main 4")]
+    found = report.memory_items(order, "p", 1900, 1638, 2150)
+    assert len(found) == 1 and found[0].kind == report.MEMORY
+    text = found[0].text
+    assert "1900 MB free" in text and "2150 MB" in text and "1638 MB" in text
+    assert "b1 main 3 (running)" in text and "b2 review 2 (waiting)" in text and "b3" not in text and "b4" not in text
+    assert report.memory_items(order, "p", 2150, 1638, 2150) == []     # at the floor: not short
+    assert report.memory_items(order, "p", None, 1638, 2150) == []     # memory unread
+    assert report.memory_items(order, "p", 1000, None, 2150) == []     # no line drawn (a container, macOS)
+    assert report.memory_items(order, "quiet", 1000, 1638, 2150) == []  # nothing booked: nothing to lose
+
+
+def test_memory_item_names_six_runs_and_counts_the_rest():
+    from types import SimpleNamespace as NS
+
+    from flotilla.lane import book
+    order = [NS(id=f"b{n}", project="p", state=book.WAITING, who=f"main {n}") for n in range(9)]
+    text = report.memory_items(order, "p", 100, 1638, 2150)[0].text
+    assert "b5 main 5" in text and "b6" not in text and "and 3 more" in text
+
+
+def test_the_beat_carries_the_wait_estimates_and_a_malformed_one_reads_as_none(tmp_path):
+    root = lane_root(tmp_path)
+    daemon._write_beat(root, 4242, "m", {"eta": {"b3": 240}}, 1.0)
+    assert daemon.heartbeat(root).eta == {"b3": 240}
+    daemon._write_beat(root, 4242, "m", {"eta": [1, 2]}, 1.0)
+    assert daemon.heartbeat(root).eta == {}
+    daemon._write_beat(root, 4242, "m", {}, 1.0)
+    assert daemon.heartbeat(root).eta == {}
+
+
+def test_the_memory_item_is_read_from_the_journal_with_the_projects_floor(tmp_path, monkeypatch):
+    from flotilla.lane import machine
+    root = lane_root(tmp_path)
+    lanes = book.Book(LocalLogStore(root), None)
+    waiting = lanes.enqueue("main 3", "suite", pid=5, mark="m", project="p1")
+    gone = lanes.enqueue("main 4", "suite", pid=6, mark="m", project="p1")
+    monkeypatch.setattr(report, "_available", lambda: 1800)
+    monkeypatch.setattr(machine, "_host_total", lambda: 16 * 1024 * 1024)
+    monkeypatch.setattr(machine, "_memtotal", lambda: 16 * 1024 * 1024)
+    monkeypatch.setattr(report, "_live", lambda: (lambda item: item.id != gone.id))   # read as `live()`
+    found = [item for item in report.items(tmp_path, "p1", NOW) if item.kind == report.MEMORY]
+    assert len(found) == 1 and "under the 2150 MB" in found[0].text and waiting.id in found[0].text
+    assert gone.id not in found[0].text                                        # its process is gone: nothing to lose
+    own = report.items(tmp_path, "p1", NOW, {"lane": {"memory_floor_mb": 1500}})
+    assert [item for item in own if item.kind == report.MEMORY] == []          # the project's own floor: not short
+
+
+def test_flotilla_lane_marks_the_runs_the_daemon_reads_as_hung(tmp_path):
+    from flotilla.lane import policy
+    root = lane_root(tmp_path)
+    daemon._write_beat(root, 4242, "m", {"hung": {"b7": HUNG}}, 1.0)
+    runs = [policy.Run("b7", policy.RUNNING, 100, False, 1), policy.Run("b8", policy.RUNNING, 100, False, 1)]
+    assert [r.hung for r in commands.mark_hung(runs, daemon.heartbeat(root))] == [True, False]
+    assert [r.hung for r in commands.mark_hung(runs, None)] == [False, False]
+
+
+
+def test_a_heavy_waiter_held_by_memory_outside_the_lane_is_its_projects_item(tmp_path, monkeypatch):
+    """The person's ruling, 2026-11-17: the lane does not drain for it, and its orchestrator is told what holds it."""
+    monkeypatch.setattr(daemon, "gone", lambda root, **kw: False)
+    root = lane_root(tmp_path)
+    lanes = book.Book(LocalLogStore(root), None)
+    big = lanes.enqueue("main 3", "suite", pid=5, mark="m", project="p1", run_for="fix/x")
+    other = lanes.enqueue("main 4", "suite", pid=6, mark="m", project="p2")
+    entry = {"need_mb": 7100, "room_mb": 4700}
+    daemon._write_beat(root, 4242, "m", {"outside": {big.id: entry, other.id: entry, "gone": entry}}, 1.0)
+    assert daemon.heartbeat(root).outside[big.id] == entry
+    monkeypatch.setattr(report, "_sessions", lambda: (42, 8806))
+    found = [item for item in report.items(tmp_path, "p1", NOW) if item.kind == report.OUTSIDE]
+    assert [(item.branch, item.who) for item in found] == [("fix/x", f"{big.id} outside")]
+    assert ("needs 7100 MB and would not fit even with the lane empty: 4700 MB of room over the lane's floor then. "
+            "42 Claude Code process(es) hold 8.6 GB.") in found[0].text and "Retire idle seats" in found[0].text
+    daemon._write_beat(root, 4242, "m", {"outside": {big.id: {"need_mb": "x", "room_mb": None}}}, 1.0)
+    assert [item for item in report.items(tmp_path, "p1", NOW) if item.kind == report.OUTSIDE] == []
+
+
+
+def test_a_run_larger_than_the_machine_is_its_projects_item_waiting_or_running(tmp_path, monkeypatch):
+    """The person's ruling, 2026-11-18: it starts alone, and its orchestrator is told it may be killed."""
+    monkeypatch.setattr(daemon, "gone", lambda root, **kw: False)
+    root = lane_root(tmp_path)
+    lanes = book.Book(LocalLogStore(root), None)
+    big = lanes.enqueue("main 3", "suite", pid=5, mark="m", project="p1", run_for="fix/x")
+    other = lanes.enqueue("main 4", "suite", pid=6, mark="m", project="p2")
+    for booking in (big.id, other.id):
+        with lanes.store.transaction(book.KEY) as tx:
+            lanes._write(tx, booking, book.WAITING, starved_need_mb=9000, starved_room_mb=7000)
+    found = [item for item in report.items(tmp_path, "p1", NOW) if item.kind == report.STARVED]
+    assert [(item.branch, item.who) for item in found] == [("fix/x", f"{big.id} starved")]
+    assert "needs 9000 MB" in found[0].text and "7000 MB over the lane's floor at most" in found[0].text
+    with lanes.store.transaction(book.KEY) as tx:
+        lanes._write(tx, big.id, book.HELD, started=NOW.isoformat())
+    assert [item.who for item in report.items(tmp_path, "p1", NOW) if item.kind == report.STARVED] == \
+        [f"{big.id} starved"]
+    with lanes.store.transaction(book.KEY) as tx:
+        lanes._write(tx, big.id, book.RELEASED)
+    assert [item for item in report.items(tmp_path, "p1", NOW) if item.kind == report.STARVED] == []

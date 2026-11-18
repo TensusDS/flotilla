@@ -218,12 +218,18 @@ class Scheduler:
                 peak_mb=seen.get("peak_mb", 0), squeezed=run.id in self.squeezed,
                 cause=item.order_cause or (policy.WAITER if item.order_by else ""),
                 frozen_s=_seconds_since(item.frozen_at, moment) if frozen else 0.0, held_freezes=item.held_freezes,
-                reclaimed_mb=(item.reclaim_mb or 0) if frozen else 0, rule=item.rule or 0))
+                reclaimed_mb=(item.reclaim_mb or 0) if frozen else 0, rule=item.rule or 0,
+                hung=run.id in self.hung))
         machine = dataclasses.replace(machine, available_mb=available, floor_mb=floor,
                                       over_s=self.history.machine(now, available, floor))
         self.last_machine = machine
         actions = tick.tick(enriched, machine)
         applied = set(lanes.apply(actions, self.signer))
+        try:   # judged by the view this tick started by: a run it started at once is marked with its start, and
+            # a waiter its own gates hold back is judged too, though the tick skips it (review of bd3f459)
+            lanes.mark_starved(policy.starved_marks(runs, machine))
+        except Exception:  # noqa: BLE001 - a hint to the orchestrator; a tick never fails on it
+            pass
         for booking, mb in actions.ceilings:
             if booking in applied:
                 self.ceilings[booking] = mb
@@ -247,8 +253,22 @@ class Scheduler:
         self.squeezed &= held | applied
         pressed = {r.id: r.pressed_s >= tick.PRESSED_S for r in enriched}
         under = available is not None and available < floor
+        etas = {}
+        for booking in dict(actions.why):
+            try:
+                found_eta = policy.eta_s(enriched, machine, booking)
+            except Exception:  # noqa: BLE001 - an estimate is a hint; a tick never fails on it
+                found_eta = None
+            if found_eta is not None:
+                etas[booking] = round(found_eta)
+        try:
+            outside = policy.held_outside(enriched, machine)
+        except Exception:  # noqa: BLE001 - a hint to the orchestrator; a tick never fails on it
+            outside = {}
         picture = {
             "why": dict(actions.why),
+            "eta": etas,
+            "outside": outside,
             "groups": {b: {"ceiling_mb": self.ceilings.get(b), "current_mb": readings[b].current_mb,
                            "pressure": readings[b].pressure, "squeezed": b in self.squeezed,
                            "pressed": pressed.get(b, False)}

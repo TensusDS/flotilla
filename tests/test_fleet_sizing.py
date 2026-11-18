@@ -294,3 +294,24 @@ def test_a_seat_held_on_a_start_up_question_takes_no_memory_credit(tmp_path, mon
         seen.append(caught.value.args)
     leads = "background" if post == "orchestrator" else "none"   # a held orchestrator still leads (a0987ca)
     assert seen == [(0, leads), (1, leads)]
+
+
+def test_the_size_counts_the_lanes_floor_as_spawn_does(tmp_path, monkeypatch):
+    """Review of 1241703, 3: spawn refuses under the higher of its floor and the lane's; a size counted against the
+    lower one recommends what spawn then refuses."""
+    from fleetkit import held_seat_world
+    from flotilla.fleet import sizing
+    from flotilla.lane import machine
+    ledger, fake, plain = held_seat_world(tmp_path, monkeypatch, counts={"main": 1})
+
+    def recommend(found, *args, **kwargs):
+        raise _Seen(found.floor_mb)
+    monkeypatch.setattr(sizing, "recommend", recommend)
+    monkeypatch.setattr(machine, "floor_here", lambda profile: 4608)
+    with pytest.raises(_Seen) as caught:
+        sizing.gather(ledger, census=lambda: [], run=lambda *a, **kw: None)
+    assert caught.value.args == (4608,)
+    monkeypatch.setattr(machine, "floor_here", lambda profile: 1500)
+    with pytest.raises(_Seen) as caught:
+        sizing.gather(ledger, census=lambda: [], run=lambda *a, **kw: None)
+    assert caught.value.args == (2000,)

@@ -28,6 +28,11 @@ from flotilla.core.text import visible
 DEFAULT_PATTERNS = ("pytest", "py.test", "playwright", "vitest", "jest", "cargo test", "go test",
                     "chrome-headless-shell", "headless_shell")
 MEMORY_FLOOR_MB = 1500
+#: Claude Code stops an idle session's background command under critical memory pressure once MemAvailable is under
+#: 10 % of MemTotal and under 4 GiB (read in Claude Code 2.1.326's own code, 2026-11-17: `memory_pressure`, Linux,
+#: the host's /proc/meminfo). A lane that admits runs down to a floor under that line admits them into the kill
+#: (field notes 2026-11-16: a 1500 MB floor against a 1560 MB line): the default floor keeps REAP_MARGIN_MB above it.
+REAP_SHARE, REAP_CAP_MB, REAP_MARGIN_MB = 0.10, 4096, 512
 MEMINFO = Path("/proc/meminfo")
 INTERPRETER = re.compile(r"^(python[0-9.]*|node|nodejs|ruby|perl|bun|deno)$")
 SHELLS = frozenset({"sh", "bash", "zsh", "dash", "fish", "ksh"})
@@ -116,20 +121,58 @@ def _memtotal() -> int | None:
     return limit * 1024 if limit is not None and (host is None or limit * 1024 < host) else host
 
 
-def memory_floor(profile: dict, total_kb: int | None = None) -> tuple[int, str]:
+def _host_total() -> int | None:
+    """The host's MemTotal in kB, unless a container's limit under half of it binds this process: the line is drawn
+    on the host's figures, and drawn from the host it would close a small container's lane for ever. A larger
+    limit - a user slice at 90 % - leaves the host what services outside it take to reach the line, so the line is
+    drawn (reviews of 1241703, 6, and 4cc2e8c, 2)."""
+    from flotilla.core import resources
+    host = read_meminfo(MEMINFO, "MemTotal")
+    if host is None:
+        return None
+    limit = resources.cgroup_limit_mb()
+    if limit is not None and limit * 1024 * 2 < host:
+        return None
+    return host
+
+
+def reap_line_mb(host_kb: int | None) -> int | None:
+    """MemAvailable under which Claude Code may stop an idle session's background command, in MB; None where it
+    cannot be drawn (no /proc/meminfo, or a container's limit binds)."""
+    if not host_kb:
+        return None
+    return min(int(host_kb // 1024 * REAP_SHARE), REAP_CAP_MB)
+
+
+def memory_floor(profile: dict, total_kb: int | None = None, host_kb: int | None = None) -> tuple[int, str]:
     """The profile's floor; without one, 1500 MB, or a quarter of the machine where that is less, so a small
-    machine's lane is not closed by its ordinary state. A floor that is not a whole number gives that default, and
-    the note says so."""
+    machine's lane is not closed by its ordinary state - and never under Claude Code's line on the host
+    (`reap_line_mb`) plus REAP_MARGIN_MB. A floor that is not a whole number gives that default, and the note says
+    so; a floor set under the line is kept - the person's word - and the note says that too."""
     from flotilla.core.config import whole_number
     default = min(MEMORY_FLOOR_MB, total_kb // 1024 // 4) if total_kb else MEMORY_FLOOR_MB
-    lane = profile.get("lane") or {}
+    line = reap_line_mb(host_kb)
+    if line is not None:
+        default = max(default, line + REAP_MARGIN_MB)
+    lane = profile.get("lane") if isinstance(profile, dict) else None
+    lane = lane if isinstance(lane, dict) else {}   # a `lane` that is not a table sets nothing (review, cosmetic)
     if "memory_floor_mb" not in lane:
         return default, ""
-    return whole_number(lane["memory_floor_mb"], default, "[lane] memory_floor_mb")
+    floor, note = whole_number(lane["memory_floor_mb"], default, "[lane] memory_floor_mb")
+    if line is not None and 0 < floor < line:
+        under = (f"`[lane] memory_floor_mb = {floor}` is under the {line} MB below which Claude Code stops idle "
+                 "sessions' background commands: a run admitted down to it may be stopped")
+        note = f"{note}; {under}" if note else under
+    return floor, note
 
 
-def memory_floor_mb(profile: dict, total_kb: int | None = None) -> int:
-    return memory_floor(profile, total_kb)[0]
+def memory_floor_mb(profile: dict, total_kb: int | None = None, host_kb: int | None = None) -> int:
+    return memory_floor(profile, total_kb, host_kb)[0]
+
+
+def floor_here(profile: dict) -> int:
+    """The floor on this machine as it is now: its size, a container's limit and Claude Code's line read here."""
+    return memory_floor_mb(profile, _memtotal(), _host_total())
 
 
 def disk(profile: dict, root, *, usage=shutil.disk_usage) -> Answer:
@@ -144,10 +187,13 @@ def disk(profile: dict, root, *, usage=shutil.disk_usage) -> Answer:
     return Answer("disk", False, f"{found.free_mb} MB free (floor {found.floor_mb} MB)")
 
 
-def memory(profile: dict, meminfo, memtotal=None) -> Answer:
+def memory(profile: dict, meminfo, memtotal=None, hosttotal=None) -> Answer:
     """Low memory holds the lane: a run started under pressure is killed, booked or not (field test H41). Memory
-    that cannot be asked opens it, because an unknown that waiting cannot change would close the lane for ever."""
-    floor, note = memory_floor(profile, (memtotal or _memtotal)())
+    that cannot be asked opens it, because an unknown that waiting cannot change would close the lane for ever.
+    A `memtotal` given without `hosttotal` is the host's own."""
+    total = (memtotal or _memtotal)()
+    host = hosttotal() if hosttotal is not None else total if memtotal is not None else _host_total()
+    floor, note = memory_floor(profile, total, host)
     said = f"; {note}" if note else ""
     if floor == 0:
         return Answer("memory", False, "memory not asked: `[lane] memory_floor_mb = 0`")
@@ -340,7 +386,7 @@ def read(lanes, table, profile: dict, *, own_pid: int, root, sleep=time.sleep, r
                                                         f"block: {resting}"))
         else:
             answers.append(Answer("foreign run", False, "no unbooked run"))
-    answers.append(memory(profile, meminfo or _meminfo, memtotal or _memtotal))
+    answers.append(memory(profile, meminfo or _meminfo, memtotal))
     answers.append(disk(profile, root, usage=usage))
     if problem:
         answers.append(Answer("ci", None, f"the project profile could not be read, so CI on this machine could not be "

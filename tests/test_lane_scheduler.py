@@ -1,5 +1,6 @@
 """The scheduler: one tick of the lane daemon - read, decide, apply (lane daemon design, 4.2)."""
 
+import dataclasses
 import datetime as dt
 from pathlib import Path
 
@@ -198,7 +199,6 @@ def test_slot_reports_its_scope(tmp_path):
     assert seen == [slot.unit] and slot.unit.startswith("flotilla-lane-b1-")
 
 
-
 def test_a_floor_out_of_reason_does_not_make_the_machine_over(lane):   # final review C2
     lanes, sched, clock, fake, values = lane
     victim = lanes.enqueue("v", "", pid=11, mark="m")
@@ -209,7 +209,6 @@ def test_a_floor_out_of_reason_does_not_make_the_machine_over(lane):   # final r
     clock.t = 12.0
     sched.step()
     assert sched.last_machine.floor_mb == 3900 and lanes.bookings()[victim.id].frozen == ""
-
 
 
 def test_a_squeeze_ends_in_the_daemons_record_though_the_journal_says_it_ended(lane):   # review of b6173cd, minor 1
@@ -241,7 +240,6 @@ def test_a_squeeze_ends_in_the_daemons_record_though_the_journal_says_it_ended(l
     assert item.id in actions.restored and item.id not in sched.squeezed
 
 
-
 def test_a_run_whose_group_does_not_read_the_decided_ceiling_is_not_bound(lane, monkeypatch):   # third review of B
     from flotilla.lane import tick as tick_module
     lanes, sched, clock, fake, values = lane
@@ -262,7 +260,6 @@ def test_a_run_whose_group_does_not_read_the_decided_ceiling_is_not_bound(lane, 
     sched.step()
     bound = [next(r for r in runs if r.id == item.id).bound for runs in seen]
     assert bound == [True, False]
-
 
 
 def test_a_ceiling_set_back_to_another_number_or_written_clamped_is_read_right(lane, monkeypatch):   # review a93e2cc
@@ -518,3 +515,91 @@ def test_a_zombie_client_is_gone():
     assert scheduler.client_gone(Zombie(), 5, "m")
     assert not scheduler.client_gone(FailedLook(), 5, "m")
     assert not scheduler.client_gone(SomeGone(), 5, "m")   # alive and the same: not gone
+
+
+def test_the_picture_carries_each_waiters_wait_estimate(lane, monkeypatch):
+    """The daemon's beat says when each waiter should fit (`eta`); an estimate that fails is left out, the tick
+    never fails on it."""
+    from flotilla.lane import policy
+    lanes, sched, clock, fake, values = lane
+    holder = lanes.enqueue("h", "", pid=11, mark="m")
+    raw(lanes, booking=holder.id, state=book.HELD, started=lanes._now())
+    one = lanes.enqueue("w1", "", pid=12, mark="m")
+    two = lanes.enqueue("w2", "", pid=13, mark="m")
+
+    def eta(runs, machine, mine, _depth=0):
+        if mine == two.id:
+            raise ValueError("a broken estimate")
+        return 299.6
+    monkeypatch.setattr(policy, "eta_s", eta)
+    monkeypatch.setattr(policy, "decide", lambda *a, **kw: policy.Decision(False, (), "held for the test"))
+    _actions, picture = sched.step()
+    assert picture["eta"] == {one.id: 300}
+
+
+def test_the_daemon_marks_a_hung_run_for_the_policy(lane, monkeypatch):
+    """Review of 4cc2e8c, 3: the runs the daemon decides on carry its hung reading."""
+    from flotilla.lane import tick as tick_module
+    lanes, sched, clock, fake, values = lane
+    holder = lanes.enqueue("h", "", pid=11, mark="m")
+    raw(lanes, booking=holder.id, state=book.HELD, started=lanes._now())
+    monkeypatch.setattr(sched, "_hung", lambda *a, **kw: {holder.id: {"project": ""}})
+    seen = {}
+    real = tick_module.tick
+
+    def spy(runs, machine):
+        seen.update({r.id: r.hung for r in runs})
+        return real(runs, machine)
+    monkeypatch.setattr(tick_module, "tick", spy)
+    sched.step()
+    assert seen == {holder.id: True}
+
+
+
+def test_the_picture_carries_the_heavy_waiters_held_outside_the_lane(lane, monkeypatch):
+    """The beat lists them for the orchestrators (`outside`); a reading that fails is left out, the tick never fails
+    on it."""
+    from flotilla.lane import policy
+    lanes, sched, clock, fake, values = lane
+    lanes.enqueue("w1", "", pid=12, mark="m")
+    monkeypatch.setattr(policy, "held_outside", lambda runs, machine: {"x": {"need_mb": 7100, "room_mb": 4700}})
+    assert sched.step()[1]["outside"] == {"x": {"need_mb": 7100, "room_mb": 4700}}
+
+    def broken(runs, machine):
+        raise ValueError("a broken reading")
+    monkeypatch.setattr(policy, "held_outside", broken)
+    assert sched.step()[1]["outside"] == {}
+
+
+
+def test_a_run_larger_than_the_machine_starts_alone_and_its_booking_is_marked(tmp_path):
+    """The person's ruling, 2026-11-18: no wait gives it the memory, so an empty lane takes it, and its orchestrator
+    is told it may be killed - the daemon marks it in the very tick it starts it."""
+    lanes = book.Book(LocalLogStore(tmp_path), Procs())
+    base = value_of(available=2500)   # 500 MB over the floor
+
+    def values(reading=None):
+        return dataclasses.replace(base(reading), sessions_mb=lambda: 200)
+    sched = scheduler.Scheduler(lanes, values, signer=(4242, "m9"), groups_io=FakeGroups(), clock=Clock(),
+                                default_floor=2000, total_mb=lambda: 15603)
+    big = lanes.enqueue("w", "", pid=11, mark="m")   # never measured: 1024 MB
+    sched.step()
+    found = lanes.bookings()[big.id]
+    assert found.state == book.HELD
+    assert (found.starved_need_mb, found.starved_room_mb) == (1024, 700)
+
+
+def test_a_waiter_its_own_gates_hold_back_is_marked_too(tmp_path):
+    """Review of bd3f459: the tick skips it, its mark does not go stale for that."""
+    lanes = book.Book(LocalLogStore(tmp_path), Procs())
+    base = value_of(available=2500)
+
+    def values(reading=None):
+        return dataclasses.replace(base(reading), sessions_mb=lambda: 200)
+    sched = scheduler.Scheduler(lanes, values, signer=(4242, "m9"), groups_io=FakeGroups(), clock=Clock(),
+                                default_floor=2000, total_mb=lambda: 15603)
+    big = lanes.enqueue("w", "", pid=11, mark="m")
+    lanes.hold_back(big.id, "CI: red")
+    sched.step()
+    found = lanes.bookings()[big.id]
+    assert found.state == book.WAITING and (found.starved_need_mb, found.starved_room_mb) == (1024, 700)

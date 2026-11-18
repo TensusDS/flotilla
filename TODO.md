@@ -63,6 +63,10 @@ the lane code of 0.33.0.
   *(checked 2026-11-16 on 0.33.2: point 2 done - a run whose `lane run` was killed is released as killed, what is
   left of it ended, and its orchestrator told; points 1 and 3, the sessions' own memory in admission and in spawn
   and `fleet size`, open - B, measure; the background-shell hypothesis not measured)*
+  *(checked 2026-11-17 on 0.33.3: done - the hypothesis holds, read in Claude Code's code: it stops an idle
+  session's background commands under 10 % and 4 GiB free; the lane's floor now sits 512 MB above that line, the
+  orchestrator is told of it, `spawn` counts the lane's floor and the handover run. Sessions' memory was always in
+  admission through MemAvailable; `flotilla lane` now shows it (decision 258))*
 - **A heavy head of the line can wait for hours behind another project's fair share.**
   - A game-fleet run of a few seconds, estimated at 3.88 cores, headed that project's line from 21:32 UTC on 2026-11-15. The second fleet's turns held heavy cores at about 7.6 of 12, so it did not fit; six runs waited behind it.
   - The sender reported 2.5 h of stall; part of that was a stale reading, because the run had in fact gone at about 00:06.
@@ -70,6 +74,8 @@ the lane code of 0.33.0.
   - Related, filed earlier in the fleet's notes (2026-11-11): an estimate above the whole heavy budget waits forever.
 
   *(checked 2026-11-16 on lane 0.33.1: measure - the daemon's fair share and its "waits because" text)*
+  *(checked 2026-11-17 on 0.33.3: done - a heavy waiter of ten minutes drains the lane, and a waiter is told when it
+  should fit by the estimates of the runs ahead (decision 258))*
 - **A hung run with a 58 s estimate held the lane for 7 hours, and nothing stopped it.**
   - On 2026-11-16, the game fleet's sender 13's `python3 tools/unity_tests.py` (b12428, a plain command, not systemd-run) was held from 07:21 to about 14:30 UTC. Its estimate was 58 s and its exact-match history 10 runs.
   - Its Unity editor hung in batch mode: the UnityAutoQuitter child was defunct, and the editor used 0.1 GB and almost no CPU.
@@ -92,6 +98,11 @@ the lane code of 0.33.0.
   may run on)*
 
   - **It came back on 2026-11-17, because the daemon went back to 0.31.0.** Review 19's Unity run b13000 (`--max 900`) hung from 09:39:50 UTC in editor start-up and held 7 heavy cores for about 94 min, shown as "immortal; no ceiling". After `flotilla lane stop`, its editor survived as an orphan and was ended by pid. At 11:15 `flotilla lane` showed `lane daemon: running, pid 3715391, 0.31.0`. The daemon the person started on 11-16 was pid 1359770, 0.33.x. So a later start came from the project's pinned 0.31.0 CLI, and the 0.33.2 fixes (ceiling, orphan cleanup, LOOKS HUNG) are not running. What to look at: an older CLI can start or replace a newer lane daemon. Should a daemon refuse to be started by a CLI older than the one that last ran it, or say so loudly? *(observed 2026-11-17, not yet checked who started 3715391)*
+  *(checked 2026-11-17 on 0.33.2: not a fault of the code - the daemon is always the newest copy installed on the
+  machine, and none was newer than 0.31.0: a project pinned `"ref": "v0.31.0"`, and the machine keeps one
+  marketplace for all its projects. The 0.33 daemon of 11-16 ran from a development checkout, left when idle, and
+  the next client raised the newest installed copy. Updating the installs (`/flotilla:update`) is the fix; a
+  newer daemon cannot be asked for by an older client, which has no such code)*
 
 ## From the reviews of 0.31.2 (2026-11-10, what reaches the guards and what they answer on a failure)
 
@@ -129,6 +140,26 @@ command that every guard shares, not one more reading.
   report's ask): with seats pinned it is needed only when the default model itself is limited; retire, spawn and
   `work adopt` do it by hand. *(checked 2026-11-13 on 0.32.0: open - docs/specs/2026-11-13-fleet-model-design.md,
   non-goals)*
+
+## From the reviews of 0.33.3 (2026-11-17, the lane under Claude Code's line)
+
+- **A heavy run held outside the lane flickers near its need**: whether it is outside follows MemAvailable, so a
+  need within its jitter of the empty-lane room makes the orchestrator's item come and go; an item that appears
+  ends one orchestrator wait. No start is lost and nothing repeats within a wait; a margin before it stops being
+  outside would steady it. *(checked 2026-11-17 on 0.33.3: open, cosmetic - flotilla/lane/policy.py outside_lane,
+  flotilla/lane/report.py outside_items)*
+- **A starved run's need goes stale inside the margin**: once a run larger than the machine is marked, a new need
+  within 256 MB under the room is not written, so its orchestrator's item keeps the old need ("needs 9000 MB" while
+  it is 7100) until the room is the margin clear or the run ends. Starts go by the live figures, not the mark;
+  writing a changed need while the mark is kept is one more condition. *(checked 2026-11-18 on 0.33.3: open,
+  cosmetic - flotilla/lane/book.py _starved)*
+- **A drained run's wait estimate misses a frozen run coming back behind it** until the next tick: its replay stops
+  at itself, before that run is admitted, so its estimate - and the lights' through it - is early by one tick. A
+  hint only, as before the gap. *(checked 2026-11-18 on 0.33.3: open, cosmetic - flotilla/lane/policy.py eta_s)*
+- **A closed gap also stops the lights that end before then**: when a frozen run back behind the drain leaves the
+  drained run no room beside it, no light passes, though one that by its estimate ends before the old moment ends
+  before the new one too. Safe, a few lights fewer pass. *(checked 2026-11-18 on 0.33.3: open, cosmetic -
+  flotilla/lane/policy.py _back_in_gap)*
 
 ## From the reviews of 0.33.2 (2026-11-16, a hung run and a run cut short)
 
@@ -229,7 +260,9 @@ lets nothing through unread.
 
 Four review rounds; what is left changes no start the daemon makes on the fleets known.
 
-- **`flotilla lane` replays a waiter its own checks hold back; the daemon does not.** The status view builds its runs
+- **`flotilla lane` replays a waiter its own checks hold back; the daemon does not.** Since 0.33.3 a gate-held
+  heavy waiter of ten minutes shows every waiter behind it as drained in `flotilla lane` while the daemon starts
+  them (review of 1241703, 8). The status view builds its runs
   without the scheduler's `held_back` filter, so under `fair` such a waiter can take its project's turn in the
   status's replay and the "waits because" line of the next waiter can differ from what the daemon does. *(checked
   2026-11-13 on 0.31.5: open - flotilla/lane/commands.py status by value, flotilla/lane/scheduler.py step)*

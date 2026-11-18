@@ -170,3 +170,48 @@ def tree_mb(path, *, run=subprocess.run) -> int | None:
     except (ValueError, IndexError):
         return None
     return -(-kb // 1024)
+
+
+def _is_claude(argv0: str, second: str = "") -> bool:
+    """A Claude Code process: its first word is `claude`, a path to it, or to one of the native install's versions
+    (`.../claude/versions/2.1.326`), or node running the npm package. The kernel's short name of the native binary
+    is its version, so it does not tell."""
+    return (argv0 == "claude" or argv0.endswith("/claude") or "/claude/versions/" in argv0
+            or "@anthropic-ai/claude-code/" in second)
+
+
+CLAUDE_PROC_ROOT = Path("/proc")
+
+
+def claude_memory(*, proc_root: Path | None = None) -> tuple[int, int] | None:
+    """(how many of this user's Claude Code processes run on this machine, their resident memory in MB), every
+    project's, or None where /proc cannot be read (macOS). Their own memory only: a run a session started is the
+    lane's to count, and an MCP server is its own process. Resident memory counts shared pages in each process: an
+    upper bound."""
+    import os
+    proc_root = CLAUDE_PROC_ROOT if proc_root is None else proc_root
+    try:
+        entries = list(proc_root.iterdir())
+    except OSError:
+        return None
+    page = os.sysconf("SC_PAGE_SIZE") if hasattr(os, "sysconf") else 4096
+    count, total = 0, 0
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            # a process that sets its own title writes the whole line into its first word: its first word then
+            # ends at a space
+            if entry.stat().st_uid != os.getuid():
+                continue   # another user's sessions: not this person's fleets
+            words = (entry / "cmdline").read_bytes().split(b"\0", 2)
+            first = words[0].decode("utf-8", "replace")
+            argv0 = first.split(" ", 1)[0]
+            second = words[1].decode("utf-8", "replace") if len(words) > 1 else ""
+            if not _is_claude(argv0, second):
+                continue
+            total += int((entry / "statm").read_text(encoding="utf-8").split()[1]) * page
+            count += 1
+        except (OSError, ValueError, IndexError):
+            continue   # a process that exited between the listing and the read
+    return count, total // 2**20

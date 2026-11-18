@@ -304,6 +304,9 @@ def gather(ledger, *, tasks=None, tasks_file=None, census=None, run=subprocess.r
     from flotilla.onboard.firstrun import load_measurements, load_peaks, measurements_problem
 
     floor, seat, setting_notes = spawn.memory_settings(ledger)
+    if floor:   # spawn refuses under the higher floor: the size it recommends must pass it (review of 1241703, 3)
+        from flotilla.lane import machine as lane_machine
+        floor = max(floor, lane_machine.floor_here(ledger.profile))
     main = launch.main_checkout(ledger.root, run=ledger.run)
     notes = list(setting_notes)
     live, lead = None, "unknown"

@@ -51,7 +51,8 @@ FIELDS = ("who", "note", "pid", "mark", "run_for", "why", "command", "ladder", "
           "kind", "asked", "started", "ran_s", "frozen", "order_by", "ordered_at", "reclaim_mb", "frozen_at",
           "held_mb", "frozen_s", "freezes", "heavy", "pinned", "unanswered", "freeze_kind", "unit", "group",
           "peak_cores", "group_mark", "refused_by", "refused_at", "order_cause", "order_pid", "order_mark",
-          "ceiling_mb", "squeezed", "held_back", "by_hand", "floor_mb", "held_freezes", "order_sig", "admitted_mb")
+          "ceiling_mb", "squeezed", "held_back", "by_hand", "floor_mb", "held_freezes", "order_sig", "admitted_mb",
+          "starved_need_mb", "starved_room_mb")
 MEASURED = ("seconds", "peak_mb", "cores", "busy", "verdict", "ran", "peak_cores")
 #: A freeze order's progress on a held booking: ordered by a waiter, then frozen by its holder; absent while it runs.
 FROZEN_STATES = ("ordered", "frozen")
@@ -71,8 +72,13 @@ BOUNDS = {"seconds": (0.0, 7 * 86400.0), "peak_mb": (0.0, 1e7), "cores": (0.0, 1
 #: The booking's own figures beside the measured ones a tier also carries (a tier's are BOUNDS alone).
 FIGURES = {**BOUNDS, "ran_s": BOUNDS["seconds"], "frozen_s": BOUNDS["seconds"], "reclaim_mb": BOUNDS["peak_mb"],
            "held_mb": BOUNDS["peak_mb"], "peak_cores": BOUNDS["cores"], "ceiling_mb": BOUNDS["peak_mb"],
-           "floor_mb": BOUNDS["peak_mb"], "admitted_mb": BOUNDS["peak_mb"]}
-WHOLE = ("peak_mb", "reclaim_mb", "held_mb", "ceiling_mb", "floor_mb", "admitted_mb")
+           "floor_mb": BOUNDS["peak_mb"], "admitted_mb": BOUNDS["peak_mb"], "starved_need_mb": BOUNDS["peak_mb"],
+           "starved_room_mb": BOUNDS["peak_mb"]}
+WHOLE = ("peak_mb", "reclaim_mb", "held_mb", "ceiling_mb", "floor_mb", "admitted_mb", "starved_need_mb",
+         "starved_room_mb")
+#: How far the room of a run larger than the machine moves before its booking is written again: the sessions'
+#: resident memory changes at every look, and a waiter decides every few seconds.
+STARVED_STEP_MB = 256
 
 
 def _figure(key, value):
@@ -213,6 +219,22 @@ class Booking:
     floor_mb: int | None = None                      # the asking project's memory floor
     held_freezes: int = 0                            # freezes for an overload or a pressure, not for a waiter
     order_sig: str = ""                              # the daemon's seal over its order (lane daemon design, 4.8)
+    starved_need_mb: int | None = None               # a run larger than this machine holds: what it needs, and the
+    starved_room_mb: int | None = None               # most the machine could give it (`policy.starved_room`)
+
+
+def _starved(item: Booking, need: int, room: int | None) -> dict:
+    """The fields that bring a booking's mark of a run larger than this machine up to date - what it needs and the
+    most the machine could give it (`room`; None: an empty lane holds it), or both cleared - or {} when the mark
+    stands. The room moves at every look, so it is rewritten only past STARVED_STEP_MB, and a mark is cleared only
+    once the room is that much over the need: a need within the room's jitter would write on every tick."""
+    marked = item.starved_room_mb is not None
+    if room is None or need <= room - (STARVED_STEP_MB if marked else 0):
+        return {"starved_need_mb": None, "starved_room_mb": None} if marked else {}
+    if need > room and (not marked or item.starved_need_mb != need
+                        or abs(item.starved_room_mb - room) >= STARVED_STEP_MB):
+        return {"starved_need_mb": need, "starved_room_mb": room}
+    return {}
 
 
 def seal(key: bytes, booking: str, cause: str, ordered_at: str, order_by: str, pid, mark: str, reclaim_mb) -> str:
@@ -779,6 +801,24 @@ class Book:
             item = self._found(tx).get(booking_id)
             if item is not None and item.state == WAITING and item.held_back != why:
                 self._write(tx, booking_id, WAITING, held_back=why)
+
+    def mark_starved(self, marks: dict) -> list[str]:
+        """The daemon's marks of the runs larger than this machine (`policy.starved_marks`: {id: (need, room)}),
+        written on the bookings that still wait or hold, a real change only - the lane's orchestrator item reads
+        them there, while the run waits and while it runs (the person's ruling, 2026-11-18). The lock is taken
+        only when a mark changes. The ids written."""
+        def changes(found):
+            return {booking: fields for booking, (need, room) in marks.items()
+                    if (item := found.get(booking)) is not None and item.state in (WAITING, HELD)
+                    and (fields := _starved(item, need, room))}
+        if not changes(self.bookings()):
+            return []
+        with self.store.transaction(KEY) as tx:
+            found = self._found(tx)
+            due = changes(found)
+            for booking, fields in due.items():
+                self._write(tx, booking, found[booking].state, **fields)
+            return list(due)
 
     def apply(self, actions, signer: tuple) -> list[str]:
         """The daemon's decisions of one tick, in one transaction, each checked against the booking as it stands in

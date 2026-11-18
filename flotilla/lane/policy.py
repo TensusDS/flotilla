@@ -11,7 +11,7 @@ Nothing here reads the machine or the journal: `admission.view` builds the pictu
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 WAITING, RUNNING, ORDERED, FROZEN = "waiting", "running", "ordered", "frozen"
 #: A run's purpose and its type value (section 2.5): set by meaning, not by the model.
@@ -19,6 +19,13 @@ TYPES = {"push": 1.0, "handover": 0.7, "review": 0.5, "run": 0.3}
 #: The weights of type, wait and run time; the wait saturates at ten minutes, the run time at the immortality mark.
 WEIGHTS = (0.2, 0.3, 0.5)
 WAIT_FULL_S = 600.0
+#: A heavy waiter that has waited this long and still does not fit drains the lane: no new run starts after it in
+#: line, light ones too, until the runs ahead of it end and it fits (the person's ruling, 2026-11-17: a heavy head
+#: of the line waited hours while lighter runs and the other project's turns kept its room taken). The wait part of
+#: its priority is full by then. A light run passes it through the gap only: when by its estimate it ends before the
+#: drained run, by the estimates of the runs ahead, would fit - so it takes none of the room the drain gathers (the
+#: person's ruling, 2026-11-18: lights stopped behind it waited fifteen times longer in the model for no gain).
+DRAIN_AFTER_S = WAIT_FULL_S
 #: A run in its first minute is never a candidate: freezing what has not started working buys nothing (section 2.8).
 GRACE_S = 60.0
 #: How much lower a victim's priority must be: strictly lower, 0.05 being as good in the model (section 2.8).
@@ -82,6 +89,9 @@ class Run:
     held_freezes: int = 0           # its freezes for an overload or a pressure
     reclaimed_mb: int = 0           # what its freeze moved to swap, to fault back on a thaw
     rule: int = 5                   # its booking's rule: the daemon starts only rule 5 and later
+    expected_s: float | None = None  # its measured estimate in seconds; None: never measured (the wait estimate)
+    hung: bool = False               # the daemon reads it as hung (`Scheduler._hung`): its estimate says nothing
+    by_hand: bool = False            # taken by hand: held until released, no estimate ends it
 
 
 @dataclass(frozen=True)
@@ -100,6 +110,11 @@ class Machine:
     available_mb: int | None = None   # MemAvailable now (the daemon's reading)
     floor_mb: int = 0                 # the largest floor among the projects with a live booking
     over_s: float = 0.0               # how long MemAvailable has stood below the floor
+    heavy_mb: int | None = None       # machine.toml `lane_heavy_mb`: the heavy runs' memory, set by the person; None:
+                                      # the share of `give_mb` the light reserve leaves
+    capacity_mb: int | None = None    # the room an empty lane would have with Claude Code's sessions retired too:
+                                      # `give_mb` plus what they could free, the orchestrator's and the waiting
+                                      # seat's kept; None: not read, or no heavy waiter needs it
 
 
 @dataclass(frozen=True)
@@ -166,6 +181,17 @@ class _Replay:
     done: Decision | None = None   # decided in the loop: `mine` started, or waits behind a heavy run
     why: str = ""
     about: str = ""
+    behind: str = ""               # the heavy waiter `mine` waits behind, when that decided it
+    outside: dict = field(default_factory=dict)   # heavy waiters no drain can serve: {id: {need_mb, room_mb}}
+
+
+@dataclass
+class _Gap:
+    """A drained run's moment by the estimates of the runs ahead: in how many seconds it fits, and the runs and the
+    room beside it then - a light run that would still fit beside it there takes none of its room."""
+    at_s: float
+    pool: list
+    room: int | None
 
 
 def _replay(runs: list[Run], machine: Machine, mine: str) -> _Replay:
@@ -177,14 +203,29 @@ def _replay(runs: list[Run], machine: Machine, mine: str) -> _Replay:
     # model's queues: one run frozen four times by the same heavy waiter that never started)
     out = _Replay([], pool, machine.free_mb, 0, [])
     blocker = None
+    drain = None   # a heavy waiter past DRAIN_AFTER_S that does not fit: no new run starts after it
+    gap = None   # when it fits by the estimates of the runs ahead, and beside what: the gap a light run takes
     turns: dict[str, int] = {}
     for r in _offered(runs, machine.immortal_s, turns):
         out.seen.append(r)
+        # a frozen run holds its slot already, it comes back as before; a light one that ends in the gap passes
+        if drain is not None and r.state == WAITING and not _in_gap(r, drain, gap, pool, out, machine):
+            if r.id == mine:
+                alone = ", and starts only when the lane is empty" if alone_only(drain, machine) else ""
+                light = "" if r.heavy else (" - a light run passes only if by its estimate it ends before then, or "
+                                            "fits beside it then")
+                out.done = Decision(False, (), f"behind heavy {drain.id}, which has waited over "
+                                               f"{round(DRAIN_AFTER_S / 60)} min{alone}: the lane starts no new run "
+                                               f"until it fits{light}")
+                out.behind = drain.id
+                return out
+            continue
         if r.heavy and blocker is not None:
             if r.id == mine:   # and why it waits, when that wait has no end while the lane is busy (2026-11-11)
                 alone = alone_only(by_id[blocker], machine)
                 out.done = Decision(False, (), f"behind heavy {blocker}"
                                     + (", which starts only when the lane is empty" if alone else ""))
+                out.behind = blocker
                 return out
             continue
         failed, kind = _fits(r, pool, None if out.free is None else out.free - out.kept, machine)
@@ -192,6 +233,8 @@ def _replay(runs: list[Run], machine: Machine, mine: str) -> _Replay:
             pool.append(r)
             if out.free is not None:
                 out.free -= r.mem_mb
+            if drain is not None and r.state != WAITING:   # back behind the drain: its room is taken in the gap
+                gap = _back_in_gap(r, drain, gap, machine)
             if r.state == WAITING:   # a frozen run holds its slot already: it is counted in its project's runs
                 turns[r.project] = turns.get(r.project, 0) + 1
             if r.id == mine:
@@ -200,6 +243,33 @@ def _replay(runs: list[Run], machine: Machine, mine: str) -> _Replay:
             continue
         if r.heavy:
             blocker = r.id
+            if r.state == WAITING and r.waited_s >= DRAIN_AFTER_S:
+                # the reason holds no running count: it is what a waiting `lane run` reprints (review of 1241703, 1)
+                # draining behind a run that never ends stops the whole lane for nothing (review, 2) - but only
+                # when that run is what keeps it out: once every other run ahead has ended, would it fit beside the
+                # endless ones? (review of 4cc2e8c, 1: a small hung run turned every drain off)
+                endless = [p for p in pool if p.state in (RUNNING, ORDERED) and (p.hung or p.by_hand)]
+                room_after = None if out.free is None else \
+                    out.free - out.kept + sum(p.mem_mb for p in pool if p not in endless)
+                if outside_lane(r, machine, _by_hand_mb(pool)):
+                    # it would not fit in an empty lane either: the memory is held outside the lane - Claude Code's
+                    # sessions, most often - and a drain would stop every project for nothing. The lane stays open,
+                    # it stays first among the heavy runs, and its orchestrator is told (the person's ruling,
+                    # 2026-11-17)
+                    out.outside[r.id] = {"need_mb": r.mem_mb, "room_mb": machine.give_mb + _by_hand_mb(pool)}
+                    if pool:   # in an empty lane its reason says so already
+                        failed = (f"{failed}; no drain for it: it would not fit in an empty lane either - the memory "
+                                  "is held outside the lane")
+                elif endless and _fits(r, endless, room_after, machine)[0]:
+                    # a run taken by hand frees what `give_mb` does not count: it is named, not read as outside
+                    # (review of 5edc98d, M1); a small hung one does not hide memory held outside (review of 0ff3a22)
+                    failed = (f"{failed}; no drain for it while {', '.join(p.id for p in endless)} holds the lane "
+                              "(hung or taken by hand)")
+                else:
+                    drain = r
+                    gap = _fits_after(r, pool, None if out.free is None else out.free - out.kept, machine)
+                    failed = (f"{failed}; waited over {round(DRAIN_AFTER_S / 60)} min: the lane starts no new run "
+                              "until this one fits")
         if r.id == mine:
             out.why, out.about = failed, kind
             return out
@@ -208,6 +278,120 @@ def _replay(runs: list[Run], machine: Machine, mine: str) -> _Replay:
         if kind == FREE:
             out.unfit_ahead.append(r)
     return out
+
+
+def _in_gap(r: Run, drain: Run, gap: _Gap | None, pool: list[Run], out: _Replay, machine: Machine) -> bool:
+    """Whether light waiter `r` passes a drain, as backfilling does: it fits now, and it takes none of the drained
+    run's room - by its estimate it ends before the drained run fits by the estimates of the runs ahead, or it would
+    still fit beside it then (and that room is counted taken). Behind a drained run with no moment by the estimates,
+    no light run passes: an end nobody knows may need the room."""
+    if r.heavy or gap is None or _fits(r, pool, None if out.free is None else out.free - out.kept, machine)[0]:
+        return False
+    if r.expected_s and r.expected_s <= gap.at_s:   # a measured 0 is no estimate, as `_fits_after` reads it
+        return True
+    room = None if gap.room is None else gap.room - r.mem_mb
+    if _fits(drain, [*gap.pool, r], room, machine)[0]:
+        return False
+    gap.pool, gap.room = [*gap.pool, r], room
+    return True
+
+
+def _back_in_gap(r: Run, drain: Run, gap: _Gap | None, machine: Machine) -> _Gap | None:
+    """The gap once run `r` - a frozen one coming back behind the drain, which the drain does not hold - is back: its
+    room taken beside the drained run then, unless by its estimate it ends first; None, and no light passes after it,
+    when the drained run would no longer fit beside it then (review of facc2c6, G1)."""
+    if gap is None:
+        return None
+    if r.expected_s and r.expected_s - r.ran_s <= gap.at_s:
+        return gap
+    room = None if gap.room is None else gap.room - r.mem_mb
+    if _fits(drain, [*gap.pool, r], room, machine)[0]:
+        return None
+    return _Gap(gap.at_s, [*gap.pool, r], room)
+
+
+def eta_s(runs: list[Run], machine: Machine, mine: str, _depth: int = 0) -> float | None:
+    """By the estimates of the runs ahead, in how many seconds `mine` fits: the runs in its way end one by one in the
+    order their estimates say, and the first moment it fits is the answer (field notes 2026-11-16: "heavy runs'
+    cores: 7.58 of 12" was true and said nothing of when). Behind a heavy waiter, that heavy run's moment. None when
+    it fits only once a run without an estimate ends, or never by these runs. An estimate is not a promise: a run past
+    its estimate is taken to end now."""
+    seen = _replay(runs, machine, mine)
+    if seen.done is not None:
+        if seen.done.start:   # the replay starts it: whatever holds it is not the runs ahead (review of 1241703, 4)
+            return None
+        return eta_s(runs, machine, seen.behind, _depth + 1) if seen.behind and _depth < 8 else None
+    me = next((r for r in runs if r.id == mine), None)
+    if me is None or not seen.why:
+        return None
+    found = _fits_after(me, seen.pool, None if seen.free is None else seen.free - seen.kept, machine)
+    return found.at_s if found is not None else None
+
+
+def _fits_after(me: Run, pool: list[Run], room: int | None, machine: Machine) -> _Gap | None:
+    """When `me` fits beside `pool` with `room`, as the runs with estimates end one by one: in how many seconds, and
+    the runs and room left beside it then; None when no ending of theirs lets it in."""
+    pool = list(pool)
+    ends = sorted(((max(0.0, r.expected_s - r.ran_s), r) for r in pool if r.expected_s and not r.hung
+                   and not r.by_hand), key=lambda pair: (pair[0], pair[1].order))
+    for left, r in ends:
+        pool.remove(r)
+        room = None if room is None else room + r.mem_mb
+        if not _fits(me, pool, room, machine)[0]:
+            return _Gap(left, pool, room)
+    return None
+
+
+def eta_words(seconds: float | None) -> str:
+    """The wait estimate as a waiter's line says it; "" when there is none."""
+    if seconds is None or seconds > 7 * 86400:   # a week out is no estimate (a forged beat, say)
+        return ""
+    if seconds < 30:
+        return "by their estimates the runs ahead should end about now"
+    minutes = max(1, round(seconds / 60))
+    when = f"~{minutes} min" if minutes < 90 else f"~{minutes / 60:.1f} h"
+    # the waiters ahead of it may take the room first: the runs' ends are its earliest (review of 1241703, 5)
+    return f"by the estimates of the runs ahead it fits in {when} at the earliest"
+
+
+def outside_lane(r: Run, machine: Machine, held_mb: int = 0) -> bool:
+    """Whether heavy `r` would not fit even with every lane run ended, yet would on this machine with nothing else
+    running: the memory it lacks is held outside the lane - Claude Code's sessions, most often - and no wait for the
+    lane's runs cures that. `give_mb` is that empty-lane room: MemAvailable less the floor, plus what the held runs
+    take, frozen ones too. Only what retiring sessions can free counts as curable (`capacity_mb`): a run larger than
+    that - the kernel, the services, the orchestrator's own session never leave - starts alone in an empty lane, as
+    no wait would let it in (reviews of f16df11, 1, and 5edc98d, 1). `held_mb`: what runs taken by hand hold - no
+    process tree of theirs is in `give_mb` - which they free when they end (review of 0ff3a22, 1)."""
+    return (r.heavy and machine.give_mb is not None and machine.capacity_mb is not None
+            and machine.give_mb + held_mb < r.mem_mb <= machine.capacity_mb + held_mb)
+
+
+def starved_marks(runs: list[Run], machine: Machine) -> dict[str, tuple[int, int | None]]:
+    """For each waiter the daemon can judge: (what it needs, the most this machine could give it - None when an
+    empty lane holds it, or it is not one to mark). A run taken by hand is never marked: its figure is the heavy
+    budget it claims, not a need. Waiters it cannot judge - the sessions unread, on macOS - are left out, their
+    marks as they stand (`book.Book.mark_starved`)."""
+    marks: dict[str, tuple[int, int | None]] = {}
+    for r in runs:
+        if r.state != WAITING:
+            continue
+        if not r.heavy or r.by_hand:
+            marks[r.id] = (r.mem_mb, None)
+        elif machine.capacity_mb is not None:
+            marks[r.id] = (r.mem_mb, machine.capacity_mb + _by_hand_mb([p for p in runs if p.id != r.id]))
+        elif machine.give_mb is not None and r.mem_mb <= machine.give_mb:
+            marks[r.id] = (r.mem_mb, None)
+    return marks
+
+
+def _by_hand_mb(pool: list[Run]) -> int:
+    return sum(p.mem_mb for p in pool if p.by_hand and p.state in (RUNNING, ORDERED))
+
+
+def held_outside(runs: list[Run], machine: Machine) -> dict[str, dict]:
+    """The heavy waiters past DRAIN_AFTER_S that would not fit even in an empty lane, with the memory each needs and
+    the room an empty lane would leave it (MB): the lane does not drain for them, their orchestrators are told."""
+    return _replay(runs, machine, "").outside
 
 
 def line(runs: list[Run], machine: Machine) -> list[Run]:
@@ -319,25 +503,37 @@ def _memory_why(need: int, free: int, machine: Machine, *, heavy_room: int | Non
     """The room is not what the machine has free: the daemon reads it as MemAvailable less the floor and less what
     the runs started or ahead in line are held to - ceilings' headroom, first half-minutes (field test item 11).
     `heavy_room`: the share the heavy runs may still take, when that and not the room holds a heavy run back."""
-    reserve = round(machine.light_reserve * machine.give_mb)
     if heavy_room is not None and heavy_room < free:
-        return f"memory: {need} MB needed, {max(0, heavy_room)} MB of room for heavy runs, reserve {reserve} MB for " \
-               "light runs"
+        return f"memory: {need} MB needed, {max(0, heavy_room)} MB of room for heavy runs, {_reserve_words(machine)}"
     why = f"memory: {need} MB needed, " + (f"{free} MB of room" if free > 0 else "no room")
     if machine.available_mb is not None:
         held = max(0, machine.available_mb - machine.floor_mb - free)
         why += (f" ({machine.available_mb} MB available, less the {machine.floor_mb} MB floor and {held} MB held for "
                 f"runs started or ahead in line)")
-    return f"{why}, reserve {reserve} MB for light runs"
+    return f"{why}, {_reserve_words(machine)}"
 
 
 #: What a failed check was about: only a lack of free memory is one that freezing a run can cure.
 FREE, BOUND = "free", "bound"
 
 
+def heavy_share(give_mb: int | None, light_reserve: float, heavy_mb: int | None = None) -> int | None:
+    """The most memory the heavy runs may take together: the person's `lane_heavy_mb` where set, else the share of
+    what the lane can give that the light reserve leaves; None when memory cannot be read. Either way a run starts
+    only into the room the machine has free above its floor."""
+    if give_mb is None:
+        return None
+    return int(heavy_mb) if heavy_mb else int((1 - light_reserve) * give_mb)
+
+
 def _heavy_share(machine: Machine) -> int | None:
-    """The most memory the heavy runs may take together; None when memory cannot be read."""
-    return None if machine.give_mb is None else int((1 - machine.light_reserve) * machine.give_mb)
+    return heavy_share(machine.give_mb, machine.light_reserve, machine.heavy_mb)
+
+
+def _reserve_words(machine: Machine) -> str:
+    if machine.heavy_mb:
+        return f"heavy runs' memory set to {machine.heavy_mb} MB (lane_heavy_mb)"
+    return f"reserve {round(machine.light_reserve * machine.give_mb)} MB for light runs"
 
 
 def alone_only(r: Run, machine: Machine) -> bool:
@@ -352,7 +548,13 @@ def _fits(r: Run, pool: list[Run], free: int | None, machine: Machine) -> tuple[
     held by the cores of the moment and by a size that never fits was told only of the cores (field test
     2026-11-11)."""
     if not pool:
-        return "", ""   # an empty machine takes its first run whatever its size (section 2.2)
+        # an empty machine takes its first run whatever its size (section 2.2) - a heavy one not while the memory
+        # it needs is held outside the lane: started into the memory Claude Code's sessions held, one took the
+        # machine down to their reap line (field notes 2026-11-17, the person's ruling). No freeze cures that.
+        if outside_lane(r, machine):
+            return (f"memory: {r.mem_mb} MB needed, {max(0, machine.give_mb)} MB with the lane empty: the rest is "
+                    "held outside the lane"), BOUND
+        return "", ""
     failed = []
     if len(pool) >= machine.max_runs:
         failed.append(f"runs at once: {len(pool)} of {machine.max_runs}")
@@ -371,9 +573,8 @@ def _fits(r: Run, pool: list[Run], free: int | None, machine: Machine) -> tuple[
             share = _heavy_share(machine)
             room = share - sum(p.mem_mb for p in heavies)
             if alone_only(r, machine):
-                reserve = round(machine.light_reserve * machine.give_mb)
-                failed.append(f"memory: {r.mem_mb} MB needed, more than the {share} MB heavy runs may take (reserve "
-                              f"{reserve} MB for light runs): it starts only when the lane is empty")
+                failed.append(f"memory: {r.mem_mb} MB needed, more than the {share} MB heavy runs may take "
+                              f"({_reserve_words(machine)}): it starts only when the lane is empty")
             elif r.mem_mb > room:
                 failed.append(_memory_why(r.mem_mb, free, machine, heavy_room=min(free, int(room))))
     if failed:   # the room of the moment is not named beside a bound: it would reprint the wait at every look
@@ -463,6 +664,10 @@ def decide(runs: list[Run], machine: Machine, mine: str, *, may_freeze: bool = T
     memory_known = machine.give_mb is not None and free is not None
     if not memory_known or me.state == FROZEN or not may_freeze or about != FREE:
         return Decision(False, (), why, about)   # a frozen run comes back when it fits, never by an order (2.8)
+    # what it lacks is held outside the lane: no freeze lets it in (review of 5edc98d, M2: with `lane_heavy_mb` set,
+    # its reason can read as free memory)
+    if outside_lane(me, machine, _by_hand_mb(pool)):
+        return Decision(False, (), why, about)
     if not machine.freeze:
         return Decision(False, (), f"{why}; freezing is off")
     if me.holds:   # its orders are out and their memory not yet free: ordering more would freeze runs for nothing

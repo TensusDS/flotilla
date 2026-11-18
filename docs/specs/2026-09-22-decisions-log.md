@@ -1938,6 +1938,45 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    ran, across a handover, within its first tick - is released and told, not ended: it fails safe. Linux only. What memory the sessions themselves take, and admission against it,
    stays open (TODO).
 
+258. **The lane keeps memory above Claude Code's own line; a heavy head of the line drains the lane** (the person,
+   2026-11-17; 0.33.3; field notes of 2026-11-16). The sessions' memory was never missing from admission - the lane
+   reads MemAvailable, which they lower. What was missing was Claude Code's line: read in its code (2.1.326), it
+   stops the background commands of a session idle 30 minutes, under critical memory pressure, once MemAvailable is
+   under 10 % of MemTotal and under 4 GiB - 1.6 GB on that 16 GB machine, while the lane's floor was 1500 MB, so the
+   lane admitted runs down into the kill, and its waiting bookings, which hold no memory, died first. The default
+   floor is the line plus 512 MB on the host - not drawn where a container's limit binds well before the host can
+   reach the line, which would close a small container's lane for ever; a floor the person set under it is kept
+   and named. Claude Code's stopping stays on - its last guard - and the orchestrator is
+   told of it in its post and by `watch` while memory is under the floor (the person: so it is no surprise to the
+   work it planned). `spawn` counts the lane's floor and the handover run's peak. The night's journal showed one
+   heavy run at a time, the 7 GB ones admitted alone by the empty-lane rule against a 4.4 GB heavy budget. The heavy
+   budget is now the person's to set (`lane_heavy_mb`), and a heavy waiter that has waited ten minutes (its wait
+   priority full) and does not fit stops every new start behind it, light ones too, until it fits: before, lighter
+   runs and another project's turns kept its room taken for hours. A light run still passes it the way backfilling
+   does, when it takes none of that room: by its estimate it ends before the heavy run fits by the estimates of the
+   runs ahead, or it fits beside it then (the person's ruling, 2026-11-18: lights stopped outright waited 80 min at
+   the 95th percentile in the model's twenty queues against 5.5, the heavy runs no sooner; with the gap both are as
+   without a drain, and the model gives each run its ideal time as its estimate). A frozen run that comes back
+   behind the drain takes its room in the gap too (review of facc2c6). Where a run in the drained run's way has no
+   measured estimate there is no gap, and the lights wait as before: an end nobody knows may need the room. No drain
+   while a run the daemon reads as hung, or one taken by hand, holds the lane: no wait ends those, and the whole
+   lane would stop behind them (review of 1241703). A waiter is told when it should fit at the earliest by the
+   estimates of the runs ahead - waiters ahead of it may take the room first - beside its reason and not in it: the
+   reason, which holds no running count, is what a waiting `lane run` reprints. An empty lane no longer takes a
+   heavy run whatever the memory: it waits until its memory is free, unless it is larger than what retiring Claude
+   Code's sessions could free - the lane's `give_mb` plus their memory less two sessions' average, the
+   orchestrator's and the waiting seat's, which never leave (the person's ruling) - which no wait cures (not
+   `give_mb` alone, which shrinks as the sessions grow, nor the machine's total, part of which never leaves: reviews
+   of f16df11 and 5edc98d). And a heavy waiter an empty lane would not hold either drains nothing - the memory is
+   held outside the lane, and a drain would stop every project for nothing: the lane stays open, it stays first
+   among the heavy runs, and its orchestrator is told (the person's ruling, 2026-11-17, over keeping the lane closed
+   until the orchestrator frees the memory). A run larger than that - short of memory with only the orchestrator's
+   session and its own left - still starts alone, and its booking carries what it needs and the most the machine
+   could give it, written by the daemon in the tick that judges it, so its orchestrator is told it may be killed
+   whether it waited or started at once (the person's ruling, 2026-11-18, over refusing it at once: a peak may be a
+   one-off, and the work does not stop). No daemon, no mark: the fallback starts runs only into an empty lane and
+   judges no memory.
+
 ## Open questions (for the foundation spec)
 
 - What happens to `${CLAUDE_PLUGIN_DATA}` on plugin **uninstall** — the ledger must not vanish silently.
