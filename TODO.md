@@ -148,6 +148,11 @@ command that every guard shares, not one more reading.
   ends one orchestrator wait. No start is lost and nothing repeats within a wait; a margin before it stops being
   outside would steady it. *(checked 2026-11-17 on 0.33.3: open, cosmetic - flotilla/lane/policy.py outside_lane,
   flotilla/lane/report.py outside_items)*
+- **A starved run's need goes stale inside the margin**: once a run larger than the machine is marked, a new need
+  within 256 MB under the room is not written, so its orchestrator's item keeps the old need ("needs 9000 MB" while
+  it is 7100) until the room is the margin clear or the run ends. Starts go by the live figures, not the mark;
+  writing a changed need while the mark is kept is one more condition. *(checked 2026-11-18 on 0.33.3: open,
+  cosmetic - flotilla/lane/book.py _starved)*
 
 ## From the reviews of 0.33.2 (2026-11-16, a hung run and a run cut short)
 
