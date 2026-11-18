@@ -550,3 +550,43 @@ Tesla P100-SXM2-16GB at 0.107 $/h, 24 CPUs, the v1.48 image. The local floor sai
 - Closing the session: the destroy left the listing in 17 s; no flotilla-labelled instance remained; the crontab
   ended identical to its backup; the gone machine's host key was removed.
 
+## 13. A second service: DigitalOcean, and the AMD Developer Cloud through it (2026-11-18, 0.34.0)
+
+A project needed an AMD Instinct MI300X; vast listed no AMD GPU (issue #1). The AMD Developer Cloud is built on
+DigitalOcean, and DigitalOcean's pages for it create its GPU Droplets with a `POST` to
+`https://api.digitalocean.com/v2/droplets` and a personal access token, so the adapter is named `digitalocean` and
+serves both; the token decides which account. Read, not measured: DigitalOcean's published API specification and
+product pages, 2026-11-18. No request with a token was made; the first session is the live check, with the
+person's yes.
+
+How section 2's contract maps, and where it does not:
+
+- **Label:** a tag (a Droplet's name takes no colon). The token needs `tag:create` and `tag:read`; without the
+  second every label reads empty and the reaper calls its own machine `stuck` (`label mismatch`), never destroys
+  on a guess.
+- **Listing:** `GET /v2/droplets` twice - GPU Droplets are answered only under `type=gpus` - through every page,
+  the page number counted by the adapter: a `next` link is an address the answer chose, never followed.
+- **Destroy:** `DELETE /v2/droplets/<id>`. A Droplet is billed while it exists, powered off too, so nothing powers
+  one off, and the service's `off` reads as `stopped`, which the reaper drains at once. `404 not_found` is "already
+  gone" and a success - section 5's verification by the next listing is what "gone" still rests on.
+- **Offers:** GPU sizes from `GET /v2/sizes`, one offer per size and region (`<size>@<region>`), at the service's
+  `price_hourly`; no price is written in the code. A size in no region, or not `available`, is no offer.
+  `reliability` is 1.0 and `datacenter` true: the service publishes no figure. One card or eight are both offered;
+  the person's `rig_max_hourly` decides. The wrapper's rule for an offer's name widened from digits to
+  `[A-Za-z0-9][A-Za-z0-9@._-]{0,79}`.
+- **ssh key (a mismatch with `attach_ssh`):** the API embeds keys only at create, and only keys the account holds.
+  An adapter may declare `KEY_AT_CREATE`; the wrapper then hands `create` the rig's public key, the adapter asks
+  that the account holds it (`GET /v2/account/keys/<fingerprint>`) before the request that spends, and `attach_ssh`
+  asks nothing. The person adds the key to the account once; `rig enable` makes it and names the file. The token
+  needs `ssh_key:read` and never a scope that writes keys.
+- **Start script:** user data, run by cloud-init as root on first boot, the `env` exported at its top.
+- **Layer 2 is absent (a mismatch with section 5).** The service puts no key on a Droplet and flotilla puts none
+  of the person's there, so nothing on the machine can destroy it; powering off would hide a machine that still
+  bills. The script keeps the heartbeat and logs when it is old. `rig enable` says so (`NOTES`).
+- **Image:** a DigitalOcean image slug or id from the project's `[rig] image`, allowed by the person as any image
+  is; a container image name is refused before any request.
+- **Credit:** `GET /v2/customers/my/balance`, `month_to_date_balance` negated - what the account owes, so it falls
+  as money is spent. Whether a promotional credit is counted is not specified.
+- **No `OfferGone`:** the service's words for a size it cannot place are not specified, so every refused create is
+  a failure and no second offer is tried.
+

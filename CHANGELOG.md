@@ -3,6 +3,36 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.34.0 - 2026-11-18
+
+From a project that needed a machine with an AMD Instinct card: the one service the rig knew listed no AMD GPU,
+so the machine had to be made and destroyed by hand, outside the ceilings, the idle give-back and the reaper
+(issue #1).
+
+- **The rig knows a second rental service: `digitalocean`.** It rents DigitalOcean's GPU Droplets, and through the
+  same API the AMD Developer Cloud's MI300X: that cloud is built on DigitalOcean, and DigitalOcean's pages for it
+  create its Droplets through the public API with a personal access token, so the token decides which account is
+  talked to. The key goes in `~/.config/flotilla/rig/digitalocean.key` (`chmod 600`), and the person turns it on
+  with `rig enable --provider digitalocean`. **The adapter was written from DigitalOcean's published API
+  specification and has not been run against the service**: its first session is a live check.
+- **What a person meets there, and `rig enable` says:** the rig's public ssh key must be added to the account once
+  (the API puts keys on a Droplet only while it makes it; `rig enable` now makes the key and names its file); the
+  project names a DigitalOcean image in `[rig] image`, not a container image; offers are GPU sizes at the price the
+  API gives at that moment, one card or eight, so `rig_max_hourly` decides - at the default 0.60 $ no MI300X is
+  offered; a size the service lists in no region is no offer.
+- **A Droplet is billed while it exists, powered off too, and nothing on the machine can give it back.** The
+  adapter only ever deletes; a Droplet listed `off` is drained and destroyed by the reaper; a delete answered "not
+  found" counts as done and the next listing still has to agree. DigitalOcean puts no key of its own on a Droplet,
+  so there is no watchdog that destroys it: with this machine off or cron not running, a forgotten Droplet bills
+  until the person destroys it.
+- **An unknown service is refused by name, with the known ones listed**, in `rig enable` and in its help; the line
+  the orchestrator relays while rig is off names the service this machine last used, or the ones to choose from.
+  Loading an adapter from outside the plugin and a "bring your own machine" mode (issue #1, parts 1 and 2) are not
+  in this release.
+- For an adapter's author: the contract suite no longer assumes vast's offer ids, addresses, credit request or
+  its reading of a 404 to a destroy - each double states its own - and an adapter may declare `KEY_AT_CREATE` to
+  be handed the rig's public key in `create`, and `NOTES` for `rig enable` to print.
+
 ## 0.33.3 - 2026-11-18
 
 From the same night's notes: Claude Code stopped lane runs - most of them only waiting - when the machine ran short

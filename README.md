@@ -71,10 +71,10 @@ fleet.
 **Pin a release** instead, to choose when you move: name a tag on the first line (the tags are listed in
 [CHANGELOG.md](CHANGELOG.md)):
 
-    claude plugin marketplace add TensusDS/flotilla#v0.33.3 --scope project
+    claude plugin marketplace add TensusDS/flotilla#v0.34.0 --scope project
     claude plugin install flotilla@flotilla --scope project
 
-That writes `"ref": "v0.33.3"` into the project's settings and installs that release; `claude plugin update` stays on
+That writes `"ref": "v0.34.0"` into the project's settings and installs that release; `claude plugin update` stays on
 it. A machine keeps one marketplace of a name for all its projects, so give the projects on one machine the same
 channel or pin; `/flotilla:doctor` names a pin the machine does not follow. And a tag can be moved on GitHub, so a pin
 chooses when you move, not who can change what the tag names.
@@ -662,11 +662,13 @@ Some runs need more than this machine - a GPU for WebGL screenshots, cores a lap
 the safeguards for machines rented by the hour. **It is off** until you turn it on. A seat runs a command on a
 rented machine with `flotilla rig run` and gets its output, its exit code and its artifacts back.
 
-- **Rental services are adapters chosen by name**; this version carries `vast` (vast.ai). A new service is one
-  adapter file under `flotilla/rig/providers/` passing the shared contract suite.
+- **Rental services are adapters chosen by name**; this version carries `vast` (vast.ai) and `digitalocean`
+  (DigitalOcean's GPU Droplets, and through the same API the AMD Developer Cloud's AMD Instinct MI300X - see
+  "DigitalOcean and the AMD Developer Cloud" below). Any other name is refused, and the refusal lists these. A new
+  service is one adapter file under `flotilla/rig/providers/` passing the shared contract suite.
 - **Turning it on is yours alone:** put the service's key in `~/.config/flotilla/rig/<service>.key` with `chmod 600`
   (for vast.ai a scoped key with `instance_read`, `instance_write`, `misc`), then type
-  `! flotilla rig enable --provider vast` in your own session (or run it in a terminal). `flotilla rig disable` turns it off. Claude's tool calls cannot run either,
+  `! flotilla rig enable --provider vast` (or `--provider digitalocean`) in your own session (or run it in a terminal). `flotilla rig disable` turns it off. Claude's tool calls cannot run either,
   and cannot edit `machine.toml`, the key or the rig's state directory with their edit tools.
 - **Money is spent only inside a session you open.** A seat that needs a machine and finds no session open is
   refused, and its request goes to the orchestrator, which relays a ready line to paste:
@@ -695,6 +697,42 @@ rented machine with `flotilla rig run` and gets its output, its exit code and it
 - **A watchdog runs on the machine** and asks the service to destroy it (or, failing that, to stop it)
   `--watchdog-minutes` (default 45, 5 to 45) after our last heartbeat. `rig run` renews the heartbeat and the lease every 5
   minutes while it runs; an idle machine is given back after 15 minutes. It needs curl, node or python3 in the image. On vast the destroy is allowed (live check, 2026-10-07).
+  **On `digitalocean` no watchdog can give the machine back** - see below.
+- **DigitalOcean and the AMD Developer Cloud** (`--provider digitalocean`, since 0.34.0). The AMD Developer Cloud
+  is built on DigitalOcean, and DigitalOcean's pages for it create its GPU Droplets through the public API
+  (`api.digitalocean.com`) with a personal access token, so one adapter serves an ordinary DigitalOcean team and an
+  AMD Developer Cloud one; the token decides which. It was written from DigitalOcean's published API
+  specification and **has not yet been run against the service**: the first session on it is a live check, to
+  watch as one. What differs from vast:
+  - **The token** is a personal access token made in the control panel of the team that will pay (API, Tokens),
+    with custom scopes `droplet:read`, `droplet:create`, `droplet:delete`, `sizes:read`, `regions:read`,
+    `image:read`, `ssh_key:read`, `tag:read`, `tag:create`, and `billing:read` if `flotilla rig` should show the
+    balance. It goes in `~/.config/flotilla/rig/digitalocean.key`, `chmod 600`.
+  - **The rig's ssh key is added to the account once, by you**: the API puts ssh keys on a Droplet only while it
+    makes it, and only keys the account already holds. Add `~/.ssh/flotilla_rig_ed25519.pub` (made by `rig
+    enable`) under Settings, Security, SSH keys. Until it is there, `rig up` is refused before anything is made.
+  - **The image is a DigitalOcean image, not a container image.** The project names an image slug or id in
+    `[rig] image` (DigitalOcean's pages name `digitaloceanai-rocmjupyter` for the MI300X sizes) and you allow it
+    with `rig allow-image`. With the default container image `rig up` is refused before anything is made.
+  - **The card is named in the project's `[rig] gpu`**, for example `gpu = ["MI300X"]`: the name is compared, by
+    its letters and digits, with the model the service gives and the size's slug. Offers are GPU sizes only, one
+    per size and region, at the hourly price the service's API gives at that moment - one card or eight, so
+    **your `rig_max_hourly` decides**: at the default 0.60 $ no MI300X is offered, and nothing is rented until
+    you raise it in `machine.toml` above the price of the size you mean. A size the service lists in no region
+    is no offer; no region is guessed. A refused create is never retried on another offer.
+  - **A Droplet is billed while it exists, powered off too**; only destroying it ends the cost. The adapter
+    never powers one off, and a Droplet the service lists `off` is drained and destroyed by the reaper. A destroy
+    the service answers "not found" counts as done, and the next listing still has to agree.
+  - **No watchdog can give the machine back.** DigitalOcean puts no key of its own on a Droplet and flotilla puts
+    none of yours there, so the loop on the machine only writes to its log when the heartbeat is old. The reaper
+    on this machine is the only thing that destroys a forgotten Droplet: with this machine off or cron not
+    running, the Droplet bills until you destroy it in the control panel. `--watchdog-minutes` changes nothing
+    there.
+  - The machine's label is a tag (`flotilla:<key>:<id>`); the Droplet's name is the same with dashes. The disk
+    is the size's own (`[rig] disk_gb` only leaves out sizes with less). The balance shown is what the account
+    owes, negated, so it falls as money is spent; whether a promotional credit is counted in it the API's
+    specification does not say. GPU memory is read with `nvidia-smi` only, so on an AMD card runs are packed by
+    cores and memory alone; `[rig] exclusive = true` keeps each run alone on its machine.
 - **`flotilla rig run [--put P]... [--get P]... [--env NAME=VALUE]... [--exclusive|--shared] -- COMMAND`** runs one
   command there:
   - nothing is spent before the gate: rig on, a session open, `--root` this very tree, a committed HEAD (a tracked
@@ -761,7 +799,7 @@ rented machine with `flotilla rig run` and gets its output, its exit code and it
   directory, so it survives plugin updates; with flotilla uninstalled, the launcher itself destroys the instances
   this machine labelled. The reaper drains a machine whose lease expired, that sat idle 15 minutes, whose session
   ended or neared its budget, that the service stopped or no longer lists (two passes agreeing), or that took over
-  15 minutes to come up; destroys it only when vast lists it under the label flotilla gave it; and calls it gone
+  15 minutes to come up; destroys it only when the service lists it under the label flotilla gave it; and calls it gone
   only when a later listing no longer shows it. After three passes it says STUCK. An instance without this machine's
   flotilla label - one you made by hand - is never touched.
 - If cron does not run on this machine (WSL by default), `flotilla rig` and `flotilla doctor` say the reaper is
