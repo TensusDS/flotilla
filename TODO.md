@@ -153,6 +153,13 @@ command that every guard shares, not one more reading.
   it is 7100) until the room is the margin clear or the run ends. Starts go by the live figures, not the mark;
   writing a changed need while the mark is kept is one more condition. *(checked 2026-11-18 on 0.33.3: open,
   cosmetic - flotilla/lane/book.py _starved)*
+- **A drained run's wait estimate misses a frozen run coming back behind it** until the next tick: its replay stops
+  at itself, before that run is admitted, so its estimate - and the lights' through it - is early by one tick. A
+  hint only, as before the gap. *(checked 2026-11-18 on 0.33.3: open, cosmetic - flotilla/lane/policy.py eta_s)*
+- **A closed gap also stops the lights that end before then**: when a frozen run back behind the drain leaves the
+  drained run no room beside it, no light passes, though one that by its estimate ends before the old moment ends
+  before the new one too. Safe, a few lights fewer pass. *(checked 2026-11-18 on 0.33.3: open, cosmetic -
+  flotilla/lane/policy.py _back_in_gap)*
 
 ## From the reviews of 0.33.2 (2026-11-16, a hung run and a run cut short)
 
