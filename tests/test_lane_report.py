@@ -154,3 +154,26 @@ def test_a_heavy_waiter_held_by_memory_outside_the_lane_is_its_projects_item(tmp
             "42 Claude Code process(es) hold 8.6 GB.") in found[0].text and "Retire idle seats" in found[0].text
     daemon._write_beat(root, 4242, "m", {"outside": {big.id: {"need_mb": "x", "room_mb": None}}}, 1.0)
     assert [item for item in report.items(tmp_path, "p1", NOW) if item.kind == report.OUTSIDE] == []
+
+
+
+def test_a_run_larger_than_the_machine_is_its_projects_item_waiting_or_running(tmp_path, monkeypatch):
+    """The person's ruling, 2026-11-18: it starts alone, and its orchestrator is told it may be killed."""
+    monkeypatch.setattr(daemon, "gone", lambda root, **kw: False)
+    root = lane_root(tmp_path)
+    lanes = book.Book(LocalLogStore(root), None)
+    big = lanes.enqueue("main 3", "suite", pid=5, mark="m", project="p1", run_for="fix/x")
+    other = lanes.enqueue("main 4", "suite", pid=6, mark="m", project="p2")
+    for booking in (big.id, other.id):
+        with lanes.store.transaction(book.KEY) as tx:
+            lanes._write(tx, booking, book.WAITING, starved_need_mb=9000, starved_room_mb=7000)
+    found = [item for item in report.items(tmp_path, "p1", NOW) if item.kind == report.STARVED]
+    assert [(item.branch, item.who) for item in found] == [("fix/x", f"{big.id} starved")]
+    assert "needs 9000 MB" in found[0].text and "7000 MB over the lane's floor at most" in found[0].text
+    with lanes.store.transaction(book.KEY) as tx:
+        lanes._write(tx, big.id, book.HELD, started=NOW.isoformat())
+    assert [item.who for item in report.items(tmp_path, "p1", NOW) if item.kind == report.STARVED] == \
+        [f"{big.id} starved"]
+    with lanes.store.transaction(book.KEY) as tx:
+        lanes._write(tx, big.id, book.RELEASED)
+    assert [item for item in report.items(tmp_path, "p1", NOW) if item.kind == report.STARVED] == []

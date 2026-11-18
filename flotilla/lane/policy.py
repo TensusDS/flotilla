@@ -312,6 +312,18 @@ def outside_lane(r: Run, machine: Machine, held_mb: int = 0) -> bool:
             and machine.give_mb + held_mb < r.mem_mb <= machine.capacity_mb + held_mb)
 
 
+def starved_room(r: Run, runs: list[Run], machine: Machine) -> int | None:
+    """The most this machine could give heavy `r`, MB, when `r` needs more: every lane run ended, what runs taken by
+    hand hold freed, Claude Code's sessions retired but the orchestrator's and the waiting seat's (`capacity_mb`). No
+    wait gives it that memory: it starts alone in an empty lane, as before, and its orchestrator is told it may be
+    killed - split or narrow it (the person's ruling, 2026-11-18). None when it is not short, or `capacity_mb` was not
+    read."""
+    if not r.heavy or machine.capacity_mb is None:
+        return None
+    room = machine.capacity_mb + _by_hand_mb([p for p in runs if p.id != r.id])
+    return room if r.mem_mb > room else None
+
+
 def _by_hand_mb(pool: list[Run]) -> int:
     return sum(p.mem_mb for p in pool if p.by_hand and p.state in (RUNNING, ORDERED))
 

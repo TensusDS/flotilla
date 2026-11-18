@@ -3,7 +3,7 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
-## 0.33.3 - 2026-11-17
+## 0.33.3 - 2026-11-18
 
 From the same night's notes: Claude Code stopped lane runs - most of them only waiting - when the machine ran short
 of memory, and a heavy run headed its project's line for hours with no word of when it would go.
@@ -23,7 +23,9 @@ of memory, and a heavy run headed its project's line for hours with no word of w
   **The memory heavy runs take together can be set**: `lane_heavy_mb` in `machine.toml`.
 - **A heavy run starts in an empty lane only once its memory is free.** One that would not fit even there - the
   memory held outside the lane, by Claude Code's sessions most often - drains nothing: the other runs pass it, and
-  its orchestrator is told what it needs, the room it would have and what the sessions hold.
+  its orchestrator is told what it needs, the room it would have and what the sessions hold. One larger than the
+  machine gives with every session retired but the orchestrator's and its own still starts alone in an empty
+  lane, and its orchestrator is told, while it waits and while it runs, that it may be killed: split or narrow it.
 - **A waiter is told when it should fit at the earliest**, by the estimates of the runs ahead: on its line in
   `flotilla lane`, and with each new reason a waiting `lane run` prints.
 - The orchestrator's post is template 33.

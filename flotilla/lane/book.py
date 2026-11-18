@@ -51,7 +51,8 @@ FIELDS = ("who", "note", "pid", "mark", "run_for", "why", "command", "ladder", "
           "kind", "asked", "started", "ran_s", "frozen", "order_by", "ordered_at", "reclaim_mb", "frozen_at",
           "held_mb", "frozen_s", "freezes", "heavy", "pinned", "unanswered", "freeze_kind", "unit", "group",
           "peak_cores", "group_mark", "refused_by", "refused_at", "order_cause", "order_pid", "order_mark",
-          "ceiling_mb", "squeezed", "held_back", "by_hand", "floor_mb", "held_freezes", "order_sig", "admitted_mb")
+          "ceiling_mb", "squeezed", "held_back", "by_hand", "floor_mb", "held_freezes", "order_sig", "admitted_mb",
+          "starved_need_mb", "starved_room_mb")
 MEASURED = ("seconds", "peak_mb", "cores", "busy", "verdict", "ran", "peak_cores")
 #: A freeze order's progress on a held booking: ordered by a waiter, then frozen by its holder; absent while it runs.
 FROZEN_STATES = ("ordered", "frozen")
@@ -71,8 +72,13 @@ BOUNDS = {"seconds": (0.0, 7 * 86400.0), "peak_mb": (0.0, 1e7), "cores": (0.0, 1
 #: The booking's own figures beside the measured ones a tier also carries (a tier's are BOUNDS alone).
 FIGURES = {**BOUNDS, "ran_s": BOUNDS["seconds"], "frozen_s": BOUNDS["seconds"], "reclaim_mb": BOUNDS["peak_mb"],
            "held_mb": BOUNDS["peak_mb"], "peak_cores": BOUNDS["cores"], "ceiling_mb": BOUNDS["peak_mb"],
-           "floor_mb": BOUNDS["peak_mb"], "admitted_mb": BOUNDS["peak_mb"]}
-WHOLE = ("peak_mb", "reclaim_mb", "held_mb", "ceiling_mb", "floor_mb", "admitted_mb")
+           "floor_mb": BOUNDS["peak_mb"], "admitted_mb": BOUNDS["peak_mb"], "starved_need_mb": BOUNDS["peak_mb"],
+           "starved_room_mb": BOUNDS["peak_mb"]}
+WHOLE = ("peak_mb", "reclaim_mb", "held_mb", "ceiling_mb", "floor_mb", "admitted_mb", "starved_need_mb",
+         "starved_room_mb")
+#: How far the room of a run larger than the machine moves before its booking is written again: the sessions'
+#: resident memory changes at every look, and a waiter decides every few seconds.
+STARVED_STEP_MB = 256
 
 
 def _figure(key, value):
@@ -213,6 +219,28 @@ class Booking:
     floor_mb: int | None = None                      # the asking project's memory floor
     held_freezes: int = 0                            # freezes for an overload or a pressure, not for a waiter
     order_sig: str = ""                              # the daemon's seal over its order (lane daemon design, 4.8)
+    starved_need_mb: int | None = None               # a run larger than this machine holds: what it needs, and the
+    starved_room_mb: int | None = None               # most the machine could give it (`policy.starved_room`)
+
+
+def _starved(item: Booking, me, runs, machine) -> dict:
+    """The fields that bring a waiter's mark of a run larger than this machine up to date - what it needs and the
+    most the machine could give it, or both cleared - or {} when the mark stands, or the sessions were not read: the
+    lane's orchestrator item reads the mark on the booking, so a run started at once is told of too (the person's
+    ruling, 2026-11-18)."""
+    from flotilla.lane import policy
+    if machine.capacity_mb is not None:
+        room = policy.starved_room(me, runs, machine)
+    elif machine.give_mb is not None and me.mem_mb <= machine.give_mb:
+        room = None   # an empty lane holds it: the sessions were not read, as nothing needs them
+    else:
+        return {}
+    if room is None:
+        return {} if item.starved_room_mb is None else {"starved_need_mb": None, "starved_room_mb": None}
+    if (item.starved_need_mb == me.mem_mb and item.starved_room_mb is not None
+            and abs(item.starved_room_mb - room) < STARVED_STEP_MB):
+        return {}
+    return {"starved_need_mb": me.mem_mb, "starved_room_mb": room}
 
 
 def seal(key: bytes, booking: str, cause: str, ordered_at: str, order_by: str, pid, mark: str, reclaim_mb) -> str:
@@ -685,13 +713,17 @@ class Book:
                 self._write(tx, run.id, HELD, heavy=True)
         decision = policy.decide(runs, machine, booking_id)
         self.waits_for = decision.why
+        starved = _starved(found[booking_id], by_id[booking_id], runs, machine)
         if decision.start:
             me = by_id[booking_id]
             how = f"value: P {policy.priority(me, machine.immortal_s):.2f}, {'heavy' if me.heavy else 'light'}"
-            return self._write(tx, booking_id, HELD, path=how, started=self._now(), heavy=me.heavy, **fields)
+            return self._write(tx, booking_id, HELD, path=how, started=self._now(), heavy=me.heavy, **fields,
+                               **starved)
         for victim, reclaim in decision.freeze:
             self._write(tx, victim, HELD, frozen="ordered", order_by=booking_id, ordered_at=self._now(),
                         reclaim_mb=reclaim)
+        if starved:
+            self._write(tx, booking_id, WAITING, **starved)
         return None
 
     def frozen(self, booking_id: str, *, freeze_kind: str, unit: str, group: int | None,

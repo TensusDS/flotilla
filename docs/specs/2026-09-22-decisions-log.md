@@ -1963,7 +1963,11 @@ Working log of decisions taken with the person before the spec. Not a spec. Rese
    the machine's total, part of which never leaves: reviews of f16df11 and 5edc98d). And a heavy waiter an empty
    lane would not hold either drains nothing - the memory is held outside the lane, and a drain would stop every
    project for nothing: the lane stays open, it stays first among the heavy runs, and its orchestrator is told (the
-   person's ruling, 2026-11-17, over keeping the lane closed until the orchestrator frees the memory).
+   person's ruling, 2026-11-17, over keeping the lane closed until the orchestrator frees the memory). A run
+   larger than that - short of memory with only the orchestrator's session and its own left - still starts
+   alone, and its booking carries what it needs and the most the machine could give it, written by its waiter, so
+   its orchestrator is told it may be killed whether it waited or started at once (the person's ruling,
+   2026-11-18, over refusing it at once: a peak may be a one-off, and the work does not stop).
 
 ## Open questions (for the foundation spec)
 

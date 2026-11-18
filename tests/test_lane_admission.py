@@ -554,3 +554,30 @@ def test_the_sessions_memory_is_read_only_for_a_heavy_waiter_an_empty_lane_would
     _runs, found = admission.view(lanes.bookings(), {}, value(available=500, sessions_mb=sessions), now=T0,
                                   live=lanes.live, mine="")
     assert found.capacity_mb == 8500 and reads == [1]
+
+
+
+def test_a_run_larger_than_the_machine_is_marked_on_its_booking_and_starts_alone(lane):
+    """The person's ruling, 2026-11-18: it starts alone in an empty lane, as before, and its booking carries what it
+    needs and the most the machine could give it - so a run started at once is told of too."""
+    lanes, _procs, later = lane
+    big = lanes.enqueue("main session 2", "x", pid=12, mark="m")   # never measured: 1024 MB
+    held = lanes.grant(big.id, slots=1, value=value(available=500, sessions_mb=lambda: 200))
+    assert held is not None and held.state == book.HELD
+    assert (held.starved_need_mb, held.starved_room_mb) == (1024, 700)
+
+
+def test_a_waiters_starved_mark_is_written_on_a_real_change_only(lane):
+    lanes, _procs, later = lane
+    holder(lanes, later, tree={11: 100})
+    big = lanes.enqueue("main session 2", "x", pid=12, mark="m")
+    v = value(tree={11: 100}, available=300, sessions_mb=lambda: 200)
+    assert lanes.grant(big.id, slots=1, value=v) is None
+    first = lanes.bookings()[big.id]
+    assert (first.starved_need_mb, first.starved_room_mb) == (1024, 600)
+    lines = len(lanes.store.read(book.KEY).records)
+    lanes.grant(big.id, slots=1, value=value(tree={11: 100}, available=300, sessions_mb=lambda: 300))
+    assert len(lanes.store.read(book.KEY).records) == lines   # 100 MB more room: not written again
+    lanes.grant(big.id, slots=1, value=value(tree={11: 100}, available=300, sessions_mb=lambda: 2000))
+    after = lanes.bookings()[big.id]
+    assert (after.starved_need_mb, after.starved_room_mb) == (None, None) and after.since == first.since

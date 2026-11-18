@@ -15,7 +15,7 @@ from pathlib import Path
 from flotilla.core.text import visible
 from flotilla.watch.whose import Item
 
-HUNG, LOST, MEMORY, OUTSIDE = "lane-hung", "lane-lost", "lane-memory", "lane-outside"
+HUNG, LOST, MEMORY, OUTSIDE, STARVED = "lane-hung", "lane-lost", "lane-memory", "lane-outside", "lane-starved"
 #: How long a run cut short stays an item, unless its owner books the same work again sooner.
 LOST_FOR = dt.timedelta(hours=6)
 
@@ -77,6 +77,7 @@ def items(state: Path, project: str, now: dt.datetime, profile: dict | None = No
     order = list(bookings.values())   # the journal's order: a booking made later stands after it
     found.extend(memory_items(order, project, _available(), *_line_and_floor(profile or {}), live=_live))
     found.extend(outside_items(order, project, beat.outside if beat is not None else {}))
+    found.extend(starved_items(order, project))
     for place, item in enumerate(order):
         ended = _when(item.ended or item.since)
         if (item.project != project or item.state != book.RELEASED or not item.cut or ended is None
@@ -117,6 +118,25 @@ def outside_items(order, project: str, outside: dict, *, sessions=None) -> list[
                           f"lane's floor then.{whose} The lane lets other runs pass it rather than drain for nothing; "
                           "it starts once that memory is free. Retire idle seats, or narrow the run", "",
                           who=f"{item.id} outside"))
+    return found
+
+
+def starved_items(order, project: str) -> list[Item]:
+    """The project's runs larger than this machine holds, waiting or running: no wait gives them the memory, so the
+    lane starts each alone in an empty lane, and the orchestrator is told it may be killed (the person's ruling,
+    2026-11-18). Its mark is on the booking, written by its waiter (`book._starved`)."""
+    from flotilla.lane import book
+    found: list[Item] = []
+    for item in order:
+        need, room = item.starved_need_mb, item.starved_room_mb
+        if item.project != project or item.state not in (book.WAITING, book.HELD) or need is None or room is None:
+            continue
+        found.append(Item(STARVED, visible(item.run_for),
+                          f"{_what(item.who, item.note, item.run_for)} ({visible(item.id)}) needs {need} MB, more "
+                          f"than this machine gives even with the lane empty and every Claude Code session retired "
+                          f"but the orchestrator's and its own: {room} MB over the lane's floor at most. The lane "
+                          "starts it alone in an empty lane, and it may still be killed. Split or narrow the run", "",
+                          who=f"{item.id} starved"))
     return found
 
 
