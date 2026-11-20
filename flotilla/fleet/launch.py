@@ -19,7 +19,7 @@ PERMISSION = {"ask": "manual", "rules": "dontAsk", "auto": "auto"}
 STRONGEST = "opus"
 CLI = Path(__file__).resolve().parents[2] / "bin" / "flotilla"
 FIRST_PROMPT = ("Use the flotilla:flotilla skill: take the census, send the orchestrator one message with your name, "
-                "post, home tree and what you inherited, then wait for a task.")
+                "post, home tree and what you inherited (the orchestrator tells the person), then wait for a task.")
 
 
 class LaunchError(RuntimeError):

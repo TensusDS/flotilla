@@ -254,3 +254,70 @@ def test_work_show_and_adopt_survive_a_damaged_memo_log(tmp_path, monkeypatch):
     row, text = commands._adopt(ledger, actor(ledger, "orchestrator 1"),
                                 SimpleNamespace(branch="feat/x", from_=None, to="main session 2"))
     assert row.owner == "main session 2" and "working notes could not be read" in text
+
+
+# -- the re-review of 76c078a --
+
+def test_fix_memo_on_an_unassigned_row(tmp_path, monkeypatch):
+    """A reviewer may fix a handed row nobody reads yet without `take`; its note rides along (re-review, 1)."""
+    root, tree, code, out = handed_project(tmp_path, monkeypatch)
+    code, out = run_cli("work", "fix", "feat/x", "--why", "a test is missing", "--memo", "asked for a storm test",
+                        "--root", str(root), "--as", READER)
+    assert code == 0, out
+    assert {writer for (row, writer) in state_memos(tmp_path)} == {READER}
+    code, out = run_cli("work", "fix", "feat/x", "--why", "x", "--memo", "y", "--root", str(root), "--as", OWNER)
+    assert code == 2 and state_memos(tmp_path).get(("r1", OWNER)) is None   # the author never fixes its own row
+
+
+def test_left_by_follows_a_trail_of_adoptions(tmp_path):
+    """adopted_from holds `B <- A` after two adoptions; the heir sees B's note (re-review, 2)."""
+    from flotilla.ledger.model import Row
+    rows = {"r1": Row(id="r1", branch="feat/x", owner=OWNER, state="claimed",
+                      adopted_from="main session 7 <- main session 5")}
+    memos.write(tmp_path, KEY, memo(writer="main session 7", text="seven"))
+    memos.write(tmp_path, KEY, memo(writer="main session 5", text="five"))
+    assert [(label, m.text) for label, m in memos.for_session(tmp_path, KEY, rows, OWNER)] == [
+        ("left by main session 7 on feat/x", "seven")]
+
+
+def test_a_line_without_its_newline_is_not_yet_written(tmp_path):
+    """The store counts a line once its newline is on disk; so does the memo reader (re-review, minor 1)."""
+    memos.write(tmp_path, KEY, memo(text="committed"))
+    with open(tmp_path / "memos" / f"{KEY}.jsonl", "a", encoding="utf-8") as log:
+        log.write('{"row": "r1", "writer": "main session 1", "text": "torn", "at": "2026-11-20T11:55:00+00:00"}')
+    assert memos.latest(tmp_path, KEY)[("r1", "main session 1")].text == "committed"
+
+
+def test_a_deeply_nested_line_costs_only_itself(tmp_path):
+    """json raises RecursionError, not ValueError, for a deep line (re-review, minor 2)."""
+    log = tmp_path / "memos" / f"{KEY}.jsonl"
+    log.parent.mkdir(parents=True)
+    log.write_text("[" * 200_000 + "\n", encoding="utf-8")
+    memos.write(tmp_path, KEY, memo(text="kept"))
+    assert memos.latest(tmp_path, KEY)[("r1", "main session 1")].text == "kept"
+
+
+def test_adopt_hands_the_heir_only_the_gone_owners_note(tmp_path, monkeypatch):
+    """The same rule as after compaction: a reviewer's note on the row is not the heir's inheritance."""
+    from types import SimpleNamespace
+    from fleetkit import session
+    from flotilla.ledger import commands
+    from flotilla.ledger.commands import open_ledger
+    from ledgerkit import actor
+    root, tree, code, out = handed_project(tmp_path, monkeypatch, memo="next: answer the review")
+    assert run_cli("work", "take", "feat/x", "--root", str(root), "--as", READER)[0] == 0
+    assert run_cli("work", "note", "feat/x", "--text", "reading slowly", "--root", str(root), "--as", READER)[0] == 0
+    ledger = open_ledger(root)
+    ledger.census = lambda: [session("main session 2", "000002"), session("orchestrator 1", "000003")]
+    row, text = commands._adopt(ledger, actor(ledger, "orchestrator 1"),
+                                SimpleNamespace(branch="feat/x", from_=None, to="main session 2"))
+    assert "next: answer the review" in text and "reading slowly" not in text
+
+
+def test_work_note_that_cannot_be_written_is_refused_plainly(tmp_path, monkeypatch):
+    root, tree, code, out = handed_project(tmp_path, monkeypatch)
+    from flotilla.ledger.commands import open_ledger
+    key = open_ledger(root).repo_key
+    (tmp_path / "state" / "memos" / f"{key}.jsonl").mkdir(parents=True)
+    code, out = run_cli("work", "note", "feat/x", "--text", "n", "--root", str(root), "--as", OWNER)
+    assert code == 2 and "refused" in out and "could not be written" in out

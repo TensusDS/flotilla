@@ -250,16 +250,18 @@ CANNOT_RUN = ("next: flotilla cannot run here as things stand; send this text to
               "work around flotilla with git plumbing.")
 
 def _inherited_notes(ledger, rows) -> list[str]:
-    """The working notes the adopted rows carry, for the orchestrator's letter to the heir (design section 2): each
-    labelled with its writer, never as the heir's own."""
+    """The working note each adopted row's gone owner left, for the orchestrator's letter to the heir (design section
+    2): labelled with its writer, never as the heir's own - the same note the heir is shown after compaction."""
     import datetime as _dt
     from flotilla.ledger import memos
     now = _dt.datetime.now(_dt.timezone.utc)
     lines = []
     try:
         for row in rows:
+            gone = memos.former_owner(row)
             for memo in memos.on_row(ledger.state_dir, ledger.repo_key, row.id):
-                lines += memos.render(memo, label=f"left by {memo.writer} on {row.branch}", now=now)
+                if memo.writer == gone:   # a reader's note on the row is not the heir's inheritance
+                    lines += memos.render(memo, label=f"left by {memo.writer} on {row.branch}", now=now)
     except Exception as err:  # noqa: BLE001 - the adoption is recorded: never report it refused (review, I2)
         lines.append(f"working notes could not be read: {err}")
     return lines
@@ -694,7 +696,10 @@ def run_ledger_command(args) -> int:
                                also=args.also)
         elif args.move == "note":
             from flotilla.ledger import memos
-            written = memos.note(ledger, caller, args.branch, text=args.text, post=args.post)
+            try:
+                written = memos.note(ledger, caller, args.branch, text=args.text, post=args.post)
+            except OSError as err:
+                raise MoveRefused(f"your working note could not be written: {err}") from err
             print(f"noted: your working note ({len(written.text)} characters); it moves no row")
             return 0
         else:
@@ -702,7 +707,7 @@ def run_ledger_command(args) -> int:
             if memo:   # checked before the move: a bad note, or one not the caller's to keep, refuses the command
                 from flotilla.ledger import memos
                 memo = memos.checked(memo)
-                memos.may_keep(ledger.rows(), args.branch, caller.name)
+                memos.may_keep(ledger.rows(), args.branch, caller.name, move=args.move)
             result = MOVES[args.move](ledger, caller, args)
             if memo:
                 moved = result[0] if isinstance(result, tuple) else result

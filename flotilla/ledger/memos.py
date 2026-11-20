@@ -49,6 +49,11 @@ def checked(text: str) -> str:
     return text
 
 
+def former_owner(row) -> str:
+    """The owner a row was last adopted from: `adopted_from` holds a trail, `B <- A`, after more than one."""
+    return (row.adopted_from or "").split(" <- ")[0].strip()
+
+
 def lead_key(name: str) -> str:
     return f"lead:{name}"
 
@@ -70,10 +75,10 @@ def _records(state_dir, repo_key: str) -> list:
     except (OSError, ValueError):
         return []
     found = []
-    for raw in data.split(b"\n"):
+    for raw in data.split(b"\n")[:-1]:   # a line counts once its newline is on disk, as in the store
         try:
             found.append(json.loads(raw.decode("utf-8")))
-        except (UnicodeDecodeError, ValueError):
+        except (UnicodeDecodeError, ValueError, RecursionError):
             continue
     return found
 
@@ -125,14 +130,16 @@ def _post_key(rows: dict, name: str, post_name: str) -> str:
     raise MoveRefused(f"{name} holds no post row, so it has no seat-level note; name the branch the note is about")
 
 
-def may_keep(rows: dict, branch: str, name: str):
-    """The open row of `branch` when `name` owns or reads it; else MoveRefused. Each session's note is its own, and
-    only on a row it works on: a mover that records a wait keeps no note there (review of d0517a3, I3)."""
+def may_keep(rows: dict, branch: str, name: str, *, move: str = ""):
+    """The open row of `branch` when `name` owns or reads it - or is about to read it, by a `fix` on a row nobody
+    reads yet, which makes it the reader (re-review of 76c078a, 1); else MoveRefused. Each session's note is its own,
+    and only on a row it works on: a mover that records a wait keeps no note there (review of d0517a3, I3)."""
     found = [row for row in rows.values() if row.branch == branch and row.is_open]
     if not found:
         raise MoveRefused(f"no open row for `{branch}`")
     row = found[-1]
-    if name not in (row.owner, row.reader):
+    reads_by_fixing = move == "fix" and not row.reader and name != row.owner
+    if name not in (row.owner, row.reader) and not reads_by_fixing:
         raise MoveRefused(f"only the owner ({row.owner}) or the reader of `{branch}` keeps a working note on it; "
                           "each session's note is its own - make the move without --memo")
     return row
@@ -170,7 +177,7 @@ def for_session(state_dir, repo_key: str, rows: dict, name: str) -> list[tuple[s
         mine = found.get((row.id, name))
         if mine is not None:
             said.append(("your seat note" if seat else f"your note on {row.branch}", mine))
-        gone = row.adopted_from   # the owner before the last adoption: its notes are the heir's to see, as its
+        gone = former_owner(row)   # the owner before the last adoption: its notes are the heir's to see, as its
         if row.owner == name and not seat and gone and gone != name and (row.id, gone) in found:
             said.append((f"left by {gone} on {row.branch}", found[(row.id, gone)]))
     lead = found.get((lead_key(name), name))
