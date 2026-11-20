@@ -86,3 +86,61 @@ def render(memo: Memo, *, label: str, now: dt.datetime) -> list[str]:
     said = age(memo.at, now)
     when = said if said == "age unknown" else f"{said} ago"
     return [f"{visible(label)}, {when}:"] + [QUOTE + visible(line) for line in memo.text.split("\n")]
+
+
+def _post_key(rows: dict, name: str, post_name: str) -> str:
+    """Where a session's seat-level note lives: its open post row; for the orchestrator leading from the person's
+    own session, which has none, a key of its own (design 2a); else refused."""
+    mine = [row for row in rows.values() if row.is_open and row.state == "reserved" and row.owner == name]
+    if mine:
+        return mine[-1].id
+    if post_name == "orchestrator":
+        return lead_key(name)
+    raise MoveRefused(f"{name} holds no post row, so it has no seat-level note; name the branch the note is about")
+
+
+def note(ledger, actor, branch: str | None, *, text: str, post: bool) -> Memo:
+    """Write the caller's working note: on a row it owns or reads, or (`post`) its seat-level note. It moves no row."""
+    text = checked(text)
+    rows = ledger.rows()
+    if bool(branch) == bool(post):
+        raise MoveRefused("name the branch the note is about, or --post for your seat-level note - one of them")
+    if post:
+        key = _post_key(rows, actor.name, actor.post.name if actor.post else "")
+    else:
+        found = [row for row in rows.values() if row.branch == branch and row.is_open]
+        if not found:
+            raise MoveRefused(f"no open row for `{branch}`")
+        row = found[-1]
+        if actor.name not in (row.owner, row.reader):
+            raise MoveRefused(f"only the owner ({row.owner}) or the reader of `{branch}` keeps a working note on it; "
+                              "each session's note is its own")
+        key = row.id
+    memo = Memo(key, actor.name, text, ledger.now())
+    write(ledger.state_dir, ledger.repo_key, memo)
+    return memo
+
+
+def on_row(state_dir, repo_key: str, row_id: str) -> list[Memo]:
+    return [memo for (row, _), memo in latest(state_dir, repo_key).items() if row == row_id]
+
+
+def for_session(state_dir, repo_key: str, rows: dict, name: str) -> list[tuple[str, Memo]]:
+    """(label, memo) for what a session should see of its notes: its own on each open row it owns or reads and on its
+    post row (or lead key), and what others left on the open rows it owns - labelled as theirs."""
+    found = latest(state_dir, repo_key)
+    said: list[tuple[str, Memo]] = []
+    for row in rows.values():
+        if not row.is_open or name not in (row.owner, row.reader):
+            continue
+        seat = row.state == "reserved" and row.owner == name
+        mine = found.get((row.id, name))
+        if mine is not None:
+            said.append(("your seat note" if seat else f"your note on {row.branch}", mine))
+        if row.owner == name and not seat:
+            said += [(f"left by {memo.writer} on {row.branch}", memo) for (key, writer), memo in found.items()
+                     if key == row.id and writer != name and writer != row.reader]
+    lead = found.get((lead_key(name), name))
+    if lead is not None:
+        said.append(("your seat note", lead))
+    return said

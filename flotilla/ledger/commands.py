@@ -216,6 +216,14 @@ def _show(ledger: core.Ledger, branch: str) -> int:
         print(f"  urgent since {row.urgent_at}: {row.urgent_why or 'no reason given'}")
     if row.broken:
         print(f"  broke at {row.broken}")
+    from flotilla.ledger import memos
+    import datetime as _dt
+    noted = memos.on_row(ledger.state_dir, ledger.repo_key, row.id)
+    if noted:
+        print("working notes:")
+        for memo in noted:
+            print("\n".join("  " + line for line in memos.render(memo, label=f"{memo.writer}'s note",
+                                                                  now=_dt.datetime.now(_dt.timezone.utc))))
     print("history:")
     for entry in row.history:
         called = entry.get("caller") or ""
@@ -237,12 +245,26 @@ WAITING = ("next: nothing is wrong; this waits on what is named above, as the fl
 CANNOT_RUN = ("next: flotilla cannot run here as things stand; send this text to the orchestrator verbatim, and never "
               "work around flotilla with git plumbing.")
 
+def _inherited_notes(ledger, rows) -> list[str]:
+    """The working notes the adopted rows carry, for the orchestrator's letter to the heir (design section 2): each
+    labelled with its writer, never as the heir's own."""
+    import datetime as _dt
+    from flotilla.ledger import memos
+    now = _dt.datetime.now(_dt.timezone.utc)
+    lines = []
+    for row in rows:
+        for memo in memos.on_row(ledger.state_dir, ledger.repo_key, row.id):
+            lines += memos.render(memo, label=f"left by {memo.writer} on {row.branch}", now=now)
+    return lines
+
+
 def _adopt(ledger, actor, args):
     if bool(args.branch) == bool(getattr(args, "from_", None)):
         raise MoveRefused("name one branch, or --from <gone session> for all of its open work - not both")
     def trees(rows):
         said = [(row.branch, (row.history[-1].get("evidence") or {}).get("tree")) for row in rows]
-        return [f"tree of `{branch}`: {tree}" for branch, tree in said if tree]
+        lines = [f"tree of `{branch}`: {tree}" for branch, tree in said if tree]
+        return lines + _inherited_notes(ledger, rows)
     if args.branch:
         row = steering.adopt(ledger, actor, args.branch, to=args.to)
         said = trees([row])
@@ -663,8 +685,20 @@ def run_ledger_command(args) -> int:
             row = tree_mod.cut(ledger, caller, args.branch, Path(args.tree), expect=args.expect, ref=args.ref,
                                requires=args.requires or [], after=args.after or [],
                                also=args.also)
+        elif args.move == "note":
+            from flotilla.ledger import memos
+            written = memos.note(ledger, caller, args.branch, text=args.text, post=args.post)
+            print(f"noted: your working note ({len(written.text)} characters); it moves no row")
+            return 0
         else:
+            memo = getattr(args, "memo", "")
+            if memo:   # checked before the move: a bad note refuses the whole command
+                from flotilla.ledger import memos
+                memo = memos.checked(memo)
             result = MOVES[args.move](ledger, caller, args)
+            if memo:
+                moved = result[0] if isinstance(result, tuple) else result
+                memos.write(ledger.state_dir, ledger.repo_key, memos.Memo(moved.id, caller.name, memo, ledger.now()))
             if isinstance(result, tuple):
                 row, text = result
                 print(summary(row))
