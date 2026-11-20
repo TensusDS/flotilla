@@ -45,6 +45,7 @@ class Post:
     project: str = ""   # the fleet's name its seats carry (`beta-orchestrator 1`); "" for a profile without one
     effort: str = ""   # `claude --effort` for its seats; "" leaves Claude Code's default
     unknown: tuple = ()   # moves `may` names that this release does not know: read, never granted (item 4)
+    compact_window: object = ""   # the frontmatter value as read (a number or `off`); "" when the post names none
 
     def matches(self, session_name: str) -> bool:
         regex = "^" + re.escape(self.name_pattern).replace(re.escape("{n}"), r"\d+") + "$"
@@ -115,8 +116,15 @@ def load_post(path: Path) -> Post:
     kept = meta.get("plugins", [])
     if not isinstance(kept, list):
         raise PostError(f"{path}: `plugins` must be a list of plugin ids like [playwright@claude-plugins-official]")
+    window = meta.get("compact_window", "")
+    if "compact_window" in meta:
+        from flotilla.fleet.compaction import parsed
+        try:
+            window = parsed(window)
+        except ValueError as err:
+            raise PostError(f"{path}: `compact_window` {err}") from err
     return Post(name, pattern, frozenset(set(may) & set(MOVES)), one_copy, version, path, body, model, mode,
-                tuple(kept), "plugins" in meta, effort=effort, unknown=unknown)
+                tuple(kept), "plugins" in meta, effort=effort, unknown=unknown, compact_window=window)
 
 
 def _folder(root: Path) -> Path:
