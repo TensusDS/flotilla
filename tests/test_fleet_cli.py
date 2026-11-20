@@ -646,3 +646,24 @@ def test_a_borrow_on_a_limited_model_is_refused(tmp_path, monkeypatch):
     code, out = run_cli("spawn", "main", "--model", "sonnet", "--for", "q", "--task", "look", "--dry-run",
                         "--root", str(root))
     assert code == 0 and "stopped on" not in out, out
+
+
+def test_the_fleet_names_each_seats_window_and_the_old_ones(tmp_path, monkeypatch):
+    """Seat compaction design 1 and 6: a seat raised before 0.34 keeps Claude Code's default until raised again."""
+    from fleetkit import FakeClaude
+    from flotilla.fleet import spawn
+    from flotilla.ledger.commands import open_ledger
+    from flotilla.core.storage import LocalLogStore
+    root = onboarded(tmp_path, monkeypatch)
+    fake = FakeClaude()
+    ledger = open_ledger(root)
+    ledger.run = fake
+    spawn.spawn(ledger, {"main": 1}, census=fake.census, store=LocalLogStore(tmp_path / "names"), caller="test",
+                wait=0.1, poll=0.05, sleep=lambda s: None)
+    monkeypatch.setattr("flotilla.fleet.commands.census", fake.census)
+    code, out = run_cli("fleet", "--root", str(root))
+    assert code == 0 and "model opus, compacts near 200k" in out
+    from flotilla.fleet import compaction
+    monkeypatch.setattr(compaction, "recorded", lambda row: compaction.UNKNOWN)
+    code, out = run_cli("fleet", "--root", str(root))
+    assert "raised before compaction windows; retire and raise it again" in out

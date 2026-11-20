@@ -86,7 +86,7 @@ def main():
                     cwd = payload["cwd"]
             except Exception:
                 cwd = None
-            if not project_found(cwd or os.getcwd()):
+            if not project_found(cwd or os.getcwd()) or sys.argv[2:3] == ["pre-compact"]:
                 return 0
             if guard:
                 sys.stdout.write(guard_answer(data, message))

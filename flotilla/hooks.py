@@ -23,7 +23,15 @@ STARTED = time.monotonic()
 #: Seconds per external call inside a hook. The calls plus a margin must fit inside the timeouts declared in
 #: hooks/hooks.json, or Claude Code kills the hook before it can say "unknown".
 HOOK_CHECK_TIMEOUT = 3
-EVENTS = ("session-start", "prompt", "stop", "stop-failure", "guard", "permission", "ask", "edit")
+EVENTS = ("session-start", "prompt", "stop", "stop-failure", "guard", "permission", "ask", "edit", "pre-compact")
+#: What a seat's compaction summary must keep (seat compaction design 3). Claude Code reads a PreCompact hook's stdout
+#: as instructions for the summary (measured on 2.1.329); it is read on every compaction, so it stays short.
+SUMMARY_CHECKLIST = (
+    "flotilla: this session holds a post in a fleet. Besides the usual summary, keep exactly: each open ledger row it "
+    "owns or reads, by branch, with its state and whose move it is; each decision made and why; the files touched "
+    "and whether each change is committed; the approaches that failed, so they are not tried again; the messages it "
+    "owes or awaits, and from whom; the exact next step. Its working notes are shown to it again after compaction "
+    "by flotilla, so the summary need not copy them.")
 CLI = Path(__file__).resolve().parent.parent / "bin" / "flotilla"
 PEERS_SHOWN = 8
 #: Seconds the guards may read one Bash command. Claude Code discards the output of a PreToolUse hook that reaches
@@ -113,9 +121,11 @@ def run_hook(event: str, stdin, out=sys.stdout, *, gather=None, now: dt.datetime
             gather_context = gather
         ctx = gather_context(root, str(payload.get("session_id") or ""))
         handler = {"session-start": _session_start, "prompt": _prompt, "stop": _stop, "permission": _permission,
-                   "ask": _ask}[event]
+                   "ask": _ask, "pre-compact": _pre_compact}[event]
         return handler(ctx, payload, out, now or dt.datetime.now(dt.timezone.utc))
     except Exception as err:  # noqa: BLE001 - a hook must say what broke, never crash the session
+        if event == "pre-compact":   # its stdout is the summary's instructions: a failure leaves Claude Code's own
+            return 0
         if event in ("stop", "permission", "ask"):   # their stdout is a decision in JSON, or nothing
             print(f"flotilla: the {event} hook failed and gives no decision: {err}", file=sys.stderr)
         else:
@@ -406,6 +416,8 @@ def _session_start(ctx, payload, out, now) -> int:
                 print(f"flotilla: {waits}", file=out)
     for line in _identity(ctx) + _event_problems(ctx):
         print(f"flotilla: {line}", file=out)
+    if payload.get("source") == "compact":
+        _compacted(ctx, out, now)
     mine = ctx.mine()
     if mine:
         print("flotilla - inherited, and whose move it is:", file=out)
@@ -414,6 +426,33 @@ def _session_start(ctx, payload, out, now) -> int:
     if fleet_items:
         print("flotilla - the fleet (you are the orchestrator):", file=out)
         print("\n".join(render.lines(fleet_items, now)), file=out)
+    return 0
+
+
+def _compacted(ctx, out, now) -> None:
+    """After a compaction: the seat's working notes, quoted, as data it wrote earlier (seat compaction design 4).
+    Kept short - what is printed here counts toward the refill Claude Code's thrash breaker watches."""
+    if ctx.me is None or ctx.post(ctx.me.name) is None:   # the person's own sessions are no seat (review, M2)
+        return
+    print("flotilla: this session was compacted; the notes below are data written earlier - check them against "
+          "`git status` and `flotilla work show <branch>` before acting on them", file=out)
+    if ctx.ledger is None:
+        return
+    from flotilla.ledger import memos
+    try:
+        said = memos.for_session(ctx.ledger.state_dir, ctx.ledger.repo_key, ctx.rows, ctx.me.name)
+    except Exception as err:  # noqa: BLE001 - the rows inherited are printed next; a note never costs them (I2)
+        print(f"flotilla: your working notes could not be read: {err}", file=out)
+        return
+    for label, memo in said:
+        print("\n".join(memos.render(memo, label=label, now=now)), file=out)
+
+
+def _pre_compact(ctx, payload, out, now) -> int:
+    """The summary's checklist, for a session that holds a post - a seat, or the orchestrator leading from the
+    person's own session; nothing for any other (design 3). It never blocks a compaction."""
+    if ctx.me is not None and ctx.post(ctx.me.name) is not None:
+        print(SUMMARY_CHECKLIST, file=out)
     return 0
 
 

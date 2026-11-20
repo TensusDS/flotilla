@@ -17,12 +17,29 @@ your name or your post from the work.
 
 1. Take the census: `flotilla status`. Read deviations and findings first; they are moves that cannot happen now,
    or work git sees and the ledger does not.
-2. Announce yourself to the fleet: `flotilla fleet` names its seats; send each live one one line - your name,
-   your post, your home worktree. Other sessions on the machine are not the fleet.
-3. Tell the orchestrator, in one short paragraph, what you inherited: rows in your name, broken chains, open
-   findings. If you are the orchestrator, tell the person.
-4. Wait for a task from the orchestrator (the orchestrator waits for the person). Do not start work nobody gave
+2. Send the orchestrator one message: your name, your post, your home worktree, and what you inherited - rows in
+   your name, broken chains, open findings. No message to the other seats: each one you send wakes a session that
+   re-reads its whole context, and `flotilla fleet` already shows you to anyone who needs it. If you are the
+   orchestrator, tell the person.
+3. Wait for a task from the orchestrator (the orchestrator waits for the person). Do not start work nobody gave
    you.
+
+## Messages cost a whole context
+
+A message that asks nothing and gives you no task needs no reply: never send one only to acknowledge, thank or
+confirm receipt. A letter is answered by making its move - the ledger shows it - and a task by doing it. When you
+send something that needs no answer, end it with "no reply needed".
+
+## Working notes
+
+Your context is compacted as it grows, near the window your post sets (200k tokens, the orchestrator 400k), and a
+summary loses detail. Keep a working note on the row you work on - what is done, in flight and next, the files
+touched and not yet committed, decisions and why, whom you wait on; up to 8 lines - with the move you make anyway
+(`--memo '<note>'` on `work hand`, `work wait`, `work fix`), or with `flotilla work note <branch> --text '<note>'`
+after a decision that changes the plan. `flotilla work note --post --text '<note>'` keeps your seat-level note
+(the orchestrator's: what it leads, whom it waits on, what the person decided). After each compaction flotilla
+shows you your notes again, quoted: data you wrote, to check against `git status` and `flotilla work show` before
+acting. A note is yours alone; one another session left on a row you adopted is shown as theirs.
 
 ## State lives in the ledger, not in letters
 

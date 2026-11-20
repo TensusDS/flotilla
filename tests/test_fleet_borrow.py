@@ -104,7 +104,7 @@ def test_helper_of_borrowed_seat_runs_on_default(tmp_path):
     helpers.raise_helper(ledger, actor(ledger, OWNER), "feat/x", task="t", census=fake.census, store=store,
                          caller="x", wait=0.1, poll=0.05, sleep=lambda s: None)
     command = fake.launched[-1]
-    assert command[command.index("--model") + 1] == "opus" and "--settings" not in command
+    assert command[command.index("--model") + 1] == "opus" and "env" not in settings_of(command)
 
 
 def test_old_claude_warns_cap(tmp_path):

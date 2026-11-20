@@ -68,6 +68,7 @@ The CLI is `${CLAUDE_PLUGIN_ROOT}/bin/flotilla`. Every command takes `--help`.
 | judge | `walked --build <b> --steps "<what>" --saw "<what>"`, `broke --where "<where>" --saw "<what>"`, `unbroke --why "<why>"` |
 | orchestrator | `assign --reader "<session>"`, `hold --until <branch or session or "the person"> --why "<why>"`, `unhold`, `adopt --to "<session>"` (or `adopt --from "<gone session>" --to "<session>"` for all the work it owned), `urgent`, `walkable`, `release` |
 | the person | `approve` |
+| every session | `note <branch> --text "<note>"` on a row it owns or reads, `note --post --text "<note>"` for its seat; `--memo "<note>"` on `hand`, `wait` and `fix`. A working note moves no row; `work show` quotes a row's notes |
 
 Worktrees and receipts:
 
@@ -175,6 +176,13 @@ not asked about again.
    keep, or your own words. `flotilla gc restore <entry or tree>` brings archived files back.
 6. **After a plugin update:** stand the fleet down, update, bring `.flotilla/posts/` up to the new templates, raise
    the fleet again.
+7. **Long-lived seats and their context:** every request a seat makes re-reads its whole context, so a seat compacts
+   near its post's window: 200k tokens, the orchestrator 400k. Set it in a post's frontmatter -
+   `compact_window: 300000` (at least 150000, below which Claude Code's compaction can thrash and stop the seat), or
+   `compact_window: off` for Claude Code's default (about 967k on a 1M model). It applies from a seat's next raise;
+   `flotilla fleet` names each seat's window and the seats raised before windows existed. A seat keeps a working
+   note on its row (`--memo`, `flotilla work note`), shown to it again after each compaction. When your own session
+   leads the fleet, type `/autocompact 400k` in it: flotilla does not launch it, so it cannot set its window.
 
 ## Troubleshooting
 

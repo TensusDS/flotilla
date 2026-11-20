@@ -18,8 +18,8 @@ from flotilla.fleet.names import number_of
 PERMISSION = {"ask": "manual", "rules": "dontAsk", "auto": "auto"}
 STRONGEST = "opus"
 CLI = Path(__file__).resolve().parents[2] / "bin" / "flotilla"
-FIRST_PROMPT = ("Use the flotilla:flotilla skill: take the census, announce yourself to the live peers, report what "
-                "you inherited, then wait for a task.")
+FIRST_PROMPT = ("Use the flotilla:flotilla skill: take the census, send the orchestrator one message with your name, "
+                "post, home tree and what you inherited (the orchestrator tells the person), then wait for a task.")
 
 
 class LaunchError(RuntimeError):
@@ -137,7 +137,8 @@ def system_prompt(seat: Seat, post, *, main: Path) -> str:
             + (": take each task there with `flotilla tree switch <branch>`. " if "claim" in post.may else
                ", on its own branch. ") +
             f"The flotilla command line is {CLI}; every ledger move goes through it. Your name and your post are "
-            "given here: never infer them from the work. " + REFUSAL + "\n\n" + post.body.strip())
+            "given here: never infer them from the work. " + REFUSAL + "\n\n" + WORKING_NOTES + "\n\n" + NO_ACKS
+            + "\n\n" + post.body.strip())
 
 
 #: Every seat, every post (alpha update to 0.7.1: the person had to ask what to run). One text, so the posts
@@ -151,6 +152,22 @@ REFUSAL = ("When a call is refused to you and only the person can allow it - aut
            "a hook, or a permission wider than the one call refused: a push a check refused is fixed by running the "
            "check, not by passing it, and a flotilla guard's refusal is reported verbatim, never worked around. An "
            "approve is never yours to propose: say the batch waits for the person's yes.")
+
+#: Every seat (seat compaction design 2): projects copy their posts once, so the habit rides here, not in a template.
+#: Its context is compacted near its post's window; the note is what survives without loss.
+WORKING_NOTES = ("Keep a working note on the row you work on: what is done, what is in flight, the next step, the "
+                 "files touched and not yet committed, the decisions you made and why, and whom you wait on - up to "
+                 "8 lines. Write it with the move you make anyway (`--memo '<note>'` on `work hand`, `work wait` and "
+                 "`work fix`), or with `flotilla work note <branch> --text '<note>'` after a decision that changes "
+                 "the plan; `--post` instead of a branch keeps your seat-level note. Put it in single quotes, with no "
+                 "backticks or braces: the shell runs a backtick and the guard refuses a brace. Not after every step. "
+                 "Your "
+                 "context is compacted as it grows, and flotilla shows you your notes again after each compaction.")
+
+#: Every seat (seat compaction design 5): each message wakes a session that re-reads its whole context.
+NO_ACKS = ("A message that asks nothing and gives you no task needs no reply: never send one only to acknowledge, "
+           "thank or confirm receipt. A letter is answered by making its move - the ledger shows it - and a task by "
+           "doing it. When you send something that needs no answer, end it with \"no reply needed\".")
 
 
 def argv(seat: Seat, post, profile: dict, *, main: Path, settings_json: str = "", first_prompt: str = "",
@@ -168,6 +185,8 @@ def argv(seat: Seat, post, profile: dict, *, main: Path, settings_json: str = ""
     effort = effort_for(profile, post)
     if effort:
         command += ["--effort", effort]
+    from flotilla.fleet import compaction
+    settings_json = compaction.with_window(settings_json, compaction.window_for(post))
     if settings_json:
         command += ["--settings", settings_json]
     return command + ["--append-system-prompt", system_prompt(seat, post, main=main), first_prompt or FIRST_PROMPT]

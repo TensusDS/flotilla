@@ -3,6 +3,27 @@
 Every release is a tagged commit on GitHub. flotilla is pre-1.0: a minor version may change an interface. Why
 each change was made is in [docs/specs/2026-09-22-decisions-log.md](docs/specs/2026-09-22-decisions-log.md).
 
+## 0.34.0 - 2026-11-20
+
+A fleet's seats lived for days and carried 500k-1M tokens of context, re-read on every step: in one machine's three
+days that was about 90% of the fleet's spend (issue #9). Seats now compact far earlier, and what they know about
+their work is kept across each compaction.
+
+- **A seat compacts near its post's window: 200k tokens, the orchestrator 400k.** A post sets its own in its
+  frontmatter (`compact_window: 300000`, at least 150000, or `off` for Claude Code's default); flotilla passes it to
+  each seat it raises. **Seats already running keep the old window until raised again** (retire, then spawn);
+  `flotilla fleet` names them. When your own session leads the fleet, `flotilla spawn --lead` asks you to type
+  `/autocompact 400k` there.
+- **A seat keeps a working note on its row** - what is done, in flight and next, the files touched, decisions and
+  why, whom it waits on - with the move it makes anyway (`--memo` on `work hand`, `work wait`, `work fix`) or with
+  `flotilla work note`. After each compaction it is shown its notes again, quoted, as data to check before acting;
+  before each one, flotilla tells Claude Code what the summary must keep. `work show` quotes a row's notes, and
+  `work adopt` hands the notes of a gone seat to the orchestrator for the heir, labelled as the gone seat's.
+- **No turn only to acknowledge.** A starting seat sends the orchestrator one message instead of one to every live
+  seat, no seat answers a message that asks nothing, and the orchestrator does not acknowledge reports. Each message
+  woke a session that re-read its whole context (825 acknowledgements in those three days).
+- The orchestrator template moves to version 34; the other posts are unchanged.
+
 ## 0.33.3 - 2026-11-18
 
 From the same night's notes: Claude Code stopped lane runs - most of them only waiting - when the machine ran short

@@ -105,15 +105,17 @@ def test_the_argv_carries_the_plugin_settings_as_one_element():
     settings = json.dumps({"enabledPlugins": {'odd"id@m': False, "pdf@m": False}})
     argv = launch.argv(seat, POSTS["reviewer"], {"permissions": {"mode": "auto"}, "fleet": {"model": "opus"}}, main=MAIN,
                        settings_json=settings)
-    assert argv[argv.index("--settings") + 1] == settings
-    assert json.loads(argv[argv.index("--settings") + 1]) == {"enabledPlugins": {'odd"id@m': False, "pdf@m": False}}
+    assert json.loads(argv[argv.index("--settings") + 1]) == {"enabledPlugins": {'odd"id@m': False, "pdf@m": False},
+                                                         "autoCompactWindow": 200_000}
     assert argv.index("--settings") < argv.index("--append-system-prompt") and argv[-1] == launch.FIRST_PROMPT
 
 
-def test_no_plugin_settings_means_no_settings_flag():
+def test_no_plugin_settings_means_only_the_window():
+    import json
     seat = launch.seat_for(MAIN, POSTS["reviewer"], "review session 3")
-    assert "--settings" not in launch.argv(seat, POSTS["reviewer"], {"fleet": {"model": "opus"}}, main=MAIN)
-    assert "--settings" not in launch.argv(seat, POSTS["reviewer"], {"fleet": {"model": "opus"}}, main=MAIN, settings_json="")
+    for argv in (launch.argv(seat, POSTS["reviewer"], {"fleet": {"model": "opus"}}, main=MAIN),
+                 launch.argv(seat, POSTS["reviewer"], {"fleet": {"model": "opus"}}, main=MAIN, settings_json="")):
+        assert json.loads(argv[argv.index("--settings") + 1]) == {"autoCompactWindow": 200_000}
 
 
 def test_a_post_may_narrow_the_profiles_permission_mode_never_widen_it():

@@ -22,7 +22,7 @@ from pathlib import Path
 
 from flotilla.core import paths
 from flotilla.core.census import CensusUnavailable
-from flotilla.fleet import compose, launch, names, plugins
+from flotilla.fleet import compaction, compose, launch, names, plugins
 from flotilla.ledger import core, gitq
 from flotilla.ledger.actor import Actor
 from flotilla.ledger.errors import MoveRefused
@@ -485,7 +485,9 @@ def raise_seat(ledger, seat: launch.Seat, *, caller: str, census, wait: float = 
             row = s.append(actor, next_row_id(s.rows), "reserve", "reserved",
                            fields={"branch": seat.branch, "owner": seat.name, "tree": str(seat.tree),
                                    **(fields or {})},
-                           evidence={"model": model or launch.model_for(profile, post), **(evidence or {})})
+                           evidence={"model": model or launch.model_for(profile, post),
+                                     "compact_window": compaction.evidence(compaction.window_for(post)),
+                                     **(evidence or {})})
     except MoveRefused as err:
         _take_back_git(ledger, seat)
         raise SpawnRefused(f"the post row for {seat.name} was refused: {err}; the tree and branch were taken "

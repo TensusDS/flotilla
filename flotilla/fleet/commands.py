@@ -12,7 +12,7 @@ from flotilla.core.census import CensusUnavailable, read_census
 from flotilla.core.text import visible
 from flotilla.core.identity import find_calling_session
 from flotilla.core.storage import LocalLogStore, StorageCorrupt
-from flotilla.fleet import compose, launch, names, plugins, retire, spawn, strangers
+from flotilla.fleet import compaction, compose, launch, names, plugins, retire, spawn, strangers
 from flotilla.ledger.actor import NO_CENSUS
 from flotilla.ledger.commands import open_ledger
 from flotilla.ledger.errors import MoveRefused
@@ -70,6 +70,12 @@ def counts_from(args, profile: dict) -> dict:
     return flags
 
 
+#: The person's own session is not launched by flotilla, so its compaction window is theirs to set (seat compaction
+#: design 2a): the orchestrator's 400k, typed there.
+LEAD_WINDOW = ("Seats compact near their post's window; this session is yours, so flotilla cannot set it: type "
+               "`/autocompact 400k` here for the orchestrator's window.")
+
+
 def _lead(ledger, args) -> int:
     """Reserve the orchestrator's name for the person's own session (decision 191): only a person renames an
     interactive session, so flotilla can only issue the name - from the journal, never reissued (review of 0.5.0, I3)."""
@@ -114,9 +120,11 @@ def _lead(ledger, args) -> int:
         print(f"{name}: this session leads the fleet. Claude Code shows the name once you send your next message; "
               "raise the rest with `flotilla spawn --fill` after that message, so the seats learn this name and "
               "not the old one.")
+        print(LEAD_WINDOW)
         return 0
     print(f"{name}: reserved, but flotilla could not tell which session runs this, so it cannot name it. Type "
           f"`/rename {name}`, then send any message; run `flotilla spawn --fill` after that message.")
+    print(LEAD_WINDOW)
     return 0
 
 
@@ -252,6 +260,7 @@ def _spawn(ledger, args) -> int:
             print(f"{seat.name}  ({seat.post})  tree {seat.tree}  branch {seat.branch}")
             command = launch.argv(seat, post, profile, main=main, settings_json=narrow.settings_json(post))
             print(f"    {launch.shown(command)}  (from {main})")   # the command `raise_seat` runs, not a copy
+            print(f"    {compaction.of_command(command)}")
             off = ", ".join(narrow.turned_off(post)) or "none"
             print(f"    turns off: {off if narrow.entries is not None else 'unknown, ' + plugins.NOT_NARROWED}")
         print(f"dry run: {len(seats)} session(s) planned; nothing was changed")
@@ -336,6 +345,7 @@ def _borrow(ledger, args, profile: dict) -> int:
         command = launch.argv(seat, post, profile, main=main, model=model,
                               settings_json=borrow.settings(narrow.settings_json(post), default), first_prompt=prompt)
         print(f"    {launch.shown(command)}  (from {main})")
+        print(f"    {compaction.of_command(command)}")
         print("dry run: 1 session planned; nothing was changed")
         return 0
     raised, warnings = borrow.raise_borrowed(ledger, post_name, model=model, for_task=for_task, brief=brief, by=by,
@@ -508,6 +518,8 @@ def _fleet(ledger, args) -> int:
         lock = "locked" if item["locked"] else "not locked"
         work = ", ".join(f"{row.branch} ({row.state})" for row in item["work"]) or "no open work"
         model = f"model {item.get('model') or 'unknown'}"
+        if "window" in item:
+            model += f", {compaction.fleet_note(item['window'])}"
         if item.get("borrowed_for"):   # fleet model design 5.3: lent for one task, closed when it is done
             model += f" (borrowed for {visible(item['borrowed_for'])})"
         if item.get("finished"):   # `helper done`, still running on its model until retired

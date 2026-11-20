@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 from flotilla.core.census import CensusUnavailable
-from flotilla.fleet import cleanup, leftovers, strangers
+from flotilla.fleet import cleanup, compaction, leftovers, strangers
 from flotilla.fleet.model import borrowed, recorded
 from flotilla.ledger import core
 from flotilla.ledger.actor import Actor
@@ -80,6 +80,7 @@ def fleet_view(ledger, sessions: list | None) -> list[dict]:
             "session_id": found.session_id if found else "",
             "held_on": found.held_on if found else None,
             "dirty": _dirty(row.tree), "model": recorded(row), "borrowed_for": borrowed(row).get("for", ""),
+            "window": compaction.recorded(row),
             "work": [other for other in rows.values()
                      if other.is_open and other.owner == row.owner and other.state != "reserved"],
             "stranger": "",

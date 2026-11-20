@@ -87,6 +87,17 @@
           }
         ]
       }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/flotilla\" hook pre-compact",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

@@ -8,6 +8,66 @@ something through, B a bug a user meets, P polish, tests or docs), or `open, des
 run). A later triage re-checks only items whose named files changed since that version. An item that is done -
 fixed by a release, or found fixed - leaves its section for **Done** at the bottom, one line with the version.
 
+## From the review of 0.34.0 (2026-11-20, seats compact early and keep working notes)
+
+- **The memo log is never pruned.** Every note is appended for ever and `memos.latest` reads the whole file on each
+  compaction, `work show` and adopt. Compact it to the last note per (row, writer), or drop notes of closed rows,
+  when it grows. *(checked 2026-11-20 on 0.34.0: open, P - flotilla/ledger/memos.py)*
+- **No committed test for a row adopted back to a former owner (A -> B -> A)**: without the `name != row.owner` skip
+  in `memos.inherited`, A would see its own note twice; a scratch test through `commands._adopt` passed, the suite
+  does not pin it. *(checked 2026-11-20 on 0.34.0: open, P - flotilla/ledger/memos.py, tests/test_memos.py)*
+- **`work adopt <seat branch>` prints the gone seat's seat-level note as "left by"**, while the after-compaction hook
+  leaves seat notes out; the two views differ for a post row (the same before 0.34's last fix). *(checked 2026-11-20
+  on 0.34.0: open, P - flotilla/ledger/commands.py `_inherited_notes`)*
+- **The README says nothing of compaction windows** (USER_MANUAL, Daily operation 7, does). *(checked 2026-11-20 on
+  0.34.0: open, P - README.md)*
+
+## From the token-spend research of 2026-11-20 (issue #9: long-lived seats carry 500k-1M context)
+
+Three research passes (Claude Code's own mechanisms at 2.1.329, multi-agent practice, prompt-cache economics) and
+the person's backlog ruling: every technique below is kept; 0.34.0 builds items 1 and 2 of the ranked list (seats
+compact at a post's window with a working note in the ledger; no acknowledgement turns -
+`docs/specs/2026-11-20-seat-compaction-design.md`). Savings are shares of the seats' spend, estimated from issue
+#9's measurement, not measured.
+
+- **Wake a seat only when it has something to do.** Watcher notifications (`work wait`, `lane run` and output
+  watchers) started 1,243 turns, about 45% of the seats' spend in issue #9's three days. Wake only on an event the
+  seat must act on, and coalesce events within a short window into one wake-up. Estimated 10-20%. First measure how
+  many wake-ups lead to no move. *(checked 2026-11-20 on 0.33.3: open, design - flotilla/watch/, flotilla/ledger/handover.py:163)*
+- **Full rotation: retire a seat as it goes idle and raise a fresh one on its post with its working note.** Reuses
+  `retire`, `spawn.raise_seat`, `work adopt`, `launch.argv(first_prompt=...)` and `watch`'s "retire it" hint (as
+  for a borrowed seat). Open: the fresh seat's name (messages go by name; a new number loses them), the moment (after
+  `work close`/`ship` with nothing taken, while the cache is warm - Claude Code's supervisor stops an unattached idle
+  background session after about an hour, and the next message rewrites its whole context: 168 rewrites of >100k
+  tokens in three days). Estimated +5-15% over compaction. *(checked 2026-11-20 on 0.33.3: open, design - flotilla/fleet/retire.py:114, flotilla/fleet/spawn.py:446)*
+- **Mechanical posts on a cheaper model** (issue #10): a post's `model` already exists (`launch.model_for`); the
+  templates and docs could suggest Sonnet for a sender. Escalation on repeated `work fix` is a separate design.
+  Estimated 5-15%. *(checked 2026-11-20 on 0.33.3: open, design - flotilla/fleet/launch.py:78)*
+- **Less tool output kept in context**: a lower `bashOutputMaxChars` in the seats' `--settings`, and terse
+  `flotilla` output by default with a detailed mode on request. Every token kept is re-read on every later request.
+  Estimated 3-8%. *(checked 2026-11-20 on 0.33.3: open, design - flotilla/fleet/launch.py:156)*
+- **One cached system prompt across the seats' trees**: `--exclude-dynamic-system-prompt-sections` moves the
+  working directory and git status out of the system prompt, so seats in different worktrees can share its cache.
+  Cheaper cold starts. Estimated 1-3%. *(checked 2026-11-20 on 0.33.3: open, measure)*
+- **Claude Code mods (a plugin's JavaScript hooks module)**: `$.session.usage()` gives the context size without the
+  transcript, `session.receive` can absorb a delivery before it starts a turn, `$.session.compact()` compacts between
+  turns. Unknown whether mods load in `claude --bg` seats; a new runtime in a Python plugin, and `messages()` widens
+  what flotilla could read. A scratch-project spike first. *(checked 2026-11-20 on 0.33.3: open, measure)*
+- **Idle requests in seats**: prompt suggestions (`CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false`) and the session
+  recap (`awaySummaryEnabled: false`) send full-context requests in interactive sessions; whether a background seat
+  makes them is not known. *(checked 2026-11-20 on 0.33.3: open, measure)*
+- **Verify on a live fleet that `PreCompact` and `SessionStart(compact)` fire in `claude --bg` seats** (measured only
+  headless, `claude -p`: a background session refuses a scratch directory whose trust was never accepted), and the
+  context per request before and after 0.34.0. The hook trace (`watch/fired`) records a seat's first pre-compact.
+  *(checked 2026-11-20 on 0.34.0: open, measure)*
+- **What flotilla does when Claude Code's thrash breaker stops a seat** ("Autocompact is thrashing", three
+  compactions each refilled within three turns): which hook, if any, sees it, and whether the orchestrator should be
+  told. The 150k floor makes it unlikely, not impossible (a seat reading huge outputs). *(checked 2026-11-20 on
+  0.34.0: open, measure - flotilla/fleet/compaction.py)*
+- **Issue #9's dollar figures use Opus 5 prices** ($0.50 per Mtok cache read). On Opus 5.5 a cache read costs $0.20,
+  so the same requests cost about half; the shares and the conclusions hold. Worth a note on the issue.
+  *(checked 2026-11-20: open, docs)*
+
 ## The community plugin directory refuses flotilla (since about 2026-11-05) - waiting on Anthropic, not a fix
 
 Submitted to Anthropic's community plugin directory on 2026-10-04. 0.29.2 passed the directory policy check; every
