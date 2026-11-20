@@ -109,8 +109,12 @@ in a scratch project (`claude -p` with `--settings` carrying `autoCompactWindow:
 
 ### 2. The working note
 
-- **A memo belongs to the session that wrote it** (builder check, Q1 and Q4 - my call). A row keeps the latest memo
-  of each writer: `memos: {<session name>: {"text", "at"}}`. The field `note` stays the wait's reason. So a reviewer's
+- **A memo belongs to the session that wrote it** (builder check, Q1 and Q4 - my call). The latest memo of each
+  writer on each row is kept. The field `note` stays the wait's reason.
+- **Memos live in their own log beside the ledger** (`<state>/memos`, keyed by the project like the ledger), not as
+  row fields or ledger events (found while planning): a row's last update and last event drive the dropped-ball and
+  late-row clocks and a release's `settled_by`, so a note written as an event would reset a stalled row's age and
+  could hide what the last real move said. A memo changes no row's state, age or history. So a reviewer's
   memo on a row it reads is its own, never the author's; nobody can write or overwrite another session's memo, which
   keeps the anti-goal ("nobody else can write it") without an owner-only rule that `fix` could never pass.
 - **Size and shape** (Q2 - my call): at most 1,500 characters and 8 lines. Line breaks are allowed; every other
