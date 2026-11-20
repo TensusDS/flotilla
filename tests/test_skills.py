@@ -155,9 +155,11 @@ def test_the_down_command_shows_the_fleet_and_asks_first():
     assert "flotilla fleet`" in text and "flotilla fleet down" in text and "confirm" in text
 
 
-def test_a_session_announces_itself_to_the_fleet_not_to_the_machine():
+def test_a_session_announces_itself_to_the_orchestrator_only():
+    """Not to the machine's sessions, and since 0.34 not to every seat either: each message wakes a whole context
+    (seat compaction design 5)."""
     text = (ROOT / "skills" / "flotilla" / "SKILL.md").read_text(encoding="utf-8")
-    assert "list them (ListAgents)" not in text and "flotilla fleet` names its seats" in text
+    assert "list them (ListAgents)" not in text and "Send the orchestrator one message" in text
 
 
 def test_the_orchestrator_declares_a_splits_dependency():

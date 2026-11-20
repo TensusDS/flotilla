@@ -138,3 +138,32 @@ def test_a_seat_raised_before_windows_reads_unknown(tmp_path, monkeypatch):
     assert "raised before compaction windows" in compaction.fleet_note(compaction.UNKNOWN)
     assert compaction.fleet_note(None) == "compacts at Claude Code's default"
     assert compaction.fleet_note(200_000) == "compacts near 200k"
+
+
+# -- what every seat is told (design sections 2 and 5) --
+
+def test_system_prompt_carries_notes_and_no_acks():
+    for post in TEMPLATES.values():
+        seat = launch.seat_for(MAIN, post, post.name_pattern.replace("{n}", "1"))
+        text = launch.system_prompt(seat, post, main=MAIN)
+        assert launch.WORKING_NOTES in text and launch.NO_ACKS in text
+    for must in ("--memo", "flotilla work note", "--post", "files touched", "next step", "8 lines"):
+        assert must in launch.WORKING_NOTES
+    for must in ("no reply", "acknowledge", "letter", "no reply needed"):
+        assert must in launch.NO_ACKS
+
+
+def test_skill_start_sends_one_message_to_the_orchestrator():
+    text = (Path(P.__file__).resolve().parent.parent / "skills" / "flotilla" / "SKILL.md").read_text(encoding="utf-8")
+    assert "send each live one" not in text
+    start = text[text.index("## When you start"):text.index("## State lives")]
+    assert "one message" in start and "orchestrator" in start
+    assert "## Working notes" in text and "flotilla work note" in text
+    assert "no reply needed" in text
+
+
+def test_the_orchestrator_template_names_its_window_and_sends_no_acknowledgements():
+    orchestrator = TEMPLATES["orchestrator"]
+    assert orchestrator.compact_window == 400_000 and orchestrator.template_version == 34
+    assert "--post" in orchestrator.body and "acknowledge" in orchestrator.body
+    assert all(post.compact_window == "" for name, post in TEMPLATES.items() if name != "orchestrator")
