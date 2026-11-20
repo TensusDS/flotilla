@@ -197,3 +197,14 @@ def test_the_rename_request_stops_once_the_name_shows(tmp_path, monkeypatch):
     assert lead.pending(_store(tmp_path)) == {}
     lead.record(_store(tmp_path), "sid-me", "beta-orchestrator 2", now="t")   # a later lead counts afresh
     assert lead.offered(_store(tmp_path), "sid-me") == 0
+
+
+def test_lead_names_the_autocompact_command(tmp_path, monkeypatch):
+    """flotilla does not launch the person's own session, so its compaction window is theirs to set there."""
+    root = onboarded(tmp_path, monkeypatch)
+    me = _a_session("app-3f", root)
+    monkeypatch.setattr("flotilla.fleet.commands.census", lambda: [me])
+    monkeypatch.setattr("flotilla.fleet.commands.calling_session", lambda sessions: me)
+    monkeypatch.setattr("flotilla.core.caller.person_refusal", lambda what: "")
+    code, out = run_cli("spawn", "--lead", "--root", str(root))
+    assert code == 0 and "/autocompact 400k" in out

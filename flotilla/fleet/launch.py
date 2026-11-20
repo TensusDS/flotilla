@@ -168,6 +168,8 @@ def argv(seat: Seat, post, profile: dict, *, main: Path, settings_json: str = ""
     effort = effort_for(profile, post)
     if effort:
         command += ["--effort", effort]
+    from flotilla.fleet import compaction
+    settings_json = compaction.with_window(settings_json, compaction.window_for(post))
     if settings_json:
         command += ["--settings", settings_json]
     return command + ["--append-system-prompt", system_prompt(seat, post, main=main), first_prompt or FIRST_PROMPT]

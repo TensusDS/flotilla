@@ -289,8 +289,12 @@ def mcp_plugin(tmp_path, plugin_id, **more):
 
 
 def settings_of(command):
+    """The plugin narrowing a launch carries: its `--settings` less the compaction window every seat gets (0.34),
+    None when nothing else is there."""
     import json
-    return json.loads(command[command.index("--settings") + 1]) if "--settings" in command else None
+    data = json.loads(command[command.index("--settings") + 1]) if "--settings" in command else {}
+    data.pop("autoCompactWindow", None)
+    return data or None
 
 
 def test_each_seat_starts_only_the_mcp_plugins_its_post_declares(tmp_path):
@@ -311,7 +315,7 @@ def test_a_plugin_list_that_fails_spawns_anyway_without_settings_and_warns(tmp_p
     fake = FakeClaude(plugin_list_fails=True)
     root, ledger, store = world(tmp_path, fake)
     raised, warnings = run(ledger, store, fake, {"main": 1})
-    assert raised[0].short_id and "--settings" not in fake.launched[0]
+    assert raised[0].short_id and settings_of(fake.launched[0]) is None
     assert any("plugin set not narrowed" in line for line in warnings)
 
 
