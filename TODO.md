@@ -42,6 +42,14 @@ compact at a post's window with a working note in the ledger; no acknowledgement
 - **Idle requests in seats**: prompt suggestions (`CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false`) and the session
   recap (`awaySummaryEnabled: false`) send full-context requests in interactive sessions; whether a background seat
   makes them is not known. *(checked 2026-11-20 on 0.33.3: open, measure)*
+- **Verify on a live fleet that `PreCompact` and `SessionStart(compact)` fire in `claude --bg` seats** (measured only
+  headless, `claude -p`: a background session refuses a scratch directory whose trust was never accepted), and the
+  context per request before and after 0.34.0. The hook trace (`watch/fired`) records a seat's first pre-compact.
+  *(checked 2026-11-20 on 0.34.0: open, measure)*
+- **What flotilla does when Claude Code's thrash breaker stops a seat** ("Autocompact is thrashing", three
+  compactions each refilled within three turns): which hook, if any, sees it, and whether the orchestrator should be
+  told. The 150k floor makes it unlikely, not impossible (a seat reading huge outputs). *(checked 2026-11-20 on
+  0.34.0: open, measure - flotilla/fleet/compaction.py)*
 - **Issue #9's dollar figures use Opus 5 prices** ($0.50 per Mtok cache read). On Opus 5.5 a cache read costs $0.20,
   so the same requests cost about half; the shares and the conclusions hold. Worth a note on the issue.
   *(checked 2026-11-20: open, docs)*
