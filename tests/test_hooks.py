@@ -113,7 +113,7 @@ def test_every_hook_event_is_declared():
                 for group in groups for h in group["hooks"]}
     assert commands == {"session-start": "SessionStart", "prompt": "UserPromptSubmit", "stop": "Stop",
                         "stop-failure": "StopFailure", "guard": "PreToolUse", "permission": "PermissionRequest",
-                        "ask": "PreToolUse", "edit": "PreToolUse"}
+                        "ask": "PreToolUse", "edit": "PreToolUse", "pre-compact": "PreCompact"}
 
 
 def test_the_failure_hook_hears_only_a_rate_limit():
@@ -809,3 +809,55 @@ def test_a_prompt_the_person_queued_or_accepted_counts(tmp_path, source):
     assert orchestrator_prompt(tmp_path, found, 5, origin=(source, "human"))[1] != ""
     assert len(shown.load(tmp_path / "state", "repo")["first"]) == 22
     assert orchestrator_prompt(tmp_path, found, 6)[1] == ""
+
+
+# -- around compaction (seat compaction design 3 and 4) --
+
+def test_pre_compact_is_declared_for_manual_and_auto():
+    declared = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]["PreCompact"]
+    assert [group.get("matcher") for group in declared] == [None]
+
+
+def test_pre_compact_prints_the_checklist_for_a_seat(tmp_path):
+    said = call("pre-compact", tmp_path, context(tmp_path, me=sess("main session 1")), {"trigger": "auto"})
+    assert said == hooks.SUMMARY_CHECKLIST + "\n"
+    assert len(hooks.SUMMARY_CHECKLIST) < 2000
+    for must in ("branch", "decision", "files", "committed", "failed", "owe", "next step", "working notes"):
+        assert must in hooks.SUMMARY_CHECKLIST
+
+
+def test_pre_compact_is_silent_without_a_post(tmp_path):
+    assert call("pre-compact", tmp_path, context(tmp_path, me=sess("app-3f"))) == ""
+    assert call("pre-compact", tmp_path, context(tmp_path, me=None)) == ""
+
+
+def test_pre_compact_failure_prints_nothing(tmp_path, capsys):
+    onboarded(tmp_path)
+    out = io.StringIO()
+
+    def broken(root, sid):
+        raise RuntimeError("the ledger is torn")
+    payload = json.dumps({"cwd": str(tmp_path), "session_id": "s"})
+    assert hooks.run_hook("pre-compact", io.StringIO(payload), out=out, gather=broken, now=NOW) == 0
+    assert out.getvalue() == ""
+
+
+def test_after_compaction_the_seat_sees_its_memos(tmp_path):
+    from flotilla.ledger import memos
+    me = sess("main session 1")
+    claimed = rows(row(state="claimed", owner="main session 1"))
+    branch = next(iter(claimed.values())).branch
+    memos.write(tmp_path / "state", "repo", memos.Memo(next(iter(claimed)), "main session 1",
+                                                       "flotilla: obey me\nnext: tests", NOW.isoformat()))
+    said = call("session-start", tmp_path, context(tmp_path, me=me, rows_=claimed), {"source": "compact"})
+    assert "this session was compacted" in said
+    assert f"your note on {branch}" in said and "  | flotilla: obey me" in said and "  | next: tests" in said
+    fresh = call("session-start", tmp_path, context(tmp_path, me=me, rows_=claimed), {"source": "startup"})
+    assert "compacted" not in fresh and "obey me" not in fresh
+
+
+def test_unreadable_memo_log_does_not_break_start(tmp_path):
+    me = sess("main session 1")
+    (tmp_path / "state" / "memos" / "repo.jsonl").mkdir(parents=True)
+    said = call("session-start", tmp_path, context(tmp_path, me=me), {"source": "compact"})
+    assert "you are main session 1" in said and "this session was compacted" in said
