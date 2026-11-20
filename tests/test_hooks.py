@@ -861,3 +861,22 @@ def test_unreadable_memo_log_does_not_break_start(tmp_path):
     (tmp_path / "state" / "memos" / "repo.jsonl").mkdir(parents=True)
     said = call("session-start", tmp_path, context(tmp_path, me=me), {"source": "compact"})
     assert "you are main session 1" in said and "this session was compacted" in said
+
+
+def test_the_compacted_line_is_for_a_seat_only(tmp_path):
+    """Review of d0517a3, M2: the person's own sessions in the project are no seat."""
+    said = call("session-start", tmp_path, context(tmp_path, me=sess("app-3f")), {"source": "compact"})
+    assert "compacted" not in said
+
+
+def test_a_memo_failure_after_compaction_costs_only_the_notes(tmp_path, monkeypatch):
+    """Review of d0517a3, I2: the rows inherited are still printed when the notes cannot be read."""
+    from flotilla.ledger import memos
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("the memo log is damaged")
+    monkeypatch.setattr(memos, "for_session", broken)
+    waiting = rows(row(state="claimed", owner="main session 1"))
+    said = call("session-start", tmp_path, context(tmp_path, me=sess("main session 1"), rows_=waiting),
+                {"source": "compact"})
+    assert "your working notes could not be read" in said and "inherited, and whose move it is" in said

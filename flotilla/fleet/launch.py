@@ -18,8 +18,8 @@ from flotilla.fleet.names import number_of
 PERMISSION = {"ask": "manual", "rules": "dontAsk", "auto": "auto"}
 STRONGEST = "opus"
 CLI = Path(__file__).resolve().parents[2] / "bin" / "flotilla"
-FIRST_PROMPT = ("Use the flotilla:flotilla skill: take the census, announce yourself to the live peers, report what "
-                "you inherited, then wait for a task.")
+FIRST_PROMPT = ("Use the flotilla:flotilla skill: take the census, send the orchestrator one message with your name, "
+                "post, home tree and what you inherited, then wait for a task.")
 
 
 class LaunchError(RuntimeError):
@@ -157,9 +157,11 @@ REFUSAL = ("When a call is refused to you and only the person can allow it - aut
 #: Its context is compacted near its post's window; the note is what survives without loss.
 WORKING_NOTES = ("Keep a working note on the row you work on: what is done, what is in flight, the next step, the "
                  "files touched and not yet committed, the decisions you made and why, and whom you wait on - up to "
-                 "8 lines. Write it with the move you make anyway (`--memo \"<note>\"` on `work hand`, `work wait` and "
-                 "`work fix`), or with `flotilla work note <branch> --text \"<note>\"` after a decision that changes "
-                 "the plan; `--post` instead of a branch keeps your seat-level note. Not after every step. Your "
+                 "8 lines. Write it with the move you make anyway (`--memo '<note>'` on `work hand`, `work wait` and "
+                 "`work fix`), or with `flotilla work note <branch> --text '<note>'` after a decision that changes "
+                 "the plan; `--post` instead of a branch keeps your seat-level note. Put it in single quotes, with no "
+                 "backticks or braces: the shell runs a backtick and the guard refuses a brace. Not after every step. "
+                 "Your "
                  "context is compacted as it grows, and flotilla shows you your notes again after each compaction.")
 
 #: Every seat (seat compaction design 5): each message wakes a session that re-reads its whole context.

@@ -53,12 +53,12 @@ def test_unknown_subcommand_is_a_usage_error():
     assert "invalid choice" in done.stderr
 
 
-def run_old_hook(tmp_path, cwd):
+def run_old_hook(tmp_path, cwd, event="session-start"):
     source = ENTRY.read_text(encoding="utf-8").replace("MINIMUM = (3, 11)", "MINIMUM = (99, 0)")
     fake = tmp_path / "fake-flotilla"
     fake.write_text(source, encoding="utf-8")
     import json
-    return subprocess.run([sys.executable, str(fake), "hook", "session-start"],
+    return subprocess.run([sys.executable, str(fake), "hook", event],
                           input=json.dumps({"cwd": str(cwd)}), capture_output=True, text=True)
 
 
@@ -135,3 +135,12 @@ def test_the_entrys_push_words_are_the_guards():
     module = importlib.util.module_from_spec(importlib.util.spec_from_loader("flotilla_entry", loader))
     loader.exec_module(module)
     assert module.PUSH_WORDS == guards.PUSH_WORDS
+
+
+def test_old_interpreter_pre_compact_says_nothing(tmp_path):
+    """Its stdout becomes the compaction summary's instructions (review of d0517a3, M3)."""
+    project = tmp_path / "app"
+    (project / ".flotilla").mkdir(parents=True)
+    (project / ".flotilla" / "project.toml").write_text("schema = 1\n", encoding="utf-8")
+    done = run_old_hook(tmp_path, project, event="pre-compact")
+    assert done.returncode == 0 and done.stdout == ""

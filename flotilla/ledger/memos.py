@@ -61,18 +61,44 @@ def write(state_dir, repo_key: str, memo: Memo) -> None:
     _store(state_dir).append(repo_key, {"row": memo.row, "writer": memo.writer, "text": memo.text, "at": memo.at})
 
 
-def latest(state_dir, repo_key: str) -> dict[tuple[str, str], Memo]:
-    """The last memo of each writer on each row; what cannot be read is left out, never raised."""
+def _records(state_dir, repo_key: str) -> list:
+    """Every line of the log that parses, one by one: a damaged line - a hand edit, an outside writer, a disk fault -
+    costs itself, never the notes around it (review of d0517a3, I2)."""
+    import json
     try:
-        records = _store(state_dir).read(repo_key).records
+        data = _store(state_dir)._path(repo_key).read_bytes()
     except (OSError, ValueError):
-        return {}
+        return []
+    found = []
+    for raw in data.split(b"\n"):
+        try:
+            found.append(json.loads(raw.decode("utf-8")))
+        except (UnicodeDecodeError, ValueError):
+            continue
+    return found
+
+
+def _aware(moment: str) -> bool:
+    try:
+        return dt.datetime.fromisoformat(moment).tzinfo is not None
+    except (TypeError, ValueError):
+        return False
+
+
+def latest(state_dir, repo_key: str) -> dict[tuple[str, str], Memo]:
+    """The last memo of each writer on each row; a record that cannot be read, has no time with its zone, or holds
+    text `checked` would refuse is left out, never raised."""
     found: dict[tuple[str, str], Memo] = {}
-    for record in records:
+    for record in _records(state_dir, repo_key):
         if not isinstance(record, dict):
             continue
         fields = [record.get(key) for key in ("row", "writer", "text", "at")]
-        if not all(isinstance(value, str) for value in fields):
+        if not all(isinstance(value, str) for value in fields) or not _aware(fields[3]):
+            continue
+        try:
+            if checked(fields[2]) != fields[2]:
+                continue
+        except MoveRefused:
             continue
         memo = Memo(*fields)
         found[(memo.row, memo.writer)] = memo
@@ -99,6 +125,19 @@ def _post_key(rows: dict, name: str, post_name: str) -> str:
     raise MoveRefused(f"{name} holds no post row, so it has no seat-level note; name the branch the note is about")
 
 
+def may_keep(rows: dict, branch: str, name: str):
+    """The open row of `branch` when `name` owns or reads it; else MoveRefused. Each session's note is its own, and
+    only on a row it works on: a mover that records a wait keeps no note there (review of d0517a3, I3)."""
+    found = [row for row in rows.values() if row.branch == branch and row.is_open]
+    if not found:
+        raise MoveRefused(f"no open row for `{branch}`")
+    row = found[-1]
+    if name not in (row.owner, row.reader):
+        raise MoveRefused(f"only the owner ({row.owner}) or the reader of `{branch}` keeps a working note on it; "
+                          "each session's note is its own - make the move without --memo")
+    return row
+
+
 def note(ledger, actor, branch: str | None, *, text: str, post: bool) -> Memo:
     """Write the caller's working note: on a row it owns or reads, or (`post`) its seat-level note. It moves no row."""
     text = checked(text)
@@ -108,14 +147,7 @@ def note(ledger, actor, branch: str | None, *, text: str, post: bool) -> Memo:
     if post:
         key = _post_key(rows, actor.name, actor.post.name if actor.post else "")
     else:
-        found = [row for row in rows.values() if row.branch == branch and row.is_open]
-        if not found:
-            raise MoveRefused(f"no open row for `{branch}`")
-        row = found[-1]
-        if actor.name not in (row.owner, row.reader):
-            raise MoveRefused(f"only the owner ({row.owner}) or the reader of `{branch}` keeps a working note on it; "
-                              "each session's note is its own")
-        key = row.id
+        key = may_keep(rows, branch, actor.name).id
     memo = Memo(key, actor.name, text, ledger.now())
     write(ledger.state_dir, ledger.repo_key, memo)
     return memo
@@ -127,7 +159,8 @@ def on_row(state_dir, repo_key: str, row_id: str) -> list[Memo]:
 
 def for_session(state_dir, repo_key: str, rows: dict, name: str) -> list[tuple[str, Memo]]:
     """(label, memo) for what a session should see of its notes: its own on each open row it owns or reads and on its
-    post row (or lead key), and what others left on the open rows it owns - labelled as theirs."""
+    post row (or lead key), and on an open row it owns the note of the owner it adopted the row from - labelled as
+    theirs. A reader's or a mover's note on the row is theirs alone (review of d0517a3, I3)."""
     found = latest(state_dir, repo_key)
     said: list[tuple[str, Memo]] = []
     for row in rows.values():
@@ -137,9 +170,9 @@ def for_session(state_dir, repo_key: str, rows: dict, name: str) -> list[tuple[s
         mine = found.get((row.id, name))
         if mine is not None:
             said.append(("your seat note" if seat else f"your note on {row.branch}", mine))
-        if row.owner == name and not seat:
-            said += [(f"left by {memo.writer} on {row.branch}", memo) for (key, writer), memo in found.items()
-                     if key == row.id and writer != name and writer != row.reader]
+        gone = row.adopted_from   # the owner before the last adoption: its notes are the heir's to see, as its
+        if row.owner == name and not seat and gone and gone != name and (row.id, gone) in found:
+            said.append((f"left by {gone} on {row.branch}", found[(row.id, gone)]))
     lead = found.get((lead_key(name), name))
     if lead is not None:
         said.append(("your seat note", lead))

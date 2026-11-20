@@ -121,7 +121,7 @@ in a scratch project (`claude -p` with `--settings` carrying `autoCompactWindow:
   control or hidden character is refused (`core.text.has_hidden` with `\n` let through). Wherever a memo is shown it
   is rendered as a quoted block - each line prefixed `  | ` under a header naming its writer and age - so no memo
   line can pose as a `flotilla:` line of a hook or as an instruction.
-- **Writing it**: `flotilla work note <branch> --text "<note>"` on a row the caller owns, reads, or waits on;
+- **Writing it**: `flotilla work note <branch> --text "<note>"` on a row the caller owns or reads (`--memo` too: a mover that records a wait keeps no note there);
   `flotilla work note --post --text "<note>"` on the caller's post row (the orchestrator's note lives there: what it
   leads, whom it waits on, what the person decided). The move changes no state and needs no `may` entry. Each note
   replaces the caller's last one; the events keep the history.

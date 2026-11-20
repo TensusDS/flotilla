@@ -154,7 +154,7 @@ def test_post_note_for_a_seat_and_for_the_lead(tmp_path, monkeypatch):
 
 def test_for_session_labels(tmp_path):
     from flotilla.ledger.model import Row
-    rows = {"r1": Row(id="r1", branch="feat/x", owner=OWNER, state="claimed"),
+    rows = {"r1": Row(id="r1", branch="feat/x", owner=OWNER, state="claimed", adopted_from="main session 7"),
             "r2": Row(id="r2", branch="fleet/main-1", owner=OWNER, state="reserved"),
             "r3": Row(id="r3", branch="feat/y", owner="main session 2", state="handed", reader=OWNER),
             "r4": Row(id="r4", branch="feat/old", owner=OWNER, state="closed")}
@@ -181,3 +181,76 @@ def test_adopt_prints_the_inherited_memos(tmp_path, monkeypatch):
     row, text = commands._adopt(ledger, actor(ledger, "orchestrator 1"), args)
     assert row.owner == "main session 2"
     assert f"left by {OWNER} on feat/x" in text and "  | next: answer the review" in text
+
+
+# -- the review of 6b39f2f..d0517a3 --
+
+def test_a_damaged_line_costs_only_itself(tmp_path):
+    """I2: a damaged middle line, a naive time and an oversized text are skipped, never raised."""
+    log = tmp_path / "memos" / f"{KEY}.jsonl"
+    log.parent.mkdir(parents=True)
+    log.write_text("{not json\n", encoding="utf-8")
+    memos.write(tmp_path, KEY, memo(text="good"))
+    memos.write(tmp_path, KEY, memo(writer="w2", at="2026-11-20T11:00:00"))
+    memos.write(tmp_path, KEY, memo(writer="w3", text="x" * (memos.MAX_CHARS + 1)))
+    with open(log, "ab") as out:
+        out.write(b"\xff\xfe\n")
+    assert list(memos.latest(tmp_path, KEY)) == [("r1", "main session 1")]
+
+
+def test_left_by_is_only_a_former_owner(tmp_path):
+    """I3: a former reader's or a mover's memo on the owner's row is not shown to the owner as left by."""
+    from flotilla.ledger.model import Row
+    rows = {"r1": Row(id="r1", branch="feat/x", owner=OWNER, state="handed", adopted_from="main session 7")}
+    for writer in ("main session 7", "review session 3", "sender 1"):
+        memos.write(tmp_path, KEY, memo(writer=writer, text=writer))
+    said = [(label, m.text) for label, m in memos.for_session(tmp_path, KEY, rows, OWNER)]
+    assert said == [("left by main session 7 on feat/x", "main session 7")]
+
+
+def test_memo_on_wait_is_the_owners_or_the_readers(tmp_path, monkeypatch):
+    """I3: a wait another session records (the mover) carries no memo; the whole command is refused."""
+    root, tree, code, out = handed_project(tmp_path, monkeypatch)
+    from flotilla.ledger.commands import open_ledger
+    tip = open_ledger(root).rows()["r1"].tip
+    assert run_cli("work", "take", "feat/x", "--root", str(root), "--as", READER)[0] == 0
+    assert run_cli("work", "accept", "feat/x", "--reviewed", tip, "--root", str(root), "--as", READER)[0] == 0
+    code, out = run_cli("work", "wait", "feat/x", "--on", "the person", "--why", "q", "--root", str(root),
+                        "--as", "sender 1")
+    assert code == 0, out   # the sender moves an accepted row, so it may record a wait on it
+    code, out = run_cli("work", "wait", "feat/x", "--on", "the person", "--why", "q", "--memo", "mine",
+                        "--root", str(root), "--as", "sender 1")
+    assert code == 2 and "owner" in out and state_memos(tmp_path) == {}
+
+
+def test_a_memo_that_cannot_be_written_keeps_the_moves_output(tmp_path, monkeypatch):
+    """M1: the move is recorded, so its summary and letters are still printed, with a note about the memo."""
+    root, tree, code, out = handed_project(tmp_path, monkeypatch)
+    (tmp_path / "state" / "memos").mkdir(parents=True, exist_ok=True)
+    from flotilla.ledger.commands import open_ledger
+    key = open_ledger(root).repo_key
+    (tmp_path / "state" / "memos" / f"{key}.jsonl").mkdir()
+    code, out = run_cli("work", "wait", "feat/x", "--on", "the person", "--why", "q", "--memo", "mine",
+                        "--root", str(root), "--as", OWNER)
+    assert code == 0 and "feat/x" in out and "working note was not written" in out
+
+
+def test_work_show_and_adopt_survive_a_damaged_memo_log(tmp_path, monkeypatch):
+    """I2: a row stays viewable, and an adoption already recorded is never reported refused."""
+    root, tree, code, out = handed_project(tmp_path, monkeypatch, memo="kept")
+    from flotilla.ledger.commands import open_ledger
+    key = open_ledger(root).repo_key
+    log = tmp_path / "state" / "memos" / f"{key}.jsonl"
+    log.write_text("{not json\n" + log.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setattr(memos, "latest", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("torn")))
+    code, out = run_cli("work", "show", "feat/x", "--root", str(root))
+    assert code == 0 and "history:" in out and "working notes could not be read" in out
+    from types import SimpleNamespace
+    from fleetkit import session
+    from flotilla.ledger import commands
+    from ledgerkit import actor
+    ledger = open_ledger(root)
+    ledger.census = lambda: [session("main session 2", "000002"), session("orchestrator 1", "000003")]
+    row, text = commands._adopt(ledger, actor(ledger, "orchestrator 1"),
+                                SimpleNamespace(branch="feat/x", from_=None, to="main session 2"))
+    assert row.owner == "main session 2" and "working notes could not be read" in text

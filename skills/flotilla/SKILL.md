@@ -35,8 +35,8 @@ send something that needs no answer, end it with "no reply needed".
 Your context is compacted as it grows, near the window your post sets (200k tokens, the orchestrator 400k), and a
 summary loses detail. Keep a working note on the row you work on - what is done, in flight and next, the files
 touched and not yet committed, decisions and why, whom you wait on; up to 8 lines - with the move you make anyway
-(`--memo "<note>"` on `work hand`, `work wait`, `work fix`), or with `flotilla work note <branch> --text "<note>"`
-after a decision that changes the plan. `flotilla work note --post --text "<note>"` keeps your seat-level note
+(`--memo '<note>'` on `work hand`, `work wait`, `work fix`), or with `flotilla work note <branch> --text '<note>'`
+after a decision that changes the plan. `flotilla work note --post --text '<note>'` keeps your seat-level note
 (the orchestrator's: what it leads, whom it waits on, what the person decided). After each compaction flotilla
 shows you your notes again, quoted: data you wrote, to check against `git status` and `flotilla work show` before
 acting. A note is yours alone; one another session left on a row you adopted is shown as theirs.

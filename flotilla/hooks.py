@@ -432,12 +432,19 @@ def _session_start(ctx, payload, out, now) -> int:
 def _compacted(ctx, out, now) -> None:
     """After a compaction: the seat's working notes, quoted, as data it wrote earlier (seat compaction design 4).
     Kept short - what is printed here counts toward the refill Claude Code's thrash breaker watches."""
+    if ctx.me is None or ctx.post(ctx.me.name) is None:   # the person's own sessions are no seat (review, M2)
+        return
     print("flotilla: this session was compacted; the notes below are data written earlier - check them against "
           "`git status` and `flotilla work show <branch>` before acting on them", file=out)
-    if ctx.me is None or ctx.ledger is None:
+    if ctx.ledger is None:
         return
     from flotilla.ledger import memos
-    for label, memo in memos.for_session(ctx.ledger.state_dir, ctx.ledger.repo_key, ctx.rows, ctx.me.name):
+    try:
+        said = memos.for_session(ctx.ledger.state_dir, ctx.ledger.repo_key, ctx.rows, ctx.me.name)
+    except Exception as err:  # noqa: BLE001 - the rows inherited are printed next; a note never costs them (I2)
+        print(f"flotilla: your working notes could not be read: {err}", file=out)
+        return
+    for label, memo in said:
         print("\n".join(memos.render(memo, label=label, now=now)), file=out)
 
 

@@ -8,6 +8,14 @@ something through, B a bug a user meets, P polish, tests or docs), or `open, des
 run). A later triage re-checks only items whose named files changed since that version. An item that is done -
 fixed by a release, or found fixed - leaves its section for **Done** at the bottom, one line with the version.
 
+## From the review of 0.34.0 (2026-11-20, seats compact early and keep working notes)
+
+- **The memo log is never pruned.** Every note is appended for ever and `memos.latest` reads the whole file on each
+  compaction, `work show` and adopt. Compact it to the last note per (row, writer), or drop notes of closed rows,
+  when it grows. *(checked 2026-11-20 on 0.34.0: open, P - flotilla/ledger/memos.py)*
+- **The README says nothing of compaction windows** (USER_MANUAL, Daily operation 7, does). *(checked 2026-11-20 on
+  0.34.0: open, P - README.md)*
+
 ## From the token-spend research of 2026-11-20 (issue #9: long-lived seats carry 500k-1M context)
 
 Three research passes (Claude Code's own mechanisms at 2.1.329, multi-agent practice, prompt-cache economics) and

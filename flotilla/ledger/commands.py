@@ -218,7 +218,11 @@ def _show(ledger: core.Ledger, branch: str) -> int:
         print(f"  broke at {row.broken}")
     from flotilla.ledger import memos
     import datetime as _dt
-    noted = memos.on_row(ledger.state_dir, ledger.repo_key, row.id)
+    try:
+        noted = memos.on_row(ledger.state_dir, ledger.repo_key, row.id)
+    except Exception as err:  # noqa: BLE001 - a note that cannot be read never hides the row (review, I2)
+        noted = []
+        print(f"  working notes could not be read: {err}")
     if noted:
         print("working notes:")
         for memo in noted:
@@ -252,9 +256,12 @@ def _inherited_notes(ledger, rows) -> list[str]:
     from flotilla.ledger import memos
     now = _dt.datetime.now(_dt.timezone.utc)
     lines = []
-    for row in rows:
-        for memo in memos.on_row(ledger.state_dir, ledger.repo_key, row.id):
-            lines += memos.render(memo, label=f"left by {memo.writer} on {row.branch}", now=now)
+    try:
+        for row in rows:
+            for memo in memos.on_row(ledger.state_dir, ledger.repo_key, row.id):
+                lines += memos.render(memo, label=f"left by {memo.writer} on {row.branch}", now=now)
+    except Exception as err:  # noqa: BLE001 - the adoption is recorded: never report it refused (review, I2)
+        lines.append(f"working notes could not be read: {err}")
     return lines
 
 
@@ -692,13 +699,18 @@ def run_ledger_command(args) -> int:
             return 0
         else:
             memo = getattr(args, "memo", "")
-            if memo:   # checked before the move: a bad note refuses the whole command
+            if memo:   # checked before the move: a bad note, or one not the caller's to keep, refuses the command
                 from flotilla.ledger import memos
                 memo = memos.checked(memo)
+                memos.may_keep(ledger.rows(), args.branch, caller.name)
             result = MOVES[args.move](ledger, caller, args)
             if memo:
                 moved = result[0] if isinstance(result, tuple) else result
-                memos.write(ledger.state_dir, ledger.repo_key, memos.Memo(moved.id, caller.name, memo, ledger.now()))
+                try:
+                    memos.write(ledger.state_dir, ledger.repo_key,
+                                memos.Memo(moved.id, caller.name, memo, ledger.now()))
+                except OSError as err:   # the move is recorded: its summary and letters still go out (review, M1)
+                    print(f"note: the move is recorded; your working note was not written: {err}")
             if isinstance(result, tuple):
                 row, text = result
                 print(summary(row))

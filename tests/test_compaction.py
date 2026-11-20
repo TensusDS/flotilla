@@ -167,3 +167,13 @@ def test_the_orchestrator_template_names_its_window_and_sends_no_acknowledgement
     assert orchestrator.compact_window == 400_000 and orchestrator.template_version == 34
     assert "--post" in orchestrator.body and "acknowledge" in orchestrator.body
     assert all(post.compact_window == "" for name, post in TEMPLATES.items() if name != "orchestrator")
+
+
+def test_the_first_prompt_does_not_wake_every_peer():
+    """Review I4: the first prompt is the seat's first order; it must say what the skill says."""
+    assert "peers" not in launch.FIRST_PROMPT and "orchestrator one message" in launch.FIRST_PROMPT
+
+
+def test_the_texts_ask_for_single_quotes():
+    """Review M4: a backtick in double quotes is run by the shell, and a brace is refused by the guard."""
+    assert "single quotes" in launch.WORKING_NOTES and "--memo '" in launch.WORKING_NOTES
