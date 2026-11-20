@@ -154,7 +154,7 @@ def test_post_note_for_a_seat_and_for_the_lead(tmp_path, monkeypatch):
 
 def test_for_session_labels(tmp_path):
     from flotilla.ledger.model import Row
-    rows = {"r1": Row(id="r1", branch="feat/x", owner=OWNER, state="claimed", adopted_from="main session 7"),
+    rows = {"r1": adopted("r1", "main session 7"),
             "r2": Row(id="r2", branch="fleet/main-1", owner=OWNER, state="reserved"),
             "r3": Row(id="r3", branch="feat/y", owner="main session 2", state="handed", reader=OWNER),
             "r4": Row(id="r4", branch="feat/old", owner=OWNER, state="closed")}
@@ -200,8 +200,7 @@ def test_a_damaged_line_costs_only_itself(tmp_path):
 
 def test_left_by_is_only_a_former_owner(tmp_path):
     """I3: a former reader's or a mover's memo on the owner's row is not shown to the owner as left by."""
-    from flotilla.ledger.model import Row
-    rows = {"r1": Row(id="r1", branch="feat/x", owner=OWNER, state="handed", adopted_from="main session 7")}
+    rows = {"r1": adopted("r1", "main session 7")}
     for writer in ("main session 7", "review session 3", "sender 1"):
         memos.write(tmp_path, KEY, memo(writer=writer, text=writer))
     said = [(label, m.text) for label, m in memos.for_session(tmp_path, KEY, rows, OWNER)]
@@ -271,9 +270,7 @@ def test_fix_memo_on_an_unassigned_row(tmp_path, monkeypatch):
 
 def test_left_by_follows_a_trail_of_adoptions(tmp_path):
     """adopted_from holds `B <- A` after two adoptions; the heir sees B's note (re-review, 2)."""
-    from flotilla.ledger.model import Row
-    rows = {"r1": Row(id="r1", branch="feat/x", owner=OWNER, state="claimed",
-                      adopted_from="main session 7 <- main session 5")}
+    rows = {"r1": adopted("r1", "main session 5", "main session 7")}
     memos.write(tmp_path, KEY, memo(writer="main session 7", text="seven"))
     memos.write(tmp_path, KEY, memo(writer="main session 5", text="five"))
     assert [(label, m.text) for label, m in memos.for_session(tmp_path, KEY, rows, OWNER)] == [
@@ -321,3 +318,30 @@ def test_work_note_that_cannot_be_written_is_refused_plainly(tmp_path, monkeypat
     (tmp_path / "state" / "memos" / f"{key}.jsonl").mkdir(parents=True)
     code, out = run_cli("work", "note", "feat/x", "--text", "n", "--root", str(root), "--as", OWNER)
     assert code == 2 and "refused" in out and "could not be written" in out
+
+
+# -- the review of 3a6ffa2 --
+
+def adopted(row_id, *owners):
+    """A row adopted from each of `owners` in turn, as steering.adopt records it (evidence `from`)."""
+    from flotilla.ledger.model import Row
+    history = [{"move": "claim", "evidence": {}}] + [{"move": "adopt", "evidence": {"from": name}} for name in owners]
+    trail = " <- ".join(reversed(owners))
+    return Row(id=row_id, branch="feat/x", owner=OWNER, state="claimed", adopted_from=trail, history=history)
+
+
+def test_the_last_former_owner_with_a_note_is_shown(tmp_path):
+    """A dies with a note, B adopts and dies with none, the heir sees A's (review of 3a6ffa2, minor 2)."""
+    rows = {"r1": adopted("r1", "main session 5", "main session 7")}
+    memos.write(tmp_path, KEY, memo(writer="main session 5", text="five"))
+    assert [(label, m.text) for label, m in memos.for_session(tmp_path, KEY, rows, OWNER)] == [
+        ("left by main session 5 on feat/x", "five")]
+    memos.write(tmp_path, KEY, memo(writer="main session 7", text="seven"))
+    assert [m.text for _, m in memos.for_session(tmp_path, KEY, rows, OWNER)] == ["seven"]
+
+
+def test_a_former_owner_whose_name_holds_the_trail_mark(tmp_path):
+    """A project's own name pattern may hold ` <- `; the adoption event names the owner whole (minor 1)."""
+    rows = {"r1": adopted("r1", "x <- 1")}
+    memos.write(tmp_path, KEY, memo(writer="x <- 1", text="arrow"))
+    assert [m.text for _, m in memos.for_session(tmp_path, KEY, rows, OWNER)] == ["arrow"]

@@ -250,18 +250,18 @@ CANNOT_RUN = ("next: flotilla cannot run here as things stand; send this text to
               "work around flotilla with git plumbing.")
 
 def _inherited_notes(ledger, rows) -> list[str]:
-    """The working note each adopted row's gone owner left, for the orchestrator's letter to the heir (design section
-    2): labelled with its writer, never as the heir's own - the same note the heir is shown after compaction."""
+    """The working note a former owner left on each adopted row, for the orchestrator's letter to the heir (design
+    section 2): labelled with its writer, never as the heir's own - the same note the heir is shown after compaction."""
     import datetime as _dt
     from flotilla.ledger import memos
     now = _dt.datetime.now(_dt.timezone.utc)
     lines = []
     try:
+        found = memos.latest(ledger.state_dir, ledger.repo_key)
         for row in rows:
-            gone = memos.former_owner(row)
-            for memo in memos.on_row(ledger.state_dir, ledger.repo_key, row.id):
-                if memo.writer == gone:   # a reader's note on the row is not the heir's inheritance
-                    lines += memos.render(memo, label=f"left by {memo.writer} on {row.branch}", now=now)
+            left = memos.inherited(found, row)   # a reader's note on the row is not the heir's inheritance
+            if left is not None:
+                lines += memos.render(left, label=f"left by {left.writer} on {row.branch}", now=now)
     except Exception as err:  # noqa: BLE001 - the adoption is recorded: never report it refused (review, I2)
         lines.append(f"working notes could not be read: {err}")
     return lines

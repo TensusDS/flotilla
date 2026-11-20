@@ -49,9 +49,22 @@ def checked(text: str) -> str:
     return text
 
 
-def former_owner(row) -> str:
-    """The owner a row was last adopted from: `adopted_from` holds a trail, `B <- A`, after more than one."""
-    return (row.adopted_from or "").split(" <- ")[0].strip()
+def former_owners(row) -> list[str]:
+    """The owners a row was adopted from, the last first, as each adopt event names it (`evidence.from`): the
+    `adopted_from` trail, `B <- A`, cannot be split when a project's own name pattern holds ` <- ` (review of
+    3a6ffa2, minor 1)."""
+    named = [str((event.get("evidence") or {}).get("from") or "") for event in reversed(row.history or [])
+             if event.get("move") == "adopt"]
+    return [name for name in named if name]
+
+
+def inherited(found: dict, row) -> Memo | None:
+    """The note the heir of an adopted row is shown: the last former owner's that left one - a seat that died before
+    it wrote a note does not hide the note of the one before it (review of 3a6ffa2, minor 2)."""
+    for name in former_owners(row):
+        if name != row.owner and (row.id, name) in found:
+            return found[(row.id, name)]
+    return None
 
 
 def lead_key(name: str) -> str:
@@ -166,7 +179,7 @@ def on_row(state_dir, repo_key: str, row_id: str) -> list[Memo]:
 
 def for_session(state_dir, repo_key: str, rows: dict, name: str) -> list[tuple[str, Memo]]:
     """(label, memo) for what a session should see of its notes: its own on each open row it owns or reads and on its
-    post row (or lead key), and on an open row it owns the note of the owner it adopted the row from - labelled as
+    post row (or lead key), and on an open row it owns the note a former owner left (`inherited`) - labelled as
     theirs. A reader's or a mover's note on the row is theirs alone (review of d0517a3, I3)."""
     found = latest(state_dir, repo_key)
     said: list[tuple[str, Memo]] = []
@@ -177,9 +190,9 @@ def for_session(state_dir, repo_key: str, rows: dict, name: str) -> list[tuple[s
         mine = found.get((row.id, name))
         if mine is not None:
             said.append(("your seat note" if seat else f"your note on {row.branch}", mine))
-        gone = former_owner(row)   # the owner before the last adoption: its notes are the heir's to see, as its
-        if row.owner == name and not seat and gone and gone != name and (row.id, gone) in found:
-            said.append((f"left by {gone} on {row.branch}", found[(row.id, gone)]))
+        left = inherited(found, row) if row.owner == name and not seat else None
+        if left is not None:
+            said.append((f"left by {left.writer} on {row.branch}", left))
     lead = found.get((lead_key(name), name))
     if lead is not None:
         said.append(("your seat note", lead))
